@@ -591,7 +591,7 @@ test("blocks cross-origin Browser Node guest navigation for policy-bound session
     events.filter((event) => event.type === "open-url"),
     [
       {
-        reuseIfOpen: false,
+        reuseIfOpen: true,
         sourceNodeId: "app-1",
         type: "open-url",
         url: "https://example.com/docs"
@@ -647,7 +647,7 @@ test("converts guest preload open-url requests into Browser Node open-url events
     events.filter((event) => event.type === "open-url"),
     [
       {
-        reuseIfOpen: false,
+        reuseIfOpen: true,
         sourceNodeId: "browser-target-blank",
         type: "open-url",
         url: "https://example.com/popup"
@@ -756,7 +756,7 @@ test("registerBrowserNodeElectronMain routes guest open-url IPC through the owne
     sentEvents.filter((event) => event.type === "open-url"),
     [
       {
-        reuseIfOpen: false,
+        reuseIfOpen: true,
         sourceNodeId: "browser-ipc-open-url",
         type: "open-url",
         url: "https://example.com/from-preload"

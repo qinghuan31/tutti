@@ -552,7 +552,7 @@ export function createBrowserGuestManager({
         webContentsId: session.webContentsId
       });
       emit({
-        reuseIfOpen: false,
+        reuseIfOpen: true,
         sourceNodeId: session.nodeId,
         type: "open-url",
         url: resolved.url
