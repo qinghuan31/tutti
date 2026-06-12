@@ -1934,7 +1934,11 @@ function useDockPresenceItems(
   shouldAnimateMinimizedDockEnter: (nodeId: string) => boolean
 ): WorkbenchHostPresentDockItem[] {
   const latestItemsByKey = useRef(new Map<string, WorkbenchHostDockItem>());
+  const shouldAnimateMinimizedDockEnterRef = useRef(
+    shouldAnimateMinimizedDockEnter
+  );
   latestItemsByKey.current = new Map(items.map((item) => [item.key, item]));
+  shouldAnimateMinimizedDockEnterRef.current = shouldAnimateMinimizedDockEnter;
   const itemKeys = items.map((item) => item.key).join("\u0000");
   const [presentItems, setPresentItems] = useState<
     WorkbenchHostPresentDockItem[]
@@ -2002,7 +2006,7 @@ function useDockPresenceItems(
             item,
             initialized.current,
             currentByKey.get(item.key)?.presence,
-            shouldAnimateMinimizedDockEnter
+            shouldAnimateMinimizedDockEnterRef.current
           )
         });
       }
@@ -2049,7 +2053,7 @@ function useDockPresenceItems(
     }, nextSettleMs);
 
     return () => globalThis.clearTimeout(timeout);
-  }, [itemKeys, shouldAnimateMinimizedDockEnter]);
+  }, [itemKeys]);
 
   return presentItems.map((presentItem) => {
     const latestItem = latestItemsByKey.current.get(presentItem.key);
