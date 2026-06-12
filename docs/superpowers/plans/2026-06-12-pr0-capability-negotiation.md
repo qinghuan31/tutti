@@ -129,7 +129,7 @@ git commit -m "feat(agent): shared capability vocabulary, align codex list"
 - Modify: `packages/agent/daemon/runtime/standard_acp_adapter.go`（`SessionState` 內 usage 上報處附近，約 :1282）
 - Test: `packages/agent/daemon/runtime/capabilities_test.go`
 
-- [ ] **Step 1: 寫失敗測試**
+- [x] **Step 1: 寫失敗測試**
 
 ```go
 func TestStandardACPCapabilitiesByProvider(t *testing.T) {
@@ -166,12 +166,12 @@ func TestStandardACPCapabilitiesByProvider(t *testing.T) {
 }
 ```
 
-- [ ] **Step 2: 跑測試確認失敗**
+- [x] **Step 2: 跑測試確認失敗**
 
 Run: `go test ./runtime/ -run TestStandardACPCapabilitiesByProvider -count=1`
 Expected: FAIL（`undefined: standardACPCapabilities`）
 
-- [ ] **Step 3: 實現派生函數（追加到 capabilities.go）**
+- [x] **Step 3: 實現派生函數（追加到 capabilities.go）**
 
 ```go
 // standardACPCapabilities derives the canonical capability list for ACP
@@ -208,7 +208,7 @@ func standardACPCapabilities(provider string, promptImage bool, state acpLiveSta
 
 （`capabilities.go` 需要 `import "strings"`。）
 
-- [ ] **Step 4: 在 SessionState 中上報**
+- [x] **Step 4: 在 SessionState 中上報**
 
 在 `standard_acp_adapter.go` 的 `SessionState` 中，緊鄰 `snapshot.RuntimeContext["usage"]` 上報處（約 :1282），插入：
 
@@ -220,7 +220,7 @@ if capabilities := standardACPCapabilities(a.config.provider, promptImage, state
 
 `promptImage` 取該函數中已用於 `promptCapabilities` 上報的同一布爾值（讀該函數體找到現有變量名並沿用；若該處用的是函數調用而非局部變量，提取為局部變量複用，禁止語義漂移）。
 
-- [ ] **Step 5: 補 SessionState 集成斷言**
+- [x] **Step 5: 補 SessionState 集成斷言**
 
 在 `capabilities_test.go` 追加（fake transport 模式參考 `standard_acp_adapter_test.go` 中現有 SessionState 測試，找到一個既有的 claude SessionState 測試並在其斷言後追加，或新寫一個最小用例）：
 
@@ -237,12 +237,12 @@ if !containsString(capabilities, CapabilityPlanMode) || !containsString(capabili
 }
 ```
 
-- [ ] **Step 6: 跑包內全量測試**
+- [x] **Step 6: 跑包內全量測試**
 
 Run: `go test ./runtime/ -count=1`
 Expected: 全 PASS
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add packages/agent/daemon/runtime/
