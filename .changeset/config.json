@@ -14,6 +14,8 @@
       "@tutti-os/workspace-user-project",
       "@tutti-os/workspace-app-center",
       "@tutti-os/workspace-terminal",
+      "@tutti-os/agent-activity-core",
+      "@tutti-os/agent-gui",
       "@tutti-os/browser-node",
       "@tutti-os/workspace-file-preview",
       "@tutti-os/workbench-snapshot",
