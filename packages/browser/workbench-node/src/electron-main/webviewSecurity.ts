@@ -75,27 +75,26 @@ function getPopupLogMetadata(url: string): Record<string, unknown> {
   }
 }
 
-function allowBrowserNodeNativePopupWindow({
+function externalizeBrowserNodePopupWindow({
   guestWebContentsId,
   logger,
+  openExternal,
   url
 }: {
   guestWebContentsId: number | null;
   logger?: BrowserNodeElectronLogger;
+  openExternal: (url: string) => Promise<void> | void;
   url: string;
 }) {
-  logger?.info?.("Browser Node native popup allowed", {
+  logger?.info?.("Browser Node webview popup externalized", {
     guestWebContentsId,
     ...getPopupLogMetadata(url)
   });
-  return {
-    action: "allow" as const,
-    overrideBrowserWindowOptions: {
-      height: 720,
-      show: true,
-      width: 520
-    }
-  };
+  const resolved = resolveBrowserNavigationUrl(url);
+  if (resolved.url) {
+    void Promise.resolve(openExternal(resolved.url)).catch(() => undefined);
+  }
+  return { action: "deny" as const };
 }
 
 export function enforceBrowserWebviewSecurity({
@@ -230,26 +229,22 @@ export function installBrowserWebviewSecurity({
 
     applyBrowserGuestUserAgent(guestContents, logger);
     if (pendingAttach.allowNativePopups) {
-      guestContents.setWindowOpenHandler(({ url }) =>
-        allowBrowserNodeNativePopupWindow({
+      guestContents.setWindowOpenHandler(({ url }) => {
+        return externalizeBrowserNodePopupWindow({
           guestWebContentsId: guestContents.id ?? null,
           logger,
+          openExternal,
           url
-        })
-      );
+        });
+      });
     } else {
       guestContents.setWindowOpenHandler(({ url }) => {
-        logger?.info?.("Browser Node webview popup externalized", {
+        return externalizeBrowserNodePopupWindow({
           guestWebContentsId: guestContents.id ?? null,
-          ...getPopupLogMetadata(url)
+          logger,
+          openExternal,
+          url
         });
-        const resolved = resolveBrowserNavigationUrl(url);
-        if (resolved.url) {
-          void Promise.resolve(openExternal(resolved.url)).catch(
-            () => undefined
-          );
-        }
-        return { action: "deny" };
       });
     }
     onGuestAttached?.(guestContents);

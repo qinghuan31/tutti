@@ -64,49 +64,6 @@ function goGuestForward(contents: BrowserGuestWebContents): void {
   contents.goForward();
 }
 
-function getPopupLogMetadata(url: string): Record<string, unknown> {
-  try {
-    const parsed = new URL(url);
-    return {
-      popupOrigin: parsed.origin,
-      popupPath: parsed.pathname,
-      popupProtocol: parsed.protocol
-    };
-  } catch {
-    return {
-      popupOrigin: null,
-      popupPath: null,
-      popupProtocol: null
-    };
-  }
-}
-
-function allowBrowserNodeGuestPopupWindow({
-  logger,
-  nodeId,
-  url,
-  webContentsId
-}: {
-  logger: BrowserGuestManagerInput["logger"];
-  nodeId: string;
-  url: string;
-  webContentsId: number | null;
-}) {
-  logger?.info?.("Browser Node guest popup allowed", {
-    nodeId,
-    webContentsId,
-    ...getPopupLogMetadata(url)
-  });
-  return {
-    action: "allow" as const,
-    overrideBrowserWindowOptions: {
-      height: 720,
-      show: true,
-      width: 520
-    }
-  };
-}
-
 function resolveBrowserNodeUrlError(
   resolved: BrowserNavigationUrlResolution
 ): BrowserNodeRuntimeError {
@@ -762,12 +719,7 @@ export function createBrowserGuestManager({
         webContentsId: input.webContentsId
       });
       contents.setWindowOpenHandler?.(({ url }) =>
-        allowBrowserNodeGuestPopupWindow({
-          logger,
-          nodeId: input.nodeId,
-          url,
-          webContentsId: input.webContentsId
-        })
+        emitOpenUrlFromGuest(session, url)
       );
       attachGuestListeners(session);
       await applyPreferredColorSchemeToGuest(
