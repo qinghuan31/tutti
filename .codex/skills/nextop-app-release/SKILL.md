@@ -34,8 +34,10 @@ For catalog publication:
 For automatic versioning:
 
 - `auto_bump_version: true` requires a committed source manifest at `version_manifest_path`, defaulting to root `nextop.app.json`.
-- Do not invent fallback version sources from S3 `latest.json`, package output, git tags, or `package.json`. Those make release behavior depend on mutable external state.
-- The package command should copy or render the package manifest from the source manifest so the released package uses the bumped version.
+- The package command must copy or render `package_dir/nextop.app.json` from the same source manifest named by `version_manifest_path`.
+- Do not derive or overwrite the package manifest version from S3 `latest.json`, package build output, git tags, or `package.json`. Those make release behavior depend on mutable external state or unrelated app package versions.
+- After packaging, verify that `version_manifest_path` and `package_dir/nextop.app.json` have the same `version`. If they differ, fix the caller repository packaging script before publishing.
+- Add or update caller repository tests that assert the packaged manifest version equals the source manifest version.
 - If a repository does not have a source manifest, add one instead of adding compatibility logic to the reusable workflow.
 
 For reusable workflow changes:
@@ -63,6 +65,11 @@ The generated package directory must contain:
 - all runtime files and assets
 
 The source and package manifests must use `schemaVersion: "nextop.app.manifest.v1"`. `appId` must match the workflow `app_id` input. `version` must be stable semver `x.y.z` when automatic bumping is enabled.
+
+The package manifest version must be copied from the source manifest that the
+workflow bumps. This is especially important in monorepos where the app's
+`package.json` may have a separate package version. Do not set
+`nextop.app.json.version` from `package.json`.
 
 The workflow writes release objects under:
 
@@ -147,6 +154,11 @@ package_dir: ${{ matrix.target.package_dir }}
 icon_path: ${{ matrix.target.icon_path }}
 version_manifest_path: ${{ matrix.target.version_manifest_path }}
 ```
+
+Each matrix target's `package_command` must produce `package_dir/nextop.app.json`
+from that target's `version_manifest_path`. Treat mismatches as release
+blockers, because the reusable workflow resolves the uploaded release version
+from the generated package manifest.
 
 ## Reusable Workflow Inputs
 
@@ -258,6 +270,25 @@ Expected output:
 - `/tmp/nextop-app-release/apps/<appId>/<version>/<appId>-<version>.zip`
 - `/tmp/nextop-app-release/apps/<appId>/<version>/release.json`
 - `/tmp/nextop-app-release/apps/<appId>/latest.json`
+
+When automatic bumping is enabled, also compare the source and generated
+package manifests before building release metadata:
+
+```sh
+node -e '
+  const fs = require("fs");
+  const source = JSON.parse(fs.readFileSync(process.argv[1], "utf8"));
+  const packaged = JSON.parse(fs.readFileSync(process.argv[2], "utf8"));
+  if (source.version !== packaged.version) {
+    console.error(`manifest version mismatch: source=${source.version} package=${packaged.version}`);
+    process.exit(1);
+  }
+' nextop.app.json build/nextop-app/package/nextop.app.json
+```
+
+For monorepos, replace `nextop.app.json` with the target's
+`version_manifest_path`, for example
+`apps/daily-tech-radar/nextop-package/nextop.app.json`.
 
 ## Completion Checklist
 

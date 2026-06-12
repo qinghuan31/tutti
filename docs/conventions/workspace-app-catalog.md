@@ -95,9 +95,17 @@ External repositories that use automatic bumping must commit a source manifest
 at `version_manifest_path`, which defaults to root `nextop.app.json`. That
 manifest is the only source of automatic release version state. Do not derive
 automatic release versions from mutable S3 metadata, package build output,
-`package.json`, or git tags. App package scripts should copy or render the
-package manifest from the source manifest so the released package contains the
-bumped version.
+`package.json`, or git tags. App package scripts must copy or render the package
+manifest from the source manifest named by `version_manifest_path` so the
+released package contains the bumped version. This also applies in monorepos:
+the app package's `package.json` may have a separate package version and must
+not overwrite `nextop.app.json.version`.
+
+Caller repositories should test this contract directly. After running the
+package command, `package_dir/nextop.app.json` must have the same `version` as
+`version_manifest_path`. A mismatch is a release blocker because the reusable
+workflow resolves the uploaded release version from the generated package
+manifest.
 
 When automatic bumping is enabled, the default release version is the bumped
 manifest version. When automatic bumping is disabled, the default release
