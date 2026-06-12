@@ -1,10 +1,20 @@
 import { describe, expect, it } from "vitest";
+import { isValidElement, type ReactElement } from "react";
+import { agentGuiDockIconUrls } from "../dockIcons.ts";
 import {
   agentGuiWorkbenchDefaultCopy,
   createAgentGuiWorkbenchContribution,
   resolveAgentGuiWorkbenchDefaultLaunchFrame,
   resolveAgentGuiWorkbenchContributionCopy
 } from "./contribution.ts";
+import { agentGuiWorkbenchDockEntryId } from "./launch.ts";
+
+function readDockEntryIconSrc(icon: unknown): string | undefined {
+  if (!isValidElement(icon)) {
+    return undefined;
+  }
+  return (icon as ReactElement<{ src?: string }>).props.src;
+}
 
 describe("agent GUI workbench contribution copy", () => {
   it("uses package defaults when the host does not provide copy", () => {
@@ -31,6 +41,45 @@ describe("agent GUI workbench contribution copy", () => {
       ...agentGuiWorkbenchDefaultCopy,
       nodeTitle: "Assistant"
     });
+  });
+
+  it("uses packaged dock icons when the host does not provide icon URLs", () => {
+    const contribution = createAgentGuiWorkbenchContribution({
+      renderBody: () => null,
+      workspaceId: "workspace-1"
+    });
+
+    const codexDockEntry = contribution.dockEntries?.find(
+      (entry) => entry.id === agentGuiWorkbenchDockEntryId("codex")
+    );
+
+    expect(readDockEntryIconSrc(codexDockEntry?.icon)).toBe(
+      agentGuiDockIconUrls.codex
+    );
+  });
+
+  it("lets hosts override packaged dock icons explicitly", () => {
+    const contribution = createAgentGuiWorkbenchContribution({
+      dockIconUrls: {
+        codex: "app://icons/codex.png"
+      },
+      renderBody: () => null,
+      workspaceId: "workspace-1"
+    });
+
+    const codexDockEntry = contribution.dockEntries?.find(
+      (entry) => entry.id === agentGuiWorkbenchDockEntryId("codex")
+    );
+    const geminiDockEntry = contribution.dockEntries?.find(
+      (entry) => entry.id === agentGuiWorkbenchDockEntryId("gemini")
+    );
+
+    expect(readDockEntryIconSrc(codexDockEntry?.icon)).toBe(
+      "app://icons/codex.png"
+    );
+    expect(readDockEntryIconSrc(geminiDockEntry?.icon)).toBe(
+      agentGuiDockIconUrls.gemini
+    );
   });
 
   it("opens at 70 percent of the workbench area excluding chrome and dock safe areas", () => {

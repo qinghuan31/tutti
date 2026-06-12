@@ -13,6 +13,7 @@ import type { WorkspaceAgentSessionDetailViewModel } from "../../shared/workspac
 import type { AgentHostManagedAgentsState } from "../../shared/contracts/dto";
 import type { WorkspaceFileReferenceAdapter } from "@tutti-os/workspace-file-reference/contracts";
 import type { WorkspaceLinkAction } from "../../actions/workspaceLinkActions";
+import { MANAGED_AGENT_ICON_URLS } from "../../shared/managedAgentIcons";
 import { AgentGUINode } from "./AgentGUINode";
 import { resolveAgentGUIHeroIconUrl } from "./AgentGUINodeView";
 import type { AgentRichTextAtProvider } from "./agentRichTextAtProvider";
@@ -1321,10 +1322,7 @@ describe("AgentGUINode", () => {
     ).toBeTruthy();
     expect(screen.queryByTestId("agent-gui-bottom-dock")).toBeNull();
     expect(emptyHeading).toBeTruthy();
-    expect(iconEffect).toHaveAttribute(
-      "src",
-      expect.stringContaining("manage-agent-codex.png")
-    );
+    expect(iconEffect).toHaveAttribute("src", MANAGED_AGENT_ICON_URLS.codex);
     expect(iconEffect?.querySelector("canvas")).toBeNull();
     expect(
       document.querySelector(".agent-gui-node__timeline-centered")
@@ -1332,17 +1330,18 @@ describe("AgentGUINode", () => {
   });
 
   it("resolves provider-specific hero icon artwork", () => {
-    expect(resolveAgentGUIHeroIconUrl("codex")).toContain(
-      "manage-agent-codex.png"
+    expect(resolveAgentGUIHeroIconUrl("codex")).toBe(
+      MANAGED_AGENT_ICON_URLS.codex
     );
-    expect(resolveAgentGUIHeroIconUrl("codex")).not.toMatch(
-      /^\.\/manage-agent-codex-[\w-]+\.png$/
+    expect(resolveAgentGUIHeroIconUrl("codex")).not.toContain("undefined");
+    expect(resolveAgentGUIHeroIconUrl("codex")).not.toContain(
+      "/node_modules/.vite/deps/"
     );
-    expect(resolveAgentGUIHeroIconUrl("claude")).toContain(
-      "manage-agent-claude-code.png"
+    expect(resolveAgentGUIHeroIconUrl("claude")).toBe(
+      MANAGED_AGENT_ICON_URLS["claude-code"]
     );
-    expect(resolveAgentGUIHeroIconUrl("hermes")).toContain(
-      "manage-agent-hermes.png"
+    expect(resolveAgentGUIHeroIconUrl("hermes")).toBe(
+      MANAGED_AGENT_ICON_URLS.hermes
     );
   });
 
