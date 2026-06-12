@@ -143,4 +143,6 @@ export function resolveAgentActivityUsage(
 
 ### Task C: 收尾
 
-- [ ] **Step 1:** gui + activity-core 全測試重跑,無回歸。
+- [x] **Step 1:** gui + activity-core 全測試重跑,無回歸。
+
+> 備註（2026-06-12）：gui 套件有 1 個與本 PR 無關的既有失敗（`AgentGUINodeView.layout.spec.tsx` 的 timeline grid 測試），由工作區內未提交的 `packages/ui/system` scroll-area 改動（移除 radix viewport 包裝）引起；activity-core 41/41 通過，gui 其餘 1098 項通過，兩包 typecheck 與 `pnpm check:i18n` 均通過。
