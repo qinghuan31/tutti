@@ -141,6 +141,31 @@ function emitBrowserNavigationFailed(input: {
   });
 }
 
+function isGoogleGisOAuthPopupUrl(url: string): boolean {
+  try {
+    const parsed = new URL(url);
+    if (
+      parsed.protocol !== "https:" ||
+      parsed.hostname !== "accounts.google.com" ||
+      (parsed.pathname !== "/o/oauth2/v2/auth" &&
+        parsed.pathname !== "/o/oauth2/auth")
+    ) {
+      return false;
+    }
+
+    const isGisSdkPopup =
+      parsed.searchParams.get("gsiwebsdk") === "gis_attributes";
+    const isPopupResponse =
+      parsed.searchParams.get("display") === "popup" &&
+      (parsed.searchParams.get("response_mode") === "form_post" ||
+        parsed.searchParams.get("redirect_uri") === "gis_transform");
+
+    return isGisSdkPopup || isPopupResponse;
+  } catch {
+    return false;
+  }
+}
+
 function resolveBrowserNavigationOrigin(url: string): string | null {
   const resolved = resolveBrowserNavigationUrl(url);
   if (!resolved.url) {
@@ -718,9 +743,17 @@ export function createBrowserGuestManager({
         sessionPartition: session.sessionPartition,
         webContentsId: input.webContentsId
       });
-      contents.setWindowOpenHandler?.(({ url }) =>
-        emitOpenUrlFromGuest(session, url)
-      );
+      contents.setWindowOpenHandler?.(({ url }) => {
+        if (isGoogleGisOAuthPopupUrl(url)) {
+          logger?.info?.("Browser Node allowing Google GIS OAuth popup", {
+            nodeId: session.nodeId,
+            webContentsId: session.webContentsId
+          });
+          return { action: "allow" };
+        }
+
+        return emitOpenUrlFromGuest(session, url);
+      });
       attachGuestListeners(session);
       await applyPreferredColorSchemeToGuest(
         session,

@@ -651,7 +651,7 @@ test("converts guest preload open-url requests into Browser Node open-url events
   );
 });
 
-test("emits open-url events for Browser Node guest popup windows", async () => {
+test("keeps Google GIS OAuth popups native while routing ordinary popups through open-url", async () => {
   const events: BrowserNodeEvent[] = [];
   const contents = new MockBrowserGuestWebContents(21);
   const manager = createBrowserGuestManager({
@@ -679,9 +679,9 @@ test("emits open-url events for Browser Node guest popup windows", async () => {
   );
   assert.deepEqual(
     contents.windowOpenHandler({
-      url: "https://accounts.google.com/o/oauth2/v2/auth?client_id=test"
+      url: "https://accounts.google.com/o/oauth2/v2/auth?gsiwebsdk=gis_attributes&client_id=test&redirect_uri=gis_transform&display=popup&response_mode=form_post"
     }),
-    { action: "deny" }
+    { action: "allow" }
   );
   assert.deepEqual(
     events.filter((event) => event.type === "open-url"),
@@ -691,12 +691,6 @@ test("emits open-url events for Browser Node guest popup windows", async () => {
         sourceNodeId: "browser-google-oauth",
         type: "open-url",
         url: "https://example.com/popup"
-      },
-      {
-        reuseIfOpen: true,
-        sourceNodeId: "browser-google-oauth",
-        type: "open-url",
-        url: "https://accounts.google.com/o/oauth2/v2/auth?client_id=test"
       }
     ]
   );
