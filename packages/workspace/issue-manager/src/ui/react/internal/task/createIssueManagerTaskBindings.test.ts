@@ -36,6 +36,17 @@ test("task bindings switch back to read mode after selection", () => {
   assert.equal(harness.nodeState.selectedTaskId, "task-7");
 });
 
+test("task bindings close the task drawer in a single selection transition", () => {
+  const harness = createTaskHarness({
+    selectedTaskId: "task-7"
+  });
+
+  harness.bindings.selectTask(null);
+
+  assert.equal(harness.taskEditorMode, "read");
+  assert.equal(harness.nodeState.selectedTaskId, null);
+});
+
 test("task bindings keep title changes in the session draft", () => {
   const harness = createTaskHarness();
 

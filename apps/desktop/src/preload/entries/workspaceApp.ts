@@ -18,6 +18,10 @@ const appContextChannels = {
 } as const;
 
 installWorkspaceAppLinkInterception({
+  executeInMainWorld(script) {
+    const result = contextBridge.executeInMainWorld(script) as unknown;
+    return result;
+  },
   reportDiagnostic(diagnostic) {
     ipcRenderer.send(appContextChannels.diagnostic, {
       event: "workspace-app-link-interception",

@@ -29,7 +29,7 @@ export function WorkbenchWindowFullscreenToggle<TData>({
       title={label}
       type="button"
       variant="chrome"
-      onClick={() => {
+      onClick={(event) => {
         if (disabled) {
           return;
         }
@@ -41,6 +41,7 @@ export function WorkbenchWindowFullscreenToggle<TData>({
           return;
         }
 
+        event.currentTarget.blur();
         controller.commands.enterFullscreen(node.id);
       }}
     >

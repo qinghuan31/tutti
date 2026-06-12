@@ -48,13 +48,6 @@ const managedModelProviderIDs: WorkspaceManagedModelProviderID[] = [
   "anthropic"
 ];
 
-const defaultManagedModelIDs: Record<WorkspaceManagedModelProviderID, string> =
-  {
-    agnes: "agnes-2.0-flash",
-    anthropic: "claude-sonnet-4-5",
-    openai: "gpt-5.1"
-  };
-
 export interface WorkspaceSettingsServiceDependencies {
   client: DesktopWorkspaceSettingsClient;
 }
@@ -120,6 +113,7 @@ export class WorkspaceSettingsService implements IWorkspaceSettingsService {
       this.store.workspaceID = workspace.id;
       this.store.activeSection = "general";
       this.store.managedModels.providers = createDefaultManagedModelDrafts();
+      this.store.managedModels.detectingProvider = null;
       this.store.managedModels.focusedProvider = null;
       this.store.managedModels.focusRequestID = 0;
     }
@@ -400,7 +394,7 @@ export class WorkspaceSettingsService implements IWorkspaceSettingsService {
           ...(provider.apiKey.trim() ? { apiKey: provider.apiKey } : {}),
           baseUrl: provider.baseUrl,
           enabled: provider.enabled,
-          models: parseManagedModelText(provider.provider, provider.modelsText)
+          models: normalizeManagedModels(provider.provider, provider.models)
         }
       );
       this.replaceManagedModelProviderDraft(saved);
@@ -481,6 +475,41 @@ export class WorkspaceSettingsService implements IWorkspaceSettingsService {
       });
     } finally {
       this.store.managedModels.testingProvider = null;
+    }
+  }
+
+  async detectManagedModelProviderModels(
+    providerID: WorkspaceManagedModelProviderID
+  ): Promise<void> {
+    const workspaceID = this.store.workspaceID;
+    if (!workspaceID || this.store.managedModels.detectingProvider) {
+      return;
+    }
+    this.store.managedModels.detectingProvider = providerID;
+    try {
+      const models =
+        await this.dependencies.client.listManagedModelProviderModels(
+          workspaceID,
+          providerID
+        );
+      this.updateManagedModelProviderDraft(providerID, {
+        models: normalizeManagedModels(providerID, models)
+      });
+      this.notifications.success({
+        title: createActiveTranslator().t(
+          models.length > 0
+            ? "workspace.settings.apps.managedModels.detectModelsSucceeded"
+            : "workspace.settings.apps.managedModels.detectModelsEmpty"
+        )
+      });
+    } catch {
+      this.notifications.error({
+        title: createActiveTranslator().t(
+          "workspace.settings.apps.managedModels.detectModelsFailed"
+        )
+      });
+    } finally {
+      this.store.managedModels.detectingProvider = null;
     }
   }
 
@@ -624,36 +653,31 @@ function toManagedModelProviderDraft(
   const models = providerModels ?? [];
   return {
     ...provider,
-    apiKey: "",
+    apiKey: provider.apiKey ?? "",
     baseUrl: provider.baseUrl ?? "",
-    models,
-    modelsText:
-      models.length > 0
-        ? models.map((model) => model.id).join("\n")
-        : defaultManagedModelIDs[provider.provider]
+    models: normalizeManagedModels(provider.provider, models)
   };
 }
 
-function parseManagedModelText(
+function normalizeManagedModels(
   provider: WorkspaceManagedModelProviderID,
-  value: string
+  models: readonly WorkspaceManagedModel[]
 ) {
   const seen = new Set<string>();
-  return value
-    .split(/[\n,]/)
-    .map((item) => item.trim())
-    .filter((id) => {
+  return models
+    .map((model) => ({
+      id: model.id.trim(),
+      name: model.name.trim() || model.id.trim(),
+      provider
+    }))
+    .filter((model) => {
+      const id = model.id;
       if (!id || seen.has(id)) {
         return false;
       }
       seen.add(id);
       return true;
-    })
-    .map((id) => ({
-      id,
-      name: id,
-      provider
-    }));
+    });
 }
 
 // Avoid decorator syntax so the renderer Babel pass can parse this file.

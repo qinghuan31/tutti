@@ -389,6 +389,20 @@ func TestDefaultPreparerClaudeCodeUsesSessionScopedSystemPrompt(t *testing.T) {
 	if err := os.WriteFile(userSkillPath, []byte("user skill\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
+	legacyIssueSkillPath := filepath.Join(cwd, ".claude", "skills", "issue-manager-nextop-7", "SKILL.md")
+	if err := os.MkdirAll(filepath.Dir(legacyIssueSkillPath), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(legacyIssueSkillPath, []byte(issueManagerSkill(PrepareInput{})), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	legacyWorkspaceAppSkillPath := filepath.Join(cwd, ".claude", "skills", "workspace-app", "SKILL.md")
+	if err := os.MkdirAll(filepath.Dir(legacyWorkspaceAppSkillPath), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(legacyWorkspaceAppSkillPath, []byte(workspaceAppSkill(PrepareInput{})), 0o644); err != nil {
+		t.Fatal(err)
+	}
 
 	prepared, err := NewDefaultPreparer(stateDir).Prepare(t.Context(), PrepareInput{
 		WorkspaceID:    "workspace-1",
@@ -405,6 +419,12 @@ func TestDefaultPreparerClaudeCodeUsesSessionScopedSystemPrompt(t *testing.T) {
 	}
 	if string(content) != "user skill\n" {
 		t.Fatalf("user skill was overwritten: %q", string(content))
+	}
+	if _, err := os.Stat(filepath.Dir(legacyIssueSkillPath)); !os.IsNotExist(err) {
+		t.Fatalf("legacy issue-manager skill still exists, err = %v", err)
+	}
+	if _, err := os.Stat(filepath.Dir(legacyWorkspaceAppSkillPath)); !os.IsNotExist(err) {
+		t.Fatalf("legacy workspace-app skill still exists, err = %v", err)
 	}
 	claudeContent, err := os.ReadFile(claudePath)
 	if err != nil {
@@ -466,9 +486,20 @@ func TestDefaultPreparerClaudeCodeUsesSessionScopedSystemPrompt(t *testing.T) {
 		!strings.Contains(string(systemPrompt), "Return web URLs as Markdown links, for example") {
 		t.Fatalf("claude system prompt content = %q, want host app rendering guidance", string(systemPrompt))
 	}
+	if !strings.Contains(string(systemPrompt), "Provider-native skill names may be namespaced") ||
+		!strings.Contains(string(systemPrompt), "Claude Code skill listings can omit descriptions") ||
+		!strings.Contains(string(systemPrompt), "you MUST use the relevant injected skill") ||
+		!strings.Contains(string(systemPrompt), "Do not open `mention://...` links in a browser") ||
+		!strings.Contains(string(systemPrompt), "agent session-summary --session-id <session-id> --json") ||
+		!strings.Contains(string(systemPrompt), "issue get --issue-id <issue-id> --json") {
+		t.Fatalf("claude system prompt content = %q, want strict Nextop mention routing", string(systemPrompt))
+	}
 	pluginDir := envValue(prepared.Env, claudePluginDirEnv)
 	if pluginDir == "" {
 		t.Fatalf("prepared env = %#v, want %s", prepared.Env, claudePluginDirEnv)
+	}
+	if got := envValue(prepared.Env, claudeSkillListingBudgetEnv); got != claudeSkillListingBudgetChars {
+		t.Fatalf("prepared env %s = %q, want %q", claudeSkillListingBudgetEnv, got, claudeSkillListingBudgetChars)
 	}
 	if rel, err := filepath.Rel(cwd, pluginDir); err == nil && !strings.HasPrefix(rel, "..") {
 		t.Fatalf("claude plugin dir = %q, want outside cwd %q", pluginDir, cwd)
@@ -488,7 +519,8 @@ func TestDefaultPreparerClaudeCodeUsesSessionScopedSystemPrompt(t *testing.T) {
 	if err != nil {
 		t.Fatalf("claude plugin skill missing: %v", err)
 	}
-	if !strings.Contains(string(pluginSkill), "nextop issue list") {
+	if !strings.Contains(string(pluginSkill), "nextop issue list") ||
+		!strings.Contains(string(pluginSkill), "mention://agent-session") {
 		t.Fatalf("claude plugin skill content = %q", string(pluginSkill))
 	}
 	issuePluginSkill, err := os.ReadFile(filepath.Join(pluginDir, "skills", "issue-manager", "SKILL.md"))

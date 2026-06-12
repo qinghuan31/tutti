@@ -232,6 +232,88 @@ func TestServiceRunLifecycleTransitionsTaskAndIssue(t *testing.T) {
 	}
 }
 
+func TestServiceGetIssueDetailIncludesOutputsFromAllIssueTasks(t *testing.T) {
+	store := newFakeStore()
+	service := testService(store)
+	ctx := context.Background()
+
+	issue, err := service.CreateIssue(ctx, CreateIssueInput{
+		WorkspaceID: "workspace-1",
+		TopicID:     DefaultTopicID,
+		ActorUserID: "user-1",
+		Title:       "Collect all outputs",
+	})
+	if err != nil {
+		t.Fatalf("CreateIssue() error = %v", err)
+	}
+	firstTask, err := service.CreateTask(ctx, CreateTaskInput{
+		WorkspaceID: "workspace-1",
+		IssueID:     issue.IssueID,
+		ActorUserID: "user-1",
+		Title:       "Main task",
+	})
+	if err != nil {
+		t.Fatalf("CreateTask(first) error = %v", err)
+	}
+	secondTask, err := service.CreateTask(ctx, CreateTaskInput{
+		WorkspaceID: "workspace-1",
+		IssueID:     issue.IssueID,
+		ActorUserID: "user-1",
+		Title:       "Child task",
+	})
+	if err != nil {
+		t.Fatalf("CreateTask(second) error = %v", err)
+	}
+	for _, item := range []struct {
+		taskID string
+		runID  string
+		path   string
+	}{
+		{taskID: firstTask.TaskID, runID: "run-main", path: "/workspace/main.md"},
+		{taskID: secondTask.TaskID, runID: "run-child", path: "/workspace/child.md"},
+	} {
+		run, err := service.CreateRun(ctx, CreateRunInput{
+			WorkspaceID:   "workspace-1",
+			IssueID:       issue.IssueID,
+			TaskID:        item.taskID,
+			RunID:         item.runID,
+			ActorUserID:   "user-1",
+			AgentProvider: "codex",
+		})
+		if err != nil {
+			t.Fatalf("CreateRun(%s) error = %v", item.runID, err)
+		}
+		if _, _, err := service.CompleteRun(ctx, CompleteRunInput{
+			WorkspaceID: "workspace-1",
+			IssueID:     issue.IssueID,
+			TaskID:      run.TaskID,
+			RunID:       run.RunID,
+			ActorUserID: "user-1",
+			Status:      "completed",
+			Summary:     "Done",
+			Outputs: []CompleteRunOutputInput{{
+				Path: item.path,
+			}},
+		}); err != nil {
+			t.Fatalf("CompleteRun(%s) error = %v", item.runID, err)
+		}
+	}
+
+	detail, err := service.GetIssueDetail(ctx, "workspace-1", issue.IssueID)
+	if err != nil {
+		t.Fatalf("GetIssueDetail() error = %v", err)
+	}
+	paths := make([]string, 0, len(detail.LatestOutputs))
+	for _, output := range detail.LatestOutputs {
+		paths = append(paths, output.Path)
+	}
+	sort.Strings(paths)
+	want := []string{"/workspace/child.md", "/workspace/main.md"}
+	if strings.Join(paths, "\n") != strings.Join(want, "\n") {
+		t.Fatalf("issue detail outputs = %+v, want paths %v", detail.LatestOutputs, want)
+	}
+}
+
 func TestServiceCompleteRunDoesNotOverwriteTerminalRun(t *testing.T) {
 	store := newFakeStore()
 	service := testService(store)

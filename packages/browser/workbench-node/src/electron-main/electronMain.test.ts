@@ -270,7 +270,7 @@ test("handles additional allowed Browser Node webview partitions", () => {
   assert.equal(params.src, "http://127.0.0.1:4100/");
 });
 
-test("allows native popup windows for Browser Node webviews", () => {
+test("externalizes popup windows before Browser Node guests register", () => {
   const contents = new EventEmitter();
   const webPreferences: Record<string, unknown> = {};
   const params: Record<string, string> = {
@@ -317,16 +317,11 @@ test("allows native popup windows for Browser Node webviews", () => {
     throw new Error("expected a window-open handler to be installed");
   }
 
-  const response = captured.windowOpenHandler({
-    url: "https://example.com/popup"
-  });
-  assert.equal(response.action, "allow");
-  assert.deepEqual(response.overrideBrowserWindowOptions, {
-    height: 720,
-    show: true,
-    width: 520
-  });
-  assert.equal(externallyOpenedUrl, null);
+  assert.deepEqual(
+    captured.windowOpenHandler({ url: "https://example.com/popup" }),
+    { action: "deny" }
+  );
+  assert.equal(externallyOpenedUrl, "https://example.com/popup");
   assert.equal(params.allowpopups, "true");
 });
 
@@ -591,7 +586,7 @@ test("blocks cross-origin Browser Node guest navigation for policy-bound session
     events.filter((event) => event.type === "open-url"),
     [
       {
-        reuseIfOpen: false,
+        reuseIfOpen: true,
         sourceNodeId: "app-1",
         type: "open-url",
         url: "https://example.com/docs"
@@ -647,7 +642,7 @@ test("converts guest preload open-url requests into Browser Node open-url events
     events.filter((event) => event.type === "open-url"),
     [
       {
-        reuseIfOpen: false,
+        reuseIfOpen: true,
         sourceNodeId: "browser-target-blank",
         type: "open-url",
         url: "https://example.com/popup"
@@ -656,7 +651,7 @@ test("converts guest preload open-url requests into Browser Node open-url events
   );
 });
 
-test("allows Browser Node guest popup windows", async () => {
+test("keeps Google GIS OAuth popups native while routing ordinary popups through open-url", async () => {
   const events: BrowserNodeEvent[] = [];
   const contents = new MockBrowserGuestWebContents(21);
   const manager = createBrowserGuestManager({
@@ -676,18 +671,28 @@ test("allows Browser Node guest popup windows", async () => {
     throw new Error("expected a window-open handler to be installed");
   }
 
-  const response = contents.windowOpenHandler({
-    url: "https://example.com/popup"
-  });
-  assert.equal(response.action, "allow");
-  assert.deepEqual(response.overrideBrowserWindowOptions, {
-    height: 720,
-    show: true,
-    width: 520
-  });
+  assert.deepEqual(
+    contents.windowOpenHandler({
+      url: "https://example.com/popup"
+    }),
+    { action: "deny" }
+  );
+  assert.deepEqual(
+    contents.windowOpenHandler({
+      url: "https://accounts.google.com/o/oauth2/v2/auth?gsiwebsdk=gis_attributes&client_id=test&redirect_uri=gis_transform&display=popup&response_mode=form_post"
+    }),
+    { action: "allow" }
+  );
   assert.deepEqual(
     events.filter((event) => event.type === "open-url"),
-    []
+    [
+      {
+        reuseIfOpen: true,
+        sourceNodeId: "browser-google-oauth",
+        type: "open-url",
+        url: "https://example.com/popup"
+      }
+    ]
   );
 });
 
@@ -756,7 +761,7 @@ test("registerBrowserNodeElectronMain routes guest open-url IPC through the owne
     sentEvents.filter((event) => event.type === "open-url"),
     [
       {
-        reuseIfOpen: false,
+        reuseIfOpen: true,
         sourceNodeId: "browser-ipc-open-url",
         type: "open-url",
         url: "https://example.com/from-preload"

@@ -19,6 +19,10 @@ interface ManagedProviderResponse {
   provider: WorkspaceManagedModelProviderConfig;
 }
 
+interface ManagedProviderModelsResponse {
+  models: WorkspaceManagedModelProviderConfig["models"];
+}
+
 export interface PutManagedModelProviderInput {
   apiKey?: string;
   baseUrl?: string;
@@ -41,6 +45,10 @@ export interface DesktopWorkspaceSettingsClient {
   listManagedModelProviders(
     workspaceID: string
   ): Promise<WorkspaceManagedModelProviderConfig[]>;
+  listManagedModelProviderModels(
+    workspaceID: string,
+    providerID: WorkspaceManagedModelProviderID
+  ): Promise<WorkspaceManagedModelProviderConfig["models"]>;
   openLogDirectory(): Promise<void>;
   openLogFile(kind: DesktopDeveloperLogKind): Promise<void>;
   putManagedModelProvider(
@@ -80,6 +88,16 @@ export function createDesktopWorkspaceSettingsClient(input: {
         `/v1/workspaces/${encodeURIComponent(workspaceID)}/managed-model-providers`
       );
       return response.providers;
+    },
+    async listManagedModelProviderModels(workspaceID, providerID) {
+      const response = await requestDaemon<ManagedProviderModelsResponse>(
+        input.runtimeApi,
+        `/v1/workspaces/${encodeURIComponent(workspaceID)}/managed-model-providers/${encodeURIComponent(providerID)}/models`,
+        {
+          method: "POST"
+        }
+      );
+      return response.models;
     },
     async putManagedModelProvider(workspaceID, providerID, body) {
       const response = await requestDaemon<ManagedProviderResponse>(

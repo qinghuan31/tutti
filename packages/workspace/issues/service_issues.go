@@ -150,9 +150,13 @@ func (s Service) GetIssueDetail(ctx context.Context, workspaceID string, issueID
 	if len(runs) > 0 {
 		latestRun = &runs[0]
 	}
-	outputs, err := store.ListLatestRunOutputs(ctx, workspaceID, issueID, "")
-	if err != nil {
-		return IssueDetail{}, err
+	outputs := make([]RunOutput, 0)
+	for _, run := range runs {
+		runOutputs, err := store.ListRunOutputs(ctx, workspaceID, issueID, run.TaskID, run.RunID)
+		if err != nil {
+			return IssueDetail{}, err
+		}
+		outputs = append(outputs, runOutputs...)
 	}
 	return IssueDetail{
 		Issue:         issue,

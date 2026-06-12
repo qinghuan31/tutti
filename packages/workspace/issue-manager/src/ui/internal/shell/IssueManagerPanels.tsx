@@ -16,12 +16,17 @@ import {
   IssueManagerOutputSection,
   IssueManagerSubtaskSection
 } from "../issue/IssueManagerIssueSections.tsx";
+import {
+  resolveIssueManagerIssueAcceptanceTaskId,
+  resolveIssueManagerVisibleSubtasks
+} from "../issue/IssueManagerIssueAcceptanceState.ts";
 import type { IssueManagerLatestRunStatusRenderer } from "../../latestRunStatusRenderer.ts";
 import { IssueManagerDescriptionSection } from "../content/IssueManagerDescriptionSection.tsx";
 import { IssueManagerTitleTooltip } from "../content/IssueManagerTitleTooltip.tsx";
 import { IssueManagerPaneLoadingState } from "../panel/IssueManagerPanelSurface.tsx";
 import { resolveIssueManagerCreatorLabel } from "../panel/IssueManagerPanelText.ts";
 import { IssueManagerRichTextTextarea } from "../content/IssueManagerRichTextTextarea.tsx";
+import { IssueManagerTaskAcceptanceCard } from "../task/IssueManagerTaskAcceptanceCard.tsx";
 import type { IssueManagerController } from "../../react/index.ts";
 import { IssueManagerDraftTitleInput } from "./IssueManagerDraftTitleInput.tsx";
 import {
@@ -67,6 +72,16 @@ export function IssueManagerIssuePane({
   const latestOutputs = selectedTask
     ? (controller.taskDetail.value?.latestOutputs ?? [])
     : (controller.issueDetail.value?.latestOutputs ?? []);
+  const issueAcceptanceTaskId = resolveIssueManagerIssueAcceptanceTaskId({
+    latestRun,
+    selectedIssue,
+    selectedTaskId,
+    tasks
+  });
+  const visibleTasks = resolveIssueManagerVisibleSubtasks({
+    hiddenAcceptanceTaskId: issueAcceptanceTaskId,
+    tasks
+  });
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [deleteBusy, setDeleteBusy] = useState(false);
 
@@ -209,6 +224,12 @@ export function IssueManagerIssuePane({
                       "-"}
                   </span>
                 </div>
+                {issueAcceptanceTaskId ? (
+                  <IssueManagerTaskAcceptanceCard
+                    controller={controller}
+                    taskId={issueAcceptanceTaskId}
+                  />
+                ) : null}
               </header>
               <ConfirmationDialog
                 cancelLabel={copy.t("actions.cancel")}
@@ -257,7 +278,7 @@ export function IssueManagerIssuePane({
                 onCreate={controller.createTaskDraft}
                 onSelectTask={controller.selectTask}
                 selectedTaskId={selectedTask?.taskId ?? null}
-                tasks={tasks}
+                tasks={visibleTasks}
               />
             </div>
           )}

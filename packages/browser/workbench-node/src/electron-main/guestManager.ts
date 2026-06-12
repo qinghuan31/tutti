@@ -64,49 +64,6 @@ function goGuestForward(contents: BrowserGuestWebContents): void {
   contents.goForward();
 }
 
-function getPopupLogMetadata(url: string): Record<string, unknown> {
-  try {
-    const parsed = new URL(url);
-    return {
-      popupOrigin: parsed.origin,
-      popupPath: parsed.pathname,
-      popupProtocol: parsed.protocol
-    };
-  } catch {
-    return {
-      popupOrigin: null,
-      popupPath: null,
-      popupProtocol: null
-    };
-  }
-}
-
-function allowBrowserNodeGuestPopupWindow({
-  logger,
-  nodeId,
-  url,
-  webContentsId
-}: {
-  logger: BrowserGuestManagerInput["logger"];
-  nodeId: string;
-  url: string;
-  webContentsId: number | null;
-}) {
-  logger?.info?.("Browser Node guest popup allowed", {
-    nodeId,
-    webContentsId,
-    ...getPopupLogMetadata(url)
-  });
-  return {
-    action: "allow" as const,
-    overrideBrowserWindowOptions: {
-      height: 720,
-      show: true,
-      width: 520
-    }
-  };
-}
-
 function resolveBrowserNodeUrlError(
   resolved: BrowserNavigationUrlResolution
 ): BrowserNodeRuntimeError {
@@ -182,6 +139,31 @@ function emitBrowserNavigationFailed(input: {
         : { errorCode: input.errorCode },
     type: "error"
   });
+}
+
+function isGoogleGisOAuthPopupUrl(url: string): boolean {
+  try {
+    const parsed = new URL(url);
+    if (
+      parsed.protocol !== "https:" ||
+      parsed.hostname !== "accounts.google.com" ||
+      (parsed.pathname !== "/o/oauth2/v2/auth" &&
+        parsed.pathname !== "/o/oauth2/auth")
+    ) {
+      return false;
+    }
+
+    const isGisSdkPopup =
+      parsed.searchParams.get("gsiwebsdk") === "gis_attributes";
+    const isPopupResponse =
+      parsed.searchParams.get("display") === "popup" &&
+      (parsed.searchParams.get("response_mode") === "form_post" ||
+        parsed.searchParams.get("redirect_uri") === "gis_transform");
+
+    return isGisSdkPopup || isPopupResponse;
+  } catch {
+    return false;
+  }
 }
 
 function resolveBrowserNavigationOrigin(url: string): string | null {
@@ -552,7 +534,7 @@ export function createBrowserGuestManager({
         webContentsId: session.webContentsId
       });
       emit({
-        reuseIfOpen: false,
+        reuseIfOpen: true,
         sourceNodeId: session.nodeId,
         type: "open-url",
         url: resolved.url
@@ -761,14 +743,17 @@ export function createBrowserGuestManager({
         sessionPartition: session.sessionPartition,
         webContentsId: input.webContentsId
       });
-      contents.setWindowOpenHandler?.(({ url }) =>
-        allowBrowserNodeGuestPopupWindow({
-          logger,
-          nodeId: input.nodeId,
-          url,
-          webContentsId: input.webContentsId
-        })
-      );
+      contents.setWindowOpenHandler?.(({ url }) => {
+        if (isGoogleGisOAuthPopupUrl(url)) {
+          logger?.info?.("Browser Node allowing Google GIS OAuth popup", {
+            nodeId: session.nodeId,
+            webContentsId: session.webContentsId
+          });
+          return { action: "allow" };
+        }
+
+        return emitOpenUrlFromGuest(session, url);
+      });
       attachGuestListeners(session);
       await applyPreferredColorSchemeToGuest(
         session,

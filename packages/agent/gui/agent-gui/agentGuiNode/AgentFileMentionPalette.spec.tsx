@@ -31,6 +31,7 @@ vi.mock("../../i18n/index", async () => {
     "agentHost.agentGui.mentionNoMatchingFiles": "没有匹配到文件",
     "agentHost.roomIssueNode.issueStatusNotStarted": "未启动",
     "agentHost.roomIssueNode.issueStatusRunning": "执行中",
+    "agentHost.roomIssueNode.issueStatusInProgress": "已推进",
     "agentHost.roomIssueNode.issueStatusPendingAcceptance": "待验收",
     "agentHost.roomIssueNode.issueStatusCompleted": "已完成",
     "agentHost.roomIssueNode.issueStatusFailed": "失败",
@@ -92,44 +93,54 @@ describe("AgentFileMentionPalette", () => {
               href: "tsh://room/room-1/task/task-3",
               workspaceId: "room-1",
               targetId: "task-3",
-              name: "整理输出",
-              title: "整理输出",
+              name: "继续推进",
+              title: "继续推进",
               creatorName: "Cathy",
-              status: "pending_acceptance"
+              status: "in_progress"
             },
             {
               kind: "workspace-issue",
               href: "tsh://room/room-1/task/task-4",
               workspaceId: "room-1",
               targetId: "task-4",
-              name: "归档结果",
-              title: "归档结果",
-              creatorName: "David",
-              status: "completed"
+              name: "整理输出",
+              title: "整理输出",
+              creatorName: "Dora",
+              status: "pending_acceptance"
             },
             {
               kind: "workspace-issue",
               href: "tsh://room/room-1/task/task-5",
               workspaceId: "room-1",
               targetId: "task-5",
-              name: "重试任务",
-              title: "重试任务",
+              name: "归档结果",
+              title: "归档结果",
               creatorName: "Eve",
-              status: "failed"
+              status: "completed"
             },
             {
               kind: "workspace-issue",
               href: "tsh://room/room-1/task/task-6",
               workspaceId: "room-1",
               targetId: "task-6",
+              name: "重试任务",
+              title: "重试任务",
+              creatorName: "Frank",
+              status: "failed"
+            },
+            {
+              kind: "workspace-issue",
+              href: "tsh://room/room-1/task/task-7",
+              workspaceId: "room-1",
+              targetId: "task-7",
               name: "停止执行",
               title: "停止执行",
-              creatorName: "Frank",
+              creatorName: "Grace",
               status: "canceled"
             }
           ],
-          totalCount: 6,
-          visibleCount: 6,
+          totalCount: 7,
+          visibleCount: 7,
           hasMore: false
         }
       ],
@@ -158,6 +169,7 @@ describe("AgentFileMentionPalette", () => {
 
     expect(screen.getByText("未启动")).toBeVisible();
     expect(screen.getByText("执行中")).toBeVisible();
+    expect(screen.getByText("已推进")).toBeVisible();
     expect(screen.getByText("待验收")).toBeVisible();
     expect(screen.getByText("已完成")).toBeVisible();
     expect(screen.getAllByText("失败")).toHaveLength(1);

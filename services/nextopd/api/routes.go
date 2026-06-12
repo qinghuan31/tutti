@@ -17,6 +17,7 @@ type Routes interface {
 	HandleManagedModelGrantModels(http.ResponseWriter, *http.Request, string, string, string)
 	HandleManagedModelGrants(http.ResponseWriter, *http.Request, string, string)
 	HandleManagedModelProvider(http.ResponseWriter, *http.Request, string, string)
+	HandleManagedModelProviderModels(http.ResponseWriter, *http.Request, string, string)
 	HandleManagedModelProviderTest(http.ResponseWriter, *http.Request, string, string)
 	HandleManagedModelProviders(http.ResponseWriter, *http.Request, string)
 }
@@ -194,6 +195,10 @@ func RegisterRoutes(mux *http.ServeMux, routes Routes) {
 
 	mux.HandleFunc("/v1/workspaces/{workspaceID}/managed-model-providers/{providerID}/test", func(w http.ResponseWriter, r *http.Request) {
 		routes.HandleManagedModelProviderTest(w, r, r.PathValue("workspaceID"), r.PathValue("providerID"))
+	})
+
+	mux.HandleFunc("/v1/workspaces/{workspaceID}/managed-model-providers/{providerID}/models", func(w http.ResponseWriter, r *http.Request) {
+		routes.HandleManagedModelProviderModels(w, r, r.PathValue("workspaceID"), r.PathValue("providerID"))
 	})
 
 	mux.HandleFunc("/v1/workspaces/{workspaceID}/apps/{appID}/managed-model-grants", func(w http.ResponseWriter, r *http.Request) {

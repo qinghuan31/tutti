@@ -90,4 +90,13 @@ func TestAuthorizeWorkspaceAppServerTokenIsLimitedToGrantExchangeAndRevoke(t *te
 	if authorizeWorkspaceAppServerToken(providerConfig, appToken, accessToken) {
 		t.Fatal("expected app token to reject provider configuration")
 	}
+
+	providerModels, _ := http.NewRequest(
+		http.MethodPost,
+		"/v1/workspaces/workspace-1/managed-model-providers/agnes/models",
+		nil,
+	)
+	if authorizeWorkspaceAppServerToken(providerModels, appToken, accessToken) {
+		t.Fatal("expected app token to reject provider model detection")
+	}
 }

@@ -1,9 +1,11 @@
 import { type JSX } from "react";
 import {
   AgentSessionsIcon,
+  ArrowRightIcon,
   Badge,
   Button,
   FileCreateIcon,
+  FileIcon,
   ScrollArea,
   cn
 } from "@tutti-os/ui-system";
@@ -242,8 +244,10 @@ export function IssueManagerOutputSection({
         <div className="overflow-hidden rounded-[12px] border border-[var(--line-2)] bg-transparent">
           {outputs.map((output) => (
             <button
-              className="flex w-full items-start justify-between gap-4 border-b border-[var(--line-2)] px-4 py-3 text-left transition-colors last:border-b-0 hover:bg-transparency-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/25 focus-visible:ring-inset"
+              aria-label={copy.t("actions.openReference")}
+              className="flex w-full items-center justify-between gap-4 border-b border-[var(--line-2)] px-4 py-3 text-left transition-colors last:border-b-0 hover:bg-transparency-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/25 focus-visible:ring-inset"
               key={output.outputId}
+              title={copy.t("actions.openReference")}
               type="button"
               onClick={() => {
                 void onOpen({
@@ -253,16 +257,30 @@ export function IssueManagerOutputSection({
                 });
               }}
             >
-              <span className="min-w-0 flex-1">
-                <span className="block truncate text-[13px] font-semibold text-[var(--text-primary)]">
-                  {output.displayName}
+              <span className="flex min-w-0 flex-1 items-center gap-3">
+                <span
+                  aria-hidden="true"
+                  className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md border border-[var(--line-2)] bg-transparency-actived text-primary"
+                >
+                  <FileIcon size={16} />
                 </span>
-                <span className="mt-1 block truncate text-[11px] font-normal text-[var(--text-secondary)]">
-                  {output.path}
+                <span className="min-w-0 flex-1">
+                  <span className="block truncate text-[13px] font-semibold text-[var(--text-primary)]">
+                    {output.displayName}
+                  </span>
+                  <span className="mt-1 block truncate text-[11px] font-normal text-[var(--text-secondary)]">
+                    {output.path}
+                  </span>
                 </span>
               </span>
-              <span className="shrink-0 text-[11px] font-normal text-[var(--text-secondary)]">
-                {formatIssueManagerTimestamp(output.createdAtUnix) || ""}
+              <span className="flex shrink-0 items-center gap-2">
+                <span className="text-[11px] font-normal text-[var(--text-secondary)]">
+                  {formatIssueManagerTimestamp(output.createdAtUnix) || ""}
+                </span>
+                <span className="inline-flex h-7 items-center gap-1 rounded-md border border-primary/20 bg-transparency-actived px-2 text-[11px] font-semibold text-primary">
+                  {copy.t("actions.openReference")}
+                  <ArrowRightIcon size={13} />
+                </span>
               </span>
             </button>
           ))}

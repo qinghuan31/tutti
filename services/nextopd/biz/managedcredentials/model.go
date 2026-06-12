@@ -39,6 +39,7 @@ type PublicProviderConfig struct {
 	WorkspaceID string     `json:"workspaceId"`
 	Provider    ProviderID `json:"provider"`
 	Enabled     bool       `json:"enabled"`
+	APIKey      string     `json:"apiKey,omitempty"`
 	HasAPIKey   bool       `json:"hasApiKey"`
 	BaseURL     string     `json:"baseUrl,omitempty"`
 	Models      []Model    `json:"models"`
@@ -50,6 +51,7 @@ func PublicProvider(config ProviderConfig) PublicProviderConfig {
 		WorkspaceID: config.WorkspaceID,
 		Provider:    config.Provider,
 		Enabled:     config.Enabled,
+		APIKey:      config.APIKey,
 		HasAPIKey:   config.APIKey != "",
 		BaseURL:     config.BaseURL,
 		Models:      cloneModels(config.Models),

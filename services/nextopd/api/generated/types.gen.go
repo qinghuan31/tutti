@@ -1757,6 +1757,7 @@ type IssueManagerStatusCounts struct {
 	Canceled          int `json:"canceled"`
 	Completed         int `json:"completed"`
 	Failed            int `json:"failed"`
+	InProgress        int `json:"inProgress"`
 	NotStarted        int `json:"notStarted"`
 	PendingAcceptance int `json:"pendingAcceptance"`
 	Running           int `json:"running"`

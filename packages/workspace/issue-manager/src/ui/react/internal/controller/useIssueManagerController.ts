@@ -95,6 +95,10 @@ export interface IssueManagerController {
   runTask: (providerOverride?: string) => Promise<void>;
   saveIssue: () => Promise<void>;
   saveTask: () => Promise<void>;
+  setTaskStatus: (
+    taskId: string,
+    status: "completed" | "not_started"
+  ) => Promise<void>;
   setSelectedTaskStatus: (status: "completed" | "not_started") => Promise<void>;
   resolveRichTextAtProviders: (
     surface: IssueManagerRichTextSurface

@@ -297,6 +297,7 @@ func GeneratedIssueManagerStatusCountsFromDomain(counts workspaceissues.StatusCo
 		All:               counts.All,
 		NotStarted:        counts.NotStarted,
 		Running:           counts.Running,
+		InProgress:        counts.InProgress,
 		PendingAcceptance: counts.PendingAcceptance,
 		Completed:         counts.Completed,
 		Failed:            counts.Failed,

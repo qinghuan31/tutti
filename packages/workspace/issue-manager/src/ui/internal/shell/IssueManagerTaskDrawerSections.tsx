@@ -22,6 +22,7 @@ import {
   IssueManagerExecutionDirectoryTrigger,
   IssueManagerRunActionTrigger
 } from "../task/IssueManagerRunSections.tsx";
+import { IssueManagerTaskAcceptanceCard } from "../task/IssueManagerTaskAcceptanceCard.tsx";
 import { issueManagerStatusBadgeVariant } from "../status/IssueManagerStatusBadge.ts";
 import { IssueManagerDraftTitleInput } from "./IssueManagerDraftTitleInput.tsx";
 import {
@@ -161,44 +162,6 @@ function IssueManagerTaskMetadataRow({
         {copy.t("labels.createdAt")}{" "}
         {formatIssueManagerTimestamp(selectedTask.createdAtUnix) || "-"}
       </span>
-    </div>
-  );
-}
-
-function IssueManagerTaskAcceptanceCard({
-  controller
-}: {
-  controller: IssueManagerController;
-}): JSX.Element {
-  const copy = controller.copy;
-
-  return (
-    <div className="grid gap-2 rounded-md bg-[var(--transparency-block)] px-3 py-2">
-      <div className="min-w-0 text-[11px] font-normal leading-[1.45] text-[var(--text-secondary)] [overflow-wrap:anywhere]">
-        <span className="font-semibold text-[var(--text-primary)]">
-          {copy.t("labels.taskAcceptance")}
-        </span>
-        <span className="mx-1 text-[var(--text-tertiary)]">·</span>
-        <span>{copy.t("messages.taskAcceptanceHint")}</span>
-      </div>
-      <div className="flex items-center justify-end gap-2">
-        <Button
-          className="h-7 px-2 text-[11px] text-[var(--state-danger)] hover:bg-[var(--on-danger)] hover:text-[var(--state-danger)]"
-          type="button"
-          variant="ghost"
-          onClick={() => void controller.setSelectedTaskStatus("not_started")}
-        >
-          {copy.t("actions.rejectTask")}
-        </Button>
-        <Button
-          className="h-7 px-2.5 text-[11px]"
-          type="button"
-          variant="secondary"
-          onClick={() => void controller.setSelectedTaskStatus("completed")}
-        >
-          {copy.t("actions.acceptTask")}
-        </Button>
-      </div>
     </div>
   );
 }

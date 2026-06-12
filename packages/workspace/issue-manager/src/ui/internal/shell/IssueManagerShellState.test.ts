@@ -140,6 +140,7 @@ test("resolveIssueManagerStatusCounts prefers backend totals over current filter
         canceled: 0,
         completed: 0,
         failed: 0,
+        inProgress: 0,
         notStarted: 2,
         pendingAcceptance: 0,
         running: 0
@@ -153,6 +154,36 @@ test("resolveIssueManagerStatusCounts prefers backend totals over current filter
       failed: 0,
       in_progress: 0,
       not_started: 2,
+      pending_acceptance: 0,
+      running: 0
+    }
+  );
+});
+
+test("resolveIssueManagerStatusCounts maps backend in-progress totals", () => {
+  assert.deepEqual(
+    resolveIssueManagerStatusCounts({
+      error: null,
+      isLoading: false,
+      statusCounts: {
+        all: 3,
+        canceled: 0,
+        completed: 0,
+        failed: 0,
+        inProgress: 3,
+        notStarted: 0,
+        pendingAcceptance: 0,
+        running: 0
+      },
+      value: []
+    }),
+    {
+      all: 3,
+      canceled: 0,
+      completed: 0,
+      failed: 0,
+      in_progress: 3,
+      not_started: 0,
       pending_acceptance: 0,
       running: 0
     }

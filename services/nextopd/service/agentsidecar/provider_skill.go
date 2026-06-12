@@ -89,6 +89,10 @@ func providerSkills(input PrepareInput) []providerSkillSpec {
 }
 
 func installProviderNativeSkills(root string, input PrepareInput) ([]string, error) {
+	return installProviderNativeSkillSpecs(root, providerSkills(input))
+}
+
+func installProviderNativeSkillSpecs(root string, skills []providerSkillSpec) ([]string, error) {
 	root = strings.TrimSpace(root)
 	if root == "" {
 		return nil, fmt.Errorf("provider skill root is required")
@@ -96,8 +100,8 @@ func installProviderNativeSkills(root string, input PrepareInput) ([]string, err
 	if err := os.MkdirAll(root, 0o755); err != nil {
 		return nil, fmt.Errorf("create provider skill root: %w", err)
 	}
-	skillPaths := make([]string, 0, len(providerSkills(input)))
-	for _, spec := range providerSkills(input) {
+	skillPaths := make([]string, 0, len(skills))
+	for _, spec := range skills {
 		skillName, err := allocateSkillName(root, spec.baseName)
 		if err != nil {
 			return nil, err

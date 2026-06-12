@@ -1,11 +1,11 @@
 ---
 name: nextop-cli
-description: Use for Nextop CLI command syntax and daemon context lookup when no more specific Nextop skill applies; also serves as the command reference for injected Nextop skills.
+description: Use for `mention://agent-session?...` links, Nextop CLI command syntax, and daemon context lookup when no more specific Nextop skill applies; also serves as the command reference for injected Nextop skills.
 ---
 
 # Nextop CLI
 
-Use this skill when you need the Nextop CLI command reference or need to inspect workspace context through the local Nextop daemon and no more specific Nextop skill applies.
+Use this skill when you need the Nextop CLI command reference, need to inspect an AgentGUI session from a `mention://agent-session?...` link, or need to inspect workspace context through the local Nextop daemon and no more specific Nextop skill applies.
 
 If you are actively executing or breaking down a workspace issue handoff, prefer the dedicated `issue-manager` skill for workflow guidance and use this skill as the CLI reference it depends on.
 

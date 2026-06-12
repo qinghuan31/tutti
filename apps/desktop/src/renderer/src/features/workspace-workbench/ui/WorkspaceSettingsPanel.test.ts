@@ -40,3 +40,20 @@ test("workspace settings appearance panel owns visual settings", () => {
   assert.match(source, /workspace\.settings\.appearance\.dockPlacementLabel/);
   assert.match(source, /workspace\.settings\.appearance\.wallpaperLabel/);
 });
+
+test("workspace managed provider API key is masked until toggled visible", () => {
+  assert.match(source, /type=\{apiKeyVisible \? "text" : "password"\}/);
+  assert.match(source, /setVisibleAPIKeyProviderID/);
+  assert.match(source, /workspace\.settings\.apps\.managedModels\.showApiKey/);
+  assert.match(source, /workspace\.settings\.apps\.managedModels\.hideApiKey/);
+});
+
+test("workspace managed provider models use compact rows instead of a textarea", () => {
+  assert.match(source, /onDetectProviderModels/);
+  assert.match(source, /models\.map\(\(model, index\)/);
+  assert.match(
+    source,
+    /workspace\.settings\.apps\.managedModels\.detectModels/
+  );
+  assert.doesNotMatch(source, /modelsText/);
+});

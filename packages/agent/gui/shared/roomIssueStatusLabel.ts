@@ -7,6 +7,8 @@ export function roomIssueStatusLabel(status: string, t?: TranslateFn): string {
       return translateFn("agentHost.roomIssueNode.issueStatusNotStarted");
     case "running":
       return translateFn("agentHost.roomIssueNode.issueStatusRunning");
+    case "in_progress":
+      return translateFn("agentHost.roomIssueNode.issueStatusInProgress");
     case "pending_acceptance":
       return translateFn(
         "agentHost.roomIssueNode.issueStatusPendingAcceptance"

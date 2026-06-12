@@ -29,6 +29,19 @@ test("fullscreen windows default to reveal header mode", () => {
   );
 });
 
+test("fullscreen toggle releases button focus when entering fullscreen", () => {
+  const source = readFileSync(
+    resolve("src/react/WorkbenchWindowFullscreenToggle.tsx"),
+    "utf8"
+  );
+
+  assert.match(source, /onClick=\{\(event\) =>/);
+  assert.match(
+    source,
+    /event\.currentTarget\.blur\(\);[\s\S]*controller\.commands\.enterFullscreen\(node\.id\);/
+  );
+});
+
 test("layout selection chrome uses shared accent and stationary check tokens", () => {
   const source = readFileSync(
     resolve("src/react/WorkbenchWindowFrame.tsx"),

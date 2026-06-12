@@ -840,6 +840,42 @@ test("controller actions ignore runs without agent session ids", async () => {
   assert.deepEqual(openCalls, []);
 });
 
+test("controller actions update an issue-level execution task status without selecting it", async () => {
+  const updateTaskCalls: IssueManagerUpdateTaskInput[] = [];
+  const harness = createControllerActionsHarness({
+    backend: {
+      async updateTask(input) {
+        updateTaskCalls.push(input);
+        return createTaskSummary({
+          issueId: input.issueId,
+          status: input.status,
+          taskId: input.taskId,
+          title: ""
+        });
+      }
+    },
+    nodeState: {
+      issueSearchQuery: "",
+      issueStatusFilter: "all",
+      selectedAgentProvider: "codex",
+      selectedIssueId: "issue-1",
+      selectedTaskId: null
+    }
+  });
+
+  await harness.actions.setTaskStatus("task-acceptance", "completed");
+
+  assert.deepEqual(updateTaskCalls, [
+    {
+      issueId: "issue-1",
+      status: "completed",
+      taskId: "task-acceptance",
+      workspaceId: "workspace-1"
+    }
+  ]);
+  assert.equal(harness.nodeState.current.selectedTaskId, null);
+});
+
 test("controller actions run selected task through task-scoped handoff", async () => {
   const runnerCalls: IssueManagerAgentRunRequest[] = [];
   const createRunCalls: unknown[] = [];

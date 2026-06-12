@@ -116,6 +116,28 @@ func (r daemonRoutes) HandleManagedModelProviderTest(w http.ResponseWriter, req 
 	writeJSON(w, http.StatusOK, map[string]any{"ok": true})
 }
 
+func (r daemonRoutes) HandleManagedModelProviderModels(w http.ResponseWriter, req *http.Request, workspaceID string, providerID string) {
+	service := r.api.ManagedCredentialsService
+	if service == nil {
+		writeManagedCredentialError(w, http.StatusServiceUnavailable, "managed credentials service is unavailable")
+		return
+	}
+	if req.Method != http.MethodPost {
+		nextoptypes.WriteMethodNotAllowed(w)
+		return
+	}
+	result, err := service.ListProviderModels(req.Context(), workspaceID, providerID)
+	if err != nil {
+		status := http.StatusBadRequest
+		if err == managedcredentialsservice.ErrProviderNotConfigured {
+			status = http.StatusConflict
+		}
+		writeManagedCredentialError(w, status, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"models": result.Models})
+}
+
 func (r daemonRoutes) HandleManagedModelGrants(w http.ResponseWriter, req *http.Request, workspaceID string, appID string) {
 	service := r.api.ManagedCredentialsService
 	if service == nil {

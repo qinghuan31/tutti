@@ -49,6 +49,9 @@ export interface IWorkspaceSettingsService {
   openLogFile(kind: DesktopDeveloperLogKind): Promise<void>;
   refreshDeveloperLogs(): Promise<void>;
   refreshManagedModelProviders(): Promise<void>;
+  detectManagedModelProviderModels(
+    providerID: WorkspaceManagedModelProviderID
+  ): Promise<void>;
   removeManagedModelProvider(
     providerID: WorkspaceManagedModelProviderID
   ): Promise<void>;

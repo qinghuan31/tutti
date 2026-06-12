@@ -4,7 +4,12 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/base64"
+	"encoding/json"
 	"errors"
+	"fmt"
+	"io"
+	"net/http"
+	"net/url"
 	"strings"
 	"sync"
 	"time"
@@ -24,8 +29,9 @@ var (
 )
 
 type Service struct {
-	Store workspacedata.ManagedCredentialsStore
-	Now   func() time.Time
+	Store      workspacedata.ManagedCredentialsStore
+	Now        func() time.Time
+	HTTPClient *http.Client
 
 	mu         sync.Mutex
 	grantCodes map[string]grantCodeState
@@ -168,6 +174,27 @@ func (s *Service) TestProvider(ctx context.Context, workspaceID string, provider
 		return ErrProviderNotConfigured
 	}
 	return nil
+}
+
+func (s *Service) ListProviderModels(ctx context.Context, workspaceID string, providerID string) (ModelCatalogResult, error) {
+	provider, err := normalizeProvider(providerID)
+	if err != nil {
+		return ModelCatalogResult{}, err
+	}
+	config, err := s.Store.GetManagedModelProviderConfig(ctx, strings.TrimSpace(workspaceID), provider)
+	if err != nil {
+		return ModelCatalogResult{}, err
+	}
+	if config.APIKey == "" {
+		return ModelCatalogResult{}, ErrProviderNotConfigured
+	}
+	models, err := s.fetchProviderModels(ctx, config)
+	if err != nil {
+		return ModelCatalogResult{}, err
+	}
+	return ModelCatalogResult{
+		Models: normalizeModels(provider, models),
+	}, nil
 }
 
 func (s *Service) CreateGrant(ctx context.Context, input CreateGrantInput) (GrantResult, error) {
@@ -332,6 +359,107 @@ func (s *Service) now() time.Time {
 		return s.Now().UTC()
 	}
 	return time.Now().UTC()
+}
+
+func (s *Service) httpClient() *http.Client {
+	if s.HTTPClient != nil {
+		return s.HTTPClient
+	}
+	return &http.Client{Timeout: 10 * time.Second}
+}
+
+func (s *Service) fetchProviderModels(ctx context.Context, config managedcredentialsbiz.ProviderConfig) ([]managedcredentialsbiz.Model, error) {
+	catalogURL, err := providerModelCatalogURL(config.Provider, config.BaseURL)
+	if err != nil {
+		return nil, err
+	}
+	request, err := http.NewRequestWithContext(ctx, http.MethodGet, catalogURL, nil)
+	if err != nil {
+		return nil, err
+	}
+	switch config.Provider {
+	case managedcredentialsbiz.ProviderAnthropic:
+		request.Header.Set("x-api-key", config.APIKey)
+		request.Header.Set("anthropic-version", "2023-06-01")
+	default:
+		request.Header.Set("Authorization", "Bearer "+config.APIKey)
+	}
+	request.Header.Set("Accept", "application/json")
+
+	response, err := s.httpClient().Do(request)
+	if err != nil {
+		return nil, err
+	}
+	defer response.Body.Close()
+	if response.StatusCode < http.StatusOK || response.StatusCode >= http.StatusMultipleChoices {
+		return nil, fmt.Errorf("managed credential provider model catalog returned %s", response.Status)
+	}
+	var payload providerModelsResponse
+	if err := json.NewDecoder(io.LimitReader(response.Body, 1<<20)).Decode(&payload); err != nil {
+		return nil, fmt.Errorf("decode managed credential provider model catalog: %w", err)
+	}
+	return payload.models(config.Provider), nil
+}
+
+type providerModelsResponse struct {
+	Data   []providerModelItem `json:"data"`
+	Models []providerModelItem `json:"models"`
+}
+
+type providerModelItem struct {
+	DisplayName string `json:"display_name"`
+	ID          string `json:"id"`
+	Name        string `json:"name"`
+}
+
+func (r providerModelsResponse) models(provider managedcredentialsbiz.ProviderID) []managedcredentialsbiz.Model {
+	items := r.Data
+	if len(items) == 0 {
+		items = r.Models
+	}
+	models := make([]managedcredentialsbiz.Model, 0, len(items))
+	for _, item := range items {
+		id := strings.TrimSpace(item.ID)
+		if id == "" {
+			continue
+		}
+		name := strings.TrimSpace(item.Name)
+		if name == "" {
+			name = strings.TrimSpace(item.DisplayName)
+		}
+		models = append(models, managedcredentialsbiz.Model{
+			ID:       id,
+			Name:     name,
+			Provider: provider,
+		})
+	}
+	return models
+}
+
+func providerModelCatalogURL(provider managedcredentialsbiz.ProviderID, baseURL string) (string, error) {
+	trimmedBaseURL := strings.TrimSpace(baseURL)
+	if trimmedBaseURL == "" {
+		trimmedBaseURL = defaultProviderBaseURL(provider)
+	}
+	parsed, err := url.Parse(trimmedBaseURL)
+	if err != nil {
+		return "", err
+	}
+	parsed.Path = strings.TrimRight(parsed.Path, "/") + "/models"
+	parsed.RawQuery = ""
+	parsed.Fragment = ""
+	return parsed.String(), nil
+}
+
+func defaultProviderBaseURL(provider managedcredentialsbiz.ProviderID) string {
+	switch provider {
+	case managedcredentialsbiz.ProviderAgnes:
+		return "https://apihub.agnes-ai.com/v1"
+	case managedcredentialsbiz.ProviderAnthropic:
+		return "https://api.anthropic.com/v1"
+	default:
+		return "https://api.openai.com/v1"
+	}
 }
 
 func (s *Service) ensure() {

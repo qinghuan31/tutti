@@ -934,6 +934,7 @@ components:
         - all
         - notStarted
         - running
+        - inProgress
         - pendingAcceptance
         - completed
         - failed
@@ -946,6 +947,9 @@ components:
           type: integer
           minimum: 0
         running:
+          type: integer
+          minimum: 0
+        inProgress:
           type: integer
           minimum: 0
         pendingAcceptance:

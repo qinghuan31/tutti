@@ -12,6 +12,7 @@ export function createWorkspaceSettingsStore(): WorkspaceSettingsStoreState {
     },
     managedModels: {
       deletingProvider: null,
+      detectingProvider: null,
       focusedProvider: null,
       focusRequestID: 0,
       loading: false,

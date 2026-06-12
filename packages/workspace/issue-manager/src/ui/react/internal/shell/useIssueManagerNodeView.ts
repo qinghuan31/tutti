@@ -87,7 +87,6 @@ export function useIssueManagerNodeView({
     selectedTask,
     shell: {
       onCloseTaskDrawer: () => {
-        controller.setTaskEditorMode("read");
         controller.selectTask(null);
       },
       onDismissIssueCreate: () => {

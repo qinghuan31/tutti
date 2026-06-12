@@ -1091,6 +1091,7 @@ export type IssueManagerStatusCounts = {
   all: number;
   notStarted: number;
   running: number;
+  inProgress: number;
   pendingAcceptance: number;
   completed: number;
   failed: number;

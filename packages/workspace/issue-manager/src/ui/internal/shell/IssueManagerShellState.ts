@@ -111,7 +111,7 @@ function mapIssueManagerStatusCounts(
     canceled: counts.canceled,
     completed: counts.completed,
     failed: counts.failed,
-    in_progress: 0,
+    in_progress: counts.inProgress,
     not_started: counts.notStarted,
     pending_acceptance: counts.pendingAcceptance,
     running: counts.running

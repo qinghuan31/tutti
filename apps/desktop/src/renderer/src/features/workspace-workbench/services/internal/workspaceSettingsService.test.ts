@@ -96,8 +96,70 @@ test("WorkspaceSettingsService tolerates provider configs with null models", asy
   const agnesProvider = service.store.managedModels.providers.find(
     (provider) => provider.provider === "agnes"
   );
-  assert.equal(agnesProvider?.modelsText, "agnes-2.0-flash");
+  assert.deepEqual(agnesProvider?.models, []);
   assert.deepEqual(notifications.items, []);
+});
+
+test("WorkspaceSettingsService echoes saved managed provider API keys", async () => {
+  const service = new WorkspaceSettingsService({
+    client: createWorkspaceSettingsClient({
+      listManagedModelProviders: async () => [
+        {
+          apiKey: "agnes-secret",
+          enabled: true,
+          hasApiKey: true,
+          models: [],
+          provider: "agnes"
+        }
+      ]
+    })
+  });
+
+  service.openPanel({ id: "workspace-1" });
+  await waitFor(() => service.store.managedModels.loading === false);
+
+  const agnesProvider = service.store.managedModels.providers.find(
+    (provider) => provider.provider === "agnes"
+  );
+  assert.equal(agnesProvider?.apiKey, "agnes-secret");
+});
+
+test("WorkspaceSettingsService fills detected managed provider models", async () => {
+  const service = new WorkspaceSettingsService({
+    client: createWorkspaceSettingsClient({
+      listManagedModelProviders: async () => [
+        {
+          apiKey: "agnes-secret",
+          enabled: true,
+          hasApiKey: true,
+          models: [],
+          provider: "agnes"
+        }
+      ],
+      listManagedModelProviderModels: async () => [
+        {
+          id: "agnes-2.0-flash",
+          name: "Agnes 2.0 Flash",
+          provider: "agnes"
+        }
+      ]
+    })
+  });
+
+  service.openPanel({ id: "workspace-1" });
+  await waitFor(() => service.store.managedModels.loading === false);
+  await service.detectManagedModelProviderModels("agnes");
+
+  const agnesProvider = service.store.managedModels.providers.find(
+    (provider) => provider.provider === "agnes"
+  );
+  assert.deepEqual(agnesProvider?.models, [
+    {
+      id: "agnes-2.0-flash",
+      name: "Agnes 2.0 Flash",
+      provider: "agnes"
+    }
+  ]);
 });
 
 test("WorkspaceSettingsService refreshes developer logs when opening the panel", async () => {
@@ -393,6 +455,7 @@ function createWorkspaceSettingsClient(
       totalSizeBytes: 0
     }),
     listManagedModelProviders: async () => [],
+    listManagedModelProviderModels: async () => [],
     openLogDirectory: async () => {},
     openLogFile: async () => {},
     putManagedModelProvider: async (_workspaceID, providerID, input) => ({

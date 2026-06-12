@@ -3,6 +3,8 @@ package managedcredentials
 import (
 	"context"
 	"errors"
+	"net/http"
+	"net/http/httptest"
 	"testing"
 	"time"
 
@@ -233,7 +235,7 @@ func TestServicePutProviderPreservesOmittedAPIKeyAndClearsBlankAPIKey(t *testing
 	}
 }
 
-func TestServiceListProvidersReturnsEmptyModelArray(t *testing.T) {
+func TestServiceListProvidersReturnsEmptyModelArrayAndSavedAPIKey(t *testing.T) {
 	ctx := context.Background()
 	store := newManagedCredentialsMemoryStore()
 	service := &Service{Store: store}
@@ -257,6 +259,65 @@ func TestServiceListProvidersReturnsEmptyModelArray(t *testing.T) {
 	}
 	if len(providers[0].Models) != 0 {
 		t.Fatalf("provider Models length = %d, want 0", len(providers[0].Models))
+	}
+	if providers[0].APIKey != "agnes-secret" {
+		t.Fatalf("provider APIKey = %q, want saved key", providers[0].APIKey)
+	}
+}
+
+func TestServiceListProviderModelsFetchesOpenAICompatibleCatalog(t *testing.T) {
+	ctx := context.Background()
+	store := newManagedCredentialsMemoryStore()
+	var gotPath string
+	var gotAuth string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotPath = r.URL.Path
+		gotAuth = r.Header.Get("Authorization")
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{
+			"data": [
+				{"id": "agnes-2.0-flash", "name": "Agnes 2.0 Flash"},
+				{"id": "agnes-2.0-pro"},
+				{"id": "agnes-2.0-flash"},
+				{"id": " "}
+			]
+		}`))
+	}))
+	defer server.Close()
+
+	service := &Service{
+		Store:      store,
+		HTTPClient: server.Client(),
+	}
+	apiKey := "agnes-secret"
+	if _, err := service.PutProvider(ctx, PutProviderInput{
+		WorkspaceID: "workspace-1",
+		Provider:    "agnes",
+		Enabled:     true,
+		APIKey:      &apiKey,
+		BaseURL:     server.URL + "/v1",
+	}); err != nil {
+		t.Fatalf("PutProvider: %v", err)
+	}
+
+	result, err := service.ListProviderModels(ctx, "workspace-1", "agnes")
+	if err != nil {
+		t.Fatalf("ListProviderModels: %v", err)
+	}
+	if gotPath != "/v1/models" {
+		t.Fatalf("request path = %q, want /v1/models", gotPath)
+	}
+	if gotAuth != "Bearer agnes-secret" {
+		t.Fatalf("Authorization = %q, want bearer token", gotAuth)
+	}
+	if len(result.Models) != 2 {
+		t.Fatalf("model count = %d, want 2", len(result.Models))
+	}
+	if result.Models[0].ID != "agnes-2.0-flash" || result.Models[0].Name != "Agnes 2.0 Flash" {
+		t.Fatalf("first model = %#v", result.Models[0])
+	}
+	if result.Models[1].ID != "agnes-2.0-pro" || result.Models[1].Provider != managedcredentialsbiz.ProviderAgnes {
+		t.Fatalf("second model = %#v", result.Models[1])
 	}
 }
 

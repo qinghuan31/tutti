@@ -18,6 +18,7 @@ export interface WorkspaceManagedModel {
 }
 
 export interface WorkspaceManagedModelProviderConfig {
+  apiKey?: string;
   baseUrl?: string;
   enabled: boolean;
   hasApiKey: boolean;
@@ -29,11 +30,11 @@ export interface WorkspaceManagedModelProviderConfig {
 
 export interface WorkspaceManagedModelProviderDraft extends WorkspaceManagedModelProviderConfig {
   apiKey: string;
-  modelsText: string;
 }
 
 export interface WorkspaceSettingsManagedModelsMutableState {
   deletingProvider: WorkspaceManagedModelProviderID | null;
+  detectingProvider: WorkspaceManagedModelProviderID | null;
   focusedProvider: WorkspaceManagedModelProviderID | null;
   focusRequestID: number;
   loading: boolean;
@@ -44,6 +45,7 @@ export interface WorkspaceSettingsManagedModelsMutableState {
 
 export interface WorkspaceSettingsManagedModelsSnapshotState {
   readonly deletingProvider: WorkspaceManagedModelProviderID | null;
+  readonly detectingProvider: WorkspaceManagedModelProviderID | null;
   readonly focusedProvider: WorkspaceManagedModelProviderID | null;
   readonly focusRequestID: number;
   readonly loading: boolean;

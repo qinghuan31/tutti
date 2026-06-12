@@ -1,6 +1,14 @@
 const workspaceAppOpenUrlChannel = "workspace-app:open-url";
 
+interface WorkspaceAppMainWorldExecutionScript {
+  args?: unknown[];
+  func: (...args: never[]) => unknown;
+}
+
 interface WorkspaceAppLinkInterceptionOptions {
+  executeInMainWorld?: (
+    script: WorkspaceAppMainWorldExecutionScript
+  ) => unknown;
   reportDiagnostic?: (
     diagnostic: WorkspaceAppLinkInterceptionDiagnostic
   ) => void;
@@ -9,11 +17,13 @@ interface WorkspaceAppLinkInterceptionOptions {
 }
 
 export function installWorkspaceAppLinkInterception({
+  executeInMainWorld,
   reportDiagnostic,
   scope,
   send
 }: WorkspaceAppLinkInterceptionOptions): () => void {
   return installPreloadLinkInterception({
+    executeInMainWorld,
     reportDiagnostic,
     scope,
     sendOpenUrl(url) {
@@ -23,16 +33,38 @@ export function installWorkspaceAppLinkInterception({
 }
 
 export function installPreloadLinkInterception({
+  executeInMainWorld,
   reportDiagnostic,
   scope,
   sendOpenUrl
 }: {
+  executeInMainWorld?: (
+    script: WorkspaceAppMainWorldExecutionScript
+  ) => unknown;
   reportDiagnostic?: (
     diagnostic: WorkspaceAppLinkInterceptionDiagnostic
   ) => void;
   scope: Window;
   sendOpenUrl: (url: string) => void;
 }): () => void {
+  installMainWorldOpenInterception({ executeInMainWorld, reportDiagnostic });
+
+  const originalOpen =
+    typeof scope.open === "function" ? scope.open.bind(scope) : null;
+  if (originalOpen) {
+    scope.open = (url?: string | URL, target?: string, features?: string) => {
+      if (shouldNavigateOpenInPlace(target)) {
+        const resolvedSameOriginUrl = resolveSameOriginUrl(scope, url);
+        if (resolvedSameOriginUrl) {
+          scope.location.assign(resolvedSameOriginUrl);
+          return scope;
+        }
+      }
+
+      return originalOpen.call(scope, url, target, features);
+    };
+  }
+
   const handleClick = (event: MouseEvent) => {
     const anchor = resolveAnchorTarget(event);
     if (!anchor) {
@@ -79,6 +111,21 @@ export function installPreloadLinkInterception({
     event.preventDefault();
     event.stopPropagation();
     event.stopImmediatePropagation();
+    const resolvedSameOriginUrl = resolveSameOriginUrl(scope, href);
+    if (resolvedSameOriginUrl) {
+      reportDiagnostic?.({
+        action: "navigate-in-place",
+        button: event.button,
+        defaultPrevented: event.defaultPrevented,
+        href,
+        modifiers: getMouseModifiers(event),
+        target,
+        url: resolvedSameOriginUrl
+      });
+      scope.location.assign(resolvedSameOriginUrl);
+      return;
+    }
+
     reportDiagnostic?.({
       action: "open-url",
       button: event.button,
@@ -98,8 +145,133 @@ export function installPreloadLinkInterception({
   scope.addEventListener("click", handleClick, true);
 
   return () => {
+    if (originalOpen) {
+      scope.open = originalOpen;
+    }
     scope.removeEventListener("click", handleClick, true);
   };
+}
+
+function installMainWorldOpenInterception({
+  executeInMainWorld,
+  reportDiagnostic
+}: {
+  executeInMainWorld?: (
+    script: WorkspaceAppMainWorldExecutionScript
+  ) => unknown;
+  reportDiagnostic?: (
+    diagnostic: WorkspaceAppLinkInterceptionDiagnostic
+  ) => void;
+}): void {
+  if (!executeInMainWorld) {
+    return;
+  }
+
+  try {
+    const installed = executeInMainWorld({
+      func: installWorkspaceAppMainWorldOpenInterception
+    });
+    reportDiagnostic?.(
+      installed
+        ? { action: "installed-main-world" }
+        : {
+            action: "skip",
+            reason: "main-world-window-open-unavailable"
+          }
+    );
+  } catch (error) {
+    reportDiagnostic?.({
+      action: "skip",
+      reason: "main-world-install-failed",
+      url: error instanceof Error ? error.message : String(error)
+    });
+  }
+}
+
+function installWorkspaceAppMainWorldOpenInterception(): boolean {
+  const scope = globalThis.window;
+  const patchKey = "__nextopWorkspaceAppWindowOpenPatched";
+  const globalScope = scope as Window & {
+    [patchKey]?: boolean;
+  };
+  if (globalScope[patchKey]) {
+    return true;
+  }
+
+  const originalOpen =
+    typeof scope.open === "function" ? scope.open.bind(scope) : null;
+  if (!originalOpen) {
+    return false;
+  }
+
+  globalScope[patchKey] = true;
+  scope.open = (url?: string | URL, target?: string, features?: string) => {
+    if (shouldNavigate(target)) {
+      const resolvedSameOriginUrl = resolveSameOrigin(url, scope.location.href);
+      if (resolvedSameOriginUrl) {
+        scope.location.assign(resolvedSameOriginUrl);
+        return scope;
+      }
+    }
+
+    return originalOpen.call(scope, url, target, features);
+  };
+
+  return true;
+
+  function shouldNavigate(target: string | undefined): boolean {
+    const normalizedTarget = target?.trim().toLowerCase() ?? "";
+    return normalizedTarget.length === 0 || normalizedTarget === "_blank";
+  }
+
+  function resolveSameOrigin(
+    url: string | URL | undefined,
+    currentHref: string
+  ): string | null {
+    if (url === undefined) {
+      return null;
+    }
+
+    const rawUrl = url.toString().trim();
+    if (rawUrl.length === 0) {
+      return null;
+    }
+
+    try {
+      const currentUrl = new URL(currentHref);
+      const nextUrl = new URL(rawUrl, currentUrl);
+      return nextUrl.origin === currentUrl.origin ? nextUrl.href : null;
+    } catch {
+      return null;
+    }
+  }
+}
+
+function shouldNavigateOpenInPlace(target: string | undefined): boolean {
+  const normalizedTarget = target?.trim().toLowerCase() ?? "";
+  return normalizedTarget.length === 0 || normalizedTarget === "_blank";
+}
+
+function resolveSameOriginUrl(
+  scope: Window,
+  url: string | URL | undefined
+): string | null {
+  if (url === undefined) {
+    return null;
+  }
+
+  const rawUrl = url.toString().trim();
+  if (rawUrl.length === 0) {
+    return null;
+  }
+
+  try {
+    const currentUrl = new URL(scope.location.href);
+    const nextUrl = new URL(rawUrl, currentUrl);
+    return nextUrl.origin === currentUrl.origin ? nextUrl.href : null;
+  } catch {
+    return null;
+  }
 }
 
 function resolveAnchorTarget(event: Event): HTMLAnchorElement | null {
@@ -149,7 +321,12 @@ function isInterceptableBlankTarget(anchor: HTMLAnchorElement): boolean {
 }
 
 interface WorkspaceAppLinkInterceptionDiagnostic {
-  readonly action: "installed" | "open-url" | "skip";
+  readonly action:
+    | "installed"
+    | "installed-main-world"
+    | "navigate-in-place"
+    | "open-url"
+    | "skip";
   readonly button?: number;
   readonly defaultPrevented?: boolean;
   readonly href?: string;
