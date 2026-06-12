@@ -27,6 +27,7 @@ vi.mock("../../i18n/index", async () => {
       "继续输入文件名可搜索更多本机文件",
     "agentHost.agentGui.mentionGroupOpenedFiles": "我打开的文件",
     "agentHost.agentGui.mentionGroupAgentGeneratedFiles": "Agent 生成的文件",
+    "agentHost.agentGui.mentionAgentGeneratedFolderBack": "返回",
     "agentHost.agentGui.mentionNoMatchingFiles": "没有匹配到文件",
     "agentHost.roomIssueNode.issueStatusNotStarted": "未启动",
     "agentHost.roomIssueNode.issueStatusRunning": "执行中",
@@ -929,6 +930,69 @@ describe("AgentFileMentionPalette", () => {
     expect(
       fileRow?.querySelector('[data-agent-mention-file-thumb="true"]')
     ).toBeNull();
+  });
+
+  it("renders agent generated folder back rows with a back navigation marker", () => {
+    const state: AgentMentionSearchState = {
+      status: "ready",
+      query: "",
+      mode: "browse",
+      filter: "file",
+      categories: [],
+      groups: [
+        {
+          id: "agent_generated_files",
+          items: [
+            {
+              kind: "file",
+              href: "",
+              path: "/workspace/demo/static",
+              name: "返回",
+              entryKind: "unknown",
+              directoryPath: "/workspace/demo",
+              mentionNavigation: "agent-generated-folder-back"
+            }
+          ],
+          totalCount: 1,
+          visibleCount: 1,
+          hasMore: false
+        }
+      ],
+      error: null
+    };
+
+    render(
+      <AgentFileMentionPalette
+        state={state}
+        highlightedKey="agent_generated_files:agent-generated-folder-back:/workspace/demo/static"
+        label="mention palette"
+        loadingLabel="loading"
+        emptyLabel="empty"
+        errorLabel="error"
+        tabHintLabel="hint"
+        maxHeightPx={320}
+        onHighlightChange={vi.fn()}
+        onSelectItem={vi.fn()}
+        onSelectCategory={vi.fn()}
+        onSelectFilter={vi.fn()}
+        onExpandGroup={vi.fn()}
+        onCycleFilter={vi.fn()}
+        onMoveSelection={vi.fn()}
+      />
+    );
+
+    const backRow = screen
+      .getByText("返回")
+      .closest('[data-agent-file-mention="true"]');
+
+    expect(backRow).toHaveAttribute(
+      "data-agent-mention-navigation",
+      "agent-generated-folder-back"
+    );
+    expect(backRow).toHaveAttribute("data-agent-file-visual-kind", "back");
+    expect(
+      backRow?.querySelector(".agent-gui-node__mention-file-icon")
+    ).not.toBeNull();
   });
 
   it("renders image mention rows with thumbnails instead of default file icons", () => {
@@ -1867,6 +1931,10 @@ describe("AgentFileMentionPalette", () => {
       )?.[0] ?? "";
     const paletteFileIconRule =
       css.match(/\.agent-gui-node__mention-file-icon\s*{[^}]*}/s)?.[0] ?? "";
+    const backNavigationIconRule =
+      css.match(
+        /\[data-agent-file-mention="true"\]\[data-agent-mention-kind="file"\]\[data-agent-file-visual-kind="back"\]\s+\.agent-gui-node__mention-file-icon\s*{[^}]*}/s
+      )?.[0] ?? "";
 
     expect(shellRule).toMatch(/--agent-mention-file-icon-size:\s*16px/);
     expect(paletteRule).toMatch(/--agent-mention-file-icon-size:\s*16px/);
@@ -1879,6 +1947,10 @@ describe("AgentFileMentionPalette", () => {
     expect(fileTokenRule).not.toMatch(/height:\s*24px/);
     expect(fileTokenRule).not.toMatch(/min-height:\s*24px/);
     expect(paletteFileIconRule).toMatch(/background-color:\s*var\(--folder\)/);
+    expect(backNavigationIconRule).toMatch(/arrow-left-filled\.svg/);
+    expect(backNavigationIconRule).toMatch(
+      /background-color:\s*var\(--text-secondary\)/
+    );
     expect(fileIconRule).toMatch(
       /width:\s*var\(--agent-mention-file-icon-size,\s*16px\)/
     );

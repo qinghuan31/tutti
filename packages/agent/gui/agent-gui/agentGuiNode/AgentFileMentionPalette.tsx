@@ -955,7 +955,13 @@ function shouldRenderMentionGroupLabel(input: {
 
 function renderMentionRow(item: AgentContextMentionItem): React.JSX.Element {
   if (item.kind === "file") {
-    const visualKind = resolveAgentMentionFileVisualKind(item);
+    const visualKind = resolveAgentMentionFileVisualKind({
+      entryKind: item.entryKind,
+      href: item.href,
+      mentionNavigation: item.mentionNavigation,
+      name: item.name,
+      path: item.path
+    });
     const childCountLabel =
       item.mentionNavigation === "agent-generated-folder" &&
       typeof item.childCount === "number" &&
@@ -971,6 +977,9 @@ function renderMentionRow(item: AgentContextMentionItem): React.JSX.Element {
         data-agent-mention-kind="file"
         data-agent-file-entry-kind={item.entryKind}
         data-agent-file-visual-kind={visualKind}
+        {...(item.mentionNavigation
+          ? { "data-agent-mention-navigation": item.mentionNavigation }
+          : {})}
       >
         <MentionFileIcon item={item} visualKind={visualKind} />
         <span className="flex min-w-0 items-baseline gap-1 overflow-hidden">

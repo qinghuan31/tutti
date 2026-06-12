@@ -2256,6 +2256,13 @@ aside.workspace-agents-status-panel
   -webkit-mask-image: url("./assets/icons/doc-filled.svg");
 }
 
+[data-agent-file-mention="true"][data-agent-mention-kind="file"][data-agent-file-visual-kind="back"]
+  .agent-gui-node__mention-file-icon {
+  background-color: var(--text-secondary);
+  mask-image: url("./assets/icons/arrow-left-filled.svg");
+  -webkit-mask-image: url("./assets/icons/arrow-left-filled.svg");
+}
+
 .agent-gui-chrome__session-chrome {
   display: grid;
   justify-self: stretch;
