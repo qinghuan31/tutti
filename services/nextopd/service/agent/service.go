@@ -485,6 +485,9 @@ func (s *Service) SendInput(ctx context.Context, workspaceID string, agentSessio
 	if err != nil {
 		return Session{}, err
 	}
+	if strings.TrimSpace(input.DisplayPrompt) != "" {
+		displayPrompt = input.DisplayPrompt
+	}
 	result, err := s.controller().Exec(ctx, RuntimeExecInput{
 		WorkspaceID:    workspaceID,
 		AgentSessionID: agentSessionID,

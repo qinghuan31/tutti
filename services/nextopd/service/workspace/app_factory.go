@@ -316,7 +316,8 @@ func (s *AppFactoryService) Fix(ctx context.Context, workspaceID string, jobID s
 		return workspacebiz.AppFactoryJob{}, errors.New("app factory job does not have an agent session")
 	}
 	if _, err := s.AgentSessionService.SendInput(ctx, workspaceID, job.AgentSessionID, agentservice.SendInput{
-		Content: agentservice.TextPromptContent(buildFactoryFixPrompt(prompt, job.FailureReason)),
+		Content:       agentservice.TextPromptContent(buildFactoryFixPrompt(prompt, job.FailureReason)),
+		DisplayPrompt: prompt,
 	}); err != nil {
 		return workspacebiz.AppFactoryJob{}, err
 	}

@@ -257,6 +257,36 @@ func TestServiceCreatePassesInitialDisplayPromptToRuntime(t *testing.T) {
 	}
 }
 
+func TestServiceSendInputPassesDisplayPromptToRuntime(t *testing.T) {
+	runtime := newFakeRuntime()
+	service := NewService(runtime)
+	runtime.sessions["ws-1:session-1"] = RuntimeSession{
+		ID:          "session-1",
+		WorkspaceID: "ws-1",
+		Provider:    "codex",
+		Status:      "ready",
+		Visible:     true,
+	}
+
+	_, err := service.SendInput(context.Background(), "ws-1", "session-1", SendInput{
+		Content:       TextPromptContent("real repair prompt"),
+		DisplayPrompt: "Fix the app",
+	})
+	if err != nil {
+		t.Fatalf("SendInput error = %v", err)
+	}
+	if len(runtime.execCalls) != 1 {
+		t.Fatalf("exec calls = %d, want 1", len(runtime.execCalls))
+	}
+	call := runtime.execCalls[0]
+	if len(call.Content) != 1 || call.Content[0].Text != "real repair prompt" {
+		t.Fatalf("runtime content = %#v", call.Content)
+	}
+	if call.DisplayPrompt != "Fix the app" {
+		t.Fatalf("runtime display prompt = %q", call.DisplayPrompt)
+	}
+}
+
 func TestServiceCreateGeneratesSessionIDBeforePreparingRuntime(t *testing.T) {
 	runtime := newFakeRuntime()
 	var prepareInput agentsidecarservice.PrepareInput

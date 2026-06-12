@@ -1475,6 +1475,9 @@ func TestAppFactoryServiceFixIncludesFailureReasonInAgentPrompt(t *testing.T) {
 	if !strings.Contains(text, "User request:\nfix it") {
 		t.Fatalf("fix prompt missing user request: %q", text)
 	}
+	if sessions.sendInput.DisplayPrompt != "fix it" {
+		t.Fatalf("fix display prompt = %q", sessions.sendInput.DisplayPrompt)
+	}
 }
 
 func TestAppFactoryServiceDeleteRemovesTerminalJob(t *testing.T) {

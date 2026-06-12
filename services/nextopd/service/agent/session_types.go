@@ -254,7 +254,8 @@ type SessionSkillBundle struct {
 }
 
 type SendInput struct {
-	Content []PromptContentBlock
+	Content       []PromptContentBlock
+	DisplayPrompt string
 }
 
 type PromptContentBlock struct {
