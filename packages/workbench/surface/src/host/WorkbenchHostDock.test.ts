@@ -6,7 +6,12 @@ import test from "node:test";
 const source = readFileSync(resolve("src/host/WorkbenchHostDock.tsx"), "utf8");
 
 test("dock hover panels survive pointer travel from slot to panel", () => {
-  assert.doesNotMatch(source, /TooltipTrigger asChild/);
+  assert.match(source, /TooltipTrigger asChild/);
+  assert.equal(source.match(/<TooltipTrigger asChild>/g)?.length, 3);
+  assert.equal(
+    source.match(/sideOffset=\{DOCK_MAGNIFIED_TOOLTIP_SIDE_OFFSET\}/g)?.length,
+    3
+  );
   assert.match(source, /title=\{entry\.label\}/);
   assert.match(source, /title=\{i18n\.t\("minimizedWindows"\)\}/);
   assert.match(source, /title=\{node\.title\}/);
