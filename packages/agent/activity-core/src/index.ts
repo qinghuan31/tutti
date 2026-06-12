@@ -27,6 +27,11 @@ export {
   selectSessionDisplayStatuses,
   type AgentActivityPromptImagesSupportInput
 } from "./selectors.ts";
+export {
+  resolveAgentActivityUsage,
+  type AgentActivityUsage,
+  type AgentActivityUsageInput
+} from "./usage.ts";
 export type {
   AgentActivityDisplayStatus,
   AgentActivityCancelSessionInput,

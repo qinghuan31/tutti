@@ -15,11 +15,12 @@
 ### Task A: activity-core usage selector
 
 **Files:**
+
 - Modify: `packages/agent/activity-core/src/capabilities.ts`（同文件追加,或新建 `usage.ts`——以包內文件粒度慣例為準）
 - Modify: 包導出入口
 - Test: `packages/agent/activity-core/src/usage.test.ts`
 
-- [ ] **Step 1: 寫失敗測試**
+- [x] **Step 1: 寫失敗測試**
 
 ```ts
 import assert from "node:assert/strict";
@@ -47,7 +48,9 @@ test("returns null without usable context window", () => {
   assert.equal(resolveAgentActivityUsage({}), null);
   assert.equal(
     resolveAgentActivityUsage({
-      sessionRuntimeContext: { usage: { contextWindow: { usedTokens: 1, totalTokens: 0 } } }
+      sessionRuntimeContext: {
+        usage: { contextWindow: { usedTokens: 1, totalTokens: 0 } }
+      }
     }),
     null
   );
@@ -64,8 +67,8 @@ test("quotas-only usage still resolves with null percent", () => {
 });
 ```
 
-- [ ] **Step 2: 確認失敗** → Run: `cd packages/agent/activity-core && pnpm test`
-- [ ] **Step 3: 實現**
+- [x] **Step 2: 確認失敗** → Run: `cd packages/agent/activity-core && pnpm test`
+- [x] **Step 3: 實現**
 
 ```ts
 export interface AgentActivityUsage {
@@ -90,18 +93,22 @@ export function resolveAgentActivityUsage(
   const usedTokens = finiteNumber(contextWindow?.usedTokens);
   const totalTokens = finiteNumber(contextWindow?.totalTokens);
   const quotas = Array.isArray(usage.quotas)
-    ? usage.quotas.filter((entry): entry is Record<string, unknown> =>
-        typeof entry === "object" && entry !== null
+    ? usage.quotas.filter(
+        (entry): entry is Record<string, unknown> =>
+          typeof entry === "object" && entry !== null
       )
     : [];
-  const hasWindow = usedTokens !== null && totalTokens !== null && totalTokens > 0;
+  const hasWindow =
+    usedTokens !== null && totalTokens !== null && totalTokens > 0;
   if (!hasWindow && quotas.length === 0) {
     return null;
   }
   return {
     usedTokens: hasWindow ? usedTokens : null,
     totalTokens: hasWindow ? totalTokens : null,
-    percentUsed: hasWindow ? Math.min(100, Math.round((usedTokens / totalTokens) * 100)) : null,
+    percentUsed: hasWindow
+      ? Math.min(100, Math.round((usedTokens / totalTokens) * 100))
+      : null,
     quotas
   };
 }
@@ -109,12 +116,13 @@ export function resolveAgentActivityUsage(
 
 （`recordValue`/`finiteNumber` 輔助:若 selectors.ts 已有可導出的就複用,否則本地實現:`recordValue(v)` 返回 object 非 null 的 Record 或 null;`finiteNumber(v)` 接受 number 且 isFinite,否則 null。）
 
-- [ ] **Step 4: 通過 + 全包測試 + typecheck** → `pnpm test && pnpm typecheck`
-- [ ] **Step 5: Commit** `feat(activity-core): shared usage selector`
+- [x] **Step 4: 通過 + 全包測試 + typecheck** → `pnpm test && pnpm typecheck`
+- [x] **Step 5: Commit** `feat(activity-core): shared usage selector`
 
 ### Task B: 標題欄 usage chip
 
 **Files:**
+
 - Modify: `packages/agent/gui/agent-gui/agentGuiNode/controller/useAgentGUINodeController.ts`（viewModel 增加 `usage: AgentActivityUsage | null`,由 `resolveAgentActivityUsage({ sessionRuntimeContext: activeSessionState?.runtimeContext })` 派生,useMemo 依賴對齊——參考 Task 5 已落地的 `compactSupported` 寫法）
 - Modify: `packages/agent/gui/agent-gui/agentGuiNode/model/agentGuiNodeTypes.ts`（viewModel 類型）
 - Modify: `packages/agent/gui/agent-gui/agentGuiNode/AgentGUINodeView.tsx`（`AgentGUIDetailHeader` props 增加 usage 與 labels;在 `detailHeaderStatus`（:1769）旁渲染 chip）
@@ -122,6 +130,7 @@ export function resolveAgentActivityUsage(
 - Test: 既有 layout/spec fixtures 補 `usage: null`;新增 vitest 渲染斷言（有 usage 顯示 chip、null 隱藏）
 
 **Chip 要求:**
+
 - 顯示 `{percentUsed}%`（percentUsed 為 null 但有 quotas 時不顯示 chip——本期 chip 只表達 context 佔用）;>=80% 加警示色 class（沿用既有狀態色 token,grep styles 文件的 warning/danger 變量）,>=95% 危險色——該視覺檔位與 PR3 閾值常量共用:常量定義放 `model/agentUsageThresholds.ts`（`export const USAGE_WARN_PERCENT = 80; export const USAGE_CRITICAL_PERCENT = 95;`）。
 - hover/click 彈出明細:usedTokens/totalTokens（千分位格式化,沿用 slashStatus 的格式化函數,grep `slashStatusContextText`）+ quotas 列表（percentRemaining + 重置時間,格式化邏輯參考 `slashStatusLimitsFromQuotas` :187）。彈層組件沿用該包既有 popover/tooltip 慣例（先 grep）。
 - 數據為 null → 不渲染任何節點。
