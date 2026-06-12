@@ -36,7 +36,6 @@ import {
   TooltipContent,
   TooltipTrigger
 } from "@tutti-os/ui-system";
-import { INotificationService } from "@tutti-os/ui-notifications";
 import { useService } from "@zk-tech/bedrock/di";
 import { MessageCenterOpenedReporter } from "@renderer/features/analytics/reporters/message-center-opened/messageCenterOpenedReporter.ts";
 import { MessageCenterNotificationActionedReporter } from "@renderer/features/analytics/reporters/message-center-notification-actioned/messageCenterNotificationActionedReporter.ts";
@@ -53,7 +52,6 @@ import {
   buildWorkspaceAgentDecisionNotification,
   type WorkspaceAgentDecisionSubmitInput
 } from "../services/workspaceAgentDecisionNotification";
-import { createWorkspaceAgentMessageCenterNotificationTracker } from "../services/workspaceAgentMessageCenterNotification";
 import { resolveWorkspaceAgentMessageCenterTrigger } from "../services/workspaceAgentMessageCenterTrigger";
 import { toggleWorkspaceAgentMessageCenter } from "../services/workspaceAgentMessageCenterToggle";
 import { createWorkspaceAgentGuiSessionLaunchRequest } from "../services/workspaceAgentGuiLaunch";
@@ -208,7 +206,6 @@ function WorkspaceAgentMessageCenterAction({
   const workspaceAgentActivityService = useService(
     IWorkspaceAgentActivityService
   );
-  const notifications = useService(INotificationService);
   const reporterService = useService(IReporterService);
   const workbenchHostService = useWorkspaceWorkbenchHostService();
   const [open, setOpen] = useState(false);
@@ -222,9 +219,6 @@ function WorkspaceAgentMessageCenterAction({
   const seenWaitingNotificationKeysRef = useRef<Set<string> | null>(null);
   const activeWaitingNotificationToastIdsRef = useRef<Map<string, string>>(
     new Map()
-  );
-  const messageCenterNotificationTrackerRef = useRef(
-    createWorkspaceAgentMessageCenterNotificationTracker()
   );
   const snapshot = useSyncExternalStore(
     (listener) =>
@@ -277,33 +271,6 @@ function WorkspaceAgentMessageCenterAction({
       }),
     [snapshot, t]
   );
-  const messageCenterNotificationLabels = useMemo(
-    () => ({
-      description({ summary }: { summary: string }) {
-        return t("workspace.agentMessageCenter.statusNotificationDescription", {
-          summary
-        });
-      },
-      fallbackSummary: t(
-        "workspace.agentMessageCenter.statusNotificationFallbackSummary"
-      ),
-      status: {
-        canceled: i18n.t("agentHost.workspaceAgentActivityStatusCanceled"),
-        completed: i18n.t("agentHost.workspaceAgentActivityStatusEnd"),
-        failed: i18n.t("agentHost.workspaceAgentActivityStatusFailed"),
-        idle: i18n.t("agentHost.workspaceAgentActivityStatusIdle"),
-        waiting: i18n.t("agentHost.workspaceAgentActivityStatusWaiting"),
-        working: i18n.t("agentHost.workspaceAgentActivityStatusWorking")
-      },
-      title({ status, title }: { status: string; title: string }) {
-        return t("workspace.agentMessageCenter.statusNotificationTitle", {
-          status,
-          title
-        });
-      }
-    }),
-    [i18n, t]
-  );
   const waitingItems = useMemo(
     () => model.items.filter(isWaitingMessageCenterItem),
     [model.items]
@@ -330,23 +297,12 @@ function WorkspaceAgentMessageCenterAction({
   useEffect(() => {
     requestedMessageSummarySessionIdsRef.current.clear();
     seenWaitingNotificationKeysRef.current = null;
-    messageCenterNotificationTrackerRef.current.reset();
     for (const toastId of activeWaitingNotificationToastIdsRef.current.values()) {
       toast.dismiss(toastId);
     }
     activeWaitingNotificationToastIdsRef.current.clear();
     setHighlightedMessageCenterItemId(null);
   }, [workspace.id]);
-
-  useEffect(() => {
-    const messages = messageCenterNotificationTrackerRef.current.collect(
-      model,
-      messageCenterNotificationLabels
-    );
-    for (const message of messages) {
-      notifications.notify(message);
-    }
-  }, [messageCenterNotificationLabels, model, notifications]);
 
   useEffect(() => {
     const waitingEntries = waitingItems.map(
