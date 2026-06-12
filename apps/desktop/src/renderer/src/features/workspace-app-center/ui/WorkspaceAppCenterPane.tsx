@@ -271,6 +271,7 @@ export function WorkspaceAppCenterPane({
         },
         publishFactoryJob: (jobId) =>
           service.publishFactoryJob({ jobId, workspaceId }),
+        refreshCatalog: () => service.refreshCatalog(workspaceId),
         retryFactoryValidation: (jobId) =>
           service.retryFactoryValidation({ jobId, workspaceId }),
         retryApp: (appId) => service.retryApp({ appId, workspaceId }),
