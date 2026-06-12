@@ -18,7 +18,10 @@ import {
   Button,
   ChevronDownIcon,
   ChevronUpIcon,
-  TooltipProvider
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger
 } from "@tutti-os/ui-system";
 import type { WorkbenchDockContext } from "../react/types.ts";
 import {
@@ -1218,7 +1221,19 @@ export function WorkbenchHostDock({
                         handleDockPointerLeave();
                       }}
                     >
-                      {dockButton}
+                      {hasHoverPanel ? (
+                        dockButton
+                      ) : (
+                        <Tooltip>
+                          <TooltipTrigger asChild>{dockButton}</TooltipTrigger>
+                          <TooltipContent
+                            side={dockPlacement === "left" ? "right" : "top"}
+                            sideOffset={DOCK_MAGNIFIED_TOOLTIP_SIDE_OFFSET}
+                          >
+                            {entry.label}
+                          </TooltipContent>
+                        </Tooltip>
+                      )}
                     </span>
                   );
                 }
@@ -1321,7 +1336,15 @@ export function WorkbenchHostDock({
                         stackDispatching ? "true" : undefined
                       }
                     >
-                      {stackButton}
+                      <Tooltip>
+                        <TooltipTrigger asChild>{stackButton}</TooltipTrigger>
+                        <TooltipContent
+                          side={dockPlacement === "left" ? "right" : "top"}
+                          sideOffset={DOCK_MAGNIFIED_TOOLTIP_SIDE_OFFSET}
+                        >
+                          {i18n.t("minimizedWindows")}
+                        </TooltipContent>
+                      </Tooltip>
                     </span>
                   );
                 }
@@ -1381,7 +1404,15 @@ export function WorkbenchHostDock({
                     }
                     data-section-id="minimized"
                   >
-                    {dockButton}
+                    <Tooltip>
+                      <TooltipTrigger asChild>{dockButton}</TooltipTrigger>
+                      <TooltipContent
+                        side={dockPlacement === "left" ? "right" : "top"}
+                        sideOffset={DOCK_MAGNIFIED_TOOLTIP_SIDE_OFFSET}
+                      >
+                        {node.title}
+                      </TooltipContent>
+                    </Tooltip>
                   </span>
                 );
               })}
@@ -2208,6 +2239,7 @@ const dockHoverPanelCloseDelayMs = 160;
 const dockHoverPanelHitSlopPx = 12;
 const dockHoverPanelBridgeSlopPx = 6;
 const dockHoverPanelPointerRestTolerancePx = 4;
+const DOCK_MAGNIFIED_TOOLTIP_SIDE_OFFSET = 40;
 
 function rectContainsPoint(
   rect: DOMRect,
