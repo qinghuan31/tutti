@@ -764,6 +764,8 @@ export const en = {
       relativeTimeYears: "{{count}} y",
       slashCommandPalette: "Slash commands",
       skillPickerPalette: "Skills",
+      slashPaletteCommandsGroup: "Commands",
+      slashPaletteSkillsGroup: "Skills",
       fileMentionPalette: "Files",
       fileMentionLoading: "Searching...",
       fileMentionEmpty: "Search workspace files based on your input",

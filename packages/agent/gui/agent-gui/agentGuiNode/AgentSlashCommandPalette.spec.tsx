@@ -8,6 +8,8 @@ describe("AgentSlashCommandPalette", () => {
     render(
       <AgentSlashCommandPalette
         label="Slash commands"
+        commandsGroupLabel="Commands"
+        skillsGroupLabel="Skills"
         highlightedIndex={0}
         entries={[
           {

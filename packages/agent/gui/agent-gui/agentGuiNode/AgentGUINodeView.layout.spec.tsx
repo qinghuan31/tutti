@@ -1303,6 +1303,8 @@ function createLabels(): AgentGUIViewLabels {
     relativeTimeYears: (count: number) => `${count}y`,
     slashCommandPalette: "slashCommandPalette",
     skillPickerPalette: "skillPickerPalette",
+    slashPaletteCommandsGroup: "slashPaletteCommandsGroup",
+    slashPaletteSkillsGroup: "slashPaletteSkillsGroup",
     slashStatusTitle: "slashStatusTitle",
     slashStatusSession: "slashStatusSession",
     slashStatusBaseUrl: "slashStatusBaseUrl",

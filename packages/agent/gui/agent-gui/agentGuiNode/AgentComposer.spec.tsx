@@ -1557,6 +1557,8 @@ function createLabels(): Parameters<typeof AgentComposer>[0]["labels"] {
     stopping: "停止中",
     slashCommandPalette: "斜杠命令",
     skillPickerPalette: "技能",
+    slashPaletteCommandsGroup: "命令",
+    slashPaletteSkillsGroup: "技能",
     slashStatusTitle: "Status",
     slashStatusSession: "Session",
     slashStatusBaseUrl: "Base URL",

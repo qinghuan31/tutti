@@ -180,6 +180,8 @@ interface AgentComposerProps {
     stopping: string;
     slashCommandPalette: string;
     skillPickerPalette: string;
+    slashPaletteCommandsGroup: string;
+    slashPaletteSkillsGroup: string;
     slashStatusTitle: string;
     slashStatusSession: string;
     slashStatusBaseUrl: string;
@@ -1998,6 +2000,8 @@ export function AgentComposer({
                           ? labels.skillPickerPalette
                           : labels.slashCommandPalette
                       }
+                      commandsGroupLabel={labels.slashPaletteCommandsGroup}
+                      skillsGroupLabel={labels.slashPaletteSkillsGroup}
                       onHighlightChange={setHighlightedIndex}
                       onSelect={selectCommand}
                       onSelectSkill={selectSkill}

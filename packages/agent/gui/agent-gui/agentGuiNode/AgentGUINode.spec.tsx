@@ -3369,6 +3369,47 @@ describe("AgentGUINode", () => {
     );
   });
 
+  it("groups slash palette entries into command and skill sections", () => {
+    mockViewModel = createViewModel({
+      activeConversationId: "session-1",
+      draftPrompt: "/",
+      availableCommands: [{ name: "init", description: "initialize project" }],
+      availableSkills: [
+        {
+          name: "architecture-review",
+          trigger: "$architecture-review",
+          sourceKind: "project",
+          description: "Review architecture changes"
+        }
+      ]
+    });
+    renderAgentGUINode();
+
+    expect(
+      screen.getByText("agentHost.agentGui.slashPaletteCommandsGroup")
+    ).toBeTruthy();
+    expect(
+      screen.getByText("agentHost.agentGui.slashPaletteSkillsGroup")
+    ).toBeTruthy();
+  });
+
+  it("hides slash palette group headers when only one section is present", () => {
+    mockViewModel = createViewModel({
+      activeConversationId: "session-1",
+      draftPrompt: "/",
+      availableCommands: [{ name: "init", description: "initialize project" }],
+      availableSkills: []
+    });
+    renderAgentGUINode();
+
+    expect(
+      screen.queryByText("agentHost.agentGui.slashPaletteCommandsGroup")
+    ).toBeNull();
+    expect(
+      screen.queryByText("agentHost.agentGui.slashPaletteSkillsGroup")
+    ).toBeNull();
+  });
+
   it("opens Codex skill picker after prompt text and displays useful descriptions", () => {
     mockViewModel = createViewModel({
       activeConversationId: "session-1",

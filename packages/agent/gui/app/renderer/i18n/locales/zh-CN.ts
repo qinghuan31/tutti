@@ -702,6 +702,8 @@ export const zhCN = {
       relativeTimeYears: "{{count}} 年",
       slashCommandPalette: "斜杠菜单",
       skillPickerPalette: "技能",
+      slashPaletteCommandsGroup: "命令",
+      slashPaletteSkillsGroup: "技能",
       fileMentionPalette: "工作区文件",
       fileMentionLoading: "正在搜索工作区...",
       fileMentionEmpty: "根据你输入的内容搜索工作区文件",

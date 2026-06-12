@@ -917,6 +917,10 @@ export const AgentGUINode = memo(function AgentGUINode({
       cancel: t("common.cancel"),
       slashCommandPalette: t("agentHost.agentGui.slashCommandPalette"),
       skillPickerPalette: t("agentHost.agentGui.skillPickerPalette"),
+      slashPaletteCommandsGroup: t(
+        "agentHost.agentGui.slashPaletteCommandsGroup"
+      ),
+      slashPaletteSkillsGroup: t("agentHost.agentGui.slashPaletteSkillsGroup"),
       fileMentionPalette: t("agentHost.agentGui.fileMentionPalette"),
       fileMentionLoading: t("agentHost.agentGui.fileMentionLoading"),
       fileMentionEmpty: t("agentHost.agentGui.fileMentionEmpty"),

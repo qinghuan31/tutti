@@ -262,6 +262,8 @@ export interface AgentGUIViewLabels {
   relativeTimeYears: (count: number) => string;
   slashCommandPalette: string;
   skillPickerPalette: string;
+  slashPaletteCommandsGroup: string;
+  slashPaletteSkillsGroup: string;
   slashStatusTitle: string;
   slashStatusSession: string;
   slashStatusBaseUrl: string;
@@ -1301,6 +1303,8 @@ const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
       stopping: labels.stopping,
       slashCommandPalette: labels.slashCommandPalette,
       skillPickerPalette: labels.skillPickerPalette,
+      slashPaletteCommandsGroup: labels.slashPaletteCommandsGroup,
+      slashPaletteSkillsGroup: labels.slashPaletteSkillsGroup,
       slashStatusTitle: labels.slashStatusTitle,
       slashStatusSession: labels.slashStatusSession,
       slashStatusBaseUrl: labels.slashStatusBaseUrl,
@@ -1401,6 +1405,8 @@ const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
       labels.send,
       labels.sendQueuedPromptNext,
       labels.slashCommandPalette,
+      labels.slashPaletteCommandsGroup,
+      labels.slashPaletteSkillsGroup,
       labels.slashStatusClose,
       labels.slashStatusContext,
       labels.slashStatusContextUnavailable,
