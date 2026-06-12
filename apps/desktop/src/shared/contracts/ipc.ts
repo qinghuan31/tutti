@@ -148,6 +148,7 @@ export interface DesktopWorkspaceFilePathPayload {
 
 export interface DesktopOpenWithApplication {
   applicationPath: string;
+  bundleIdentifier: string | null;
   iconDataUrl: string | null;
   name: string;
 }
