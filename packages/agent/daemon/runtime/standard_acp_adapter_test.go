@@ -500,9 +500,9 @@ func TestClaudeCodeAdapterAllowsImagePromptWithoutInitializeCapability(t *testin
 		t.Fatalf("ValidatePromptContent error = %v, want nil", err)
 	}
 	snapshot := adapter.SessionState(session)
-	promptCapabilities, _ := snapshot.RuntimeContext["promptCapabilities"].(map[string]any)
-	if promptCapabilities["image"] != true {
-		t.Fatalf("runtime promptCapabilities = %#v, want image support", snapshot.RuntimeContext["promptCapabilities"])
+	capabilities, _ := snapshot.RuntimeContext["capabilities"].([]string)
+	if !containsString(capabilities, CapabilityImageInput) {
+		t.Fatalf("runtime capabilities = %#v, want imageInput", snapshot.RuntimeContext["capabilities"])
 	}
 }
 
@@ -526,8 +526,8 @@ func TestStandardACPAdapterRejectsImagePromptWithoutCapability(t *testing.T) {
 		t.Fatalf("ValidatePromptContent error = %v, want ErrPromptImageUnsupported", err)
 	}
 	snapshot := adapter.SessionState(session)
-	promptCapabilities, _ := snapshot.RuntimeContext["promptCapabilities"].(map[string]any)
-	if promptCapabilities["image"] != false {
+	capabilities, _ := snapshot.RuntimeContext["capabilities"].([]string)
+	if containsString(capabilities, CapabilityImageInput) {
 		t.Fatalf("runtime promptCapabilities = %#v, want image unsupported", snapshot.RuntimeContext["promptCapabilities"])
 	}
 }

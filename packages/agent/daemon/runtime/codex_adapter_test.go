@@ -964,9 +964,10 @@ func TestCodexAdapterAllowsImagePromptWithoutInitializeCapability(t *testing.T) 
 		t.Fatalf("ValidatePromptContent: %v", err)
 	}
 	snapshot := adapter.SessionState(session)
-	promptCapabilities, _ := snapshot.RuntimeContext["promptCapabilities"].(map[string]any)
-	if promptCapabilities["image"] != true {
-		t.Fatalf("runtime promptCapabilities = %#v, want image support", snapshot.RuntimeContext["promptCapabilities"])
+	// The legacy codex-acp adapter reports no capabilities list; image input
+	// rides the permissive null default while ValidatePromptContent accepts it.
+	if _, ok := snapshot.RuntimeContext["capabilities"]; ok {
+		t.Fatalf("legacy codex adapter unexpectedly reports capabilities: %#v", snapshot.RuntimeContext["capabilities"])
 	}
 
 	_, err := adapter.Exec(

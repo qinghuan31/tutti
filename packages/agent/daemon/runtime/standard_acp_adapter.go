@@ -1256,7 +1256,6 @@ func (a *standardACPAdapter) SessionState(session Session) SessionStateSnapshot 
 	}
 	a.mu.Unlock()
 
-	snapshot.RuntimeContext["promptCapabilities"] = promptCapabilitiesRuntimeContext(promptImage)
 	if len(agentInfo) > 0 {
 		snapshot.RuntimeContext["agent"] = agentInfo
 	}

@@ -36,18 +36,19 @@ test("returns null when no capability data exists", () => {
   assert.equal(resolveAgentActivityCapability("compact", {}), null);
 });
 
-test("imageInput falls back to legacy promptCapabilities", () => {
+test("imageInput resolves from the capabilities list only", () => {
+  assert.equal(
+    resolveAgentActivityCapability("imageInput", {
+      sessionRuntimeContext: { capabilities: ["imageInput"] }
+    }),
+    true
+  );
+  // The legacy promptCapabilities signal is retired and no longer read.
   assert.equal(
     resolveAgentActivityCapability("imageInput", {
       sessionRuntimeContext: { promptCapabilities: { image: true } }
     }),
-    true
-  );
-  assert.equal(
-    resolveAgentActivityCapability("imageInput", {
-      composerOptions: composerOptions({ promptCapabilities: { image: false } })
-    }),
-    false
+    null
   );
 });
 

@@ -99,12 +99,11 @@ func (s *Service) GetComposerOptions(ctx context.Context, input ComposerOptionsI
 	permissionConfig := composerPermissionConfig(provider, effectiveSettings.PermissionModeID, locale)
 	modelOptions := composerSelectedModelOptions(effectiveSettings.Model)
 	runtimeContext := map[string]any{
-		"capabilities":       composerProviderCapabilities(provider),
-		"configOptions":      composerConfigOptions(provider, effectiveSettings, modelOptions),
-		"model":              nullableString(effectiveSettings.Model),
-		"permissionModeId":   nullableString(effectiveSettings.PermissionModeID),
-		"promptCapabilities": composerPromptCapabilities(provider),
-		"reasoningEffort":    nullableString(effectiveSettings.ReasoningEffort),
+		"capabilities":     composerProviderCapabilities(provider),
+		"configOptions":    composerConfigOptions(provider, effectiveSettings, modelOptions),
+		"model":            nullableString(effectiveSettings.Model),
+		"permissionModeId": nullableString(effectiveSettings.PermissionModeID),
+		"reasoningEffort":  nullableString(effectiveSettings.ReasoningEffort),
 	}
 	skills := discoverComposerSkillOptions(provider, input.Cwd, nil)
 	runtimeContext["skills"] = composerSkillOptionsRuntimeContext(skills)
@@ -140,15 +139,6 @@ func composerProviderCapabilities(provider string) []string {
 		return []string{"interrupt"}
 	default:
 		return nil
-	}
-}
-
-func composerPromptCapabilities(provider string) map[string]any {
-	switch agentprovider.Normalize(provider) {
-	case agentprovider.ClaudeCode, agentprovider.Codex:
-		return map[string]any{"image": true}
-	default:
-		return map[string]any{"image": false}
 	}
 }
 

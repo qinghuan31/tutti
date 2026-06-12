@@ -9,7 +9,6 @@ import {
 import { useAgentHostApi } from "../../../agentActivityHost";
 import {
   resolveAgentActivityCapability,
-  resolveAgentActivityPromptImagesSupported,
   resolveAgentActivityUsage
 } from "@tutti-os/agent-activity-core";
 import type {
@@ -1965,11 +1964,13 @@ export function useAgentGUINodeController({
   const activeSessionState = activeSessionView?.controlState ?? null;
   const providerComposerOptions =
     agentActivitySnapshot.composerOptionsByProvider?.[data.provider] ?? null;
-  const resolvedPromptImagesSupported =
-    resolveAgentActivityPromptImagesSupported({
+  const resolvedPromptImagesSupported = resolveAgentActivityCapability(
+    "imageInput",
+    {
       composerOptions: providerComposerOptions,
       sessionRuntimeContext: activeSessionState?.runtimeContext
-    });
+    }
+  );
   const promptImagesSupported = resolvedPromptImagesSupported ?? true;
   const compactSupported = resolveAgentActivityCapability("compact", {
     composerOptions: providerComposerOptions,

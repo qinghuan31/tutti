@@ -1,5 +1,4 @@
 import type { AgentActivityComposerOptions } from "./types.ts";
-import { resolveAgentActivityPromptImagesSupported } from "./selectors.ts";
 
 /** Mirror of packages/agent/daemon/runtime/capabilities.go. */
 export const AGENT_CAPABILITY_KEYS = [
@@ -23,16 +22,10 @@ export function resolveAgentActivityCapability(
   key: AgentCapabilityKey,
   input: AgentActivityCapabilityInput
 ): boolean | null {
-  const resolved =
+  return (
     capabilityFromRuntimeContext(key, input.sessionRuntimeContext) ??
-    capabilityFromRuntimeContext(key, input.composerOptions?.runtimeContext);
-  if (resolved !== null) {
-    return resolved;
-  }
-  if (key === "imageInput") {
-    return resolveAgentActivityPromptImagesSupported(input);
-  }
-  return null;
+    capabilityFromRuntimeContext(key, input.composerOptions?.runtimeContext)
+  );
 }
 
 function capabilityFromRuntimeContext(

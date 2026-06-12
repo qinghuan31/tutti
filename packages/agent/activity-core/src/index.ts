@@ -21,11 +21,9 @@ export {
 } from "./merge.ts";
 export {
   normalizeAgentActivityDisplayStatus,
-  resolveAgentActivityPromptImagesSupported,
   selectNeedsAttentionCount,
   selectNeedsAttentionItems,
-  selectSessionDisplayStatuses,
-  type AgentActivityPromptImagesSupportInput
+  selectSessionDisplayStatuses
 } from "./selectors.ts";
 export {
   resolveAgentActivityUsage,

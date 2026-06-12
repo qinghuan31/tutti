@@ -148,12 +148,6 @@ func promptContentHasImage(content []PromptContentBlock) bool {
 	return false
 }
 
-func promptCapabilitiesRuntimeContext(promptImage bool) map[string]any {
-	return map[string]any{
-		"image": promptImage,
-	}
-}
-
 func acpPromptImageSupported(raw json.RawMessage) bool {
 	var result map[string]any
 	if len(raw) == 0 || json.Unmarshal(raw, &result) != nil {

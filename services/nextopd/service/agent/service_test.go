@@ -5,6 +5,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -438,9 +439,9 @@ func TestServiceGetsComposerOptionsWithoutStartingRuntime(t *testing.T) {
 	if options.PermissionConfig.Modes[1].Label != "Approve for me" {
 		t.Fatalf("permission label = %#v, want Approve for me", options.PermissionConfig.Modes[1])
 	}
-	promptCapabilities, ok := options.RuntimeContext["promptCapabilities"].(map[string]any)
-	if !ok || promptCapabilities["image"] != true {
-		t.Fatalf("promptCapabilities = %#v, want image support", options.RuntimeContext["promptCapabilities"])
+	capabilities, ok := options.RuntimeContext["capabilities"].([]string)
+	if !ok || !slices.Contains(capabilities, "imageInput") {
+		t.Fatalf("capabilities = %#v, want imageInput", options.RuntimeContext["capabilities"])
 	}
 }
 
@@ -471,9 +472,9 @@ func TestServiceGetsComposerOptionsLocalizesDisplayLabels(t *testing.T) {
 	if dontAsk.Label != "不再询问" || dontAsk.Description == "" {
 		t.Fatalf("dontAsk = %#v, want localized label and description", dontAsk)
 	}
-	promptCapabilities, ok := options.RuntimeContext["promptCapabilities"].(map[string]any)
-	if !ok || promptCapabilities["image"] != true {
-		t.Fatalf("promptCapabilities = %#v, want image support", options.RuntimeContext["promptCapabilities"])
+	capabilities, ok := options.RuntimeContext["capabilities"].([]string)
+	if !ok || !slices.Contains(capabilities, "imageInput") {
+		t.Fatalf("capabilities = %#v, want imageInput", options.RuntimeContext["capabilities"])
 	}
 }
 
@@ -667,9 +668,9 @@ func TestServiceGetsComposerOptionsLeavesUnresolvedProviderModelUnset(t *testing
 	if options.EffectiveSettings.ReasoningEffort != "" {
 		t.Fatalf("effectiveSettings.reasoningEffort = %q, want empty", options.EffectiveSettings.ReasoningEffort)
 	}
-	promptCapabilities, ok := options.RuntimeContext["promptCapabilities"].(map[string]any)
-	if !ok || promptCapabilities["image"] != false {
-		t.Fatalf("promptCapabilities = %#v, want image unsupported", options.RuntimeContext["promptCapabilities"])
+	if capabilities, ok := options.RuntimeContext["capabilities"].([]string); ok &&
+		slices.Contains(capabilities, "imageInput") {
+		t.Fatalf("capabilities = %#v, want no imageInput", options.RuntimeContext["capabilities"])
 	}
 }
 

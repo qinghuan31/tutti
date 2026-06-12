@@ -7904,9 +7904,9 @@ describe("useAgentGUINodeController", () => {
             backendPromptImagesSupported === null
               ? {}
               : {
-                  promptCapabilities: {
-                    image: backendPromptImagesSupported
-                  }
+                  capabilities: backendPromptImagesSupported
+                    ? ["imageInput"]
+                    : []
                 }
         }))
       });

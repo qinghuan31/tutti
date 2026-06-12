@@ -17,22 +17,6 @@ const terminalMessageStatuses = new Set([
   "resolved"
 ]);
 
-export interface AgentActivityPromptImagesSupportInput {
-  composerOptions?: AgentActivityComposerOptions | null;
-  sessionRuntimeContext?: Record<string, unknown> | null;
-}
-
-export function resolveAgentActivityPromptImagesSupported(
-  input: AgentActivityPromptImagesSupportInput
-): boolean | null {
-  return (
-    promptImagesSupportedFromRuntimeContext(input.sessionRuntimeContext) ??
-    promptImagesSupportedFromRuntimeContext(
-      input.composerOptions?.runtimeContext
-    )
-  );
-}
-
 export function selectNeedsAttentionCount(
   snapshot: AgentActivitySnapshot
 ): number {
@@ -289,26 +273,6 @@ function includesAny(value: string, needles: readonly string[]): boolean {
 
 function stringValue(value: unknown): string {
   return typeof value === "string" ? value.trim() : "";
-}
-
-function promptImagesSupportedFromRuntimeContext(
-  runtimeContext: Record<string, unknown> | null | undefined
-): boolean | null {
-  const promptCapabilities = recordValue(runtimeContext?.promptCapabilities);
-  const value = promptCapabilities?.image;
-  if (typeof value === "boolean") {
-    return value;
-  }
-  if (typeof value === "string") {
-    const normalized = value.trim().toLowerCase();
-    if (normalized === "true") {
-      return true;
-    }
-    if (normalized === "false") {
-      return false;
-    }
-  }
-  return null;
 }
 
 function recordValue(value: unknown): Record<string, unknown> | null {

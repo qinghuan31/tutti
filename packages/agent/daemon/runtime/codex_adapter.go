@@ -1022,10 +1022,9 @@ func (a *CodexAdapter) SessionState(session Session) SessionStateSnapshot {
 		Status:            session.Status,
 		PermissionModeID:  session.PermissionModeID,
 		RuntimeContext: map[string]any{
-			"cwd":                session.CWD,
-			"title":              session.Title,
-			"permissionModeId":   session.PermissionModeID,
-			"promptCapabilities": promptCapabilitiesRuntimeContext(codexPromptImageSupported(nil)),
+			"cwd":              session.CWD,
+			"title":            session.Title,
+			"permissionModeId": session.PermissionModeID,
 		},
 		UpdatedAtUnixMS: session.UpdatedAtUnixMS,
 	}

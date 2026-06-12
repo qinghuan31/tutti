@@ -2,7 +2,6 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import {
   normalizeAgentActivityDisplayStatus,
-  resolveAgentActivityPromptImagesSupported,
   selectNeedsAttentionCount,
   selectNeedsAttentionItems,
   selectSessionDisplayStatuses
@@ -114,41 +113,6 @@ test("agent activity display status normalizes raw status aliases", () => {
   );
   assert.equal(normalizeAgentActivityDisplayStatus("ready"), "idle");
   assert.equal(normalizeAgentActivityDisplayStatus("error"), "failed");
-});
-
-test("prompt image support resolves from runtime context and composer options", () => {
-  assert.equal(
-    resolveAgentActivityPromptImagesSupported({
-      sessionRuntimeContext: {
-        promptCapabilities: { image: false }
-      },
-      composerOptions: {
-        provider: "codex",
-        models: [],
-        reasoningEfforts: [],
-        permissionConfig: null,
-        runtimeContext: { promptCapabilities: { image: true } },
-        skills: [],
-        loadedAtUnixMs: 1
-      }
-    }),
-    false
-  );
-  assert.equal(
-    resolveAgentActivityPromptImagesSupported({
-      composerOptions: {
-        provider: "claude-code",
-        models: [],
-        reasoningEfforts: [],
-        permissionConfig: null,
-        runtimeContext: { promptCapabilities: { image: "true" } },
-        skills: [],
-        loadedAtUnixMs: 1
-      }
-    }),
-    true
-  );
-  assert.equal(resolveAgentActivityPromptImagesSupported({}), null);
 });
 
 test("needs-attention selectors treat waiting assistant constraints as actionable", () => {

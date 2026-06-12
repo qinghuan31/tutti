@@ -942,10 +942,9 @@ func (a *CodexAppServerAdapter) SessionState(session Session) SessionStateSnapsh
 		Status:            session.Status,
 		PermissionModeID:  session.PermissionModeID,
 		RuntimeContext: map[string]any{
-			"cwd":                session.CWD,
-			"title":              session.Title,
-			"permissionModeId":   session.PermissionModeID,
-			"promptCapabilities": promptCapabilitiesRuntimeContext(true),
+			"cwd":              session.CWD,
+			"title":            session.Title,
+			"permissionModeId": session.PermissionModeID,
 		},
 		UpdatedAtUnixMS: session.UpdatedAtUnixMS,
 	}
