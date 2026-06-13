@@ -218,6 +218,28 @@ test("desktop release workflow falls back to legacy Nextop GitHub variables", as
   );
 });
 
+test("desktop release workflow materializes macOS signing certificate before packaging", async () => {
+  const workflow = await readFile(workflowPath, "utf8");
+
+  assert.match(workflow, /name:\s+Prepare macOS signing certificate/);
+  assert.match(
+    workflow,
+    /MACOS_CSC_LINK:\s+\${{\s*secrets\.MACOS_CSC_LINK\s*}}/
+  );
+  assert.match(
+    workflow,
+    /certificate_path="\$\{RUNNER_TEMP\}\/macos-codesign-certificate\.p12"/
+  );
+  assert.match(
+    workflow,
+    /echo "CSC_LINK=\$\{certificate_path\}" >> "\$\{GITHUB_ENV\}"/
+  );
+  assert.doesNotMatch(
+    workflow,
+    /Build release artifacts[\s\S]*?CSC_LINK:\s+\${{\s*secrets\.MACOS_CSC_LINK\s*}}[\s\S]*?pnpm --filter @tutti-os\/desktop build:mac:signed/
+  );
+});
+
 test("desktop release workflow opts JavaScript actions into Node 24", async () => {
   const workflow = await readFile(workflowPath, "utf8");
 
