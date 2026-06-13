@@ -19,7 +19,7 @@ import type {
 import { AppCenterPanel } from "@tutti-os/workspace-app-center/ui";
 import { agentGuiDockIconUrls } from "@tutti-os/agent-gui";
 import type { AgentProviderStatus } from "@tutti-os/client-tuttid-ts";
-import { useService } from "@zk-tech/bedrock/di";
+import { useService } from "@tutti-os/infra/di";
 import {
   IAgentProviderStatusService,
   requestWorkspaceAgentGuiLaunch
