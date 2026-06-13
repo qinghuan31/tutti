@@ -12,8 +12,6 @@ import {
   buildWorkspaceAgentInteractivePromptLabels,
   buildWorkspaceAgentMessageCenterModel,
   isWaitingMessageCenterItem,
-  PLAN_IMPLEMENTATION_ACTION_IMPLEMENT,
-  PLAN_IMPLEMENTATION_PROMPT,
   WorkspaceAgentMessageCenterPanel,
   type WorkspaceAgentMessageCenterItem
 } from "@tutti-os/agent-gui/agent-message-center";
@@ -686,31 +684,16 @@ function WorkspaceAgentMessageCenterAction({
         }}
         onOpenChat={openMessageCenterChat}
         onSubmitPrompt={async (input) => {
-          // Codex plan decisions have no provider-driven approval. The compact
-          // deck card only offers "implement" (refining/skipping is deferred to
-          // the conversation via the open-conversation jump), so the message
-          // center orchestrates it client-side: leave plan mode, then send the
-          // literal implement prompt — not a submitInteractive call.
-          if (input.action === PLAN_IMPLEMENTATION_ACTION_IMPLEMENT) {
-            await workspaceAgentActivityService.updateSessionSettings({
-              workspaceId: workspace.id,
-              agentSessionId: input.agentSessionId,
-              settings: { planMode: false }
-            });
-            await workspaceAgentActivityService.sendInput({
-              workspaceId: workspace.id,
-              agentSessionId: input.agentSessionId,
-              content: [{ type: "text", text: PLAN_IMPLEMENTATION_PROMPT }]
-            });
-            return;
-          }
-          await workspaceAgentActivityService.submitInteractive({
+          await workspaceAgentActivityService.submitPlanDecision({
             workspaceId: workspace.id,
             agentSessionId: input.agentSessionId,
+            // "" (no pending-prompt kind) takes the interactive-prompt branch
+            // in planDecisionOps; only "plan-implementation" diverges from it.
+            promptKind: input.promptKind ?? "",
             requestId: input.requestId,
-            action: input.action ?? null,
-            optionId: input.optionId ?? null,
-            payload: input.payload ?? null
+            ...(input.action ? { action: input.action } : {}),
+            ...(input.optionId ? { optionId: input.optionId } : {}),
+            ...(input.payload ? { payload: input.payload } : {})
           });
         }}
       />

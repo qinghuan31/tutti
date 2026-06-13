@@ -1,0 +1,37 @@
+import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+import { dirname, resolve } from "node:path";
+import test from "node:test";
+import { fileURLToPath } from "node:url";
+
+const source = readFileSync(
+  resolve(dirname(fileURLToPath(import.meta.url)), "WorkspaceChrome.tsx"),
+  "utf8"
+);
+
+test("workspace chrome deck submit forwards to submitPlanDecision instead of branching on plan action", () => {
+  // Must call submitPlanDecision with promptKind threaded from the panel
+  assert.match(source, /workspaceAgentActivityService\.submitPlanDecision\(/);
+  assert.match(source, /promptKind: input\.promptKind/);
+
+  // Must NOT contain the old plan-implementation branch inside onSubmitPrompt
+  assert.doesNotMatch(source, /PLAN_IMPLEMENTATION_ACTION_IMPLEMENT/);
+  assert.doesNotMatch(source, /PLAN_IMPLEMENTATION_PROMPT/);
+});
+
+test("workspace chrome does not call updateSessionSettings or sendInput from the deck submit handler", () => {
+  // Ensure the old branching logic in onSubmitPrompt is removed
+  // (toast notification path at line 484 uses submitInteractive — that is expected to stay)
+  // But updateSessionSettings + sendInput pair for plan mode must be gone from deck handler
+  const deckSubmitMatch = source.match(
+    /onSubmitPrompt=\{async \(input\) => \{([\s\S]*?)\}\}/
+  );
+  assert.ok(
+    deckSubmitMatch,
+    "onSubmitPrompt handler should be present in WorkspaceChrome"
+  );
+  const handler = deckSubmitMatch[1] ?? "";
+  assert.doesNotMatch(handler, /updateSessionSettings/);
+  assert.doesNotMatch(handler, /sendInput/);
+  assert.doesNotMatch(handler, /submitInteractive/);
+});

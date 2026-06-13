@@ -77,6 +77,7 @@ export interface WorkspaceAgentMessageCenterPanelProps {
     agentSessionId: string;
     optionId?: string;
     payload?: Record<string, unknown>;
+    promptKind?: string;
     requestId: string;
   }) => Promise<void> | void;
 }
@@ -244,7 +245,8 @@ function WorkspaceAgentMessageCenterPanelContent({
         }
         await onSubmitPrompt({
           ...input,
-          agentSessionId: item.agentSessionId
+          agentSessionId: item.agentSessionId,
+          promptKind: item.pendingPrompt?.kind
         });
       } finally {
         setSubmittingPromptKey((current) =>
