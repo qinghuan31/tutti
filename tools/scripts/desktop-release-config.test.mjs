@@ -130,7 +130,7 @@ test("desktop release workflow passes tsh-aligned Feishu card context", async ()
   );
   assert.match(
     workflow,
-    /TUTTI_DESKTOP_RELEASE_ASSETS_BASE_URL:\s+\${{\s*vars\.TUTTI_DESKTOP_RELEASE_ASSETS_BASE_URL\s*}}/
+    /TUTTI_DESKTOP_RELEASE_ASSETS_BASE_URL:\s+\${{\s*vars\.TUTTI_DESKTOP_RELEASE_ASSETS_BASE_URL\s*\|\|\s*vars\.NEXTOP_DESKTOP_RELEASE_ASSETS_BASE_URL\s*}}/
   );
   assert.match(workflow, /RELEASE_ASSET_DIRECTORY:\s+release-assets/);
 });
@@ -190,6 +190,31 @@ test("desktop release workflow can mirror release assets to S3 and upsert direct
   assert.match(
     workflow,
     /apps\/desktop\/scripts\/upsert-release-download-links\.mjs/
+  );
+});
+
+test("desktop release workflow falls back to legacy Nextop GitHub variables", async () => {
+  const workflow = await readFile(workflowPath, "utf8");
+
+  assert.match(
+    workflow,
+    /\(vars\.TUTTI_DESKTOP_RELEASE_WORKFLOW_ENABLED \|\| vars\.NEXTOP_DESKTOP_RELEASE_WORKFLOW_ENABLED\) == 'true'/
+  );
+  assert.match(
+    workflow,
+    /TUTTI_ARTIFACTS_AWS_ROLE_ARN:\s+\${{\s*vars\.TUTTI_ARTIFACTS_AWS_ROLE_ARN\s*\|\|\s*vars\.NEXTOP_ARTIFACTS_AWS_ROLE_ARN\s*}}/
+  );
+  assert.match(
+    workflow,
+    /TUTTI_DESKTOP_RELEASE_ASSETS_BASE_URL:\s+\${{\s*vars\.TUTTI_DESKTOP_RELEASE_ASSETS_BASE_URL\s*\|\|\s*vars\.NEXTOP_DESKTOP_RELEASE_ASSETS_BASE_URL\s*}}/
+  );
+  assert.match(
+    workflow,
+    /TUTTI_DESKTOP_RELEASE_ASSETS_S3_BUCKET:\s+\${{\s*vars\.TUTTI_DESKTOP_RELEASE_ASSETS_S3_BUCKET\s*\|\|\s*vars\.NEXTOP_DESKTOP_RELEASE_ASSETS_S3_BUCKET\s*}}/
+  );
+  assert.match(
+    workflow,
+    /TUTTI_DESKTOP_RELEASE_ASSETS_S3_PREFIX:\s+\${{\s*vars\.TUTTI_DESKTOP_RELEASE_ASSETS_S3_PREFIX\s*\|\|\s*vars\.NEXTOP_DESKTOP_RELEASE_ASSETS_S3_PREFIX\s*}}/
   );
 });
 

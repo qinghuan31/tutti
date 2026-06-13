@@ -408,6 +408,31 @@ test("Tutti app catalog workflow aggregates latest release metadata", async () =
   assert.match(workflow, /cloudfront create-invalidation/);
 });
 
+test("Tutti app catalog workflow falls back to legacy Nextop GitHub variables", async () => {
+  const workflow = await readFile(catalogWorkflowPath, "utf8");
+
+  assert.match(
+    workflow,
+    /AWS_REGION_VALUE:\s+\${{\s*inputs\.aws_region\s*\|\|\s*vars\.TUTTI_APP_RELEASES_AWS_REGION\s*\|\|\s*vars\.NEXTOP_APP_RELEASES_AWS_REGION\s*}}/
+  );
+  assert.match(
+    workflow,
+    /AWS_ROLE_ARN_VALUE:\s+\${{\s*inputs\.aws_role_arn\s*\|\|\s*vars\.TUTTI_APP_RELEASES_AWS_ROLE_ARN\s*\|\|\s*vars\.NEXTOP_APP_RELEASES_AWS_ROLE_ARN\s*}}/
+  );
+  assert.match(
+    workflow,
+    /S3_BUCKET_VALUE:\s+\${{\s*inputs\.s3_bucket\s*\|\|\s*vars\.TUTTI_APP_RELEASES_S3_BUCKET\s*\|\|\s*vars\.NEXTOP_APP_RELEASES_S3_BUCKET\s*}}/
+  );
+  assert.match(
+    workflow,
+    /S3_PREFIX_VALUE:\s+\${{\s*inputs\.s3_prefix\s*\|\|\s*vars\.TUTTI_APP_RELEASES_S3_PREFIX\s*\|\|\s*vars\.NEXTOP_APP_RELEASES_S3_PREFIX\s*}}/
+  );
+  assert.match(
+    workflow,
+    /CLOUDFRONT_DISTRIBUTION_ID_VALUE:\s+\${{\s*inputs\.cloudfront_distribution_id\s*\|\|\s*vars\.TUTTI_APP_RELEASES_CLOUDFRONT_DISTRIBUTION_ID\s*\|\|\s*vars\.NEXTOP_APP_RELEASES_CLOUDFRONT_DISTRIBUTION_ID\s*}}/
+  );
+});
+
 test("Tutti app staging catalog workflow uses an isolated prefix", async () => {
   const workflow = await readFile(stagingCatalogWorkflowPath, "utf8");
 
@@ -432,6 +457,31 @@ test("Tutti app staging catalog workflow uses an isolated prefix", async () => {
     /packages\/workspace\/app-release-tools\/bin\/verify-tutti-app-release-artifacts\.mjs/
   );
   assert.match(workflow, /--catalog-file tutti-app-catalog\/catalog\.json/);
+});
+
+test("Tutti app staging catalog workflow falls back to legacy Nextop GitHub variables", async () => {
+  const workflow = await readFile(stagingCatalogWorkflowPath, "utf8");
+
+  assert.match(
+    workflow,
+    /AWS_REGION_VALUE:\s+\${{\s*inputs\.aws_region\s*\|\|\s*vars\.TUTTI_APP_RELEASES_STAGING_AWS_REGION\s*\|\|\s*vars\.NEXTOP_APP_RELEASES_STAGING_AWS_REGION\s*\|\|\s*vars\.TUTTI_APP_RELEASES_AWS_REGION\s*\|\|\s*vars\.NEXTOP_APP_RELEASES_AWS_REGION\s*}}/
+  );
+  assert.match(
+    workflow,
+    /AWS_ROLE_ARN_VALUE:\s+\${{\s*inputs\.aws_role_arn\s*\|\|\s*vars\.TUTTI_APP_RELEASES_STAGING_AWS_ROLE_ARN\s*\|\|\s*vars\.NEXTOP_APP_RELEASES_STAGING_AWS_ROLE_ARN\s*\|\|\s*vars\.TUTTI_APP_RELEASES_AWS_ROLE_ARN\s*\|\|\s*vars\.NEXTOP_APP_RELEASES_AWS_ROLE_ARN\s*}}/
+  );
+  assert.match(
+    workflow,
+    /S3_BUCKET_VALUE:\s+\${{\s*inputs\.s3_bucket\s*\|\|\s*vars\.TUTTI_APP_RELEASES_STAGING_S3_BUCKET\s*\|\|\s*vars\.NEXTOP_APP_RELEASES_STAGING_S3_BUCKET\s*\|\|\s*vars\.TUTTI_APP_RELEASES_S3_BUCKET\s*\|\|\s*vars\.NEXTOP_APP_RELEASES_S3_BUCKET\s*}}/
+  );
+  assert.match(
+    workflow,
+    /S3_PREFIX_VALUE:\s+\${{\s*inputs\.s3_prefix\s*\|\|\s*vars\.TUTTI_APP_RELEASES_STAGING_S3_PREFIX\s*\|\|\s*vars\.NEXTOP_APP_RELEASES_STAGING_S3_PREFIX\s*\|\|\s*'tutti-app-releases-staging'\s*}}/
+  );
+  assert.match(
+    workflow,
+    /CLOUDFRONT_DISTRIBUTION_ID_VALUE:\s+\${{\s*inputs\.cloudfront_distribution_id\s*\|\|\s*vars\.TUTTI_APP_RELEASES_STAGING_CLOUDFRONT_DISTRIBUTION_ID\s*\|\|\s*vars\.NEXTOP_APP_RELEASES_STAGING_CLOUDFRONT_DISTRIBUTION_ID\s*\|\|\s*vars\.TUTTI_APP_RELEASES_CLOUDFRONT_DISTRIBUTION_ID\s*\|\|\s*vars\.NEXTOP_APP_RELEASES_CLOUDFRONT_DISTRIBUTION_ID\s*}}/
+  );
 });
 
 function assertCatalogWorkflowRefreshesExistingAppLatestMetadata(workflow) {

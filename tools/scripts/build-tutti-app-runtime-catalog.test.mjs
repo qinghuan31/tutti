@@ -124,6 +124,35 @@ test("Tutti app runtime workflow publishes immutable artifacts and mutable catal
   assert.match(workflow, /max-age=60/);
 });
 
+test("Tutti app runtime workflow falls back to legacy Nextop GitHub variables", async () => {
+  const workflow = await readFile(runtimeWorkflowPath, "utf8");
+
+  assert.match(
+    workflow,
+    /AWS_REGION_VALUE:\s+\${{\s*inputs\.aws_region\s*\|\|\s*vars\.TUTTI_APP_RUNTIME_AWS_REGION\s*\|\|\s*vars\.NEXTOP_APP_RUNTIME_AWS_REGION\s*\|\|\s*vars\.TUTTI_APP_RELEASES_AWS_REGION\s*\|\|\s*vars\.NEXTOP_APP_RELEASES_AWS_REGION\s*}}/
+  );
+  assert.match(
+    workflow,
+    /AWS_ROLE_ARN_VALUE:\s+\${{\s*inputs\.aws_role_arn\s*\|\|\s*vars\.TUTTI_APP_RUNTIME_AWS_ROLE_ARN\s*\|\|\s*vars\.NEXTOP_APP_RUNTIME_AWS_ROLE_ARN\s*\|\|\s*vars\.TUTTI_APP_RELEASES_AWS_ROLE_ARN\s*\|\|\s*vars\.NEXTOP_APP_RELEASES_AWS_ROLE_ARN\s*}}/
+  );
+  assert.match(
+    workflow,
+    /S3_BUCKET_VALUE:\s+\${{\s*inputs\.s3_bucket\s*\|\|\s*vars\.TUTTI_APP_RUNTIME_S3_BUCKET\s*\|\|\s*vars\.NEXTOP_APP_RUNTIME_S3_BUCKET\s*\|\|\s*vars\.TUTTI_APP_RELEASES_S3_BUCKET\s*\|\|\s*vars\.NEXTOP_APP_RELEASES_S3_BUCKET\s*}}/
+  );
+  assert.match(
+    workflow,
+    /S3_PREFIX_VALUE:\s+\${{\s*inputs\.s3_prefix\s*\|\|\s*vars\.TUTTI_APP_RUNTIME_S3_PREFIX\s*\|\|\s*vars\.NEXTOP_APP_RUNTIME_S3_PREFIX\s*\|\|\s*'tutti-app-runtimes'\s*}}/
+  );
+  assert.match(
+    workflow,
+    /ARTIFACT_BASE_URL_VALUE:\s+\${{\s*inputs\.artifact_base_url\s*\|\|\s*vars\.TUTTI_APP_RUNTIME_ARTIFACT_BASE_URL\s*\|\|\s*vars\.NEXTOP_APP_RUNTIME_ARTIFACT_BASE_URL\s*}}/
+  );
+  assert.match(
+    workflow,
+    /CLOUDFRONT_DISTRIBUTION_ID_VALUE:\s+\${{\s*inputs\.cloudfront_distribution_id\s*\|\|\s*vars\.TUTTI_APP_RUNTIME_CLOUDFRONT_DISTRIBUTION_ID\s*\|\|\s*vars\.NEXTOP_APP_RUNTIME_CLOUDFRONT_DISTRIBUTION_ID\s*}}/
+  );
+});
+
 async function runtimeMetadataFile(tempDir, overrides) {
   const baseMetadata = {
     schemaVersion: "tutti.app.runtime-platform.v2",

@@ -8,6 +8,11 @@ const workspaceRoot = join(scriptDirectory, "..", "..");
 
 const legacyTokens = ["nextop", "Nextop", "NEXTOP"];
 const allowedFiles = new Set([
+  ".codex/skills/tutti-app-release/SKILL.md",
+  ".github/workflows/desktop-release.yml",
+  ".github/workflows/publish-tutti-app-catalog.yml",
+  ".github/workflows/publish-tutti-app-catalog-staging.yml",
+  ".github/workflows/publish-tutti-app-runtime.yml",
   "apps/cli/internal/defaults/defaults.go",
   "apps/cli/internal/defaults/defaults_test.go",
   "packages/agent/gui/shared/roomShare.ts",
@@ -25,7 +30,10 @@ const allowedFiles = new Set([
   "services/tuttid/builtin-apps/catalog.go",
   "services/tuttid/builtin-apps/catalog_test.go",
   "services/tuttid/types/defaults.go",
-  "services/tuttid/types/defaults_test.go"
+  "services/tuttid/types/defaults_test.go",
+  "tools/scripts/build-tutti-app-release.test.mjs",
+  "tools/scripts/build-tutti-app-runtime-catalog.test.mjs",
+  "tools/scripts/desktop-release-config.test.mjs"
 ]);
 
 const ignoredPrefixes = [

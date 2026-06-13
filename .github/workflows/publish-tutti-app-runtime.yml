@@ -4,19 +4,19 @@ on:
   workflow_dispatch:
     inputs:
       aws_region:
-        description: AWS region. Defaults to vars.TUTTI_APP_RUNTIME_AWS_REGION, then vars.TUTTI_APP_RELEASES_AWS_REGION.
+        description: AWS region. Defaults to runtime vars, then release vars, with legacy NEXTOP fallbacks.
         required: false
         type: string
       aws_role_arn:
-        description: AWS role ARN. Defaults to vars.TUTTI_APP_RUNTIME_AWS_ROLE_ARN, then vars.TUTTI_APP_RELEASES_AWS_ROLE_ARN.
+        description: AWS role ARN. Defaults to runtime vars, then release vars, with legacy NEXTOP fallbacks.
         required: false
         type: string
       s3_bucket:
-        description: S3 bucket. Defaults to vars.TUTTI_APP_RUNTIME_S3_BUCKET, then vars.TUTTI_APP_RELEASES_S3_BUCKET.
+        description: S3 bucket. Defaults to runtime vars, then release vars, with legacy NEXTOP fallbacks.
         required: false
         type: string
       s3_prefix:
-        description: S3 prefix. Defaults to vars.TUTTI_APP_RUNTIME_S3_PREFIX or tutti-app-runtimes.
+        description: S3 prefix. Defaults to runtime vars or tutti-app-runtimes, with legacy NEXTOP fallback.
         required: false
         type: string
       artifact_base_url:
@@ -239,12 +239,12 @@ jobs:
     runs-on: ubuntu-latest
     needs: build
     env:
-      AWS_REGION_VALUE: ${{ inputs.aws_region || vars.TUTTI_APP_RUNTIME_AWS_REGION || vars.TUTTI_APP_RELEASES_AWS_REGION }}
-      AWS_ROLE_ARN_VALUE: ${{ inputs.aws_role_arn || vars.TUTTI_APP_RUNTIME_AWS_ROLE_ARN || vars.TUTTI_APP_RELEASES_AWS_ROLE_ARN }}
-      S3_BUCKET_VALUE: ${{ inputs.s3_bucket || vars.TUTTI_APP_RUNTIME_S3_BUCKET || vars.TUTTI_APP_RELEASES_S3_BUCKET }}
-      S3_PREFIX_VALUE: ${{ inputs.s3_prefix || vars.TUTTI_APP_RUNTIME_S3_PREFIX || 'tutti-app-runtimes' }}
-      ARTIFACT_BASE_URL_VALUE: ${{ inputs.artifact_base_url || vars.TUTTI_APP_RUNTIME_ARTIFACT_BASE_URL }}
-      CLOUDFRONT_DISTRIBUTION_ID_VALUE: ${{ inputs.cloudfront_distribution_id || vars.TUTTI_APP_RUNTIME_CLOUDFRONT_DISTRIBUTION_ID }}
+      AWS_REGION_VALUE: ${{ inputs.aws_region || vars.TUTTI_APP_RUNTIME_AWS_REGION || vars.NEXTOP_APP_RUNTIME_AWS_REGION || vars.TUTTI_APP_RELEASES_AWS_REGION || vars.NEXTOP_APP_RELEASES_AWS_REGION }}
+      AWS_ROLE_ARN_VALUE: ${{ inputs.aws_role_arn || vars.TUTTI_APP_RUNTIME_AWS_ROLE_ARN || vars.NEXTOP_APP_RUNTIME_AWS_ROLE_ARN || vars.TUTTI_APP_RELEASES_AWS_ROLE_ARN || vars.NEXTOP_APP_RELEASES_AWS_ROLE_ARN }}
+      S3_BUCKET_VALUE: ${{ inputs.s3_bucket || vars.TUTTI_APP_RUNTIME_S3_BUCKET || vars.NEXTOP_APP_RUNTIME_S3_BUCKET || vars.TUTTI_APP_RELEASES_S3_BUCKET || vars.NEXTOP_APP_RELEASES_S3_BUCKET }}
+      S3_PREFIX_VALUE: ${{ inputs.s3_prefix || vars.TUTTI_APP_RUNTIME_S3_PREFIX || vars.NEXTOP_APP_RUNTIME_S3_PREFIX || 'tutti-app-runtimes' }}
+      ARTIFACT_BASE_URL_VALUE: ${{ inputs.artifact_base_url || vars.TUTTI_APP_RUNTIME_ARTIFACT_BASE_URL || vars.NEXTOP_APP_RUNTIME_ARTIFACT_BASE_URL }}
+      CLOUDFRONT_DISTRIBUTION_ID_VALUE: ${{ inputs.cloudfront_distribution_id || vars.TUTTI_APP_RUNTIME_CLOUDFRONT_DISTRIBUTION_ID || vars.NEXTOP_APP_RUNTIME_CLOUDFRONT_DISTRIBUTION_ID }}
 
     steps:
       - name: Checkout

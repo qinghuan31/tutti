@@ -16,19 +16,19 @@ on:
         required: false
         type: string
       aws_region:
-        description: AWS region. Defaults to staging vars, then vars.TUTTI_APP_RELEASES_AWS_REGION.
+        description: AWS region. Defaults to staging vars, then production vars, with legacy NEXTOP fallbacks.
         required: false
         type: string
       aws_role_arn:
-        description: AWS role ARN. Defaults to staging vars, then vars.TUTTI_APP_RELEASES_AWS_ROLE_ARN.
+        description: AWS role ARN. Defaults to staging vars, then production vars, with legacy NEXTOP fallbacks.
         required: false
         type: string
       s3_bucket:
-        description: S3 bucket. Defaults to staging vars, then vars.TUTTI_APP_RELEASES_S3_BUCKET.
+        description: S3 bucket. Defaults to staging vars, then production vars, with legacy NEXTOP fallbacks.
         required: false
         type: string
       s3_prefix:
-        description: S3 prefix. Defaults to vars.TUTTI_APP_RELEASES_STAGING_S3_PREFIX or tutti-app-releases-staging.
+        description: S3 prefix. Defaults to staging vars, then tutti-app-releases-staging, with legacy NEXTOP fallbacks.
         required: false
         type: string
       cloudfront_distribution_id:
@@ -49,11 +49,11 @@ jobs:
     env:
       CATALOG_MODE: ${{ inputs.catalog_mode }}
       APP_IDS_INPUT: ${{ inputs.app_ids }}
-      AWS_REGION_VALUE: ${{ inputs.aws_region || vars.TUTTI_APP_RELEASES_STAGING_AWS_REGION || vars.TUTTI_APP_RELEASES_AWS_REGION }}
-      AWS_ROLE_ARN_VALUE: ${{ inputs.aws_role_arn || vars.TUTTI_APP_RELEASES_STAGING_AWS_ROLE_ARN || vars.TUTTI_APP_RELEASES_AWS_ROLE_ARN }}
-      S3_BUCKET_VALUE: ${{ inputs.s3_bucket || vars.TUTTI_APP_RELEASES_STAGING_S3_BUCKET || vars.TUTTI_APP_RELEASES_S3_BUCKET }}
-      S3_PREFIX_VALUE: ${{ inputs.s3_prefix || vars.TUTTI_APP_RELEASES_STAGING_S3_PREFIX || 'tutti-app-releases-staging' }}
-      CLOUDFRONT_DISTRIBUTION_ID_VALUE: ${{ inputs.cloudfront_distribution_id || vars.TUTTI_APP_RELEASES_STAGING_CLOUDFRONT_DISTRIBUTION_ID || vars.TUTTI_APP_RELEASES_CLOUDFRONT_DISTRIBUTION_ID }}
+      AWS_REGION_VALUE: ${{ inputs.aws_region || vars.TUTTI_APP_RELEASES_STAGING_AWS_REGION || vars.NEXTOP_APP_RELEASES_STAGING_AWS_REGION || vars.TUTTI_APP_RELEASES_AWS_REGION || vars.NEXTOP_APP_RELEASES_AWS_REGION }}
+      AWS_ROLE_ARN_VALUE: ${{ inputs.aws_role_arn || vars.TUTTI_APP_RELEASES_STAGING_AWS_ROLE_ARN || vars.NEXTOP_APP_RELEASES_STAGING_AWS_ROLE_ARN || vars.TUTTI_APP_RELEASES_AWS_ROLE_ARN || vars.NEXTOP_APP_RELEASES_AWS_ROLE_ARN }}
+      S3_BUCKET_VALUE: ${{ inputs.s3_bucket || vars.TUTTI_APP_RELEASES_STAGING_S3_BUCKET || vars.NEXTOP_APP_RELEASES_STAGING_S3_BUCKET || vars.TUTTI_APP_RELEASES_S3_BUCKET || vars.NEXTOP_APP_RELEASES_S3_BUCKET }}
+      S3_PREFIX_VALUE: ${{ inputs.s3_prefix || vars.TUTTI_APP_RELEASES_STAGING_S3_PREFIX || vars.NEXTOP_APP_RELEASES_STAGING_S3_PREFIX || 'tutti-app-releases-staging' }}
+      CLOUDFRONT_DISTRIBUTION_ID_VALUE: ${{ inputs.cloudfront_distribution_id || vars.TUTTI_APP_RELEASES_STAGING_CLOUDFRONT_DISTRIBUTION_ID || vars.NEXTOP_APP_RELEASES_STAGING_CLOUDFRONT_DISTRIBUTION_ID || vars.TUTTI_APP_RELEASES_CLOUDFRONT_DISTRIBUTION_ID || vars.NEXTOP_APP_RELEASES_CLOUDFRONT_DISTRIBUTION_ID }}
 
     steps:
       - name: Checkout
