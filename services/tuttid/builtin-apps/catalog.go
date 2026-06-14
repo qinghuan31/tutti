@@ -48,7 +48,6 @@ const (
 	remoteCatalogFileEnv               = "TUTTI_APP_CATALOG_FILE"
 	remoteCatalogURLEnv                = "TUTTI_APP_CATALOG_URL"
 	defaultRemoteCatalogURL            = "https://d1x7gb6wqsqmnm.cloudfront.net/tutti-app-releases/catalog.json"
-	legacyDefaultRemoteCatalogURL      = "https://d1x7gb6wqsqmnm.cloudfront.net/nextop-app-releases/catalog.json"
 	remoteCatalogFetchTimeout          = 10 * time.Second
 	remoteCatalogFetchAttempts         = 3
 )
@@ -354,9 +353,6 @@ func (l *asyncRemoteCatalogLoader) load(catalogURL string) {
 }
 
 func remoteCatalogURLs(catalogURL string) []string {
-	if catalogURL == defaultRemoteCatalogURL {
-		return []string{defaultRemoteCatalogURL, legacyDefaultRemoteCatalogURL}
-	}
 	return []string{catalogURL}
 }
 
