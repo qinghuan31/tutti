@@ -83,6 +83,7 @@ on:
 permissions:
   contents: write
   id-token: write
+  pull-requests: write
 
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
@@ -170,6 +171,8 @@ jobs:
           APP_ID: ${{ inputs.app_id }}
           VERSION: ${{ steps.bump.outputs.version }}
           VERSION_MANIFEST_PATH: ${{ inputs.version_manifest_path }}
+          BASE_BRANCH: ${{ github.ref_name }}
+          GH_TOKEN: ${{ github.token }}
         run: |
           git config user.name github-actions
           git config user.email github-actions@github.com
@@ -179,7 +182,25 @@ jobs:
             exit 1
           fi
           git commit -m "chore(release): bump ${APP_ID} to ${VERSION} [skip release]"
-          git push origin "HEAD:${GITHUB_REF_NAME}"
+
+          # The base branch is protected and rejects direct pushes, so the bump
+          # is delivered through a pull request instead of pushing to it directly.
+          bump_branch="release/${APP_ID}/${VERSION}"
+          git push origin "HEAD:${bump_branch}" --force
+
+          pr_url="$(gh pr create \
+            --base "${BASE_BRANCH}" \
+            --head "${bump_branch}" \
+            --title "chore(release): bump ${APP_ID} to ${VERSION} [skip release]" \
+            --body "Automated version bump for \`${APP_ID}\` to \`${VERSION}\`. [skip release]" \
+            2>/dev/null || gh pr view "${bump_branch}" --json url --jq .url)"
+          echo "Version bump pull request: ${pr_url}"
+
+          # Best-effort auto-merge so the bump lands without manual steps when the
+          # repository allows it; otherwise the PR is left for manual review.
+          if ! gh pr merge "${bump_branch}" --auto --squash --delete-branch; then
+            echo "::warning::Could not enable auto-merge for ${pr_url}; merge it manually to persist the version bump."
+          fi
 
       - name: Install app dependencies
         if: ${{ !inputs.catalog_only }}

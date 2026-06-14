@@ -336,7 +336,11 @@ test("Tutti app release workflow is reusable by external app repositories", asyn
   assert.match(workflow, /Bump app version/);
   assert.match(workflow, /bump-tutti-app-version/);
   assert.match(workflow, /Commit app version bump/);
-  assert.match(workflow, /git push origin "HEAD:\$\{GITHUB_REF_NAME\}"/);
+  assert.match(workflow, /pull-requests: write/);
+  assert.match(workflow, /bump_branch="release\/\$\{APP_ID\}\/\$\{VERSION\}"/);
+  assert.match(workflow, /git push origin "HEAD:\$\{bump_branch\}" --force/);
+  assert.match(workflow, /gh pr create/);
+  assert.match(workflow, /gh pr merge "\$\{bump_branch\}" --auto --squash/);
   assert.match(workflow, /release_version="\$\{manifest_version\}"/);
   assert.match(
     workflow,
