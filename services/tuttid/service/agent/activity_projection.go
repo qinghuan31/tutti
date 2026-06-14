@@ -89,7 +89,7 @@ func (p *ActivityProjection) ReportSessionState(
 		Settings:          clonePayload(input.State.Settings),
 		RuntimeContext:    clonePayload(input.State.RuntimeContext),
 		Cwd:               strings.TrimSpace(input.State.CWD),
-		Title:             strings.TrimSpace(input.State.Title),
+		Title:             strings.TrimSpace(sessionStateTitle(input.State)),
 		Status:            strings.TrimSpace(input.State.LifecycleStatus),
 		CurrentPhase:      strings.TrimSpace(input.State.CurrentPhase),
 		LastError:         strings.TrimSpace(input.State.LastError),
@@ -153,7 +153,7 @@ func activityStatePatchEventPayload(
 	if cwd := strings.TrimSpace(state.CWD); cwd != "" {
 		payload["cwd"] = cwd
 	}
-	if title := strings.TrimSpace(state.Title); title != "" {
+	if title := strings.TrimSpace(sessionStateTitle(state)); title != "" {
 		payload["title"] = title
 	}
 	if lifecycleStatus := strings.TrimSpace(state.LifecycleStatus); lifecycleStatus != "" {
@@ -193,6 +193,13 @@ func activityStatePatchEventPayload(
 		payload["turn"] = turn
 	}
 	return payload
+}
+
+func sessionStateTitle(state agentsessionstore.WorkspaceAgentSessionStateUpdate) string {
+	return firstNonEmptyString(
+		state.Title,
+		payloadString(state.RuntimeContext, "title"),
+	)
 }
 
 func activitySessionUpdateEventPayload(workspaceID string, agentSessionID string, lastEventUnixMS int64) map[string]any {

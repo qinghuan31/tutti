@@ -912,6 +912,44 @@ func TestActivityProjectionPublishesSessionUpdateForUnappliedStatePatch(t *testi
 	}
 }
 
+func TestActivityProjectionUsesRuntimeContextTitleFallback(t *testing.T) {
+	repo := &activityProjectionRepoStub{
+		stateResult: agentactivitybiz.StateReportResult{
+			Accepted:        true,
+			StateApplied:    true,
+			LastEventUnixMS: 200,
+		},
+	}
+	publisher := &activityUpdatePublisherStub{}
+	projection := NewActivityProjection(repo)
+	projection.SetPublisher(publisher)
+
+	_, err := projection.ReportSessionState(context.Background(), agentsessionstore.ReportSessionStateInput{
+		WorkspaceID:    "ws-1",
+		AgentSessionID: "session-1",
+		State: agentsessionstore.WorkspaceAgentSessionStateUpdate{
+			RuntimeContext: map[string]any{
+				"title": "Automation Review",
+			},
+			LifecycleStatus:  "failed",
+			CurrentPhase:     "failed",
+			OccurredAtUnixMS: 150,
+		},
+	})
+	if err != nil {
+		t.Fatalf("ReportSessionState() error = %v", err)
+	}
+	if got := repo.stateInput.Title; got != "Automation Review" {
+		t.Fatalf("reported title = %q, want runtime context title", got)
+	}
+	if len(publisher.events) != 1 {
+		t.Fatalf("published events = %d, want 1", len(publisher.events))
+	}
+	if got := publisher.events[0].payload["title"]; got != "Automation Review" {
+		t.Fatalf("published title = %#v, want runtime context title", got)
+	}
+}
+
 func TestActivityProjectionPublishesCanonicalSessionIDForMessageUpdates(t *testing.T) {
 	repo := &activityProjectionRepoStub{
 		messageResult: agentactivitybiz.MessageReportResult{
@@ -1996,6 +2034,7 @@ func (*fakeRuntime) Subscribe(string, string) (<-chan RuntimeStreamEvent, func()
 
 type activityProjectionRepoStub struct {
 	stateResult   agentactivitybiz.StateReportResult
+	stateInput    agentactivitybiz.SessionStateReport
 	messageInput  agentactivitybiz.SessionMessageReport
 	messageResult agentactivitybiz.MessageReportResult
 }
@@ -2021,7 +2060,8 @@ func (r *activityProjectionRepoStub) ReportSessionMessages(_ context.Context, in
 	return r.messageResult, nil
 }
 
-func (r *activityProjectionRepoStub) ReportSessionState(context.Context, agentactivitybiz.SessionStateReport) (agentactivitybiz.StateReportResult, error) {
+func (r *activityProjectionRepoStub) ReportSessionState(_ context.Context, input agentactivitybiz.SessionStateReport) (agentactivitybiz.StateReportResult, error) {
+	r.stateInput = input
 	return r.stateResult, nil
 }
 

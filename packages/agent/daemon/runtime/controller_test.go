@@ -2682,6 +2682,63 @@ func hasSessionPhasePatch(reports []agentsessionstore.ReportActivityInput, phase
 	return false
 }
 
+func TestEnrichReportStatePatchesFillsSnapshotTitleAndIdentity(t *testing.T) {
+	t.Parallel()
+
+	report := &agentsessionstore.ReportActivityInput{
+		StatePatches: []agentsessionstore.WorkspaceAgentStatePatch{{
+			AgentSessionID: "agent-session-1",
+			CurrentPhase:   "failed",
+		}},
+	}
+	enrichReportStatePatches(report, agentsessionstore.WorkspaceAgentStatePatch{
+		AgentSessionID:    "agent-session-1",
+		Provider:          "codex",
+		ProviderSessionID: "provider-session-1",
+		Model:             "gpt-5",
+		PermissionModeID:  "bypassPermissions",
+		CWD:               "/workspace",
+		Title:             "Automation Review",
+		Settings:          map[string]any{"model": "gpt-5"},
+		RuntimeContext: map[string]any{
+			"title": "Automation Review",
+			"cwd":   "/workspace",
+		},
+	})
+
+	patch := report.StatePatches[0]
+	if patch.Provider != "codex" ||
+		patch.ProviderSessionID != "provider-session-1" ||
+		patch.Model != "gpt-5" ||
+		patch.PermissionModeID != "bypassPermissions" ||
+		patch.CWD != "/workspace" ||
+		patch.Title != "Automation Review" {
+		t.Fatalf("enriched patch = %#v, want snapshot identity and title", patch)
+	}
+	if patch.RuntimeContext["title"] != "Automation Review" {
+		t.Fatalf("runtime context = %#v, want title fallback", patch.RuntimeContext)
+	}
+}
+
+func TestEnrichReportStatePatchesKeepsIncomingTitle(t *testing.T) {
+	t.Parallel()
+
+	report := &agentsessionstore.ReportActivityInput{
+		StatePatches: []agentsessionstore.WorkspaceAgentStatePatch{{
+			AgentSessionID: "agent-session-1",
+			Title:          "Provider title",
+		}},
+	}
+	enrichReportStatePatches(report, agentsessionstore.WorkspaceAgentStatePatch{
+		AgentSessionID: "agent-session-1",
+		Title:          "Automation Review",
+	})
+
+	if got := report.StatePatches[0].Title; got != "Provider title" {
+		t.Fatalf("title = %q, want incoming provider title", got)
+	}
+}
+
 func TestDeriveSessionStatusFromEvents(t *testing.T) {
 	t.Parallel()
 

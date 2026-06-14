@@ -157,6 +157,11 @@ class AgentSessionLaunchTest(unittest.TestCase):
                 session = module.start_agent_session(automation, run, log_file=None)
 
             self.assertEqual(session["id"], "agent-session-1")
+            self.assertEqual(calls[0][calls[0].index("--title") + 1], "Review")
+            self.assertEqual(
+                calls[0][calls[0].index("--display-prompt") + 1],
+                "Review the workspace.",
+            )
             self.assertIn("--show", calls[0])
             self.assertNotIn("--visible", calls[0])
 
@@ -187,6 +192,11 @@ class AgentSessionLaunchTest(unittest.TestCase):
                 session = module.start_agent_session(automation, run, log_file=None)
 
             self.assertEqual(session["id"], "agent-session-1")
+            self.assertEqual(calls[0][calls[0].index("--title") + 1], "Review")
+            self.assertEqual(
+                calls[0][calls[0].index("--display-prompt") + 1],
+                "Review the workspace.",
+            )
             self.assertIn("--visible", calls[0])
             self.assertNotIn("--show", calls[0])
 
