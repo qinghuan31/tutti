@@ -79,6 +79,23 @@ on:
         required: false
         type: string
         default: ""
+      release_app_id:
+        description: >-
+          GitHub App ID used to mint a token for the version-bump write-back.
+          When set (together with the release_app_private_key secret), the bump
+          is committed straight to the protected base branch using the app
+          identity (which must be on the branch-protection bypass list), so the
+          release runs fully unattended. When empty, the workflow falls back to
+          opening a pull request for the bump.
+        required: false
+        type: string
+        default: ""
+    secrets:
+      release_app_private_key:
+        description: >-
+          Private key (PEM) for the GitHub App referenced by release_app_id.
+          Required only when release_app_id is set.
+        required: false
 
 permissions:
   contents: write
@@ -97,8 +114,24 @@ jobs:
       cancel-in-progress: false
 
     steps:
+      - name: Generate release app token
+        # Mint a short-lived installation token for the release GitHub App. The
+        # app identity must be on the base branch's protection bypass list so it
+        # can push the version bump directly. Skipped when release_app_id is
+        # unset, in which case the workflow falls back to the pull-request flow.
+        if: ${{ inputs.release_app_id != '' }}
+        id: app-token
+        uses: actions/create-github-app-token@v2
+        with:
+          app-id: ${{ inputs.release_app_id }}
+          private-key: ${{ secrets.release_app_private_key }}
+
       - name: Checkout app repository
         uses: actions/checkout@v6
+        with:
+          # Persist the app token (when available) so the version-bump push is
+          # authenticated as the app and can bypass branch protection.
+          token: ${{ steps.app-token.outputs.token || github.token }}
 
       - name: Validate release inputs
         if: ${{ !inputs.catalog_only }}
@@ -172,10 +205,16 @@ jobs:
           VERSION: ${{ steps.bump.outputs.version }}
           VERSION_MANIFEST_PATH: ${{ inputs.version_manifest_path }}
           BASE_BRANCH: ${{ github.ref_name }}
-          GH_TOKEN: ${{ github.token }}
+          HAS_APP_TOKEN: ${{ steps.app-token.outputs.token != '' }}
+          GH_TOKEN: ${{ steps.app-token.outputs.token || github.token }}
         run: |
-          git config user.name github-actions
-          git config user.email github-actions@github.com
+          if [ "${HAS_APP_TOKEN}" = "true" ]; then
+            git config user.name "${APP_ID}-release[bot]"
+            git config user.email "${APP_ID}-release[bot]@users.noreply.github.com"
+          else
+            git config user.name github-actions
+            git config user.email github-actions@github.com
+          fi
           git add "${VERSION_MANIFEST_PATH}"
           if git diff --cached --quiet; then
             echo "No version bump changes were produced." >&2
@@ -183,23 +222,31 @@ jobs:
           fi
           git commit -m "chore(release): bump ${APP_ID} to ${VERSION} [skip release]"
 
-          # The base branch is protected and rejects direct pushes, so the bump
-          # is delivered through a pull request instead of pushing to it directly.
-          bump_branch="release/${APP_ID}/${VERSION}"
-          git push origin "HEAD:${bump_branch}" --force
+          if [ "${HAS_APP_TOKEN}" = "true" ]; then
+            # The checkout persisted the GitHub App token, whose identity is on
+            # the base branch's protection bypass list, so the bump can be pushed
+            # straight to the base branch for a fully unattended release.
+            git push origin "HEAD:${BASE_BRANCH}"
+            echo "Pushed version bump for ${APP_ID} ${VERSION} to ${BASE_BRANCH}."
+          else
+            # No app token: the base branch is protected and rejects direct
+            # pushes, so the bump is delivered through a pull request instead.
+            bump_branch="release/${APP_ID}/${VERSION}"
+            git push origin "HEAD:${bump_branch}" --force
 
-          pr_url="$(gh pr create \
-            --base "${BASE_BRANCH}" \
-            --head "${bump_branch}" \
-            --title "chore(release): bump ${APP_ID} to ${VERSION} [skip release]" \
-            --body "Automated version bump for \`${APP_ID}\` to \`${VERSION}\`. [skip release]" \
-            2>/dev/null || gh pr view "${bump_branch}" --json url --jq .url)"
-          echo "Version bump pull request: ${pr_url}"
+            pr_url="$(gh pr create \
+              --base "${BASE_BRANCH}" \
+              --head "${bump_branch}" \
+              --title "chore(release): bump ${APP_ID} to ${VERSION} [skip release]" \
+              --body "Automated version bump for \`${APP_ID}\` to \`${VERSION}\`. [skip release]" \
+              2>/dev/null || gh pr view "${bump_branch}" --json url --jq .url)"
+            echo "Version bump pull request: ${pr_url}"
 
-          # Best-effort auto-merge so the bump lands without manual steps when the
-          # repository allows it; otherwise the PR is left for manual review.
-          if ! gh pr merge "${bump_branch}" --auto --squash --delete-branch; then
-            echo "::warning::Could not enable auto-merge for ${pr_url}; merge it manually to persist the version bump."
+            # Best-effort auto-merge so the bump lands without manual steps when
+            # the repository allows it; otherwise the PR is left for review.
+            if ! gh pr merge "${bump_branch}" --auto --squash --delete-branch; then
+              echo "::warning::Could not enable auto-merge for ${pr_url}; merge it manually to persist the version bump."
+            fi
           fi
 
       - name: Install app dependencies

@@ -337,6 +337,17 @@ test("Tutti app release workflow is reusable by external app repositories", asyn
   assert.match(workflow, /bump-tutti-app-version/);
   assert.match(workflow, /Commit app version bump/);
   assert.match(workflow, /pull-requests: write/);
+  // Unattended path: a GitHub App token pushes the bump straight to the
+  // protected base branch.
+  assert.match(workflow, /release_app_id:/);
+  assert.match(workflow, /release_app_private_key:/);
+  assert.match(workflow, /actions\/create-github-app-token@v2/);
+  assert.match(
+    workflow,
+    /token: \$\{\{ steps\.app-token\.outputs\.token \|\| github\.token \}\}/
+  );
+  assert.match(workflow, /git push origin "HEAD:\$\{BASE_BRANCH\}"/);
+  // Fallback path (no app token): open a PR for the bump.
   assert.match(workflow, /bump_branch="release\/\$\{APP_ID\}\/\$\{VERSION\}"/);
   assert.match(workflow, /git push origin "HEAD:\$\{bump_branch\}" --force/);
   assert.match(workflow, /gh pr create/);
