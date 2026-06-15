@@ -931,7 +931,7 @@ describe("createAppCenterViewModel", () => {
     assert.equal(builtinApp?.canReplaceIcon, false);
   });
 
-  it("only exposes factory validation retry after failure", () => {
+  it("exposes factory fix after validation failure without a manual validation action", () => {
     const viewModel = createAppCenterViewModel({
       apps: [],
       factoryJobs: [
@@ -950,7 +950,7 @@ describe("createAppCenterViewModel", () => {
       ]
     });
 
-    assert.equal(viewModel.factoryJobs?.[0]?.canRetryValidation, true);
+    assert.equal(viewModel.factoryJobs?.[0]?.canRetryValidation, false);
     assert.equal(viewModel.factoryJobs?.[0]?.canFix, true);
     assert.equal(viewModel.factoryJobs?.[0]?.canCancel, false);
     assert.equal(viewModel.factoryJobs?.[0]?.canDelete, true);

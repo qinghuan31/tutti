@@ -78,6 +78,8 @@ export const appCenterEn = {
     },
     messages: {
       factoryJobFailed:
+        "App creation failed. Open the agent session to view details.",
+      factoryJobFailedWithFix:
         "App creation failed. Open the agent session or try Fix to view details.",
       loadingConfiguration: "Loading configuration...",
       loadingProviders: "Loading agent providers...",
@@ -365,7 +367,9 @@ export const appCenterZhCN = {
       templates: "选择起点"
     },
     messages: {
-      factoryJobFailed: "应用创建失败。打开 Agent 会话或使用修复操作查看详情。",
+      factoryJobFailed: "应用创建失败。打开 Agent 会话查看详情。",
+      factoryJobFailedWithFix:
+        "应用创建失败。打开 Agent 会话或使用修复操作查看详情。",
       loadingConfiguration: "正在加载配置...",
       loadingProviders: "正在加载 Agent Provider...",
       noAgentProviders: "暂无可用的 Agent Provider。",
