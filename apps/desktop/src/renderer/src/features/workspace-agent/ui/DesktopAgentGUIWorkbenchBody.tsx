@@ -23,7 +23,6 @@ import type { IWorkspaceAppCenterService } from "@renderer/features/workspace-ap
 import type { WorkspaceLinkAction } from "@contexts/workspace/presentation/renderer/actions/workspaceLinkActions";
 import {
   workbenchFocusInputActivationType,
-  type WorkbenchHostActivation,
   type WorkbenchDockPreviewCache,
   type WorkbenchHostNodeBodyContext
 } from "@tutti-os/workbench-surface";
@@ -45,11 +44,14 @@ import {
   projectDesktopAgentGUIWorkbenchState,
   type DesktopAgentGUIComposerOverrides,
   type DesktopAgentGUINodeState,
-  type DesktopAgentGUIPrefillPromptPayload,
   type DesktopAgentGUIWorkbenchState,
   type DesktopAgentGUIProvider
 } from "../desktopAgentGUINodeState";
 import { consumeDesktopAgentGUIOpenSessionActivation } from "../services/desktopAgentGUIOpenSessionActivation.ts";
+import {
+  consumeDesktopAgentGUIPrefillPromptActivation,
+  type DesktopAgentGUIPrefillPromptRequest
+} from "../services/desktopAgentGUIPrefillPromptActivation.ts";
 import {
   ensureDesktopManagedAgentProviderStatuses,
   isDesktopManagedAgentProvider,
@@ -112,43 +114,6 @@ const DESKTOP_AGENT_GUI_POSITION = { x: 0, y: 0 };
 type DesktopAgentProbeState = NonNullable<
   AgentGUIProps["workspaceAgentProbes"]
 >;
-
-function resolveDesktopAgentGUIPrefillPromptRequest(
-  activation: WorkbenchHostActivation | null
-): AgentGUIProps["prefillPromptRequest"] {
-  if (
-    !activation ||
-    activation.type !== desktopAgentGUIPrefillPromptActivationType ||
-    !isDesktopAgentGUIPrefillPromptPayload(activation.payload)
-  ) {
-    return null;
-  }
-
-  const draftPrompt = activation.payload.draftPrompt.trim();
-  if (!draftPrompt) {
-    return null;
-  }
-
-  return {
-    draftPrompt,
-    sequence: activation.sequence,
-    ...(activation.payload.userProjectPath?.trim()
-      ? { userProjectPath: activation.payload.userProjectPath.trim() }
-      : {})
-  };
-}
-
-function isDesktopAgentGUIPrefillPromptPayload(
-  payload: unknown
-): payload is DesktopAgentGUIPrefillPromptPayload {
-  return (
-    Boolean(payload) &&
-    typeof payload === "object" &&
-    !Array.isArray(payload) &&
-    typeof (payload as Partial<DesktopAgentGUIPrefillPromptPayload>)
-      .draftPrompt === "string"
-  );
-}
 
 function withDesktopAgentGUIProviderComposerDefaults(
   state: DesktopAgentGUINodeState,
@@ -383,9 +348,12 @@ export function DesktopAgentGUIWorkbenchBody({
   >({});
   const [workspaceAgentProbes, setWorkspaceAgentProbes] =
     useState<DesktopAgentProbeState | null>(null);
+  const [prefillPromptRequest, setPrefillPromptRequest] =
+    useState<DesktopAgentGUIPrefillPromptRequest | null>(null);
   const lastRequestedWorkbenchStateRef =
     useRef<DesktopAgentGUIWorkbenchState | null>(null);
   const handledOpenSessionActivationSequenceRef = useRef<number | null>(null);
+  const handledPrefillPromptActivationSequenceRef = useRef<number | null>(null);
   const pendingComposerDefaultsWriteRef =
     useRef<DesktopAgentComposerDefaultsWriteIntent | null>(null);
   const agentProbeProviders = useMemo(
@@ -519,6 +487,24 @@ export function DesktopAgentGUIWorkbenchBody({
     provider,
     workspaceId
   ]);
+
+  useEffect(() => {
+    if (previewMode) {
+      return;
+    }
+    const request = consumeDesktopAgentGUIPrefillPromptActivation({
+      activation: context.activation,
+      clearNodeActivation: context.host.clearNodeActivation?.bind(context.host),
+      handledSequence: handledPrefillPromptActivationSequenceRef.current,
+      markHandled: (sequence) => {
+        handledPrefillPromptActivationSequenceRef.current = sequence;
+      },
+      nodeId: context.node.id
+    });
+    if (request) {
+      setPrefillPromptRequest(request);
+    }
+  }, [context.activation, context.host, context.node.id, previewMode]);
 
   useEffect(() => {
     const handleOptimisticConversationRailToggle = (event: Event) => {
@@ -687,10 +673,7 @@ export function DesktopAgentGUIWorkbenchBody({
     context.activation?.type === workbenchFocusInputActivationType ||
     context.activation?.type === desktopAgentGUIPrefillPromptActivationType
       ? context.activation.sequence
-      : null;
-  const prefillPromptRequest = resolveDesktopAgentGUIPrefillPromptRequest(
-    context.activation
-  );
+      : (prefillPromptRequest?.sequence ?? null);
 
   return (
     <AgentGUI
