@@ -35,6 +35,7 @@ import type {
 import type { DesktopWorkspaceSettingsClient } from "./adapters/desktopWorkspaceSettingsClient.ts";
 import { formatWorkspaceSettingsBytes } from "../workspaceSettingsFormat.ts";
 import { createWorkspaceSettingsStore } from "./workspaceSettingsStore.ts";
+import { writeDeveloperPanelVisible } from "./developerPanelVisibility.ts";
 import type {
   WorkspaceManagedModel,
   WorkspaceManagedModelProviderConfig,
@@ -128,6 +129,18 @@ export class WorkspaceSettingsService implements IWorkspaceSettingsService {
     this.reportSettingsSectionSwitched(sectionID);
     if (sectionID === "apps") {
       void this.refreshManagedModelProviders();
+    }
+  }
+
+  setDeveloperPanelVisible(visible: boolean): void {
+    if (this.store.developerPanelVisible === visible) {
+      return;
+    }
+
+    this.store.developerPanelVisible = visible;
+    writeDeveloperPanelVisible(visible);
+    if (!visible && this.store.activeSection === "developer") {
+      this.store.activeSection = "general";
     }
   }
 

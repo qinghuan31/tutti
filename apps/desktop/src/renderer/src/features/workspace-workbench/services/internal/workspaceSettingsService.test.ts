@@ -35,6 +35,53 @@ test("WorkspaceSettingsService resets panel-local state when switching workspace
   assert.equal(service.store.workspaceID, "workspace-2");
 });
 
+test("WorkspaceSettingsService hides the developer panel by default", () => {
+  const service = new WorkspaceSettingsService({
+    client: createWorkspaceSettingsClient({})
+  });
+
+  assert.equal(service.store.developerPanelVisible, false);
+});
+
+test("WorkspaceSettingsService reveals the developer panel", () => {
+  const service = new WorkspaceSettingsService({
+    client: createWorkspaceSettingsClient({})
+  });
+
+  service.setDeveloperPanelVisible(true);
+
+  assert.equal(service.store.developerPanelVisible, true);
+});
+
+test("WorkspaceSettingsService leaves the developer panel when it is hidden", () => {
+  const service = new WorkspaceSettingsService({
+    client: createWorkspaceSettingsClient({})
+  });
+
+  service.setDeveloperPanelVisible(true);
+  service.openPanel({ id: "workspace-1" });
+  service.selectSection("developer");
+
+  service.setDeveloperPanelVisible(false);
+
+  assert.equal(service.store.developerPanelVisible, false);
+  assert.equal(service.store.activeSection, "general");
+});
+
+test("WorkspaceSettingsService keeps the active section when hiding from elsewhere", () => {
+  const service = new WorkspaceSettingsService({
+    client: createWorkspaceSettingsClient({})
+  });
+
+  service.setDeveloperPanelVisible(true);
+  service.openPanel({ id: "workspace-1" });
+  service.selectSection("appearance");
+
+  service.setDeveloperPanelVisible(false);
+
+  assert.equal(service.store.activeSection, "appearance");
+});
+
 test("WorkspaceSettingsService opens the managed models pane with a focused provider", () => {
   const service = new WorkspaceSettingsService({
     client: createWorkspaceSettingsClient({})

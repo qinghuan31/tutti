@@ -275,7 +275,8 @@ export const en = {
           whileAgentRunning: "While agents run"
         },
         preventSleepSaveFailed:
-          "We couldn't update the sleep prevention setting right now."
+          "We couldn't update the sleep prevention setting right now.",
+        versionLabel: "Desktop version"
       },
       nav: {
         apps: "Apps",
@@ -363,7 +364,9 @@ export const en = {
         openDaemonLog: "Open daemon log",
         openDesktopLog: "Open desktop log",
         openLogsDirectory: "Open logs folder",
-        versionLabel: "Desktop version"
+        visibilityDescription:
+          "Hide this panel from settings. Tap “General” seven times to bring it back.",
+        visibilityLabel: "Show developer panel"
       },
       title: "Settings",
       trigger: "Settings"

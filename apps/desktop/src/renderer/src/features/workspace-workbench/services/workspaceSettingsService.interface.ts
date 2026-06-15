@@ -37,6 +37,7 @@ export interface IWorkspaceSettingsService {
     options?: WorkspaceSettingsOpenOptions
   ): void;
   selectSection(sectionID: WorkspaceSettingsSectionID): void;
+  setDeveloperPanelVisible(visible: boolean): void;
   changeDefaultAgentProvider(provider: DesktopAgentProvider): Promise<void>;
   changeDockIconStyle(style: DesktopDockIconStyle): Promise<void>;
   changeDockPlacement(placement: DesktopDockPlacement): Promise<void>;

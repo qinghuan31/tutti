@@ -260,7 +260,8 @@ export const zhCN = {
           never: "不阻止",
           whileAgentRunning: "Agent 运行时阻止"
         },
-        preventSleepSaveFailed: "暂时无法更新防止休眠设置。"
+        preventSleepSaveFailed: "暂时无法更新防止休眠设置。",
+        versionLabel: "桌面版本"
       },
       nav: {
         apps: "应用",
@@ -347,7 +348,9 @@ export const zhCN = {
         openDaemonLog: "打开 daemon 日志",
         openDesktopLog: "打开 desktop 日志",
         openLogsDirectory: "打开日志目录",
-        versionLabel: "桌面版本"
+        visibilityDescription:
+          "在设置中隐藏此面板。连续点击「通用」七次即可重新显示。",
+        visibilityLabel: "显示开发者面板"
       },
       title: "设置",
       trigger: "设置"

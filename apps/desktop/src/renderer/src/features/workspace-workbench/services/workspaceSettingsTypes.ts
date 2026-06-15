@@ -83,6 +83,7 @@ export interface WorkspaceSettingsDeveloperLogsSnapshotState {
 
 export interface WorkspaceSettingsStoreState {
   activeSection: WorkspaceSettingsSectionID;
+  developerPanelVisible: boolean;
   developerLogs: WorkspaceSettingsDeveloperLogsMutableState;
   managedModels: WorkspaceSettingsManagedModelsMutableState;
   open: boolean;
@@ -91,6 +92,7 @@ export interface WorkspaceSettingsStoreState {
 
 export interface WorkspaceSettingsReadableStoreState {
   readonly activeSection: WorkspaceSettingsSectionID;
+  readonly developerPanelVisible: boolean;
   readonly developerLogs: WorkspaceSettingsDeveloperLogsSnapshotState;
   readonly managedModels: WorkspaceSettingsManagedModelsSnapshotState;
   readonly open: boolean;

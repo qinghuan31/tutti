@@ -23,7 +23,10 @@ import { useDesktopPreferencesService } from "@renderer/features/desktop-prefere
 import { useTranslation } from "@renderer/i18n";
 import { cn } from "@renderer/lib/format";
 import { formatWorkspaceSettingsBytes } from "../services/workspaceSettingsFormat";
-import type { WorkspaceSettingsDeveloperLogsSnapshotState } from "../services/workspaceSettingsTypes";
+import type {
+  WorkspaceSettingsDeveloperLogsSnapshotState,
+  WorkspaceSettingsSectionID
+} from "../services/workspaceSettingsTypes";
 import type {
   WorkspaceManagedModel,
   WorkspaceManagedModelProviderDraft,
@@ -71,6 +74,8 @@ const workspaceSettingsSelectContentClass =
 const workspaceSettingsInputClass =
   "h-8 w-full rounded-[6px] border border-[var(--border-1)] bg-[var(--transparency-block)] px-3 text-[13px] text-[var(--text-primary)] outline-none transition-colors duration-150 placeholder:text-[var(--text-tertiary)] hover:bg-[var(--transparency-hover)] focus-visible:border-[var(--border-focus)]";
 
+const developerPanelUnlockTaps = 7;
+
 export function WorkspaceSettingsPanel({
   onSelectWallpaper,
   onSelectWallpaperDisplayMode,
@@ -94,12 +99,33 @@ export function WorkspaceSettingsPanel({
   const { state: desktopPreferencesState } = useDesktopPreferencesService();
   const { service: settingsService, state: settingsState } =
     useWorkspaceSettingsService();
+  const generalTapCountRef = useRef(0);
 
   useEffect(() => {
     if (settingsState.open) {
       settingsService.syncWorkspace({ id: workspace.id });
     }
   }, [settingsService, settingsState.open, workspace.id]);
+
+  const handleSelectSection = (sectionID: WorkspaceSettingsSectionID) => {
+    if (sectionID !== "general") {
+      generalTapCountRef.current = 0;
+      settingsService.selectSection(sectionID);
+      return;
+    }
+
+    if (!settingsState.developerPanelVisible) {
+      generalTapCountRef.current += 1;
+      if (generalTapCountRef.current >= developerPanelUnlockTaps) {
+        generalTapCountRef.current = 0;
+        settingsService.setDeveloperPanelVisible(true);
+        settingsService.selectSection("developer");
+        return;
+      }
+    }
+
+    settingsService.selectSection("general");
+  };
 
   if (!settingsState.open) {
     return null;
@@ -115,7 +141,7 @@ export function WorkspaceSettingsPanel({
       <section
         aria-labelledby="workspace-settings-title"
         aria-modal="true"
-        className="grid h-[min(500px,calc(100vh-40px))] w-[min(760px,calc(100vw-40px))] origin-center grid-cols-[160px_minmax(0,1fr)] grid-rows-[auto_minmax(0,1fr)] overflow-hidden rounded-2xl border border-[var(--border-1)] bg-[var(--background-fronted)] text-[var(--text-primary)] shadow-panel transition-[background,backdrop-filter,opacity] duration-[180ms] ease-[cubic-bezier(0.22,1,0.36,1)] [-webkit-app-region:no-drag] motion-safe:animate-in motion-safe:fade-in-0 motion-safe:zoom-in-[0.96] motion-safe:duration-[250ms] motion-safe:ease-[cubic-bezier(0.22,1,0.36,1)] motion-reduce:animate-none max-[760px]:h-[min(100vh-24px,520px)] max-[760px]:w-[min(calc(100vw-24px),640px)] max-[760px]:grid-cols-1 max-[760px]:grid-rows-[auto_auto_minmax(0,1fr)]"
+        className="grid h-[min(500px,calc(100vh-40px))] w-[min(760px,calc(100vw-40px))] origin-center grid-cols-[160px_minmax(0,1fr)] grid-rows-[auto_minmax(0,1fr)] overflow-hidden rounded-2xl border border-[var(--border-1)] bg-[var(--background-fronted)] text-[var(--text-primary)] shadow-panel transition-[background,opacity] duration-[180ms] ease-[cubic-bezier(0.22,1,0.36,1)] [-webkit-app-region:no-drag] motion-safe:animate-in motion-safe:fade-in-0 motion-safe:zoom-in-[0.96] motion-safe:duration-[250ms] motion-safe:ease-[cubic-bezier(0.22,1,0.36,1)] motion-reduce:animate-none max-[760px]:h-[min(100vh-24px,520px)] max-[760px]:w-[min(calc(100vw-24px),640px)] max-[760px]:grid-cols-1 max-[760px]:grid-rows-[auto_auto_minmax(0,1fr)]"
         data-workspace-settings-panel="true"
         role="dialog"
         onClick={(event) => event.stopPropagation()}
@@ -158,10 +184,14 @@ export function WorkspaceSettingsPanel({
               id: "apps" as const,
               label: t("workspace.settings.nav.apps")
             },
-            {
-              id: "developer" as const,
-              label: t("workspace.settings.nav.developer")
-            }
+            ...(settingsState.developerPanelVisible
+              ? [
+                  {
+                    id: "developer" as const,
+                    label: t("workspace.settings.nav.developer")
+                  }
+                ]
+              : [])
           ].map((section) => {
             const selected = settingsState.activeSection === section.id;
             return (
@@ -175,7 +205,7 @@ export function WorkspaceSettingsPanel({
                     : "bg-transparent text-[var(--text-secondary)]"
                 )}
                 type="button"
-                onClick={() => settingsService.selectSection(section.id)}
+                onClick={() => handleSelectSection(section.id)}
               >
                 {section.label}
               </button>
@@ -197,6 +227,7 @@ export function WorkspaceSettingsPanel({
                 defaultAgentProvider={
                   desktopPreferencesState.defaultAgentProvider
                 }
+                developerLogs={settingsState.developerLogs}
                 locale={desktopPreferencesState.locale}
                 onDefaultAgentProviderChange={(provider) => {
                   void settingsService.changeDefaultAgentProvider(provider);
@@ -261,11 +292,15 @@ export function WorkspaceSettingsPanel({
                 }
                 analyticsDebugEnabled={analyticsDebugPreferenceState.enabled}
                 developerLogs={settingsState.developerLogs}
+                developerPanelVisible={settingsState.developerPanelVisible}
                 onAnalyticsDebugEnabledChange={(enabled) => {
                   analyticsDebugPreferenceService.setEnabled(enabled);
                 }}
                 onClearLogs={() => {
                   void settingsService.clearDeveloperLogs();
+                }}
+                onDeveloperPanelVisibleChange={(visible) => {
+                  settingsService.setDeveloperPanelVisible(visible);
                 }}
                 onExportLogs={() => {
                   void settingsService.exportDeveloperLogs();
@@ -977,15 +1012,19 @@ function WorkspaceDeveloperSettingsSection({
   analyticsDebugAvailable,
   analyticsDebugEnabled,
   developerLogs,
+  developerPanelVisible,
   onAnalyticsDebugEnabledChange,
   onClearLogs,
+  onDeveloperPanelVisibleChange,
   onExportLogs
 }: {
   analyticsDebugAvailable: boolean;
   analyticsDebugEnabled: boolean;
   developerLogs: WorkspaceSettingsDeveloperLogsSnapshotState;
+  developerPanelVisible: boolean;
   onAnalyticsDebugEnabledChange: (enabled: boolean) => void;
   onClearLogs: () => void;
+  onDeveloperPanelVisibleChange: (visible: boolean) => void;
   onExportLogs: () => void;
 }) {
   const { t } = useTranslation();
@@ -993,13 +1032,21 @@ function WorkspaceDeveloperSettingsSection({
 
   return (
     <SettingsRows>
-      <SettingsRow label={t("workspace.settings.developer.versionLabel")}>
-        <p className="m-0 text-right font-mono text-[13px] text-[var(--text-secondary)] max-[560px]:text-left">
-          {developerLogs.loading && logs === null
-            ? t("common.loading")
-            : (logs?.desktopVersion ?? "0.0.0")}
-        </p>
-      </SettingsRow>
+      <div className="flex w-full items-center justify-between gap-4 max-[560px]:flex-col max-[560px]:items-stretch">
+        <div className="flex min-w-0 flex-1 flex-col gap-1 max-[560px]:w-full">
+          <strong className="text-[13px] font-semibold text-[var(--text-primary)]">
+            {t("workspace.settings.developer.visibilityLabel")}
+          </strong>
+          <p className="m-0 text-[13px] leading-[1.3] text-[var(--text-secondary)]">
+            {t("workspace.settings.developer.visibilityDescription")}
+          </p>
+        </div>
+        <Switch
+          aria-label={t("workspace.settings.developer.visibilityLabel")}
+          checked={developerPanelVisible}
+          onCheckedChange={onDeveloperPanelVisibleChange}
+        />
+      </div>
 
       {analyticsDebugAvailable ? (
         <div className="flex w-full items-center justify-between gap-4 max-[560px]:flex-col max-[560px]:items-stretch">
@@ -1082,7 +1129,7 @@ function WorkspaceSettingsPanelPortal({
 
   const panel = (
     <div
-      className="fixed inset-0 grid place-items-center bg-[color-mix(in_srgb,var(--backdrop)_28%,transparent)] supports-backdrop-filter:backdrop-blur-sm transition-[background,backdrop-filter] duration-[180ms] ease-[cubic-bezier(0.22,1,0.36,1)] [-webkit-app-region:no-drag] motion-safe:animate-in motion-safe:fade-in-0 motion-safe:duration-[180ms] motion-safe:ease-[cubic-bezier(0.22,1,0.36,1)] motion-reduce:animate-none"
+      className="fixed inset-0 grid place-items-center bg-[color-mix(in_srgb,var(--backdrop)_28%,transparent)] supports-backdrop-filter:backdrop-blur-sm transition-[background] duration-[180ms] ease-[cubic-bezier(0.22,1,0.36,1)] [-webkit-app-region:no-drag] motion-safe:animate-in motion-safe:fade-in-0 motion-safe:duration-[180ms] motion-safe:ease-[cubic-bezier(0.22,1,0.36,1)] motion-reduce:animate-none"
       data-workspace-settings-backdrop="true"
       style={{ zIndex: "var(--z-panel)" }}
       onClick={onClose}
@@ -1137,6 +1184,7 @@ function WorkspaceGeneralSettingsSection({
   changingLocale,
   changingSleepPreventionMode,
   defaultAgentProvider,
+  developerLogs,
   locale,
   onDefaultAgentProviderChange,
   onLocaleChange,
@@ -1147,6 +1195,7 @@ function WorkspaceGeneralSettingsSection({
   changingLocale: DesktopLocale | null;
   changingSleepPreventionMode: DesktopSleepPreventionMode | null;
   defaultAgentProvider: DesktopAgentProvider;
+  developerLogs: WorkspaceSettingsDeveloperLogsSnapshotState;
   locale: DesktopLocale;
   onDefaultAgentProviderChange: (provider: DesktopAgentProvider) => void;
   onLocaleChange: (locale: DesktopLocale) => void;
@@ -1162,6 +1211,7 @@ function WorkspaceGeneralSettingsSection({
   const isUpdatingSleepPrevention = changingSleepPreventionMode !== null;
   const pendingSleepPreventionMode =
     changingSleepPreventionMode ?? sleepPreventionMode;
+  const logs = developerLogs.logs;
 
   return (
     <div className="flex flex-col gap-8 pb-[22px] pt-5">
@@ -1284,6 +1334,19 @@ function WorkspaceGeneralSettingsSection({
             </SelectContent>
           </Select>
         </div>
+      </div>
+
+      <div className="flex w-full items-center justify-between gap-4 max-[560px]:flex-col max-[560px]:items-stretch">
+        <div className="min-w-0">
+          <strong className="text-[13px] font-semibold text-[var(--text-primary)]">
+            {t("workspace.settings.general.versionLabel")}
+          </strong>
+        </div>
+        <p className="m-0 text-right font-mono text-[13px] text-[var(--text-secondary)] max-[560px]:text-left">
+          {developerLogs.loading && logs === null
+            ? t("common.loading")
+            : (logs?.desktopVersion ?? "0.0.0")}
+        </p>
       </div>
     </div>
   );

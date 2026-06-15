@@ -1,9 +1,11 @@
 import { proxy } from "valtio";
 import type { WorkspaceSettingsStoreState } from "../workspaceSettingsTypes";
+import { readDeveloperPanelVisible } from "./developerPanelVisibility.ts";
 
 export function createWorkspaceSettingsStore(): WorkspaceSettingsStoreState {
   return proxy({
     activeSection: "general",
+    developerPanelVisible: readDeveloperPanelVisible(),
     developerLogs: {
       clearing: false,
       exporting: false,
