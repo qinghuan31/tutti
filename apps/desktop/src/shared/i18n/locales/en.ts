@@ -216,24 +216,6 @@ export const en = {
     },
     settings: {
       close: "Close settings",
-      agent: {
-        skills: {
-          empty: "No skills found",
-          loadFailed: "We couldn't load skills for this provider right now.",
-          projectScopeNote:
-            "Project-level skills are resolved inside each session.",
-          sourceKinds: {
-            bundled: "Bundled",
-            tuttiInjected: "Tutti",
-            personal: "Personal",
-            plugin: "Plugin",
-            project: "Project",
-            system: "System"
-          },
-          sourceLabel: "Source",
-          title: "Skills (read-only)"
-        }
-      },
       appearance: {
         dockPlacementDescription:
           "Controls where the workspace dock is anchored.",
@@ -300,10 +282,11 @@ export const en = {
           "We couldn't update the sleep prevention setting right now.",
         updateChannelSaveFailed:
           "We couldn't update the release channel right now.",
-        updatePolicySaveFailed: "We couldn't update the update mode right now."
+        updatePolicySaveFailed:
+          "We couldn't update the update mode right now.",
+        versionLabel: "Desktop version"
       },
       nav: {
-        agent: "Agent",
         apps: "Apps",
         sectionsLabel: "Settings sections",
         appearance: "Appearance",
@@ -313,27 +296,32 @@ export const en = {
       apps: {
         managedModels: {
           apiKey: "API key",
-          baseUrl: "Base URL",
-          customProvider: "Custom provider",
-          delete: "Clear",
-          deleting: "Clearing...",
-          deleteFailed: "We couldn't clear that managed provider.",
-          deleteSucceeded: "Managed provider cleared.",
           addModel: "Add",
+          addProvider: "Add provider",
+          baseUrl: "Base URL",
+          collapse: "Collapse",
+          customProvider: "Custom",
+          delete: "Delete",
+          deleteConfirm: "Delete this provider?",
+          deleteFailed: "Couldn't delete — try again.",
+          deleting: "Deleting...",
           description:
-            "Store provider credentials in Tutti and let workspace apps request short-lived access.",
-          detectModels: "Detect models",
-          detectingModels: "Detecting...",
-          detectModelsEmpty: "No models were found for that provider.",
-          detectModelsFailed: "We couldn't detect models for that provider.",
-          detectModelsSucceeded: "Provider models detected.",
+            "Bring your own model API keys for your workspace apps and agents to use.",
+          detectModels: "Fetch available models",
+          detectingModels: "Fetching...",
+          detectModelsEmpty: "No models found.",
+          detectModelsFailed: "Couldn't fetch models — try again.",
+          emptyDescription:
+            "Click “Add provider” to connect Agnes, OpenAI, or Anthropic with your API key.",
+          emptyTitle: "No model providers yet",
           enabled: "Enable {{provider}}",
+          expand: "Expand",
           getApiKey: "Get {{provider}} API key",
-          hideApiKey: "Hide API key",
-          keyConfigured: "API key saved in Tutti",
-          keyMissing: "API key not configured",
+          hideApiKey: "Hide key",
+          keyConfigured: "Key saved",
+          keyMissing: "API key not set",
           keepExistingKey: "Leave blank to keep the saved key",
-          loadFailed: "We couldn't load managed model providers.",
+          loadFailed: "We couldn't load model providers.",
           modelId: "Model ID",
           modelIdPlaceholder: "model-id",
           models: "Models",
@@ -349,18 +337,18 @@ export const en = {
             openaiOfficial: "OpenAI official"
           },
           removeModel: "Remove model",
-          requiredFieldsMissing: "Fill in API key and Base URL first.",
-          quickFillProvider: "Quick fill provider",
+          requiredFieldsMissing: "Fill in the API key and Base URL first.",
+          quickFillProvider: "Choose a preset",
           save: "Save",
-          saveFailed: "We couldn't save that managed provider.",
-          saveSucceeded: "Managed provider saved.",
+          saveFailed: "Couldn't save — try again.",
           saving: "Saving...",
-          showApiKey: "Show API key",
-          test: "Test",
-          testFailed: "Provider test failed.",
-          testSucceeded: "Provider test succeeded.",
+          showApiKey: "Show key",
+          test: "Test connection",
+          testFailed: "Connection failed — check the key or URL.",
+          testSucceeded: "Connection OK.",
           testing: "Testing...",
-          title: "Managed Models"
+          modelCount: "{{count}} models",
+          title: "Model providers"
         }
       },
       developer: {
@@ -390,7 +378,9 @@ export const en = {
         openDaemonLog: "Open daemon log",
         openDesktopLog: "Open desktop log",
         openLogsDirectory: "Open logs folder",
-        versionLabel: "Desktop version"
+        visibilityDescription:
+          "Hide this panel from settings. Tap the version number in General seven times to bring it back.",
+        visibilityLabel: "Show developer panel"
       },
       title: "Settings",
       trigger: "Settings"

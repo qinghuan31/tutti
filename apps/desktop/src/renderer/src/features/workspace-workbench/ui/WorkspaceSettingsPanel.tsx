@@ -5,6 +5,8 @@ import type { WorkspaceSummary } from "@tutti-os/client-tuttid-ts";
 import {
   AddIcon,
   Button,
+  ChevronDownIcon,
+  ChevronUpIcon,
   CloseIcon,
   DeleteIcon,
   EyeIcon,
@@ -27,6 +29,8 @@ import type { WorkspaceSettingsDeveloperLogsSnapshotState } from "../services/wo
 import type {
   WorkspaceManagedModel,
   WorkspaceManagedModelProviderDraft,
+  WorkspaceManagedModelProviderFeedback,
+  WorkspaceManagedModelProviderFeedbackKind,
   WorkspaceManagedModelProviderID,
   WorkspaceSettingsManagedModelsSnapshotState
 } from "../services/workspaceSettingsTypes";
@@ -52,7 +56,6 @@ import {
   type DesktopThemeSource
 } from "../../../../../shared/theme/index.ts";
 import { useWorkspaceSettingsService } from "./useWorkspaceSettingsService";
-import { WorkspaceAgentSkillsSettings } from "./WorkspaceAgentSkillsSettings";
 import { useWorkspaceWorkbenchHostService } from "./useWorkspaceWorkbenchHostService";
 import { CustomWallpaperImageError } from "../services/customWallpaper";
 import {
@@ -71,6 +74,8 @@ const workspaceSettingsSelectContentClass =
   "w-[var(--radix-select-trigger-width)] rounded-[8px] border border-[var(--border-1)] bg-[var(--background-fronted)] px-1 text-[var(--text-primary)] shadow-[0_16px_40px_var(--shadow-elevated)] [--tutti-select-content-min-width:100%] !outline-none !ring-0";
 const workspaceSettingsInputClass =
   "h-8 w-full rounded-[6px] border border-[var(--border-1)] bg-[var(--transparency-block)] px-3 text-[13px] text-[var(--text-primary)] outline-none transition-colors duration-150 placeholder:text-[var(--text-tertiary)] hover:bg-[var(--transparency-hover)] focus-visible:border-[var(--border-focus)]";
+
+const developerPanelUnlockTaps = 7;
 
 export function WorkspaceSettingsPanel({
   onSelectWallpaper,
@@ -95,12 +100,26 @@ export function WorkspaceSettingsPanel({
   const { state: desktopPreferencesState } = useDesktopPreferencesService();
   const { service: settingsService, state: settingsState } =
     useWorkspaceSettingsService();
+  const versionTapCountRef = useRef(0);
 
   useEffect(() => {
     if (settingsState.open) {
       settingsService.syncWorkspace({ id: workspace.id });
     }
   }, [settingsService, settingsState.open, workspace.id]);
+
+  const handleVersionTap = () => {
+    if (settingsState.developerPanelVisible) {
+      return;
+    }
+
+    versionTapCountRef.current += 1;
+    if (versionTapCountRef.current >= developerPanelUnlockTaps) {
+      versionTapCountRef.current = 0;
+      settingsService.setDeveloperPanelVisible(true);
+      settingsService.selectSection("developer");
+    }
+  };
 
   if (!settingsState.open) {
     return null;
@@ -116,7 +135,7 @@ export function WorkspaceSettingsPanel({
       <section
         aria-labelledby="workspace-settings-title"
         aria-modal="true"
-        className="grid h-[min(500px,calc(100vh-40px))] w-[min(760px,calc(100vw-40px))] origin-center grid-cols-[160px_minmax(0,1fr)] grid-rows-[auto_minmax(0,1fr)] overflow-hidden rounded-2xl border border-[var(--border-1)] bg-[var(--background-fronted)] text-[var(--text-primary)] shadow-panel transition-[background,backdrop-filter,opacity] duration-[180ms] ease-[cubic-bezier(0.22,1,0.36,1)] [-webkit-app-region:no-drag] motion-safe:animate-in motion-safe:fade-in-0 motion-safe:zoom-in-[0.96] motion-safe:duration-[250ms] motion-safe:ease-[cubic-bezier(0.22,1,0.36,1)] motion-reduce:animate-none max-[760px]:h-[min(100vh-24px,520px)] max-[760px]:w-[min(calc(100vw-24px),640px)] max-[760px]:grid-cols-1 max-[760px]:grid-rows-[auto_auto_minmax(0,1fr)]"
+        className="grid h-[min(500px,calc(100vh-40px))] w-[min(760px,calc(100vw-40px))] origin-center grid-cols-[160px_minmax(0,1fr)] grid-rows-[auto_minmax(0,1fr)] overflow-hidden rounded-2xl border border-[var(--border-1)] bg-[var(--background-fronted)] text-[var(--text-primary)] shadow-panel transition-[background,opacity] duration-[180ms] ease-[cubic-bezier(0.22,1,0.36,1)] [-webkit-app-region:no-drag] motion-safe:animate-in motion-safe:fade-in-0 motion-safe:zoom-in-[0.96] motion-safe:duration-[250ms] motion-safe:ease-[cubic-bezier(0.22,1,0.36,1)] motion-reduce:animate-none max-[760px]:h-[min(100vh-24px,520px)] max-[760px]:w-[min(calc(100vw-24px),640px)] max-[760px]:grid-cols-1 max-[760px]:grid-rows-[auto_auto_minmax(0,1fr)]"
         data-workspace-settings-panel="true"
         role="dialog"
         onClick={(event) => event.stopPropagation()}
@@ -159,14 +178,14 @@ export function WorkspaceSettingsPanel({
               id: "apps" as const,
               label: t("workspace.settings.nav.apps")
             },
-            {
-              id: "agent" as const,
-              label: t("workspace.settings.nav.agent")
-            },
-            {
-              id: "developer" as const,
-              label: t("workspace.settings.nav.developer")
-            }
+            ...(settingsState.developerPanelVisible
+              ? [
+                  {
+                    id: "developer" as const,
+                    label: t("workspace.settings.nav.developer")
+                  }
+                ]
+              : [])
           ].map((section) => {
             const selected = settingsState.activeSection === section.id;
             return (
@@ -202,6 +221,7 @@ export function WorkspaceSettingsPanel({
                 defaultAgentProvider={
                   desktopPreferencesState.defaultAgentProvider
                 }
+                developerLogs={settingsState.developerLogs}
                 locale={desktopPreferencesState.locale}
                 onDefaultAgentProviderChange={(provider) => {
                   void settingsService.changeDefaultAgentProvider(provider);
@@ -212,6 +232,7 @@ export function WorkspaceSettingsPanel({
                 onSleepPreventionModeChange={(mode) => {
                   void settingsService.changeSleepPreventionMode(mode);
                 }}
+                onVersionTap={handleVersionTap}
                 sleepPreventionMode={
                   desktopPreferencesState.sleepPreventionMode
                 }
@@ -241,11 +262,37 @@ export function WorkspaceSettingsPanel({
             ) : settingsState.activeSection === "apps" ? (
               <WorkspaceAppsSettingsSection
                 managedModels={settingsState.managedModels}
+                onBeginDraft={(provider) => {
+                  settingsService.beginManagedModelProviderDraft(provider);
+                }}
+                onCancelDraft={() => {
+                  settingsService.cancelManagedModelProviderDraft();
+                }}
                 onDeleteProvider={(providerID) => {
                   void settingsService.removeManagedModelProvider(providerID);
                 }}
+                onDetectProviderModels={(providerID) => {
+                  void settingsService.detectManagedModelProviderModels(
+                    providerID
+                  );
+                }}
+                onSaveDraft={() => {
+                  void settingsService.saveManagedModelDraft();
+                }}
                 onSaveProvider={(provider) => {
                   void settingsService.saveManagedModelProvider(provider);
+                }}
+                onSetProviderEnabled={(providerID, enabled) => {
+                  void settingsService.setManagedModelProviderEnabled(
+                    providerID,
+                    enabled
+                  );
+                }}
+                onTestProvider={(providerID) => {
+                  void settingsService.testManagedModelProvider(providerID);
+                }}
+                onUpdateDraft={(patch) => {
+                  settingsService.updateManagedModelDraft(patch);
                 }}
                 onUpdateProvider={(providerID, patch) => {
                   settingsService.updateManagedModelProviderDraft(
@@ -254,8 +301,6 @@ export function WorkspaceSettingsPanel({
                   );
                 }}
               />
-            ) : settingsState.activeSection === "agent" ? (
-              <WorkspaceAgentSkillsSettings workspaceId={workspace.id} />
             ) : (
               <WorkspaceDeveloperSettingsSection
                 analyticsDebugAvailable={
@@ -263,11 +308,15 @@ export function WorkspaceSettingsPanel({
                 }
                 analyticsDebugEnabled={analyticsDebugPreferenceState.enabled}
                 developerLogs={settingsState.developerLogs}
+                developerPanelVisible={settingsState.developerPanelVisible}
                 onAnalyticsDebugEnabledChange={(enabled) => {
                   analyticsDebugPreferenceService.setEnabled(enabled);
                 }}
                 onClearLogs={() => {
                   void settingsService.clearDeveloperLogs();
+                }}
+                onDeveloperPanelVisibleChange={(visible) => {
+                  settingsService.setDeveloperPanelVisible(visible);
                 }}
                 onExportLogs={() => {
                   void settingsService.exportDeveloperLogs();
@@ -467,44 +516,60 @@ function toManagedModelPresetRows(
   }));
 }
 
-function hasDeletableManagedModelProvider(
-  provider: WorkspaceManagedModelProviderDraft
-): boolean {
-  return (
-    provider.hasApiKey ||
-    provider.apiKey.trim().length > 0 ||
-    provider.enabled ||
-    Boolean(provider.updatedAt || provider.workspaceId) ||
-    !hasDefaultManagedModelProviderValues(provider)
-  );
-}
+const managedModelProviderOrder: readonly WorkspaceManagedModelProviderID[] = [
+  "agnes",
+  "openai",
+  "anthropic"
+];
 
-function hasDefaultManagedModelProviderValues(
-  provider: WorkspaceManagedModelProviderDraft
-): boolean {
-  const defaultPreset = getManagedModelProviderPresets(provider.provider)[0];
-  if (!defaultPreset) {
-    return false;
+const managedModelFeedbackConfig: Record<
+  WorkspaceManagedModelProviderFeedbackKind,
+  { className: string; messageKey: DesktopI18nKey }
+> = {
+  testOk: {
+    className: "text-[var(--state-success)]",
+    messageKey: "workspace.settings.apps.managedModels.testSucceeded"
+  },
+  testFailed: {
+    className: "text-[var(--state-danger)]",
+    messageKey: "workspace.settings.apps.managedModels.testFailed"
+  },
+  detectEmpty: {
+    className: "text-[var(--text-tertiary)]",
+    messageKey: "workspace.settings.apps.managedModels.detectModelsEmpty"
+  },
+  detectFailed: {
+    className: "text-[var(--state-danger)]",
+    messageKey: "workspace.settings.apps.managedModels.detectModelsFailed"
+  },
+  saveFailed: {
+    className: "text-[var(--state-danger)]",
+    messageKey: "workspace.settings.apps.managedModels.saveFailed"
+  },
+  deleteFailed: {
+    className: "text-[var(--state-danger)]",
+    messageKey: "workspace.settings.apps.managedModels.deleteFailed"
+  },
+  requiredFields: {
+    className: "text-[var(--state-danger)]",
+    messageKey: "workspace.settings.apps.managedModels.requiredFieldsMissing"
   }
-  const normalizedModels = normalizeWorkspaceManagedModelRows(
-    provider.provider,
-    provider.models
-  );
-  return (
-    (provider.baseUrl?.trim() ?? "") === defaultPreset.baseUrl &&
-    normalizedModels.length === defaultPreset.models.length &&
-    normalizedModels.every(
-      (model, index) => model.id === defaultPreset.models[index]
-    )
-  );
-}
+};
 
-function hasRequiredManagedModelProviderFields(
-  provider: WorkspaceManagedModelProviderDraft
-): boolean {
+function ManagedModelFeedbackLine({
+  feedback
+}: {
+  feedback: WorkspaceManagedModelProviderFeedback | undefined;
+}) {
+  const { t } = useTranslation();
+  if (!feedback) {
+    return null;
+  }
+  const config = managedModelFeedbackConfig[feedback.kind];
   return (
-    (provider.hasApiKey || provider.apiKey.trim().length > 0) &&
-    (provider.baseUrl?.trim().length ?? 0) > 0
+    <p className={cn("m-0 text-[12px] leading-[1.4]", config.className)}>
+      {t(config.messageKey)}
+    </p>
   );
 }
 
@@ -531,493 +596,664 @@ function normalizeWorkspaceManagedModelRows(
 
 function WorkspaceAppsSettingsSection({
   managedModels,
+  onBeginDraft,
+  onCancelDraft,
   onDeleteProvider,
+  onDetectProviderModels,
+  onSaveDraft,
   onSaveProvider,
+  onSetProviderEnabled,
+  onTestProvider,
+  onUpdateDraft,
   onUpdateProvider
 }: {
   managedModels: WorkspaceSettingsManagedModelsSnapshotState;
+  onBeginDraft: (provider: WorkspaceManagedModelProviderID) => void;
+  onCancelDraft: () => void;
   onDeleteProvider: (providerID: WorkspaceManagedModelProviderID) => void;
+  onDetectProviderModels: (providerID: WorkspaceManagedModelProviderID) => void;
+  onSaveDraft: () => void;
   onSaveProvider: (provider: WorkspaceManagedModelProviderDraft) => void;
+  onSetProviderEnabled: (
+    providerID: WorkspaceManagedModelProviderID,
+    enabled: boolean
+  ) => void;
+  onTestProvider: (providerID: WorkspaceManagedModelProviderID) => void;
+  onUpdateDraft: (patch: Partial<WorkspaceManagedModelProviderDraft>) => void;
   onUpdateProvider: (
     providerID: WorkspaceManagedModelProviderID,
     patch: Partial<WorkspaceManagedModelProviderDraft>
   ) => void;
 }) {
   const { t } = useTranslation();
-  const [selectedProviderID, setSelectedProviderID] =
+  const { draft, providers } = managedModels;
+  const [expandedProviderID, setExpandedProviderID] =
     useState<WorkspaceManagedModelProviderID | null>(
-      managedModels.focusedProvider ??
-        managedModels.providers[0]?.provider ??
-        null
+      managedModels.focusedProvider
     );
+  const [confirmingDeleteID, setConfirmingDeleteID] =
+    useState<WorkspaceManagedModelProviderID | null>(null);
+  const [addMenuOpen, setAddMenuOpen] = useState(false);
+  const addMenuRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    const provider = managedModels.focusedProvider;
+    if (
+      provider &&
+      providers.some((candidate) => candidate.provider === provider)
+    ) {
+      setExpandedProviderID(provider);
+    }
+  }, [managedModels.focusedProvider, managedModels.focusRequestID, providers]);
+
+  useEffect(() => {
+    if (!addMenuOpen) {
+      return;
+    }
+    const handlePointerDown = (event: MouseEvent) => {
+      if (
+        addMenuRef.current &&
+        !addMenuRef.current.contains(event.target as Node)
+      ) {
+        setAddMenuOpen(false);
+      }
+    };
+    window.addEventListener("mousedown", handlePointerDown);
+    return () => {
+      window.removeEventListener("mousedown", handlePointerDown);
+    };
+  }, [addMenuOpen]);
+
+  const configuredProviders = new Set(
+    providers.map((provider) => provider.provider)
+  );
+  const availableProviders = managedModelProviderOrder.filter(
+    (provider) =>
+      !configuredProviders.has(provider) && draft?.provider !== provider
+  );
+  const canAddProvider = availableProviders.length > 0 && draft === null;
+  const isEmpty = providers.length === 0 && draft === null;
+
+  return (
+    <SettingsRows>
+      <div className="flex w-full items-start justify-between gap-3">
+        <div className="flex min-w-0 flex-col gap-2">
+          <strong className="text-[13px] font-semibold text-[var(--text-primary)]">
+            {t("workspace.settings.apps.managedModels.title")}
+          </strong>
+          <p className="m-0 text-[13px] leading-[1.35] text-[var(--text-secondary)]">
+            {t("workspace.settings.apps.managedModels.description")}
+          </p>
+        </div>
+        <div className="relative shrink-0" ref={addMenuRef}>
+          <Button
+            disabled={!canAddProvider}
+            size="sm"
+            type="button"
+            onClick={() => setAddMenuOpen((open) => !open)}
+          >
+            <AddIcon className="size-3.5" />
+            {t("workspace.settings.apps.managedModels.addProvider")}
+          </Button>
+          {addMenuOpen && canAddProvider ? (
+            <div
+              className="absolute right-0 top-[calc(100%+6px)] flex min-w-[160px] flex-col gap-0.5 rounded-[8px] border border-[var(--border-1)] bg-[var(--background-fronted)] p-1 shadow-[0_16px_40px_var(--shadow-elevated)]"
+              role="menu"
+              style={{ zIndex: "var(--z-panel-popover)" }}
+            >
+              {availableProviders.map((provider) => (
+                <button
+                  key={provider}
+                  className="rounded-[6px] px-2.5 py-1.5 text-left text-[13px] text-[var(--text-primary)] outline-none transition-colors duration-150 hover:bg-[var(--transparency-hover)] focus-visible:bg-[var(--transparency-hover)]"
+                  role="menuitem"
+                  type="button"
+                  onClick={() => {
+                    onBeginDraft(provider);
+                    setExpandedProviderID(null);
+                    setAddMenuOpen(false);
+                  }}
+                >
+                  {managedModelProviderLabels[provider]}
+                </button>
+              ))}
+            </div>
+          ) : null}
+        </div>
+      </div>
+
+      {isEmpty ? (
+        <div className="flex flex-col items-center gap-1.5 rounded-[10px] border border-dashed border-[var(--border-1)] bg-[var(--transparency-block)] px-4 py-8 text-center">
+          <p className="m-0 text-[13px] font-medium text-[var(--text-primary)]">
+            {t("workspace.settings.apps.managedModels.emptyTitle")}
+          </p>
+          <p className="m-0 text-[12px] leading-[1.4] text-[var(--text-secondary)]">
+            {t("workspace.settings.apps.managedModels.emptyDescription")}
+          </p>
+        </div>
+      ) : (
+        <div className="flex w-full flex-col gap-2">
+          {providers.map((provider) => (
+            <ManagedModelProviderItem
+              key={provider.provider}
+              confirmingDelete={confirmingDeleteID === provider.provider}
+              deleting={managedModels.deletingProvider === provider.provider}
+              detecting={managedModels.detectingProvider === provider.provider}
+              expanded={expandedProviderID === provider.provider}
+              feedback={managedModels.feedback[provider.provider]}
+              provider={provider}
+              saving={managedModels.savingProvider === provider.provider}
+              testing={managedModels.testingProvider === provider.provider}
+              onCancelDelete={() => setConfirmingDeleteID(null)}
+              onConfirmDelete={() => {
+                setConfirmingDeleteID(null);
+                onDeleteProvider(provider.provider);
+              }}
+              onDetect={() => onDetectProviderModels(provider.provider)}
+              onRequestDelete={() => setConfirmingDeleteID(provider.provider)}
+              onSave={() => onSaveProvider(provider)}
+              onSetEnabled={(enabled) =>
+                onSetProviderEnabled(provider.provider, enabled)
+              }
+              onTest={() => onTestProvider(provider.provider)}
+              onToggleExpand={() =>
+                setExpandedProviderID((current) =>
+                  current === provider.provider ? null : provider.provider
+                )
+              }
+              onUpdate={(patch) => onUpdateProvider(provider.provider, patch)}
+            />
+          ))}
+          {draft ? (
+            <ManagedModelDraftItem
+              draft={draft}
+              feedback={managedModels.feedback[draft.provider]}
+              saving={managedModels.savingProvider === draft.provider}
+              onCancel={onCancelDraft}
+              onSave={onSaveDraft}
+              onUpdate={onUpdateDraft}
+            />
+          ) : null}
+        </div>
+      )}
+    </SettingsRows>
+  );
+}
+
+function ManagedModelProviderItem({
+  confirmingDelete,
+  deleting,
+  detecting,
+  expanded,
+  feedback,
+  provider,
+  saving,
+  testing,
+  onCancelDelete,
+  onConfirmDelete,
+  onDetect,
+  onRequestDelete,
+  onSave,
+  onSetEnabled,
+  onTest,
+  onToggleExpand,
+  onUpdate
+}: {
+  confirmingDelete: boolean;
+  deleting: boolean;
+  detecting: boolean;
+  expanded: boolean;
+  feedback: WorkspaceManagedModelProviderFeedback | undefined;
+  provider: WorkspaceManagedModelProviderDraft;
+  saving: boolean;
+  testing: boolean;
+  onCancelDelete: () => void;
+  onConfirmDelete: () => void;
+  onDetect: () => void;
+  onRequestDelete: () => void;
+  onSave: () => void;
+  onSetEnabled: (enabled: boolean) => void;
+  onTest: () => void;
+  onToggleExpand: () => void;
+  onUpdate: (patch: Partial<WorkspaceManagedModelProviderDraft>) => void;
+}) {
+  const { t } = useTranslation();
+  const label = managedModelProviderLabels[provider.provider];
+  const status = provider.hasApiKey
+    ? `${t("workspace.settings.apps.managedModels.keyConfigured")} · ${t(
+        "workspace.settings.apps.managedModels.modelCount",
+        { count: String(provider.models.length) }
+      )}`
+    : t("workspace.settings.apps.managedModels.keyMissing");
+
+  return (
+    <section className="flex w-full flex-col gap-4 rounded-[10px] border border-[var(--border-1)] bg-[var(--transparency-block)] p-4">
+      <div className="flex items-center justify-between gap-3">
+        <div className="min-w-0">
+          <strong className="block text-[13px] font-semibold text-[var(--text-primary)]">
+            {label}
+          </strong>
+          <p className="m-0 mt-1 truncate text-[11px] leading-[1.3] text-[var(--text-secondary)]">
+            {status}
+          </p>
+        </div>
+        {confirmingDelete ? (
+          <div className="flex shrink-0 items-center gap-2">
+            <span className="text-[12px] text-[var(--text-secondary)]">
+              {t("workspace.settings.apps.managedModels.deleteConfirm")}
+            </span>
+            <Button
+              disabled={deleting}
+              size="sm"
+              type="button"
+              variant="secondary"
+              onClick={onConfirmDelete}
+            >
+              {deleting
+                ? t("workspace.settings.apps.managedModels.deleting")
+                : t("workspace.settings.apps.managedModels.delete")}
+            </Button>
+            <Button
+              size="sm"
+              type="button"
+              variant="ghost"
+              onClick={onCancelDelete}
+            >
+              {t("common.cancel")}
+            </Button>
+          </div>
+        ) : (
+          <div className="flex shrink-0 items-center gap-1">
+            <Switch
+              aria-label={t("workspace.settings.apps.managedModels.enabled", {
+                provider: label
+              })}
+              checked={provider.enabled}
+              disabled={saving}
+              onCheckedChange={onSetEnabled}
+            />
+            <button
+              aria-expanded={expanded}
+              aria-label={t(
+                expanded
+                  ? "workspace.settings.apps.managedModels.collapse"
+                  : "workspace.settings.apps.managedModels.expand"
+              )}
+              className="flex size-8 items-center justify-center rounded-[6px] text-[var(--text-secondary)] transition-colors duration-150 hover:bg-[var(--transparency-hover)] hover:text-[var(--text-primary)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--border-focus)]"
+              type="button"
+              onClick={onToggleExpand}
+            >
+              {expanded ? (
+                <ChevronUpIcon aria-hidden="true" size={16} />
+              ) : (
+                <ChevronDownIcon aria-hidden="true" size={16} />
+              )}
+            </button>
+            <button
+              aria-label={t("workspace.settings.apps.managedModels.delete")}
+              className="flex size-8 items-center justify-center rounded-[6px] text-[var(--text-secondary)] transition-colors duration-150 hover:bg-[var(--transparency-hover)] hover:text-[var(--text-primary)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--border-focus)]"
+              type="button"
+              onClick={onRequestDelete}
+            >
+              <DeleteIcon aria-hidden="true" size={15} />
+            </button>
+          </div>
+        )}
+      </div>
+
+      {expanded ? null : <ManagedModelFeedbackLine feedback={feedback} />}
+
+      {expanded ? (
+        <>
+          <ManagedModelProviderFields
+            detecting={detecting}
+            draft={provider}
+            onDetect={onDetect}
+            onUpdate={onUpdate}
+          />
+          <ManagedModelFeedbackLine feedback={feedback} />
+          <div className="flex flex-wrap justify-end gap-2">
+            <Button
+              disabled={testing}
+              type="button"
+              variant="secondary"
+              onClick={onTest}
+            >
+              {testing
+                ? t("workspace.settings.apps.managedModels.testing")
+                : t("workspace.settings.apps.managedModels.test")}
+            </Button>
+            <Button disabled={saving} type="button" onClick={onSave}>
+              {saving
+                ? t("workspace.settings.apps.managedModels.saving")
+                : t("workspace.settings.apps.managedModels.save")}
+            </Button>
+          </div>
+        </>
+      ) : null}
+    </section>
+  );
+}
+
+function ManagedModelDraftItem({
+  draft,
+  feedback,
+  saving,
+  onCancel,
+  onSave,
+  onUpdate
+}: {
+  draft: WorkspaceManagedModelProviderDraft;
+  feedback: WorkspaceManagedModelProviderFeedback | undefined;
+  saving: boolean;
+  onCancel: () => void;
+  onSave: () => void;
+  onUpdate: (patch: Partial<WorkspaceManagedModelProviderDraft>) => void;
+}) {
+  const { t } = useTranslation();
+
+  return (
+    <section className="flex w-full flex-col gap-4 rounded-[10px] border border-[var(--border-focus)] bg-[var(--transparency-block)] p-4">
+      <div className="flex items-center justify-between gap-3">
+        <strong className="text-[13px] font-semibold text-[var(--text-primary)]">
+          {managedModelProviderLabels[draft.provider]}
+        </strong>
+        <button
+          aria-label={t("common.cancel")}
+          className="flex size-8 items-center justify-center rounded-[6px] text-[var(--text-secondary)] transition-colors duration-150 hover:bg-[var(--transparency-hover)] hover:text-[var(--text-primary)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--border-focus)]"
+          type="button"
+          onClick={onCancel}
+        >
+          <CloseIcon className="size-4" />
+        </button>
+      </div>
+
+      <ManagedModelProviderFields
+        detecting={false}
+        draft={draft}
+        onDetect={null}
+        onUpdate={onUpdate}
+      />
+
+      <ManagedModelFeedbackLine feedback={feedback} />
+
+      <div className="flex flex-wrap justify-end gap-2">
+        <Button type="button" variant="secondary" onClick={onCancel}>
+          {t("common.cancel")}
+        </Button>
+        <Button disabled={saving} type="button" onClick={onSave}>
+          {saving
+            ? t("workspace.settings.apps.managedModels.saving")
+            : t("workspace.settings.apps.managedModels.save")}
+        </Button>
+      </div>
+    </section>
+  );
+}
+
+function ManagedModelProviderFields({
+  detecting,
+  draft,
+  onDetect,
+  onUpdate
+}: {
+  detecting: boolean;
+  draft: WorkspaceManagedModelProviderDraft;
+  onDetect: (() => void) | null;
+  onUpdate: (patch: Partial<WorkspaceManagedModelProviderDraft>) => void;
+}) {
+  const { t } = useTranslation();
   const [visibleAPIKeyProviderID, setVisibleAPIKeyProviderID] =
     useState<WorkspaceManagedModelProviderID | null>(null);
   const [newModelID, setNewModelID] = useState("");
-  const autoSaveTimersRef = useRef(
-    new Map<WorkspaceManagedModelProviderID, ReturnType<typeof setTimeout>>()
+
+  const apiKeyVisible = visibleAPIKeyProviderID === draft.provider;
+  const presets = getManagedModelProviderPresets(draft.provider);
+  const selectedPreset = getSelectedManagedModelProviderPreset(
+    draft.provider,
+    draft.baseUrl
   );
-
-  useEffect(() => {
-    const providerID = managedModels.focusedProvider;
-    if (
-      !providerID ||
-      !managedModels.providers.some(
-        (provider) => provider.provider === providerID
-      )
-    ) {
-      return;
-    }
-    setSelectedProviderID(providerID);
-  }, [
-    managedModels.focusedProvider,
-    managedModels.focusRequestID,
-    managedModels.providers
-  ]);
-
-  useEffect(() => {
-    if (managedModels.providers.length === 0) {
-      setSelectedProviderID(null);
-      return;
-    }
-    if (
-      selectedProviderID &&
-      managedModels.providers.some(
-        (provider) => provider.provider === selectedProviderID
-      )
-    ) {
-      return;
-    }
-    setSelectedProviderID(managedModels.providers[0]?.provider ?? null);
-  }, [managedModels.providers, selectedProviderID]);
-
-  const selectedProvider =
-    managedModels.providers.find(
-      (provider) => provider.provider === selectedProviderID
-    ) ??
-    managedModels.providers[0] ??
-    null;
-  const selectedProviderPresets = selectedProvider
-    ? getManagedModelProviderPresets(selectedProvider.provider)
-    : [];
-  const selectedProviderPreset = selectedProvider
-    ? getSelectedManagedModelProviderPreset(
-        selectedProvider.provider,
-        selectedProvider.baseUrl
-      )
-    : null;
   const selectedPresetValue =
-    selectedProviderPreset?.baseUrl ?? CUSTOM_MANAGED_MODEL_PROVIDER_PRESET;
-  const selectedApiKeyPreset =
-    selectedProviderPresets.length === 1
-      ? selectedProviderPresets[0]
-      : selectedProviderPreset;
-  const apiKeyUrl = selectedApiKeyPreset?.apiKeyUrl ?? "";
-  const apiKeyVisible =
-    selectedProvider !== null &&
-    visibleAPIKeyProviderID === selectedProvider.provider;
-  const canDeleteSelectedProvider =
-    selectedProvider !== null &&
-    hasDeletableManagedModelProvider(selectedProvider);
-
-  useEffect(() => {
-    setNewModelID("");
-  }, [selectedProvider?.provider]);
-
-  useEffect(() => {
-    return () => {
-      for (const timeout of autoSaveTimersRef.current.values()) {
-        clearTimeout(timeout);
-      }
-      autoSaveTimersRef.current.clear();
-    };
-  }, []);
-
-  const scheduleProviderAutoSave = (
-    provider: WorkspaceManagedModelProviderDraft
-  ) => {
-    if (!hasRequiredManagedModelProviderFields(provider)) {
-      return;
-    }
-    const previousTimeout = autoSaveTimersRef.current.get(provider.provider);
-    if (previousTimeout) {
-      clearTimeout(previousTimeout);
-    }
-    const timeout = setTimeout(() => {
-      autoSaveTimersRef.current.delete(provider.provider);
-      onSaveProvider(provider);
-    }, 700);
-    autoSaveTimersRef.current.set(provider.provider, timeout);
-  };
-  const updateSelectedProvider = (
-    patch: Partial<WorkspaceManagedModelProviderDraft>
-  ) => {
-    if (!selectedProvider) {
-      return;
-    }
-    const nextProvider = {
-      ...selectedProvider,
-      ...patch
-    };
-    onUpdateProvider(selectedProvider.provider, patch);
-    scheduleProviderAutoSave(nextProvider);
-  };
+    selectedPreset?.baseUrl ?? CUSTOM_MANAGED_MODEL_PROVIDER_PRESET;
+  const apiKeyPreset = presets.length === 1 ? presets[0] : selectedPreset;
+  const apiKeyUrl = apiKeyPreset?.apiKeyUrl ?? "";
 
   const updateModels = (models: readonly WorkspaceManagedModel[]) => {
-    if (!selectedProvider) {
-      return;
-    }
-    updateSelectedProvider({
-      models: normalizeWorkspaceManagedModelRows(
-        selectedProvider.provider,
-        models
-      )
+    onUpdate({
+      models: normalizeWorkspaceManagedModelRows(draft.provider, models)
     });
   };
-  const updateModelAt = (index: number, id: string) => {
-    if (!selectedProvider) {
-      return;
-    }
-    updateModels(
-      selectedProvider.models.map((model, modelIndex) =>
-        modelIndex === index
-          ? {
-              ...model,
-              id,
-              name: id.trim() || model.name
-            }
-          : model
-      )
-    );
-  };
-  const removeModelAt = (index: number) => {
-    if (!selectedProvider) {
-      return;
-    }
-    updateModels(
-      selectedProvider.models.filter((_, modelIndex) => modelIndex !== index)
-    );
-  };
   const addModel = () => {
-    if (!selectedProvider) {
-      return;
-    }
     const id = newModelID.trim();
     if (!id) {
       return;
     }
-    updateModels([
-      ...selectedProvider.models,
-      {
-        id,
-        name: id,
-        provider: selectedProvider.provider
-      }
-    ]);
+    updateModels([...draft.models, { id, name: id, provider: draft.provider }]);
     setNewModelID("");
   };
 
   return (
-    <SettingsRows>
-      <div className="flex w-full flex-col gap-2">
-        <strong className="text-[13px] font-semibold text-[var(--text-primary)]">
-          {t("workspace.settings.apps.managedModels.title")}
-        </strong>
-        <p className="m-0 text-[13px] leading-[1.35] text-[var(--text-secondary)]">
-          {t("workspace.settings.apps.managedModels.description")}
-        </p>
-      </div>
-
-      <div
-        aria-label={t("workspace.settings.apps.managedModels.title")}
-        className="flex flex-wrap gap-2"
-        role="tablist"
-      >
-        {managedModels.providers.map((provider) => {
-          const selected = selectedProvider?.provider === provider.provider;
-          return (
-            <button
-              key={provider.provider}
-              aria-selected={selected}
-              className={cn(
-                "inline-flex h-9 min-w-[96px] items-center justify-center rounded-full border px-4 text-[13px] font-medium outline-none transition-[background,border-color,color,box-shadow] duration-150 focus-visible:ring-2 focus-visible:ring-[var(--border-focus)]",
-                selected
-                  ? "border-[var(--border-1)] bg-[var(--transparency-block)] text-[var(--text-primary)] shadow-none"
-                  : "border-[var(--border-1)] bg-transparent text-[var(--text-secondary)] hover:bg-[var(--transparency-hover)] hover:text-[var(--text-primary)]"
+    <>
+      {presets.length > 1 ? (
+        <label className="flex flex-col gap-1.5">
+          <span className="text-[11px] font-medium text-[var(--text-secondary)]">
+            {t("workspace.settings.apps.managedModels.quickFillProvider")}
+          </span>
+          <Select
+            value={selectedPresetValue}
+            onValueChange={(value) => {
+              if (value === CUSTOM_MANAGED_MODEL_PROVIDER_PRESET) {
+                onUpdate({ baseUrl: "", models: [] });
+                return;
+              }
+              const preset = presets.find(
+                (candidate) => candidate.baseUrl === value
+              );
+              if (!preset) {
+                return;
+              }
+              onUpdate({
+                baseUrl: preset.baseUrl,
+                models: normalizeWorkspaceManagedModelRows(
+                  draft.provider,
+                  toManagedModelPresetRows(preset)
+                )
+              });
+            }}
+          >
+            <SelectTrigger
+              aria-label={t(
+                "workspace.settings.apps.managedModels.quickFillProvider"
               )}
-              role="tab"
-              type="button"
-              onClick={() => setSelectedProviderID(provider.provider)}
+              className={workspaceSettingsSelectTriggerClass}
             >
-              {managedModelProviderLabels[provider.provider]}
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent
+              className={workspaceSettingsSelectContentClass}
+              style={{ zIndex: "var(--z-panel-popover)" }}
+            >
+              <SelectItem value={CUSTOM_MANAGED_MODEL_PROVIDER_PRESET}>
+                {t("workspace.settings.apps.managedModels.customProvider")}
+              </SelectItem>
+              {presets.map((preset) => (
+                <SelectItem key={preset.baseUrl} value={preset.baseUrl}>
+                  {t(preset.labelKey)}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </label>
+      ) : null}
+
+      <div className="grid grid-cols-2 gap-3 max-[640px]:grid-cols-1">
+        <label className="flex flex-col gap-1.5">
+          <span className="text-[11px] font-medium text-[var(--text-secondary)]">
+            {t("workspace.settings.apps.managedModels.apiKey")}
+          </span>
+          <div className="relative">
+            <input
+              className={`${workspaceSettingsInputClass} pr-9`}
+              placeholder={
+                draft.hasApiKey
+                  ? t("workspace.settings.apps.managedModels.keepExistingKey")
+                  : "sk-..."
+              }
+              spellCheck={false}
+              type={apiKeyVisible ? "text" : "password"}
+              value={draft.apiKey}
+              onChange={(event) =>
+                onUpdate({ apiKey: event.currentTarget.value })
+              }
+            />
+            <button
+              aria-label={t(
+                apiKeyVisible
+                  ? "workspace.settings.apps.managedModels.hideApiKey"
+                  : "workspace.settings.apps.managedModels.showApiKey"
+              )}
+              aria-pressed={apiKeyVisible}
+              className={cn(
+                "absolute right-1 top-1/2 flex size-6 -translate-y-1/2 items-center justify-center rounded-[5px] text-[var(--text-secondary)] transition-colors duration-150 hover:bg-[var(--transparency-hover)] hover:text-[var(--text-primary)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--border-focus)]",
+                apiKeyVisible && "text-[var(--text-primary)]"
+              )}
+              type="button"
+              onClick={() =>
+                setVisibleAPIKeyProviderID((currentProviderID) =>
+                  currentProviderID === draft.provider ? null : draft.provider
+                )
+              }
+            >
+              <EyeIcon aria-hidden="true" size={16} />
             </button>
-          );
-        })}
+          </div>
+        </label>
+
+        <label className="flex flex-col gap-1.5">
+          <span className="text-[11px] font-medium text-[var(--text-secondary)]">
+            {t("workspace.settings.apps.managedModels.baseUrl")}
+          </span>
+          <input
+            className={workspaceSettingsInputClass}
+            placeholder={defaultManagedProviderBaseUrl(draft.provider)}
+            type="url"
+            value={draft.baseUrl ?? ""}
+            onChange={(event) =>
+              onUpdate({ baseUrl: event.currentTarget.value })
+            }
+          />
+        </label>
       </div>
 
-      {selectedProvider ? (
-        <section className="flex w-full flex-col gap-4 rounded-[10px] border border-[var(--border-1)] bg-[var(--transparency-block)] p-4">
-          <div className="min-w-0">
-            <strong className="text-[13px] font-semibold text-[var(--text-primary)]">
-              {managedModelProviderLabels[selectedProvider.provider]}
-            </strong>
-            <p className="m-0 mt-1 text-[11px] leading-[1.3] text-[var(--text-secondary)]">
-              {selectedProvider.hasApiKey
-                ? t("workspace.settings.apps.managedModels.keyConfigured")
-                : t("workspace.settings.apps.managedModels.keyMissing")}
-            </p>
-          </div>
+      {apiKeyUrl ? (
+        <button
+          className="inline-flex w-fit items-center gap-1.5 rounded-[5px] text-left text-[12px] font-medium text-[var(--text-primary)] underline underline-offset-4 transition-opacity duration-150 hover:opacity-80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--border-focus)]"
+          type="button"
+          onClick={() => {
+            window.open(apiKeyUrl, "_blank", "noopener,noreferrer");
+          }}
+        >
+          {t("workspace.settings.apps.managedModels.getApiKey", {
+            provider:
+              (apiKeyPreset ? t(apiKeyPreset.labelKey) : null) ??
+              managedModelProviderLabels[draft.provider]
+          })}
+          <LinkIcon aria-hidden="true" size={13} />
+        </button>
+      ) : null}
 
-          {selectedProviderPresets.length > 1 ? (
-            <label className="flex flex-col gap-1.5">
-              <span className="text-[11px] font-medium text-[var(--text-secondary)]">
-                {t("workspace.settings.apps.managedModels.quickFillProvider")}
-              </span>
-              <Select
-                value={selectedPresetValue}
-                onValueChange={(value) => {
-                  if (value === CUSTOM_MANAGED_MODEL_PROVIDER_PRESET) {
-                    updateSelectedProvider({
-                      baseUrl: "",
-                      models: []
-                    });
-                    return;
-                  }
-                  const preset = selectedProviderPresets.find(
-                    (candidate) => candidate.baseUrl === value
-                  );
-                  if (!preset) {
-                    return;
-                  }
-                  updateSelectedProvider({
-                    baseUrl: preset.baseUrl,
-                    models: normalizeWorkspaceManagedModelRows(
-                      selectedProvider.provider,
-                      toManagedModelPresetRows(preset)
-                    )
-                  });
-                }}
-              >
-                <SelectTrigger
-                  aria-label={t(
-                    "workspace.settings.apps.managedModels.quickFillProvider"
-                  )}
-                  className={workspaceSettingsSelectTriggerClass}
-                >
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent
-                  className={workspaceSettingsSelectContentClass}
-                  style={{ zIndex: "var(--z-panel-popover)" }}
-                >
-                  <SelectItem value={CUSTOM_MANAGED_MODEL_PROVIDER_PRESET}>
-                    {t("workspace.settings.apps.managedModels.customProvider")}
-                  </SelectItem>
-                  {selectedProviderPresets.map((preset) => (
-                    <SelectItem key={preset.baseUrl} value={preset.baseUrl}>
-                      {t(preset.labelKey)}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </label>
+      <div className="flex flex-col gap-2">
+        <div className="flex items-center justify-between gap-2">
+          <span className="text-[11px] font-medium text-[var(--text-secondary)]">
+            {t("workspace.settings.apps.managedModels.models")}
+          </span>
+          {onDetect ? (
+            <Button
+              disabled={detecting}
+              size="sm"
+              type="button"
+              variant="secondary"
+              onClick={onDetect}
+            >
+              {detecting
+                ? t("workspace.settings.apps.managedModels.detectingModels")
+                : t("workspace.settings.apps.managedModels.detectModels")}
+            </Button>
           ) : null}
-
-          <div className="grid grid-cols-2 gap-3 max-[640px]:grid-cols-1">
-            <label className="flex flex-col gap-1.5">
-              <span className="text-[11px] font-medium text-[var(--text-secondary)]">
-                {t("workspace.settings.apps.managedModels.apiKey")}
-                <span
-                  aria-hidden="true"
-                  className="ml-1 text-[var(--state-danger)]"
-                >
-                  *
-                </span>
-              </span>
-              <div className="relative">
-                <input
-                  className={`${workspaceSettingsInputClass} pr-9`}
-                  placeholder={
-                    selectedProvider.hasApiKey
-                      ? t(
-                          "workspace.settings.apps.managedModels.keepExistingKey"
-                        )
-                      : "sk-..."
-                  }
-                  required={!selectedProvider.hasApiKey}
-                  spellCheck={false}
-                  type={apiKeyVisible ? "text" : "password"}
-                  value={selectedProvider.apiKey}
-                  onChange={(event) =>
-                    updateSelectedProvider({
-                      apiKey: event.currentTarget.value
-                    })
-                  }
-                />
-                <button
-                  aria-label={t(
-                    apiKeyVisible
-                      ? "workspace.settings.apps.managedModels.hideApiKey"
-                      : "workspace.settings.apps.managedModels.showApiKey"
-                  )}
-                  aria-pressed={apiKeyVisible}
-                  className={cn(
-                    "absolute right-1 top-1/2 flex size-6 -translate-y-1/2 items-center justify-center rounded-[5px] text-[var(--text-secondary)] transition-colors duration-150 hover:bg-[var(--transparency-hover)] hover:text-[var(--text-primary)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--border-focus)]",
-                    apiKeyVisible && "text-[var(--text-primary)]"
-                  )}
-                  type="button"
-                  onClick={() =>
-                    setVisibleAPIKeyProviderID((currentProviderID) =>
-                      currentProviderID === selectedProvider.provider
-                        ? null
-                        : selectedProvider.provider
-                    )
-                  }
-                >
-                  <EyeIcon aria-hidden="true" size={16} />
-                </button>
-              </div>
-            </label>
-
-            <label className="flex flex-col gap-1.5">
-              <span className="text-[11px] font-medium text-[var(--text-secondary)]">
-                {t("workspace.settings.apps.managedModels.baseUrl")}
-                <span
-                  aria-hidden="true"
-                  className="ml-1 text-[var(--state-danger)]"
-                >
-                  *
-                </span>
+        </div>
+        <div className="flex flex-col gap-1.5">
+          {draft.models.map((model, index) => (
+            <div
+              key={`${model.provider}:${model.id}:${index}`}
+              className="grid grid-cols-[72px_minmax(0,1fr)_32px] items-center gap-1.5"
+            >
+              <span className="flex h-8 items-center justify-center rounded-[6px] border border-[var(--border-1)] bg-[var(--transparency-block)] px-2 text-[11px] text-[var(--text-secondary)]">
+                {draft.provider}:
               </span>
               <input
+                aria-label={t("workspace.settings.apps.managedModels.modelId")}
                 className={workspaceSettingsInputClass}
-                placeholder={defaultManagedProviderBaseUrl(
-                  selectedProvider.provider
-                )}
-                required
-                type="url"
-                value={selectedProvider.baseUrl ?? ""}
-                onChange={(event) =>
-                  updateSelectedProvider({
-                    baseUrl: event.currentTarget.value
-                  })
-                }
+                placeholder={defaultManagedProviderModel(draft.provider)}
+                value={model.id}
+                onChange={(event) => {
+                  const id = event.currentTarget.value;
+                  updateModels(
+                    draft.models.map((row, rowIndex) =>
+                      rowIndex === index
+                        ? { ...row, id, name: id.trim() || row.name }
+                        : row
+                    )
+                  );
+                }}
               />
-            </label>
-          </div>
-
-          {apiKeyUrl ? (
-            <button
-              className="inline-flex w-fit items-center gap-1.5 rounded-[5px] text-left text-[12px] font-medium text-[var(--text-primary)] underline underline-offset-4 transition-opacity duration-150 hover:opacity-80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--border-focus)]"
-              type="button"
-              onClick={() => {
-                window.open(apiKeyUrl, "_blank", "noopener,noreferrer");
-              }}
-            >
-              {t("workspace.settings.apps.managedModels.getApiKey", {
-                provider:
-                  (selectedApiKeyPreset
-                    ? t(selectedApiKeyPreset.labelKey)
-                    : null) ??
-                  managedModelProviderLabels[selectedProvider.provider]
-              })}
-              <LinkIcon aria-hidden="true" size={13} />
-            </button>
-          ) : null}
-
-          <div className="flex flex-col gap-2">
-            <div className="flex items-center">
-              <span className="text-[11px] font-medium text-[var(--text-secondary)]">
-                {t("workspace.settings.apps.managedModels.models")}
-              </span>
-            </div>
-            <div className="flex flex-col gap-1.5">
-              {selectedProvider.models.map((model, index) => (
-                <div
-                  key={`${model.provider}:${model.id}:${index}`}
-                  className="grid grid-cols-[72px_minmax(0,1fr)_32px] items-center gap-1.5"
-                >
-                  <span className="flex h-8 items-center justify-center rounded-[6px] border border-[var(--border-1)] bg-[var(--transparency-block)] px-2 text-[11px] text-[var(--text-secondary)]">
-                    {selectedProvider.provider}:
-                  </span>
-                  <input
-                    aria-label={t(
-                      "workspace.settings.apps.managedModels.modelId"
-                    )}
-                    className={workspaceSettingsInputClass}
-                    placeholder={defaultManagedProviderModel(
-                      selectedProvider.provider
-                    )}
-                    value={model.id}
-                    onChange={(event) =>
-                      updateModelAt(index, event.currentTarget.value)
-                    }
-                  />
-                  <button
-                    aria-label={t(
-                      "workspace.settings.apps.managedModels.removeModel"
-                    )}
-                    className="flex size-8 items-center justify-center rounded-[6px] text-[var(--text-secondary)] transition-colors duration-150 hover:bg-[var(--transparency-hover)] hover:text-[var(--text-primary)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--border-focus)]"
-                    type="button"
-                    onClick={() => removeModelAt(index)}
-                  >
-                    <DeleteIcon aria-hidden="true" size={15} />
-                  </button>
-                </div>
-              ))}
-              <div className="grid grid-cols-[72px_minmax(0,1fr)_72px] items-center gap-1.5">
-                <span className="flex h-8 items-center justify-center rounded-[6px] border border-[var(--border-1)] bg-[var(--transparency-block)] px-2 text-[11px] text-[var(--text-secondary)]">
-                  {selectedProvider.provider}:
-                </span>
-                <input
-                  aria-label={t(
-                    "workspace.settings.apps.managedModels.modelId"
-                  )}
-                  className={workspaceSettingsInputClass}
-                  placeholder={t(
-                    "workspace.settings.apps.managedModels.modelIdPlaceholder"
-                  )}
-                  value={newModelID}
-                  onChange={(event) => setNewModelID(event.currentTarget.value)}
-                  onKeyDown={(event) => {
-                    if (event.key === "Enter") {
-                      event.preventDefault();
-                      addModel();
-                    }
-                  }}
-                />
-                <Button
-                  disabled={!newModelID.trim()}
-                  size="sm"
-                  type="button"
-                  variant="secondary"
-                  onClick={addModel}
-                >
-                  <AddIcon className="size-3.5" />
-                  {t("workspace.settings.apps.managedModels.addModel")}
-                </Button>
-              </div>
-            </div>
-          </div>
-
-          <div className="flex flex-wrap justify-end gap-2">
-            {canDeleteSelectedProvider ? (
-              <Button
-                disabled={
-                  managedModels.deletingProvider === selectedProvider.provider
-                }
+              <button
+                aria-label={t(
+                  "workspace.settings.apps.managedModels.removeModel"
+                )}
+                className="flex size-8 items-center justify-center rounded-[6px] text-[var(--text-secondary)] transition-colors duration-150 hover:bg-[var(--transparency-hover)] hover:text-[var(--text-primary)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--border-focus)]"
                 type="button"
-                variant="secondary"
-                onClick={() => onDeleteProvider(selectedProvider.provider)}
+                onClick={() =>
+                  updateModels(
+                    draft.models.filter((_, rowIndex) => rowIndex !== index)
+                  )
+                }
               >
-                {managedModels.deletingProvider === selectedProvider.provider
-                  ? t("workspace.settings.apps.managedModels.deleting")
-                  : t("workspace.settings.apps.managedModels.delete")}
-              </Button>
-            ) : null}
+                <DeleteIcon aria-hidden="true" size={15} />
+              </button>
+            </div>
+          ))}
+          <div className="grid grid-cols-[72px_minmax(0,1fr)_72px] items-center gap-1.5">
+            <span className="flex h-8 items-center justify-center rounded-[6px] border border-[var(--border-1)] bg-[var(--transparency-block)] px-2 text-[11px] text-[var(--text-secondary)]">
+              {draft.provider}:
+            </span>
+            <input
+              aria-label={t("workspace.settings.apps.managedModels.modelId")}
+              className={workspaceSettingsInputClass}
+              placeholder={t(
+                "workspace.settings.apps.managedModels.modelIdPlaceholder"
+              )}
+              value={newModelID}
+              onChange={(event) => setNewModelID(event.currentTarget.value)}
+              onKeyDown={(event) => {
+                if (event.key === "Enter") {
+                  event.preventDefault();
+                  addModel();
+                }
+              }}
+            />
+            <Button
+              disabled={!newModelID.trim()}
+              size="sm"
+              type="button"
+              variant="secondary"
+              onClick={addModel}
+            >
+              <AddIcon className="size-3.5" />
+              {t("workspace.settings.apps.managedModels.addModel")}
+            </Button>
           </div>
-        </section>
-      ) : null}
-    </SettingsRows>
+        </div>
+      </div>
+    </>
   );
 }
 
@@ -1025,15 +1261,19 @@ function WorkspaceDeveloperSettingsSection({
   analyticsDebugAvailable,
   analyticsDebugEnabled,
   developerLogs,
+  developerPanelVisible,
   onAnalyticsDebugEnabledChange,
   onClearLogs,
+  onDeveloperPanelVisibleChange,
   onExportLogs
 }: {
   analyticsDebugAvailable: boolean;
   analyticsDebugEnabled: boolean;
   developerLogs: WorkspaceSettingsDeveloperLogsSnapshotState;
+  developerPanelVisible: boolean;
   onAnalyticsDebugEnabledChange: (enabled: boolean) => void;
   onClearLogs: () => void;
+  onDeveloperPanelVisibleChange: (visible: boolean) => void;
   onExportLogs: () => void;
 }) {
   const { t } = useTranslation();
@@ -1041,13 +1281,21 @@ function WorkspaceDeveloperSettingsSection({
 
   return (
     <SettingsRows>
-      <SettingsRow label={t("workspace.settings.developer.versionLabel")}>
-        <p className="m-0 text-right font-mono text-[13px] text-[var(--text-secondary)] max-[560px]:text-left">
-          {developerLogs.loading && logs === null
-            ? t("common.loading")
-            : (logs?.desktopVersion ?? "0.0.0")}
-        </p>
-      </SettingsRow>
+      <div className="flex w-full items-center justify-between gap-4 max-[560px]:flex-col max-[560px]:items-stretch">
+        <div className="flex min-w-0 flex-1 flex-col gap-1 max-[560px]:w-full">
+          <strong className="text-[13px] font-semibold text-[var(--text-primary)]">
+            {t("workspace.settings.developer.visibilityLabel")}
+          </strong>
+          <p className="m-0 text-[13px] leading-[1.3] text-[var(--text-secondary)]">
+            {t("workspace.settings.developer.visibilityDescription")}
+          </p>
+        </div>
+        <Switch
+          aria-label={t("workspace.settings.developer.visibilityLabel")}
+          checked={developerPanelVisible}
+          onCheckedChange={onDeveloperPanelVisibleChange}
+        />
+      </div>
 
       {analyticsDebugAvailable ? (
         <div className="flex w-full items-center justify-between gap-4 max-[560px]:flex-col max-[560px]:items-stretch">
@@ -1130,7 +1378,7 @@ function WorkspaceSettingsPanelPortal({
 
   const panel = (
     <div
-      className="fixed inset-0 grid place-items-center bg-[color-mix(in_srgb,var(--backdrop)_28%,transparent)] supports-backdrop-filter:backdrop-blur-sm transition-[background,backdrop-filter] duration-[180ms] ease-[cubic-bezier(0.22,1,0.36,1)] [-webkit-app-region:no-drag] motion-safe:animate-in motion-safe:fade-in-0 motion-safe:duration-[180ms] motion-safe:ease-[cubic-bezier(0.22,1,0.36,1)] motion-reduce:animate-none"
+      className="fixed inset-0 grid place-items-center bg-[color-mix(in_srgb,var(--backdrop)_28%,transparent)] supports-backdrop-filter:backdrop-blur-sm transition-[background] duration-[180ms] ease-[cubic-bezier(0.22,1,0.36,1)] [-webkit-app-region:no-drag] motion-safe:animate-in motion-safe:fade-in-0 motion-safe:duration-[180ms] motion-safe:ease-[cubic-bezier(0.22,1,0.36,1)] motion-reduce:animate-none"
       data-workspace-settings-backdrop="true"
       style={{ zIndex: "var(--z-panel)" }}
       onClick={onClose}
@@ -1185,20 +1433,24 @@ function WorkspaceGeneralSettingsSection({
   changingLocale,
   changingSleepPreventionMode,
   defaultAgentProvider,
+  developerLogs,
   locale,
   onDefaultAgentProviderChange,
   onLocaleChange,
   onSleepPreventionModeChange,
+  onVersionTap,
   sleepPreventionMode
 }: {
   changingDefaultAgentProvider: DesktopAgentProvider | null;
   changingLocale: DesktopLocale | null;
   changingSleepPreventionMode: DesktopSleepPreventionMode | null;
   defaultAgentProvider: DesktopAgentProvider;
+  developerLogs: WorkspaceSettingsDeveloperLogsSnapshotState;
   locale: DesktopLocale;
   onDefaultAgentProviderChange: (provider: DesktopAgentProvider) => void;
   onLocaleChange: (locale: DesktopLocale) => void;
   onSleepPreventionModeChange: (mode: DesktopSleepPreventionMode) => void;
+  onVersionTap: () => void;
   sleepPreventionMode: DesktopSleepPreventionMode;
 }) {
   const { t } = useTranslation();
@@ -1210,6 +1462,7 @@ function WorkspaceGeneralSettingsSection({
   const isUpdatingSleepPrevention = changingSleepPreventionMode !== null;
   const pendingSleepPreventionMode =
     changingSleepPreventionMode ?? sleepPreventionMode;
+  const logs = developerLogs.logs;
 
   return (
     <div className="flex flex-col gap-8 pb-[22px] pt-5">
@@ -1332,6 +1585,23 @@ function WorkspaceGeneralSettingsSection({
             </SelectContent>
           </Select>
         </div>
+      </div>
+
+      <div className="flex w-full items-center justify-between gap-4 max-[560px]:flex-col max-[560px]:items-stretch">
+        <div className="min-w-0">
+          <strong className="text-[13px] font-semibold text-[var(--text-primary)]">
+            {t("workspace.settings.general.versionLabel")}
+          </strong>
+        </div>
+        <button
+          className="m-0 cursor-default select-none rounded-[5px] border-0 bg-transparent p-0 text-right font-mono text-[13px] text-[var(--text-secondary)] outline-none focus-visible:outline-none max-[560px]:text-left"
+          type="button"
+          onClick={onVersionTap}
+        >
+          {developerLogs.loading && logs === null
+            ? t("common.loading")
+            : (logs?.desktopVersion ?? "0.0.0")}
+        </button>
       </div>
     </div>
   );

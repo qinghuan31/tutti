@@ -39,6 +39,19 @@ export interface IWorkspaceSettingsService {
     options?: WorkspaceSettingsOpenOptions
   ): void;
   selectSection(sectionID: WorkspaceSettingsSectionID): void;
+  setDeveloperPanelVisible(visible: boolean): void;
+  beginManagedModelProviderDraft(
+    provider: WorkspaceManagedModelProviderID
+  ): void;
+  updateManagedModelDraft(
+    patch: Partial<WorkspaceManagedModelProviderDraft>
+  ): void;
+  cancelManagedModelProviderDraft(): void;
+  saveManagedModelDraft(): Promise<void>;
+  setManagedModelProviderEnabled(
+    providerID: WorkspaceManagedModelProviderID,
+    enabled: boolean
+  ): Promise<void>;
   changeDefaultAgentProvider(provider: DesktopAgentProvider): Promise<void>;
   changeDockIconStyle(style: DesktopDockIconStyle): Promise<void>;
   changeDockPlacement(placement: DesktopDockPlacement): Promise<void>;

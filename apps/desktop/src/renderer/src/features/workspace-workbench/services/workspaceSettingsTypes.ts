@@ -4,7 +4,6 @@ import type {
 } from "@shared/contracts/ipc";
 
 export type WorkspaceSettingsSectionID =
-  | "agent"
   | "appearance"
   | "apps"
   | "developer"
@@ -33,9 +32,28 @@ export interface WorkspaceManagedModelProviderDraft extends WorkspaceManagedMode
   apiKey: string;
 }
 
+export type WorkspaceManagedModelProviderFeedbackKind =
+  | "testOk"
+  | "testFailed"
+  | "detectEmpty"
+  | "detectFailed"
+  | "saveFailed"
+  | "deleteFailed"
+  | "requiredFields";
+
+export interface WorkspaceManagedModelProviderFeedback {
+  kind: WorkspaceManagedModelProviderFeedbackKind;
+}
+
+export type WorkspaceManagedModelFeedbackMap = Partial<
+  Record<WorkspaceManagedModelProviderID, WorkspaceManagedModelProviderFeedback>
+>;
+
 export interface WorkspaceSettingsManagedModelsMutableState {
   deletingProvider: WorkspaceManagedModelProviderID | null;
   detectingProvider: WorkspaceManagedModelProviderID | null;
+  draft: WorkspaceManagedModelProviderDraft | null;
+  feedback: WorkspaceManagedModelFeedbackMap;
   focusedProvider: WorkspaceManagedModelProviderID | null;
   focusRequestID: number;
   loading: boolean;
@@ -47,6 +65,8 @@ export interface WorkspaceSettingsManagedModelsMutableState {
 export interface WorkspaceSettingsManagedModelsSnapshotState {
   readonly deletingProvider: WorkspaceManagedModelProviderID | null;
   readonly detectingProvider: WorkspaceManagedModelProviderID | null;
+  readonly draft: WorkspaceManagedModelProviderDraft | null;
+  readonly feedback: WorkspaceManagedModelFeedbackMap;
   readonly focusedProvider: WorkspaceManagedModelProviderID | null;
   readonly focusRequestID: number;
   readonly loading: boolean;
@@ -84,6 +104,7 @@ export interface WorkspaceSettingsDeveloperLogsSnapshotState {
 
 export interface WorkspaceSettingsStoreState {
   activeSection: WorkspaceSettingsSectionID;
+  developerPanelVisible: boolean;
   developerLogs: WorkspaceSettingsDeveloperLogsMutableState;
   managedModels: WorkspaceSettingsManagedModelsMutableState;
   open: boolean;
@@ -92,6 +113,7 @@ export interface WorkspaceSettingsStoreState {
 
 export interface WorkspaceSettingsReadableStoreState {
   readonly activeSection: WorkspaceSettingsSectionID;
+  readonly developerPanelVisible: boolean;
   readonly developerLogs: WorkspaceSettingsDeveloperLogsSnapshotState;
   readonly managedModels: WorkspaceSettingsManagedModelsSnapshotState;
   readonly open: boolean;

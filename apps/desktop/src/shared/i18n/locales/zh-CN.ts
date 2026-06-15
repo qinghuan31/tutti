@@ -212,23 +212,6 @@ export const zhCN = {
     },
     settings: {
       close: "关闭设置",
-      agent: {
-        skills: {
-          empty: "未发现技能",
-          loadFailed: "暂时无法加载该 provider 的技能。",
-          projectScopeNote: "项目级技能以会话内为准。",
-          sourceKinds: {
-            bundled: "内置",
-            tuttiInjected: "Tutti",
-            personal: "个人",
-            plugin: "插件",
-            project: "项目",
-            system: "系统"
-          },
-          sourceLabel: "来源",
-          title: "技能（只读）"
-        }
-      },
       appearance: {
         dockPlacementDescription: "控制工作区 dock 栏停靠的位置。",
         dockPlacementLabel: "Dock 布局",
@@ -283,10 +266,10 @@ export const zhCN = {
         },
         preventSleepSaveFailed: "暂时无法更新防止休眠设置。",
         updateChannelSaveFailed: "暂时无法更新发布渠道。",
-        updatePolicySaveFailed: "暂时无法更新更新方式。"
+        updatePolicySaveFailed: "暂时无法更新更新方式。",
+        versionLabel: "桌面版本"
       },
       nav: {
-        agent: "Agent",
         apps: "应用",
         sectionsLabel: "设置分区",
         appearance: "外观",
@@ -295,28 +278,33 @@ export const zhCN = {
       },
       apps: {
         managedModels: {
-          apiKey: "API Key",
-          baseUrl: "Base URL",
-          customProvider: "自定义 provider",
-          delete: "清空",
-          deleting: "清空中...",
-          deleteFailed: "暂时无法清空这个托管 provider。",
-          deleteSucceeded: "托管 provider 已清空。",
+          apiKey: "API 密钥",
           addModel: "添加",
+          addProvider: "添加",
+          baseUrl: "Base URL",
+          collapse: "收起",
+          customProvider: "自定义",
+          delete: "删除",
+          deleteConfirm: "删除此配置？",
+          deleteFailed: "删除失败，请重试。",
+          deleting: "删除中...",
           description:
-            "在 Tutti 中保存 provider 凭证，并允许工作区应用申请短期访问。",
-          detectModels: "检测模型",
-          detectingModels: "检测中...",
-          detectModelsEmpty: "这个 provider 没有返回可用模型。",
-          detectModelsFailed: "暂时无法检测这个 provider 的模型。",
-          detectModelsSucceeded: "已检测到 provider 模型。",
+            "用你自己的 API 密钥接入模型，供工作区的应用和 Agent 使用。",
+          detectModels: "获取可用模型",
+          detectingModels: "获取中...",
+          detectModelsEmpty: "没有找到可用模型。",
+          detectModelsFailed: "获取模型失败，请重试。",
+          emptyDescription:
+            "点「添加」用你的 API 密钥接入 Agnes、OpenAI 或 Anthropic。",
+          emptyTitle: "还没有接入模型供应商",
           enabled: "启用 {{provider}}",
-          getApiKey: "获取 {{provider}} API Key",
-          hideApiKey: "隐藏 API key",
-          keyConfigured: "API key 已保存在 Tutti",
-          keyMissing: "尚未配置 API key",
-          keepExistingKey: "留空则继续使用已保存的 key",
-          loadFailed: "暂时无法加载托管模型 provider。",
+          expand: "展开",
+          getApiKey: "获取 {{provider}} API 密钥",
+          hideApiKey: "隐藏密钥",
+          keyConfigured: "密钥已保存",
+          keyMissing: "还没填密钥",
+          keepExistingKey: "留空则继续使用已保存的密钥",
+          loadFailed: "暂时无法加载模型供应商。",
           modelId: "模型 ID",
           modelIdPlaceholder: "model-id",
           models: "模型",
@@ -332,18 +320,18 @@ export const zhCN = {
             openaiOfficial: "OpenAI official"
           },
           removeModel: "移除模型",
-          requiredFieldsMissing: "请先填写 API Key 和 Base URL。",
-          quickFillProvider: "快速填充 provider",
+          requiredFieldsMissing: "请先填写 API 密钥和 Base URL。",
+          quickFillProvider: "选择服务商预设",
           save: "保存",
-          saveFailed: "暂时无法保存这个托管 provider。",
-          saveSucceeded: "托管 provider 已保存。",
+          saveFailed: "保存失败，请重试。",
           saving: "保存中...",
-          showApiKey: "显示 API key",
-          test: "测试",
-          testFailed: "Provider 测试失败。",
-          testSucceeded: "Provider 测试通过。",
+          showApiKey: "显示密钥",
+          test: "测试连接",
+          testFailed: "连接失败，请检查密钥或地址。",
+          testSucceeded: "连接正常。",
           testing: "测试中...",
-          title: "托管模型"
+          modelCount: "{{count}} 个模型",
+          title: "模型供应商"
         }
       },
       developer: {
@@ -372,7 +360,9 @@ export const zhCN = {
         openDaemonLog: "打开 daemon 日志",
         openDesktopLog: "打开 desktop 日志",
         openLogsDirectory: "打开日志目录",
-        versionLabel: "桌面版本"
+        visibilityDescription:
+          "在设置中隐藏此面板。在「通用」里连续点击版本号七次即可重新显示。",
+        visibilityLabel: "显示开发者面板"
       },
       title: "设置",
       trigger: "设置"
