@@ -3,6 +3,7 @@ import type { AppUpdateViewState } from "../appUpdateTypes";
 
 const hiddenStatuses = new Set([
   "disabled",
+  "error",
   "idle",
   "unsupported",
   "up_to_date"

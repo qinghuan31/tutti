@@ -338,6 +338,8 @@ export type {
   DesktopPreferencesStateResponse,
   DesktopSleepPreventionMode,
   DesktopThemeSource,
+  DesktopUpdateChannel,
+  DesktopUpdatePolicy,
   ExportWorkspaceAppData,
   ExportWorkspaceAppError,
   ExportWorkspaceAppErrors,

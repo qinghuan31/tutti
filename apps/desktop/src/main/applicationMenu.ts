@@ -4,6 +4,7 @@ import type { DesktopLogger } from "./logging.ts";
 
 export interface ApplicationMenuOptions {
   allowDeveloperTools?: boolean;
+  checkForUpdates?: () => unknown;
   exportDeveloperLogs?: () => unknown;
   getLocale?: () => DesktopLocale;
   logger?: DesktopLogger;
@@ -42,8 +43,26 @@ async function runExportDeveloperLogsFromMenu(
   }
 }
 
+async function runCheckForUpdatesFromMenu(
+  options: ApplicationMenuOptions
+): Promise<void> {
+  if (!options.checkForUpdates) {
+    return;
+  }
+
+  try {
+    await options.checkForUpdates();
+    options.logger?.info("menu check for updates completed");
+  } catch (error) {
+    options.logger?.warn("menu check for updates failed", {
+      detail: formatErrorDetail(error)
+    });
+  }
+}
+
 export function createApplicationMenuTemplate({
   allowDeveloperTools = process.env.NODE_ENV === "development",
+  checkForUpdates,
   exportDeveloperLogs,
   getLocale = () => "en",
   logger,
@@ -58,6 +77,19 @@ export function createApplicationMenuTemplate({
       label: "Tutti",
       submenu: [
         { role: "about" },
+        {
+          label: translator.t("desktop.menu.checkForUpdates"),
+          click: () => {
+            void runCheckForUpdatesFromMenu({
+              allowDeveloperTools,
+              checkForUpdates,
+              exportDeveloperLogs,
+              getLocale,
+              logger,
+              platform
+            });
+          }
+        },
         { type: "separator" },
         { role: "services" },
         { type: "separator" },
@@ -121,6 +153,24 @@ export function createApplicationMenuTemplate({
     {
       label: translator.t("desktop.menu.help"),
       submenu: [
+        ...(!isMac
+          ? ([
+              {
+                label: translator.t("desktop.menu.checkForUpdates"),
+                click: () => {
+                  void runCheckForUpdatesFromMenu({
+                    allowDeveloperTools,
+                    checkForUpdates,
+                    exportDeveloperLogs,
+                    getLocale,
+                    logger,
+                    platform
+                  });
+                }
+              },
+              { type: "separator" }
+            ] satisfies MenuItemConstructorOptions[])
+          : []),
         {
           label: translator.t("desktop.menu.exportServiceLogs"),
           click: () => {

@@ -49,7 +49,7 @@ func TestServicePublishRejectsInvalidPayload(t *testing.T) {
 
 	err := service.PublishFromClient(context.Background(), ClientEvent{
 		Topic:   TopicPreferencesDesktopUpdateRequested,
-		Payload: []byte(`{"preferences":{"defaultAgentProvider":"codex","dockIconStyle":"default","locale":"fr","sleepPreventionMode":"never","themeSource":"dark"}}`),
+		Payload: []byte(`{"preferences":{"defaultAgentProvider":"codex","dockIconStyle":"default","dockPlacement":"bottom","locale":"fr","sleepPreventionMode":"never","themeSource":"dark","updateChannel":"stable","updatePolicy":"prompt"}}`),
 	})
 	if err == nil {
 		t.Fatal("PublishFromClient() error = nil, want invalid payload")
@@ -250,6 +250,8 @@ func TestPreferencesIntentHandlerUsesAuthoritativeMutationPath(t *testing.T) {
 			Locale:              "zh-CN",
 			SleepPreventionMode: "whileAgentRunning",
 			ThemeSource:         "dark",
+			UpdateChannel:       "rc",
+			UpdatePolicy:        "auto",
 		},
 	}
 
@@ -268,7 +270,7 @@ func TestPreferencesIntentHandlerUsesAuthoritativeMutationPath(t *testing.T) {
 
 	if err := service.PublishFromClient(context.Background(), ClientEvent{
 		Topic:   TopicPreferencesDesktopUpdateRequested,
-		Payload: []byte(`{"preferences":{"agentComposerDefaultsByProvider":{},"defaultAgentProvider":"codex","dockIconStyle":"flat","dockPlacement":"left","locale":"zh-CN","sleepPreventionMode":"never","themeSource":"dark"}}`),
+		Payload: []byte(`{"preferences":{"agentComposerDefaultsByProvider":{},"defaultAgentProvider":"codex","dockIconStyle":"flat","dockPlacement":"left","locale":"zh-CN","sleepPreventionMode":"never","themeSource":"dark","updateChannel":"rc","updatePolicy":"auto"}}`),
 	}); err != nil {
 		t.Fatalf("PublishFromClient() error = %v", err)
 	}
@@ -279,8 +281,10 @@ func TestPreferencesIntentHandlerUsesAuthoritativeMutationPath(t *testing.T) {
 	if mutator.inputs[0].DockPlacement != "left" ||
 		mutator.inputs[0].DockIconStyle != "flat" ||
 		mutator.inputs[0].Locale != "zh-CN" ||
-		mutator.inputs[0].ThemeSource != "dark" {
-		t.Fatalf("mutator input = %#v, want flat/left/zh-CN/dark", mutator.inputs[0])
+		mutator.inputs[0].ThemeSource != "dark" ||
+		mutator.inputs[0].UpdateChannel != "rc" ||
+		mutator.inputs[0].UpdatePolicy != "auto" {
+		t.Fatalf("mutator input = %#v, want flat/left/zh-CN/dark/rc/auto", mutator.inputs[0])
 	}
 }
 
@@ -305,6 +309,8 @@ func TestDesktopPreferencesPublisherIncludesDockIconStyle(t *testing.T) {
 		Locale:               "zh-CN",
 		SleepPreventionMode:  "never",
 		ThemeSource:          "dark",
+		UpdateChannel:        "stable",
+		UpdatePolicy:         "prompt",
 	}); err != nil {
 		t.Fatalf("PublishDesktopPreferencesUpdated() error = %v", err)
 	}
@@ -357,7 +363,7 @@ func TestServiceFiltersScopedSubscriptions(t *testing.T) {
 	if err := service.PublishFromServerScoped(
 		context.Background(),
 		TopicPreferencesDesktopUpdated,
-		[]byte(`{"initialized":true,"preferences":{"agentComposerDefaultsByProvider":{},"defaultAgentProvider":"codex","dockIconStyle":"default","dockPlacement":"bottom","locale":"zh-CN","sleepPreventionMode":"never","themeSource":"dark"}}`),
+		[]byte(`{"initialized":true,"preferences":{"agentComposerDefaultsByProvider":{},"defaultAgentProvider":"codex","dockIconStyle":"default","dockPlacement":"bottom","locale":"zh-CN","sleepPreventionMode":"never","themeSource":"dark","updateChannel":"stable","updatePolicy":"prompt"}}`),
 		EventScope{WorkspaceID: "workspace-1"},
 	); err != nil {
 		t.Fatalf("PublishFromServerScoped() error = %v", err)

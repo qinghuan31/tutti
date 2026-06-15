@@ -2933,6 +2933,17 @@ components:
         - never
         - whileAgentRunning
         - always
+    DesktopUpdatePolicy:
+      type: string
+      enum:
+        - off
+        - prompt
+        - auto
+    DesktopUpdateChannel:
+      type: string
+      enum:
+        - stable
+        - rc
     DesktopDockPlacement:
       type: string
       enum:
@@ -2954,6 +2965,8 @@ components:
         - locale
         - sleepPreventionMode
         - themeSource
+        - updateChannel
+        - updatePolicy
       properties:
         agentComposerDefaultsByProvider:
           $ref: "#/components/schemas/DesktopAgentComposerDefaultsByProvider"
@@ -2969,6 +2982,10 @@ components:
           $ref: "#/components/schemas/DesktopSleepPreventionMode"
         themeSource:
           $ref: "#/components/schemas/DesktopThemeSource"
+        updateChannel:
+          $ref: "#/components/schemas/DesktopUpdateChannel"
+        updatePolicy:
+          $ref: "#/components/schemas/DesktopUpdatePolicy"
     DesktopAgentComposerDefaults:
       type: object
       additionalProperties: false

@@ -477,6 +477,8 @@ function createDesktopPreferencesService(input: {
   onSetLocale?: IDesktopPreferencesService["setLocale"];
   onSetSleepPreventionMode?: IDesktopPreferencesService["setSleepPreventionMode"];
   onSetThemeSource?: IDesktopPreferencesService["setThemeSource"];
+  onSetUpdateChannel?: IDesktopPreferencesService["setUpdateChannel"];
+  onSetUpdatePolicy?: IDesktopPreferencesService["setUpdatePolicy"];
   state: DesktopPreferencesReadableStoreState;
 }): IDesktopPreferencesService {
   return {
@@ -492,7 +494,9 @@ function createDesktopPreferencesService(input: {
     setSleepPreventionMode:
       input.onSetSleepPreventionMode ?? (async (enabled) => enabled),
     setThemeSource:
-      input.onSetThemeSource ?? (async (source) => createTheme(source))
+      input.onSetThemeSource ?? (async (source) => createTheme(source)),
+    setUpdateChannel: input.onSetUpdateChannel ?? (async (channel) => channel),
+    setUpdatePolicy: input.onSetUpdatePolicy ?? (async (policy) => policy)
   };
 }
 
@@ -507,12 +511,16 @@ function createPreferencesState(
     changingLocale: null,
     changingSleepPreventionMode: null,
     changingThemeSource: null,
+    changingUpdateChannel: null,
+    changingUpdatePolicy: null,
     defaultAgentProvider: "codex",
     dockIconStyle: "default",
     dockPlacement: "bottom",
     locale: "en",
     sleepPreventionMode: "never",
     theme: createTheme("system"),
+    updateChannel: "stable",
+    updatePolicy: "prompt",
     ...overrides
   };
 }

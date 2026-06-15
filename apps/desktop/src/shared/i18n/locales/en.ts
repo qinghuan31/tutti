@@ -92,6 +92,7 @@ export const en = {
       title: "Export Logs"
     },
     menu: {
+      checkForUpdates: "Check for Updates...",
       edit: "Edit",
       exportLogsFailed: "Unable to export logs",
       exportLogsTitle: "Export Logs",
@@ -293,7 +294,10 @@ export const en = {
           whileAgentRunning: "While agents run"
         },
         preventSleepSaveFailed:
-          "We couldn't update the sleep prevention setting right now."
+          "We couldn't update the sleep prevention setting right now.",
+        updateChannelSaveFailed:
+          "We couldn't update the release channel right now.",
+        updatePolicySaveFailed: "We couldn't update the update mode right now."
       },
       nav: {
         agent: "Agent",

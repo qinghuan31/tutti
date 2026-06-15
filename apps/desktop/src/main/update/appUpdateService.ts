@@ -1,4 +1,4 @@
-import { app, BrowserWindow } from "electron";
+import electron from "electron";
 import electronUpdater, {
   type AppUpdater,
   type ProgressInfo,
@@ -12,14 +12,14 @@ import {
   type AppUpdateState,
   type AppUpdateStatus,
   type ConfigureAppUpdatesInput
-} from "../../shared/contracts/ipc";
-import { getDesktopLogger } from "../logging";
+} from "../../shared/contracts/ipc.ts";
+import { getDesktopLogger } from "../logging.ts";
 import {
   resolveMacAppBundlePath,
   resolveMacUpdaterSupport
-} from "./macosUpdaterSupport";
+} from "./macosUpdaterSupport.ts";
 
-const { autoUpdater } = electronUpdater;
+const { app, BrowserWindow } = electron;
 
 const updateCheckIntervalMs = 1000 * 60 * 60 * 6;
 
@@ -32,6 +32,7 @@ interface AppUpdateDriver {
     autoDownload: boolean;
     autoInstallOnAppQuit: boolean;
     channel: string;
+    forceDevUpdateConfig: boolean;
   }): void;
   downloadUpdate(): Promise<void>;
   onCheckingForUpdate(listener: () => void): DriverDisposer;
@@ -100,6 +101,7 @@ function createElectronAppUpdateDriver(updater: AppUpdater): AppUpdateDriver {
       updater.autoInstallOnAppQuit = options.autoInstallOnAppQuit;
       updater.allowPrerelease = options.allowPrerelease;
       updater.channel = options.channel;
+      updater.forceDevUpdateConfig = options.forceDevUpdateConfig;
     },
     downloadUpdate: () => updater.downloadUpdate().then(() => undefined),
     onCheckingForUpdate: (listener) =>
@@ -188,14 +190,145 @@ function normalizeMessage(error: unknown): string {
   return "Unknown update error";
 }
 
+function envFlagEnabled(name: string): boolean {
+  const value = process.env[name]?.trim().toLowerCase();
+  return value === "1" || value === "true" || value === "yes" || value === "on";
+}
+
+function resolveCurrentVersion(
+  appVersion: string,
+  isPackaged: boolean
+): string {
+  const override = process.env.TUTTI_APP_UPDATE_CURRENT_VERSION?.trim();
+  if (!isPackaged && override) {
+    return override;
+  }
+
+  return appVersion;
+}
+
+function resolveMockLatestVersion(currentVersion: string): string {
+  return (
+    process.env.TUTTI_APP_UPDATE_LATEST_VERSION?.trim() ||
+    `${currentVersion}-dev-update`
+  );
+}
+
+function createDevelopmentMockAppUpdateDriver(
+  currentVersion: string
+): AppUpdateDriver | null {
+  const mode = process.env.TUTTI_APP_UPDATE_MOCK?.trim().toLowerCase();
+  if (!mode) {
+    return null;
+  }
+
+  const checkingListeners = new Set<() => void>();
+  const progressListeners = new Set<(progress: ProgressInfo) => void>();
+  const errorListeners = new Set<(error: Error) => void>();
+  const availableListeners = new Set<(info: UpdateInfo) => void>();
+  const downloadedListeners = new Set<(info: UpdateDownloadedEvent) => void>();
+  const notAvailableListeners = new Set<(info: UpdateInfo) => void>();
+
+  const latestVersion = resolveMockLatestVersion(currentVersion);
+  const updateInfo = (): UpdateInfo => ({
+    files: [],
+    path: "",
+    releaseDate: new Date().toISOString(),
+    releaseName: latestVersion,
+    sha512: "",
+    version: latestVersion
+  });
+
+  return {
+    checkForUpdates() {
+      for (const listener of checkingListeners) {
+        listener();
+      }
+      if (mode === "error") {
+        for (const listener of errorListeners) {
+          listener(new Error("Mock update check failed."));
+        }
+        return Promise.resolve();
+      }
+      if (mode === "up_to_date" || mode === "not_available") {
+        const info = updateInfo();
+        for (const listener of notAvailableListeners) {
+          listener(info);
+        }
+        return Promise.resolve();
+      }
+
+      const info = updateInfo();
+      for (const listener of availableListeners) {
+        listener(info);
+      }
+      if (mode === "downloaded") {
+        for (const listener of downloadedListeners) {
+          listener(info as UpdateDownloadedEvent);
+        }
+      }
+      return Promise.resolve();
+    },
+    configure() {},
+    downloadUpdate() {
+      const info = updateInfo();
+      for (const listener of progressListeners) {
+        listener({
+          bytesPerSecond: 0,
+          delta: 100,
+          percent: 100,
+          total: 100,
+          transferred: 100
+        });
+      }
+      for (const listener of downloadedListeners) {
+        listener(info as UpdateDownloadedEvent);
+      }
+      return Promise.resolve();
+    },
+    onCheckingForUpdate(listener) {
+      checkingListeners.add(listener);
+      return () => checkingListeners.delete(listener);
+    },
+    onDownloadProgress(listener) {
+      progressListeners.add(listener);
+      return () => progressListeners.delete(listener);
+    },
+    onError(listener) {
+      errorListeners.add(listener);
+      return () => errorListeners.delete(listener);
+    },
+    onUpdateAvailable(listener) {
+      availableListeners.add(listener);
+      return () => availableListeners.delete(listener);
+    },
+    onUpdateDownloaded(listener) {
+      downloadedListeners.add(listener);
+      return () => downloadedListeners.delete(listener);
+    },
+    onUpdateNotAvailable(listener) {
+      notAvailableListeners.add(listener);
+      return () => notAvailableListeners.delete(listener);
+    },
+    quitAndInstall() {}
+  };
+}
+
 export function createAppUpdateService(
-  driver: AppUpdateDriver = createElectronAppUpdateDriver(autoUpdater),
+  driver?: AppUpdateDriver,
   options: AppUpdateServiceOptions = {}
 ): AppUpdateService {
-  const currentVersion = app.getVersion();
+  const isPackaged = Boolean(app?.isPackaged);
+  const devUpdatesEnabled = envFlagEnabled("TUTTI_APP_UPDATE_DEV");
+  const appVersion = app?.getVersion?.() ?? "0.0.0";
+  const currentVersion = resolveCurrentVersion(appVersion, isPackaged);
+  const resolvedDriver =
+    driver ??
+    createDevelopmentMockAppUpdateDriver(currentVersion) ??
+    createElectronAppUpdateDriver(electronUpdater.autoUpdater);
   let supportsUpdates =
     options.supportsUpdates ??
-    (process.env.NODE_ENV !== "test" && app.isPackaged);
+    ((process.env.NODE_ENV !== "test" && isPackaged) || devUpdatesEnabled);
   let unsupportedMessage =
     options.unsupportedMessage ??
     (process.env.NODE_ENV === "test"
@@ -205,6 +338,7 @@ export function createAppUpdateService(
   if (
     options.supportsUpdates === undefined &&
     supportsUpdates &&
+    isPackaged &&
     process.platform === "darwin"
   ) {
     const macSupport = resolveMacUpdaterSupport({
@@ -219,7 +353,7 @@ export function createAppUpdateService(
   let state = buildBaseState(
     currentVersion,
     "prompt",
-    "stable",
+    "rc",
     supportsUpdates ? "idle" : "unsupported",
     supportsUpdates ? null : unsupportedMessage
   );
@@ -231,7 +365,7 @@ export function createAppUpdateService(
   >();
 
   const emitState = (): void => {
-    for (const window of BrowserWindow.getAllWindows()) {
+    for (const window of BrowserWindow?.getAllWindows?.() ?? []) {
       window.webContents.send(desktopIpcChannels.update.state, state);
     }
   };
@@ -280,7 +414,7 @@ export function createAppUpdateService(
   };
 
   const driverDisposers = [
-    driver.onCheckingForUpdate(() => {
+    resolvedDriver.onCheckingForUpdate(() => {
       getDesktopLogger().info("checking for application updates", {
         channel: state.channel,
         policy: state.policy
@@ -295,7 +429,7 @@ export function createAppUpdateService(
         checkedAt: state.checkedAt
       });
     }),
-    driver.onUpdateAvailable((info) => {
+    resolvedDriver.onUpdateAvailable((info) => {
       getDesktopLogger().info("application update is available", {
         release_date: normalizeReleaseDate(info.releaseDate),
         release_name: info.releaseName ?? null,
@@ -314,7 +448,7 @@ export function createAppUpdateService(
         releaseName: info.releaseName ?? null
       });
     }),
-    driver.onUpdateNotAvailable(() => {
+    resolvedDriver.onUpdateNotAvailable(() => {
       applyState({
         ...buildBaseState(
           currentVersion,
@@ -325,7 +459,7 @@ export function createAppUpdateService(
         checkedAt: new Date().toISOString()
       });
     }),
-    driver.onDownloadProgress((progress) => {
+    resolvedDriver.onDownloadProgress((progress) => {
       applyState({
         ...state,
         downloadedBytes: Number.isFinite(progress.transferred)
@@ -338,7 +472,7 @@ export function createAppUpdateService(
         totalBytes: Number.isFinite(progress.total) ? progress.total : null
       });
     }),
-    driver.onUpdateDownloaded((info) => {
+    resolvedDriver.onUpdateDownloaded((info) => {
       applyState({
         ...state,
         checkedAt: new Date().toISOString(),
@@ -351,7 +485,7 @@ export function createAppUpdateService(
         status: "downloaded"
       });
     }),
-    driver.onError((error) => {
+    resolvedDriver.onError((error) => {
       getDesktopLogger().error("application updater failed", {
         error: error.message,
         error_name: error.name
@@ -387,7 +521,7 @@ export function createAppUpdateService(
         return state;
       }
 
-      activeCheckPromise = driver.checkForUpdates().finally(() => {
+      activeCheckPromise = resolvedDriver.checkForUpdates().finally(() => {
         activeCheckPromise = null;
       });
       await activeCheckPromise;
@@ -428,11 +562,13 @@ export function createAppUpdateService(
         );
       }
 
-      driver.configure({
-        allowPrerelease: false,
+      const updaterChannel = state.channel === "rc" ? "rc" : "latest";
+      resolvedDriver.configure({
+        allowPrerelease: state.channel === "rc",
         autoDownload: state.policy === "auto",
         autoInstallOnAppQuit: state.policy === "auto",
-        channel: "latest"
+        channel: updaterChannel,
+        forceDevUpdateConfig: devUpdatesEnabled && !isPackaged
       });
       resetConfiguredState("idle");
       scheduleChecks();
@@ -462,18 +598,28 @@ export function createAppUpdateService(
         status: "downloading",
         totalBytes: null
       });
-      activeDownloadPromise = driver.downloadUpdate().finally(() => {
+      activeDownloadPromise = resolvedDriver.downloadUpdate().finally(() => {
         activeDownloadPromise = null;
       });
       await activeDownloadPromise;
       return state;
     },
     getState() {
+      getDesktopLogger().info("application update state requested", {
+        channel: state.channel,
+        current_version: state.currentVersion,
+        is_checking: Boolean(activeCheckPromise),
+        is_downloading: Boolean(activeDownloadPromise),
+        latest_version: state.latestVersion,
+        policy: state.policy,
+        status: state.status,
+        supports_updates: supportsUpdates
+      });
       return state;
     },
     installUpdate() {
       if (state.status === "downloaded") {
-        driver.quitAndInstall();
+        resolvedDriver.quitAndInstall();
       }
       return Promise.resolve();
     },

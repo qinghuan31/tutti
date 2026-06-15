@@ -185,6 +185,10 @@ export type DesktopSleepPreventionMode =
   | "whileAgentRunning"
   | "always";
 
+export type DesktopUpdatePolicy = "off" | "prompt" | "auto";
+
+export type DesktopUpdateChannel = "stable" | "rc";
+
 export type DesktopDockPlacement = "bottom" | "left";
 
 export type DesktopDockIconStyle = "default" | "flat";
@@ -197,6 +201,8 @@ export type DesktopPreferences = {
   locale: DesktopLocale;
   sleepPreventionMode: DesktopSleepPreventionMode;
   themeSource: DesktopThemeSource;
+  updateChannel: DesktopUpdateChannel;
+  updatePolicy: DesktopUpdatePolicy;
 };
 
 export type DesktopAgentComposerDefaults = {

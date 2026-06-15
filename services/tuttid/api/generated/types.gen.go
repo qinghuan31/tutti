@@ -430,6 +430,45 @@ func (e DesktopThemeSource) Valid() bool {
 	}
 }
 
+// Defines values for DesktopUpdateChannel.
+const (
+	Rc     DesktopUpdateChannel = "rc"
+	Stable DesktopUpdateChannel = "stable"
+)
+
+// Valid indicates whether the value is a known member of the DesktopUpdateChannel enum.
+func (e DesktopUpdateChannel) Valid() bool {
+	switch e {
+	case Rc:
+		return true
+	case Stable:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for DesktopUpdatePolicy.
+const (
+	DesktopUpdatePolicyAuto   DesktopUpdatePolicy = "auto"
+	DesktopUpdatePolicyOff    DesktopUpdatePolicy = "off"
+	DesktopUpdatePolicyPrompt DesktopUpdatePolicy = "prompt"
+)
+
+// Valid indicates whether the value is a known member of the DesktopUpdatePolicy enum.
+func (e DesktopUpdatePolicy) Valid() bool {
+	switch e {
+	case DesktopUpdatePolicyAuto:
+		return true
+	case DesktopUpdatePolicyOff:
+		return true
+	case DesktopUpdatePolicyPrompt:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for HealthStatusResponseStatus.
 const (
 	Ok HealthStatusResponseStatus = "ok"
@@ -588,28 +627,28 @@ func (e IssueManagerTaskContextRefParentKind) Valid() bool {
 
 // Defines values for PermissionModeSemantic.
 const (
-	AcceptEdits    PermissionModeSemantic = "accept-edits"
-	AskBeforeWrite PermissionModeSemantic = "ask-before-write"
-	Auto           PermissionModeSemantic = "auto"
-	FullAccess     PermissionModeSemantic = "full-access"
-	LockedDown     PermissionModeSemantic = "locked-down"
-	Unconfigurable PermissionModeSemantic = "unconfigurable"
+	PermissionModeSemanticAcceptEdits    PermissionModeSemantic = "accept-edits"
+	PermissionModeSemanticAskBeforeWrite PermissionModeSemantic = "ask-before-write"
+	PermissionModeSemanticAuto           PermissionModeSemantic = "auto"
+	PermissionModeSemanticFullAccess     PermissionModeSemantic = "full-access"
+	PermissionModeSemanticLockedDown     PermissionModeSemantic = "locked-down"
+	PermissionModeSemanticUnconfigurable PermissionModeSemantic = "unconfigurable"
 )
 
 // Valid indicates whether the value is a known member of the PermissionModeSemantic enum.
 func (e PermissionModeSemantic) Valid() bool {
 	switch e {
-	case AcceptEdits:
+	case PermissionModeSemanticAcceptEdits:
 		return true
-	case AskBeforeWrite:
+	case PermissionModeSemanticAskBeforeWrite:
 		return true
-	case Auto:
+	case PermissionModeSemanticAuto:
 		return true
-	case FullAccess:
+	case PermissionModeSemanticFullAccess:
 		return true
-	case LockedDown:
+	case PermissionModeSemanticLockedDown:
 		return true
-	case Unconfigurable:
+	case PermissionModeSemanticUnconfigurable:
 		return true
 	default:
 		return false
@@ -1657,6 +1696,8 @@ type DesktopPreferences struct {
 	Locale                          DesktopLocale                          `json:"locale"`
 	SleepPreventionMode             DesktopSleepPreventionMode             `json:"sleepPreventionMode"`
 	ThemeSource                     DesktopThemeSource                     `json:"themeSource"`
+	UpdateChannel                   DesktopUpdateChannel                   `json:"updateChannel"`
+	UpdatePolicy                    DesktopUpdatePolicy                    `json:"updatePolicy"`
 }
 
 // DesktopPreferencesStateResponse defines model for DesktopPreferencesStateResponse.
@@ -1670,6 +1711,12 @@ type DesktopSleepPreventionMode string
 
 // DesktopThemeSource defines model for DesktopThemeSource.
 type DesktopThemeSource string
+
+// DesktopUpdateChannel defines model for DesktopUpdateChannel.
+type DesktopUpdateChannel string
+
+// DesktopUpdatePolicy defines model for DesktopUpdatePolicy.
+type DesktopUpdatePolicy string
 
 // ExportWorkspaceAppRequest defines model for ExportWorkspaceAppRequest.
 type ExportWorkspaceAppRequest struct {

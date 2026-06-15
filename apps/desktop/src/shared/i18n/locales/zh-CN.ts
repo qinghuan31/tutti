@@ -91,6 +91,7 @@ export const zhCN = {
       title: "导出日志"
     },
     menu: {
+      checkForUpdates: "检查更新...",
       edit: "编辑",
       exportLogsFailed: "无法导出日志",
       exportLogsTitle: "导出日志",
@@ -277,7 +278,9 @@ export const zhCN = {
           never: "不阻止",
           whileAgentRunning: "Agent 运行时阻止"
         },
-        preventSleepSaveFailed: "暂时无法更新防止休眠设置。"
+        preventSleepSaveFailed: "暂时无法更新防止休眠设置。",
+        updateChannelSaveFailed: "暂时无法更新发布渠道。",
+        updatePolicySaveFailed: "暂时无法更新更新方式。"
       },
       nav: {
         agent: "Agent",

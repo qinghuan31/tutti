@@ -27,6 +27,7 @@ function createUpdateState(
 test("resolveAppUpdateViewState hides non-actionable statuses", () => {
   for (const status of [
     "disabled",
+    "error",
     "idle",
     "unsupported",
     "up_to_date"
@@ -90,21 +91,6 @@ test("resolveAppUpdateViewState maps downloaded updates to install action", () =
   assert.equal(view.titleKey, "updates.downloadedTitle");
   assert.equal(view.action, "install");
   assert.equal(view.actionKey, "updates.restartAction");
-});
-
-test("resolveAppUpdateViewState maps errors to retry action", () => {
-  const view = resolveAppUpdateViewState(
-    createUpdateState({
-      status: "error"
-    })
-  );
-
-  assert.equal(view.visible, true);
-  assert.equal(view.tone, "error");
-  assert.equal(view.icon, "alert");
-  assert.equal(view.titleKey, "updates.errorTitle");
-  assert.equal(view.action, "retry");
-  assert.equal(view.actionKey, "updates.retryAction");
 });
 
 test("resolveAppUpdateViewState folds local action state into busy state", () => {
