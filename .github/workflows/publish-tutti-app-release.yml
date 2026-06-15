@@ -176,6 +176,20 @@ jobs:
             return process.env.RELEASE_TAG_PREFIX || `${process.env.APP_ID}-v`;
           }
 
+          function parseStableVersion(version, source) {
+            const match = version.match(stableSemverPattern);
+            if (!match) {
+              return null;
+            }
+            return {
+              source,
+              version,
+              major: Number(match[1]),
+              minor: Number(match[2]),
+              patch: Number(match[3])
+            };
+          }
+
           function compareVersions(left, right) {
             for (const key of ["major", "minor", "patch"]) {
               if (left[key] !== right[key]) {
@@ -185,33 +199,30 @@ jobs:
             return 0;
           }
 
-          function nextVersionFromTags(prefix, bump) {
+          function nextVersionFromSources(prefix, bump, manifestVersion) {
             execFileSync("git", ["fetch", "--tags", "--force"], { stdio: "inherit" });
             const tags = execFileSync("git", ["tag", "--list"], { encoding: "utf8" })
               .split("\n")
               .map((tag) => tag.trim())
               .filter((tag) => tag.startsWith(prefix));
-            const versions = tags
-              .map((tag) => tag.slice(prefix.length))
-              .map((version) => {
-                const match = version.match(stableSemverPattern);
-                if (!match) {
-                  return null;
-                }
-                return {
-                  version,
-                  major: Number(match[1]),
-                  minor: Number(match[2]),
-                  patch: Number(match[3])
-                };
-              })
-              .filter(Boolean)
-              .sort(compareVersions);
-            const latest = versions.at(-1) ?? {
+            const manifestSeed = parseStableVersion(
+              manifestVersion,
+              "package manifest"
+            );
+            if (!manifestSeed) {
+              fail(`Package manifest version must be stable semver x.y.z when release_bump is used, got ${manifestVersion}.`);
+            }
+            const tagSeeds = tags
+              .map((tag) => parseStableVersion(tag.slice(prefix.length), `tag ${tag}`))
+              .filter(Boolean);
+            const latest = [manifestSeed, ...tagSeeds].sort(compareVersions).at(-1) ?? {
+              source: "default",
+              version: "0.0.0",
               major: 0,
               minor: 0,
               patch: 0
             };
+            console.log(`Resolved release version seed ${latest.version} from ${latest.source}.`);
 
             if (bump === "major") {
               return `${latest.major + 1}.0.0`;
@@ -230,20 +241,24 @@ jobs:
           }).trim();
           const releaseBump = process.env.RELEASE_BUMP;
           const shouldCreateTag = process.env.CREATE_RELEASE_TAG === "true";
+          const manifest = JSON.parse(
+            fs.readFileSync(`${process.env.PACKAGE_DIR}/tutti.app.json`, "utf8")
+          );
           let releaseVersion = "";
           let tagName = "";
 
           if (releaseBump) {
             const tagPrefix = defaultTagPrefix();
-            releaseVersion = nextVersionFromTags(tagPrefix, releaseBump);
+            releaseVersion = nextVersionFromSources(
+              tagPrefix,
+              releaseBump,
+              manifest.version
+            );
             tagName = `${tagPrefix}${releaseVersion}`;
           } else {
             if (shouldCreateTag) {
               fail("create_release_tag requires release_bump.");
             }
-            const manifest = JSON.parse(
-              fs.readFileSync(`${process.env.PACKAGE_DIR}/tutti.app.json`, "utf8")
-            );
             releaseVersion = `${manifest.version}+${gitSha.slice(0, 12)}`;
           }
 

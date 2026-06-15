@@ -332,7 +332,14 @@ test("Tutti app release workflow is reusable by external app repositories", asyn
   assert.doesNotMatch(workflow, /github\.ref_type/);
   assert.match(workflow, /`\$\{process\.env\.APP_ID\}-v`/);
   assert.match(workflow, /git", \["fetch", "--tags", "--force"\]/);
-  assert.match(workflow, /nextVersionFromTags/);
+  assert.match(workflow, /parseStableVersion/);
+  assert.match(workflow, /nextVersionFromSources/);
+  assert.match(workflow, /manifest\.version/);
+  assert.match(workflow, /Package manifest version must be stable semver/);
+  assert.match(
+    workflow,
+    /Resolved release version seed \$\{latest\.version\} from \$\{latest\.source\}/
+  );
   assert.match(workflow, /release_bump requires create_release_tag/);
   assert.match(workflow, /create_release_tag requires release_bump/);
   assert.match(

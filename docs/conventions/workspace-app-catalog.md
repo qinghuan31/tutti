@@ -95,8 +95,9 @@ External app repositories should call `.github/workflows/publish-tutti-app-relea
 Production app releases are manually dispatched from GitHub Actions with a
 `release_bump` value of `patch`, `minor`, or `major`. The reusable workflow
 fetches existing tags with the configured `release_tag_prefix` (default
-`<appId>-v`), calculates the next stable semver version, publishes the S3
-release, verifies the artifact, then creates an annotated release tag such as
+`<appId>-v`), reads the packaged manifest version, calculates the next stable
+semver version from the greater of those sources, publishes the S3 release,
+verifies the artifact, then creates an annotated release tag such as
 `vibe-design-v1.2.4`. The workflow never edits or commits the source manifest.
 
 Staging app releases do not create release tags. When `release_bump` is empty,
@@ -112,6 +113,15 @@ invalidates the catalog path when `catalog_cloudfront_distribution_id` is set.
 The release upload role must be allowed to read and write that `catalog.json`
 object, and must have CloudFront invalidation permissions when invalidation is
 enabled.
+
+Caller workflows usually pass `catalog_cloudfront_distribution_id` from
+`TUTTI_APP_RELEASES_PRODUCTION_CLOUDFRONT_DISTRIBUTION_ID` or the shared
+`TUTTI_APP_RELEASES_CLOUDFRONT_DISTRIBUTION_ID` variable. Prefer configuring
+shared CloudFront distribution ids as organization variables with selected
+repository access, and use repository variables only for repository-specific
+overrides or temporary setup. When neither variable is configured, the input is
+empty, invalidation is skipped, and catalog readers rely on the `catalog.json`
+cache TTL.
 
 The release workflow also supports `catalog_only: true` for catalog repair and
 refresh operations. In catalog-only mode it skips package build, version bump,

@@ -33,7 +33,7 @@ For catalog publication:
 
 For versioning:
 
-- Production releases should be workflow-driven. Run the production caller workflow with `release_bump` (`patch`, `minor`, or `major`); the reusable workflow calculates the next version from existing release tags and creates the tag after the S3 release verifies.
+- Production releases should be workflow-driven. Run the production caller workflow with `release_bump` (`patch`, `minor`, or `major`); the reusable workflow calculates the next version from the greater of the packaged manifest version and existing release tags, then creates the tag after the S3 release verifies.
 - The workflow never bumps or commits app manifest versions. Do not add caller-side release PRs or manifest bump commits to work around protected branches.
 - Staging releases should leave `release_bump` empty. The workflow uses `manifest.version+<short git sha>` from the packaged manifest and does not create a release tag.
 
@@ -72,9 +72,10 @@ apps/<appId>/latest.json
 
 For production, the workflow derives the next release version by fetching
 existing stable semver tags with the configured `release_tag_prefix` (default
-`<appId>-v`) and applying `release_bump`. It creates the annotated release tag
-after the S3 release has been uploaded and verified. If `release_bump` is empty,
-the workflow uses `manifest.version+<short git sha>` from the packaged manifest,
+`<appId>-v`), reading the packaged manifest version, and applying
+`release_bump` to the greater version. It creates the annotated release tag after
+the S3 release has been uploaded and verified. If `release_bump` is empty, the
+workflow uses `manifest.version+<short git sha>` from the packaged manifest,
 which is intended for staging.
 
 ## Reference Caller Workflow
@@ -183,7 +184,7 @@ Optional catalog inputs:
 
 - `publish_catalog`: after uploading the app release, merge that release into `catalog.json`. Default: `false`.
 - `catalog_only`: skip package build, release metadata generation, and app release upload; merge existing `apps/<appId>/latest.json` into `catalog.json`. Default: `false`.
-- `catalog_cloudfront_distribution_id`: CloudFront distribution id for invalidating `/<s3_prefix>/catalog.json` after catalog upload. Default: empty.
+- `catalog_cloudfront_distribution_id`: CloudFront distribution id for invalidating `/<s3_prefix>/catalog.json` after catalog upload. Default: empty. Caller workflows normally read this from `TUTTI_APP_RELEASES_PRODUCTION_CLOUDFRONT_DISTRIBUTION_ID` or `TUTTI_APP_RELEASES_CLOUDFRONT_DISTRIBUTION_ID`; prefer storing the shared value as an organization variable with selected repository access, and use repository variables only for overrides or when organization variables are unavailable. If neither variable is configured, invalidation is skipped and readers rely on the catalog cache TTL.
 
 Optional runtime/tooling inputs:
 
@@ -218,7 +219,7 @@ Recommended inputs for refresh/repair:
 
 - `catalog_mode`: `merge`
 - `app_ids`: the released remote app id, such as `vibe-design`
-- Leave AWS, S3, prefix, and CloudFront inputs empty unless overriding repository variables.
+- Leave AWS, S3, prefix, and CloudFront inputs empty unless overriding organization or repository variables.
 
 Use `replace` only for deliberate full catalog replacement. Built-in app ids such as `automation` are not published through the remote catalog workflow.
 
@@ -245,7 +246,7 @@ When `publish_catalog` or `catalog_only` is used in the app release workflow, th
 s3://<s3_bucket>/<s3_prefix>/catalog.json
 ```
 
-CloudFront invalidation requires permission for the matching distribution id. Store non-secret configuration such as role ARN and bucket name in GitHub Actions variables when possible.
+CloudFront invalidation requires permission for the matching distribution id. Store shared non-secret configuration such as the CloudFront distribution id in GitHub organization variables with selected repository access when possible; use repository variables only for repository-specific overrides.
 
 ## Local Validation
 
