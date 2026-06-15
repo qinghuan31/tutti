@@ -6241,6 +6241,7 @@ html[data-theme="light"] [data-message-center-item-id].agent-gui-edge-glow {
   min-width: 0;
   min-height: 46px;
   max-height: 72px;
+  overflow-y: auto;
   border: 0;
   background: transparent;
   color: var(--agent-gui-text-primary);
@@ -6250,6 +6251,30 @@ html[data-theme="light"] [data-message-center-item-id].agent-gui-edge-glow {
   outline: 0;
   padding: 0;
   resize: none;
+  scrollbar-width: thin;
+  scrollbar-color: var(--transparency-hover) transparent;
+  scrollbar-gutter: stable;
+  -ms-overflow-style: auto;
+}
+
+.agent-gui-node__composer textarea::-webkit-scrollbar,
+.agent-gui-node__composer-textarea::-webkit-scrollbar {
+  display: block;
+  width: 4px;
+  height: 4px;
+}
+
+.agent-gui-node__composer textarea::-webkit-scrollbar-track,
+.agent-gui-node__composer textarea::-webkit-scrollbar-corner,
+.agent-gui-node__composer-textarea::-webkit-scrollbar-track,
+.agent-gui-node__composer-textarea::-webkit-scrollbar-corner {
+  background: transparent;
+}
+
+.agent-gui-node__composer textarea::-webkit-scrollbar-thumb,
+.agent-gui-node__composer-textarea::-webkit-scrollbar-thumb {
+  border-radius: 999px;
+  background: var(--transparency-hover);
 }
 
 .agent-gui-node__composer-input-shell[data-input-disabled="true"],

@@ -3457,7 +3457,7 @@ describe("AgentGUINode", () => {
 
     expect(mockUpdateComposerSettings).not.toHaveBeenCalled();
     expect(mockSubmitPrompt).toHaveBeenCalledWith(promptBlocks("/pla"));
-    expect(mockUpdateDraftPrompt).not.toHaveBeenCalledWith("");
+    expect(mockUpdateDraftPrompt).toHaveBeenCalledWith("");
   });
 
   it("blocks manual Codex plan text", () => {
@@ -3715,8 +3715,8 @@ describe("AgentGUINode", () => {
       key: "Enter"
     });
 
-    expect(mockUpdateDraftPrompt).not.toHaveBeenCalled();
     expect(mockSubmitPrompt).toHaveBeenCalledWith(promptBlocks("/web query"));
+    expect(mockUpdateDraftPrompt).toHaveBeenCalledWith("");
   });
 
   it("does not match slash commands after non-command text", () => {
@@ -3747,10 +3747,12 @@ describe("AgentGUINode", () => {
 
     const editor = getComposerEditor();
     fireEvent.keyDown(editor, { key: "Escape" });
+    expect(mockUpdateDraftPrompt).not.toHaveBeenCalled();
+
     fireEvent.keyDown(editor, { key: "Enter" });
 
-    expect(mockUpdateDraftPrompt).not.toHaveBeenCalled();
     expect(mockSubmitPrompt).toHaveBeenCalledWith(promptBlocks("/"));
+    expect(mockUpdateDraftPrompt).toHaveBeenCalledWith("");
   });
 
   it("filters slash commands and closes the palette after the command token", () => {

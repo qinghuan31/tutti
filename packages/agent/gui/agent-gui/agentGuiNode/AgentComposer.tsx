@@ -930,6 +930,9 @@ export function AgentComposer({
       setSubmittedImagePreview([]);
       submittedImagePreviewObservedBusyRef.current = false;
     }
+    draftPromptRef.current = "";
+    setPaletteDraftPrompt("");
+    onDraftChange("");
     setDraftImages([]);
   };
 

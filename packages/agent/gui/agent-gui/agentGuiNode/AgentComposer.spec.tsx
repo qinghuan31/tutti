@@ -541,6 +541,53 @@ describe("AgentComposer", () => {
     expect(onSubmit).not.toHaveBeenCalled();
   });
 
+  it("clears the visible draft immediately after a normal prompt submit", () => {
+    const onDraftChange = vi.fn();
+    const onSubmit = vi.fn();
+    const { container } = render(
+      <AgentComposer
+        workspaceId="workspace-1"
+        currentUserId="user-1"
+        provider="codex"
+        draftPrompt="run the tests"
+        availableCommands={[] satisfies readonly AgentHostAgentSessionCommand[]}
+        disabled={false}
+        submitDisabled={false}
+        placeholder="placeholder"
+        composerSettings={createComposerSettings()}
+        queuedPrompts={[]}
+        drainingQueuedPromptId={null}
+        canQueueWhileBusy={false}
+        showStopButton={false}
+        activePrompt={null}
+        isInterrupting={false}
+        isSendingTurn={false}
+        isSubmittingPrompt={false}
+        labels={createLabels()}
+        workspaceUserProjectI18n={workspaceUserProjectI18n}
+        onDraftChange={onDraftChange}
+        onSettingsChange={vi.fn()}
+        onSubmit={onSubmit}
+        onSendQueuedPromptNext={vi.fn()}
+        onRemoveQueuedPrompt={vi.fn()}
+        onEditQueuedPrompt={vi.fn()}
+        onInterruptCurrentTurn={vi.fn()}
+        onSubmitInteractivePrompt={vi.fn()}
+      />
+    );
+
+    const editor = screen.getByPlaceholderText("placeholder");
+    expect(editor).toHaveValue("run the tests");
+
+    fireEvent.submit(container.querySelector("form")!);
+
+    expect(onSubmit).toHaveBeenCalledWith([
+      { type: "text", text: "run the tests" }
+    ]);
+    expect(onDraftChange).toHaveBeenCalledWith("");
+    expect(editor).toHaveValue("");
+  });
+
   it("toggles a persistent status panel for the local status slash command", () => {
     const { container, rerender } = render(
       <AgentComposer
@@ -1405,6 +1452,15 @@ describe("AgentComposer", () => {
     const css = readFileSync(resolve("app/renderer/agentactivity.css"), "utf8");
     expect(css).toMatch(
       /\.agent-gui-node__composer-textarea\s*{[^}]*font-size:\s*13px/s
+    );
+    expect(css).toMatch(
+      /\.agent-gui-node__composer-textarea\s*{[^}]*max-height:\s*72px;[^}]*overflow-y:\s*auto;[^}]*scrollbar-width:\s*thin;[^}]*scrollbar-gutter:\s*stable/s
+    );
+    expect(css).toMatch(
+      /\.agent-gui-node__composer-textarea::-webkit-scrollbar\s*{[^}]*display:\s*block;[^}]*width:\s*4px/s
+    );
+    expect(css).toMatch(
+      /\.agent-gui-node__composer-textarea::-webkit-scrollbar-thumb\s*{[^}]*background:\s*var\(--transparency-hover\)/s
     );
     expect(css).toMatch(
       /\.agent-gui-node__composer-textarea p\s*{[^}]*font-size:\s*13px/s
