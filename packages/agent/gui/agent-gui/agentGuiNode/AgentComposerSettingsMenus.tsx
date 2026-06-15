@@ -144,6 +144,7 @@ export function AgentPermissionModeDropdown({
   }) => void;
 }): React.JSX.Element {
   "use memo";
+  const [isSelectOpen, setIsSelectOpen] = useState(false);
   const availableOptions = composerSettings.availablePermissionModes ?? [];
   const planModeActive = Boolean(
     composerSettings.supportsPlanMode &&
@@ -199,8 +200,10 @@ export function AgentPermissionModeDropdown({
 
   return (
     <Select
+      open={isSelectOpen}
       value={selectedValue ?? undefined}
       disabled={selectDisabled}
+      onOpenChange={setIsSelectOpen}
       onValueChange={applyPermissionModeId}
     >
       <SelectTrigger
@@ -218,35 +221,37 @@ export function AgentPermissionModeDropdown({
           <span className="truncate">{triggerLabel}</span>
         </span>
       </SelectTrigger>
-      <SelectContent
-        align="end"
-        side="top"
-        sideOffset={4}
-        collisionPadding={16}
-        className={cn(
-          styles.composerMenuContent,
-          "w-max min-w-[220px] max-w-[calc(100vw-32px)] data-[side=top]:!translate-y-0"
-        )}
-      >
-        {optionsWithPlan.map((option) => (
-          <SelectItem
-            key={option.value}
-            value={option.value}
-            disabled={selectDisabled}
-            className={cn(styles.composerMenuItem, "group/permission-option")}
-            onPointerDown={(event) =>
-              handleSelectedItemPointerDown(event, option.value)
-            }
-          >
-            <span className="flex min-w-0 items-center gap-1.5">
-              <span className="min-w-0 truncate">{option.label}</span>
-              {option.description ? (
-                <PermissionModeOptionInfo description={option.description} />
-              ) : null}
-            </span>
-          </SelectItem>
-        ))}
-      </SelectContent>
+      {isSelectOpen ? (
+        <SelectContent
+          align="end"
+          side="top"
+          sideOffset={4}
+          collisionPadding={16}
+          className={cn(
+            styles.composerMenuContent,
+            "w-max min-w-[220px] max-w-[calc(100vw-32px)] data-[side=top]:!translate-y-0"
+          )}
+        >
+          {optionsWithPlan.map((option) => (
+            <SelectItem
+              key={option.value}
+              value={option.value}
+              disabled={selectDisabled}
+              className={cn(styles.composerMenuItem, "group/permission-option")}
+              onPointerDown={(event) =>
+                handleSelectedItemPointerDown(event, option.value)
+              }
+            >
+              <span className="flex min-w-0 items-center gap-1.5">
+                <span className="min-w-0 truncate">{option.label}</span>
+                {option.description ? (
+                  <PermissionModeOptionInfo description={option.description} />
+                ) : null}
+              </span>
+            </SelectItem>
+          ))}
+        </SelectContent>
+      ) : null}
     </Select>
   );
 }

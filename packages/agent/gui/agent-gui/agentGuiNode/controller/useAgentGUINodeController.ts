@@ -1,4 +1,11 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useId,
+  useMemo,
+  useRef,
+  useState
+} from "react";
 import { toast } from "@tutti-os/ui-system";
 import { translate } from "../../../i18n/index";
 import {
@@ -99,14 +106,17 @@ import {
 import {
   clearAgentGUIConversationCreatePending,
   clearAgentGUIConversationSubmitPending,
+  clearAgentGUIConversationUnreadCompletion,
   createAgentGUIConversationListQueryKey,
   ensureAgentGUIConversationListQuery,
   getAgentGUIConversationCreatePending,
   getAgentGUIConversationSubmitPending,
+  markAgentGUIConversationCompletionObserved,
   markAgentGUIConversationCreatePending,
   markAgentGUIConversationSubmitPending,
   markLocalDeletedAgentGUIConversation,
   scheduleAgentGUIConversationListProjection,
+  setAgentGUIConversationListActiveConversation,
   subscribeAgentGUIConversationListStore,
   upsertLocalCreatedAgentGUIConversation,
   updateAgentGUIConversationListConversations,
@@ -1455,6 +1465,29 @@ function conversationBusyStatus(
   return status === "working" || status === "waiting";
 }
 
+function stringArraysEqual(
+  first: string[] | null | undefined,
+  second: string[] | null | undefined
+): boolean {
+  if (!first || !second) {
+    return first === second;
+  }
+  return (
+    first.length === second.length &&
+    first.every((value, index) => value === second[index])
+  );
+}
+
+function useStableStringArrayByValue(values: string[]): string[] {
+  const valuesRef = useRef<string[] | null>(null);
+  const currentValues = valuesRef.current;
+  if (!stringArraysEqual(currentValues, values)) {
+    valuesRef.current = values;
+    return values;
+  }
+  return currentValues ?? values;
+}
+
 function agentSessionStatusBusy(input: {
   lifecycleStatus?: string;
   effectiveStatus?: string;
@@ -2072,6 +2105,7 @@ export function useAgentGUINodeController({
   const agentActivityRuntime = useAgentActivityRuntime();
   const agentHostApi = useAgentHostApi();
   const agentActivitySnapshot = useAgentActivitySnapshot(workspaceId);
+  const generatedControllerOwnerKey = useId();
   const conversationListQuery =
     useMemo<AgentGUIConversationListQuery | null>(() => {
       const userId = currentUserId?.trim() ?? "";
@@ -2090,6 +2124,8 @@ export function useAgentGUINodeController({
     conversationListQuery
   );
   const pendingCreateOwnerKey = nodeId?.trim() ?? "";
+  const conversationListActiveOwnerKey =
+    pendingCreateOwnerKey || generatedControllerOwnerKey;
   const resolvePendingCreateConversationId = useCallback(
     () =>
       conversationListQuery && pendingCreateOwnerKey
@@ -2427,7 +2463,7 @@ export function useAgentGUINodeController({
     },
     []
   );
-  const backgroundBusyConversationIds = useMemo(
+  const projectedBackgroundBusyConversationIds = useMemo(
     () =>
       conversations
         .filter(
@@ -2435,8 +2471,29 @@ export function useAgentGUINodeController({
             conversation.id !== activeConversationId &&
             conversationBusyStatus(conversation.status)
         )
-        .map((conversation) => conversation.id),
+        .map((conversation) => conversation.id)
+        .sort(),
     [activeConversationId, conversations]
+  );
+  const backgroundBusyConversationIds = useStableStringArrayByValue(
+    projectedBackgroundBusyConversationIds
+  );
+  const projectedReleasedBackgroundConversationIds = useMemo(
+    () =>
+      conversations
+        .filter(
+          (conversation) =>
+            conversation.id === activeConversationId ||
+            conversation.status === "completed" ||
+            conversation.status === "failed" ||
+            conversation.status === "canceled"
+        )
+        .map((conversation) => conversation.id)
+        .sort(),
+    [activeConversationId, conversations]
+  );
+  const releasedBackgroundConversationIds = useStableStringArrayByValue(
+    projectedReleasedBackgroundConversationIds
   );
   const [
     retainedBackgroundConversationIds,
@@ -2446,34 +2503,27 @@ export function useAgentGUINodeController({
     if (previewMode) {
       return;
     }
+    if (
+      backgroundBusyConversationIds.length === 0 &&
+      releasedBackgroundConversationIds.length === 0
+    ) {
+      return;
+    }
     setRetainedBackgroundConversationIds((current) => {
       const next = new Set(current);
       for (const conversationId of backgroundBusyConversationIds) {
         next.add(conversationId);
       }
-      for (const conversation of conversations) {
-        if (
-          conversation.id === activeConversationId ||
-          conversation.status === "completed" ||
-          conversation.status === "failed" ||
-          conversation.status === "canceled"
-        ) {
-          next.delete(conversation.id);
-        }
+      for (const conversationId of releasedBackgroundConversationIds) {
+        next.delete(conversationId);
       }
       const nextIds = [...next].sort();
-      return nextIds.length === current.length &&
-        nextIds.every(
-          (conversationId, index) => conversationId === current[index]
-        )
-        ? current
-        : nextIds;
+      return stringArraysEqual(nextIds, current) ? current : nextIds;
     });
   }, [
-    activeConversationId,
     backgroundBusyConversationIds,
-    conversations,
-    previewMode
+    previewMode,
+    releasedBackgroundConversationIds
   ]);
   const backgroundWatchedConversationIds = useMemo(
     () =>
@@ -2685,6 +2735,7 @@ export function useAgentGUINodeController({
     if (snapshotConversations.length === 0) {
       return;
     }
+    const completedConversationIds = new Set<string>();
     updateConversationList((current) => {
       const currentById = new Map(
         current.map((conversation) => [conversation.id, conversation])
@@ -2698,10 +2749,7 @@ export function useAgentGUINodeController({
           if (!existing) {
             return {
               ...conversation,
-              hasUnreadCompletion:
-                conversation.hasUnreadCompletion ??
-                (conversation.status === "completed" &&
-                  activeConversationIdRef.current !== conversation.id)
+              hasUnreadCompletion: conversation.hasUnreadCompletion ?? false
             };
           }
           const titleFields =
@@ -2724,6 +2772,9 @@ export function useAgentGUINodeController({
           const status = shouldKeepExistingStatus
             ? existing.status
             : conversation.status;
+          if (status === "completed" && existing.status !== "completed") {
+            completedConversationIds.add(conversation.id);
+          }
           const syncState =
             conversation.syncState &&
             shouldApplySyncState(existing.syncState, conversation.syncState) &&
@@ -2735,8 +2786,10 @@ export function useAgentGUINodeController({
               : existing.syncState;
           const hasUnreadCompletion =
             conversation.status === "completed"
-              ? activeConversationIdRef.current !== conversation.id
-              : (existing.hasUnreadCompletion ?? false);
+              ? (existing.hasUnreadCompletion ??
+                conversation.hasUnreadCompletion ??
+                false)
+              : false;
           return {
             ...existing,
             ...conversation,
@@ -2764,6 +2817,12 @@ export function useAgentGUINodeController({
         isNoProjectPath
       });
     });
+    for (const conversationId of completedConversationIds) {
+      markAgentGUIConversationCompletionObserved({
+        query: conversationListQuery,
+        conversationId
+      });
+    }
   }, [
     agentActivitySnapshot,
     conversationListQuery,
@@ -2817,7 +2876,6 @@ export function useAgentGUINodeController({
         : current
     );
   }, [
-    conversations,
     isNoProjectPath,
     previewMode,
     setTransientConversation,
@@ -2952,6 +3010,29 @@ export function useAgentGUINodeController({
   useEffect(() => {
     activeConversationIdRef.current = activeConversationId;
   }, [activeConversationId]);
+
+  useEffect(() => {
+    if (previewMode || !conversationListQuery) {
+      return undefined;
+    }
+    setAgentGUIConversationListActiveConversation({
+      query: conversationListQuery,
+      ownerKey: conversationListActiveOwnerKey,
+      conversationId: activeConversationId
+    });
+    return () => {
+      setAgentGUIConversationListActiveConversation({
+        query: conversationListQuery,
+        ownerKey: conversationListActiveOwnerKey,
+        conversationId: null
+      });
+    };
+  }, [
+    activeConversationId,
+    conversationListActiveOwnerKey,
+    conversationListQuery,
+    previewMode
+  ]);
 
   useEffect(() => {
     selectedProjectPathRef.current = selectedProjectPath;
@@ -3190,13 +3271,12 @@ export function useAgentGUINodeController({
           reloadDetail: true
         });
       }
-      updateConversationList((current) =>
-        current.map((conversation) =>
-          conversation.id === normalized
-            ? { ...conversation, hasUnreadCompletion: false }
-            : conversation
-        )
-      );
+      if (conversationListQuery) {
+        clearAgentGUIConversationUnreadCompletion({
+          query: conversationListQuery,
+          conversationId: normalized
+        });
+      }
       if (transientConversationRef.current?.id === normalized) {
         setTransientConversation((current) =>
           current?.id === normalized
@@ -3208,6 +3288,7 @@ export function useAgentGUINodeController({
     },
     [
       activation,
+      conversationListQuery,
       markSelectedConversationDetailPending,
       persistActiveConversation
     ]
@@ -3562,12 +3643,19 @@ export function useAgentGUINodeController({
               }
             ),
             hasUnreadCompletion:
-              status === "completed" &&
-              activeConversationIdRef.current !== agentSessionId
+              status === "completed"
+                ? (conversation.hasUnreadCompletion ?? false)
+                : false
           };
           return nextConversation;
         })
       );
+      if (nextStatus === "completed" && conversationListQuery) {
+        markAgentGUIConversationCompletionObserved({
+          query: conversationListQuery,
+          conversationId: agentSessionId
+        });
+      }
       const transient = transientConversationRef.current;
       if (transient?.id === agentSessionId) {
         const timelineItems = projectAgentGUIMessagesToTimelineItems(
@@ -3612,7 +3700,7 @@ export function useAgentGUINodeController({
         });
       }
     },
-    [sessionViewRef, setTransientConversation]
+    [conversationListQuery, sessionViewRef, setTransientConversation]
   );
 
   useEffect(() => {
@@ -4386,8 +4474,9 @@ export function useAgentGUINodeController({
             timelineItems
           });
           const hasUnreadCompletion =
-            status === "completed" &&
-            activeConversationIdRef.current !== agentSessionId;
+            status === "completed"
+              ? (conversation.hasUnreadCompletion ?? false)
+              : false;
           if (
             titleFields.title === conversation.title &&
             titleFields.titleFallback === conversation.titleFallback &&
@@ -4407,6 +4496,12 @@ export function useAgentGUINodeController({
         });
         return changed ? next : current;
       });
+      if (nextStatus === "completed" && conversationListQuery) {
+        markAgentGUIConversationCompletionObserved({
+          query: conversationListQuery,
+          conversationId: agentSessionId
+        });
+      }
       const transient = transientConversationRef.current;
       if (transient?.id === agentSessionId) {
         const transientTitleFields = mergeConversationTitleUpdateFields(
@@ -4436,6 +4531,7 @@ export function useAgentGUINodeController({
       setTransientConversation,
       statePatchErrorBySessionId,
       agentActivityRuntime,
+      conversationListQuery,
       workspaceId
     ]
   );

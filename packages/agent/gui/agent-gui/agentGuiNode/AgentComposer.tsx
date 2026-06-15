@@ -29,13 +29,7 @@ import {
 } from "../../app/renderer/components/ui/tooltip";
 import type { AgentConversationPromptVM } from "../../shared/agentConversation/contracts/agentConversationVM";
 import { cn } from "../../app/renderer/lib/utils";
-import {
-  AddIcon,
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger
-} from "@tutti-os/ui-system";
+import { AddIcon, Select, SelectTrigger } from "@tutti-os/ui-system";
 import { X } from "lucide-react";
 import type { WorkspaceFileReference } from "@tutti-os/workspace-file-reference/contracts";
 import type { WorkspaceUserProjectI18nRuntime } from "@tutti-os/workspace-user-project/i18n";
@@ -2156,20 +2150,6 @@ export function AgentComposer({
                     data-agent-reference-add-icon="true"
                   />
                 </SelectTrigger>
-                <SelectContent
-                  align="start"
-                  side="top"
-                  sideOffset={8}
-                  collisionPadding={16}
-                  className={cn(styles.composerMenuContent, "min-w-[180px]")}
-                >
-                  <SelectItem
-                    value={workspaceReferenceOptionValue}
-                    className={styles.composerMenuItem}
-                  >
-                    {labels.referenceWorkspaceFiles}
-                  </SelectItem>
-                </SelectContent>
               </Select>
             </div>
             <div className={composerStyles.footerGroupRight}>

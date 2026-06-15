@@ -78,6 +78,7 @@ const requestIdByQueryKey = new Map<string, number>();
 const localCreatedConversationIdsByQueryKey = new Map<string, Set<string>>();
 const deletedConversationIdsByQueryKey = new Map<string, Set<string>>();
 const runtimeRefreshUnsubscribeByWorkspaceId = new Map<string, () => void>();
+const activeConversationIdsByQueryKey = new Map<string, Map<string, string>>();
 
 function normalizeQuery(
   input: AgentGUIConversationListQuery
@@ -196,6 +197,26 @@ function getQueryState(
   }
   const queryKey = createAgentGUIConversationListQueryKey(normalized)!;
   return snapshot.statesByQueryKey[queryKey] ?? null;
+}
+
+function hasActiveConversationOwner(
+  queryKey: string,
+  conversationId: string
+): boolean {
+  const normalizedConversationId = conversationId.trim();
+  if (!normalizedConversationId) {
+    return false;
+  }
+  const activeByOwner = activeConversationIdsByQueryKey.get(queryKey);
+  if (!activeByOwner) {
+    return false;
+  }
+  for (const activeConversationId of activeByOwner.values()) {
+    if (activeConversationId === normalizedConversationId) {
+      return true;
+    }
+  }
+  return false;
 }
 
 function describeError(error: unknown): string {
@@ -398,7 +419,10 @@ function areConversationProjectsEqual(
   return (
     left.id === right.id &&
     left.path === right.path &&
-    left.label === right.label
+    left.label === right.label &&
+    left.createdAtUnixMs === right.createdAtUnixMs &&
+    left.updatedAtUnixMs === right.updatedAtUnixMs &&
+    left.lastUsedAtUnixMs === right.lastUsedAtUnixMs
   );
 }
 
@@ -924,6 +948,110 @@ export function updateAgentGUIConversationListConversations(
   });
 }
 
+export function setAgentGUIConversationListActiveConversation(input: {
+  conversationId: string | null | undefined;
+  ownerKey: string;
+  query: AgentGUIConversationListQuery;
+}): void {
+  const ownerKey = input.ownerKey.trim();
+  if (!ownerKey) {
+    return;
+  }
+  const queryState = ensureQueryState(input.query);
+  if (!queryState) {
+    return;
+  }
+  const conversationId = input.conversationId?.trim() ?? "";
+  const activeByOwner =
+    activeConversationIdsByQueryKey.get(queryState.queryKey) ??
+    new Map<string, string>();
+  const previousConversationId = activeByOwner.get(ownerKey) ?? null;
+  if (!conversationId) {
+    if (previousConversationId === null) {
+      return;
+    }
+    activeByOwner.delete(ownerKey);
+    if (activeByOwner.size === 0) {
+      activeConversationIdsByQueryKey.delete(queryState.queryKey);
+    } else {
+      activeConversationIdsByQueryKey.set(queryState.queryKey, activeByOwner);
+    }
+    return;
+  }
+  if (previousConversationId !== conversationId) {
+    activeByOwner.set(ownerKey, conversationId);
+    activeConversationIdsByQueryKey.set(queryState.queryKey, activeByOwner);
+  }
+  clearAgentGUIConversationUnreadCompletion({
+    query: input.query,
+    conversationId
+  });
+}
+
+export function clearAgentGUIConversationUnreadCompletion(input: {
+  conversationId: string;
+  query: AgentGUIConversationListQuery;
+}): void {
+  const conversationId = input.conversationId.trim();
+  if (!conversationId) {
+    return;
+  }
+  updateAgentGUIConversationListConversations(input.query, (current) => {
+    let changed = false;
+    const next = current.map((conversation) => {
+      if (
+        conversation.id !== conversationId ||
+        conversation.hasUnreadCompletion !== true
+      ) {
+        return conversation;
+      }
+      changed = true;
+      return {
+        ...conversation,
+        hasUnreadCompletion: false
+      };
+    });
+    return changed ? next : current;
+  });
+}
+
+export function markAgentGUIConversationCompletionObserved(input: {
+  conversationId: string;
+  query: AgentGUIConversationListQuery;
+}): void {
+  const conversationId = input.conversationId.trim();
+  if (!conversationId) {
+    return;
+  }
+  const queryState = ensureQueryState(input.query);
+  if (!queryState) {
+    return;
+  }
+  const shouldMarkUnread = !hasActiveConversationOwner(
+    queryState.queryKey,
+    conversationId
+  );
+  updateAgentGUIConversationListConversations(input.query, (current) => {
+    let changed = false;
+    const next = current.map((conversation) => {
+      if (conversation.id !== conversationId) {
+        return conversation;
+      }
+      const hasUnreadCompletion =
+        conversation.status === "completed" && shouldMarkUnread;
+      if (conversation.hasUnreadCompletion === hasUnreadCompletion) {
+        return conversation;
+      }
+      changed = true;
+      return {
+        ...conversation,
+        hasUnreadCompletion
+      };
+    });
+    return changed ? next : current;
+  });
+}
+
 export function upsertLocalCreatedAgentGUIConversation(input: {
   query: AgentGUIConversationListQuery;
   conversation: AgentGUIConversationSummary;
@@ -1107,6 +1235,7 @@ export function resetAgentGUIConversationListStoreForTests(): void {
   localCreatedConversationIdsByQueryKey.clear();
   resetAgentGUIConversationPendingStateForTests();
   deletedConversationIdsByQueryKey.clear();
+  activeConversationIdsByQueryKey.clear();
   snapshot = EMPTY_SNAPSHOT;
   emitChange();
 }

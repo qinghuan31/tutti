@@ -3881,6 +3881,79 @@ describe("useAgentGUINodeController", () => {
     });
   });
 
+  it("does not mark a completed conversation unread when another controller has it active", async () => {
+    installAgentHostApi({
+      list: vi.fn(async () => ({
+        presences: [],
+        sessions: [
+          workspaceAgentSession("session-1"),
+          workspaceAgentSession("session-2")
+        ]
+      })),
+      listSessionTimeline: vi.fn(async () => ({ timelineItems: [] })),
+      subscribeEvents: vi.fn(() => vi.fn())
+    });
+
+    const { result } = renderHook(() => ({
+      first: useAgentGUINodeController({
+        nodeId: "node-active-session-1",
+        workspaceId: "room-1",
+        currentUserId: "user-1",
+        workspacePath: "/workspace",
+        avoidGroupingEdits: false,
+        data: agentGuiData("session-1"),
+        onDataChange: vi.fn()
+      }),
+      second: useAgentGUINodeController({
+        nodeId: "node-active-session-2",
+        workspaceId: "room-1",
+        currentUserId: "user-1",
+        workspacePath: "/workspace",
+        avoidGroupingEdits: false,
+        data: agentGuiData("session-2"),
+        onDataChange: vi.fn()
+      })
+    }));
+
+    await waitFor(() => {
+      expect(result.current.first.viewModel.activeConversationId).toBe(
+        "session-1"
+      );
+      expect(result.current.second.viewModel.activeConversationId).toBe(
+        "session-2"
+      );
+      expect(
+        result.current.first.viewModel.conversations.some(
+          (conversation) => conversation.id === "session-2"
+        )
+      ).toBe(true);
+    });
+
+    act(() => {
+      emitRuntimeSessionEventForTests?.({
+        eventType: "state_patch",
+        data: {
+          workspaceId: "room-1",
+          agentSessionId: "session-2",
+          lifecycleStatus: "completed",
+          occurredAtUnixMs: 20
+        }
+      });
+    });
+
+    await waitFor(() => {
+      expect(result.current.first.viewModel.conversations).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            id: "session-2",
+            status: "completed",
+            hasUnreadCompletion: false
+          })
+        ])
+      );
+    });
+  });
+
   it("keeps a busy inactive conversation subscribed so its final state can settle in the list", async () => {
     const retainEventStream = vi
       .fn()
