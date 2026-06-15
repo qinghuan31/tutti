@@ -549,7 +549,11 @@ export function AppCenterPanel({
                         className="mt-2 truncate text-[11px] leading-4 text-[var(--state-danger)]"
                         title={job.failureReason}
                       >
-                        {copy.t("factory.messages.factoryJobFailed")}
+                        {copy.t(
+                          job.canFix
+                            ? "factory.messages.factoryJobFailedWithFix"
+                            : "factory.messages.factoryJobFailed"
+                        )}
                       </p>
                     ) : (
                       <p className="mt-2 truncate text-[11px] leading-4 text-[var(--text-secondary)]">
@@ -558,19 +562,6 @@ export function AppCenterPanel({
                     )}
                   </div>
                   <div className="flex shrink-0 items-center gap-1">
-                    {job.canRetryValidation ? (
-                      <Button
-                        size="sm"
-                        type="button"
-                        variant="ghost"
-                        onClick={(event) => {
-                          event.stopPropagation();
-                          void actions.retryFactoryValidation?.(job.id);
-                        }}
-                      >
-                        {copy.t("factory.actions.validate")}
-                      </Button>
-                    ) : null}
                     {job.canPublish ? (
                       <Button
                         size="sm"

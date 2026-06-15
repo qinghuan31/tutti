@@ -415,7 +415,7 @@ function createFactoryJobViewModel(
     canFix: canFixValidationFailure,
     canOpenAgentSession: Boolean(agentSessionId),
     canPublish: job.status === "ready",
-    canRetryValidation: canFixValidationFailure,
+    canRetryValidation: false,
     failureReason: job.failureReason,
     updatedAtUnixMs: job.updatedAtUnixMs
   };
