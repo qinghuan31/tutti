@@ -215,17 +215,33 @@ func TestValidateAppManifestRejectsInvalidReferencesListEndpoint(t *testing.T) {
 func TestParseAppManifestJSONRejectsUnsupportedReferencesFields(t *testing.T) {
 	t.Parallel()
 
-	for _, raw := range []string{
+	if _, _, err := ParseAppManifestJSON([]byte(
 		`{"schemaVersion":"tutti.app.manifest.v1","appId":"test-app","version":"0.1.0","name":"Test App","description":"Test app","icon":{"type":"asset","src":"icon.png"},"runtime":{"bootstrap":"bootstrap.sh","healthcheckPath":"/healthz"},"references":null}`,
-		`{"schemaVersion":"tutti.app.manifest.v1","appId":"test-app","version":"0.1.0","name":"Test App","description":"Test app","icon":{"type":"asset","src":"icon.png"},"runtime":{"bootstrap":"bootstrap.sh","healthcheckPath":"/healthz"},"references":{"listEndpoint":"/references/list","searchEndpoint":"/references/search"}}`,
-	} {
-		t.Run(raw, func(t *testing.T) {
-			t.Parallel()
+	)); err == nil {
+		t.Fatal("ParseAppManifestJSON() error = nil, want invalid references error")
+	}
 
-			if _, _, err := ParseAppManifestJSON([]byte(raw)); err == nil {
-				t.Fatal("ParseAppManifestJSON() error = nil, want invalid references error")
-			}
-		})
+	if _, _, err := ParseAppManifestJSON([]byte(
+		`{"schemaVersion":"tutti.app.manifest.v1","appId":"test-app","version":"0.1.0","name":"Test App","description":"Test app","icon":{"type":"asset","src":"icon.png"},"runtime":{"bootstrap":"bootstrap.sh","healthcheckPath":"/healthz"},"references":{"listEndpoint":"/references/list","customEndpoint":"/references/custom"}}`,
+	)); err == nil {
+		t.Fatal("ParseAppManifestJSON() error = nil, want unsupported references field error")
+	}
+}
+
+func TestParseAppManifestJSONAcceptsLegacyReferencesSearchEndpoint(t *testing.T) {
+	t.Parallel()
+
+	manifest, normalized, err := ParseAppManifestJSON([]byte(
+		`{"schemaVersion":"tutti.app.manifest.v1","appId":"test-app","version":"0.1.0","name":"Test App","description":"Test app","icon":{"type":"asset","src":"icon.png"},"runtime":{"bootstrap":"bootstrap.sh","healthcheckPath":"/healthz"},"references":{"searchEndpoint":"/references/search"}}`,
+	))
+	if err != nil {
+		t.Fatalf("ParseAppManifestJSON() error = %v, want legacy searchEndpoint alias accepted", err)
+	}
+	if manifest.References == nil || manifest.References.ListEndpoint != "/references/search" {
+		t.Fatalf("manifest.References = %#v, want listEndpoint /references/search", manifest.References)
+	}
+	if strings.Contains(normalized, "searchEndpoint") {
+		t.Fatalf("normalized manifest = %q, want searchEndpoint removed", normalized)
 	}
 }
 
