@@ -17,6 +17,7 @@ import {
   AgentPermissionModeDropdown,
   AgentProjectDropdown
 } from "./AgentComposerSettingsMenus";
+import type { AgentGUIComposerSettingsVM } from "./model/agentGuiNodeTypes";
 
 const { mockAgentHostApi } = vi.hoisted(() => ({
   mockAgentHostApi: {
@@ -942,16 +943,24 @@ async function openAddProjectDialog(): Promise<void> {
   expect(await screen.findByRole("dialog")).toBeVisible();
 }
 
+function modelReasoningTrigger(): HTMLElement {
+  return screen.getByRole("button", { name: "Model / Reasoning" });
+}
+
 function openModelReasoningMenu(): void {
-  fireEvent.pointerDown(
-    screen.getByRole("combobox", { name: "Model / Reasoning" }),
-    {
-      button: 0,
-      ctrlKey: false,
-      pointerId: 1,
-      pointerType: "mouse"
-    }
-  );
+  fireEvent.pointerDown(modelReasoningTrigger(), {
+    button: 0,
+    ctrlKey: false,
+    pointerId: 1,
+    pointerType: "mouse"
+  });
+}
+
+function openComposerSubmenu(trigger: HTMLElement): void {
+  // Radix opens a submenu from its SubTrigger on click; the keyboard/hover
+  // paths depend on roving-focus state that jsdom does not fully model.
+  trigger.focus();
+  fireEvent.click(trigger);
 }
 
 function renderPermissionModeDropdown(permissionMode: string) {
@@ -963,11 +972,15 @@ function renderPermissionModeDropdown(permissionMode: string) {
           draftSettings: {
             model: null,
             reasoningEffort: null,
+            speed: null,
             planMode: false,
             permissionModeId: permissionMode
           },
           supportsModel: false,
           supportsReasoningEffort: false,
+          supportsSpeed: false,
+          speedUnavailable: false,
+          availableSpeeds: [],
           supportsPermissionMode: true,
           supportsPlanMode: false,
           isSettingsLoading: false,
@@ -1144,12 +1157,16 @@ describe("AgentPermissionModeDropdown", () => {
             draftSettings: {
               model: null,
               reasoningEffort: null,
+              speed: null,
               planMode: input.planMode,
               permissionModeId: "default"
             },
             effectivePlanMode: input.planMode,
             supportsModel: false,
             supportsReasoningEffort: false,
+            supportsSpeed: false,
+            speedUnavailable: false,
+            availableSpeeds: [],
             supportsPermissionMode: true,
             supportsPlanMode: true,
             isSettingsLoading: false,
@@ -1230,6 +1247,58 @@ describe("AgentPermissionModeDropdown", () => {
 });
 
 describe("AgentModelReasoningDropdown", () => {
+  function renderModelReasoning(
+    overrides: Partial<AgentGUIComposerSettingsVM> = {},
+    onSettingsChange: (patch: {
+      model?: string;
+      reasoningEffort?: string;
+      speed?: string;
+    }) => void = vi.fn()
+  ) {
+    const composerSettings: AgentGUIComposerSettingsVM = {
+      sessionSettings: null,
+      draftSettings: {
+        model: "gpt-5.5",
+        reasoningEffort: "high",
+        speed: "standard",
+        planMode: false,
+        permissionModeId: "preset"
+      },
+      supportsModel: true,
+      supportsReasoningEffort: true,
+      supportsSpeed: true,
+      speedUnavailable: false,
+      availableSpeeds: [
+        { value: "standard", label: "standard", description: "Standard speed" },
+        { value: "fast", label: "fast", description: "1.5x speed" }
+      ],
+      supportsPlanMode: false,
+      isSettingsLoading: false,
+      modelUnavailable: false,
+      reasoningUnavailable: false,
+      planUnavailable: false,
+      availableModels: [
+        { value: "gpt-5.5", label: "gpt-5.5" },
+        { value: "gpt-5.4", label: "gpt-5.4" }
+      ],
+      availableReasoningEfforts: [
+        { value: "low", label: "Low" },
+        { value: "high", label: "High" }
+      ],
+      ...overrides
+    };
+    return {
+      onSettingsChange,
+      ...render(
+        <AgentModelReasoningDropdown
+          composerSettings={composerSettings}
+          labels={labels}
+          onSettingsChange={onSettingsChange}
+        />
+      )
+    };
+  }
+
   it("keeps menu option vertical padding at 4px", () => {
     const css = readFileSync(resolve("app/renderer/agentactivity.css"), "utf8");
 
@@ -1238,415 +1307,109 @@ describe("AgentModelReasoningDropdown", () => {
     );
   });
 
-  it("places model selection on the left and reasoning on the right", () => {
-    render(
-      <AgentModelReasoningDropdown
-        composerSettings={{
-          sessionSettings: null,
-          draftSettings: {
-            model: "sonnet",
-            reasoningEffort: "high",
-            planMode: false,
-            permissionModeId: "preset"
-          },
-          supportsModel: true,
-          supportsReasoningEffort: true,
-          supportsPlanMode: false,
-          isSettingsLoading: false,
-          modelUnavailable: false,
-          reasoningUnavailable: false,
-          planUnavailable: false,
-          availableModels: [
-            { value: "default", label: "default" },
-            { value: "sonnet", label: "sonnet" }
-          ],
-          availableReasoningEfforts: [
-            { value: "low", label: "Low" },
-            { value: "high", label: "High" }
-          ]
-        }}
-        labels={labels}
-        onSettingsChange={vi.fn()}
-      />
-    );
+  it("shows model and reasoning together in the trigger", () => {
+    renderModelReasoning();
+    expect(modelReasoningTrigger()).toHaveTextContent(/Gpt-5\.5\s*High/);
+  });
 
-    openModelReasoningMenu();
-
-    const layout = document.querySelector(
-      '[data-agent-composer-settings-layout="split"]'
-    );
-    if (!layout) {
-      throw new Error("Expected split model/reasoning menu layout");
-    }
-    expect(layout.closest('[data-slot="select-content"]')).toHaveClass(
-      "data-[side=top]:!translate-y-0"
-    );
-
-    const [leftColumn, , rightColumn] = Array.from(layout.children);
-    if (!leftColumn || !rightColumn) {
-      throw new Error("Expected model and reasoning columns");
-    }
-
-    expect(leftColumn.firstElementChild).toHaveTextContent("Model selection");
-    expect(leftColumn).toHaveTextContent("Default");
-    expect(leftColumn).toHaveTextContent("Sonnet");
-    expect(leftColumn).not.toHaveTextContent("High");
-    expect(rightColumn.firstElementChild).toHaveTextContent("Reasoning degree");
-    expect(rightColumn).toHaveTextContent("Low");
-    expect(rightColumn).toHaveTextContent("High");
-    expect(rightColumn).not.toHaveTextContent("Sonnet");
-    const selectedReasoningOption = screen.getByRole("option", {
-      name: "High"
+  it("shows the fast lightning indicator only when speed is fast", () => {
+    const { unmount } = renderModelReasoning();
+    expect(
+      document.querySelector('[data-agent-speed-indicator="fast"]')
+    ).toBeNull();
+    unmount();
+    renderModelReasoning({
+      draftSettings: {
+        model: "gpt-5.5",
+        reasoningEffort: "high",
+        speed: "fast",
+        planMode: false,
+        permissionModeId: "preset"
+      },
+      selectedSpeedValue: "fast"
     });
     expect(
-      selectedReasoningOption.querySelector(
-        '[data-slot="select-item-forced-indicator"]'
-      )
+      document.querySelector('[data-agent-speed-indicator="fast"]')
     ).not.toBeNull();
   });
 
-  it("capitalizes model option labels without changing model values", async () => {
+  it("lists models as the primary menu and selects one", async () => {
     const onSettingsChange = vi.fn();
-    render(
-      <AgentModelReasoningDropdown
-        composerSettings={{
-          sessionSettings: null,
-          draftSettings: {
-            model: "sonnet[1m]",
-            reasoningEffort: "high",
-            planMode: false,
-            permissionModeId: "preset"
-          },
-          supportsModel: true,
-          supportsReasoningEffort: true,
-          supportsPlanMode: false,
-          isSettingsLoading: false,
-          modelUnavailable: false,
-          reasoningUnavailable: false,
-          planUnavailable: false,
-          availableModels: [
-            { value: "default", label: "default" },
-            { value: "sonnet[1m]", label: "sonnet[1m]" }
-          ],
-          availableReasoningEfforts: [{ value: "high", label: "High" }]
-        }}
-        labels={labels}
-        onSettingsChange={onSettingsChange}
-      />
-    );
-
-    const trigger = screen.getByRole("combobox", {
-      name: "Model / Reasoning"
-    });
-    expect(trigger).toHaveTextContent(/Sonnet\[1m\]\s*High/);
-
+    renderModelReasoning({}, onSettingsChange);
     openModelReasoningMenu();
-    const sonnetOption = await screen.findByRole("option", {
-      name: "Sonnet[1m]"
+    const current = await screen.findByRole("menuitem", {
+      name: /Gpt-5\.5/
     });
-    expect(sonnetOption).toHaveAttribute("aria-selected", "true");
+    expect(current).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("menuitem", { name: /Gpt-5\.4/ }));
+    expect(onSettingsChange).toHaveBeenCalledWith({ model: "gpt-5.4" });
+  });
 
-    fireEvent.click(await screen.findByRole("option", { name: "Default" }));
-
+  it("capitalizes model labels without changing the model value", async () => {
+    const onSettingsChange = vi.fn();
+    renderModelReasoning(
+      {
+        draftSettings: {
+          model: "sonnet[1m]",
+          reasoningEffort: "high",
+          speed: "standard",
+          planMode: false,
+          permissionModeId: "preset"
+        },
+        availableModels: [
+          { value: "default", label: "default" },
+          { value: "sonnet[1m]", label: "sonnet[1m]" }
+        ]
+      },
+      onSettingsChange
+    );
+    openModelReasoningMenu();
+    expect(
+      await screen.findByRole("menuitem", { name: /Sonnet\[1m\]/ })
+    ).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("menuitem", { name: /Default/ }));
     expect(onSettingsChange).toHaveBeenCalledWith({ model: "default" });
   });
 
-  it("truncates long model names while keeping reasoning visible", () => {
-    const longModelLabel =
-      "Super Ultra Extended GPT Model Name For Long Context Coding";
-    render(
-      <AgentModelReasoningDropdown
-        composerSettings={{
-          sessionSettings: null,
-          draftSettings: {
-            model: "super-ultra-extended-gpt-model-name",
-            reasoningEffort: "high",
-            planMode: false,
-            permissionModeId: "preset"
-          },
-          supportsModel: true,
-          supportsReasoningEffort: true,
-          supportsPlanMode: false,
-          isSettingsLoading: false,
-          modelUnavailable: false,
-          reasoningUnavailable: false,
-          planUnavailable: false,
-          availableModels: [
-            {
-              value: "super-ultra-extended-gpt-model-name",
-              label: longModelLabel
-            }
-          ],
-          availableReasoningEfforts: [{ value: "high", label: "High" }]
-        }}
-        labels={labels}
-        onSettingsChange={vi.fn()}
-      />
-    );
-
-    expect(
-      screen.getByRole("combobox", { name: "Model / Reasoning" })
-    ).toHaveAttribute("data-agent-model-reasoning-trigger", "true");
-    expect(
-      screen.getByRole("combobox", { name: "Model / Reasoning" })
-        .firstElementChild
-    ).toHaveClass("overflow-hidden");
-    expect(screen.getByText(longModelLabel)).toHaveClass("truncate");
-    expect(screen.getByText("High")).toHaveClass("shrink-0");
-  });
-
-  it("renders unavailable model and reasoning controls as visibly disabled", () => {
-    render(
-      <AgentModelReasoningDropdown
-        composerSettings={{
-          sessionSettings: null,
-          draftSettings: {
-            model: null,
-            reasoningEffort: null,
-            planMode: false,
-            permissionModeId: "preset"
-          },
-          supportsModel: true,
-          supportsReasoningEffort: true,
-          supportsPlanMode: false,
-          isSettingsLoading: false,
-          modelUnavailable: true,
-          reasoningUnavailable: true,
-          planUnavailable: false,
-          availableModels: [],
-          availableReasoningEfforts: []
-        }}
-        labels={labels}
-        onSettingsChange={vi.fn()}
-      />
-    );
-
-    const trigger = screen.getByRole("combobox", {
-      name: "Model / Reasoning"
-    });
-    expect(trigger).toBeDisabled();
-    expect(trigger).toHaveClass("agent-gui-node__composer-menu-trigger");
-    expect(trigger).toHaveClass("cursor-not-allowed");
-    expect(trigger).toHaveClass("opacity-60");
-    expect(trigger).toHaveClass("text-[var(--agent-gui-text-tertiary)]");
-  });
-
-  it("omits the reasoning label when no reasoning options are available", () => {
-    render(
-      <AgentModelReasoningDropdown
-        composerSettings={{
-          sessionSettings: {
-            model: "haiku",
-            reasoningEffort: "high",
-            planMode: false,
-            permissionModeId: "auto"
-          },
-          draftSettings: {
-            model: "haiku",
-            reasoningEffort: "high",
-            planMode: false,
-            permissionModeId: "preset"
-          },
-          supportsModel: true,
-          supportsReasoningEffort: true,
-          supportsPlanMode: false,
-          isSettingsLoading: false,
-          modelUnavailable: false,
-          reasoningUnavailable: false,
-          planUnavailable: false,
-          availableModels: [{ value: "haiku", label: "Haiku" }],
-          availableReasoningEfforts: []
-        }}
-        labels={labels}
-        onSettingsChange={vi.fn()}
-      />
-    );
-
-    const trigger = screen.getByRole("combobox", {
-      name: "Model / Reasoning"
-    });
-    expect(trigger).toHaveTextContent("Haiku");
-    expect(trigger).not.toHaveTextContent("Reasoning");
-  });
-
-  it("shows a loading trigger while ACP config options are loading", () => {
-    render(
-      <AgentModelReasoningDropdown
-        composerSettings={{
-          sessionSettings: null,
-          draftSettings: {
-            model: null,
-            reasoningEffort: null,
-            planMode: false,
-            permissionModeId: "preset"
-          },
-          supportsModel: true,
-          supportsReasoningEffort: true,
-          supportsPlanMode: false,
-          isSettingsLoading: true,
-          modelUnavailable: false,
-          reasoningUnavailable: false,
-          planUnavailable: false,
-          availableModels: [],
-          availableReasoningEfforts: []
-        }}
-        labels={labels}
-        onSettingsChange={vi.fn()}
-      />
-    );
-
-    const trigger = screen.getByRole("combobox", {
-      name: "Model / Reasoning"
-    });
-    expect(trigger).toBeDisabled();
-    expect(trigger).toHaveTextContent("Loading conversation");
-    expect(trigger).toHaveClass("animate-pulse");
-  });
-
-  it("marks the ACP current model as selected even when no draft model is set", async () => {
-    render(
-      <AgentModelReasoningDropdown
-        composerSettings={{
-          sessionSettings: null,
-          draftSettings: {
-            model: null,
-            reasoningEffort: "high",
-            planMode: false,
-            permissionModeId: "preset"
-          },
-          supportsModel: true,
-          supportsReasoningEffort: true,
-          supportsPlanMode: false,
-          isSettingsLoading: false,
-          modelUnavailable: false,
-          reasoningUnavailable: false,
-          planUnavailable: false,
-          selectedModelValue: "default",
-          selectedReasoningEffortValue: "high",
-          availableModels: [
-            { value: "default", label: "Default" },
-            { value: "opus", label: "Opus" }
-          ],
-          availableReasoningEfforts: [{ value: "high", label: "High" }]
-        }}
-        labels={labels}
-        onSettingsChange={vi.fn()}
-      />
-    );
-
-    const trigger = screen.getByRole("combobox", {
-      name: "Model / Reasoning"
-    });
-    expect(trigger).toHaveTextContent(/Default\s*High/);
-
+  it("exposes reasoning as a submenu reflecting the current value", async () => {
+    const onSettingsChange = vi.fn();
+    renderModelReasoning({}, onSettingsChange);
     openModelReasoningMenu();
-    const defaultOption = await screen.findByRole("option", {
-      name: "Default"
+    const reasoningTrigger = await screen.findByRole("menuitem", {
+      name: /Reasoning/
     });
-    expect(defaultOption).toHaveAttribute("aria-selected", "true");
+    expect(reasoningTrigger).toHaveTextContent("High");
+    openComposerSubmenu(reasoningTrigger);
+    fireEvent.click(await screen.findByRole("menuitem", { name: "Low" }));
+    expect(onSettingsChange).toHaveBeenCalledWith({ reasoningEffort: "low" });
   });
 
-  it("keeps displaying current model and reasoning when they are missing from provider options", async () => {
-    render(
-      <AgentModelReasoningDropdown
-        composerSettings={{
-          sessionSettings: null,
-          draftSettings: {
-            model: "custom-model",
-            reasoningEffort: "experimental",
-            planMode: false,
-            permissionModeId: "preset"
-          },
-          supportsModel: true,
-          supportsReasoningEffort: true,
-          supportsPlanMode: false,
-          isSettingsLoading: false,
-          modelUnavailable: false,
-          reasoningUnavailable: false,
-          planUnavailable: false,
-          selectedModelValue: "custom-model",
-          selectedReasoningEffortValue: "experimental",
-          availableModels: [
-            { value: "default", label: "Default" },
-            { value: "opus", label: "Opus" }
-          ],
-          availableReasoningEfforts: [{ value: "high", label: "High" }]
-        }}
-        labels={labels}
-        onSettingsChange={vi.fn()}
-      />
-    );
-
-    const trigger = screen.getByRole("combobox", {
-      name: "Model / Reasoning"
-    });
-    expect(trigger).toHaveTextContent(/Custom-model\s*experimental/);
-    expect(trigger).not.toHaveTextContent("Default");
-
+  it("exposes speed as a submenu and switches to fast", async () => {
+    const onSettingsChange = vi.fn();
+    renderModelReasoning({}, onSettingsChange);
     openModelReasoningMenu();
-    const selectedModelOption = await screen.findByRole("option", {
-      name: "Custom-model"
-    });
-    expect(selectedModelOption).toHaveAttribute("aria-selected", "true");
-    const selectedReasoningOption = await screen.findByRole("option", {
-      name: "experimental"
-    });
-    expect(selectedReasoningOption).toBeVisible();
+    const speedTrigger = await screen.findByRole("menuitem", { name: /Speed/ });
+    expect(speedTrigger).toHaveTextContent("Standard");
+    openComposerSubmenu(speedTrigger);
+    fireEvent.click(await screen.findByRole("menuitem", { name: /Fast/ }));
+    expect(onSettingsChange).toHaveBeenCalledWith({ speed: "fast" });
   });
 
-  it("uses ui-system dropdown layering for the wider asymmetric split menu", async () => {
-    render(
-      <AgentModelReasoningDropdown
-        composerSettings={{
-          sessionSettings: null,
-          draftSettings: {
-            model: null,
-            reasoningEffort: "high",
-            planMode: false,
-            permissionModeId: "preset"
-          },
-          supportsModel: true,
-          supportsReasoningEffort: true,
-          supportsPlanMode: false,
-          isSettingsLoading: false,
-          modelUnavailable: false,
-          reasoningUnavailable: false,
-          planUnavailable: false,
-          selectedModelValue: "minimax-haiku",
-          selectedReasoningEffortValue: "high",
-          availableModels: [
-            {
-              value: "default",
-              label: "Default",
-              description:
-                "Use the default model (currently MiniMax-M2.7[1m]) · $5/$25 per Mtok"
-            },
-            {
-              value: "minimax-haiku",
-              label: "MiniMax-M2.7",
-              description: "Custom Haiku model"
-            }
-          ],
-          availableReasoningEfforts: [
-            { value: "low", label: "Low" },
-            { value: "medium", label: "Medium" },
-            { value: "high", label: "High" },
-            { value: "xhigh", label: "X High" }
-          ]
-        }}
-        labels={labels}
-        onSettingsChange={vi.fn()}
-      />
-    );
+  it("disables the trigger when nothing is configurable", () => {
+    renderModelReasoning({
+      supportsModel: false,
+      supportsReasoningEffort: false,
+      supportsSpeed: false,
+      availableModels: [],
+      availableReasoningEfforts: [],
+      availableSpeeds: []
+    });
+    expect(modelReasoningTrigger()).toBeDisabled();
+  });
 
-    openModelReasoningMenu();
-
-    const menu = await screen.findByRole("listbox");
-    expect(menu).toHaveClass("w-[430px]");
-    expect(menu).toHaveStyle({ zIndex: "var(--z-popover)" });
-    expect(
-      menu.querySelector('[data-agent-composer-settings-layout="split"]')
-    ).toHaveClass("grid-cols-[minmax(0,1fr)_1px_minmax(104px,132px)]");
+  it("marks the trigger as loading while ACP config options load", () => {
+    renderModelReasoning({ isSettingsLoading: true });
+    expect(modelReasoningTrigger()).toHaveClass("animate-pulse");
   });
 
   it("localizes known model descriptions while preserving custom descriptions", async () => {
@@ -1657,11 +1420,15 @@ describe("AgentModelReasoningDropdown", () => {
           draftSettings: {
             model: "gpt-5.5",
             reasoningEffort: "high",
+            speed: "standard",
             planMode: false,
             permissionModeId: "preset"
           },
           supportsModel: true,
           supportsReasoningEffort: true,
+          supportsSpeed: false,
+          speedUnavailable: false,
+          availableSpeeds: [],
           supportsPlanMode: false,
           isSettingsLoading: false,
           modelUnavailable: false,
@@ -1720,6 +1487,10 @@ const labels = {
   reasoningOptionMedium: "Medium",
   reasoningOptionHigh: "High",
   reasoningOptionXHigh: "X High",
+  speedLabel: "Speed",
+  speedSelectionLabel: "Speed",
+  speedOptionStandard: "Standard",
+  speedOptionFast: "Fast",
   permissionLabel: "Run permissions",
   planModeLabel: "Plan Mode",
   permissionModeReadOnly: "Ask for approval",

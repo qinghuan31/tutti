@@ -37,6 +37,7 @@ export interface AgentHostAgentSessionComposerSettingsInput {
   permissionModeId?: string | null;
   planMode?: boolean | null;
   reasoningEffort?: string | null;
+  speed?: string | null;
 }
 
 export interface AgentHostAgentSessionStateDefaults {
@@ -108,7 +109,8 @@ export function normalizeComposerSettings(
     model: normalizedOptionalString(settings?.model),
     permissionModeId: resolveComposerPermissionMode(settings),
     planMode: Boolean(settings?.planMode),
-    reasoningEffort: normalizedOptionalString(settings?.reasoningEffort)
+    reasoningEffort: normalizedOptionalString(settings?.reasoningEffort),
+    speed: normalizedOptionalString(settings?.speed)
   };
 }
 
@@ -311,6 +313,7 @@ function composerRuntimeContextFromSettings(
 ): Record<string, unknown> {
   const model = normalizedOptionalString(settings.model);
   const reasoningEffort = normalizedOptionalString(settings.reasoningEffort);
+  const speed = normalizedOptionalString(settings.speed);
   const permissionModeId = resolveComposerPermissionMode(settings);
   return {
     configOptions: [
@@ -323,11 +326,17 @@ function composerRuntimeContextFromSettings(
         currentValue: reasoningEffort,
         id: "reasoning_effort",
         options: reasoningEffortOptions(reasoningEffort)
+      },
+      {
+        currentValue: speed,
+        id: "speed",
+        options: speed ? [{ name: speed, value: speed }] : []
       }
     ],
     model,
     permissionModeId,
-    reasoningEffort
+    reasoningEffort,
+    speed
   };
 }
 

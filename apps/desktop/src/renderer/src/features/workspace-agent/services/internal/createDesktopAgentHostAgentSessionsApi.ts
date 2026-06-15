@@ -91,6 +91,7 @@ export function createDesktopAgentHostAgentSessionsApi({
         permissionModeId?: string | null;
         planMode?: boolean | null;
         reasoningEffort?: string | null;
+        speed?: string | null;
       };
       source?: string;
       title?: string;
