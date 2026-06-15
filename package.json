@@ -13,7 +13,8 @@
   },
   "pnpm": {
     "overrides": {
-      "@radix-ui/react-slot": "1.2.5"
+      "@radix-ui/react-slot": "1.2.5",
+      "yauzl": "3.4.0"
     }
   },
   "scripts": {
