@@ -48,6 +48,7 @@ import {
 } from "@tutti-os/agent-gui/agent-message-center";
 import { AGENT_GUI_MENTION_PROVIDER_IDS } from "@tutti-os/agent-gui/agent-rich-text-at-provider";
 import { getActiveLocale } from "../../../../i18n/runtime.ts";
+import type { RichTextAtProvider } from "@tutti-os/ui-rich-text/types";
 import type { IWorkspaceUserProjectService } from "@renderer/features/workspace-user-project";
 import { resolveWorkspaceLinkAction } from "@contexts/workspace/presentation/renderer/actions/workspaceLinkActions.ts";
 import { requestWorkspaceBrowserLaunch } from "../workspaceBrowserLaunchCoordinator.ts";
@@ -222,7 +223,7 @@ export function createWorkspaceIssueManagerContribution(input: {
               locale: getActiveLocale(),
               resolveAppIconUrl: input.resolveAppIconUrl,
               workspaceId
-            });
+            }) as unknown as RichTextAtProvider<unknown>;
           }
           // Enrich the raw agent-session provider so its match meta carries the
           // same rounded provider icon + user avatar placeholder + participant +
@@ -235,7 +236,7 @@ export function createWorkspaceIssueManagerContribution(input: {
               resolveAgentIconUrl: managedAgentRoundedIconUrl,
               userAvatarPlaceholderUrl,
               resolveStatusView: resolveAgentSessionStatusView
-            });
+            }) as unknown as RichTextAtProvider<unknown>;
           }
           return provider;
         });
