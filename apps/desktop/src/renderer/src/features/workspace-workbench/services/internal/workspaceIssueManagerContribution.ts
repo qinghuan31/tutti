@@ -82,7 +82,9 @@ export function createWorkspaceIssueManagerContribution(input: {
     launchAgentGui: async (request) => {
       const launched = await requestWorkspaceAgentGuiLaunch({
         agentSessionId: request.agentSessionId,
+        draftPrompt: request.draftPrompt,
         provider: normalizeDesktopAgentGUIProvider(request.provider),
+        userProjectPath: request.userProjectPath,
         workspaceId: request.workspaceId
       });
       if (!launched) {

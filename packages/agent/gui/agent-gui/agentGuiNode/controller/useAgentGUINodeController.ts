@@ -1999,6 +1999,7 @@ interface UseAgentGUINodeControllerInput {
   workspacePath: string;
   avoidGroupingEdits: boolean;
   data: AgentGUINodeData;
+  prefillPromptRequest?: AgentGUIPrefillPromptRequest | null;
   previewMode?: boolean;
   onDataChange: (
     updater: (current: AgentGUINodeData) => AgentGUINodeData
@@ -2009,6 +2010,12 @@ interface UseAgentGUINodeControllerInput {
   ) => void;
 }
 
+export interface AgentGUIPrefillPromptRequest {
+  draftPrompt: string;
+  sequence: number;
+  userProjectPath?: string | null;
+}
+
 export function useAgentGUINodeController({
   nodeId,
   workspaceId,
@@ -2016,6 +2023,7 @@ export function useAgentGUINodeController({
   workspacePath,
   avoidGroupingEdits,
   data,
+  prefillPromptRequest = null,
   previewMode = false,
   onDataChange,
   onShowMessage
@@ -2484,6 +2492,7 @@ export function useAgentGUINodeController({
   const draftSettingsBySessionIdRef = useRef(draftSettingsBySessionId);
   const onDataChangeRef = useRef(onDataChange);
   const onShowMessageRef = useRef(onShowMessage);
+  const handledPrefillPromptSequenceRef = useRef<number | null>(null);
   const persistedActiveConversationIdRef = useRef(
     data.lastActiveAgentSessionId
   );
@@ -4915,6 +4924,57 @@ export function useAgentGUINodeController({
     },
     [activation, loadDraftComposerOptions, persistActiveConversation]
   );
+
+  useEffect(() => {
+    if (previewMode || !prefillPromptRequest) {
+      return;
+    }
+    if (
+      handledPrefillPromptSequenceRef.current === prefillPromptRequest.sequence
+    ) {
+      return;
+    }
+
+    handledPrefillPromptSequenceRef.current = prefillPromptRequest.sequence;
+    const draftPrompt = prefillPromptRequest.draftPrompt.trim();
+    if (!draftPrompt) {
+      return;
+    }
+
+    const projectPath = normalizeProjectDraftPath(
+      prefillPromptRequest.userProjectPath
+    );
+    selectedProjectPathRef.current = projectPath;
+    setSelectedProjectPath(projectPath);
+
+    const previous = activeConversationIdRef.current;
+    if (previous) {
+      void activation.unactivate(previous);
+    }
+    suppressedHomeConversationIdRef.current =
+      previous ?? dataRef.current.lastActiveAgentSessionId;
+    isComposerHomeRef.current = true;
+    setIsComposerHome(true);
+    activeConversationIdRef.current = null;
+    setActiveConversationId(null);
+    setIsLoadingMessages(false);
+    setDetailError(null);
+    setDraftBySessionId((current) => ({
+      ...current,
+      [nodeDefaultDraftContentKey(dataRef.current.provider)]: {
+        ...emptyAgentComposerDraft(),
+        prompt: draftPrompt
+      }
+    }));
+    persistActiveConversation(null);
+    loadDraftComposerOptions();
+  }, [
+    activation,
+    loadDraftComposerOptions,
+    persistActiveConversation,
+    prefillPromptRequest,
+    previewMode
+  ]);
 
   const continueInNewConversation = useCallback(() => {
     const currentConversationId = activeConversationIdRef.current;

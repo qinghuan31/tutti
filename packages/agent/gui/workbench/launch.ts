@@ -5,8 +5,12 @@ import {
 } from "./providerCatalog.ts";
 import {
   agentGuiWorkbenchOpenSessionActivationType,
+  agentGuiWorkbenchPrefillPromptActivationType,
+  type AgentGuiWorkbenchPrefillPromptPayload,
   type AgentGuiWorkbenchProvider
 } from "./types.ts";
+
+export { agentGuiWorkbenchPrefillPromptActivationType } from "./types.ts";
 
 type AgentGuiWorkbenchLaunchRequestInput = Pick<
   WorkbenchHostLaunchRequest,
@@ -105,13 +109,40 @@ export function createAgentGuiWorkbenchSessionLaunchRequest(input: {
   };
 }
 
-export interface AgentGuiWorkbenchLaunchDescriptor {
-  activation: {
+export function createAgentGuiWorkbenchDraftLaunchRequest(input: {
+  draftPrompt: string;
+  provider: unknown;
+  userProjectPath?: string | null;
+}) {
+  const provider = normalizeAgentGuiWorkbenchProvider(input.provider);
+  const userProjectPath = normalizeAgentGuiWorkbenchUserProjectPath(
+    input.userProjectPath
+  );
+  return {
+    dockEntryId: agentGuiWorkbenchDockEntryId(provider),
     payload: {
-      agentSessionId: string;
-    };
-    type: typeof agentGuiWorkbenchOpenSessionActivationType;
-  } | null;
+      draftPrompt: input.draftPrompt,
+      provider,
+      ...(userProjectPath ? { userProjectPath } : {})
+    },
+    reason: "host" as const,
+    typeId: agentGuiWorkbenchTypeId
+  };
+}
+
+export interface AgentGuiWorkbenchLaunchDescriptor {
+  activation:
+    | {
+        payload: {
+          agentSessionId: string;
+        };
+        type: typeof agentGuiWorkbenchOpenSessionActivationType;
+      }
+    | {
+        payload: AgentGuiWorkbenchPrefillPromptPayload;
+        type: typeof agentGuiWorkbenchPrefillPromptActivationType;
+      }
+    | null;
   dockEntryId: string;
   instanceId: string;
   provider: AgentGuiWorkbenchProvider;
@@ -123,6 +154,22 @@ export function createAgentGuiWorkbenchLaunchDescriptor(
   request: AgentGuiWorkbenchLaunchRequestInput
 ): AgentGuiWorkbenchLaunchDescriptor {
   const provider = agentGuiWorkbenchProviderFromLaunchRequest(request);
+  const prefillPrompt = prefillPromptFromLaunchPayload(request.payload);
+  if (prefillPrompt) {
+    return {
+      activation: {
+        payload: prefillPrompt,
+        type: agentGuiWorkbenchPrefillPromptActivationType
+      },
+      dockEntryId:
+        request.dockEntryId ?? agentGuiWorkbenchDockEntryId(provider),
+      instanceId: createAgentGuiWorkbenchInstanceId({ provider }),
+      provider,
+      reuseDockEntryNode: true,
+      targetAgentSessionId: null
+    };
+  }
+
   const targetAgentSessionId = agentSessionIdFromLaunchPayload(request.payload);
   const instanceId = createAgentGuiWorkbenchInstanceId({
     agentSessionId: targetAgentSessionId,
@@ -148,6 +195,37 @@ export function createAgentGuiWorkbenchLaunchDescriptor(
 
 function encodeAgentGuiWorkbenchInstanceSegment(value: string): string {
   return encodeURIComponent(value.trim());
+}
+
+function prefillPromptFromLaunchPayload(
+  payload: unknown
+): AgentGuiWorkbenchPrefillPromptPayload | null {
+  if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
+    return null;
+  }
+  const draftPrompt = (payload as { draftPrompt?: unknown }).draftPrompt;
+  if (typeof draftPrompt !== "string" || !draftPrompt.trim()) {
+    return null;
+  }
+  const userProjectPath = (payload as { userProjectPath?: unknown })
+    .userProjectPath;
+  const normalizedUserProjectPath =
+    typeof userProjectPath === "string"
+      ? normalizeAgentGuiWorkbenchUserProjectPath(userProjectPath)
+      : null;
+  return {
+    draftPrompt,
+    ...(normalizedUserProjectPath
+      ? { userProjectPath: normalizedUserProjectPath }
+      : {})
+  };
+}
+
+function normalizeAgentGuiWorkbenchUserProjectPath(
+  value: string | null | undefined
+): string | null {
+  const normalized = value?.trim().replaceAll("\\", "/").replace(/\/+$/, "");
+  return normalized ? normalized : null;
 }
 
 function agentSessionIdFromLaunchPayload(payload: unknown): string | null {

@@ -31,6 +31,7 @@ export {
   agentGuiWorkbenchProviderFromIdentifier,
   agentGuiWorkbenchProviderFromLaunchRequest,
   agentGuiWorkbenchTypeId,
+  createAgentGuiWorkbenchDraftLaunchRequest,
   createAgentGuiWorkbenchInstanceId,
   createAgentGuiWorkbenchLaunchDescriptor,
   createAgentGuiWorkbenchSessionLaunchRequest
@@ -53,8 +54,10 @@ export {
 } from "./header.ts";
 export {
   agentGuiWorkbenchOpenSessionActivationType,
+  agentGuiWorkbenchPrefillPromptActivationType,
   type AgentGuiWorkbenchComposerOverrides,
   type AgentGuiWorkbenchNodeState,
+  type AgentGuiWorkbenchPrefillPromptPayload,
   type AgentGuiWorkbenchProvider,
   type AgentGuiWorkbenchState,
   type AgentGuiWorkbenchWorkspaceState

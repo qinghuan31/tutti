@@ -10,6 +10,29 @@
 
 ---
 
+## 实现结果
+
+当前实现已经把任务中心的执行 prompt 和拆解 prompt 改为预填 Agent GUI 草稿：
+
+- 任务中心继续复用原有 prompt 生成逻辑。
+- desktop adapter 不再先创建 session，而是把 prompt 作为 `draftPrompt` 交给 Agent GUI launch。
+- Workbench 通过 `reuseDockEntryNode` 复用目标 provider 的 dock 节点；没有匹配节点时创建一个新的 Agent GUI 节点。
+- 这不是广播机制。一次 launch 只会把 activation 交给 Workbench 选中的一个目标节点，不会让多个 Codex 节点同时响应同一个请求。
+- Agent GUI 消费 `agent-gui:prefill-prompt` activation 后会清理该 activation，避免节点重挂载时用旧 prompt 覆盖用户编辑。
+- prefill 路径只写 composer draft，不调用 `activateSession({ mode: "new" })`、`sendInput` 或 `WorkspaceAgentPromptSessionService.createSession`。
+
+已覆盖的验证点：
+
+- Workbench draft launch request 和 descriptor。
+- draft launch 复用 provider dock entry，且没有 `targetAgentSessionId`。
+- AgentGUI prefill 写入草稿、不调用 activate、不调用 sendInput。
+- 重复 activation sequence 不覆盖用户编辑。
+- prefill activation 被消费后清理，避免重挂载重复应用。
+- 任务中心 adapter 只 launch draft prompt，不调用 session creator。
+- 中英文任务中心文案更新。
+
+---
+
 ## 当前行为
 
 任务中心当前的 agent 动作链路是：

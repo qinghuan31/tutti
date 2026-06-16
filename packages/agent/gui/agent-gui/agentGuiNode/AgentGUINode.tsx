@@ -27,6 +27,7 @@ import { WorkspaceNodeWindow } from "../shared/WorkspaceNodeWindow";
 import { CanvasNodeGhostIconButton } from "../shared/CanvasNodeGhostIconButton";
 import { CanvasNodePanelLinedIcon } from "../shared/canvasNodeChromeIcons";
 import { useAgentGUINodeController } from "./controller/useAgentGUINodeController";
+import type { AgentGUIPrefillPromptRequest } from "./controller/useAgentGUINodeController";
 import { AgentGUINodeView, type AgentGUIViewLabels } from "./AgentGUINodeView";
 import {
   normalizeAgentGUIProviderIdentity,
@@ -118,6 +119,7 @@ export interface AgentGUINodeProps {
   isMaximized?: boolean;
   isActive: boolean;
   composerFocusRequestSequence?: number | null;
+  prefillPromptRequest?: AgentGUIPrefillPromptRequest | null;
   showProjectSelector?: boolean;
   isMuted?: boolean;
   onMinimize?: () => void;
@@ -426,7 +428,9 @@ function areAgentGUINodePropsEqual(
     previous.previewMode === next.previewMode &&
     previous.isActive === next.isActive &&
     previous.showProjectSelector === next.showProjectSelector &&
-    previous.composerFocusRequestSequence === next.composerFocusRequestSequence
+    previous.composerFocusRequestSequence ===
+      next.composerFocusRequestSequence &&
+    previous.prefillPromptRequest === next.prefillPromptRequest
   );
 }
 
@@ -452,6 +456,7 @@ export const AgentGUINode = memo(function AgentGUINode({
   isMaximized = false,
   isActive,
   composerFocusRequestSequence = null,
+  prefillPromptRequest = null,
   showProjectSelector = true,
   isMuted = false,
   onMinimize,
@@ -599,6 +604,7 @@ export const AgentGUINode = memo(function AgentGUINode({
     workspacePath,
     avoidGroupingEdits: agentSettings.avoidGroupingEdits,
     data: state,
+    prefillPromptRequest,
     previewMode,
     onDataChange: handleDataChange,
     onShowMessage

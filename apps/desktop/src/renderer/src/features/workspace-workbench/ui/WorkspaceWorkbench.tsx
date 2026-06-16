@@ -24,7 +24,10 @@ import { useWorkspaceCatalogService } from "@renderer/features/workspace-catalog
 import { registerWorkspaceAgentGuiLaunchHandler } from "@renderer/features/workspace-agent";
 import { useTranslation } from "@renderer/i18n";
 import { cn } from "@renderer/lib/format";
-import { createWorkspaceAgentGuiSessionLaunchRequest } from "../services/workspaceAgentGuiLaunch.ts";
+import {
+  createWorkspaceAgentGuiDraftLaunchRequest,
+  createWorkspaceAgentGuiSessionLaunchRequest
+} from "../services/workspaceAgentGuiLaunch.ts";
 import type { WorkspaceLaunchpadOpenTrigger } from "../services/workspaceLaunchpadAnalytics.ts";
 import {
   registerWorkspaceBrowserLaunchHandler,
@@ -172,12 +175,24 @@ function ReadyWorkspaceWorkbench({
       unregisterAgentGuiLaunchRef.current =
         registerWorkspaceAgentGuiLaunchHandler(
           state.workspace.id,
-          async ({ agentSessionId, provider }) => {
+          async ({
+            agentSessionId,
+            draftPrompt,
+            provider,
+            userProjectPath
+          }) => {
+            const normalizedDraftPrompt = draftPrompt?.trim() ?? "";
             await host.launchNode(
-              createWorkspaceAgentGuiSessionLaunchRequest({
-                agentSessionId,
-                provider
-              })
+              normalizedDraftPrompt
+                ? createWorkspaceAgentGuiDraftLaunchRequest({
+                    draftPrompt: normalizedDraftPrompt,
+                    provider,
+                    userProjectPath
+                  })
+                : createWorkspaceAgentGuiSessionLaunchRequest({
+                    agentSessionId,
+                    provider
+                  })
             );
           }
         );

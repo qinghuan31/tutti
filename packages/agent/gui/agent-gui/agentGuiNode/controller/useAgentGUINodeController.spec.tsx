@@ -486,6 +486,97 @@ describe("useAgentGUINodeController", () => {
     expect(result.current.viewModel.draftPrompt).toBe("web draft");
   });
 
+  it("prefills draft prompts without activating or executing a session", async () => {
+    const activate = vi.fn(
+      async (input: AgentHostActivateAgentSessionInput) => ({
+        session: agentSession(input.agentSessionId),
+        activation: { mode: input.mode, status: "attached" as const }
+      })
+    );
+    const unactivate = vi.fn(async () => undefined);
+    const exec = vi.fn();
+    installAgentHostApi({
+      list: vi.fn(async () => snapshotWithSession("session-1")),
+      listSessionTimeline: vi.fn(async () => ({ timelineItems: [] })),
+      subscribeEvents: vi.fn(() => vi.fn()),
+      activate,
+      unactivate,
+      exec
+    });
+
+    type PrefillPromptRequest = Parameters<
+      typeof useAgentGUINodeController
+    >[0]["prefillPromptRequest"];
+    const { result, rerender } = renderHook(
+      (props: { prefillPromptRequest?: PrefillPromptRequest }) =>
+        useAgentGUINodeController({
+          workspaceId: "room-1",
+          currentUserId: "user-1",
+          workspacePath: "/workspace",
+          avoidGroupingEdits: false,
+          data: agentGuiData("session-1"),
+          onDataChange: vi.fn(),
+          ...props
+        }),
+      {
+        initialProps: {
+          prefillPromptRequest: null as PrefillPromptRequest
+        }
+      }
+    );
+
+    expect(result.current.viewModel.activeConversationId).toBe("session-1");
+
+    rerender({
+      prefillPromptRequest: {
+        draftPrompt: " Review this issue ",
+        sequence: 1,
+        userProjectPath: "/workspace/app/"
+      }
+    });
+
+    await waitFor(() => {
+      expect(result.current.viewModel.activeConversationId).toBe(null);
+      expect(result.current.viewModel.draftPrompt).toBe("Review this issue");
+      expect(
+        result.current.viewModel.composerSettings.selectedProjectPath
+      ).toBe("/workspace/app");
+    });
+    expect(unactivate).toHaveBeenCalledWith({
+      agentSessionId: "session-1",
+      workspaceId: "room-1"
+    });
+    expect(activate).not.toHaveBeenCalled();
+    expect(exec).not.toHaveBeenCalled();
+
+    act(() => {
+      result.current.actions.updateDraftContent(draftContent("user edit"));
+    });
+    rerender({
+      prefillPromptRequest: {
+        draftPrompt: "Replay should be ignored",
+        sequence: 1
+      }
+    });
+    await Promise.resolve();
+    expect(result.current.viewModel.draftPrompt).toBe("user edit");
+
+    rerender({
+      prefillPromptRequest: {
+        draftPrompt: "Next issue",
+        sequence: 2
+      }
+    });
+    await waitFor(() => {
+      expect(result.current.viewModel.draftPrompt).toBe("Next issue");
+      expect(
+        result.current.viewModel.composerSettings.selectedProjectPath
+      ).toBe(null);
+    });
+    expect(activate).not.toHaveBeenCalled();
+    expect(exec).not.toHaveBeenCalled();
+  });
+
   it("tracks active conversation project setting changes through the host reporter", async () => {
     const trackSettingsProjectChange = vi.fn(async () => undefined);
     installAgentHostApi({

@@ -9,6 +9,14 @@ export type AgentGuiWorkbenchProvider =
 export const agentGuiWorkbenchOpenSessionActivationType =
   "agent-gui:open-session";
 
+export const agentGuiWorkbenchPrefillPromptActivationType =
+  "agent-gui:prefill-prompt";
+
+export interface AgentGuiWorkbenchPrefillPromptPayload {
+  draftPrompt: string;
+  userProjectPath?: string | null;
+}
+
 export interface AgentGuiWorkbenchComposerOverrides {
   model?: string | null;
   permissionModeId?: string | null;

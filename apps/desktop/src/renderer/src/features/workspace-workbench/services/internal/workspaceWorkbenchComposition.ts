@@ -8,6 +8,7 @@ import type {
 import type { WorkspaceFilesNodeActivationPayload } from "../workspaceWorkbenchHostService.interface";
 import { workspaceFilesLaunchTypeId } from "../workspaceFilesLaunchCoordinator.ts";
 export {
+  createWorkspaceAgentGuiDraftLaunchRequest,
   createWorkspaceAgentGuiLaunchDescriptor,
   createWorkspaceAgentGuiInstanceId,
   workspaceAgentGuiDockEntryId,

@@ -1,9 +1,11 @@
 import { describe, expect, it } from "vitest";
 import {
+  agentGuiWorkbenchPrefillPromptActivationType,
   agentGuiWorkbenchDockEntryId,
   agentGuiWorkbenchInstanceId,
   agentGuiWorkbenchProviderFromIdentifier,
   agentGuiWorkbenchProviderFromLaunchRequest,
+  createAgentGuiWorkbenchDraftLaunchRequest,
   createAgentGuiWorkbenchInstanceId,
   createAgentGuiWorkbenchLaunchDescriptor
 } from "./launch.ts";
@@ -78,6 +80,47 @@ describe("agent gui workbench launch contract", () => {
       provider: "codex",
       reuseDockEntryNode: true,
       targetAgentSessionId: "session-2"
+    });
+  });
+
+  it("creates draft prompt launch requests for provider dock entries", () => {
+    expect(
+      createAgentGuiWorkbenchDraftLaunchRequest({
+        draftPrompt: "Review this issue",
+        provider: "codex",
+        userProjectPath: "/Users/example/project"
+      })
+    ).toEqual({
+      dockEntryId: "agent-gui",
+      payload: {
+        draftPrompt: "Review this issue",
+        provider: "codex",
+        userProjectPath: "/Users/example/project"
+      },
+      reason: "host",
+      typeId: "agent-gui"
+    });
+  });
+
+  it("launches draft prompts into reusable provider nodes", () => {
+    expect(
+      createAgentGuiWorkbenchLaunchDescriptor(
+        createAgentGuiWorkbenchDraftLaunchRequest({
+          draftPrompt: "Review this issue",
+          provider: "codex"
+        })
+      )
+    ).toMatchObject({
+      activation: {
+        payload: {
+          draftPrompt: "Review this issue"
+        },
+        type: agentGuiWorkbenchPrefillPromptActivationType
+      },
+      dockEntryId: "agent-gui",
+      provider: "codex",
+      reuseDockEntryNode: true,
+      targetAgentSessionId: null
     });
   });
 });

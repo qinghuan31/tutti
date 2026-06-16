@@ -1,8 +1,10 @@
 export {
   agentGuiWorkbenchOpenSessionActivationType as desktopAgentGUIOpenSessionActivationType,
+  agentGuiWorkbenchPrefillPromptActivationType as desktopAgentGUIPrefillPromptActivationType,
   type AgentGuiWorkbenchComposerOverridesByProvider as DesktopAgentGUIComposerOverridesByProvider,
   type AgentGuiWorkbenchComposerOverrides as DesktopAgentGUIComposerOverrides,
   type AgentGuiWorkbenchNodeState as DesktopAgentGUINodeState,
+  type AgentGuiWorkbenchPrefillPromptPayload as DesktopAgentGUIPrefillPromptPayload,
   type AgentGuiWorkbenchProvider as DesktopAgentGUIProvider,
   type AgentGuiWorkbenchState as DesktopAgentGUIWorkbenchState,
   type AgentGuiWorkbenchWorkspaceState as DesktopAgentGUIWorkspaceState

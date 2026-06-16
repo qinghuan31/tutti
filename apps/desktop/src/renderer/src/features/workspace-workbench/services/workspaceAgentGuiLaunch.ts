@@ -4,6 +4,7 @@ export {
   agentGuiWorkbenchProviderFromIdentifier as workspaceAgentGuiProviderFromIdentifier,
   agentGuiWorkbenchProviderFromLaunchRequest as workspaceAgentGuiProviderFromLaunchRequest,
   agentGuiWorkbenchTypeId as workspaceAgentGuiNodeID,
+  createAgentGuiWorkbenchDraftLaunchRequest as createWorkspaceAgentGuiDraftLaunchRequest,
   createAgentGuiWorkbenchInstanceId as createWorkspaceAgentGuiInstanceId,
   createAgentGuiWorkbenchLaunchDescriptor as createWorkspaceAgentGuiLaunchDescriptor,
   createAgentGuiWorkbenchSessionLaunchRequest as createWorkspaceAgentGuiSessionLaunchRequest

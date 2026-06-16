@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { defaultIssueManagerNodeFrame } from "@tutti-os/workspace-issue-manager/workbench/constants";
 import {
+  createWorkspaceAgentGuiDraftLaunchRequest,
   createWorkspaceAgentGuiLaunchDescriptor,
   createWorkspaceAgentGuiInstanceId,
   createWorkspaceFilesDockEntry,
@@ -143,6 +144,28 @@ test("workspace agent GUI session launches target exact session instances", () =
       agentSessionId: "session-2"
     },
     type: "agent-gui:open-session"
+  });
+});
+
+test("workspace agent GUI draft launches reuse the provider dock entry without a session", () => {
+  const descriptor = createWorkspaceAgentGuiLaunchDescriptor(
+    createWorkspaceAgentGuiDraftLaunchRequest({
+      draftPrompt: "Review this issue",
+      provider: "codex",
+      userProjectPath: "/workspace/app/"
+    })
+  );
+
+  assert.equal(descriptor.provider, "codex");
+  assert.equal(descriptor.targetAgentSessionId, null);
+  assert.equal(descriptor.dockEntryId, "agent-gui");
+  assert.equal(descriptor.reuseDockEntryNode, true);
+  assert.deepEqual(descriptor.activation, {
+    payload: {
+      draftPrompt: "Review this issue",
+      userProjectPath: "/workspace/app"
+    },
+    type: "agent-gui:prefill-prompt"
   });
 });
 
