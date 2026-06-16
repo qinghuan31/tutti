@@ -189,9 +189,6 @@ func (s *AppCenterService) packageForRemoteBuiltinInstall(ctx context.Context, b
 		if shouldMaterializeRemoteBuiltin(existing, builtin) {
 			return s.downloadRemoteBuiltinPackage(ctx, builtin)
 		}
-		if err := s.Store.SetActiveAppPackageVersion(ctx, appID, version); err != nil {
-			return workspacebiz.AppPackage{}, err
-		}
 		return existing, nil
 	}
 	if err != nil && !errors.Is(err, workspacedata.ErrWorkspaceAppNotFound) {

@@ -167,7 +167,7 @@ func (s *AppCenterService) downloadRemoteBuiltinPackage(ctx context.Context, bui
 		ManifestJSON: manifestJSON,
 		Source:       workspacebiz.AppPackageSourceBuiltin,
 	}
-	if err := s.Store.PutAppPackage(ctx, appPackage); err != nil {
+	if err := s.Store.PutAppPackageVersion(ctx, appPackage); err != nil {
 		return workspacebiz.AppPackage{}, err
 	}
 	return appPackage, nil

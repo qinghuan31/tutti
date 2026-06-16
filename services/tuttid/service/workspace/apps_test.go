@@ -229,6 +229,14 @@ func (s *appStoreStub) PutAppPackage(_ context.Context, appPackage workspacebiz.
 	return nil
 }
 
+func (s *appStoreStub) PutAppPackageVersion(_ context.Context, appPackage workspacebiz.AppPackage) error {
+	if s.packageVersions[appPackage.AppID] == nil {
+		s.packageVersions[appPackage.AppID] = make(map[string]workspacebiz.AppPackage)
+	}
+	s.packageVersions[appPackage.AppID][appPackage.Version] = appPackage
+	return nil
+}
+
 func (s *appStoreStub) DeleteAppPackage(_ context.Context, appID string) error {
 	if _, ok := s.packages[appID]; !ok {
 		return workspacedata.ErrWorkspaceAppNotFound
@@ -723,7 +731,7 @@ func TestAppCenterServiceListKeepsCachedBuiltinWhenCatalogNotReady(t *testing.T)
 	}
 }
 
-func TestAppCenterServiceRemoteBuiltinInstallActivatesUpdate(t *testing.T) {
+func TestAppCenterServiceRemoteBuiltinInstallCachesUpdateWithoutActivating(t *testing.T) {
 	t.Parallel()
 
 	ctx := context.Background()
@@ -809,10 +817,17 @@ func TestAppCenterServiceRemoteBuiltinInstallActivatesUpdate(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GetAppPackage() error = %v", err)
 	}
-	if stored.Version != "1.1.0" || stored.PackageDir == oldDir {
-		t.Fatalf("stored package after update = %#v", stored)
+	if stored.Version != "1.0.0" || stored.PackageDir != oldDir {
+		t.Fatalf("active package after cache = %#v, want old active package", stored)
 	}
-	if actualIconURL := stored.IconDataURL(); actualIconURL == nil || !strings.HasPrefix(*actualIconURL, "data:image/png;base64,") {
+	cached, err := store.GetAppPackageVersion(ctx, "large-builtin", "1.1.0")
+	if err != nil {
+		t.Fatalf("GetAppPackageVersion(1.1.0) error = %v", err)
+	}
+	if cached.PackageDir == oldDir {
+		t.Fatalf("cached package dir = %q, want new package dir", cached.PackageDir)
+	}
+	if actualIconURL := cached.IconDataURL(); actualIconURL == nil || !strings.HasPrefix(*actualIconURL, "data:image/png;base64,") {
 		t.Fatalf("synced remote builtin icon url = %v", actualIconURL)
 	}
 }
@@ -1613,6 +1628,130 @@ func TestAppCenterServiceListExposesInstalledRemoteBuiltinUpdate(t *testing.T) {
 	}
 }
 
+func TestAppCenterServiceCachedRemoteBuiltinUpdateDoesNotReplaceActiveInstall(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	oldDir := createWorkspaceAppPackageForTest(t, t.TempDir(), workspacebiz.AppManifest{
+		SchemaVersion: workspacebiz.AppManifestSchemaVersionV1,
+		AppID:         "large-builtin",
+		Version:       "1.0.0",
+		Name:          "Large Builtin v1",
+		Description:   "Old large app",
+		Icon: workspacebiz.AppManifestIcon{
+			Type: "asset",
+			Src:  "icon.png",
+		},
+		Runtime: workspacebiz.AppManifestRuntime{
+			Bootstrap:       "bootstrap.sh",
+			HealthcheckPath: "/",
+		},
+	})
+	newDir := createWorkspaceAppPackageForTest(t, t.TempDir(), workspacebiz.AppManifest{
+		SchemaVersion: workspacebiz.AppManifestSchemaVersionV1,
+		AppID:         "large-builtin",
+		Version:       "1.1.0",
+		Name:          "Large Builtin v2",
+		Description:   "New large app",
+		Icon: workspacebiz.AppManifestIcon{
+			Type: "asset",
+			Src:  "icon.png",
+		},
+		Runtime: workspacebiz.AppManifestRuntime{
+			Bootstrap:       "bootstrap.sh",
+			HealthcheckPath: "/",
+		},
+	})
+	archivePath := filepath.Join(t.TempDir(), "large-builtin.zip")
+	if err := createAppPackageZip(newDir, archivePath); err != nil {
+		t.Fatalf("createAppPackageZip() error = %v", err)
+	}
+	archiveSHA256, _, err := fileSHA256AndSize(archivePath)
+	if err != nil {
+		t.Fatalf("fileSHA256AndSize() error = %v", err)
+	}
+	store := newAppStoreStub()
+	if err := store.PutAppPackage(ctx, workspacebiz.AppPackage{
+		AppID:      "large-builtin",
+		Version:    "1.0.0",
+		PackageDir: oldDir,
+		Manifest:   mustReadManifestForTest(t, oldDir),
+		Source:     workspacebiz.AppPackageSourceBuiltin,
+	}); err != nil {
+		t.Fatalf("PutAppPackage() error = %v", err)
+	}
+	if err := store.PutWorkspaceAppInstallation(ctx, workspacebiz.AppInstallation{
+		WorkspaceID: "ws-1",
+		AppID:       "large-builtin",
+		Enabled:     true,
+	}); err != nil {
+		t.Fatalf("PutWorkspaceAppInstallation() error = %v", err)
+	}
+	service := AppCenterService{
+		Store:          store,
+		WorkspaceStore: &catalogStoreStub{getWorkspace: workspacebiz.Summary{ID: "ws-1", Name: "Workspace"}},
+		Runner:         &AppRunner{},
+		StateDir:       t.TempDir(),
+		ArtifactFetcher: newCopyingArtifactFetcher(
+			archivePath,
+		),
+		BuiltinCatalog: func() ([]builtinapps.App, error) {
+			return []builtinapps.App{{
+				Manifest: mustReadManifestForTest(t, newDir),
+				Distribution: builtinapps.Distribution{
+					Kind:           builtinapps.DistributionRemote,
+					ArtifactURL:    "https://cdn.example.test/large-builtin.zip",
+					ArtifactSHA256: archiveSHA256,
+					IconURL:        "https://cdn.example.test/large-builtin.png",
+				},
+			}}, nil
+		},
+	}
+
+	builtins, err := service.BuiltinCatalog()
+	if err != nil {
+		t.Fatalf("BuiltinCatalog() error = %v", err)
+	}
+	if _, err := service.packageForRemoteBuiltinInstall(ctx, builtins[0]); err != nil {
+		t.Fatalf("packageForRemoteBuiltinInstall() error = %v", err)
+	}
+	active, err := store.GetAppPackage(ctx, "large-builtin")
+	if err != nil {
+		t.Fatalf("GetAppPackage() error = %v", err)
+	}
+	if active.Version != "1.0.0" {
+		t.Fatalf("active package version = %q, want 1.0.0", active.Version)
+	}
+	if _, err := store.GetAppPackageVersion(ctx, "large-builtin", "1.1.0"); err != nil {
+		t.Fatalf("cached update package missing: %v", err)
+	}
+	if _, err := service.packageForRemoteBuiltinInstall(ctx, builtins[0]); err != nil {
+		t.Fatalf("packageForRemoteBuiltinInstall(cached) error = %v", err)
+	}
+	active, err = store.GetAppPackage(ctx, "large-builtin")
+	if err != nil {
+		t.Fatalf("GetAppPackage() after cached resolve error = %v", err)
+	}
+	if active.Version != "1.0.0" {
+		t.Fatalf("active package after cached resolve = %q, want 1.0.0", active.Version)
+	}
+
+	apps, err := service.List(ctx, "ws-1")
+	if err != nil {
+		t.Fatalf("List() error = %v", err)
+	}
+	app := findWorkspaceAppForTest(apps, "large-builtin")
+	if app == nil {
+		t.Fatalf("large-builtin missing: %#v", apps)
+	}
+	if app.Package.Version != "1.0.0" || app.Package.DisplayName() != "Large Builtin v1" {
+		t.Fatalf("projected active package = version %q name %q, want v1", app.Package.Version, app.Package.DisplayName())
+	}
+	if !app.UpdateAvailable || app.AvailableVersion == nil || *app.AvailableVersion != "1.1.0" {
+		t.Fatalf("projected update fields = updateAvailable %v availableVersion %v, want v2 update", app.UpdateAvailable, app.AvailableVersion)
+	}
+}
+
 func TestAppCenterServiceListsRemoteBuiltinWhenOlderLocalPackageExists(t *testing.T) {
 	t.Parallel()
 
@@ -1917,8 +2056,15 @@ func TestAppCenterServiceResolvesRemoteBuiltinForInstallWhenOlderLocalPackageExi
 	if err != nil {
 		t.Fatalf("GetAppPackage() error = %v", err)
 	}
-	if activePackage.Version != "0.1.0+abc123" || activePackage.PackageDir == "" {
-		t.Fatalf("active package = %#v", activePackage)
+	if activePackage.Version != "0.1.0" {
+		t.Fatalf("active package = %#v, want old active package", activePackage)
+	}
+	cachedPackage, err := store.GetAppPackageVersion(ctx, "design-app", "0.1.0+abc123")
+	if err != nil {
+		t.Fatalf("GetAppPackageVersion(remote) error = %v", err)
+	}
+	if cachedPackage.PackageDir == "" {
+		t.Fatalf("cached package = %#v", cachedPackage)
 	}
 }
 

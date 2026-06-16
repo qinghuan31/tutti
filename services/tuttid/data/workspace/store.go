@@ -68,6 +68,7 @@ type AppStore interface {
 	ListWorkspaceAppInstallationsByApp(context.Context, string) ([]workspacebiz.AppInstallation, error)
 	ListWorkspaceAppInstallations(context.Context, string) ([]workspacebiz.AppInstallation, error)
 	PutAppPackage(context.Context, workspacebiz.AppPackage) error
+	PutAppPackageVersion(context.Context, workspacebiz.AppPackage) error
 	SetActiveAppPackageVersion(context.Context, string, string) error
 	PutWorkspaceAppInstallation(context.Context, workspacebiz.AppInstallation) error
 }

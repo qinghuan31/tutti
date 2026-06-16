@@ -14,6 +14,14 @@ import (
 )
 
 func (s *SQLiteStore) PutAppPackage(ctx context.Context, appPackage workspacebiz.AppPackage) error {
+	return s.putAppPackage(ctx, appPackage, true)
+}
+
+func (s *SQLiteStore) PutAppPackageVersion(ctx context.Context, appPackage workspacebiz.AppPackage) error {
+	return s.putAppPackage(ctx, appPackage, false)
+}
+
+func (s *SQLiteStore) putAppPackage(ctx context.Context, appPackage workspacebiz.AppPackage, activate bool) error {
 	if s == nil || s.db == nil {
 		return errors.New("workspace database is not initialized")
 	}
@@ -75,7 +83,8 @@ ON CONFLICT(app_id, version) DO UPDATE SET
 		return fmt.Errorf("put workspace app package: %w", err)
 	}
 
-	if _, err := tx.ExecContext(ctx, `
+	if activate {
+		if _, err := tx.ExecContext(ctx, `
 INSERT INTO app_catalog_entries (
   app_id, active_version, source, created_in_workspace_id, created_at_unix_ms, updated_at_unix_ms
 )
@@ -86,7 +95,18 @@ ON CONFLICT(app_id) DO UPDATE SET
   created_in_workspace_id = excluded.created_in_workspace_id,
   updated_at_unix_ms = excluded.updated_at_unix_ms
 `, appID, version, source, strings.TrimSpace(appPackage.CreatedInWorkspaceID), now, now); err != nil {
-		return fmt.Errorf("put workspace app catalog entry: %w", err)
+			return fmt.Errorf("put workspace app catalog entry: %w", err)
+		}
+	} else {
+		if _, err := tx.ExecContext(ctx, `
+INSERT INTO app_catalog_entries (
+  app_id, active_version, source, created_in_workspace_id, created_at_unix_ms, updated_at_unix_ms
+)
+VALUES (?, ?, ?, ?, ?, ?)
+ON CONFLICT(app_id) DO NOTHING
+`, appID, version, source, strings.TrimSpace(appPackage.CreatedInWorkspaceID), now, now); err != nil {
+			return fmt.Errorf("put inactive workspace app catalog entry: %w", err)
+		}
 	}
 
 	if err := tx.Commit(); err != nil {

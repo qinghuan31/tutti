@@ -150,7 +150,8 @@ func (s *AppCenterService) List(ctx context.Context, workspaceID string) ([]work
 		return nil, err
 	}
 	s.maybePreloadRuntimeForUninstalledApps(apps)
-	return s.withInstallJobProjections(apps, workspaceID), nil
+	apps = s.withInstallJobProjections(apps, workspaceID)
+	return apps, nil
 }
 
 func (s *AppCenterService) RefreshCatalog(ctx context.Context, workspaceID string) ([]workspacebiz.WorkspaceApp, error) {
@@ -209,6 +210,9 @@ func (s *AppCenterService) installPackage(ctx context.Context, workspaceID strin
 	}
 	runtimeState, err := s.startPackage(ctx, workspaceID, appPackage, options.RestartRunning)
 	if err != nil {
+		return workspacebiz.WorkspaceApp{}, err
+	}
+	if err := s.Store.SetActiveAppPackageVersion(ctx, appPackage.AppID, appPackage.Version); err != nil {
 		return workspacebiz.WorkspaceApp{}, err
 	}
 
