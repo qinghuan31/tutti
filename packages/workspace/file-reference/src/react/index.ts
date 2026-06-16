@@ -13,3 +13,13 @@ export {
   type UseWorkspaceFileReferencePickerViewInput,
   type WorkspaceFileReferencePreviewState
 } from "./internal/reference/useWorkspaceFileReferencePickerView.ts";
+export {
+  ROOT_CHILDREN_KEY,
+  createReferenceSourcePickerController,
+  type CreateReferenceSourcePickerControllerInput,
+  type ReferenceSourceNodeChildrenState,
+  type ReferenceSourcePickerController,
+  type ReferenceSourcePickerMode,
+  type ReferenceSourcePickerSnapshot,
+  type ReferenceSourceTabState
+} from "./internal/reference/referenceSourcePickerController.ts";
