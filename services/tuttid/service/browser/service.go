@@ -59,7 +59,7 @@ func (s *Service) CallTool(ctx context.Context, workspaceID, cwd, tool string, a
 		s.mu.Unlock()
 		s.Shutdown(workspaceID)
 		s.mu.Lock()
-		session, sessionExisted = s.sessions[workspaceID], false
+		sessionExisted = false
 	}
 	s.mu.Unlock()
 
