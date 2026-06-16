@@ -97,7 +97,7 @@ export function createWorkspaceAgentGuiContribution(input: {
       context,
       dockPreviewCache: input.dockPreviewCache,
       onLinkAction: handleLinkAction,
-      onStateChange: helpers.onStateChange,
+      onStateChange: (...args) => helpers.onStateChange(...args),
       previewMode: options?.previewMode,
       richTextAtProviders: agentGUIWorkbenchHostInput.richTextAtProviders,
       resolveAppIconUrl: input.resolveAppIconUrl,
