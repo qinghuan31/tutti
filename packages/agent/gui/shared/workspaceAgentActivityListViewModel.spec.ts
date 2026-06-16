@@ -1397,6 +1397,78 @@ describe("buildWorkspaceAgentActivityListViewModel", () => {
     ]);
   });
 
+  it("filters agent-generated files to the selected session work directory", () => {
+    const snapshot: AgentActivitySnapshot = {
+      workspaceId: "workspace-1",
+      presences: [],
+      sessions: [
+        {
+          agentSessionId: "session-web",
+          cwd: "/Users/demo/project/apps/web",
+          provider: "codex",
+          status: "completed",
+          title: "Web session",
+          workspaceId: "workspace-1"
+        },
+        {
+          agentSessionId: "session-api",
+          cwd: "/Users/demo/project/apps/api",
+          provider: "codex",
+          status: "completed",
+          title: "API session",
+          workspaceId: "workspace-1"
+        }
+      ],
+      sessionMessagesById: {
+        "session-web": [
+          {
+            agentSessionId: "session-web",
+            kind: "tool_call",
+            messageId: "message-web",
+            payload: {
+              toolName: "Write",
+              status: "completed",
+              fileChanges: {
+                files: [{ path: "/Users/demo/project/apps/web/index.html" }]
+              }
+            },
+            role: "assistant",
+            status: "completed",
+            version: 1
+          }
+        ],
+        "session-api": [
+          {
+            agentSessionId: "session-api",
+            kind: "tool_call",
+            messageId: "message-api",
+            payload: {
+              toolName: "Write",
+              status: "completed",
+              fileChanges: {
+                files: [{ path: "/Users/demo/project/apps/api/server.go" }]
+              }
+            },
+            role: "assistant",
+            status: "completed",
+            version: 1
+          }
+        ]
+      }
+    };
+
+    expect(
+      collectWorkspaceAgentGeneratedFiles(snapshot, {
+        sessionCwd: "/Users/demo/project/apps/web"
+      })
+    ).toEqual([
+      {
+        path: "/Users/demo/project/apps/web/index.html",
+        label: "index.html"
+      }
+    ]);
+  });
+
   it("collects Codex edit tool file paths from structured tool payloads", () => {
     const snapshot: AgentActivitySnapshot = {
       workspaceId: "workspace-1",
