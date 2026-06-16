@@ -583,6 +583,7 @@ function toWorkspaceAppRuntimeState(
       : {}),
     appId: app.appId,
     launchUrl: app.launchUrl ?? null,
+    ...(app.installProgress ? { installProgress: app.installProgress } : {}),
     ...(cliIssue
       ? {
           error: {
@@ -591,6 +592,9 @@ function toWorkspaceAppRuntimeState(
           }
         }
       : {}),
-    status: app.runtimeStatus
+    status:
+      app.installProgress != null || app.runtimeStatus === "installing"
+        ? "installing"
+        : app.runtimeStatus
   };
 }

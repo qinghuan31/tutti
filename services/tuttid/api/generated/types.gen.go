@@ -907,6 +907,27 @@ func (e WorkspaceAppFactoryJobStatus) Valid() bool {
 	}
 }
 
+// Defines values for WorkspaceAppInstallUserPhase.
+const (
+	WorkspaceAppInstallUserPhaseDownloading WorkspaceAppInstallUserPhase = "downloading"
+	WorkspaceAppInstallUserPhaseInstalling  WorkspaceAppInstallUserPhase = "installing"
+	WorkspaceAppInstallUserPhaseStarting    WorkspaceAppInstallUserPhase = "starting"
+)
+
+// Valid indicates whether the value is a known member of the WorkspaceAppInstallUserPhase enum.
+func (e WorkspaceAppInstallUserPhase) Valid() bool {
+	switch e {
+	case WorkspaceAppInstallUserPhaseDownloading:
+		return true
+	case WorkspaceAppInstallUserPhaseInstalling:
+		return true
+	case WorkspaceAppInstallUserPhaseStarting:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for WorkspaceAppMinimizeBehavior.
 const (
 	Hibernate   WorkspaceAppMinimizeBehavior = "hibernate"
@@ -2411,6 +2432,7 @@ type WorkspaceApp struct {
 	Exportable       bool                         `json:"exportable"`
 	FailureReason    *string                      `json:"failureReason"`
 	IconUrl          *string                      `json:"iconUrl"`
+	InstallProgress  *WorkspaceAppInstallProgress `json:"installProgress,omitempty"`
 	Installed        bool                         `json:"installed"`
 	LastError        *string                      `json:"lastError"`
 	LaunchUrl        *string                      `json:"launchUrl"`
@@ -2492,6 +2514,18 @@ type WorkspaceAppFactoryJobResponse struct {
 
 // WorkspaceAppFactoryJobStatus defines model for WorkspaceAppFactoryJobStatus.
 type WorkspaceAppFactoryJobStatus string
+
+// WorkspaceAppInstallProgress defines model for WorkspaceAppInstallProgress.
+type WorkspaceAppInstallProgress struct {
+	DownloadedBytes *int64                       `json:"downloadedBytes"`
+	Indeterminate   bool                         `json:"indeterminate"`
+	OverallPercent  float32                      `json:"overallPercent"`
+	TotalBytes      *int64                       `json:"totalBytes"`
+	UserPhase       WorkspaceAppInstallUserPhase `json:"userPhase"`
+}
+
+// WorkspaceAppInstallUserPhase defines model for WorkspaceAppInstallUserPhase.
+type WorkspaceAppInstallUserPhase string
 
 // WorkspaceAppListResponse defines model for WorkspaceAppListResponse.
 type WorkspaceAppListResponse struct {

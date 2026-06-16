@@ -397,6 +397,43 @@ ORDER BY app_id ASC
 	return result, nil
 }
 
+func (s *SQLiteStore) ListWorkspaceAppInstallationsByApp(ctx context.Context, appID string) ([]workspacebiz.AppInstallation, error) {
+	if s == nil || s.db == nil {
+		return nil, errors.New("workspace database is not initialized")
+	}
+
+	appID = strings.TrimSpace(appID)
+	if appID == "" {
+		return nil, errors.New("workspace app id is required")
+	}
+
+	rows, err := s.db.QueryContext(ctx, `
+SELECT workspace_id, app_id, enabled
+FROM workspace_app_installations
+WHERE app_id = ?
+ORDER BY workspace_id ASC
+`, appID)
+	if err != nil {
+		return nil, fmt.Errorf("list workspace app installations by app: %w", err)
+	}
+	defer rows.Close()
+
+	var result []workspacebiz.AppInstallation
+	for rows.Next() {
+		var installation workspacebiz.AppInstallation
+		var enabled int
+		if err := rows.Scan(&installation.WorkspaceID, &installation.AppID, &enabled); err != nil {
+			return nil, fmt.Errorf("scan workspace app installation by app: %w", err)
+		}
+		installation.Enabled = enabled != 0
+		result = append(result, installation)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate workspace app installations by app: %w", err)
+	}
+	return result, nil
+}
+
 type appPackageScanner interface {
 	Scan(dest ...any) error
 }

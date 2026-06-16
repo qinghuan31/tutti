@@ -407,6 +407,39 @@ export const workspaceWorkspaceAppSchema = {
           type: "boolean"
         }
       }
+    },
+    installProgress: {
+      type: ["object", "null"],
+      additionalProperties: false,
+      required: [
+        "userPhase",
+        "overallPercent",
+        "downloadedBytes",
+        "totalBytes",
+        "indeterminate"
+      ],
+      properties: {
+        userPhase: {
+          type: "string",
+          enum: ["downloading", "installing", "starting"]
+        },
+        overallPercent: {
+          type: "number",
+          minimum: 0,
+          maximum: 100
+        },
+        downloadedBytes: {
+          type: ["integer", "null"],
+          format: "int64"
+        },
+        totalBytes: {
+          type: ["integer", "null"],
+          format: "int64"
+        },
+        indeterminate: {
+          type: "boolean"
+        }
+      }
     }
   }
 } as const;
@@ -1343,6 +1376,39 @@ export const workspaceAppUpdatedPayloadSchema = {
           required: ["listSupported"],
           properties: {
             listSupported: {
+              type: "boolean"
+            }
+          }
+        },
+        installProgress: {
+          type: ["object", "null"],
+          additionalProperties: false,
+          required: [
+            "userPhase",
+            "overallPercent",
+            "downloadedBytes",
+            "totalBytes",
+            "indeterminate"
+          ],
+          properties: {
+            userPhase: {
+              type: "string",
+              enum: ["downloading", "installing", "starting"]
+            },
+            overallPercent: {
+              type: "number",
+              minimum: 0,
+              maximum: 100
+            },
+            downloadedBytes: {
+              type: ["integer", "null"],
+              format: "int64"
+            },
+            totalBytes: {
+              type: ["integer", "null"],
+              format: "int64"
+            },
+            indeterminate: {
               type: "boolean"
             }
           }

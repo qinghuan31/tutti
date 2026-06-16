@@ -457,6 +457,64 @@ describe("createAppCenterViewModel", () => {
     assert.equal(viewModel.apps[0]?.primaryAction, "none");
   });
 
+  it("preserves runtime phases while install progress is active", () => {
+    const viewModel = createAppCenterViewModel({
+      apps: [
+        {
+          catalog: {
+            manifest: {
+              appId: "remote",
+              description: "Remote app",
+              runtime: {
+                bootstrap: "bootstrap.sh",
+                healthcheckPath: "/"
+              },
+              schemaVersion: workspaceAppManifestSchemaVersion,
+              name: "Remote",
+              version: "0.1.0"
+            },
+            source: {
+              kind: "local"
+            }
+          },
+          install: { appId: "remote" },
+          manifest: {
+            appId: "remote",
+            description: "Remote app",
+            runtime: {
+              bootstrap: "bootstrap.sh",
+              healthcheckPath: "/"
+            },
+            schemaVersion: workspaceAppManifestSchemaVersion,
+            name: "Remote",
+            version: "0.1.0"
+          }
+        }
+      ],
+      runtimeStates: [
+        {
+          appId: "remote",
+          installProgress: {
+            downloadedBytes: null,
+            indeterminate: false,
+            overallPercent: 96,
+            totalBytes: null,
+            userPhase: "starting"
+          },
+          status: "starting"
+        }
+      ]
+    });
+
+    assert.equal(viewModel.apps[0]?.status, "starting");
+    assert.equal(viewModel.apps[0]?.statusLabelKey, "status.starting");
+    assert.equal(viewModel.apps[0]?.primaryAction, "none");
+    assert.equal(viewModel.apps[0]?.canOpenFolder, false);
+    assert.equal(viewModel.apps[0]?.canOpenPackageFolder, false);
+    assert.equal(viewModel.apps[0]?.canUninstall, false);
+    assert.equal(viewModel.apps[0]?.installProgress?.overallPercent, 96);
+  });
+
   it("keeps catalog source kind for recommended and user-owned grouping", () => {
     const viewModel = createAppCenterViewModel({
       apps: [

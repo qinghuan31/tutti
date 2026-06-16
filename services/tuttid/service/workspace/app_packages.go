@@ -175,6 +175,54 @@ func (s *AppCenterService) DeletePackage(ctx context.Context, workspaceID string
 	return s.Store.DeleteAppPackage(ctx, appPackage.AppID)
 }
 
+func (s *AppCenterService) shouldDeleteRemoteBuiltinPackageAfterUninstall(ctx context.Context, workspaceID string, appPackage workspacebiz.AppPackage) (bool, error) {
+	if appPackage.Source != workspacebiz.AppPackageSourceBuiltin {
+		return false, nil
+	}
+	_, ok, err := s.remoteBuiltinForAppID(appPackage.AppID)
+	if err != nil {
+		return false, err
+	}
+	if !ok {
+		return false, nil
+	}
+
+	installations, err := s.Store.ListWorkspaceAppInstallationsByApp(ctx, appPackage.AppID)
+	if err != nil {
+		return false, err
+	}
+	if len(installations) != 1 {
+		return false, nil
+	}
+	installation := installations[0]
+	return installation.WorkspaceID == workspaceID && installation.AppID == appPackage.AppID, nil
+}
+
+func (s *AppCenterService) deleteRemoteBuiltinPackageFilesAndRecord(ctx context.Context, appPackage workspacebiz.AppPackage) error {
+	versions, err := s.Store.ListAppPackageVersions(ctx, appPackage.AppID)
+	if err != nil {
+		return err
+	}
+	packageDirs := make(map[string]struct{}, len(versions)+1)
+	if dir := strings.TrimSpace(appPackage.PackageDir); dir != "" {
+		packageDirs[dir] = struct{}{}
+	}
+	for _, versionPackage := range versions {
+		if dir := strings.TrimSpace(versionPackage.PackageDir); dir != "" {
+			packageDirs[dir] = struct{}{}
+		}
+	}
+	for packageDir := range packageDirs {
+		if err := os.RemoveAll(packageDir); err != nil {
+			return fmt.Errorf("delete remote builtin workspace app package dir: %w", err)
+		}
+		if err := s.pruneEmptyPackageCacheParents(packageDir); err != nil {
+			return err
+		}
+	}
+	return s.Store.DeleteAppPackage(ctx, appPackage.AppID)
+}
+
 func (s *AppCenterService) removeFactoryJobFilesForPackage(ctx context.Context, workspaceID string, appPackage workspacebiz.AppPackage) error {
 	if s.AppFactoryStore == nil || strings.TrimSpace(appPackage.FactoryJobID) == "" {
 		return nil

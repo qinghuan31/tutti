@@ -810,6 +810,8 @@ export type {
   WorkspaceAppFactoryJobResponse,
   WorkspaceAppFactoryJobStatus,
   WorkspaceAppId,
+  WorkspaceAppInstallProgress,
+  WorkspaceAppInstallUserPhase,
   WorkspaceAppListResponse,
   WorkspaceAppLocalization,
   WorkspaceAppMinimizeBehavior,

@@ -237,6 +237,23 @@ type AppRuntimeState struct {
 	UpdatedAtUnixMs *int64
 }
 
+type AppInstallUserPhase string
+
+const (
+	AppInstallUserPhaseDownloading AppInstallUserPhase = "downloading"
+	AppInstallUserPhaseInstalling  AppInstallUserPhase = "installing"
+	AppInstallUserPhaseStarting    AppInstallUserPhase = "starting"
+)
+
+type AppInstallProgress struct {
+	UserPhase       AppInstallUserPhase
+	OverallPercent  float64
+	DownloadedBytes *int64
+	TotalBytes      *int64
+	Indeterminate   bool
+	UpdatedAtUnixMs int64
+}
+
 type AppCLIStatus string
 
 const (
@@ -268,6 +285,7 @@ type WorkspaceApp struct {
 	AvailableIconURL *string
 	UpdateAvailable  bool
 	Runtime          AppRuntimeState
+	InstallProgress  *AppInstallProgress
 	CLI              AppCLIState
 	References       AppReferencesState
 	StateRevision    int64

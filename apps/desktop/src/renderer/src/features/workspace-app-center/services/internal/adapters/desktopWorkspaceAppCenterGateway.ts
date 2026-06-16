@@ -77,6 +77,10 @@ export interface WorkspaceAppLike {
   readonly updatedAtUnixMs?: number | null;
   readonly updateAvailable?: boolean;
   readonly version: string;
+  readonly installProgress?:
+    | WorkspaceApp["installProgress"]
+    | Record<string, unknown>
+    | null;
   readonly windowMinHeight?: number | null;
   readonly windowMinWidth?: number | null;
 }
@@ -315,6 +319,7 @@ export function normalizeWorkspaceAppCenterApp(
     exportable: app.exportable,
     failureReason: app.failureReason ?? null,
     iconUrl: app.iconUrl,
+    installProgress: normalizeWorkspaceAppInstallProgress(app.installProgress),
     installed: app.installed,
     installationId: app.installationId ?? null,
     lastError: app.lastError ?? null,
@@ -339,6 +344,54 @@ export function normalizeWorkspaceAppCenterApp(
     windowMinHeight: normalizeWorkspaceAppWindowMinimum(app.windowMinHeight),
     windowMinWidth: normalizeWorkspaceAppWindowMinimum(app.windowMinWidth)
   };
+}
+
+function normalizeWorkspaceAppInstallProgress(
+  progress: WorkspaceAppLike["installProgress"]
+): WorkspaceAppCenterApp["installProgress"] {
+  if (!isWorkspaceAppInstallProgressLike(progress)) {
+    return null;
+  }
+  return {
+    downloadedBytes: normalizeOptionalProgressNumber(progress.downloadedBytes),
+    indeterminate: progress.indeterminate,
+    overallPercent: progress.overallPercent,
+    totalBytes: normalizeOptionalProgressNumber(progress.totalBytes),
+    userPhase: progress.userPhase
+  };
+}
+
+function isWorkspaceAppInstallProgressLike(
+  value: WorkspaceAppLike["installProgress"]
+): value is NonNullable<WorkspaceApp["installProgress"]> {
+  if (value == null || typeof value !== "object") {
+    return false;
+  }
+  const candidate = value as Record<string, unknown>;
+  return (
+    isWorkspaceAppInstallUserPhase(candidate.userPhase) &&
+    typeof candidate.overallPercent === "number" &&
+    Number.isFinite(candidate.overallPercent) &&
+    typeof candidate.indeterminate === "boolean" &&
+    isOptionalProgressNumber(candidate.downloadedBytes) &&
+    isOptionalProgressNumber(candidate.totalBytes)
+  );
+}
+
+function isWorkspaceAppInstallUserPhase(
+  value: unknown
+): value is NonNullable<WorkspaceApp["installProgress"]>["userPhase"] {
+  return (
+    value === "downloading" || value === "installing" || value === "starting"
+  );
+}
+
+function isOptionalProgressNumber(value: unknown): value is number | null {
+  return value == null || (typeof value === "number" && Number.isFinite(value));
+}
+
+function normalizeOptionalProgressNumber(value: number | null | undefined) {
+  return typeof value === "number" ? value : null;
 }
 
 function normalizeWorkspaceAppWindowMinimum(

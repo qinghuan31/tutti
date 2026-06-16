@@ -66,6 +66,13 @@ func TestSQLiteStoreWorkspaceAppsPersistPackagesAndInstallations(t *testing.T) {
 	if len(installations) != 1 || installations[0].AppID != "hello" || !installations[0].Enabled {
 		t.Fatalf("ListWorkspaceAppInstallations() = %#v", installations)
 	}
+	installationsByApp, err := store.ListWorkspaceAppInstallationsByApp(ctx, "hello")
+	if err != nil {
+		t.Fatalf("ListWorkspaceAppInstallationsByApp() error = %v", err)
+	}
+	if len(installationsByApp) != 1 || installationsByApp[0].WorkspaceID != "ws-apps" || !installationsByApp[0].Enabled {
+		t.Fatalf("ListWorkspaceAppInstallationsByApp() = %#v", installationsByApp)
+	}
 
 	if err := store.DeleteWorkspaceAppInstallation(ctx, "ws-apps", "hello"); err != nil {
 		t.Fatalf("DeleteWorkspaceAppInstallation() error = %v", err)

@@ -1,5 +1,6 @@
 import type { WorkspaceAppRuntimeStatus } from "./runtime.ts";
 import type { WorkspaceAppCatalogSourceKind } from "./catalog.ts";
+import type { WorkspaceAppInstallProgress } from "./runtime.ts";
 
 export type WorkspaceAppStatusTone =
   | "neutral"
@@ -61,6 +62,7 @@ export interface WorkspaceAppCardViewModel {
   readonly canRetry: boolean;
   readonly canUpdate: boolean;
   readonly errorMessage?: string;
+  readonly installProgress?: WorkspaceAppInstallProgress | null;
   readonly factoryEditAction?: WorkspaceAppFactoryEditAction | null;
   readonly factoryAgentSessionId?: string | null;
   readonly factoryJobId?: string | null;

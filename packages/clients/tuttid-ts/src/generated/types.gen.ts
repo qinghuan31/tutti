@@ -246,6 +246,19 @@ export type DeleteWorkspaceResponse = {
   workspaceId: string;
 };
 
+export type WorkspaceAppInstallUserPhase =
+  | "downloading"
+  | "installing"
+  | "starting";
+
+export type WorkspaceAppInstallProgress = {
+  userPhase: WorkspaceAppInstallUserPhase;
+  overallPercent: number;
+  downloadedBytes: number | null;
+  totalBytes: number | null;
+  indeterminate: boolean;
+};
+
 export type WorkspaceAppRuntimeStatus =
   | "idle"
   | "preparing"
@@ -379,6 +392,7 @@ export type WorkspaceApp = {
   version: string;
   description: string;
   createdAtUnixMs: number;
+  installProgress?: WorkspaceAppInstallProgress;
   iconUrl: string | null;
   availableVersion: string | null;
   availableIconUrl: string | null;

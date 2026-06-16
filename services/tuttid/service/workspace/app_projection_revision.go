@@ -12,38 +12,46 @@ func (s *AppCenterService) ensureRevisionStateLocked() {
 }
 
 type workspaceAppProjectionKey struct {
-	appID            string
-	description      string
-	displayName      string
-	enabled          bool
-	failureReason    string
-	hasFailureReason bool
-	hasIconURL       bool
-	hasLastError     bool
-	hasLaunchURL     bool
-	hasPort          bool
-	iconURL          string
-	hasStartedAt     bool
-	hasUpdatedAt     bool
-	installed        bool
-	lastError        string
-	launchURL        string
-	manifestJSON     string
-	port             int
-	startedAtUnixMs  int64
-	status           workspacebiz.AppRuntimeStatus
-	updateAvailable  bool
-	availableIconURL string
-	availableVersion string
-	cliActive        bool
-	cliIssueCount    int
-	cliIssueCode     string
-	cliIssueMessage  string
-	cliIssuePath     string
-	cliScope         string
-	cliStatus        workspacebiz.AppCLIStatus
-	updatedAtUnixMs  int64
-	version          string
+	appID                string
+	description          string
+	displayName          string
+	enabled              bool
+	failureReason        string
+	hasFailureReason     bool
+	hasIconURL           bool
+	hasLastError         bool
+	hasLaunchURL         bool
+	hasPort              bool
+	iconURL              string
+	hasStartedAt         bool
+	hasUpdatedAt         bool
+	installed            bool
+	lastError            string
+	launchURL            string
+	manifestJSON         string
+	port                 int
+	startedAtUnixMs      int64
+	status               workspacebiz.AppRuntimeStatus
+	updateAvailable      bool
+	availableIconURL     string
+	availableVersion     string
+	cliActive            bool
+	cliIssueCount        int
+	cliIssueCode         string
+	cliIssueMessage      string
+	cliIssuePath         string
+	cliScope             string
+	cliStatus            workspacebiz.AppCLIStatus
+	updatedAtUnixMs      int64
+	version              string
+	installPhase         string
+	installPercent       float64
+	hasInstallProgress   bool
+	installIndeterminate bool
+	installDownloaded    int64
+	installTotal         int64
+	hasInstallDownloaded bool
+	hasInstallTotal      bool
 }
 
 func projectionKeyFromWorkspaceApp(app workspacebiz.WorkspaceApp) workspaceAppProjectionKey {
@@ -96,6 +104,20 @@ func projectionKeyFromWorkspaceApp(app workspacebiz.WorkspaceApp) workspaceAppPr
 	if app.Runtime.UpdatedAtUnixMs != nil {
 		key.hasUpdatedAt = true
 		key.updatedAtUnixMs = *app.Runtime.UpdatedAtUnixMs
+	}
+	if app.InstallProgress != nil {
+		key.hasInstallProgress = true
+		key.installPhase = string(app.InstallProgress.UserPhase)
+		key.installPercent = app.InstallProgress.OverallPercent
+		key.installIndeterminate = app.InstallProgress.Indeterminate
+		if app.InstallProgress.DownloadedBytes != nil {
+			key.hasInstallDownloaded = true
+			key.installDownloaded = *app.InstallProgress.DownloadedBytes
+		}
+		if app.InstallProgress.TotalBytes != nil {
+			key.hasInstallTotal = true
+			key.installTotal = *app.InstallProgress.TotalBytes
+		}
 	}
 	return key
 }

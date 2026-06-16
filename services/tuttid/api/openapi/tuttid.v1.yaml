@@ -3077,6 +3077,42 @@ components:
       properties:
         workspaceId:
           type: string
+    WorkspaceAppInstallUserPhase:
+      type: string
+      enum:
+        - downloading
+        - installing
+        - starting
+      x-enum-varnames:
+        - WorkspaceAppInstallUserPhaseDownloading
+        - WorkspaceAppInstallUserPhaseInstalling
+        - WorkspaceAppInstallUserPhaseStarting
+    WorkspaceAppInstallProgress:
+      type: object
+      additionalProperties: false
+      required:
+        - userPhase
+        - overallPercent
+        - downloadedBytes
+        - totalBytes
+        - indeterminate
+      properties:
+        userPhase:
+          $ref: "#/components/schemas/WorkspaceAppInstallUserPhase"
+        overallPercent:
+          type: number
+          minimum: 0
+          maximum: 100
+        downloadedBytes:
+          type: integer
+          format: int64
+          nullable: true
+        totalBytes:
+          type: integer
+          format: int64
+          nullable: true
+        indeterminate:
+          type: boolean
     WorkspaceAppRuntimeStatus:
       type: string
       enum:
@@ -3445,6 +3481,9 @@ components:
           type: integer
           format: int64
           minimum: 0
+        installProgress:
+          $ref: "#/components/schemas/WorkspaceAppInstallProgress"
+          nullable: true
         iconUrl:
           type: string
           nullable: true

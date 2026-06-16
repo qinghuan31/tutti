@@ -167,8 +167,11 @@ func downloadAppArtifactOnce(ctx context.Context, client *http.Client, artifactU
 	body := appArtifactProgressReader{
 		reader:               response.Body,
 		lastProgressUnixNano: &lastProgressUnixNano,
+		onProgress:           appArtifactDownloadProgressFromContext(requestCtx),
+		totalBytes:           response.ContentLength,
+		bytesWritten:         0,
 	}
-	bytesWritten, err := io.Copy(target, io.LimitReader(body, maxWorkspaceAppArtifactBytes+1))
+	bytesWritten, err := io.Copy(target, io.LimitReader(&body, maxWorkspaceAppArtifactBytes+1))
 	if err != nil {
 		return bytesWritten, wrapAppArtifactDownloadError("write app artifact", err, idleTimedOut.Load())
 	}
@@ -207,12 +210,22 @@ func isRetryableAppArtifactDownloadError(err error) bool {
 type appArtifactProgressReader struct {
 	reader               io.Reader
 	lastProgressUnixNano *atomic.Int64
+	onProgress           func(AppArtifactDownloadProgress)
+	totalBytes           int64
+	bytesWritten         int64
 }
 
-func (r appArtifactProgressReader) Read(p []byte) (int, error) {
+func (r *appArtifactProgressReader) Read(p []byte) (int, error) {
 	n, err := r.reader.Read(p)
 	if n > 0 {
 		r.lastProgressUnixNano.Store(time.Now().UnixNano())
+		r.bytesWritten += int64(n)
+		if r.onProgress != nil {
+			r.onProgress(AppArtifactDownloadProgress{
+				DownloadedBytes: r.bytesWritten,
+				TotalBytes:      r.totalBytes,
+			})
+		}
 	}
 	return n, err
 }

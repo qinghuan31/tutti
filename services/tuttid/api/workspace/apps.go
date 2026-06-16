@@ -35,6 +35,31 @@ func GeneratedAppFromBiz(app workspacebiz.WorkspaceApp) tuttigenerated.Workspace
 		WindowMinHeight:  app.Package.WindowMinHeight(),
 		Cli:              generatedAppCLIState(app.CLI),
 		References:       generatedAppReferencesStateFromBiz(app),
+		InstallProgress:  generatedAppInstallProgressFromBiz(app.InstallProgress),
+	}
+}
+
+func generatedAppInstallProgressFromBiz(progress *workspacebiz.AppInstallProgress) *tuttigenerated.WorkspaceAppInstallProgress {
+	if progress == nil {
+		return nil
+	}
+	return &tuttigenerated.WorkspaceAppInstallProgress{
+		UserPhase:       generatedAppInstallUserPhase(progress.UserPhase),
+		OverallPercent:  float32(progress.OverallPercent),
+		DownloadedBytes: progress.DownloadedBytes,
+		TotalBytes:      progress.TotalBytes,
+		Indeterminate:   progress.Indeterminate,
+	}
+}
+
+func generatedAppInstallUserPhase(phase workspacebiz.AppInstallUserPhase) tuttigenerated.WorkspaceAppInstallUserPhase {
+	switch phase {
+	case workspacebiz.AppInstallUserPhaseInstalling:
+		return tuttigenerated.WorkspaceAppInstallUserPhaseInstalling
+	case workspacebiz.AppInstallUserPhaseStarting:
+		return tuttigenerated.WorkspaceAppInstallUserPhaseStarting
+	default:
+		return tuttigenerated.WorkspaceAppInstallUserPhaseDownloading
 	}
 }
 

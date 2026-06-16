@@ -66,6 +66,7 @@ func (p WorkspaceAppPublisher) PublishWorkspaceAppUpdated(ctx context.Context, w
 			}{
 				ListSupported: app.Package.ReferenceListSupported(),
 			},
+			InstallProgress: generatedEventInstallProgress(app.InstallProgress),
 		},
 	})
 	if err != nil {
@@ -88,4 +89,29 @@ func nonNilStrings(values []string) []string {
 		return []string{}
 	}
 	return values
+}
+
+func generatedEventInstallProgress(progress *workspacebiz.AppInstallProgress) *struct {
+	UserPhase       string  `json:"userPhase"`
+	OverallPercent  float64 `json:"overallPercent"`
+	DownloadedBytes *int64  `json:"downloadedBytes"`
+	TotalBytes      *int64  `json:"totalBytes"`
+	Indeterminate   bool    `json:"indeterminate"`
+} {
+	if progress == nil {
+		return nil
+	}
+	return &struct {
+		UserPhase       string  `json:"userPhase"`
+		OverallPercent  float64 `json:"overallPercent"`
+		DownloadedBytes *int64  `json:"downloadedBytes"`
+		TotalBytes      *int64  `json:"totalBytes"`
+		Indeterminate   bool    `json:"indeterminate"`
+	}{
+		UserPhase:       string(progress.UserPhase),
+		OverallPercent:  progress.OverallPercent,
+		DownloadedBytes: progress.DownloadedBytes,
+		TotalBytes:      progress.TotalBytes,
+		Indeterminate:   progress.Indeterminate,
+	}
 }

@@ -6,7 +6,7 @@ import "encoding/json"
 
 const (
 	BusinessEventProtocolVersion = 1
-	BusinessEventCatalogRevision = "sha256:3b800f900e63f4ae"
+	BusinessEventCatalogRevision = "sha256:4596ff7f0fab3db3"
 )
 
 type Topic string
@@ -151,6 +151,13 @@ type WorkspaceWorkspaceApp struct {
 	References       struct {
 		ListSupported bool `json:"listSupported"`
 	} `json:"references"`
+	InstallProgress *struct {
+		UserPhase       string  `json:"userPhase"`
+		OverallPercent  float64 `json:"overallPercent"`
+		DownloadedBytes *int64  `json:"downloadedBytes"`
+		TotalBytes      *int64  `json:"totalBytes"`
+		Indeterminate   bool    `json:"indeterminate"`
+	} `json:"installProgress,omitempty"`
 }
 
 type AgentActivityUpdatedPayload struct {

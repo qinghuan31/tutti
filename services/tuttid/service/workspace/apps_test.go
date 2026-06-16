@@ -39,6 +39,13 @@ type appRuntimeResolverStub struct {
 	err    error
 }
 
+type waitingAppRuntimeResolver struct {
+	waitForFetch <-chan int
+	called       chan struct{}
+	once         sync.Once
+	err          error
+}
+
 func (f *appArtifactFetcherStub) FetchAppArtifact(_ context.Context, artifactURL string, _ string) error {
 	f.calls = append(f.calls, artifactURL)
 	if f.err != nil {
@@ -166,6 +173,18 @@ func (r *appRuntimeResolverStub) Resolve(context.Context) (ResolvedAppRuntime, e
 	return ResolvedAppRuntime{}, nil
 }
 
+func (r *waitingAppRuntimeResolver) Resolve(ctx context.Context) (ResolvedAppRuntime, error) {
+	r.once.Do(func() {
+		close(r.called)
+	})
+	select {
+	case <-r.waitForFetch:
+		return ResolvedAppRuntime{}, r.err
+	case <-ctx.Done():
+		return ResolvedAppRuntime{}, ctx.Err()
+	}
+}
+
 func (s *workspaceAppPublisherStub) PublishWorkspaceAppUpdated(_ context.Context, workspaceID string, app workspacebiz.WorkspaceApp) error {
 	s.workspaces = append(s.workspaces, workspaceID)
 	s.published = append(s.published, app)
@@ -270,6 +289,16 @@ func (s *appStoreStub) ListWorkspaceAppInstallations(_ context.Context, workspac
 	var result []workspacebiz.AppInstallation
 	for _, installation := range s.installations {
 		if installation.WorkspaceID == workspaceID {
+			result = append(result, installation)
+		}
+	}
+	return result, nil
+}
+
+func (s *appStoreStub) ListWorkspaceAppInstallationsByApp(_ context.Context, appID string) ([]workspacebiz.AppInstallation, error) {
+	var result []workspacebiz.AppInstallation
+	for _, installation := range s.installations {
+		if installation.AppID == appID {
 			result = append(result, installation)
 		}
 	}
@@ -1929,6 +1958,84 @@ func TestAppCenterServiceInstallReturnsWhileRemoteBuiltinDownloadRuns(t *testing
 	}
 }
 
+func TestAppCenterServiceInstallCancelsPackageDownloadAfterRuntimePreloadFailure(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	stateDir := t.TempDir()
+	remoteDir := createWorkspaceAppPackageForTest(t, t.TempDir(), workspacebiz.AppManifest{
+		SchemaVersion: workspacebiz.AppManifestSchemaVersionV1,
+		AppID:         "design-app",
+		Version:       "0.1.0+abc123",
+		Name:          "Design App",
+		Description:   "Remote design app",
+		Runtime: workspacebiz.AppManifestRuntime{
+			Bootstrap:       "bootstrap.sh",
+			HealthcheckPath: "/",
+		},
+	})
+	archivePath := filepath.Join(t.TempDir(), "design-app.zip")
+	if err := createAppPackageZip(remoteDir, archivePath); err != nil {
+		t.Fatalf("createAppPackageZip() error = %v", err)
+	}
+	artifactSHA256, _, err := fileSHA256AndSize(archivePath)
+	if err != nil {
+		t.Fatalf("fileSHA256AndSize() error = %v", err)
+	}
+
+	fetcher := newTrackingArtifactFetcher(archivePath)
+	defer close(fetcher.release)
+	runtimeErr := errors.New("runtime unavailable")
+	resolver := &waitingAppRuntimeResolver{
+		waitForFetch: fetcher.entered,
+		called:       make(chan struct{}),
+		err:          runtimeErr,
+	}
+	service := AppCenterService{
+		Store:           newAppStoreStub(),
+		WorkspaceStore:  &catalogStoreStub{getWorkspace: workspacebiz.Summary{ID: "ws-1", Name: "Workspace"}},
+		Runner:          &AppRunner{RuntimeResolver: resolver},
+		StateDir:        stateDir,
+		ArtifactFetcher: fetcher,
+		BuiltinCatalog: func() ([]builtinapps.App, error) {
+			return []builtinapps.App{{
+				Manifest: mustReadManifestForTest(t, remoteDir),
+				Distribution: builtinapps.Distribution{
+					Kind:           builtinapps.DistributionRemote,
+					ArtifactURL:    "https://cdn.example.test/design-app.zip",
+					ArtifactSHA256: artifactSHA256,
+					IconURL:        "https://cdn.example.test/design-app.png",
+				},
+			}}, nil
+		},
+	}
+
+	if _, err := service.Install(ctx, "ws-1", "design-app"); err != nil {
+		t.Fatalf("Install() error = %v", err)
+	}
+	select {
+	case <-resolver.called:
+	case <-time.After(time.Second):
+		t.Fatal("runtime preload did not start")
+	}
+
+	deadline := time.After(time.Second)
+	for {
+		job, ok := service.installJob("ws-1", "design-app")
+		if ok && job.Status == workspaceAppInstallJobFailed {
+			if !strings.Contains(job.FailureReason, runtimeErr.Error()) {
+				t.Fatalf("FailureReason = %q, want runtime preload error", job.FailureReason)
+			}
+			return
+		}
+		select {
+		case <-deadline:
+			t.Fatal("install job did not fail after runtime preload error; package download was not canceled")
+		case <-time.After(10 * time.Millisecond):
+		}
+	}
+}
+
 func TestAppCenterServiceImportsAndExportsUserPackageArchives(t *testing.T) {
 	t.Parallel()
 
@@ -2071,6 +2178,140 @@ func TestAppCenterServiceRemoveDeletesWorkspaceAppState(t *testing.T) {
 	}
 	if _, err := os.Stat(stateRoot); !errors.Is(err, os.ErrNotExist) {
 		t.Fatalf("removed app state root stat error = %v, want not exist", err)
+	}
+}
+
+func TestAppCenterServiceRemoveDeletesUnusedRemoteBuiltinPackage(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	store := newAppStoreStub()
+	packageDir := filepath.Join(t.TempDir(), "packages", "remote-builtin", "1.0.0")
+	if err := os.MkdirAll(packageDir, 0o755); err != nil {
+		t.Fatalf("create package dir: %v", err)
+	}
+	appPackage := workspacebiz.AppPackage{
+		AppID:      "remote-builtin",
+		Version:    "1.0.0",
+		PackageDir: packageDir,
+		Source:     workspacebiz.AppPackageSourceBuiltin,
+		Manifest: workspacebiz.AppManifest{
+			AppID:       "remote-builtin",
+			Version:     "1.0.0",
+			Name:        "Remote Builtin",
+			Description: "Remote builtin",
+		},
+	}
+	if err := store.PutAppPackage(ctx, appPackage); err != nil {
+		t.Fatalf("PutAppPackage() error = %v", err)
+	}
+	if err := store.PutWorkspaceAppInstallation(ctx, workspacebiz.AppInstallation{
+		WorkspaceID: "ws-1",
+		AppID:       "remote-builtin",
+		Enabled:     true,
+	}); err != nil {
+		t.Fatalf("PutWorkspaceAppInstallation() error = %v", err)
+	}
+	service := AppCenterService{
+		Store:          store,
+		WorkspaceStore: &catalogStoreStub{getWorkspace: workspacebiz.Summary{ID: "ws-1", Name: "Workspace"}},
+		Runner:         &AppRunner{},
+		StateDir:       t.TempDir(),
+		BuiltinCatalog: func() ([]builtinapps.App, error) {
+			return []builtinapps.App{
+				{
+					Manifest: appPackage.Manifest,
+					Distribution: builtinapps.Distribution{
+						Kind: builtinapps.DistributionRemote,
+					},
+				},
+			}, nil
+		},
+	}
+
+	if _, err := service.Remove(ctx, "ws-1", "remote-builtin"); err != nil {
+		t.Fatalf("Remove() error = %v", err)
+	}
+	if _, err := store.GetAppPackage(ctx, "remote-builtin"); !errors.Is(err, workspacedata.ErrWorkspaceAppNotFound) {
+		t.Fatalf("GetAppPackage() after remove error = %v, want ErrWorkspaceAppNotFound", err)
+	}
+	if _, err := os.Stat(packageDir); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("removed package dir stat error = %v, want not exist", err)
+	}
+	installations, err := store.ListWorkspaceAppInstallationsByApp(ctx, "remote-builtin")
+	if err != nil {
+		t.Fatalf("ListWorkspaceAppInstallationsByApp() error = %v", err)
+	}
+	if len(installations) != 0 {
+		t.Fatalf("installations after remove = %#v, want empty", installations)
+	}
+}
+
+func TestAppCenterServiceRemoveKeepsRemoteBuiltinPackageUsedByAnotherWorkspace(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	store := newAppStoreStub()
+	packageDir := filepath.Join(t.TempDir(), "packages", "remote-builtin", "1.0.0")
+	if err := os.MkdirAll(packageDir, 0o755); err != nil {
+		t.Fatalf("create package dir: %v", err)
+	}
+	appPackage := workspacebiz.AppPackage{
+		AppID:      "remote-builtin",
+		Version:    "1.0.0",
+		PackageDir: packageDir,
+		Source:     workspacebiz.AppPackageSourceBuiltin,
+		Manifest: workspacebiz.AppManifest{
+			AppID:       "remote-builtin",
+			Version:     "1.0.0",
+			Name:        "Remote Builtin",
+			Description: "Remote builtin",
+		},
+	}
+	if err := store.PutAppPackage(ctx, appPackage); err != nil {
+		t.Fatalf("PutAppPackage() error = %v", err)
+	}
+	for _, workspaceID := range []string{"ws-1", "ws-2"} {
+		if err := store.PutWorkspaceAppInstallation(ctx, workspacebiz.AppInstallation{
+			WorkspaceID: workspaceID,
+			AppID:       "remote-builtin",
+			Enabled:     true,
+		}); err != nil {
+			t.Fatalf("PutWorkspaceAppInstallation(%s) error = %v", workspaceID, err)
+		}
+	}
+	service := AppCenterService{
+		Store:          store,
+		WorkspaceStore: &catalogStoreStub{getWorkspace: workspacebiz.Summary{ID: "ws-1", Name: "Workspace"}},
+		Runner:         &AppRunner{},
+		StateDir:       t.TempDir(),
+		BuiltinCatalog: func() ([]builtinapps.App, error) {
+			return []builtinapps.App{
+				{
+					Manifest: appPackage.Manifest,
+					Distribution: builtinapps.Distribution{
+						Kind: builtinapps.DistributionRemote,
+					},
+				},
+			}, nil
+		},
+	}
+
+	if _, err := service.Remove(ctx, "ws-1", "remote-builtin"); err != nil {
+		t.Fatalf("Remove() error = %v", err)
+	}
+	if _, err := store.GetAppPackage(ctx, "remote-builtin"); err != nil {
+		t.Fatalf("GetAppPackage() after remove error = %v", err)
+	}
+	if _, err := os.Stat(packageDir); err != nil {
+		t.Fatalf("package dir after remove stat error = %v", err)
+	}
+	installations, err := store.ListWorkspaceAppInstallationsByApp(ctx, "remote-builtin")
+	if err != nil {
+		t.Fatalf("ListWorkspaceAppInstallationsByApp() error = %v", err)
+	}
+	if len(installations) != 1 || installations[0].WorkspaceID != "ws-2" {
+		t.Fatalf("installations after remove = %#v, want ws-2 only", installations)
 	}
 }
 

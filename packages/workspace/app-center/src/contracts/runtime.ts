@@ -17,12 +17,26 @@ export interface WorkspaceAppRuntimeError {
   readonly message: string;
 }
 
+export type WorkspaceAppInstallUserPhase =
+  | "downloading"
+  | "installing"
+  | "starting";
+
+export interface WorkspaceAppInstallProgress {
+  readonly userPhase: WorkspaceAppInstallUserPhase;
+  readonly overallPercent: number;
+  readonly downloadedBytes?: number | null;
+  readonly totalBytes?: number | null;
+  readonly indeterminate: boolean;
+}
+
 export interface WorkspaceAppRuntimeState {
   readonly runtimeId?: string;
   readonly installationId?: string;
   readonly appId: string;
   readonly status: WorkspaceAppRuntimeStatus;
   readonly launchUrl?: string | null;
+  readonly installProgress?: WorkspaceAppInstallProgress | null;
   readonly error?: WorkspaceAppRuntimeError | null;
   readonly startedAt?: string | null;
   readonly updatedAt?: string | null;

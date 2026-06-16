@@ -67,22 +67,58 @@ func (s *AppCenterService) ensureInstallJobsLocked() {
 	}
 }
 
+func (s *AppCenterService) setInstallJobProgress(workspaceID string, appID string, progress workspacebiz.AppInstallProgress) {
+	key := appRuntimeKey(workspaceID, appID)
+	s.installMu.Lock()
+	defer s.installMu.Unlock()
+	s.ensureInstallJobsLocked()
+	job, ok := s.installJobs[key]
+	if !ok || job.Status != workspaceAppInstallJobInstalling {
+		return
+	}
+	progressCopy := progress
+	job.Progress = &progressCopy
+	s.installJobs[key] = job
+}
+
+func (s *AppCenterService) clearInstallJobProgress(workspaceID string, appID string) {
+	key := appRuntimeKey(workspaceID, appID)
+	s.installMu.Lock()
+	defer s.installMu.Unlock()
+	s.ensureInstallJobsLocked()
+	job, ok := s.installJobs[key]
+	if !ok {
+		return
+	}
+	job.Progress = nil
+	s.installJobs[key] = job
+}
+
 func (s *AppCenterService) withInstallJobProjections(apps []workspacebiz.WorkspaceApp, workspaceID string) []workspacebiz.WorkspaceApp {
 	result := make([]workspacebiz.WorkspaceApp, len(apps))
 	copy(result, apps)
 	for index, app := range result {
 		job, ok := s.installJob(workspaceID, app.Package.AppID)
-		if !ok || job.Status != workspaceAppInstallJobFailed {
+		if !ok {
 			continue
 		}
-		failureReason := job.FailureReason
-		app.Installation = nil
-		app.Runtime = workspacebiz.AppRuntimeState{
-			Status:        workspacebiz.AppRuntimeStatusFailed,
-			FailureReason: &failureReason,
-			LastError:     &failureReason,
+		if job.Status == workspaceAppInstallJobFailed {
+			failureReason := job.FailureReason
+			app.Installation = nil
+			app.InstallProgress = nil
+			app.Runtime = workspacebiz.AppRuntimeState{
+				Status:        workspacebiz.AppRuntimeStatusFailed,
+				FailureReason: &failureReason,
+				LastError:     &failureReason,
+			}
+			result[index] = s.withCurrentRevision(app, workspaceID, app.Package.AppID)
+			continue
 		}
-		result[index] = s.withCurrentRevision(app, workspaceID, app.Package.AppID)
+		if job.Status == workspaceAppInstallJobInstalling && job.Progress != nil {
+			progressCopy := *job.Progress
+			app.InstallProgress = &progressCopy
+			result[index] = s.withCurrentRevision(app, workspaceID, app.Package.AppID)
+		}
 	}
 	return result
 }
@@ -94,6 +130,7 @@ func (s *AppCenterService) failedInstallAppProjection(ctx context.Context, works
 	}
 	failureReason := installErr.Error()
 	app.Installation = nil
+	app.InstallProgress = nil
 	app.Runtime = workspacebiz.AppRuntimeState{
 		Status:        workspacebiz.AppRuntimeStatusFailed,
 		FailureReason: &failureReason,

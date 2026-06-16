@@ -275,6 +275,13 @@ export const appCenterEn = {
   status: {
     comingSoon: "Coming soon",
     failed: "Failed",
+    installProgress: {
+      downloadedOfTotal: "{{downloaded}} / {{total}}",
+      downloading: "Downloading…",
+      installing: "Installing…",
+      progressAria: "App install progress",
+      starting: "Starting…"
+    },
     installing: "Installing",
     preparing: "Preparing",
     running: "Running",
@@ -530,6 +537,13 @@ export const appCenterZhCN = {
   status: {
     comingSoon: "敬请期待",
     failed: "失败",
+    installProgress: {
+      downloadedOfTotal: "{{downloaded}} / {{total}}",
+      downloading: "正在下载…",
+      installing: "正在安装…",
+      progressAria: "应用安装进度",
+      starting: "正在启动…"
+    },
     installing: "安装中",
     preparing: "准备中",
     running: "运行中",

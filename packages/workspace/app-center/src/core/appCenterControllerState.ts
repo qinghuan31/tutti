@@ -19,6 +19,7 @@ import {
   defaultCatalogLoadingRefreshDelayMs,
   defaultInstallRefreshDelayMs
 } from "./appCenterControllerTypes.ts";
+import { reconcilePendingInstallProgress } from "./installProgressMerge.ts";
 
 export abstract class WorkspaceAppCenterControllerState extends WorkspaceAppCenterControllerBase {
   abstract refresh(workspaceId: string): Promise<void>;
@@ -161,12 +162,17 @@ export abstract class WorkspaceAppCenterControllerState extends WorkspaceAppCent
       currentApp?.installed === true && !nextApp.installed
         ? [nextApp.appId]
         : [];
+    const mergedApp = this.mergeActiveInstallAppState(
+      workspaceId,
+      nextApp,
+      currentApp
+    );
 
     const nextApps = sortWorkspaceAppCenterApps([
       ...this.store.apps.filter(
         (candidate) => candidate.appId !== nextApp.appId
       ),
-      nextApp
+      mergedApp
     ]);
     if (areWorkspaceAppCenterAppsEqual(this.store.apps, nextApps)) {
       return;
@@ -176,11 +182,11 @@ export abstract class WorkspaceAppCenterControllerState extends WorkspaceAppCent
     this.store.loadStatus = "ready";
     this.bumpRevision();
     this.settlePendingInstallReport({
-      app: nextApp,
+      app: mergedApp,
       failureReason:
         options.installFailureReason ??
-        nextApp.failureReason ??
-        nextApp.lastError ??
+        mergedApp.failureReason ??
+        mergedApp.lastError ??
         null,
       workspaceId
     });
@@ -323,15 +329,32 @@ export abstract class WorkspaceAppCenterControllerState extends WorkspaceAppCent
 
   protected isPendingInstallSettled(
     installKey: string,
-    app: WorkspaceAppCenterApp
+    app: WorkspaceAppCenterApp,
+    previousApp?: WorkspaceAppCenterApp
   ): boolean {
+    if (this.isPendingInstallAbandoned(installKey, app, previousApp)) {
+      return true;
+    }
     if (app.runtimeStatus === "failed") {
       return true;
+    }
+    if (this.isRuntimeInstallBusy(app.runtimeStatus)) {
+      return false;
     }
     if (this.pendingInstallReportKeys.has(installKey)) {
       return app.installed;
     }
     return app.installed && !app.updateAvailable && !app.availableVersion;
+  }
+
+  protected isRuntimeInstallBusy(
+    runtimeStatus: WorkspaceAppCenterApp["runtimeStatus"]
+  ): boolean {
+    return (
+      runtimeStatus === "installing" ||
+      runtimeStatus === "preparing" ||
+      runtimeStatus === "starting"
+    );
   }
 
   private mergeSnapshotAppsByStateRevision(
@@ -353,7 +376,8 @@ export abstract class WorkspaceAppCenterControllerState extends WorkspaceAppCent
       if (this.pendingInstallKeys.has(installKey)) {
         const pendingSettled = this.isPendingInstallSettled(
           installKey,
-          snapshotApp
+          snapshotApp,
+          currentApp
         );
         if (
           pendingSettled &&
@@ -389,27 +413,87 @@ export abstract class WorkspaceAppCenterControllerState extends WorkspaceAppCent
     }, this.dependencies.catalogLoadingRefreshDelayMs ?? defaultCatalogLoadingRefreshDelayMs);
   }
 
+  protected mergeActiveInstallAppState(
+    workspaceId: string,
+    app: WorkspaceAppCenterApp,
+    previousApp?: WorkspaceAppCenterApp
+  ): WorkspaceAppCenterApp {
+    const installKey = appRuntimeKey(workspaceId, app.appId);
+    if (!this.pendingInstallKeys.has(installKey)) {
+      return app;
+    }
+    if (this.isPendingInstallSettled(installKey, app, previousApp)) {
+      return app;
+    }
+    const incomingRuntimeStatus = app.runtimeStatus;
+    const runtimeStatus = this.isRuntimeInstallLifecycleStatus(
+      incomingRuntimeStatus
+    )
+      ? incomingRuntimeStatus
+      : "installing";
+    return {
+      ...app,
+      enabled: true,
+      installed: this.pendingInstallReportKeys.has(installKey)
+        ? false
+        : app.installed,
+      installProgress: reconcilePendingInstallProgress({
+        incoming: app.installProgress,
+        previous: previousApp?.installProgress ?? null,
+        runtimeStatus: incomingRuntimeStatus
+      }),
+      runtimeStatus
+    };
+  }
+
+  private isRuntimeInstallLifecycleStatus(
+    runtimeStatus: WorkspaceAppCenterApp["runtimeStatus"]
+  ): boolean {
+    return (
+      runtimeStatus === "installing" ||
+      runtimeStatus === "preparing" ||
+      runtimeStatus === "starting"
+    );
+  }
+
+  private isPendingInstallAbandoned(
+    installKey: string,
+    app: WorkspaceAppCenterApp,
+    previousApp?: WorkspaceAppCenterApp
+  ): boolean {
+    return (
+      this.pendingInstallReportKeys.has(installKey) &&
+      !app.installed &&
+      app.runtimeStatus === "idle" &&
+      app.installProgress == null &&
+      this.hasObservedInstallActivity(previousApp)
+    );
+  }
+
+  private hasObservedInstallActivity(
+    app: WorkspaceAppCenterApp | undefined
+  ): boolean {
+    return (
+      app?.installProgress != null ||
+      app?.runtimeStatus === "preparing" ||
+      app?.runtimeStatus === "starting"
+    );
+  }
+
   private withPendingInstallState(
     workspaceId: string,
     apps: readonly WorkspaceAppCenterApp[]
   ): WorkspaceAppCenterApp[] {
-    return apps.map((app) => {
-      const installKey = appRuntimeKey(workspaceId, app.appId);
-      if (!this.pendingInstallKeys.has(installKey)) {
-        return app;
-      }
-      if (this.isPendingInstallSettled(installKey, app)) {
-        return app;
-      }
-      return {
-        ...app,
-        enabled: true,
-        installed: this.pendingInstallReportKeys.has(installKey)
-          ? false
-          : app.installed,
-        runtimeStatus: "installing"
-      };
-    });
+    const previousAppsById = new Map(
+      this.store.apps.map((app) => [app.appId, app])
+    );
+    return apps.map((app) =>
+      this.mergeActiveInstallAppState(
+        workspaceId,
+        app,
+        previousAppsById.get(app.appId)
+      )
+    );
   }
 
   private async refreshInstallState(
@@ -453,6 +537,15 @@ export abstract class WorkspaceAppCenterControllerState extends WorkspaceAppCent
     }
     if (input.app.installed) {
       this.dependencies.hooks?.onAppInstalled?.(input.app);
+      return;
+    }
+    if (
+      input.app.runtimeStatus === "idle" &&
+      input.app.installProgress == null &&
+      input.failureReason == null &&
+      input.app.failureReason == null &&
+      input.app.lastError == null
+    ) {
       return;
     }
     this.dependencies.hooks?.onAppInstallFailed?.({

@@ -146,6 +146,7 @@ export interface WorkspaceWorkspaceAppV1 {
   references: {
     listSupported: boolean;
   };
+  installProgress?: Record<string, unknown> | null;
 }
 
 export type AgentActivityUpdatedPayloadV1 =

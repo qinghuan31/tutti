@@ -20,6 +20,7 @@ import type {
   WorkspaceAppActionContext,
   WorkspaceAppCardViewModel
 } from "../contracts/viewModel.ts";
+import type { WorkspaceAppInstallProgress } from "../contracts/runtime.ts";
 import type { AppCenterI18nRuntime } from "../i18n/appCenterI18n.ts";
 
 export interface AppCenterFactoryProviderOption {
@@ -115,6 +116,15 @@ export function AppCard({
   copy
 }: AppCardProps): ReactElement {
   const statusLabel = copy.t(app.statusLabelKey);
+  const installBusy =
+    app.installProgress != null || app.status === "installing";
+  const busyStatusLabel = installBusy
+    ? copy.t("status.installing")
+    : statusLabel;
+  const showInstallProgressRing = installBusy;
+  const statusButtonTitle = app.installProgress
+    ? resolveInstallProgressTitle(copy, app.installProgress, busyStatusLabel)
+    : statusLabel;
   const primaryActionLabel =
     app.primaryAction === "install"
       ? copy.t("actions.installApp")
@@ -193,37 +203,48 @@ export function AppCard({
           }}
         />
         <div className="flex shrink-0 items-center gap-1">
-          {hasMoreActions ? (
-            <AppCardMoreActions
-              actions={actions}
-              app={app}
-              canOpenFactorySession={canOpenFactorySession}
-              canPublishFactoryUpdate={canPublishFactoryUpdate}
-              copy={copy}
-            />
-          ) : null}
-          <Button
-            className={cn(
-              "min-w-[56px]",
-              !canExecutePrimaryAction ? "cursor-default" : null,
-              canExecutePrimaryAction
-                ? app.primaryAction === "retry"
-                  ? statusClassName(app.status)
-                  : "text-[var(--text-primary)]"
-                : statusClassName(app.status)
-            )}
-            disabled={!canExecutePrimaryAction}
-            size="default"
-            title={statusLabel}
-            type="button"
-            variant="ghost"
-            onClick={(event) => {
-              event.stopPropagation();
-              executePrimaryAction();
-            }}
-          >
-            {canExecutePrimaryAction ? primaryActionLabel : statusLabel}
-          </Button>
+          <div className="flex size-8 shrink-0 items-center justify-center">
+            {hasMoreActions ? (
+              <AppCardMoreActions
+                actions={actions}
+                app={app}
+                canOpenFactorySession={canOpenFactorySession}
+                canPublishFactoryUpdate={canPublishFactoryUpdate}
+                copy={copy}
+              />
+            ) : null}
+          </div>
+          <div className="flex items-center gap-1.5">
+            <Button
+              className={cn(
+                "min-w-[56px] shrink-0",
+                !canExecutePrimaryAction ? "cursor-default" : null,
+                canExecutePrimaryAction
+                  ? app.primaryAction === "retry"
+                    ? statusClassName(app.status)
+                    : "text-[var(--text-primary)]"
+                  : statusClassName(app.status)
+              )}
+              disabled={!canExecutePrimaryAction}
+              size="default"
+              title={statusButtonTitle}
+              type="button"
+              variant="ghost"
+              onClick={(event) => {
+                event.stopPropagation();
+                executePrimaryAction();
+              }}
+            >
+              {canExecutePrimaryAction ? primaryActionLabel : busyStatusLabel}
+            </Button>
+            {showInstallProgressRing ? (
+              <AppInstallProgressRing
+                ariaLabel={copy.t("status.installProgress.progressAria")}
+                fallbackPercent={0}
+                progress={app.installProgress}
+              />
+            ) : null}
+          </div>
         </div>
       </div>
 
@@ -555,6 +576,91 @@ function AppIcon({
       ) : null}
     </span>
   );
+}
+
+function AppInstallProgressRing({
+  ariaLabel,
+  fallbackPercent,
+  progress
+}: {
+  readonly ariaLabel: string;
+  readonly fallbackPercent: number;
+  readonly progress: WorkspaceAppInstallProgress | null | undefined;
+}): ReactElement {
+  const percent =
+    progress == null
+      ? Math.max(0, Math.min(100, Math.round(fallbackPercent)))
+      : Math.max(0, Math.min(100, Math.round(progress.overallPercent)));
+
+  return (
+    <span
+      aria-label={ariaLabel}
+      aria-valuemax={100}
+      aria-valuemin={0}
+      aria-valuenow={percent}
+      className="relative inline-flex size-[14px] shrink-0 items-center justify-center rounded-full"
+      role="progressbar"
+      style={{
+        background: `conic-gradient(var(--text-secondary) ${percent}%, color-mix(in srgb, var(--text-secondary) 24%, transparent) 0)`
+      }}
+    >
+      <span
+        aria-hidden="true"
+        className="absolute inset-[2px] rounded-full bg-[var(--surface-panel)]"
+      />
+    </span>
+  );
+}
+
+function resolveInstallProgressTitle(
+  copy: AppCenterI18nRuntime,
+  progress: WorkspaceAppInstallProgress,
+  statusLabel: string
+): string {
+  const byteLabel = formatInstallProgressBytes(copy, progress);
+  const percent = Math.max(
+    0,
+    Math.min(100, Math.round(progress.overallPercent))
+  );
+  if (byteLabel) {
+    return `${statusLabel} · ${byteLabel} · ${percent}%`;
+  }
+  return `${statusLabel} · ${percent}%`;
+}
+
+function formatInstallProgressBytes(
+  copy: AppCenterI18nRuntime,
+  progress: WorkspaceAppInstallProgress
+): string | null {
+  if (
+    progress.userPhase !== "downloading" ||
+    progress.downloadedBytes == null
+  ) {
+    return null;
+  }
+  const downloaded = formatByteSize(progress.downloadedBytes);
+  if (progress.totalBytes == null || progress.totalBytes <= 0) {
+    return downloaded;
+  }
+  return copy.t("status.installProgress.downloadedOfTotal", {
+    downloaded,
+    total: formatByteSize(progress.totalBytes)
+  });
+}
+
+function formatByteSize(value: number): string {
+  if (!Number.isFinite(value) || value <= 0) {
+    return "0 B";
+  }
+  const units = ["B", "KB", "MB", "GB"] as const;
+  let size = value;
+  let unitIndex = 0;
+  while (size >= 1024 && unitIndex < units.length - 1) {
+    size /= 1024;
+    unitIndex += 1;
+  }
+  const precision = size >= 10 || unitIndex === 0 ? 0 : 1;
+  return `${size.toFixed(precision)} ${units[unitIndex]}`;
 }
 
 function statusClassName(status: WorkspaceAppCardViewModel["status"]): string {

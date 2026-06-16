@@ -356,6 +356,169 @@ test("WorkspaceAppCenterController requests restart when updating a running inst
   ]);
 });
 
+test("WorkspaceAppCenterController preserves install progress during pending install app updates", async () => {
+  const controller = createWorkspaceAppCenterController({
+    formatError: formatError,
+    gateway: createGateway({
+      async installWorkspaceApp() {
+        return createSnapshot({
+          apps: [
+            createApp({
+              appId: "app-1",
+              installProgress: {
+                downloadedBytes: 1024,
+                indeterminate: false,
+                overallPercent: 72,
+                totalBytes: 2048,
+                userPhase: "downloading"
+              },
+              installed: false,
+              runtimeStatus: "installing",
+              stateRevision: 2
+            })
+          ]
+        });
+      }
+    })
+  });
+  controller.applySnapshot(
+    "workspace-1",
+    createSnapshot({
+      apps: [
+        createApp({
+          appId: "app-1",
+          installed: false,
+          runtimeStatus: "idle"
+        })
+      ]
+    })
+  );
+
+  await controller.installApp({
+    appId: "app-1",
+    workspaceId: "workspace-1"
+  });
+
+  controller.applyAppUpdate({
+    app: createApp({
+      appId: "app-1",
+      installed: true,
+      runtimeStatus: "starting",
+      stateRevision: 3
+    }),
+    workspaceId: "workspace-1"
+  });
+
+  const app = controller.store.apps.find(
+    (candidate) => candidate.appId === "app-1"
+  );
+  assert.equal(app?.runtimeStatus, "starting");
+  assert.equal(app?.installProgress?.userPhase, "starting");
+  assert.equal(app?.installProgress?.overallPercent, 96);
+  assert.equal(app?.installProgress?.downloadedBytes, null);
+
+  controller.applyAppUpdate({
+    app: createApp({
+      appId: "app-1",
+      installed: true,
+      runtimeStatus: "running",
+      stateRevision: 4
+    }),
+    workspaceId: "workspace-1"
+  });
+});
+
+test("WorkspaceAppCenterController clears pending install when backend job disappears", async () => {
+  let installCalls = 0;
+  const installFailures: unknown[] = [];
+  const controller = createWorkspaceAppCenterController({
+    formatError: formatError,
+    gateway: createGateway({
+      async installWorkspaceApp() {
+        installCalls += 1;
+        return createSnapshot({
+          apps: [
+            createApp({
+              appId: "app-1",
+              installProgress: {
+                downloadedBytes: null,
+                indeterminate: true,
+                overallPercent: 0,
+                totalBytes: null,
+                userPhase: "downloading"
+              },
+              installed: false,
+              runtimeStatus: "installing",
+              stateRevision: installCalls + 1
+            })
+          ]
+        });
+      }
+    }),
+    hooks: {
+      onAppInstallFailed(input) {
+        installFailures.push(input);
+      }
+    }
+  });
+  controller.applySnapshot(
+    "workspace-1",
+    createSnapshot({
+      apps: [
+        createApp({
+          appId: "app-1",
+          installed: false,
+          runtimeStatus: "idle"
+        })
+      ]
+    })
+  );
+
+  await controller.installApp({
+    appId: "app-1",
+    workspaceId: "workspace-1"
+  });
+  controller.applySnapshot(
+    "workspace-1",
+    createSnapshot({
+      apps: [
+        createApp({
+          appId: "app-1",
+          installed: false,
+          installProgress: null,
+          runtimeStatus: "idle",
+          stateRevision: 4
+        })
+      ]
+    })
+  );
+
+  assert.equal(controller.store.apps[0]?.runtimeStatus, "idle");
+  assert.equal(controller.store.apps[0]?.installProgress, null);
+  assert.deepEqual(installFailures, []);
+
+  await controller.installApp({
+    appId: "app-1",
+    workspaceId: "workspace-1"
+  });
+  assert.equal(installCalls, 2);
+
+  controller.applySnapshot(
+    "workspace-1",
+    createSnapshot({
+      apps: [
+        createApp({
+          appId: "app-1",
+          installed: false,
+          installProgress: null,
+          runtimeStatus: "idle",
+          stateRevision: 5
+        })
+      ]
+    })
+  );
+});
+
 test("WorkspaceAppCenterController only marks idle enabled apps as starting", async () => {
   let optimisticStatuses: string[] = [];
   const controller = createWorkspaceAppCenterController({

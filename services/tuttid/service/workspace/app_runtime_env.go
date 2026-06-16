@@ -297,7 +297,14 @@ func (r DefaultManagedAppRuntimeResolver) downloadRuntimeComponents(
 		waitGroup.Add(1)
 		go func() {
 			defer waitGroup.Done()
-			download, err := r.downloadRuntimeComponent(downloadCtx, downloadsDir, name, component)
+			componentReport := appArtifactRuntimeComponentProgressFromContext(downloadCtx)
+			componentCtx := downloadCtx
+			if componentReport != nil {
+				componentCtx = ContextWithAppArtifactDownloadProgress(downloadCtx, func(progress AppArtifactDownloadProgress) {
+					componentReport(name, progress)
+				})
+			}
+			download, err := r.downloadRuntimeComponent(componentCtx, downloadsDir, name, component)
 			if err != nil {
 				cancel()
 			}
