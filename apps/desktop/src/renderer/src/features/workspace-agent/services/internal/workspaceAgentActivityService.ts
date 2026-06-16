@@ -1,5 +1,6 @@
 import {
   createAgentActivityController,
+  normalizeAgentActivityDisplayStatus,
   type AgentActivityAdapter,
   type AgentActivityCancelSessionResult,
   type AgentActivityController,
@@ -281,10 +282,46 @@ export class WorkspaceAgentActivityService implements IWorkspaceAgentActivitySer
   async sendInput(
     input: Parameters<AgentActivityAdapter["sendInput"]>[0]
   ): Promise<AgentActivitySession> {
-    const entry = this.controllerEntry(input.workspaceId);
-    const session = await entry.adapter.sendInput(input);
-    this.upsertAuthoritativeSession(session);
-    return session;
+    const workspaceId = normalizeWorkspaceId(input.workspaceId);
+    const agentSessionId = input.agentSessionId.trim();
+    const entry = this.controllerEntry(workspaceId);
+    const previousSession =
+      entry.controller
+        .getSnapshot()
+        .sessions.find(
+          (session) => session.agentSessionId === agentSessionId
+        ) ?? null;
+    const optimisticUpdatedAtUnixMs = Date.now();
+    if (previousSession) {
+      entry.controller.upsertSession(
+        optimisticWorkingAgentActivitySession(
+          previousSession,
+          optimisticUpdatedAtUnixMs
+        )
+      );
+    }
+    try {
+      const session = await entry.adapter.sendInput({
+        ...input,
+        workspaceId
+      });
+      const nextSession = shouldPreserveOptimisticWorkingAfterSend(session)
+        ? optimisticWorkingAgentActivitySession(
+            session,
+            optimisticUpdatedAtUnixMs
+          )
+        : session;
+      this.upsertAuthoritativeSession(nextSession);
+      return nextSession;
+    } catch (error) {
+      if (
+        previousSession &&
+        !this.isSessionTombstoned(workspaceId, agentSessionId)
+      ) {
+        entry.controller.upsertSession(previousSession);
+      }
+      throw error;
+    }
   }
 
   async readSessionAttachment(input: {
@@ -1000,6 +1037,28 @@ export class WorkspaceAgentActivityService implements IWorkspaceAgentActivitySer
 
 function normalizeWorkspaceId(workspaceId: string): string {
   return workspaceId.trim() || "__default__";
+}
+
+function optimisticWorkingAgentActivitySession(
+  session: AgentActivitySession,
+  updatedAtUnixMs: number
+): AgentActivitySession {
+  return {
+    ...session,
+    currentPhase: "working",
+    status: "working",
+    updatedAtUnixMs: Math.max(session.updatedAtUnixMs ?? 0, updatedAtUnixMs)
+  };
+}
+
+function shouldPreserveOptimisticWorkingAfterSend(
+  session: AgentActivitySession
+): boolean {
+  return (
+    normalizeAgentActivityDisplayStatus(session.status, {
+      currentPhase: session.currentPhase
+    }) === "idle"
+  );
 }
 
 function sessionKey(workspaceId: string, agentSessionId: string): string {

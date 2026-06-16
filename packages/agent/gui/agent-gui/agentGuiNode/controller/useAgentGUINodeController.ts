@@ -1442,6 +1442,15 @@ function agentActivityDisplayStatusBusy(
   return status === "working" || status === "waiting";
 }
 
+function conversationBusyStatusFromAgentActivityDisplayStatus(
+  status: AgentActivityDisplayStatus | null | undefined
+): "working" | "waiting" | null {
+  if (status === "working" || status === "waiting") {
+    return status;
+  }
+  return null;
+}
+
 function buildNodeDefaultComposerSettings(
   data: AgentGUINodeData,
   options?: {
@@ -6905,10 +6914,17 @@ export function useAgentGUINodeController({
     );
     if (resolved) {
       const pendingTurnId = pendingTurnIdBySessionIdRef.current[resolved.id];
+      const activityBusyStatus =
+        conversationBusyStatusFromAgentActivityDisplayStatus(
+          agentActivityDisplayStatuses.get(resolved.id)
+        );
+      const status =
+        activityBusyStatus ??
+        (resolved.status === "ready" && pendingTurnId
+          ? ("working" as const)
+          : resolved.status);
       const nextConversation =
-        resolved.status === "ready" && pendingTurnId
-          ? { ...resolved, status: "working" as const }
-          : resolved;
+        status === resolved.status ? resolved : { ...resolved, status };
       return mergeConversationSummaryWithRuntimeSession({
         conversation: nextConversation,
         runtimeSyncState: stableRuntimeSyncStateBySessionId[resolved.id]
@@ -6928,6 +6944,10 @@ export function useAgentGUINodeController({
       )
         ? ("working" as const)
         : ("ready" as const);
+    const activityBusyStatus =
+      conversationBusyStatusFromAgentActivityDisplayStatus(
+        agentActivityDisplayStatuses.get(activeConversationId)
+      );
     const fallbackUpdatedAtUnixMs = Date.now();
     return {
       id: activeConversationId,
@@ -6935,7 +6955,7 @@ export function useAgentGUINodeController({
       provider: data.provider,
       title: providerLabel,
       titleFallback: null,
-      status: fallbackStatus,
+      status: activityBusyStatus ?? fallbackStatus,
       cwd: workspacePath,
       project: resolveAgentGUIConversationProject(workspacePath, userProjects, {
         isNoProjectPath
@@ -6946,6 +6966,7 @@ export function useAgentGUINodeController({
     };
   }, [
     activeConversationId,
+    agentActivityDisplayStatuses,
     conversations,
     currentUserId,
     data.provider,
@@ -6968,12 +6989,19 @@ export function useAgentGUINodeController({
           transientConversationRef.current
         )
       : conversations;
-    const next = source.map((conversation) =>
-      mergeConversationSummaryWithRuntimeSession({
+    const next = source.map((conversation) => {
+      const withRuntime = mergeConversationSummaryWithRuntimeSession({
         conversation,
         runtimeSyncState: stableRuntimeSyncStateBySessionId[conversation.id]
-      })
-    );
+      });
+      const activityBusyStatus =
+        conversationBusyStatusFromAgentActivityDisplayStatus(
+          agentActivityDisplayStatuses.get(conversation.id)
+        );
+      return activityBusyStatus && withRuntime.status !== activityBusyStatus
+        ? { ...withRuntime, status: activityBusyStatus }
+        : withRuntime;
+    });
     const stableNext = stableConversationSummaryList(
       visibleConversationsRef.current,
       next
@@ -6981,6 +7009,7 @@ export function useAgentGUINodeController({
     visibleConversationsRef.current = stableNext;
     return stableNext;
   }, [
+    agentActivityDisplayStatuses,
     conversations,
     isLoadingConversations,
     stableRuntimeSyncStateBySessionId,

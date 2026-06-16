@@ -12,6 +12,35 @@ function createService(): WorkspaceAgentActivityService {
   });
 }
 
+test("WorkspaceAgentActivityService.sendInput keeps activity snapshot working when send response is still ready", async () => {
+  const readySession = workspaceAgentSession({ status: "ready" });
+  const service = new WorkspaceAgentActivityService({
+    tuttidClient: {
+      listWorkspaceAgentSessions: async () => ({ sessions: [readySession] }),
+      sendWorkspaceAgentSessionInput: async () => readySession
+    } as unknown as TuttidClient,
+    runtimeApi: {
+      logTerminalDiagnostic: async () => {}
+    }
+  });
+
+  await service.load("ws-1");
+
+  const result = await service.sendInput({
+    workspaceId: "ws-1",
+    agentSessionId: "session-1",
+    content: [{ type: "text", text: "continue" }]
+  });
+  const snapshotSession = service
+    .getSnapshot("ws-1")
+    .sessions.find((session) => session.agentSessionId === "session-1");
+
+  assert.equal(result.status, "working");
+  assert.equal(result.currentPhase, "working");
+  assert.equal(snapshotSession?.status, "working");
+  assert.equal(snapshotSession?.currentPhase, "working");
+});
+
 test("WorkspaceAgentActivityService.submitPlanDecision runs planMode-off then sendInput for a codex implement decision", async () => {
   const service = createService();
 
@@ -91,3 +120,18 @@ test("WorkspaceAgentActivityService.submitPlanDecision routes a claude exit-plan
     optionId: "acceptEdits"
   });
 });
+
+function workspaceAgentSession(overrides: {
+  status: string;
+}): Record<string, unknown> {
+  return {
+    id: "session-1",
+    provider: "codex",
+    cwd: "/workspace",
+    title: "Session 1",
+    status: overrides.status,
+    visible: true,
+    createdAt: "2026-06-16T00:00:00.000Z",
+    updatedAt: "2026-06-16T00:00:00.000Z"
+  };
+}
