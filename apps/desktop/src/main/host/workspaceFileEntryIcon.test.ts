@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { pathToFileURL } from "node:url";
 import {
   resolveWorkspaceFileEntryIconUrl,
   type WorkspaceFileEntryIconInput
@@ -12,18 +13,6 @@ import type {
 test("resolveWorkspaceFileEntryIconUrl returns null for unsupported regular files", async () => {
   const cacheStore = createCacheStoreStub();
 
-  assert.equal(
-    await resolveWorkspaceFileEntryIconUrl(
-      "/workspace/photo.png",
-      createInput({
-        kind: "file",
-        name: "photo.png",
-        path: "/workspace/photo.png"
-      }),
-      cacheStore
-    ),
-    null
-  );
   assert.equal(
     await resolveWorkspaceFileEntryIconUrl(
       "/workspace/clip.mp4",
@@ -49,6 +38,150 @@ test("resolveWorkspaceFileEntryIconUrl returns null for unsupported regular file
     null
   );
   assert.equal(cacheStore.reads.length, 0);
+  assert.equal(cacheStore.writes.length, 0);
+});
+
+test("resolveWorkspaceFileEntryIconUrl writes image thumbnail bytes to cache", async () => {
+  const cacheStore = createCacheStoreStub();
+  const thumbnailBytes = Buffer.from([9, 8, 7, 6]);
+  let thumbnailReads = 0;
+
+  const iconUrl = await resolveWorkspaceFileEntryIconUrl(
+    "/workspace/photo.png",
+    createInput({
+      kind: "file",
+      mtimeMs: 42,
+      name: "photo.png",
+      path: "/workspace/photo.png"
+    }),
+    cacheStore,
+    {
+      readImageThumbnailPngBytes: async (targetPath, maxEdgePx) => {
+        thumbnailReads += 1;
+        assert.equal(targetPath, "/workspace/photo.png");
+        assert.equal(maxEdgePx, 160);
+        return thumbnailBytes;
+      },
+      stat: async () => fileStats({ size: 1024 })
+    }
+  );
+
+  assert.equal(iconUrl, "tutti-file-icon://icon/test-id");
+  assert.equal(thumbnailReads, 1);
+  assert.equal(cacheStore.reads.length, 1);
+  assert.equal(cacheStore.writes.length, 1);
+  assert.deepEqual(Buffer.from(cacheStore.writes[0]!.bytes), thumbnailBytes);
+  assert.deepEqual(cacheStore.writes[0]!.key, {
+    assetKind: "image-thumbnail",
+    mtimeMs: 42,
+    path: "/workspace/photo.png",
+    sizePx: 160,
+    workspaceID: "workspace-a"
+  });
+});
+
+test("resolveWorkspaceFileEntryIconUrl returns cached image thumbnails before reading files", async () => {
+  const cacheStore = createCacheStoreStub({
+    cachedUrl: "tutti-file-icon://icon/cached-photo"
+  });
+  let statReads = 0;
+  let thumbnailReads = 0;
+
+  const iconUrl = await resolveWorkspaceFileEntryIconUrl(
+    "/workspace/photo.png",
+    createInput({
+      kind: "file",
+      name: "photo.png",
+      path: "/workspace/photo.png"
+    }),
+    cacheStore,
+    {
+      readImageThumbnailPngBytes: async () => {
+        thumbnailReads += 1;
+        return Buffer.from([1]);
+      },
+      stat: async () => {
+        statReads += 1;
+        return fileStats({ size: 1024 });
+      }
+    }
+  );
+
+  assert.equal(iconUrl, "tutti-file-icon://icon/cached-photo");
+  assert.equal(statReads, 0);
+  assert.equal(thumbnailReads, 0);
+  assert.equal(cacheStore.reads.length, 1);
+  assert.equal(cacheStore.writes.length, 0);
+});
+
+test("resolveWorkspaceFileEntryIconUrl falls back to file URLs when thumbnail generation fails", async () => {
+  const cacheStore = createCacheStoreStub();
+
+  const iconUrl = await resolveWorkspaceFileEntryIconUrl(
+    "/workspace/photo.png",
+    createInput({
+      kind: "file",
+      name: "photo.png",
+      path: "/workspace/photo.png"
+    }),
+    cacheStore,
+    {
+      readImageThumbnailPngBytes: async () => null,
+      stat: async () => fileStats({ size: 1024 })
+    }
+  );
+
+  assert.equal(iconUrl, pathToFileURL("/workspace/photo.png").href);
+  assert.equal(cacheStore.reads.length, 1);
+  assert.equal(cacheStore.writes.length, 0);
+});
+
+test("resolveWorkspaceFileEntryIconUrl falls back to file URLs when thumbnail cache write is rejected", async () => {
+  const cacheStore = createCacheStoreStub({ writeUrl: null });
+
+  const iconUrl = await resolveWorkspaceFileEntryIconUrl(
+    "/workspace/photo.png",
+    createInput({
+      kind: "file",
+      name: "photo.png",
+      path: "/workspace/photo.png"
+    }),
+    cacheStore,
+    {
+      readImageThumbnailPngBytes: async () => Buffer.from([1, 2, 3]),
+      stat: async () => fileStats({ size: 1024 })
+    }
+  );
+
+  assert.equal(iconUrl, pathToFileURL("/workspace/photo.png").href);
+  assert.equal(cacheStore.reads.length, 1);
+  assert.equal(cacheStore.writes.length, 1);
+});
+
+test("resolveWorkspaceFileEntryIconUrl skips oversized image thumbnails", async () => {
+  const cacheStore = createCacheStoreStub();
+  let thumbnailReads = 0;
+
+  const iconUrl = await resolveWorkspaceFileEntryIconUrl(
+    "/workspace/large.png",
+    createInput({
+      kind: "file",
+      name: "large.png",
+      path: "/workspace/large.png"
+    }),
+    cacheStore,
+    {
+      readImageThumbnailPngBytes: async () => {
+        thumbnailReads += 1;
+        return Buffer.from([1]);
+      },
+      stat: async () => fileStats({ size: 21 * 1024 * 1024 })
+    }
+  );
+
+  assert.equal(iconUrl, null);
+  assert.equal(thumbnailReads, 0);
+  assert.equal(cacheStore.reads.length, 1);
   assert.equal(cacheStore.writes.length, 0);
 });
 
@@ -239,7 +372,7 @@ function createInput(
 }
 
 function createCacheStoreStub(
-  options: { cachedUrl?: string | null } = {}
+  options: { cachedUrl?: string | null; writeUrl?: string | null } = {}
 ): WorkspaceFileIconCacheStore & {
   reads: WorkspaceFileIconCacheKey[];
   writes: {
@@ -266,7 +399,19 @@ function createCacheStoreStub(
     },
     async write(input) {
       writes.push(input);
-      return "tutti-file-icon://icon/test-id";
+      return options.writeUrl === undefined
+        ? "tutti-file-icon://icon/test-id"
+        : options.writeUrl;
     }
+  };
+}
+
+function fileStats({ size }: { size: number }): {
+  isFile(): boolean;
+  size: number;
+} {
+  return {
+    isFile: () => true,
+    size
   };
 }

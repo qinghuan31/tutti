@@ -1,4 +1,11 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useId,
+  useMemo,
+  useRef,
+  useState
+} from "react";
 import { toast } from "@tutti-os/ui-system";
 import { translate } from "../../../i18n/index";
 import {
@@ -30,6 +37,7 @@ import type {
   AgentSessionPermissionConfig,
   AgentSessionPermissionModeOption,
   AgentSessionReasoningEffort,
+  AgentSessionSpeed,
   AgentSessionState
 } from "../../../shared/agentSessionTypes";
 import { AGENT_PROVIDER_LABEL } from "../../../contexts/settings/domain/agentSettings";
@@ -98,14 +106,17 @@ import {
 import {
   clearAgentGUIConversationCreatePending,
   clearAgentGUIConversationSubmitPending,
+  clearAgentGUIConversationUnreadCompletion,
   createAgentGUIConversationListQueryKey,
   ensureAgentGUIConversationListQuery,
   getAgentGUIConversationCreatePending,
   getAgentGUIConversationSubmitPending,
+  markAgentGUIConversationCompletionObserved,
   markAgentGUIConversationCreatePending,
   markAgentGUIConversationSubmitPending,
   markLocalDeletedAgentGUIConversation,
   scheduleAgentGUIConversationListProjection,
+  setAgentGUIConversationListActiveConversation,
   subscribeAgentGUIConversationListStore,
   upsertLocalCreatedAgentGUIConversation,
   updateAgentGUIConversationListConversations,
@@ -171,11 +182,13 @@ const AGENT_PROVIDER_SESSION_NOT_FOUND_FALLBACK_MESSAGE =
 const AGENT_RESUME_SESSION_NOT_LOCAL_FALLBACK_MESSAGE =
   "The previous agent session is not available on this machine.";
 const AGENT_GUI_CAUGHT_ERROR_STACK_LIMIT = 4000;
+const SELECTED_SESSION_NOT_FOUND_RETRY_DELAY_MS = 150;
 
 type AgentGUIRuntimeErrorPhase =
   | "create_conversation"
   | "drain_queued_prompt_interrupt"
   | "interrupt_current_turn"
+  | "load_session_messages"
   | "load_session_state"
   | "retry_activation"
   | "send_prompt"
@@ -1096,6 +1109,12 @@ function reasoningConfigOptionIdForProvider(
   return provider === "codex" ? "reasoning_effort" : "effort";
 }
 
+function speedConfigOptionIdForProvider(
+  provider: AgentGUINodeData["provider"]
+): string {
+  return provider === "codex" ? "service_tier" : "fast";
+}
+
 function composerSettingOptionsFromActivity(
   options: readonly AgentActivityComposerOptions["models"][number][]
 ): AgentGUIComposerSettingOption[] {
@@ -1124,6 +1143,19 @@ function reasoningSelectionFromComposerOptions(
   }
   return {
     options: composerSettingOptionsFromActivity(options.reasoningEfforts),
+    currentValue
+  };
+}
+
+function speedSelectionFromComposerOptions(
+  options: AgentActivityComposerOptions | null,
+  currentValue: AgentSessionSpeed | null
+): ACPConfigOptionSelection | null {
+  if (!options) {
+    return null;
+  }
+  return {
+    options: composerSettingOptionsFromActivity(options.speeds ?? []),
     currentValue
   };
 }
@@ -1205,17 +1237,30 @@ function resolveEffectiveComposerSettings(input: {
       (normalizeOptionalText(
         input.settings.reasoningEffort
       ) as AgentSessionReasoningEffort | null) ?? null,
+    speed:
+      (normalizeOptionalText(
+        input.settings.speed
+      ) as AgentSessionSpeed | null) ?? null,
     planMode: Boolean(input.settings.planMode),
     permissionModeId: normalizePermissionModeId(input.settings.permissionModeId)
   };
 }
 
+type RuntimeConfigSetting =
+  | "model"
+  | "reasoningEffort"
+  | "speed"
+  | "permissionModeId";
+
 function runtimeConfigKeyForSetting(
   provider: AgentGUINodeData["provider"],
-  setting: "model" | "reasoningEffort" | "permissionModeId"
+  setting: RuntimeConfigSetting
 ): string {
   if (setting === "reasoningEffort") {
     return reasoningConfigOptionIdForProvider(provider);
+  }
+  if (setting === "speed") {
+    return speedConfigOptionIdForProvider(provider);
   }
   if (setting === "permissionModeId") {
     return "mode";
@@ -1226,13 +1271,21 @@ function runtimeConfigKeyForSetting(
 function shouldUpdateRuntimeConfigOption(
   provider: AgentGUINodeData["provider"],
   id: string | null,
-  setting: "model" | "reasoningEffort" | "permissionModeId"
+  setting: RuntimeConfigSetting
 ): boolean {
   if (setting === "model") {
     return id === "model";
   }
   if (setting === "permissionModeId") {
     return id === "mode";
+  }
+  if (setting === "speed") {
+    return (
+      id === speedConfigOptionIdForProvider(provider) ||
+      id === "service_tier" ||
+      id === "speed" ||
+      id === "fast"
+    );
   }
   return (
     id === reasoningConfigOptionIdForProvider(provider) ||
@@ -1253,7 +1306,7 @@ function mergeRuntimeContextComposerSettings(
   const nextRuntimeContext: Record<string, unknown> = { ...runtimeContext };
   const runtimeConfigPatch: Record<string, unknown> = {};
   const optionPatches: Array<{
-    setting: "model" | "reasoningEffort" | "permissionModeId";
+    setting: RuntimeConfigSetting;
     value: string | null;
   }> = [];
 
@@ -1268,6 +1321,11 @@ function mergeRuntimeContextComposerSettings(
       runtimeConfigKeyForSetting(provider, "reasoningEffort")
     ] = value;
     optionPatches.push({ setting: "reasoningEffort", value });
+  }
+  if (settings.speed !== undefined) {
+    const value = normalizeOptionalText(settings.speed);
+    runtimeConfigPatch[runtimeConfigKeyForSetting(provider, "speed")] = value;
+    optionPatches.push({ setting: "speed", value });
   }
   if (settings.permissionModeId !== undefined) {
     const value = normalizeOptionalText(settings.permissionModeId);
@@ -1327,6 +1385,7 @@ function sameComposerSettings(
   return (
     (left?.model ?? null) === (right?.model ?? null) &&
     (left?.reasoningEffort ?? null) === (right?.reasoningEffort ?? null) &&
+    (left?.speed ?? null) === (right?.speed ?? null) &&
     Boolean(left?.planMode) === Boolean(right?.planMode) &&
     (left?.permissionModeId ?? null) === (right?.permissionModeId ?? null)
   );
@@ -1406,6 +1465,29 @@ function conversationBusyStatus(
   return status === "working" || status === "waiting";
 }
 
+function stringArraysEqual(
+  first: string[] | null | undefined,
+  second: string[] | null | undefined
+): boolean {
+  if (!first || !second) {
+    return first === second;
+  }
+  return (
+    first.length === second.length &&
+    first.every((value, index) => value === second[index])
+  );
+}
+
+function useStableStringArrayByValue(values: string[]): string[] {
+  const valuesRef = useRef<string[] | null>(null);
+  const currentValues = valuesRef.current;
+  if (!stringArraysEqual(currentValues, values)) {
+    valuesRef.current = values;
+    return values;
+  }
+  return currentValues ?? values;
+}
+
 function agentSessionStatusBusy(input: {
   lifecycleStatus?: string;
   effectiveStatus?: string;
@@ -1447,6 +1529,7 @@ function buildNodeDefaultComposerSettings(
   data: AgentGUINodeData,
   options?: {
     defaultReasoningEffort?: AgentSessionReasoningEffort | null;
+    defaultSpeed?: AgentSessionSpeed | null;
   }
 ): AgentSessionComposerSettings {
   // Generic cleanup only — provider-level clamping is owned by the daemon
@@ -1459,6 +1542,12 @@ function buildNodeDefaultComposerSettings(
         composerOverrides.reasoningEffort
       ) as AgentSessionReasoningEffort | null) ??
       options?.defaultReasoningEffort ??
+      null,
+    speed:
+      (normalizeOptionalText(
+        composerOverrides.speed
+      ) as AgentSessionSpeed | null) ??
+      options?.defaultSpeed ??
       null,
     planMode: Boolean(composerOverrides.planMode),
     permissionModeId: normalizePermissionModeId(
@@ -1481,6 +1570,7 @@ function composerSupportForProvider(provider: AgentGUINodeData["provider"]): {
   model: boolean;
   permission: boolean;
   reasoning: boolean;
+  speed: boolean;
   plan: boolean;
 } {
   if (
@@ -1492,6 +1582,7 @@ function composerSupportForProvider(provider: AgentGUINodeData["provider"]): {
       model: true,
       permission: provider === "claude-code" || provider === "codex",
       reasoning: true,
+      speed: provider === "claude-code" || provider === "codex",
       plan: false
     };
   }
@@ -1499,6 +1590,7 @@ function composerSupportForProvider(provider: AgentGUINodeData["provider"]): {
     model: false,
     permission: provider === "nexight",
     reasoning: false,
+    speed: false,
     plan: false
   };
 }
@@ -1525,6 +1617,7 @@ function nodeDataFromComposerSettings(
   const composerOverrides = {
     model: normalizeOptionalText(settings.model),
     reasoningEffort: normalizeOptionalText(settings.reasoningEffort),
+    speed: normalizeOptionalText(settings.speed),
     planMode: Boolean(settings.planMode),
     permissionModeId: normalizePermissionModeId(settings.permissionModeId)
   };
@@ -1697,6 +1790,11 @@ function mergeSessionControlStatePatch(
       nextSettings.reasoningEffort = normalizeOptionalText(
         patch.settings.reasoningEffort
       ) as AgentSessionReasoningEffort | null;
+    }
+    if (patch.settings.speed !== undefined) {
+      nextSettings.speed = normalizeOptionalText(
+        patch.settings.speed
+      ) as AgentSessionSpeed | null;
     }
     if (patch.settings.planMode !== undefined) {
       nextSettings.planMode = Boolean(patch.settings.planMode);
@@ -2007,6 +2105,7 @@ export function useAgentGUINodeController({
   const agentActivityRuntime = useAgentActivityRuntime();
   const agentHostApi = useAgentHostApi();
   const agentActivitySnapshot = useAgentActivitySnapshot(workspaceId);
+  const generatedControllerOwnerKey = useId();
   const conversationListQuery =
     useMemo<AgentGUIConversationListQuery | null>(() => {
       const userId = currentUserId?.trim() ?? "";
@@ -2025,6 +2124,8 @@ export function useAgentGUINodeController({
     conversationListQuery
   );
   const pendingCreateOwnerKey = nodeId?.trim() ?? "";
+  const conversationListActiveOwnerKey =
+    pendingCreateOwnerKey || generatedControllerOwnerKey;
   const resolvePendingCreateConversationId = useCallback(
     () =>
       conversationListQuery && pendingCreateOwnerKey
@@ -2362,7 +2463,7 @@ export function useAgentGUINodeController({
     },
     []
   );
-  const backgroundBusyConversationIds = useMemo(
+  const projectedBackgroundBusyConversationIds = useMemo(
     () =>
       conversations
         .filter(
@@ -2370,8 +2471,29 @@ export function useAgentGUINodeController({
             conversation.id !== activeConversationId &&
             conversationBusyStatus(conversation.status)
         )
-        .map((conversation) => conversation.id),
+        .map((conversation) => conversation.id)
+        .sort(),
     [activeConversationId, conversations]
+  );
+  const backgroundBusyConversationIds = useStableStringArrayByValue(
+    projectedBackgroundBusyConversationIds
+  );
+  const projectedReleasedBackgroundConversationIds = useMemo(
+    () =>
+      conversations
+        .filter(
+          (conversation) =>
+            conversation.id === activeConversationId ||
+            conversation.status === "completed" ||
+            conversation.status === "failed" ||
+            conversation.status === "canceled"
+        )
+        .map((conversation) => conversation.id)
+        .sort(),
+    [activeConversationId, conversations]
+  );
+  const releasedBackgroundConversationIds = useStableStringArrayByValue(
+    projectedReleasedBackgroundConversationIds
   );
   const [
     retainedBackgroundConversationIds,
@@ -2381,34 +2503,27 @@ export function useAgentGUINodeController({
     if (previewMode) {
       return;
     }
+    if (
+      backgroundBusyConversationIds.length === 0 &&
+      releasedBackgroundConversationIds.length === 0
+    ) {
+      return;
+    }
     setRetainedBackgroundConversationIds((current) => {
       const next = new Set(current);
       for (const conversationId of backgroundBusyConversationIds) {
         next.add(conversationId);
       }
-      for (const conversation of conversations) {
-        if (
-          conversation.id === activeConversationId ||
-          conversation.status === "completed" ||
-          conversation.status === "failed" ||
-          conversation.status === "canceled"
-        ) {
-          next.delete(conversation.id);
-        }
+      for (const conversationId of releasedBackgroundConversationIds) {
+        next.delete(conversationId);
       }
       const nextIds = [...next].sort();
-      return nextIds.length === current.length &&
-        nextIds.every(
-          (conversationId, index) => conversationId === current[index]
-        )
-        ? current
-        : nextIds;
+      return stringArraysEqual(nextIds, current) ? current : nextIds;
     });
   }, [
-    activeConversationId,
     backgroundBusyConversationIds,
-    conversations,
-    previewMode
+    previewMode,
+    releasedBackgroundConversationIds
   ]);
   const backgroundWatchedConversationIds = useMemo(
     () =>
@@ -2477,11 +2592,23 @@ export function useAgentGUINodeController({
   const stateReloadInFlightRef = useRef(false);
   const stateReloadQueuedRef = useRef(false);
   const stateReloadTargetSessionIdRef = useRef<string | null>(null);
+  const selectedConversationMessageLoadSeqRef = useRef(0);
+  const selectedConversationPendingMessageLoadIdsRef = useRef(
+    new Set<string>()
+  );
+  const selectedConversationInitialStateLoadedIdsRef = useRef(
+    new Set<string>()
+  );
+  const selectedConversationInitialMessagesLoadedIdsRef = useRef(
+    new Set<string>()
+  );
   const stateReloadCauseRef = useRef<{
     source: "activity-stream";
     eventType?: string;
     requestId?: number;
   } | null>(null);
+  const selectedConversationNotFoundRetryIdsRef = useRef(new Set<string>());
+  const selectedConversationNotFoundRetryTimerRef = useRef<number | null>(null);
   const sessionStateSnapshotCauseBySessionIdRef = useRef<
     Record<
       string,
@@ -2608,6 +2735,7 @@ export function useAgentGUINodeController({
     if (snapshotConversations.length === 0) {
       return;
     }
+    const completedConversationIds = new Set<string>();
     updateConversationList((current) => {
       const currentById = new Map(
         current.map((conversation) => [conversation.id, conversation])
@@ -2621,10 +2749,7 @@ export function useAgentGUINodeController({
           if (!existing) {
             return {
               ...conversation,
-              hasUnreadCompletion:
-                conversation.hasUnreadCompletion ??
-                (conversation.status === "completed" &&
-                  activeConversationIdRef.current !== conversation.id)
+              hasUnreadCompletion: conversation.hasUnreadCompletion ?? false
             };
           }
           const titleFields =
@@ -2647,6 +2772,9 @@ export function useAgentGUINodeController({
           const status = shouldKeepExistingStatus
             ? existing.status
             : conversation.status;
+          if (status === "completed" && existing.status !== "completed") {
+            completedConversationIds.add(conversation.id);
+          }
           const syncState =
             conversation.syncState &&
             shouldApplySyncState(existing.syncState, conversation.syncState) &&
@@ -2658,8 +2786,10 @@ export function useAgentGUINodeController({
               : existing.syncState;
           const hasUnreadCompletion =
             conversation.status === "completed"
-              ? activeConversationIdRef.current !== conversation.id
-              : (existing.hasUnreadCompletion ?? false);
+              ? (existing.hasUnreadCompletion ??
+                conversation.hasUnreadCompletion ??
+                false)
+              : false;
           return {
             ...existing,
             ...conversation,
@@ -2687,6 +2817,12 @@ export function useAgentGUINodeController({
         isNoProjectPath
       });
     });
+    for (const conversationId of completedConversationIds) {
+      markAgentGUIConversationCompletionObserved({
+        query: conversationListQuery,
+        conversationId
+      });
+    }
   }, [
     agentActivitySnapshot,
     conversationListQuery,
@@ -2740,7 +2876,6 @@ export function useAgentGUINodeController({
         : current
     );
   }, [
-    conversations,
     isNoProjectPath,
     previewMode,
     setTransientConversation,
@@ -2877,6 +3012,29 @@ export function useAgentGUINodeController({
   }, [activeConversationId]);
 
   useEffect(() => {
+    if (previewMode || !conversationListQuery) {
+      return undefined;
+    }
+    setAgentGUIConversationListActiveConversation({
+      query: conversationListQuery,
+      ownerKey: conversationListActiveOwnerKey,
+      conversationId: activeConversationId
+    });
+    return () => {
+      setAgentGUIConversationListActiveConversation({
+        query: conversationListQuery,
+        ownerKey: conversationListActiveOwnerKey,
+        conversationId: null
+      });
+    };
+  }, [
+    activeConversationId,
+    conversationListActiveOwnerKey,
+    conversationListQuery,
+    previewMode
+  ]);
+
+  useEffect(() => {
     selectedProjectPathRef.current = selectedProjectPath;
   }, [selectedProjectPath]);
 
@@ -2949,6 +3107,63 @@ export function useAgentGUINodeController({
       );
     },
     []
+  );
+  const clearSelectedConversationNotFoundRetry = useCallback(() => {
+    if (selectedConversationNotFoundRetryTimerRef.current !== null) {
+      window.clearTimeout(selectedConversationNotFoundRetryTimerRef.current);
+      selectedConversationNotFoundRetryTimerRef.current = null;
+    }
+  }, []);
+  const clearSelectedConversationNotFoundRetryWhenInitialLoadsSettled =
+    useCallback((agentSessionId: string) => {
+      const normalizedAgentSessionId = agentSessionId.trim();
+      if (
+        normalizedAgentSessionId &&
+        selectedConversationInitialStateLoadedIdsRef.current.has(
+          normalizedAgentSessionId
+        ) &&
+        selectedConversationInitialMessagesLoadedIdsRef.current.has(
+          normalizedAgentSessionId
+        )
+      ) {
+        selectedConversationNotFoundRetryIdsRef.current.delete(
+          normalizedAgentSessionId
+        );
+        selectedConversationInitialStateLoadedIdsRef.current.delete(
+          normalizedAgentSessionId
+        );
+        selectedConversationInitialMessagesLoadedIdsRef.current.delete(
+          normalizedAgentSessionId
+        );
+      }
+    }, []);
+  const markSelectedConversationDetailPending = useCallback(
+    (agentSessionId: string) => {
+      const normalizedAgentSessionId = agentSessionId.trim();
+      if (!normalizedAgentSessionId) {
+        return null;
+      }
+      clearSelectedConversationNotFoundRetry();
+      selectedConversationNotFoundRetryIdsRef.current.add(
+        normalizedAgentSessionId
+      );
+      selectedConversationInitialStateLoadedIdsRef.current.delete(
+        normalizedAgentSessionId
+      );
+      selectedConversationInitialMessagesLoadedIdsRef.current.delete(
+        normalizedAgentSessionId
+      );
+      selectedConversationPendingMessageLoadIdsRef.current.add(
+        normalizedAgentSessionId
+      );
+      setIsLoadingMessages(true);
+      setAgentSessionViewMessagesLoading(
+        sessionViewRef(normalizedAgentSessionId),
+        true
+      );
+      return normalizedAgentSessionId;
+    },
+    [clearSelectedConversationNotFoundRetry, sessionViewRef]
   );
   const updateSelectedProjectPath = useCallback(
     (
@@ -3029,6 +3244,9 @@ export function useAgentGUINodeController({
         activatedConversationIdsRef.current.delete(previous);
         void activation.unactivate(previous);
       }
+      if (previous !== normalized) {
+        markSelectedConversationDetailPending(normalized);
+      }
       if (pendingNewConversationId && pendingNewConversationId !== normalized) {
         activatedConversationIdsRef.current.delete(pendingNewConversationId);
         void activation.unactivate(pendingNewConversationId);
@@ -3053,13 +3271,12 @@ export function useAgentGUINodeController({
           reloadDetail: true
         });
       }
-      updateConversationList((current) =>
-        current.map((conversation) =>
-          conversation.id === normalized
-            ? { ...conversation, hasUnreadCompletion: false }
-            : conversation
-        )
-      );
+      if (conversationListQuery) {
+        clearAgentGUIConversationUnreadCompletion({
+          query: conversationListQuery,
+          conversationId: normalized
+        });
+      }
       if (transientConversationRef.current?.id === normalized) {
         setTransientConversation((current) =>
           current?.id === normalized
@@ -3069,7 +3286,12 @@ export function useAgentGUINodeController({
       }
       persistActiveConversation(normalized);
     },
-    [activation, persistActiveConversation]
+    [
+      activation,
+      conversationListQuery,
+      markSelectedConversationDetailPending,
+      persistActiveConversation
+    ]
   );
 
   const syncConversationListProjection = useCallback(
@@ -3087,6 +3309,69 @@ export function useAgentGUINodeController({
       );
     },
     [conversationListQuery, persistActiveConversation]
+  );
+
+  const scheduleSelectedConversationNotFoundRetry = useCallback(
+    (agentSessionId: string) => {
+      const normalizedAgentSessionId = agentSessionId.trim();
+      if (
+        !normalizedAgentSessionId ||
+        !selectedConversationNotFoundRetryIdsRef.current.has(
+          normalizedAgentSessionId
+        )
+      ) {
+        return false;
+      }
+      setAgentSessionViewError(sessionViewRef(normalizedAgentSessionId), null);
+      setAgentSessionViewMessagesLoading(
+        sessionViewRef(normalizedAgentSessionId),
+        true
+      );
+      if (activeConversationIdRef.current === normalizedAgentSessionId) {
+        setIsLoadingMessages(true);
+      }
+      if (conversationListQuery) {
+        scheduleAgentGUIConversationListProjection(
+          conversationListQuery,
+          "projection-sync"
+        );
+      }
+      selectedConversationPendingMessageLoadIdsRef.current.add(
+        normalizedAgentSessionId
+      );
+      clearSelectedConversationNotFoundRetry();
+      selectedConversationNotFoundRetryTimerRef.current = window.setTimeout(
+        () => {
+          selectedConversationNotFoundRetryTimerRef.current = null;
+          selectedConversationNotFoundRetryIdsRef.current.delete(
+            normalizedAgentSessionId
+          );
+          selectedConversationInitialStateLoadedIdsRef.current.delete(
+            normalizedAgentSessionId
+          );
+          selectedConversationInitialMessagesLoadedIdsRef.current.delete(
+            normalizedAgentSessionId
+          );
+          if (
+            !isMountedRef.current ||
+            activeConversationIdRef.current !== normalizedAgentSessionId
+          ) {
+            return;
+          }
+          reloadSelectedConversationRef.current(normalizedAgentSessionId, {
+            reloadConversations: false,
+            reloadDetail: true
+          });
+        },
+        SELECTED_SESSION_NOT_FOUND_RETRY_DELAY_MS
+      );
+      return true;
+    },
+    [
+      clearSelectedConversationNotFoundRetry,
+      conversationListQuery,
+      sessionViewRef
+    ]
   );
 
   useEffect(() => {
@@ -3283,7 +3568,7 @@ export function useAgentGUINodeController({
         false
       );
     },
-    [agentActivityRuntime, sessionViewRef, updateConversationList, workspaceId]
+    [sessionViewRef, updateConversationList]
   );
 
   const applySessionStateSnapshot = useCallback(
@@ -3358,12 +3643,19 @@ export function useAgentGUINodeController({
               }
             ),
             hasUnreadCompletion:
-              status === "completed" &&
-              activeConversationIdRef.current !== agentSessionId
+              status === "completed"
+                ? (conversation.hasUnreadCompletion ?? false)
+                : false
           };
           return nextConversation;
         })
       );
+      if (nextStatus === "completed" && conversationListQuery) {
+        markAgentGUIConversationCompletionObserved({
+          query: conversationListQuery,
+          conversationId: agentSessionId
+        });
+      }
       const transient = transientConversationRef.current;
       if (transient?.id === agentSessionId) {
         const timelineItems = projectAgentGUIMessagesToTimelineItems(
@@ -3408,7 +3700,7 @@ export function useAgentGUINodeController({
         });
       }
     },
-    [sessionViewRef, setTransientConversation]
+    [conversationListQuery, sessionViewRef, setTransientConversation]
   );
 
   useEffect(() => {
@@ -3481,6 +3773,12 @@ export function useAgentGUINodeController({
           return;
         }
         clearFailedLiveState(agentSessionId);
+        selectedConversationInitialStateLoadedIdsRef.current.add(
+          agentSessionId
+        );
+        clearSelectedConversationNotFoundRetryWhenInitialLoadsSettled(
+          agentSessionId
+        );
         blockedActivityStreamStateReloadSessionIdsRef.current.delete(
           agentSessionId
         );
@@ -3504,6 +3802,18 @@ export function useAgentGUINodeController({
           return;
         }
         const errorCode = getAgentGUIErrorCode(error);
+        if (
+          isSessionNotFoundErrorCode(errorCode) &&
+          cause?.source === "conversation-selected" &&
+          scheduleSelectedConversationNotFoundRetry(agentSessionId)
+        ) {
+          return;
+        }
+        if (cause?.source === "conversation-selected") {
+          selectedConversationNotFoundRetryIdsRef.current.delete(
+            agentSessionId
+          );
+        }
         reportAgentGUIRuntimeError({
           agentSessionId,
           context: {
@@ -3574,12 +3884,115 @@ export function useAgentGUINodeController({
       }
     },
     [
+      agentActivityRuntime,
       applySessionStateSnapshot,
       clearFailedLiveState,
+      clearSelectedConversationNotFoundRetryWhenInitialLoadsSettled,
       markFailedLiveState,
       persistActiveConversation,
+      scheduleSelectedConversationNotFoundRetry,
       workspaceId,
+      conversationListQuery,
       sessionViewRef
+    ]
+  );
+
+  const loadSelectedConversationMessages = useCallback(
+    async (agentSessionId: string) => {
+      const normalizedAgentSessionId = agentSessionId.trim();
+      if (!normalizedAgentSessionId) {
+        return;
+      }
+      const requestId = ++selectedConversationMessageLoadSeqRef.current;
+      setDetailError(null);
+      setAgentSessionViewError(sessionViewRef(normalizedAgentSessionId), null);
+      setAgentSessionViewMessagesLoading(
+        sessionViewRef(normalizedAgentSessionId),
+        true
+      );
+      if (activeConversationIdRef.current === normalizedAgentSessionId) {
+        setIsLoadingMessages(true);
+      }
+      try {
+        const page = await agentActivityRuntime.listSessionMessages({
+          workspaceId,
+          agentSessionId: normalizedAgentSessionId
+        });
+        if (
+          !isMountedRef.current ||
+          activeConversationIdRef.current !== normalizedAgentSessionId ||
+          selectedConversationMessageLoadSeqRef.current !== requestId
+        ) {
+          return;
+        }
+        selectedConversationInitialMessagesLoadedIdsRef.current.add(
+          normalizedAgentSessionId
+        );
+        clearSelectedConversationNotFoundRetryWhenInitialLoadsSettled(
+          normalizedAgentSessionId
+        );
+        const durableMessages = mergeWorkspaceAgentMessages(
+          [],
+          agentActivitySnapshotRef.current.sessionMessagesById[
+            normalizedAgentSessionId
+          ] ?? []
+        );
+        const currentOverlayMessages =
+          getAgentSessionView(sessionViewRef(normalizedAgentSessionId))
+            ?.overlayMessages ?? [];
+        const localMessages = mergeWorkspaceAgentMessages(
+          currentOverlayMessages,
+          page.messages as WorkspaceAgentActivityMessage[]
+        );
+        const overlayMessages = selectWorkspaceAgentActivityOverlayMessages({
+          durableMessages,
+          localMessages
+        });
+        setAgentSessionViewOverlayMessages(
+          sessionViewRef(normalizedAgentSessionId),
+          overlayMessages
+        );
+        refreshMessagesFromSnapshot(normalizedAgentSessionId);
+      } catch (error) {
+        if (
+          !isMountedRef.current ||
+          activeConversationIdRef.current !== normalizedAgentSessionId ||
+          selectedConversationMessageLoadSeqRef.current !== requestId
+        ) {
+          return;
+        }
+        const errorCode = getAgentGUIErrorCode(error);
+        if (
+          isSessionNotFoundErrorCode(errorCode) &&
+          scheduleSelectedConversationNotFoundRetry(normalizedAgentSessionId)
+        ) {
+          return;
+        }
+        selectedConversationNotFoundRetryIdsRef.current.delete(
+          normalizedAgentSessionId
+        );
+        reportAgentGUIRuntimeError({
+          agentSessionId: normalizedAgentSessionId,
+          error,
+          phase: "load_session_messages",
+          provider: dataRef.current.provider,
+          runtime: agentActivityRuntime,
+          workspaceId
+        });
+        setAgentSessionViewMessagesLoading(
+          sessionViewRef(normalizedAgentSessionId),
+          false
+        );
+        setIsLoadingMessages(false);
+      }
+    },
+    [
+      agentActivityRuntime,
+      clearSelectedConversationNotFoundRetryWhenInitialLoadsSettled,
+      refreshMessagesFromSnapshot,
+      scheduleSelectedConversationNotFoundRetry,
+      sessionViewRef,
+      workspaceId
     ]
   );
 
@@ -3601,7 +4014,16 @@ export function useAgentGUINodeController({
         void syncConversationListProjection(agentSessionId);
       }
       if (options.reloadDetail) {
-        void refreshMessagesFromSnapshot(agentSessionId);
+        const normalizedAgentSessionId = agentSessionId.trim();
+        const hadPendingMessageLoad =
+          selectedConversationPendingMessageLoadIdsRef.current.delete(
+            normalizedAgentSessionId
+          );
+        if (hadPendingMessageLoad) {
+          void loadSelectedConversationMessages(normalizedAgentSessionId);
+        } else {
+          void refreshMessagesFromSnapshot(normalizedAgentSessionId);
+        }
         void loadSessionState(agentSessionId, {
           source: "conversation-selected"
         });
@@ -3609,6 +4031,7 @@ export function useAgentGUINodeController({
     },
     [
       syncConversationListProjection,
+      loadSelectedConversationMessages,
       refreshMessagesFromSnapshot,
       loadSessionState
     ]
@@ -4051,8 +4474,9 @@ export function useAgentGUINodeController({
             timelineItems
           });
           const hasUnreadCompletion =
-            status === "completed" &&
-            activeConversationIdRef.current !== agentSessionId;
+            status === "completed"
+              ? (conversation.hasUnreadCompletion ?? false)
+              : false;
           if (
             titleFields.title === conversation.title &&
             titleFields.titleFallback === conversation.titleFallback &&
@@ -4072,6 +4496,12 @@ export function useAgentGUINodeController({
         });
         return changed ? next : current;
       });
+      if (nextStatus === "completed" && conversationListQuery) {
+        markAgentGUIConversationCompletionObserved({
+          query: conversationListQuery,
+          conversationId: agentSessionId
+        });
+      }
       const transient = transientConversationRef.current;
       if (transient?.id === agentSessionId) {
         const transientTitleFields = mergeConversationTitleUpdateFields(
@@ -4101,6 +4531,7 @@ export function useAgentGUINodeController({
       setTransientConversation,
       statePatchErrorBySessionId,
       agentActivityRuntime,
+      conversationListQuery,
       workspaceId
     ]
   );
@@ -4247,6 +4678,7 @@ export function useAgentGUINodeController({
     isMountedRef.current = true;
     return () => {
       clearPendingSessionStateReload();
+      clearSelectedConversationNotFoundRetry();
       const current = activeConversationIdRef.current;
       const pendingNewConversationId = startingConversationIdRef.current;
       isMountedRef.current = false;
@@ -4260,7 +4692,7 @@ export function useAgentGUINodeController({
         void unactivateRef.current(pendingNewConversationId);
       }
     };
-  }, [clearPendingSessionStateReload]);
+  }, [clearPendingSessionStateReload, clearSelectedConversationNotFoundRetry]);
 
   const startConversation = useCallback(
     (initialContentInput?: unknown) => {
@@ -5504,6 +5936,7 @@ export function useAgentGUINodeController({
         model: sessionSettings?.model ?? currentDefaults.model,
         reasoningEffort:
           sessionSettings?.reasoningEffort ?? currentDefaults.reasoningEffort,
+        speed: sessionSettings?.speed ?? currentDefaults.speed,
         planMode: sessionSettings?.planMode ?? currentDefaults.planMode,
         permissionModeId:
           sessionSettings?.permissionModeId ?? currentDefaults.permissionModeId
@@ -5518,6 +5951,10 @@ export function useAgentGUINodeController({
           supportedNextSettings.reasoningEffort !== undefined
             ? supportedNextSettings.reasoningEffort
             : baseDefaultsFromSession.reasoningEffort,
+        speed:
+          supportedNextSettings.speed !== undefined
+            ? supportedNextSettings.speed
+            : baseDefaultsFromSession.speed,
         planMode:
           supportedNextSettings.planMode ?? baseDefaultsFromSession.planMode,
         permissionModeId:
@@ -5553,6 +5990,11 @@ export function useAgentGUINodeController({
           ? (supportedNextSettings.reasoningEffort ?? null)
           : undefined;
       const currentReasoningEffort = sessionSettings?.reasoningEffort ?? null;
+      const nextSpeed =
+        supportedNextSettings.speed !== undefined
+          ? (supportedNextSettings.speed ?? null)
+          : undefined;
+      const currentSpeed = sessionSettings?.speed ?? null;
       const nextPlanMode = supportedNextSettings.planMode;
       const currentPlanMode = resolveEffectivePlanModeFromStates({
         sessionPlanModeState: planModeStateFromSessionState(activeSessionState),
@@ -5570,6 +6012,9 @@ export function useAgentGUINodeController({
         nextReasoningEffort !== currentReasoningEffort
       ) {
         sessionSettingsPatch.reasoningEffort = nextReasoningEffort;
+      }
+      if (nextSpeed !== undefined && nextSpeed !== currentSpeed) {
+        sessionSettingsPatch.speed = nextSpeed;
       }
       if (nextPlanMode !== undefined && nextPlanMode !== currentPlanMode) {
         sessionSettingsPatch.planMode = nextPlanMode;
@@ -6137,6 +6582,11 @@ export function useAgentGUINodeController({
     }
     setIsDeletingConversation(true);
     setDetailError(null);
+    if (activeConversationIdRef.current === target.id) {
+      clearSelectedConversationNotFoundRetry();
+      setIsLoadingMessages(true);
+      setAgentSessionViewMessagesLoading(sessionViewRef(target.id), true);
+    }
     void activation
       .unactivate(target.id)
       .then(() =>
@@ -6198,24 +6648,31 @@ export function useAgentGUINodeController({
           return next;
         });
         deleteAgentSessionView(sessionViewRef(target.id));
-        updateConversationList((current) => {
-          const targetIndex = current.findIndex(
-            (conversation) => conversation.id === target.id
-          );
-          const next = current.filter(
-            (conversation) => conversation.id !== target.id
-          );
-          if (activeConversationIdRef.current === target.id) {
-            const nextActive =
-              next[Math.max(0, targetIndex)]?.id ??
-              next[Math.max(0, targetIndex - 1)]?.id ??
-              null;
-            activeConversationIdRef.current = nextActive;
-            setActiveConversationId(nextActive);
-            persistActiveConversation(nextActive);
+        const currentConversations = conversationsRef.current;
+        const targetIndex = currentConversations.findIndex(
+          (conversation) => conversation.id === target.id
+        );
+        const nextConversations = currentConversations.filter(
+          (conversation) => conversation.id !== target.id
+        );
+        if (activeConversationIdRef.current === target.id) {
+          const nextActive =
+            nextConversations[Math.max(0, targetIndex)]?.id ??
+            nextConversations[Math.max(0, targetIndex - 1)]?.id ??
+            null;
+          if (nextActive) {
+            markSelectedConversationDetailPending(nextActive);
+          } else {
+            clearSelectedConversationNotFoundRetry();
+            setIsLoadingMessages(false);
           }
-          return next;
-        });
+          activeConversationIdRef.current = nextActive;
+          setActiveConversationId(nextActive);
+          persistActiveConversation(nextActive);
+        }
+        updateConversationList((current) =>
+          current.filter((conversation) => conversation.id !== target.id)
+        );
         setPendingDeleteConversation(null);
       })
       .catch((error) => {
@@ -6230,18 +6687,26 @@ export function useAgentGUINodeController({
         });
         toast.error(message);
         setDetailError(message);
+        if (activeConversationIdRef.current === target.id) {
+          setIsLoadingMessages(false);
+          setAgentSessionViewMessagesLoading(sessionViewRef(target.id), false);
+        }
       })
       .finally(() => {
         setIsDeletingConversation(false);
       });
   }, [
     activation,
+    conversationListQuery,
     isDeletingConversation,
     pendingDeleteConversation,
+    clearSelectedConversationNotFoundRetry,
+    markSelectedConversationDetailPending,
     persistActiveConversation,
     workspaceId,
     sessionViewRef,
-    agentActivityRuntime
+    agentActivityRuntime,
+    updateConversationList
   ]);
 
   const confirmDeleteProjectConversations = useCallback(
@@ -6285,6 +6750,18 @@ export function useAgentGUINodeController({
       setIsDeletingProjectConversations(true);
       setDetailError(null);
       setListError(null);
+      const activeDeletedConversationId = activeConversationIdRef.current;
+      if (
+        activeDeletedConversationId &&
+        targetIds.has(activeDeletedConversationId)
+      ) {
+        clearSelectedConversationNotFoundRetry();
+        setIsLoadingMessages(true);
+        setAgentSessionViewMessagesLoading(
+          sessionViewRef(activeDeletedConversationId),
+          true
+        );
+      }
       void Promise.all(
         targetConversations.map(async (conversation) => {
           await activation.unactivate(conversation.id);
@@ -6329,19 +6806,25 @@ export function useAgentGUINodeController({
           setQueuedPromptRetryBlockBySessionId((current) =>
             omitConversationLocalState(current, targetIds)
           );
-          updateConversationList((current) => {
-            const next = current.filter(
-              (conversation) => !targetIds.has(conversation.id)
-            );
-            const currentActiveId = activeConversationIdRef.current;
-            if (currentActiveId && targetIds.has(currentActiveId)) {
-              const nextActive = next[0]?.id ?? null;
-              activeConversationIdRef.current = nextActive;
-              setActiveConversationId(nextActive);
-              persistActiveConversation(nextActive);
+          const nextConversations = conversationsRef.current.filter(
+            (conversation) => !targetIds.has(conversation.id)
+          );
+          const currentActiveId = activeConversationIdRef.current;
+          if (currentActiveId && targetIds.has(currentActiveId)) {
+            const nextActive = nextConversations[0]?.id ?? null;
+            if (nextActive) {
+              markSelectedConversationDetailPending(nextActive);
+            } else {
+              clearSelectedConversationNotFoundRetry();
+              setIsLoadingMessages(false);
             }
-            return next;
-          });
+            activeConversationIdRef.current = nextActive;
+            setActiveConversationId(nextActive);
+            persistActiveConversation(nextActive);
+          }
+          updateConversationList((current) =>
+            current.filter((conversation) => !targetIds.has(conversation.id))
+          );
           setPendingDeleteProjectConversations(null);
         })
         .catch((error) => {
@@ -6360,6 +6843,16 @@ export function useAgentGUINodeController({
           setListError(message);
           toast.error(message);
           setDetailError(message);
+          if (
+            activeDeletedConversationId &&
+            activeConversationIdRef.current === activeDeletedConversationId
+          ) {
+            setIsLoadingMessages(false);
+            setAgentSessionViewMessagesLoading(
+              sessionViewRef(activeDeletedConversationId),
+              false
+            );
+          }
         })
         .finally(() => {
           setIsDeletingProjectConversations(false);
@@ -6369,7 +6862,9 @@ export function useAgentGUINodeController({
       activation,
       agentActivityRuntime,
       conversationListQuery,
+      clearSelectedConversationNotFoundRetry,
       isDeletingProjectConversations,
+      markSelectedConversationDetailPending,
       pendingDeleteProjectConversations,
       persistActiveConversation,
       sessionViewRef,
@@ -6798,6 +7293,9 @@ export function useAgentGUINodeController({
   const draftReasoningEffort = normalizeOptionalText(
     draftSettings.reasoningEffort
   ) as AgentSessionReasoningEffort | null;
+  const draftSpeed = normalizeOptionalText(
+    draftSettings.speed
+  ) as AgentSessionSpeed | null;
   // The offer is derived from the same timeline data that renders the plan
   // card (the latest turn produced a plan item), gated on codex + plan mode
   // and a settled (non-working) conversation. No status-edge/runtimeContext
@@ -6943,6 +7441,11 @@ export function useAgentGUINodeController({
       modelSelectionFromComposerOptions(providerComposerOptions, draftModel),
     [draftModel, providerComposerOptions]
   );
+  const activeSessionSpeedSelection = useMemo(
+    () =>
+      speedSelectionFromComposerOptions(providerComposerOptions, draftSpeed),
+    [draftSpeed, providerComposerOptions]
+  );
   const effectivePlanMode = useMemo(
     () =>
       resolveEffectivePlanModeFromStates({
@@ -6968,6 +7471,7 @@ export function useAgentGUINodeController({
     const selectedModelValue = draftModel;
     const selectedReasoningEffortValue =
       draftReasoningEffort as AgentSessionReasoningEffort | null;
+    const selectedSpeedValue = draftSpeed as AgentSessionSpeed | null;
     const selectedPermissionModeValue =
       normalizePermissionModeId(draftSettings.permissionModeId) ??
       normalizePermissionModeId(permissionConfig?.defaultValue);
@@ -6977,6 +7481,7 @@ export function useAgentGUINodeController({
       draftSettings: {
         model: draftModel,
         reasoningEffort: draftReasoningEffort,
+        speed: draftSpeed,
         planMode: Boolean(draftSettings.planMode),
         permissionModeId: normalizePermissionModeId(
           draftSettings.permissionModeId
@@ -6985,6 +7490,7 @@ export function useAgentGUINodeController({
       effectivePlanMode: composerSupport.plan ? effectivePlanMode : false,
       supportsModel: composerSupport.model,
       supportsReasoningEffort: composerSupport.reasoning,
+      supportsSpeed: composerSupport.speed,
       supportsPermissionMode,
       supportsPlanMode: composerSupport.plan,
       isSettingsLoading,
@@ -6998,6 +7504,11 @@ export function useAgentGUINodeController({
         sessionSettings === null &&
         composerSupport.reasoning &&
         draftReasoningEffort === null,
+      speedUnavailable:
+        activeConversationId !== null &&
+        sessionSettings === null &&
+        composerSupport.speed &&
+        draftSpeed === null,
       permissionModeUnavailable:
         activeConversationId !== null &&
         sessionSettings === null &&
@@ -7010,6 +7521,7 @@ export function useAgentGUINodeController({
         !effectivePlanMode,
       selectedModelValue,
       selectedReasoningEffortValue,
+      selectedSpeedValue,
       selectedPermissionModeValue,
       permissionConfig,
       selectedProjectPath:
@@ -7029,6 +7541,12 @@ export function useAgentGUINodeController({
         activeSessionReasoningSelection !== null
           ? activeSessionReasoningSelection.options
           : [],
+      availableSpeeds:
+        composerSupport.speed &&
+        hasOptionsSource &&
+        activeSessionSpeedSelection !== null
+          ? activeSessionSpeedSelection.options
+          : [],
       availablePermissionModes: supportsPermissionMode
         ? permissionModeOptions(data.provider, permissionConfig)
         : []
@@ -7038,6 +7556,7 @@ export function useAgentGUINodeController({
     activeConversation?.cwd,
     activeSessionModelSelection,
     activeSessionReasoningSelection,
+    activeSessionSpeedSelection,
     draftSettings.permissionModeId,
     draftSettings.planMode,
     effectivePlanMode,
@@ -7047,7 +7566,8 @@ export function useAgentGUINodeController({
     composerSupport,
     timelinePlanModeState,
     draftModel,
-    draftReasoningEffort
+    draftReasoningEffort,
+    draftSpeed
   ]);
 
   const stableCreateConversation =

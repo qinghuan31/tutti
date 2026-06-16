@@ -4,6 +4,7 @@ import {
   normalizeBrowserComparableUrl,
   resolveBrowserAddressInput,
   resolveBrowserNavigationUrl,
+  resolveBrowserOpenExternalUrl,
   resolveHostBrowserNavigationUrl
 } from "./url.ts";
 
@@ -38,6 +39,23 @@ test("allows host browser navigation for workspace file URLs", () => {
       url: "file:///Users/local/project/index.html"
     }
   );
+});
+
+test("keeps file URLs for external browser open instead of search fallback", () => {
+  const fileUrl = "file:///Users/local/project/memory.md";
+  assert.deepEqual(resolveBrowserOpenExternalUrl(fileUrl), {
+    errorCode: null,
+    url: fileUrl
+  });
+
+  const searchFallback = resolveBrowserAddressInput(fileUrl, {
+    resolveSearchUrl(query) {
+      const searchUrl = new URL("https://www.google.com/search");
+      searchUrl.searchParams.set("q", query);
+      return searchUrl.toString();
+    }
+  });
+  assert.match(searchFallback.url ?? "", /^https:\/\/www\.google\.com\/search/);
 });
 
 test("keeps non-URL address input policy host-provided", () => {

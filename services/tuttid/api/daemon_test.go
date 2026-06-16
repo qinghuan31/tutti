@@ -94,11 +94,19 @@ func (stubAppCenterService) Install(context.Context, string, string) (workspaceb
 	return workspacebiz.WorkspaceApp{}, nil
 }
 
+func (s stubAppCenterService) InstallWithOptions(ctx context.Context, workspaceID string, appID string, _ workspaceservice.InstallOptions) (workspacebiz.WorkspaceApp, error) {
+	return s.Install(ctx, workspaceID, appID)
+}
+
 func (s stubAppCenterService) Launch(ctx context.Context, workspaceID string, appID string) (workspacebiz.WorkspaceApp, error) {
 	if s.launchFn == nil {
 		return workspacebiz.WorkspaceApp{}, nil
 	}
 	return s.launchFn(ctx, workspaceID, appID)
+}
+
+func (stubAppCenterService) ListReferences(context.Context, string, string, workspacebiz.AppReferenceListInput) (workspacebiz.AppReferenceListResult, error) {
+	return workspacebiz.AppReferenceListResult{}, nil
 }
 
 func (stubAppCenterService) List(context.Context, string) ([]workspacebiz.WorkspaceApp, error) {
@@ -130,10 +138,6 @@ func (s stubAppCenterService) Retry(ctx context.Context, workspaceID string, app
 
 func (stubAppCenterService) Rollback(context.Context, string, string, string) (workspacebiz.WorkspaceApp, error) {
 	return workspacebiz.WorkspaceApp{}, nil
-}
-
-func (stubAppCenterService) SearchReferences(context.Context, string, string, workspacebiz.AppReferenceSearchInput) (workspacebiz.AppReferenceSearchResult, error) {
-	return workspacebiz.AppReferenceSearchResult{}, nil
 }
 
 func (stubAppCenterService) StartEnabled(context.Context, string) ([]workspacebiz.WorkspaceApp, error) {
@@ -418,6 +422,8 @@ func (s stubPreferencesService) Put(ctx context.Context, input preferencesservic
 			Locale:              input.Locale,
 			SleepPreventionMode: input.SleepPreventionMode,
 			ThemeSource:         input.ThemeSource,
+			UpdateChannel:       input.UpdateChannel,
+			UpdatePolicy:        input.UpdatePolicy,
 		}, nil
 	}
 	return s.putFn(ctx, input)
@@ -1045,6 +1051,8 @@ func TestDaemonAPIGeneratedRoutesGetDesktopPreferences(t *testing.T) {
 					Locale:              "zh-CN",
 					SleepPreventionMode: "whileAgentRunning",
 					ThemeSource:         "dark",
+					UpdateChannel:       "rc",
+					UpdatePolicy:        "auto",
 				}, nil
 			},
 		},
@@ -1075,6 +1083,12 @@ func TestDaemonAPIGeneratedRoutesGetDesktopPreferences(t *testing.T) {
 	if response.Preferences.SleepPreventionMode != tuttigenerated.WhileAgentRunning {
 		t.Fatalf("sleepPreventionMode = %q, want %q", response.Preferences.SleepPreventionMode, tuttigenerated.WhileAgentRunning)
 	}
+	if response.Preferences.UpdateChannel != tuttigenerated.Rc {
+		t.Fatalf("updateChannel = %q, want %q", response.Preferences.UpdateChannel, tuttigenerated.Rc)
+	}
+	if response.Preferences.UpdatePolicy != tuttigenerated.DesktopUpdatePolicyAuto {
+		t.Fatalf("updatePolicy = %q, want %q", response.Preferences.UpdatePolicy, tuttigenerated.DesktopUpdatePolicyAuto)
+	}
 }
 
 func TestDaemonAPIGeneratedRoutesPutDesktopPreferencesValidatesLocale(t *testing.T) {
@@ -1096,6 +1110,8 @@ func TestDaemonAPIGeneratedRoutesPutDesktopPreferencesValidatesLocale(t *testing
 			"locale":               "fr",
 			"sleepPreventionMode":  "never",
 			"themeSource":          "dark",
+			"updateChannel":        "stable",
+			"updatePolicy":         "prompt",
 		},
 	})
 	if recorder.Code != http.StatusBadRequest {

@@ -8,7 +8,9 @@ import {
 } from "./runtimeStore.ts";
 import {
   resolveBrowserAddressInput,
+  resolveBrowserOpenExternalUrl,
   type BrowserAddressInputResolution,
+  type BrowserNavigationUrlResolution,
   type BrowserSearchUrlResolver
 } from "./url.ts";
 
@@ -17,6 +19,7 @@ export interface BrowserNodeFeature {
   i18n: BrowserNodeI18nRuntime;
   reportDiagnostic?: BrowserNodeDiagnosticReporter;
   resolveAddressInput(rawInput: string): BrowserAddressInputResolution;
+  resolveOpenExternalUrl(rawInput: string): BrowserNavigationUrlResolution;
   runtimeStore: BrowserNodeRuntimeStore;
   connect(): () => void;
 }
@@ -71,6 +74,9 @@ export function createBrowserNodeFeature({
     reportDiagnostic,
     resolveAddressInput(rawInput) {
       return resolveBrowserAddressInput(rawInput, { resolveSearchUrl });
+    },
+    resolveOpenExternalUrl(rawInput) {
+      return resolveBrowserOpenExternalUrl(rawInput);
     },
     runtimeStore
   };

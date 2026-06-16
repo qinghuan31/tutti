@@ -27,11 +27,17 @@ description: >
   Search and edit cloud docs.
 ---
 `)
+	writeSkill(t, filepath.Join(homeDir, ".agents", "skills", "broken-agents", "SKILL.md"), `description: Missing frontmatter delimiter.
+---
+`)
 	writeSkill(t, filepath.Join(homeDir, ".codex", "skills", "caveman", "SKILL.md"), `---
 description: >
   Ultra-compressed communication mode.
   Use when the user asks to be brief.
 ---
+`)
+	writeSkill(t, filepath.Join(homeDir, ".codex", "skills", "broken-codex", "SKILL.md"), `---
+description: Missing closing delimiter.
 `)
 	writeSkill(t, filepath.Join(homeDir, ".codex", "skills", ".system", "hidden", "SKILL.md"), `---
 description: Hidden system skill.
@@ -120,13 +126,52 @@ metadata:
 ---
 `)
 
-	metadata := readSkillMetadata(path)
+	metadata, ok := readSkillMetadata(path)
+	if !ok {
+		t.Fatalf("readSkillMetadata() ok = false, want true")
+	}
 	if metadata.name != "lark-whiteboard" {
 		t.Fatalf("name = %q", metadata.name)
 	}
 	want := "飞书画板：查询和编辑飞书云文档中的画板。 支持导出画板为预览图片、导出原始节点结构。"
 	if metadata.description != want {
 		t.Fatalf("description = %q, want %q", metadata.description, want)
+	}
+}
+
+func TestReadSkillMetadataRejectsMissingDelimitedFrontmatter(t *testing.T) {
+	tempDir := t.TempDir()
+	tests := []struct {
+		name    string
+		content string
+	}{
+		{
+			name: "missing start delimiter",
+			content: `name: broken
+---
+`,
+		},
+		{
+			name: "missing end delimiter",
+			content: `---
+name: broken
+`,
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			path := filepath.Join(tempDir, test.name, "SKILL.md")
+			writeSkill(t, path, test.content)
+
+			metadata, ok := readSkillMetadata(path)
+
+			if ok {
+				t.Fatalf("readSkillMetadata() ok = true, want false")
+			}
+			if metadata.name != "" || metadata.description != "" {
+				t.Fatalf("metadata = %#v, want empty", metadata)
+			}
+		})
 	}
 }
 

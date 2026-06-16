@@ -11,6 +11,7 @@ export {
   resolveBrowserAddressInput,
   normalizeHostBrowserComparableUrl,
   resolveBrowserNavigationUrl,
+  resolveBrowserOpenExternalUrl,
   resolveHostBrowserNavigationUrl,
   type BrowserAddressInputResolution,
   type BrowserNavigationUrlErrorCode,

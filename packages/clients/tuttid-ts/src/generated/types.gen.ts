@@ -185,6 +185,10 @@ export type DesktopSleepPreventionMode =
   | "whileAgentRunning"
   | "always";
 
+export type DesktopUpdatePolicy = "off" | "prompt" | "auto";
+
+export type DesktopUpdateChannel = "stable" | "rc";
+
 export type DesktopDockPlacement = "bottom" | "left";
 
 export type DesktopDockIconStyle = "default" | "flat";
@@ -197,6 +201,8 @@ export type DesktopPreferences = {
   locale: DesktopLocale;
   sleepPreventionMode: DesktopSleepPreventionMode;
   themeSource: DesktopThemeSource;
+  updateChannel: DesktopUpdateChannel;
+  updatePolicy: DesktopUpdatePolicy;
 };
 
 export type DesktopAgentComposerDefaults = {
@@ -283,23 +289,62 @@ export type WorkspaceAppCliState = {
 };
 
 export type WorkspaceAppReferencesState = {
-  searchSupported: boolean;
+  listSupported: boolean;
 };
 
 export type AppReferenceKind = "file";
 
-export type AppReferenceSearchRequest = {
-  query: string;
+export type AppReferenceListRequest = {
+  parentGroupId?: string | null;
+  filterText?: string | null;
   limit?: number;
-  cursor?: string;
+  cursor?: string | null;
   kinds?: Array<AppReferenceKind>;
+  timeRange?: AppReferenceListTimeRange;
 };
 
-export type AppReferenceSearchResponse = {
+/**
+ * Inclusive timestamp range for references. For file references, runtimes should filter by the file mtimeMs when available.
+ *
+ */
+export type AppReferenceListTimeRange = {
+  fromMs?: number;
+  toMs?: number;
+};
+
+export type InstallWorkspaceAppRequest = {
+  /**
+   * Restart the app runtime after installing if it is already running.
+   */
+  restartRunning?: boolean;
+};
+
+export type AppReferenceListResponse = {
   workspaceId: string;
   appId: string;
-  references: Array<AppReference>;
+  items: Array<AppReferenceListItem>;
   nextCursor: string | null;
+};
+
+export type AppReferenceListItem =
+  | ({
+      type: "group";
+    } & AppReferenceGroup)
+  | ({
+      type: "reference";
+    } & AppReferenceListReferenceItem);
+
+export type AppReferenceGroup = {
+  type: "group";
+  id: string;
+  displayName: string;
+  description?: string | null;
+  referenceCount: number;
+};
+
+export type AppReferenceListReferenceItem = {
+  type: "reference";
+  reference: AppReference;
 };
 
 export type AppReference = {
@@ -563,6 +608,7 @@ export type AgentSessionComposerSettings = {
   permissionModeId?: string | null;
   planMode?: boolean | null;
   reasoningEffort?: string | null;
+  speed?: string | null;
 };
 
 export type PermissionModeSemantic =
@@ -611,6 +657,7 @@ export type AgentProviderComposerOptionsResponse = {
   modelConfig: AgentProviderComposerConfig;
   permissionConfig: PermissionConfig;
   reasoningConfig: AgentProviderComposerConfig;
+  speedConfig?: AgentProviderComposerConfig;
   effectiveSettings: AgentSessionComposerSettings;
   runtimeContext: {
     [key: string]: unknown;
@@ -808,6 +855,7 @@ export type CreateWorkspaceAgentSessionRequest = {
   permissionModeId?: string | null;
   model?: string | null;
   reasoningEffort?: string | null;
+  speed?: string | null;
   planMode?: boolean | null;
   visible?: boolean | null;
 };
@@ -2524,7 +2572,7 @@ export type StopAllWorkspaceAppsResponse =
   StopAllWorkspaceAppsResponses[keyof StopAllWorkspaceAppsResponses];
 
 export type InstallWorkspaceAppData = {
-  body?: never;
+  body?: InstallWorkspaceAppRequest;
   path: {
     workspaceID: string;
     appID: string;
@@ -2573,17 +2621,17 @@ export type InstallWorkspaceAppResponses = {
 export type InstallWorkspaceAppResponse =
   InstallWorkspaceAppResponses[keyof InstallWorkspaceAppResponses];
 
-export type SearchWorkspaceAppReferencesData = {
-  body: AppReferenceSearchRequest;
+export type ListWorkspaceAppReferencesData = {
+  body: AppReferenceListRequest;
   path: {
     workspaceID: string;
     appID: string;
   };
   query?: never;
-  url: "/v1/workspaces/{workspaceID}/apps/{appID}/references/search";
+  url: "/v1/workspaces/{workspaceID}/apps/{appID}/references/list";
 };
 
-export type SearchWorkspaceAppReferencesErrors = {
+export type ListWorkspaceAppReferencesErrors = {
   /**
    * Request payload or parameters are invalid
    */
@@ -2610,18 +2658,18 @@ export type SearchWorkspaceAppReferencesErrors = {
   503: ApiErrorResponse;
 };
 
-export type SearchWorkspaceAppReferencesError =
-  SearchWorkspaceAppReferencesErrors[keyof SearchWorkspaceAppReferencesErrors];
+export type ListWorkspaceAppReferencesError =
+  ListWorkspaceAppReferencesErrors[keyof ListWorkspaceAppReferencesErrors];
 
-export type SearchWorkspaceAppReferencesResponses = {
+export type ListWorkspaceAppReferencesResponses = {
   /**
-   * Workspace app references
+   * Workspace app reference list
    */
-  200: AppReferenceSearchResponse;
+  200: AppReferenceListResponse;
 };
 
-export type SearchWorkspaceAppReferencesResponse =
-  SearchWorkspaceAppReferencesResponses[keyof SearchWorkspaceAppReferencesResponses];
+export type ListWorkspaceAppReferencesResponse =
+  ListWorkspaceAppReferencesResponses[keyof ListWorkspaceAppReferencesResponses];
 
 export type ExportWorkspaceAppData = {
   body: ExportWorkspaceAppRequest;

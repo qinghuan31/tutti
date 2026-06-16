@@ -10,37 +10,47 @@ import {
 } from "./workspaceFileEntryIconUrlQueue.ts";
 
 function buildIconTargetSignature(
-  entries: readonly WorkspaceFileEntry[]
+  entries: readonly WorkspaceFileEntry[],
+  options: { includeImageThumbnails?: boolean }
 ): string {
   return entries
-    .filter(shouldResolveWorkspaceFileEntryIcon)
+    .filter((entry) => shouldResolveWorkspaceFileEntryIcon(entry, options))
     .map((entry) => resolveWorkspaceFileEntryIconCacheKey(entry))
     .join("\0");
 }
 
 export function useWorkspaceFileEntryIconUrls(input: {
   entries: readonly WorkspaceFileEntry[];
+  includeImageThumbnails?: boolean;
   resolveEntryIconUrl?: WorkspaceFileEntryIconUrlResolver;
 }): {
   iconUrlByCacheKey: ReadonlyMap<string, string | null>;
   reportEntryIconViewportEnter: (entry: WorkspaceFileEntry) => void;
   reportEntryIconViewportLeave: (entry: WorkspaceFileEntry) => void;
 } {
-  const { entries, resolveEntryIconUrl } = input;
+  const { entries, includeImageThumbnails, resolveEntryIconUrl } = input;
   const queue = useMemo(
     () =>
       createWorkspaceFileEntryIconUrlQueue({
+        includeImageThumbnails,
         resolveEntryIconUrl
       }),
-    [resolveEntryIconUrl]
+    [includeImageThumbnails, resolveEntryIconUrl]
   );
   const [iconUrlByCacheKey, setIconUrlByCacheKey] = useState<
     ReadonlyMap<string, string | null>
   >(() => queue.snapshot());
   const iconTargetSignature = useMemo(
-    () => buildIconTargetSignature(entries),
-    [entries]
+    () => buildIconTargetSignature(entries, { includeImageThumbnails }),
+    [entries, includeImageThumbnails]
   );
+
+  useEffect(() => {
+    queue.activate();
+    return () => {
+      queue.dispose();
+    };
+  }, [queue]);
 
   useEffect(() => {
     queue.retainEntries(entries);
@@ -52,13 +62,6 @@ export function useWorkspaceFileEntryIconUrls(input: {
       setIconUrlByCacheKey(queue.snapshot());
     });
   }, [queue]);
-
-  useEffect(
-    () => () => {
-      queue.dispose();
-    },
-    [queue]
-  );
 
   const reportEntryIconViewportEnter = useCallback(
     (entry: WorkspaceFileEntry) => {

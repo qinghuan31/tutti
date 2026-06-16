@@ -181,6 +181,10 @@ export interface AgentGUIViewLabels {
   reasoningOptionMedium: string;
   reasoningOptionHigh: string;
   reasoningOptionXHigh: string;
+  speedLabel: string;
+  speedSelectionLabel: string;
+  speedOptionStandard: string;
+  speedOptionFast: string;
   permissionLabel: string;
   permissionModeReadOnly: string;
   permissionModeAuto: string;
@@ -1398,6 +1402,10 @@ const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
       reasoningOptionMedium: labels.reasoningOptionMedium,
       reasoningOptionHigh: labels.reasoningOptionHigh,
       reasoningOptionXHigh: labels.reasoningOptionXHigh,
+      speedLabel: labels.speedLabel,
+      speedSelectionLabel: labels.speedSelectionLabel,
+      speedOptionStandard: labels.speedOptionStandard,
+      speedOptionFast: labels.speedOptionFast,
       permissionLabel: labels.permissionLabel,
       permissionModeReadOnly: labels.permissionModeReadOnly,
       permissionModeAuto: labels.permissionModeAuto,
@@ -1480,6 +1488,10 @@ const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
       labels.reasoningOptionMedium,
       labels.reasoningOptionMinimal,
       labels.reasoningOptionXHigh,
+      labels.speedLabel,
+      labels.speedSelectionLabel,
+      labels.speedOptionStandard,
+      labels.speedOptionFast,
       labels.send,
       labels.sendQueuedPromptNext,
       labels.slashCommandPalette,

@@ -271,22 +271,24 @@ function DropdownMenuSubContent({
   ...props
 }: React.ComponentProps<typeof DropdownMenuPrimitive.SubContent>) {
   return (
-    <DropdownMenuPrimitive.SubContent
-      asChild
-      data-slot="dropdown-menu-sub-content"
-      {...props}
-    >
-      <MenuSurface
+    <DropdownMenuPrimitive.Portal>
+      <DropdownMenuPrimitive.SubContent
+        asChild
         data-slot="dropdown-menu-sub-content"
-        className={cn(
-          "z-50 min-w-[96px] origin-(--radix-dropdown-menu-content-transform-origin) overflow-hidden",
-          className
-        )}
-        style={{ zIndex: "var(--z-popover)", ...style }}
+        {...props}
       >
-        {children}
-      </MenuSurface>
-    </DropdownMenuPrimitive.SubContent>
+        <MenuSurface
+          data-slot="dropdown-menu-sub-content"
+          className={cn(
+            "z-50 min-w-[96px] origin-(--radix-dropdown-menu-content-transform-origin) overflow-hidden",
+            className
+          )}
+          style={{ zIndex: "var(--z-popover)", ...style }}
+        >
+          {children}
+        </MenuSurface>
+      </DropdownMenuPrimitive.SubContent>
+    </DropdownMenuPrimitive.Portal>
   );
 }
 

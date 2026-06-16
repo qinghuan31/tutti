@@ -11,6 +11,10 @@ import {
   DropdownMenuTrigger,
   LoadingIcon,
   RefreshIcon,
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
   ViewGridLinedIcon,
   ViewListLinedIcon,
   cn
@@ -162,68 +166,73 @@ function LayoutModeToggle({
   ];
 
   return (
-    <div
-      className="flex items-center rounded-md border border-[var(--border-1)] bg-[var(--transparency-block)] p-0.5"
-      role="group"
-    >
-      <LayoutModeButton
-        active={layoutMode === "icon"}
-        ariaLabel={copy.t("layoutIconViewLabel")}
-        onClick={() => {
-          onLayoutModeChange("icon");
-        }}
+    <TooltipProvider delayDuration={300}>
+      <div
+        className="flex items-center rounded-md border border-[var(--border-1)] bg-[var(--transparency-block)] p-0.5"
+        role="group"
       >
-        <ViewGridLinedIcon className="size-4" />
-      </LayoutModeButton>
-      <LayoutModeButton
-        active={layoutMode === "list"}
-        ariaLabel={copy.t("layoutListViewLabel")}
-        onClick={() => {
-          onLayoutModeChange("list");
-        }}
-      >
-        <ViewListLinedIcon className="size-4" />
-      </LayoutModeButton>
-      <span className="mx-0.5 h-4 w-px bg-[var(--border-1)]" aria-hidden />
-      <DropdownMenu>
-        <DropdownMenuTrigger asChild>
-          <Button
-            aria-label={copy.t("arrangeMenuLabel")}
-            className="size-6 min-w-6 rounded-[4px] p-0 text-[var(--text-secondary)] data-[state=open]:bg-[var(--background-fronted)] data-[state=open]:text-[var(--text-primary)] data-[state=open]:shadow-sm"
-            size="icon-sm"
-            title={copy.t("arrangeMenuLabel")}
-            type="button"
-            variant="ghost"
-          >
-            <ChevronDownIcon className="size-3.5" />
-          </Button>
-        </DropdownMenuTrigger>
-        <DropdownMenuContent
-          align="end"
-          className="min-w-[236px] px-1 py-1"
-          sideOffset={7}
+        <LayoutModeButton
+          active={layoutMode === "icon"}
+          ariaLabel={copy.t("layoutIconViewLabel")}
+          tooltipLabel={copy.t("layoutIconViewTooltipLabel")}
+          onClick={() => {
+            onLayoutModeChange("icon");
+          }}
         >
-          <DropdownMenuRadioGroup
-            value={arrangeMode}
-            onValueChange={(nextMode) => {
-              onArrangeModeChange(nextMode as WorkspaceFileManagerArrangeMode);
-            }}
+          <ViewGridLinedIcon className="size-4" />
+        </LayoutModeButton>
+        <LayoutModeButton
+          active={layoutMode === "list"}
+          ariaLabel={copy.t("layoutListViewLabel")}
+          tooltipLabel={copy.t("layoutListViewTooltipLabel")}
+          onClick={() => {
+            onLayoutModeChange("list");
+          }}
+        >
+          <ViewListLinedIcon className="size-4" />
+        </LayoutModeButton>
+        <span className="mx-0.5 h-4 w-px bg-[var(--border-1)]" aria-hidden />
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button
+              aria-label={copy.t("arrangeMenuLabel")}
+              className="size-6 min-w-6 rounded-[4px] p-0 text-[var(--text-secondary)] data-[state=open]:bg-[var(--background-fronted)] data-[state=open]:text-[var(--text-primary)] data-[state=open]:shadow-sm"
+              size="icon-sm"
+              type="button"
+              variant="ghost"
+            >
+              <ChevronDownIcon className="size-3.5" />
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent
+            align="end"
+            className="min-w-[236px] px-1 py-1"
+            sideOffset={7}
           >
-            {arrangeOptions.map((option, index) => (
-              <div key={option.mode}>
-                {index === 1 ? <DropdownMenuSeparator /> : null}
-                <DropdownMenuRadioItem
-                  className="h-8 text-sm font-normal"
-                  value={option.mode}
-                >
-                  {option.label}
-                </DropdownMenuRadioItem>
-              </div>
-            ))}
-          </DropdownMenuRadioGroup>
-        </DropdownMenuContent>
-      </DropdownMenu>
-    </div>
+            <DropdownMenuRadioGroup
+              value={arrangeMode}
+              onValueChange={(nextMode) => {
+                onArrangeModeChange(
+                  nextMode as WorkspaceFileManagerArrangeMode
+                );
+              }}
+            >
+              {arrangeOptions.map((option, index) => (
+                <div key={option.mode}>
+                  {index === 1 ? <DropdownMenuSeparator /> : null}
+                  <DropdownMenuRadioItem
+                    className="h-8 text-sm font-normal"
+                    value={option.mode}
+                  >
+                    {option.label}
+                  </DropdownMenuRadioItem>
+                </div>
+              ))}
+            </DropdownMenuRadioGroup>
+          </DropdownMenuContent>
+        </DropdownMenu>
+      </div>
+    </TooltipProvider>
   );
 }
 
@@ -231,30 +240,36 @@ function LayoutModeButton({
   active,
   ariaLabel,
   children,
-  onClick
+  onClick,
+  tooltipLabel
 }: {
   active: boolean;
   ariaLabel: string;
   children: ReactElement;
   onClick: () => void;
+  tooltipLabel: string;
 }): ReactElement {
   return (
-    <Button
-      aria-label={ariaLabel}
-      aria-pressed={active}
-      className={cn(
-        "size-6 min-w-6 rounded-[4px] p-0 text-text-secondary",
-        active &&
-          "!bg-background-fronted text-foreground hover:!bg-background-fronted"
-      )}
-      size="icon-sm"
-      title={ariaLabel}
-      type="button"
-      variant="ghost"
-      onClick={onClick}
-    >
-      {children}
-    </Button>
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <Button
+          aria-label={ariaLabel}
+          aria-pressed={active}
+          className={cn(
+            "size-6 min-w-6 rounded-[4px] p-0 text-text-secondary",
+            active &&
+              "!bg-background-fronted text-foreground hover:!bg-background-fronted"
+          )}
+          size="icon-sm"
+          type="button"
+          variant="ghost"
+          onClick={onClick}
+        >
+          {children}
+        </Button>
+      </TooltipTrigger>
+      <TooltipContent side="bottom">{tooltipLabel}</TooltipContent>
+    </Tooltip>
   );
 }
 

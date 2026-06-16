@@ -175,9 +175,9 @@ type ServerInterface interface {
 	// Launch one installed workspace app
 	// (POST /v1/workspaces/{workspaceID}/apps/{appID}/launch)
 	LaunchWorkspaceApp(w http.ResponseWriter, r *http.Request, workspaceID WorkspaceID, appID WorkspaceAppID)
-	// Search file references exposed by one running workspace app
-	// (POST /v1/workspaces/{workspaceID}/apps/{appID}/references/search)
-	SearchWorkspaceAppReferences(w http.ResponseWriter, r *http.Request, workspaceID WorkspaceID, appID WorkspaceAppID)
+	// List file references exposed by one running workspace app
+	// (POST /v1/workspaces/{workspaceID}/apps/{appID}/references/list)
+	ListWorkspaceAppReferences(w http.ResponseWriter, r *http.Request, workspaceID WorkspaceID, appID WorkspaceAppID)
 	// Retry one failed installed workspace app
 	// (POST /v1/workspaces/{workspaceID}/apps/{appID}/retry)
 	RetryWorkspaceApp(w http.ResponseWriter, r *http.Request, workspaceID WorkspaceID, appID WorkspaceAppID)
@@ -2204,8 +2204,8 @@ func (siw *ServerInterfaceWrapper) LaunchWorkspaceApp(w http.ResponseWriter, r *
 	handler.ServeHTTP(w, r)
 }
 
-// SearchWorkspaceAppReferences operation middleware
-func (siw *ServerInterfaceWrapper) SearchWorkspaceAppReferences(w http.ResponseWriter, r *http.Request) {
+// ListWorkspaceAppReferences operation middleware
+func (siw *ServerInterfaceWrapper) ListWorkspaceAppReferences(w http.ResponseWriter, r *http.Request) {
 
 	var err error
 	_ = err
@@ -2235,7 +2235,7 @@ func (siw *ServerInterfaceWrapper) SearchWorkspaceAppReferences(w http.ResponseW
 	r = r.WithContext(ctx)
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		siw.Handler.SearchWorkspaceAppReferences(w, r, workspaceID, appID)
+		siw.Handler.ListWorkspaceAppReferences(w, r, workspaceID, appID)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -4821,7 +4821,7 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/v1/workspaces/{workspaceID}/apps/{appID}/icon", wrapper.ReplaceWorkspaceAppIcon)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/v1/workspaces/{workspaceID}/apps/{appID}/install", wrapper.InstallWorkspaceApp)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/v1/workspaces/{workspaceID}/apps/{appID}/launch", wrapper.LaunchWorkspaceApp)
-	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/v1/workspaces/{workspaceID}/apps/{appID}/references/search", wrapper.SearchWorkspaceAppReferences)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/v1/workspaces/{workspaceID}/apps/{appID}/references/list", wrapper.ListWorkspaceAppReferences)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/v1/workspaces/{workspaceID}/apps/{appID}/retry", wrapper.RetryWorkspaceApp)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/v1/workspaces/{workspaceID}/apps/{appID}/rollback", wrapper.RollbackWorkspaceApp)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/v1/workspaces/{workspaceID}/apps/{appID}/uninstall", wrapper.UninstallWorkspaceApp)
@@ -10254,6 +10254,7 @@ func (response ReplaceWorkspaceAppIcon503JSONResponse) VisitReplaceWorkspaceAppI
 type InstallWorkspaceAppRequestObject struct {
 	WorkspaceID WorkspaceID    `json:"workspaceID"`
 	AppID       WorkspaceAppID `json:"appID"`
+	Body        *InstallWorkspaceAppJSONRequestBody
 }
 
 type InstallWorkspaceAppResponseObject interface {
@@ -10485,19 +10486,19 @@ func (response LaunchWorkspaceApp503JSONResponse) VisitLaunchWorkspaceAppRespons
 	return err
 }
 
-type SearchWorkspaceAppReferencesRequestObject struct {
+type ListWorkspaceAppReferencesRequestObject struct {
 	WorkspaceID WorkspaceID    `json:"workspaceID"`
 	AppID       WorkspaceAppID `json:"appID"`
-	Body        *SearchWorkspaceAppReferencesJSONRequestBody
+	Body        *ListWorkspaceAppReferencesJSONRequestBody
 }
 
-type SearchWorkspaceAppReferencesResponseObject interface {
-	VisitSearchWorkspaceAppReferencesResponse(w http.ResponseWriter) error
+type ListWorkspaceAppReferencesResponseObject interface {
+	VisitListWorkspaceAppReferencesResponse(w http.ResponseWriter) error
 }
 
-type SearchWorkspaceAppReferences200JSONResponse AppReferenceSearchResponse
+type ListWorkspaceAppReferences200JSONResponse AppReferenceListResponse
 
-func (response SearchWorkspaceAppReferences200JSONResponse) VisitSearchWorkspaceAppReferencesResponse(w http.ResponseWriter) error {
+func (response ListWorkspaceAppReferences200JSONResponse) VisitListWorkspaceAppReferencesResponse(w http.ResponseWriter) error {
 
 	var buf bytes.Buffer
 	if err := json.NewEncoder(&buf).Encode(response); err != nil {
@@ -10509,11 +10510,11 @@ func (response SearchWorkspaceAppReferences200JSONResponse) VisitSearchWorkspace
 	return err
 }
 
-type SearchWorkspaceAppReferences400JSONResponse struct {
+type ListWorkspaceAppReferences400JSONResponse struct {
 	InvalidRequestErrorJSONResponse
 }
 
-func (response SearchWorkspaceAppReferences400JSONResponse) VisitSearchWorkspaceAppReferencesResponse(w http.ResponseWriter) error {
+func (response ListWorkspaceAppReferences400JSONResponse) VisitListWorkspaceAppReferencesResponse(w http.ResponseWriter) error {
 
 	var buf bytes.Buffer
 	if err := json.NewEncoder(&buf).Encode(response); err != nil {
@@ -10525,9 +10526,9 @@ func (response SearchWorkspaceAppReferences400JSONResponse) VisitSearchWorkspace
 	return err
 }
 
-type SearchWorkspaceAppReferences401JSONResponse struct{ UnauthorizedErrorJSONResponse }
+type ListWorkspaceAppReferences401JSONResponse struct{ UnauthorizedErrorJSONResponse }
 
-func (response SearchWorkspaceAppReferences401JSONResponse) VisitSearchWorkspaceAppReferencesResponse(w http.ResponseWriter) error {
+func (response ListWorkspaceAppReferences401JSONResponse) VisitListWorkspaceAppReferencesResponse(w http.ResponseWriter) error {
 
 	var buf bytes.Buffer
 	if err := json.NewEncoder(&buf).Encode(response); err != nil {
@@ -10539,11 +10540,11 @@ func (response SearchWorkspaceAppReferences401JSONResponse) VisitSearchWorkspace
 	return err
 }
 
-type SearchWorkspaceAppReferences404JSONResponse struct {
+type ListWorkspaceAppReferences404JSONResponse struct {
 	WorkspaceAppNotFoundErrorJSONResponse
 }
 
-func (response SearchWorkspaceAppReferences404JSONResponse) VisitSearchWorkspaceAppReferencesResponse(w http.ResponseWriter) error {
+func (response ListWorkspaceAppReferences404JSONResponse) VisitListWorkspaceAppReferencesResponse(w http.ResponseWriter) error {
 
 	var buf bytes.Buffer
 	if err := json.NewEncoder(&buf).Encode(response); err != nil {
@@ -10555,11 +10556,11 @@ func (response SearchWorkspaceAppReferences404JSONResponse) VisitSearchWorkspace
 	return err
 }
 
-type SearchWorkspaceAppReferences405JSONResponse struct {
+type ListWorkspaceAppReferences405JSONResponse struct {
 	MethodNotAllowedErrorJSONResponse
 }
 
-func (response SearchWorkspaceAppReferences405JSONResponse) VisitSearchWorkspaceAppReferencesResponse(w http.ResponseWriter) error {
+func (response ListWorkspaceAppReferences405JSONResponse) VisitListWorkspaceAppReferencesResponse(w http.ResponseWriter) error {
 
 	var buf bytes.Buffer
 	if err := json.NewEncoder(&buf).Encode(response); err != nil {
@@ -10571,11 +10572,11 @@ func (response SearchWorkspaceAppReferences405JSONResponse) VisitSearchWorkspace
 	return err
 }
 
-type SearchWorkspaceAppReferences502JSONResponse struct {
+type ListWorkspaceAppReferences502JSONResponse struct {
 	WorkspaceOperationErrorJSONResponse
 }
 
-func (response SearchWorkspaceAppReferences502JSONResponse) VisitSearchWorkspaceAppReferencesResponse(w http.ResponseWriter) error {
+func (response ListWorkspaceAppReferences502JSONResponse) VisitListWorkspaceAppReferencesResponse(w http.ResponseWriter) error {
 
 	var buf bytes.Buffer
 	if err := json.NewEncoder(&buf).Encode(response); err != nil {
@@ -10587,11 +10588,11 @@ func (response SearchWorkspaceAppReferences502JSONResponse) VisitSearchWorkspace
 	return err
 }
 
-type SearchWorkspaceAppReferences503JSONResponse struct {
+type ListWorkspaceAppReferences503JSONResponse struct {
 	ServiceUnavailableErrorJSONResponse
 }
 
-func (response SearchWorkspaceAppReferences503JSONResponse) VisitSearchWorkspaceAppReferencesResponse(w http.ResponseWriter) error {
+func (response ListWorkspaceAppReferences503JSONResponse) VisitListWorkspaceAppReferencesResponse(w http.ResponseWriter) error {
 
 	var buf bytes.Buffer
 	if err := json.NewEncoder(&buf).Encode(response); err != nil {
@@ -17109,9 +17110,9 @@ type StrictServerInterface interface {
 	// Launch one installed workspace app
 	// (POST /v1/workspaces/{workspaceID}/apps/{appID}/launch)
 	LaunchWorkspaceApp(ctx context.Context, request LaunchWorkspaceAppRequestObject) (LaunchWorkspaceAppResponseObject, error)
-	// Search file references exposed by one running workspace app
-	// (POST /v1/workspaces/{workspaceID}/apps/{appID}/references/search)
-	SearchWorkspaceAppReferences(ctx context.Context, request SearchWorkspaceAppReferencesRequestObject) (SearchWorkspaceAppReferencesResponseObject, error)
+	// List file references exposed by one running workspace app
+	// (POST /v1/workspaces/{workspaceID}/apps/{appID}/references/list)
+	ListWorkspaceAppReferences(ctx context.Context, request ListWorkspaceAppReferencesRequestObject) (ListWorkspaceAppReferencesResponseObject, error)
 	// Retry one failed installed workspace app
 	// (POST /v1/workspaces/{workspaceID}/apps/{appID}/retry)
 	RetryWorkspaceApp(ctx context.Context, request RetryWorkspaceAppRequestObject) (RetryWorkspaceAppResponseObject, error)
@@ -18784,6 +18785,18 @@ func (sh *strictHandler) InstallWorkspaceApp(w http.ResponseWriter, r *http.Requ
 	request.WorkspaceID = workspaceID
 	request.AppID = appID
 
+	var body InstallWorkspaceAppJSONRequestBody
+	decoder := json.NewDecoder(r.Body)
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(&body); err != nil {
+		if !errors.Is(err, io.EOF) {
+			sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+			return
+		}
+	} else {
+		request.Body = &body
+	}
+
 	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
 		return sh.ssi.InstallWorkspaceApp(ctx, request.(InstallWorkspaceAppRequestObject))
 	}
@@ -18831,29 +18844,15 @@ func (sh *strictHandler) LaunchWorkspaceApp(w http.ResponseWriter, r *http.Reque
 	}
 }
 
-// SearchWorkspaceAppReferences operation middleware
-func (sh *strictHandler) SearchWorkspaceAppReferences(w http.ResponseWriter, r *http.Request, workspaceID WorkspaceID, appID WorkspaceAppID) {
-	var request SearchWorkspaceAppReferencesRequestObject
+// ListWorkspaceAppReferences operation middleware
+func (sh *strictHandler) ListWorkspaceAppReferences(w http.ResponseWriter, r *http.Request, workspaceID WorkspaceID, appID WorkspaceAppID) {
+	var request ListWorkspaceAppReferencesRequestObject
 
 	request.WorkspaceID = workspaceID
 	request.AppID = appID
 
-	var body SearchWorkspaceAppReferencesJSONRequestBody
-	bodyBytes, err := io.ReadAll(r.Body)
-	if err != nil {
-		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't read JSON body: %w", err))
-		return
-	}
-	var bodyFields map[string]json.RawMessage
-	if err := json.Unmarshal(bodyBytes, &bodyFields); err != nil {
-		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
-		return
-	}
-	if _, ok := bodyFields["query"]; !ok {
-		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: missing required field query"))
-		return
-	}
-	decoder := json.NewDecoder(bytes.NewReader(bodyBytes))
+	var body ListWorkspaceAppReferencesJSONRequestBody
+	decoder := json.NewDecoder(r.Body)
 	decoder.DisallowUnknownFields()
 	if err := decoder.Decode(&body); err != nil {
 		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
@@ -18862,18 +18861,18 @@ func (sh *strictHandler) SearchWorkspaceAppReferences(w http.ResponseWriter, r *
 	request.Body = &body
 
 	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
-		return sh.ssi.SearchWorkspaceAppReferences(ctx, request.(SearchWorkspaceAppReferencesRequestObject))
+		return sh.ssi.ListWorkspaceAppReferences(ctx, request.(ListWorkspaceAppReferencesRequestObject))
 	}
 	for _, middleware := range sh.middlewares {
-		handler = middleware(handler, "SearchWorkspaceAppReferences")
+		handler = middleware(handler, "ListWorkspaceAppReferences")
 	}
 
 	response, err := handler(r.Context(), w, r, request)
 
 	if err != nil {
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
-	} else if validResponse, ok := response.(SearchWorkspaceAppReferencesResponseObject); ok {
-		if err := validResponse.VisitSearchWorkspaceAppReferencesResponse(w); err != nil {
+	} else if validResponse, ok := response.(ListWorkspaceAppReferencesResponseObject); ok {
+		if err := validResponse.VisitListWorkspaceAppReferencesResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

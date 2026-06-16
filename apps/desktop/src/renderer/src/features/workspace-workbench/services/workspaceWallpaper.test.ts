@@ -5,6 +5,7 @@ import {
   type WorkbenchSnapshot
 } from "@tutti-os/workbench-snapshot";
 import {
+  defaultWorkspaceWallpaperId,
   preserveWorkspaceWallpaperSnapshotMetadata,
   readWorkspaceWallpaperDisplayModeFromSnapshot,
   readWorkspaceWallpaperIdFromSnapshot,
@@ -14,7 +15,10 @@ import {
 } from "./workspaceWallpaper.ts";
 
 test("workspace wallpaper state reads default from missing or invalid snapshot metadata", () => {
-  assert.equal(readWorkspaceWallpaperIdFromSnapshot(null), "default");
+  assert.equal(
+    readWorkspaceWallpaperIdFromSnapshot(null),
+    defaultWorkspaceWallpaperId
+  );
   assert.equal(
     readWorkspaceWallpaperIdFromSnapshot({
       ...createSnapshot(),
@@ -22,6 +26,21 @@ test("workspace wallpaper state reads default from missing or invalid snapshot m
         workspaceWallpaper: {
           schemaVersion: 1,
           selectedWallpaperID: "unknown"
+        }
+      }
+    }),
+    defaultWorkspaceWallpaperId
+  );
+});
+
+test("workspace wallpaper state preserves an explicit legacy default selection", () => {
+  assert.equal(
+    readWorkspaceWallpaperIdFromSnapshot({
+      ...createSnapshot(),
+      metadata: {
+        workspaceWallpaper: {
+          schemaVersion: 1,
+          selectedWallpaperID: "default"
         }
       }
     }),
@@ -50,7 +69,7 @@ test("workspace wallpaper display mode round-trips through workbench snapshot me
   assert.deepEqual(snapshot.metadata?.workspaceWallpaper, {
     displayMode: "fit",
     schemaVersion: 1,
-    selectedWallpaperID: "default"
+    selectedWallpaperID: defaultWorkspaceWallpaperId
   });
 });
 
@@ -65,7 +84,7 @@ test("workspace wallpaper display mode maps to workbench surface fit values", ()
 test("workspace wallpaper metadata is preserved across host snapshot saves", () => {
   const previousSnapshot = writeWorkspaceWallpaperIdToSnapshot(
     createSnapshot(),
-    "galaxy"
+    "ocean"
   );
 
   assert.equal(
@@ -75,7 +94,7 @@ test("workspace wallpaper metadata is preserved across host snapshot saves", () 
         createSnapshot()
       )
     ),
-    "galaxy"
+    "ocean"
   );
 });
 

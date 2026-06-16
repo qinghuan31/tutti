@@ -179,7 +179,7 @@ function WorkspaceFileManagerIconTile({
   }, [selected]);
 
   const tileClassName = cn(
-    "flex min-w-0 max-w-[120px] flex-col items-center gap-1.5 rounded-md border border-transparent px-2 py-2 text-center transition-colors",
+    "flex min-w-0 max-w-[148px] flex-col items-center gap-1.5 rounded-md border border-transparent px-2 py-2 text-center transition-colors",
     isInlineRenaming
       ? "cursor-default"
       : "cursor-pointer hover:bg-transparency-block",

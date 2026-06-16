@@ -41,6 +41,105 @@ test("icon url queue ignores ordinary files", async () => {
   assert.equal(queue.snapshot().size, 0);
 });
 
+test("icon url queue resolves image thumbnails when enabled", async () => {
+  let calls = 0;
+  const entry = createEntry({
+    name: "photo.png",
+    path: "/workspace/photo.png"
+  });
+  const cacheKey = resolveWorkspaceFileEntryIconCacheKey(entry);
+  const queue = createWorkspaceFileEntryIconUrlQueue({
+    includeImageThumbnails: true,
+    async resolveEntryIconUrl() {
+      calls += 1;
+      return "tutti-file-icon://icon/photo";
+    }
+  });
+
+  queue.retainEntries([entry]);
+  queue.enterViewport(entry);
+  await settleQueue();
+
+  assert.equal(calls, 1);
+  assert.equal(queue.snapshot().get(cacheKey), "tutti-file-icon://icon/photo");
+});
+
+test("icon url queue keeps resolved image thumbnails after viewport release", async () => {
+  const entry = createEntry({
+    name: "photo.png",
+    path: "/workspace/photo.png"
+  });
+  const cacheKey = resolveWorkspaceFileEntryIconCacheKey(entry);
+  const queue = createWorkspaceFileEntryIconUrlQueue({
+    includeImageThumbnails: true,
+    async resolveEntryIconUrl() {
+      return "tutti-file-icon://icon/photo";
+    }
+  });
+
+  queue.retainEntries([entry]);
+  queue.enterViewport(entry);
+  await settleQueue();
+
+  queue.leaveViewport(entry);
+
+  assert.equal(queue.snapshot().get(cacheKey), "tutti-file-icon://icon/photo");
+
+  queue.retainEntries([]);
+
+  assert.equal(queue.snapshot().has(cacheKey), false);
+});
+
+test("icon url queue can be reactivated after development effect cleanup", async () => {
+  let calls = 0;
+  const entry = createEntry({
+    name: "photo.png",
+    path: "/workspace/photo.png"
+  });
+  const cacheKey = resolveWorkspaceFileEntryIconCacheKey(entry);
+  const queue = createWorkspaceFileEntryIconUrlQueue({
+    includeImageThumbnails: true,
+    async resolveEntryIconUrl() {
+      calls += 1;
+      return "tutti-file-icon://icon/photo";
+    }
+  });
+
+  queue.retainEntries([entry]);
+  queue.dispose();
+  queue.activate();
+  queue.retainEntries([entry]);
+  queue.enterViewport(entry);
+  await settleQueue();
+
+  assert.equal(calls, 1);
+  assert.equal(queue.snapshot().get(cacheKey), "tutti-file-icon://icon/photo");
+});
+
+test("icon url queue stores in-flight image thumbnails after viewport release", async () => {
+  const entry = createEntry({
+    name: "photo.png",
+    path: "/workspace/photo.png"
+  });
+  const cacheKey = resolveWorkspaceFileEntryIconCacheKey(entry);
+  const iconRead = createDeferred<string>();
+  const queue = createWorkspaceFileEntryIconUrlQueue({
+    includeImageThumbnails: true,
+    resolveEntryIconUrl() {
+      return iconRead.promise;
+    }
+  });
+
+  queue.retainEntries([entry]);
+  queue.enterViewport(entry);
+  await settleQueue();
+  queue.leaveViewport(entry);
+  iconRead.resolve("tutti-file-icon://icon/photo");
+  await settleQueue();
+
+  assert.equal(queue.snapshot().get(cacheKey), "tutti-file-icon://icon/photo");
+});
+
 test("icon url queue ignores ordinary files named like application bundles", async () => {
   let calls = 0;
   const entry = createEntry({

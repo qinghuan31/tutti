@@ -7,6 +7,7 @@ export const zhCN = {
     defaultWorkspace: "默认空间",
     loading: "加载中",
     neverOpened: "从未打开",
+    ok: "好",
     selectFolder: "选择文件夹",
     unknownError: "未知错误",
     unreachable: "不可达",
@@ -57,14 +58,14 @@ export const zhCN = {
     workspaceCountNote: "当前记录了 {{count}} 个最近工作区"
   },
   updates: {
-    availableTitle: "发现新版本 {{version}}",
+    availableTitle: "发现新版本",
     badge: "更新",
     checkingTitle: "正在检查更新",
-    downloadAction: "下载",
-    downloadedTitle: "版本 {{version}} 已准备好安装",
-    downloadingTitle: "正在下载 {{version}} {{percent}}",
+    downloadAction: "下载更新",
+    downloadedTitle: "更新已准备好安装",
+    downloadingTitle: "正在下载 {{percent}}",
     errorTitle: "无法检查更新",
-    restartAction: "重启",
+    restartAction: "安装更新",
     retryAction: "重试"
   },
   desktop: {
@@ -91,12 +92,15 @@ export const zhCN = {
       title: "导出日志"
     },
     menu: {
+      checkForUpdates: "检查更新...",
       edit: "编辑",
       exportLogsFailed: "无法导出日志",
       exportLogsTitle: "导出日志",
       exportServiceLogs: "导出服务日志...",
       file: "文件",
       help: "帮助",
+      upToDateDetail: "Tutti {{version}} 是当前的最新版本。",
+      upToDateMessage: "您使用的就是最新版本！",
       view: "显示",
       window: "窗口"
     }
@@ -159,7 +163,7 @@ export const zhCN = {
       title: "埋点事件"
     },
     appCenter: {
-      dockLabel: "应用"
+      dockLabel: "应用中心"
     },
     info: {
       idDescription: "用于 preload 和 daemon 协调的稳定标识。",
@@ -198,12 +202,12 @@ export const zhCN = {
         custom: "自定义",
         default: "默认",
         dunes: "星夜沙丘",
-        galaxy: "星系",
         ocean: "海面",
         orbit: "地球夜景",
         peaks: "雪峰夜空",
         sand: "流沙纹理",
-        sky: "云层"
+        sky: "云层",
+        tutti: "Tutti"
       }
     },
     settings: {
@@ -277,7 +281,9 @@ export const zhCN = {
           never: "不阻止",
           whileAgentRunning: "Agent 运行时阻止"
         },
-        preventSleepSaveFailed: "暂时无法更新防止休眠设置。"
+        preventSleepSaveFailed: "暂时无法更新防止休眠设置。",
+        updateChannelSaveFailed: "暂时无法更新发布渠道。",
+        updatePolicySaveFailed: "暂时无法更新更新方式。"
       },
       nav: {
         agent: "Agent",
@@ -386,7 +392,7 @@ export const zhCN = {
       },
       nodes: {
         agent: "Agent",
-        appCenter: "应用",
+        appCenter: "应用中心",
         appWebview: "工作区应用",
         browser: "浏览器",
         files: "文件",

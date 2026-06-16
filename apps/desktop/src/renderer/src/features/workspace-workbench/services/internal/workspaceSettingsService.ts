@@ -4,7 +4,9 @@ import type {
   DesktopAgentProvider,
   DesktopDockIconStyle,
   DesktopDockPlacement,
-  DesktopSleepPreventionMode
+  DesktopSleepPreventionMode,
+  DesktopUpdateChannel,
+  DesktopUpdatePolicy
 } from "@shared/preferences";
 import type { DesktopThemeSource, DesktopThemeState } from "@shared/theme";
 import {
@@ -254,6 +256,44 @@ export class WorkspaceSettingsService implements IWorkspaceSettingsService {
       this.notifications.error({
         title: createActiveTranslator().t(
           "workspace.settings.general.preventSleepSaveFailed"
+        )
+      });
+    }
+  }
+
+  async changeUpdatePolicy(policy: DesktopUpdatePolicy): Promise<void> {
+    if (
+      this.desktopPreferences.store.updatePolicy === policy ||
+      this.desktopPreferences.store.changingUpdatePolicy === policy
+    ) {
+      return;
+    }
+
+    try {
+      await this.desktopPreferences.setUpdatePolicy(policy);
+    } catch {
+      this.notifications.error({
+        title: createActiveTranslator().t(
+          "workspace.settings.general.updatePolicySaveFailed"
+        )
+      });
+    }
+  }
+
+  async changeUpdateChannel(channel: DesktopUpdateChannel): Promise<void> {
+    if (
+      this.desktopPreferences.store.updateChannel === channel ||
+      this.desktopPreferences.store.changingUpdateChannel === channel
+    ) {
+      return;
+    }
+
+    try {
+      await this.desktopPreferences.setUpdateChannel(channel);
+    } catch {
+      this.notifications.error({
+        title: createActiveTranslator().t(
+          "workspace.settings.general.updateChannelSaveFailed"
         )
       });
     }
@@ -693,12 +733,16 @@ const noopDesktopPreferencesStore: DesktopPreferencesReadableStoreState = {
   changingLocale: null,
   changingSleepPreventionMode: null,
   changingThemeSource: null,
+  changingUpdateChannel: null,
+  changingUpdatePolicy: null,
   defaultAgentProvider: "codex",
   dockIconStyle: "default",
   dockPlacement: "bottom",
   locale: "en",
   sleepPreventionMode: "never",
-  theme: createNoopTheme("dark")
+  theme: createNoopTheme("dark"),
+  updateChannel: "rc",
+  updatePolicy: "prompt"
 };
 
 const noopDesktopPreferences: DesktopPreferencesService = {
@@ -721,6 +765,12 @@ const noopDesktopPreferences: DesktopPreferencesService = {
   },
   setThemeSource(source) {
     return Promise.resolve(createNoopTheme(source));
+  },
+  setUpdateChannel(channel) {
+    return Promise.resolve(channel);
+  },
+  setUpdatePolicy(policy) {
+    return Promise.resolve(policy);
   },
   rememberAgentComposerDefaults() {
     return Promise.resolve();

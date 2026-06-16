@@ -95,6 +95,7 @@ export function createDesktopAgentActivityAdapter({
           permissionModeId: input.permissionModeId ?? null,
           provider: workspaceAgentProvider(input.provider),
           reasoningEffort: input.reasoningEffort ?? null,
+          speed: input.speed ?? null,
           title: input.title ?? null,
           visible: input.visible ?? null
         }
@@ -236,24 +237,25 @@ function agentActivityComposerOptionsFromTuttidResult(
     : [];
   const modelConfig = recordValue(result.modelConfig);
   const reasoningConfig = recordValue(result.reasoningConfig);
+  const speedConfig = recordValue(result.speedConfig);
   const modelsFromConfig = settingOptionsFromComposerConfig(modelConfig);
   // The live agent's advertised model list reflects the models the running
   // session can actually use (e.g. concrete ids like Opus 4.6), so it takes
   // precedence over the pre-session static catalog when present. The static
   // list remains the fallback before a session has advertised its options.
-  const modelsFromLiveConfig = settingOptionsFromConfigOption(rawConfigOptions, [
-    "model"
-  ]);
+  const modelsFromLiveConfig = settingOptionsFromConfigOption(
+    rawConfigOptions,
+    ["model"]
+  );
   const reasoningEffortsFromConfig =
     settingOptionsFromComposerConfig(reasoningConfig);
+  const speedsFromConfig = settingOptionsFromComposerConfig(speedConfig);
   const skillsFromResult = skillOptionsFromValue(result.skills);
   const skillsFromRuntimeContext = skillOptionsFromValue(runtimeContext.skills);
   return {
     provider: normalizeText(result.provider) ?? provider,
     models:
-      modelsFromLiveConfig.length > 0
-        ? modelsFromLiveConfig
-        : modelsFromConfig,
+      modelsFromLiveConfig.length > 0 ? modelsFromLiveConfig : modelsFromConfig,
     reasoningEfforts:
       reasoningEffortsFromConfig.length > 0
         ? reasoningEffortsFromConfig
@@ -262,8 +264,17 @@ function agentActivityComposerOptionsFromTuttidResult(
             "model_reasoning_effort",
             "effort"
           ]),
+    speeds:
+      speedsFromConfig.length > 0
+        ? speedsFromConfig
+        : settingOptionsFromConfigOption(rawConfigOptions, [
+            "service_tier",
+            "speed",
+            "fast"
+          ]),
     modelConfigurable: modelConfig.configurable === true,
     reasoningConfigurable: reasoningConfig.configurable === true,
+    speedConfigurable: speedConfig.configurable === true,
     permissionConfig: permissionConfigFromValue(result.permissionConfig),
     runtimeContext,
     skills:

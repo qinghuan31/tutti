@@ -1048,6 +1048,7 @@ function createComposerOptions(
     provider: "codex",
     models: [],
     reasoningEfforts: [],
+    speeds: [],
     permissionConfig: null,
     skills: [],
     loadedAtUnixMs: 1000,

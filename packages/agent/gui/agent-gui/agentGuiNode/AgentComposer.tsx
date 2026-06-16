@@ -164,6 +164,10 @@ export interface AgentComposerProps {
     reasoningOptionMedium: string;
     reasoningOptionHigh: string;
     reasoningOptionXHigh: string;
+    speedLabel: string;
+    speedSelectionLabel: string;
+    speedOptionStandard: string;
+    speedOptionFast: string;
     permissionLabel: string;
     permissionModeReadOnly: string;
     permissionModeAuto: string;
@@ -257,6 +261,7 @@ export interface AgentComposerProps {
   onSettingsChange: (settings: {
     model?: string | null;
     reasoningEffort?: string | null;
+    speed?: string | null;
     planMode?: boolean;
     permissionModeId?: string | null;
   }) => void;
@@ -1070,6 +1075,19 @@ export function AgentComposer({
         });
         return;
       }
+      if (effect.kind === "toggleSpeed") {
+        clearSlashCommandDraft();
+        if (composerSettings.supportsSpeed) {
+          const currentSpeed =
+            composerSettings.selectedSpeedValue ??
+            composerSettings.draftSettings.speed ??
+            "standard";
+          onSettingsChange({
+            speed: currentSpeed === "fast" ? "standard" : "fast"
+          });
+        }
+        return;
+      }
       const nextDraft = effect.draft;
       draftPromptRef.current = nextDraft;
       setPaletteDraftPrompt(nextDraft);
@@ -1079,6 +1097,9 @@ export function AgentComposer({
     [
       clearSlashCommandDraft,
       composerSettings.draftSettings.planMode,
+      composerSettings.draftSettings.speed,
+      composerSettings.selectedSpeedValue,
+      composerSettings.supportsSpeed,
       onDraftChange,
       onSettingsChange,
       onSubmit
@@ -1163,6 +1184,9 @@ export function AgentComposer({
       setSubmittedImagePreview([]);
       submittedImagePreviewObservedBusyRef.current = false;
     }
+    draftPromptRef.current = "";
+    setPaletteDraftPrompt("");
+    onDraftChange("");
     setDraftImages([]);
   };
 
@@ -1359,13 +1383,6 @@ export function AgentComposer({
           mentionControllerRef.current?.setFilter(activeEntry.categoryId);
         } else if (activeEntry.type === "expand" && activeEntry.groupId) {
           mentionControllerRef.current?.expandGroup(activeEntry.groupId);
-        } else if (
-          activeEntry.type === "app-reference-expand" &&
-          activeEntry.appId
-        ) {
-          mentionControllerRef.current?.expandWorkspaceAppReferences(
-            activeEntry.appId
-          );
         } else if (activeEntry.type === "item" && activeEntry.item) {
           selectFileMention(activeEntry.item);
         }
@@ -2312,11 +2329,6 @@ export function AgentComposer({
                       onExpandGroup={(groupId) =>
                         mentionControllerRef.current?.expandGroup(groupId)
                       }
-                      onExpandWorkspaceAppReferences={(appId) =>
-                        mentionControllerRef.current?.expandWorkspaceAppReferences(
-                          appId
-                        )
-                      }
                       onCycleFilter={cycleFileMentionFilter}
                       onMoveSelection={moveFileMentionSelection}
                     />
@@ -2394,20 +2406,6 @@ export function AgentComposer({
                     data-agent-reference-add-icon="true"
                   />
                 </SelectTrigger>
-                <SelectContent
-                  align="start"
-                  side="top"
-                  sideOffset={8}
-                  collisionPadding={16}
-                  className={cn(styles.composerMenuContent, "min-w-[180px]")}
-                >
-                  <SelectItem
-                    value={workspaceReferenceOptionValue}
-                    className={styles.composerMenuItem}
-                  >
-                    {labels.referenceWorkspaceFiles}
-                  </SelectItem>
-                </SelectContent>
               </Select>
             </div>
             <div className={composerStyles.footerGroupRight}>
@@ -2439,6 +2437,10 @@ export function AgentComposer({
                     reasoningOptionMedium: labels.reasoningOptionMedium,
                     reasoningOptionHigh: labels.reasoningOptionHigh,
                     reasoningOptionXHigh: labels.reasoningOptionXHigh,
+                    speedLabel: labels.speedLabel,
+                    speedSelectionLabel: labels.speedSelectionLabel,
+                    speedOptionStandard: labels.speedOptionStandard,
+                    speedOptionFast: labels.speedOptionFast,
                     permissionLabel: labels.permissionLabel,
                     modelDescriptions: labels.modelDescriptions,
                     defaultModel: labels.defaultModel,

@@ -109,6 +109,32 @@ test("workspace file icon cache reads file type icons by extension and applicati
   );
 });
 
+test("workspace file icon cache reads image thumbnails by file identity and size", async () => {
+  const directory = await createTempDirectory("file-icon-thumbnail");
+  const store = createWorkspaceFileIconCacheStore({ directory });
+  const key = testImageThumbnailCacheKey("/workspace/photo.png", 160);
+
+  const url = await store.write({
+    bytes: Buffer.from([1, 2, 3]),
+    key,
+    mimeType: "image/png"
+  });
+
+  assert.equal(await store.readUrl(key), url);
+  assert.equal(
+    await store.readUrl(
+      testImageThumbnailCacheKey("/workspace/photo.png", 256)
+    ),
+    null
+  );
+  assert.equal(
+    await store.readUrl(
+      testImageThumbnailCacheKey("/workspace/other.png", 160)
+    ),
+    null
+  );
+});
+
 test("workspace file icon cache rejects entries above the byte budget", async () => {
   const directory = await createTempDirectory("file-icon-budget");
   const store = createWorkspaceFileIconCacheStore({
@@ -191,5 +217,18 @@ function testFileTypeCacheKey(
     assetKind: "file-type-default-application-icon",
     fileExtension,
     platform: "darwin"
+  };
+}
+
+function testImageThumbnailCacheKey(
+  filePath: string,
+  sizePx: number
+): WorkspaceFileIconCacheKey {
+  return {
+    assetKind: "image-thumbnail",
+    mtimeMs: 1_700_000_000_000,
+    path: filePath,
+    sizePx,
+    workspaceID: "workspace-a"
   };
 }

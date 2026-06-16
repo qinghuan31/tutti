@@ -6,8 +6,8 @@ import {
   workspaceFileManagerIconGridLayout
 } from "./workspaceFileManagerIconGridLayout.ts";
 
-test("icon grid layout targets roughly 80% of macOS finder icon size", () => {
-  assert.equal(workspaceFileManagerIconGridLayout.iconSizePx, 52);
-  assert.equal(workspaceFileManagerIconGridIconClassName(), "size-[52px]");
-  assert.equal(workspaceFileManagerIconGridFrameClassName(), "size-[60px]");
+test("icon grid layout leaves enough room for image thumbnails", () => {
+  assert.equal(workspaceFileManagerIconGridLayout.iconSizePx, 84);
+  assert.equal(workspaceFileManagerIconGridIconClassName(), "size-[84px]");
+  assert.equal(workspaceFileManagerIconGridFrameClassName(), "size-[92px]");
 });

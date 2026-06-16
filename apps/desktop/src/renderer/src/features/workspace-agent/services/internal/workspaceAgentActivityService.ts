@@ -244,6 +244,7 @@ export class WorkspaceAgentActivityService implements IWorkspaceAgentActivitySer
             permissionModeId: resolveComposerPermissionMode(input.settings),
             provider,
             reasoningEffort: input.settings?.reasoningEffort ?? null,
+            speed: input.settings?.speed ?? null,
             title: input.title ?? null,
             visible: input.visible ?? true
           });

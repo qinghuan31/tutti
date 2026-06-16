@@ -4,8 +4,8 @@ import type { WorkbenchSurfaceWallpaperFit } from "@tutti-os/workbench-surface";
 
 export type WorkspaceWallpaperId =
   | "default"
+  | "tutti"
   | "ocean"
-  | "galaxy"
   | "sky"
   | "peaks"
   | "orbit"
@@ -14,6 +14,7 @@ export type WorkspaceWallpaperId =
   | "custom";
 
 export const customWorkspaceWallpaperId: WorkspaceWallpaperId = "custom";
+export const defaultWorkspaceWallpaperId: WorkspaceWallpaperId = "tutti";
 export const customWorkspaceWallpaperTitleKey: DesktopI18nKey =
   "workspace.wallpaper.options.custom";
 
@@ -93,6 +94,15 @@ const workspaceWallpaperMetadataSchemaVersion = 1;
 
 export const workspaceWallpaperOptions: WorkspaceWallpaperOption[] = [
   {
+    appearance: "dark",
+    id: "tutti",
+    titleKey: "workspace.wallpaper.options.tutti",
+    url: new URL(
+      "../../../assets/workspace-wallpaper/tutti.png",
+      import.meta.url
+    ).href
+  },
+  {
     appearance: "light",
     id: "default",
     titleKey: "workspace.wallpaper.options.default",
@@ -111,15 +121,6 @@ export const workspaceWallpaperOptions: WorkspaceWallpaperOption[] = [
     titleKey: "workspace.wallpaper.options.ocean",
     url: new URL(
       "../../../assets/workspace-wallpaper/ocean.png",
-      import.meta.url
-    ).href
-  },
-  {
-    appearance: "dark",
-    id: "galaxy",
-    titleKey: "workspace.wallpaper.options.galaxy",
-    url: new URL(
-      "../../../assets/workspace-wallpaper/galaxy.png",
       import.meta.url
     ).href
   },
@@ -297,7 +298,7 @@ function readWorkspaceWallpaperSnapshotMetadata(
       typeof selectedWallpaperID === "string" &&
       isWorkspaceWallpaperId(selectedWallpaperID)
         ? selectedWallpaperID
-        : "default",
+        : defaultWorkspaceWallpaperId,
     displayMode:
       typeof displayMode === "string" &&
       isWorkspaceWallpaperDisplayMode(displayMode)
@@ -328,7 +329,7 @@ function writeWorkspaceWallpaperSnapshotMetadata(
 function createDefaultWorkspaceWallpaperSnapshotMetadata(): WorkspaceWallpaperSnapshotMetadata {
   return {
     schemaVersion: workspaceWallpaperMetadataSchemaVersion,
-    selectedWallpaperID: "default",
+    selectedWallpaperID: defaultWorkspaceWallpaperId,
     displayMode: defaultWorkspaceWallpaperDisplayMode
   };
 }

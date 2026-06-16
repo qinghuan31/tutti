@@ -1,4 +1,9 @@
-import { resolveWorkspaceFileDefaultApplicationIconExtension } from "@tutti-os/workspace-file-manager/services";
+import { readFile, stat } from "node:fs/promises";
+import { pathToFileURL } from "node:url";
+import {
+  resolveWorkspaceFileDefaultApplicationIconExtension,
+  resolveWorkspaceFileVisualKind
+} from "@tutti-os/workspace-file-manager/services";
 import {
   readApplicationIconDataUrl,
   resolveDefaultApplicationForFile
@@ -6,6 +11,17 @@ import {
 import type { WorkspaceFileIconCacheStore } from "./workspaceFileIconCacheStore.ts";
 
 const entryIconPixelSize = 64;
+const imageThumbnailPixelSize = 160;
+const imageThumbnailMaxSourceBytes = 20 * 1024 * 1024;
+
+type WorkspaceFileEntryIconStat = {
+  isFile(): boolean;
+  size: number;
+};
+
+type WorkspaceFileEntryIconStatReader = (
+  targetPath: string
+) => Promise<WorkspaceFileEntryIconStat>;
 
 export interface WorkspaceFileEntryIconInput {
   kind: string;
@@ -17,8 +33,10 @@ export interface WorkspaceFileEntryIconInput {
 
 interface WorkspaceFileEntryIconResolverDependencies {
   readApplicationIconDataUrl?: typeof readApplicationIconDataUrl;
+  readImageThumbnailPngBytes?: typeof readImageThumbnailPngBytes;
   readNativeFileIconPngBytes?: typeof readNativeFileIconPngBytes;
   resolveDefaultApplicationForFile?: typeof resolveDefaultApplicationForFile;
+  stat?: WorkspaceFileEntryIconStatReader;
 }
 
 export async function resolveWorkspaceFileEntryIconUrl(
@@ -27,6 +45,15 @@ export async function resolveWorkspaceFileEntryIconUrl(
   cacheStore: WorkspaceFileIconCacheStore,
   dependencies: WorkspaceFileEntryIconResolverDependencies = {}
 ): Promise<string | null> {
+  if (isImageThumbnailEntry(entry)) {
+    return resolveImageThumbnailIconUrl(
+      targetPath,
+      entry,
+      cacheStore,
+      dependencies
+    );
+  }
+
   if (isApplicationBundleEntry(entry)) {
     return resolveApplicationBundleIconUrl(
       targetPath,
@@ -42,6 +69,60 @@ export async function resolveWorkspaceFileEntryIconUrl(
     cacheStore,
     dependencies
   );
+}
+
+async function resolveImageThumbnailIconUrl(
+  targetPath: string,
+  entry: WorkspaceFileEntryIconInput,
+  cacheStore: WorkspaceFileIconCacheStore,
+  dependencies: WorkspaceFileEntryIconResolverDependencies
+): Promise<string | null> {
+  const cacheKey = {
+    assetKind: "image-thumbnail" as const,
+    mtimeMs: entry.mtimeMs,
+    path: entry.path,
+    sizePx: imageThumbnailPixelSize,
+    workspaceID: entry.workspaceID
+  };
+  const cachedUrl = await cacheStore.readUrl(cacheKey);
+  if (cachedUrl) {
+    return cachedUrl;
+  }
+
+  let sourceStats: WorkspaceFileEntryIconStat;
+  try {
+    sourceStats = await (dependencies.stat ?? statFile)(targetPath);
+  } catch {
+    return null;
+  }
+  if (
+    !sourceStats.isFile() ||
+    sourceStats.size <= 0 ||
+    sourceStats.size > imageThumbnailMaxSourceBytes
+  ) {
+    return null;
+  }
+
+  const thumbnailBytes = await (
+    dependencies.readImageThumbnailPngBytes ?? readImageThumbnailPngBytes
+  )(targetPath, imageThumbnailPixelSize);
+  if (!thumbnailBytes) {
+    return pathToFileURL(targetPath).href;
+  }
+
+  const cachedThumbnailUrl = await cacheStore.write({
+    bytes: thumbnailBytes,
+    key: cacheKey,
+    mimeType: "image/png"
+  });
+
+  return cachedThumbnailUrl ?? pathToFileURL(targetPath).href;
+}
+
+async function statFile(
+  targetPath: string
+): Promise<WorkspaceFileEntryIconStat> {
+  return stat(targetPath);
 }
 
 async function resolveApplicationBundleIconUrl(
@@ -135,6 +216,14 @@ function isApplicationBundleEntry(
   return entry.kind !== "file" && isApplicationBundleName(entry.name);
 }
 
+function isImageThumbnailEntry(
+  entry: Pick<WorkspaceFileEntryIconInput, "kind" | "name" | "path">
+): boolean {
+  return (
+    entry.kind === "file" && resolveWorkspaceFileVisualKind(entry) === "image"
+  );
+}
+
 export function isApplicationBundleName(name: string): boolean {
   return name.trim().toLowerCase().endsWith(".app");
 }
@@ -180,4 +269,52 @@ async function readNativeFileIconPngBytes(
   } catch {
     return null;
   }
+}
+
+async function readImageThumbnailPngBytes(
+  targetPath: string,
+  maxEdgePx: number
+): Promise<Buffer | null> {
+  try {
+    const { nativeImage } = await import("electron");
+    let image = nativeImage.createFromPath(targetPath);
+    if (image.isEmpty()) {
+      image = nativeImage.createFromBuffer(await readFile(targetPath));
+    }
+    if (image.isEmpty()) {
+      return null;
+    }
+
+    const sourceSize = image.getSize();
+    if (!isValidImageSize(sourceSize)) {
+      return null;
+    }
+
+    const scale = Math.min(
+      1,
+      maxEdgePx / Math.max(sourceSize.width, sourceSize.height)
+    );
+    const output =
+      scale < 1
+        ? image.resize({
+            height: Math.max(1, Math.round(sourceSize.height * scale)),
+            width: Math.max(1, Math.round(sourceSize.width * scale))
+          })
+        : image;
+    if (output.isEmpty()) {
+      return null;
+    }
+    return output.toPNG();
+  } catch {
+    return null;
+  }
+}
+
+function isValidImageSize(size: { height: number; width: number }): boolean {
+  return (
+    Number.isFinite(size.height) &&
+    Number.isFinite(size.width) &&
+    size.height > 0 &&
+    size.width > 0
+  );
 }

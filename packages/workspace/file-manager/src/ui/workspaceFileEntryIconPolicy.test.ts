@@ -32,6 +32,25 @@ test("skips icon resolution for regular image files", () => {
   );
 });
 
+test("resolves image thumbnails only when enabled", () => {
+  const entry = createEntry({
+    mtimeMs: 42,
+    name: "photo.png",
+    path: "/workspace/photo.png"
+  });
+
+  assert.equal(
+    shouldResolveWorkspaceFileEntryIcon(entry, {
+      includeImageThumbnails: true
+    }),
+    true
+  );
+  assert.equal(
+    resolveWorkspaceFileEntryIconCacheKey(entry),
+    "image-thumbnail:/workspace/photo.png:42"
+  );
+});
+
 test("uses extension document icons for text and code files", () => {
   for (const name of ["example.txt", "index.html", "README.md"]) {
     const entry = createEntry({ name, path: `/workspace/${name}` });

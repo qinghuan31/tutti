@@ -230,6 +230,7 @@ export function WorkspaceUserProjectSelect({
   const [isApiLoading, setIsApiLoading] = useState(false);
   const [isApiUnavailable, setIsApiUnavailable] = useState(!effectiveApi);
   const [isProjectDialogOpen, setIsProjectDialogOpen] = useState(false);
+  const [isSelectOpen, setIsSelectOpen] = useState(false);
   const [draftProjectName, setDraftProjectName] = useState("");
   const [projectCreationError, setProjectCreationError] = useState<
     string | null
@@ -520,7 +521,9 @@ export function WorkspaceUserProjectSelect({
       <style>{workspaceUserProjectOverflowLabelStyle}</style>
       <Select
         disabled={disabled}
+        open={isSelectOpen}
         value={selectValue}
+        onOpenChange={setIsSelectOpen}
         onValueChange={handleProjectValueChange}
       >
         <SelectTrigger
@@ -550,76 +553,78 @@ export function WorkspaceUserProjectSelect({
             <WorkspaceUserProjectOverflowLabel label={triggerLabel} />
           </span>
         </SelectTrigger>
-        <SelectContent
-          align={contentAlign}
-          className={classNames?.content}
-          collisionPadding={16}
-          side={contentSide}
-          sideOffset={contentSideOffset}
-        >
-          {visibleProjects.map((project) => {
-            const projectLabel =
-              resolveWorkspaceUserProjectDisplayLabel(project);
-            return (
+        {isSelectOpen ? (
+          <SelectContent
+            align={contentAlign}
+            className={classNames?.content}
+            collisionPadding={16}
+            side={contentSide}
+            sideOffset={contentSideOffset}
+          >
+            {visibleProjects.map((project) => {
+              const projectLabel =
+                resolveWorkspaceUserProjectDisplayLabel(project);
+              return (
+                <SelectItem
+                  className={classNames?.item}
+                  key={project.id || project.path}
+                  value={project.path}
+                >
+                  <span className="flex min-w-0 flex-1 items-center gap-2 pr-1">
+                    <FolderIcon aria-hidden size={15} />
+                    <WorkspaceUserProjectOverflowLabel label={projectLabel} />
+                  </span>
+                </SelectItem>
+              );
+            })}
+            {visibleProjects.length > 0 ? <SelectSeparator /> : null}
+            {effectiveApi?.selectDirectory ? (
               <SelectItem
                 className={classNames?.item}
-                key={project.id || project.path}
-                value={project.path}
+                value={linkExistingProjectOptionValue}
               >
                 <span className="flex min-w-0 flex-1 items-center gap-2 pr-1">
-                  <FolderIcon aria-hidden size={15} />
-                  <WorkspaceUserProjectOverflowLabel label={projectLabel} />
+                  <LinkIcon aria-hidden size={15} />
+                  <span className="truncate">
+                    {resolvedLabels.linkExistingProject}
+                  </span>
                 </span>
               </SelectItem>
-            );
-          })}
-          {visibleProjects.length > 0 ? <SelectSeparator /> : null}
-          {effectiveApi?.selectDirectory ? (
-            <SelectItem
-              className={classNames?.item}
-              value={linkExistingProjectOptionValue}
-            >
-              <span className="flex min-w-0 flex-1 items-center gap-2 pr-1">
-                <LinkIcon aria-hidden size={15} />
-                <span className="truncate">
-                  {resolvedLabels.linkExistingProject}
+            ) : null}
+            {showCreateProjectAction ? (
+              <SelectItem
+                className={classNames?.item}
+                value={addProjectOptionValue}
+              >
+                <span className="flex min-w-0 flex-1 items-center gap-2 pr-1">
+                  {renderAddProjectIcon?.() ?? (
+                    <NewWorkspaceLinedIcon
+                      aria-hidden
+                      data-workspace-user-project-add-icon="true"
+                      size={15}
+                    />
+                  )}
+                  <span className="truncate">{resolvedLabels.addProject}</span>
                 </span>
-              </span>
-            </SelectItem>
-          ) : null}
-          {showCreateProjectAction ? (
-            <SelectItem
-              className={classNames?.item}
-              value={addProjectOptionValue}
-            >
-              <span className="flex min-w-0 flex-1 items-center gap-2 pr-1">
-                {renderAddProjectIcon?.() ?? (
-                  <NewWorkspaceLinedIcon
+              </SelectItem>
+            ) : null}
+            {showNoProjectAction ? (
+              <SelectItem
+                className={classNames?.item}
+                value={noProjectOptionValue}
+              >
+                <span className="flex min-w-0 flex-1 items-center gap-2 pr-1">
+                  <NoWorkspaceLinedIcon
                     aria-hidden
-                    data-workspace-user-project-add-icon="true"
+                    data-agent-project-no-workspace-icon="true"
                     size={15}
                   />
-                )}
-                <span className="truncate">{resolvedLabels.addProject}</span>
-              </span>
-            </SelectItem>
-          ) : null}
-          {showNoProjectAction ? (
-            <SelectItem
-              className={classNames?.item}
-              value={noProjectOptionValue}
-            >
-              <span className="flex min-w-0 flex-1 items-center gap-2 pr-1">
-                <NoWorkspaceLinedIcon
-                  aria-hidden
-                  data-agent-project-no-workspace-icon="true"
-                  size={15}
-                />
-                <span className="truncate">{resolvedLabels.noProject}</span>
-              </span>
-            </SelectItem>
-          ) : null}
-        </SelectContent>
+                  <span className="truncate">{resolvedLabels.noProject}</span>
+                </span>
+              </SelectItem>
+            ) : null}
+          </SelectContent>
+        ) : null}
       </Select>
       {isProjectDialogOpen ? (
         <Dialog

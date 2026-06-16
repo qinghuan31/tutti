@@ -15,6 +15,7 @@ import {
 import { useEffect, useRef, useState } from "react";
 import type { HTMLAttributes, JSX, ReactNode } from "react";
 import type { BrowserNodeFeature } from "../core/feature.ts";
+import type { BrowserNodeControllerState } from "../core/nodeController.ts";
 import type {
   BrowserNodeNavigationPolicy,
   BrowserNodeRuntimeError,
@@ -74,9 +75,7 @@ export function BrowserNode({
     ? formatBrowserNodeErrorStatus(feature, runtime.error)
     : null;
   const isShowingLoadError = errorMessage !== null;
-  const openExternalUrl = feature.hostApi.openExternal
-    ? feature.resolveAddressInput(state.displayUrl).url
-    : null;
+  const openExternalUrl = resolveBrowserNodeOpenExternalUrl(feature, state);
   const {
     devToolsContextMenu,
     dismissDevToolsContextMenu,
@@ -138,9 +137,7 @@ export function BrowserNode({
           onOpenExternal={
             openExternalUrl
               ? () => {
-                  void feature.hostApi
-                    .openExternal?.({ url: openExternalUrl })
-                    .catch(() => undefined);
+                  void openBrowserNodeExternal(feature, openExternalUrl);
                 }
               : undefined
           }
@@ -198,9 +195,7 @@ export function BrowserNode({
                     type="button"
                     variant="outline"
                     onClick={() => {
-                      void feature.hostApi
-                        .openExternal?.({ url: openExternalUrl })
-                        .catch(() => undefined);
+                      void openBrowserNodeExternal(feature, openExternalUrl);
                     }}
                   >
                     <LaunchIcon className="size-3.5" />
@@ -272,9 +267,7 @@ export function BrowserNodeWorkbenchHeader({
     nodeId
   });
   const runtime = state.runtime;
-  const openExternalUrl = feature.hostApi.openExternal
-    ? feature.resolveAddressInput(state.displayUrl).url
-    : null;
+  const openExternalUrl = resolveBrowserNodeOpenExternalUrl(feature, state);
 
   return (
     <BrowserNodeHeader
@@ -296,9 +289,7 @@ export function BrowserNodeWorkbenchHeader({
       onOpenExternal={
         openExternalUrl
           ? () => {
-              void feature.hostApi
-                .openExternal?.({ url: openExternalUrl })
-                .catch(() => undefined);
+              void openBrowserNodeExternal(feature, openExternalUrl);
             }
           : undefined
       }
@@ -475,6 +466,40 @@ export function BrowserNodeHeader({
       ) : null}
     </div>
   );
+}
+
+function resolveBrowserNodeOpenExternalUrl(
+  feature: BrowserNodeFeature,
+  state: BrowserNodeControllerState
+): string | null {
+  if (!feature.hostApi.openExternal) {
+    return null;
+  }
+
+  const sourceUrl = state.runtime.url?.trim() || state.displayUrl.trim();
+  if (sourceUrl.length === 0 || sourceUrl === "about:blank") {
+    return null;
+  }
+
+  return feature.resolveOpenExternalUrl(sourceUrl).url;
+}
+
+async function openBrowserNodeExternal(
+  feature: BrowserNodeFeature,
+  url: string
+): Promise<void> {
+  try {
+    await feature.hostApi.openExternal?.({ url });
+  } catch (error) {
+    feature.reportDiagnostic?.({
+      details: {
+        error: error instanceof Error ? error.message : String(error),
+        url
+      },
+      event: "open-external-failed",
+      level: "warn"
+    });
+  }
 }
 
 function formatBrowserNodeErrorMessage(

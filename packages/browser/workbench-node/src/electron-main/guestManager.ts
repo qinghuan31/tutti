@@ -664,7 +664,7 @@ export function createBrowserGuestManager({
       await loadDesiredUrl(session);
     },
     async openExternal(input) {
-      const resolved = resolveBrowserNavigationUrl(input.url);
+      const resolved = resolveHostBrowserNavigationUrl(input.url);
       if (!resolved.url) {
         throw new Error("Browser Node rejected external URL");
       }

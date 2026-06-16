@@ -608,10 +608,11 @@ test("opens Browser Node URLs externally after validation", async () => {
   await manager.openExternal({ url: "example.com/docs" });
 
   assert.deepEqual(openedExternalUrls, ["https://example.com/docs"]);
-  await assert.rejects(
-    manager.openExternal({ url: "file:///tmp/blocked" }),
-    /rejected external URL/
-  );
+  await manager.openExternal({ url: "file:///tmp/local.html" });
+  assert.deepEqual(openedExternalUrls, [
+    "https://example.com/docs",
+    "file:///tmp/local.html"
+  ]);
 });
 
 test("converts guest preload open-url requests into Browser Node open-url events", async () => {

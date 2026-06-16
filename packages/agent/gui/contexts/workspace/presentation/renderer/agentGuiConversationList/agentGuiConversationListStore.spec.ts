@@ -9,8 +9,10 @@ import type { WorkspaceAgentActivitySnapshot } from "../../../../../shared/works
 import {
   ensureAgentGUIConversationListQuery,
   getAgentGUIConversationListQuerySnapshot,
+  markAgentGUIConversationCompletionObserved,
   resetAgentGUIConversationListStoreForTests,
   scheduleAgentGUIConversationListProjection,
+  setAgentGUIConversationListActiveConversation,
   updateAgentGUIConversationListConversations,
   upsertLocalCreatedAgentGUIConversation,
   type AgentGUIConversationListQuery
@@ -107,6 +109,46 @@ describe("agentGuiConversationListStore", () => {
       "newer-start-with-older-message",
       "older-start-with-newer-message"
     ]);
+  });
+
+  it("marks completed conversations unread only when no owner has them active", () => {
+    const query: AgentGUIConversationListQuery = {
+      workspaceId: "workspace-1",
+      userId: "user-1",
+      provider: "codex",
+      sessionOrigin: "WORKSPACE_AGENT_SESSION_ORIGIN_RUNTIME"
+    };
+    ensureAgentGUIConversationListQuery(query);
+
+    updateAgentGUIConversationListConversations(query, () => [
+      conversation("session-1", {
+        status: "completed"
+      })
+    ]);
+    markAgentGUIConversationCompletionObserved({
+      query,
+      conversationId: "session-1"
+    });
+
+    expect(
+      getAgentGUIConversationListQuerySnapshot(query)?.conversations[0]
+        ?.hasUnreadCompletion
+    ).toBe(true);
+
+    setAgentGUIConversationListActiveConversation({
+      query,
+      ownerKey: "panel-1",
+      conversationId: "session-1"
+    });
+    markAgentGUIConversationCompletionObserved({
+      query,
+      conversationId: "session-1"
+    });
+
+    expect(
+      getAgentGUIConversationListQuerySnapshot(query)?.conversations[0]
+        ?.hasUnreadCompletion
+    ).toBe(false);
   });
 
   it("preserves projected project metadata when durable refresh has the same cwd without project metadata", () => {

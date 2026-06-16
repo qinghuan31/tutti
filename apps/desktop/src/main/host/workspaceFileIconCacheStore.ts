@@ -6,6 +6,7 @@ export const workspaceFileIconProtocolScheme = "tutti-file-icon";
 
 export type WorkspaceFileIconCacheKey =
   | WorkspaceApplicationIconCacheKey
+  | WorkspaceFileImageThumbnailCacheKey
   | WorkspaceFileTypeDefaultApplicationIconCacheKey;
 
 export interface WorkspaceApplicationIconCacheKey {
@@ -20,6 +21,14 @@ export interface WorkspaceFileTypeDefaultApplicationIconCacheKey {
   assetKind: "file-type-default-application-icon";
   fileExtension: string;
   platform: "darwin";
+}
+
+export interface WorkspaceFileImageThumbnailCacheKey {
+  assetKind: "image-thumbnail";
+  mtimeMs: number | null;
+  path: string;
+  sizePx: number;
+  workspaceID: string;
 }
 
 interface WorkspaceFileIconCacheIndexEntry {
@@ -58,7 +67,7 @@ type WorkspaceFileIconMimeType = "image/png";
 
 const indexFileName = "index.json";
 const defaultMaxEntries = 500;
-const defaultMaxEntryBytes = 96 * 1024;
+const defaultMaxEntryBytes = 256 * 1024;
 const defaultMaxTotalBytes = 32 * 1024 * 1024;
 const maxCacheKeyPartLength = 4096;
 
@@ -246,6 +255,16 @@ function isValidWorkspaceFileIconCacheKey(
     );
   }
 
+  if (typed.assetKind === "image-thumbnail") {
+    return (
+      isValidCacheKeyPart(typed.path) &&
+      isValidCacheKeyPart(typed.workspaceID) &&
+      isValidThumbnailSize(typed.sizePx) &&
+      (typed.mtimeMs === null ||
+        (typeof typed.mtimeMs === "number" && Number.isFinite(typed.mtimeMs)))
+    );
+  }
+
   return false;
 }
 
@@ -263,21 +282,40 @@ function isValidWorkspaceFileIconExtension(value: unknown): value is string {
   );
 }
 
+function isValidThumbnailSize(value: unknown): value is number {
+  return (
+    typeof value === "number" &&
+    Number.isInteger(value) &&
+    value >= 32 &&
+    value <= 512
+  );
+}
+
 function workspaceFileIconCacheKeyHash(key: WorkspaceFileIconCacheKey): string {
-  const hashInput =
-    key.assetKind === "application-icon"
-      ? {
-          assetKind: key.assetKind,
-          mtimeMs: key.mtimeMs,
-          path: key.path,
-          workspaceID: key.workspaceID
-        }
-      : {
-          applicationPath: key.applicationPath,
-          assetKind: key.assetKind,
-          fileExtension: key.fileExtension,
-          platform: key.platform
-        };
+  let hashInput: unknown;
+  if (key.assetKind === "application-icon") {
+    hashInput = {
+      assetKind: key.assetKind,
+      mtimeMs: key.mtimeMs,
+      path: key.path,
+      workspaceID: key.workspaceID
+    };
+  } else if (key.assetKind === "image-thumbnail") {
+    hashInput = {
+      assetKind: key.assetKind,
+      mtimeMs: key.mtimeMs,
+      path: key.path,
+      sizePx: key.sizePx,
+      workspaceID: key.workspaceID
+    };
+  } else {
+    hashInput = {
+      applicationPath: key.applicationPath,
+      assetKind: key.assetKind,
+      fileExtension: key.fileExtension,
+      platform: key.platform
+    };
+  }
 
   return createHash("sha256").update(JSON.stringify(hashInput)).digest("hex");
 }

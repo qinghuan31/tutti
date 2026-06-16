@@ -38,10 +38,17 @@ const defaultApplicationIconExtensions = new Set([
   "zip"
 ]);
 
+export interface WorkspaceFileEntryIconPolicyOptions {
+  includeImageThumbnails?: boolean;
+}
+
 export function shouldResolveWorkspaceFileEntryIcon(
-  entry: WorkspaceFileEntry
+  entry: WorkspaceFileEntry,
+  options: WorkspaceFileEntryIconPolicyOptions = {}
 ): boolean {
   return (
+    (options.includeImageThumbnails &&
+      shouldResolveWorkspaceFileImageThumbnail(entry)) ||
     isWorkspaceApplicationBundle(entry) ||
     resolveWorkspaceFileDefaultApplicationIconExtension(entry) !== null
   );
@@ -86,6 +93,10 @@ export function resolveWorkspaceFileDefaultApplicationIconExtension(entry: {
 export function resolveWorkspaceFileEntryIconCacheKey(
   entry: WorkspaceFileEntry
 ): string {
+  if (shouldResolveWorkspaceFileImageThumbnail(entry)) {
+    return `image-thumbnail:${entry.path}:${entry.mtimeMs ?? 0}`;
+  }
+
   if (isWorkspaceApplicationBundle(entry)) {
     return `application:${entry.path}:${entry.mtimeMs ?? 0}`;
   }
@@ -97,4 +108,12 @@ export function resolveWorkspaceFileEntryIconCacheKey(
   }
 
   return `default:${entry.path}:${entry.mtimeMs ?? 0}`;
+}
+
+function shouldResolveWorkspaceFileImageThumbnail(
+  entry: WorkspaceFileEntry
+): boolean {
+  return (
+    entry.kind === "file" && resolveWorkspaceFileVisualKind(entry) === "image"
+  );
 }

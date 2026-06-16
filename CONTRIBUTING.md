@@ -132,6 +132,38 @@ Local hooks use `husky`:
 - `pre-commit` runs staged formatting and UI-boundary checks
 - `pre-push` runs `pnpm check:full`
 
+## Pull Request Review Gate
+
+Tutti uses the `external-pr-review-gate` workflow to separate internal team changes from external contributions. Internal authors are defined by the organization variable `TUTTI_RD_MEMBERS`; the `tutti-rd` GitHub team is the review target for external PRs.
+
+- PRs opened by `tutti-rd` members do not automatically request reviewers and can pass the review gate without a separate official approval
+- PRs opened by non-`tutti-rd` authors automatically request review from `@tutti-os/tutti-rd`
+- External PRs can merge only after a `tutti-rd` member approves the current head commit
+- Pushing a new commit refreshes the gate; the new head commit needs a fresh passing review
+- Maintainers must update both `TUTTI_RD_MEMBERS` and the `tutti-rd` team when official team membership changes
+
+```mermaid
+---
+config:
+  layout: dagre
+  theme: redux
+  look: neo
+---
+flowchart TB
+    A["PR opened / reopened / marked ready for review / new commit pushed"] --> B{"Is the PR author in the official member list?"}
+    B -- Yes --> C["Do not automatically request reviewers"]
+    C --> P["✅ Passed"]
+    P --> M["Can merge"]
+    B -- No --> D["Automatically request @tutti-os/tutti-rd review"]
+    D --> E{"Does the current head commit have an official review?"}
+    E -- Approved --> P
+    E -- No passing review --> F["❌ Failed"]
+    F --> N["Cannot merge"]
+    G["External contributor pushes a new commit"] --> A
+
+    G@{ shape: rounded}
+```
+
 ## Documentation Language Policy
 
 - `README.*` and `CONTRIBUTING.*` are maintained in English, Simplified Chinese, and Traditional Chinese

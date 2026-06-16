@@ -1,4 +1,5 @@
 import { ipcMain, nativeTheme, shell, webContents } from "electron";
+import { fileURLToPath } from "node:url";
 import { registerBrowserNodeElectronMain } from "@tutti-os/browser-node/electron-main";
 import type { BrowserNodeElectronLogger } from "@tutti-os/browser-node/electron-main";
 import {
@@ -18,6 +19,7 @@ import {
   type BrowserPreferredColorScheme
 } from "./browserPreferredColorScheme.ts";
 import { resolveOwnerWindowFromEvent } from "./ownerWindow.ts";
+import { openFileWithDefaultBrowser } from "../host/openWithApplications.ts";
 
 type BrowserInvokeChannel = Exclude<
   (typeof desktopIpcChannels.browser)[keyof typeof desktopIpcChannels.browser],
@@ -55,7 +57,7 @@ export function registerBrowserIpc(
     },
     getPreferredColorScheme: () => getPreferredColorScheme(preferences),
     logger,
-    openExternal: (url) => shell.openExternal(url),
+    openExternal: (url) => openBrowserNodeExternalUrl(url, logger),
     registerHandler(channel, handler) {
       registerDesktopIpcHandler(
         channel as BrowserInvokeChannel & DesktopInvokeChannel,
@@ -146,6 +148,53 @@ function isBrowserDevToolsEnabled(): boolean {
     tuttiEnv: process.env.TUTTI_ENV,
     nodeEnv: process.env.NODE_ENV
   });
+}
+
+async function openBrowserNodeExternalUrl(
+  url: string,
+  logger: BrowserNodeElectronLogger
+): Promise<void> {
+  const trimmedUrl = url.trim();
+  if (trimmedUrl.length === 0) {
+    throw new Error("Browser Node rejected empty external URL");
+  }
+
+  if (trimmedUrl.startsWith("file://")) {
+    let filePath: string;
+    try {
+      filePath = fileURLToPath(trimmedUrl);
+    } catch (error) {
+      throw new Error("Browser Node rejected external file URL", {
+        cause: error
+      });
+    }
+
+    if (process.platform === "darwin") {
+      try {
+        await openFileWithDefaultBrowser(filePath);
+        return;
+      } catch (error) {
+        logger.warn?.("Browser Node openFileWithDefaultBrowser failed", {
+          error: error instanceof Error ? error.message : String(error),
+          filePath,
+          url: trimmedUrl
+        });
+      }
+    }
+
+    const openPathError = await shell.openPath(filePath);
+    if (openPathError.length === 0) {
+      return;
+    }
+
+    logger.warn?.("Browser Node shell.openPath failed", {
+      error: openPathError,
+      filePath,
+      url: trimmedUrl
+    });
+  }
+
+  await shell.openExternal(trimmedUrl);
 }
 
 function logRejectedGuest(

@@ -3,7 +3,7 @@ name: Desktop Release
 on:
   push:
     tags:
-      - "tutti-desktop-v*"
+      - "v*"
   schedule:
     - cron: "23 1 * * *"
   workflow_dispatch:

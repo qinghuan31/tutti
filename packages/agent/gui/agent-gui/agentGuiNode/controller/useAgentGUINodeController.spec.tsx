@@ -1175,6 +1175,229 @@ describe("useAgentGUINodeController", () => {
     expect(onDataChange).toHaveBeenCalled();
   });
 
+  it("keeps a switched conversation loading while its timeline request is pending", async () => {
+    const session2TimelineResolvers: Array<
+      (value: { timelineItems: AgentHostWorkspaceAgentTimelineItem[] }) => void
+    > = [];
+    const listSessionTimeline = vi.fn(
+      ({ agentSessionId }: { agentSessionId: string }) => {
+        if (agentSessionId === "session-2") {
+          return new Promise<{
+            timelineItems: AgentHostWorkspaceAgentTimelineItem[];
+          }>((resolve) => {
+            session2TimelineResolvers.push(resolve);
+          });
+        }
+        return Promise.resolve({ timelineItems: [] });
+      }
+    );
+    installAgentHostApi({
+      list: vi.fn(async () => ({
+        presences: [],
+        sessions: [
+          workspaceAgentSession("session-1"),
+          workspaceAgentSession("session-2")
+        ]
+      })),
+      listSessionTimeline,
+      subscribeEvents: vi.fn(() => vi.fn())
+    });
+
+    const { result } = renderHook(() =>
+      useAgentGUINodeController({
+        workspaceId: "room-1",
+        currentUserId: "user-1",
+        workspacePath: "/workspace",
+        avoidGroupingEdits: false,
+        data: agentGuiData("session-1"),
+        onDataChange: vi.fn()
+      })
+    );
+
+    await waitFor(() => {
+      expect(result.current.viewModel.activeConversationId).toBe("session-1");
+    });
+
+    act(() => {
+      result.current.actions.selectConversation("session-2");
+    });
+
+    await waitFor(() => {
+      expect(session2TimelineResolvers.length).toBeGreaterThan(0);
+    });
+    expect(result.current.viewModel.activeConversationId).toBe("session-2");
+    expect(result.current.viewModel.activeConversation?.id).toBe("session-2");
+    expect(result.current.viewModel.isLoadingMessages).toBe(true);
+    expect(
+      getAgentSessionView({
+        workspaceId: "room-1",
+        agentSessionId: "session-2"
+      })?.isLoadingMessages
+    ).toBe(true);
+
+    await act(async () => {
+      for (const resolve of session2TimelineResolvers.splice(0)) {
+        resolve({
+          timelineItems: [
+            timelineMessage({
+              agentSessionId: "session-2",
+              id: 2,
+              eventId: "session-2-user",
+              role: "user",
+              content: "continue here",
+              turnId: "turn-2"
+            })
+          ]
+        });
+      }
+    });
+
+    await waitFor(() => {
+      expect(result.current.viewModel.isLoadingMessages).toBe(false);
+      expect(result.current.viewModel.conversation?.rows).toHaveLength(1);
+    });
+  });
+
+  it("keeps a switched conversation while its first state load reports not found", async () => {
+    let session2StateLoads = 0;
+    const getState = vi.fn(
+      async ({ agentSessionId }: { agentSessionId: string }) => {
+        if (agentSessionId === "session-2") {
+          session2StateLoads += 1;
+          if (session2StateLoads === 1) {
+            throw {
+              code: "session.not_found",
+              message: "Session not found.",
+              debugMessage: "agent session not found"
+            };
+          }
+        }
+        return agentSessionState(agentSessionId);
+      }
+    );
+    installAgentHostApi({
+      list: vi.fn(async () => ({
+        presences: [],
+        sessions: [
+          workspaceAgentSession("session-1"),
+          workspaceAgentSession("session-2")
+        ]
+      })),
+      listSessionTimeline: vi.fn(async () => ({ timelineItems: [] })),
+      subscribeEvents: vi.fn(() => vi.fn()),
+      getState
+    });
+
+    const { result } = renderHook(() =>
+      useAgentGUINodeController({
+        workspaceId: "room-1",
+        currentUserId: "user-1",
+        workspacePath: "/workspace",
+        avoidGroupingEdits: false,
+        data: agentGuiData("session-1"),
+        onDataChange: vi.fn()
+      })
+    );
+
+    await waitFor(() => {
+      expect(result.current.viewModel.activeConversationId).toBe("session-1");
+    });
+
+    act(() => {
+      result.current.actions.selectConversation("session-2");
+    });
+
+    await waitFor(() => {
+      expect(session2StateLoads).toBe(1);
+    });
+    expect(result.current.viewModel.activeConversationId).toBe("session-2");
+    expect(result.current.viewModel.activeConversation?.id).toBe("session-2");
+    expect(result.current.viewModel.detailError).toBeNull();
+    expect(result.current.viewModel.isLoadingMessages).toBe(true);
+
+    await waitFor(() => {
+      expect(session2StateLoads).toBe(2);
+    });
+    expect(result.current.viewModel.activeConversationId).toBe("session-2");
+    expect(result.current.viewModel.detailError).toBeNull();
+  });
+
+  it("retries switched conversation messages when their first loads report not found", async () => {
+    let allowSession2Timeline = false;
+    let session2TimelineLoads = 0;
+    const listSessionTimeline = vi.fn(
+      async ({ agentSessionId }: { agentSessionId: string }) => {
+        if (agentSessionId === "session-2") {
+          session2TimelineLoads += 1;
+          if (!allowSession2Timeline) {
+            throw {
+              code: "session.not_found",
+              message: "Session not found.",
+              debugMessage: "agent session not found"
+            };
+          }
+          return {
+            timelineItems: [
+              timelineMessage({
+                agentSessionId: "session-2",
+                id: 2,
+                eventId: "session-2-user",
+                role: "user",
+                content: "continue here",
+                turnId: "turn-2"
+              })
+            ]
+          };
+        }
+        return { timelineItems: [] };
+      }
+    );
+    installAgentHostApi({
+      list: vi.fn(async () => ({
+        presences: [],
+        sessions: [
+          workspaceAgentSession("session-1"),
+          workspaceAgentSession("session-2")
+        ]
+      })),
+      listSessionTimeline,
+      subscribeEvents: vi.fn(() => vi.fn())
+    });
+
+    const { result } = renderHook(() =>
+      useAgentGUINodeController({
+        workspaceId: "room-1",
+        currentUserId: "user-1",
+        workspacePath: "/workspace",
+        avoidGroupingEdits: false,
+        data: agentGuiData("session-1"),
+        onDataChange: vi.fn()
+      })
+    );
+
+    await waitFor(() => {
+      expect(result.current.viewModel.activeConversationId).toBe("session-1");
+    });
+
+    act(() => {
+      result.current.actions.selectConversation("session-2");
+    });
+
+    await waitFor(() => {
+      expect(session2TimelineLoads).toBeGreaterThanOrEqual(2);
+    });
+    expect(result.current.viewModel.activeConversationId).toBe("session-2");
+    expect(result.current.viewModel.isLoadingMessages).toBe(true);
+
+    allowSession2Timeline = true;
+
+    await waitFor(() => {
+      expect(session2TimelineLoads).toBeGreaterThanOrEqual(3);
+      expect(result.current.viewModel.isLoadingMessages).toBe(false);
+      expect(result.current.viewModel.conversation?.rows).toHaveLength(1);
+    });
+  });
+
   it("keeps the current conversation while an externally requested conversation is missing", async () => {
     const list = vi.fn(async () => ({
       presences: [],
@@ -3658,6 +3881,79 @@ describe("useAgentGUINodeController", () => {
     });
   });
 
+  it("does not mark a completed conversation unread when another controller has it active", async () => {
+    installAgentHostApi({
+      list: vi.fn(async () => ({
+        presences: [],
+        sessions: [
+          workspaceAgentSession("session-1"),
+          workspaceAgentSession("session-2")
+        ]
+      })),
+      listSessionTimeline: vi.fn(async () => ({ timelineItems: [] })),
+      subscribeEvents: vi.fn(() => vi.fn())
+    });
+
+    const { result } = renderHook(() => ({
+      first: useAgentGUINodeController({
+        nodeId: "node-active-session-1",
+        workspaceId: "room-1",
+        currentUserId: "user-1",
+        workspacePath: "/workspace",
+        avoidGroupingEdits: false,
+        data: agentGuiData("session-1"),
+        onDataChange: vi.fn()
+      }),
+      second: useAgentGUINodeController({
+        nodeId: "node-active-session-2",
+        workspaceId: "room-1",
+        currentUserId: "user-1",
+        workspacePath: "/workspace",
+        avoidGroupingEdits: false,
+        data: agentGuiData("session-2"),
+        onDataChange: vi.fn()
+      })
+    }));
+
+    await waitFor(() => {
+      expect(result.current.first.viewModel.activeConversationId).toBe(
+        "session-1"
+      );
+      expect(result.current.second.viewModel.activeConversationId).toBe(
+        "session-2"
+      );
+      expect(
+        result.current.first.viewModel.conversations.some(
+          (conversation) => conversation.id === "session-2"
+        )
+      ).toBe(true);
+    });
+
+    act(() => {
+      emitRuntimeSessionEventForTests?.({
+        eventType: "state_patch",
+        data: {
+          workspaceId: "room-1",
+          agentSessionId: "session-2",
+          lifecycleStatus: "completed",
+          occurredAtUnixMs: 20
+        }
+      });
+    });
+
+    await waitFor(() => {
+      expect(result.current.first.viewModel.conversations).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            id: "session-2",
+            status: "completed",
+            hasUnreadCompletion: false
+          })
+        ])
+      );
+    });
+  });
+
   it("keeps a busy inactive conversation subscribed so its final state can settle in the list", async () => {
     const retainEventStream = vi
       .fn()
@@ -5712,6 +6008,7 @@ describe("useAgentGUINodeController", () => {
           composerOverrides: {
             model: "gpt-5",
             reasoningEffort: "high",
+            speed: null,
             planMode: true,
             permissionModeId: "full-access"
           }
@@ -5765,6 +6062,7 @@ describe("useAgentGUINodeController", () => {
         settings: {
           model: settings.model ?? "gpt-5",
           reasoningEffort: settings.reasoningEffort ?? "high",
+          speed: null,
           planMode: settings.planMode ?? true,
           permissionModeId: settings.permissionModeId ?? "full-access"
         }
@@ -5788,6 +6086,7 @@ describe("useAgentGUINodeController", () => {
           composerOverrides: {
             model: "gpt-5",
             reasoningEffort: "high",
+            speed: null,
             planMode: true,
             permissionModeId: "full-access"
           }
@@ -5859,6 +6158,7 @@ describe("useAgentGUINodeController", () => {
       result.current.actions.updateComposerSettings({
         model: "gpt-5",
         reasoningEffort: "high",
+        speed: null,
         planMode: true,
         permissionModeId: "full-access"
       });
@@ -5891,6 +6191,7 @@ describe("useAgentGUINodeController", () => {
           settings: {
             model: "gpt-5",
             reasoningEffort: "high",
+            speed: null,
             // Sent as-is; tuttid clamps planMode for codex at session create.
             planMode: true,
             permissionModeId: "full-access"
@@ -5946,6 +6247,7 @@ describe("useAgentGUINodeController", () => {
           settings: {
             model: string | null;
             reasoningEffort: string | null;
+            speed?: string | null;
             planMode: boolean;
             permissionModeId: string;
           };
@@ -5966,6 +6268,7 @@ describe("useAgentGUINodeController", () => {
           settings: {
             model: string | null;
             reasoningEffort: string | null;
+            speed?: string | null;
             planMode: boolean;
             permissionModeId: string;
           };
@@ -5991,6 +6294,7 @@ describe("useAgentGUINodeController", () => {
           settings: {
             model: "gpt-5",
             reasoningEffort: "medium",
+            speed: null,
             planMode: false,
             permissionModeId: "auto"
           },
@@ -6043,6 +6347,7 @@ describe("useAgentGUINodeController", () => {
       ).toMatchObject({
         model: "gpt-5",
         reasoningEffort: "medium",
+        speed: null,
         planMode: false,
         permissionModeId: "auto"
       });
@@ -6058,6 +6363,7 @@ describe("useAgentGUINodeController", () => {
       result.current.actions.updateComposerSettings({
         model: "gpt-5.1",
         reasoningEffort: "high",
+        speed: null,
         planMode: true
       });
     });
@@ -6097,6 +6403,7 @@ describe("useAgentGUINodeController", () => {
         settings: {
           model: "gpt-5.1",
           reasoningEffort: "high",
+          speed: null,
           planMode: false,
           permissionModeId: "auto"
         }
@@ -6108,6 +6415,7 @@ describe("useAgentGUINodeController", () => {
       ).toMatchObject({
         model: "gpt-5.1",
         reasoningEffort: "high",
+        speed: null,
         planMode: false,
         permissionModeId: "auto"
       });
@@ -6132,6 +6440,7 @@ describe("useAgentGUINodeController", () => {
           composerOverrides: {
             model: "gpt-5",
             reasoningEffort: "medium",
+            speed: null,
             planMode: false,
             permissionModeId: "preset"
           }
@@ -6155,6 +6464,7 @@ describe("useAgentGUINodeController", () => {
         settings: {
           model: string | null;
           reasoningEffort: string | null;
+          speed?: string | null;
           planMode: boolean;
           permissionModeId: string;
         };
@@ -6175,6 +6485,7 @@ describe("useAgentGUINodeController", () => {
           settings: {
             model: string | null;
             reasoningEffort: string | null;
+            speed?: string | null;
             planMode: boolean;
             permissionModeId: string;
           };
@@ -6184,6 +6495,7 @@ describe("useAgentGUINodeController", () => {
           settings: {
             model: settings.model ?? "gpt-5",
             reasoningEffort: settings.reasoningEffort ?? "medium",
+            speed: null,
             planMode: settings.planMode ?? false,
             permissionModeId: settings.permissionModeId ?? "preset"
           }
@@ -6198,6 +6510,7 @@ describe("useAgentGUINodeController", () => {
           settings: {
             model: "gpt-5",
             reasoningEffort: "medium",
+            speed: null,
             planMode: false,
             permissionModeId: "auto"
           },
@@ -6280,6 +6593,7 @@ describe("useAgentGUINodeController", () => {
         settings: {
           model: "gpt-5.1",
           reasoningEffort: "medium",
+          speed: null,
           planMode: false,
           permissionModeId: "preset"
         }
@@ -6302,6 +6616,7 @@ describe("useAgentGUINodeController", () => {
         settings: {
           model: "gpt-5.2",
           reasoningEffort: "medium",
+          speed: null,
           planMode: false,
           permissionModeId: "preset"
         }
@@ -6345,6 +6660,7 @@ describe("useAgentGUINodeController", () => {
           settings: {
             model: "sonnet",
             reasoningEffort: "medium",
+            speed: null,
             planMode: false,
             permissionModeId: "default"
           }
@@ -6448,6 +6764,7 @@ describe("useAgentGUINodeController", () => {
           settings: {
             model: "gpt-5.4",
             reasoningEffort: "high",
+            speed: null,
             planMode: false,
             permissionModeId: "full-access"
           }
@@ -6520,6 +6837,7 @@ describe("useAgentGUINodeController", () => {
       effectiveSettings: {
         model: "haiku",
         reasoningEffort: "high",
+        speed: null,
         planMode: false,
         permissionModeId: "preset"
       },
@@ -6569,6 +6887,7 @@ describe("useAgentGUINodeController", () => {
           settings: {
             model: "haiku",
             reasoningEffort: "high",
+            speed: null,
             planMode: false,
             permissionModeId: "default"
           },
@@ -6648,6 +6967,7 @@ describe("useAgentGUINodeController", () => {
           settings: {
             model: "haiku",
             reasoningEffort: "high",
+            speed: null,
             planMode: false,
             permissionModeId: "default"
           },
@@ -6687,6 +7007,7 @@ describe("useAgentGUINodeController", () => {
           settings: {
             model: "opus",
             reasoningEffort: "xhigh",
+            speed: null,
             planMode: false,
             permissionModeId: "default"
           },
@@ -6734,6 +7055,7 @@ describe("useAgentGUINodeController", () => {
       settings: {
         model: "opus",
         reasoningEffort: "high",
+        speed: null,
         planMode: false,
         permissionModeId: "preset"
       }
@@ -6877,6 +7199,7 @@ describe("useAgentGUINodeController", () => {
       effectiveSettings: {
         model: "haiku",
         reasoningEffort: "high",
+        speed: null,
         planMode: false,
         permissionModeId: "preset"
       },
@@ -6926,6 +7249,7 @@ describe("useAgentGUINodeController", () => {
           settings: {
             model: "haiku",
             reasoningEffort: "high",
+            speed: null,
             planMode: false,
             permissionModeId: "default"
           },
@@ -7236,6 +7560,7 @@ describe("useAgentGUINodeController", () => {
       effectiveSettings: {
         model: "gpt-5.5",
         reasoningEffort: "high",
+        speed: null,
         planMode: false,
         permissionModeId: "full-access"
       },
@@ -7291,6 +7616,7 @@ describe("useAgentGUINodeController", () => {
       effectiveSettings: {
         model: "gpt-5.5",
         reasoningEffort: "high",
+        speed: null,
         planMode: false,
         permissionModeId: "full-access"
       },
@@ -7574,6 +7900,7 @@ describe("useAgentGUINodeController", () => {
           settings: {
             model: "gpt-old",
             reasoningEffort: "low",
+            speed: null,
             planMode: false,
             permissionModeId: "auto"
           },
@@ -7594,6 +7921,7 @@ describe("useAgentGUINodeController", () => {
           settings: {
             model: "gpt-new",
             reasoningEffort: "medium",
+            speed: null,
             planMode: false,
             permissionModeId: "auto"
           },
@@ -10307,7 +10635,28 @@ describe("useAgentGUINodeController", () => {
   });
 
   it("deletes the active conversation and selects the next session", async () => {
-    const deleteSession = vi.fn(async () => ({}));
+    let resolveDeleteSession: (() => void) | null = null;
+    const deleteSession = vi.fn(
+      () =>
+        new Promise((resolve) => {
+          resolveDeleteSession = () => resolve({});
+        })
+    );
+    const session2TimelineResolvers: Array<
+      (value: { timelineItems: AgentHostWorkspaceAgentTimelineItem[] }) => void
+    > = [];
+    const listSessionTimeline = vi.fn(
+      ({ agentSessionId }: { agentSessionId: string }) => {
+        if (agentSessionId === "session-2") {
+          return new Promise<{
+            timelineItems: AgentHostWorkspaceAgentTimelineItem[];
+          }>((resolve) => {
+            session2TimelineResolvers.push(resolve);
+          });
+        }
+        return Promise.resolve({ timelineItems: [] });
+      }
+    );
     installAgentHostApi({
       list: vi.fn(async () => ({
         presences: [],
@@ -10316,7 +10665,7 @@ describe("useAgentGUINodeController", () => {
           workspaceAgentSession("session-2")
         ]
       })),
-      listSessionTimeline: vi.fn(async () => ({ timelineItems: [] })),
+      listSessionTimeline,
       subscribeEvents: vi.fn(() => vi.fn()),
       deleteSession
     });
@@ -10350,6 +10699,12 @@ describe("useAgentGUINodeController", () => {
         sessionOrigin: AGENT_GUI_RUNTIME_SESSION_ORIGIN
       });
     });
+    expect(result.current.viewModel.isDeletingConversation).toBe(true);
+    expect(result.current.viewModel.isLoadingMessages).toBe(true);
+
+    await act(async () => {
+      resolveDeleteSession?.();
+    });
 
     await waitFor(() => {
       expect(
@@ -10359,6 +10714,37 @@ describe("useAgentGUINodeController", () => {
       ).toEqual(["session-2"]);
     });
     expect(result.current.viewModel.activeConversationId).toBe("session-2");
+    await waitFor(() => {
+      expect(session2TimelineResolvers.length).toBeGreaterThan(0);
+    });
+    expect(result.current.viewModel.isLoadingMessages).toBe(true);
+    expect(
+      getAgentSessionView({
+        workspaceId: "room-1",
+        agentSessionId: "session-2"
+      })?.isLoadingMessages
+    ).toBe(true);
+
+    await act(async () => {
+      for (const resolve of session2TimelineResolvers.splice(0)) {
+        resolve({
+          timelineItems: [
+            timelineMessage({
+              agentSessionId: "session-2",
+              id: 2,
+              eventId: "session-2-user",
+              role: "user",
+              content: "Continue here"
+            })
+          ]
+        });
+      }
+    });
+
+    await waitFor(() => {
+      expect(result.current.viewModel.isLoadingMessages).toBe(false);
+      expect(result.current.viewModel.conversation?.rows).toHaveLength(1);
+    });
   });
 
   it("shows a toast when deleting a conversation fails", async () => {
@@ -10447,6 +10833,21 @@ describe("useAgentGUINodeController", () => {
 
   it("batch deletes all conversations assigned to a project", async () => {
     const deleteSession = vi.fn(async () => ({}));
+    const session3TimelineResolvers: Array<
+      (value: { timelineItems: AgentHostWorkspaceAgentTimelineItem[] }) => void
+    > = [];
+    const listSessionTimeline = vi.fn(
+      ({ agentSessionId }: { agentSessionId: string }) => {
+        if (agentSessionId === "session-3") {
+          return new Promise<{
+            timelineItems: AgentHostWorkspaceAgentTimelineItem[];
+          }>((resolve) => {
+            session3TimelineResolvers.push(resolve);
+          });
+        }
+        return Promise.resolve({ timelineItems: [] });
+      }
+    );
     installAgentHostApi({
       list: vi.fn(async () => ({
         presences: [],
@@ -10463,7 +10864,7 @@ describe("useAgentGUINodeController", () => {
           })
         ]
       })),
-      listSessionTimeline: vi.fn(async () => ({ timelineItems: [] })),
+      listSessionTimeline,
       subscribeEvents: vi.fn(() => vi.fn()),
       deleteSession,
       userProjects: {
@@ -10543,6 +10944,37 @@ describe("useAgentGUINodeController", () => {
       ).toEqual(["session-3"]);
     });
     expect(result.current.viewModel.activeConversationId).toBe("session-3");
+    await waitFor(() => {
+      expect(session3TimelineResolvers.length).toBeGreaterThan(0);
+    });
+    expect(result.current.viewModel.isLoadingMessages).toBe(true);
+    expect(
+      getAgentSessionView({
+        workspaceId: "room-1",
+        agentSessionId: "session-3"
+      })?.isLoadingMessages
+    ).toBe(true);
+
+    await act(async () => {
+      for (const resolve of session3TimelineResolvers.splice(0)) {
+        resolve({
+          timelineItems: [
+            timelineMessage({
+              agentSessionId: "session-3",
+              id: 3,
+              eventId: "session-3-user",
+              role: "user",
+              content: "Remaining session"
+            })
+          ]
+        });
+      }
+    });
+
+    await waitFor(() => {
+      expect(result.current.viewModel.isLoadingMessages).toBe(false);
+      expect(result.current.viewModel.conversation?.rows).toHaveLength(1);
+    });
   });
 });
 
@@ -11317,6 +11749,7 @@ function composerOptionsFromRuntimeResult(
     provider: normalizeConfigOptionValue(result.provider) ?? provider,
     models,
     reasoningEfforts,
+    speeds: [],
     modelConfigurable,
     reasoningConfigurable,
     permissionConfig: permissionConfigFromRuntimeResult(

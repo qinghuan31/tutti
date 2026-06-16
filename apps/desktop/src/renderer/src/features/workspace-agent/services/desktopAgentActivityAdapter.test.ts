@@ -386,6 +386,7 @@ test("desktop agent activity adapter sends plan mode when creating sessions", as
     planMode: true,
     provider: "codex",
     reasoningEffort: "high",
+    speed: null,
     title: "Plan",
     workspaceId
   });
@@ -403,6 +404,7 @@ test("desktop agent activity adapter sends plan mode when creating sessions", as
         planMode: true,
         provider: "codex",
         reasoningEffort: "high",
+        speed: null,
         title: "Plan",
         visible: null
       }

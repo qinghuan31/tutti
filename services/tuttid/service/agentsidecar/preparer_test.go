@@ -22,8 +22,20 @@ func TestDefaultPreparerCodexWritesInstructionsSkillManifestAndEnv(t *testing.T)
 	if err := os.WriteFile(filepath.Join(userCodexHome, "auth.json"), []byte(`{"token":"test"}`), 0o600); err != nil {
 		t.Fatal(err)
 	}
+	userCodexConfig := strings.Join([]string{
+		`notify = ["say", "done"]`,
+		`model_provider = "proxy"`,
+		"",
+		"[model_providers.proxy]",
+		`base_url = "https://openai.proxy.test/v1"`,
+		"",
+	}, "\n")
+	if err := os.WriteFile(filepath.Join(userCodexHome, "config.toml"), []byte(userCodexConfig), 0o600); err != nil {
+		t.Fatal(err)
+	}
 	writeSidecarTestFile(t, filepath.Join(userCodexHome, "skills", "caveman", "SKILL.md"), "---\nname: caveman\n---\nCaveman mode\n")
 	writeSidecarTestFile(t, filepath.Join(userCodexHome, "skills", "grill-me", "SKILL.md"), "---\nname: grill-me\n---\nGrill me\n")
+	writeSidecarTestFile(t, filepath.Join(userCodexHome, "skills", "broken-frontmatter", "SKILL.md"), "name: broken-frontmatter\n---\nBroken\n")
 	writeSidecarTestFile(t, filepath.Join(userCodexHome, "skills", ".system", "hidden", "SKILL.md"), "---\nname: hidden\n---\nHidden\n")
 	if err := os.MkdirAll(filepath.Join(userCodexHome, "skills", "invalid"), 0o755); err != nil {
 		t.Fatal(err)
@@ -85,6 +97,34 @@ func TestDefaultPreparerCodexWritesInstructionsSkillManifestAndEnv(t *testing.T)
 	if _, err := os.Lstat(filepath.Join(codexHome, "auth.json")); err != nil {
 		t.Fatalf("codex auth not exposed: %v", err)
 	}
+	if _, err := os.Stat(filepath.Join(cwd, ".tutti-codex-root")); !os.IsNotExist(err) {
+		t.Fatalf("codex preparer should not create project root marker in cwd, err = %v", err)
+	}
+	codexConfigPath := filepath.Join(codexHome, "config.toml")
+	codexConfigInfo, err := os.Lstat(codexConfigPath)
+	if err != nil {
+		t.Fatalf("codex config missing: %v", err)
+	}
+	if codexConfigInfo.Mode()&os.ModeSymlink != 0 {
+		t.Fatalf("codex config should be a session-scoped file, got symlink")
+	}
+	codexConfig, err := os.ReadFile(codexConfigPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(codexConfig), codexProjectRootMarkersDisabledConfig) ||
+		!strings.Contains(string(codexConfig), `notify = ["say", "done"]`) ||
+		!strings.Contains(string(codexConfig), `model_provider = "proxy"`) ||
+		!strings.Contains(string(codexConfig), "[model_providers.proxy]") {
+		t.Fatalf("codex config = %q, want copied user config with project root markers disabled", string(codexConfig))
+	}
+	userConfigAfterPrepare, err := os.ReadFile(filepath.Join(userCodexHome, "config.toml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(userConfigAfterPrepare) != userCodexConfig {
+		t.Fatalf("user codex config was modified: %q", string(userConfigAfterPrepare))
+	}
 	cavemanPath := filepath.Join(codexHome, "skills", "caveman")
 	cavemanInfo, err := os.Lstat(cavemanPath)
 	if err != nil {
@@ -119,6 +159,9 @@ func TestDefaultPreparerCodexWritesInstructionsSkillManifestAndEnv(t *testing.T)
 	}
 	if _, err := os.Lstat(filepath.Join(codexHome, "skills", "invalid")); !os.IsNotExist(err) {
 		t.Fatalf("invalid skill exposed, err = %v", err)
+	}
+	if _, err := os.Lstat(filepath.Join(codexHome, "skills", "broken-frontmatter")); !os.IsNotExist(err) {
+		t.Fatalf("broken-frontmatter skill exposed, err = %v", err)
 	}
 	skill, err := os.ReadFile(filepath.Join(codexHome, "skills", "tutti-cli", "SKILL.md"))
 	if err != nil {
@@ -239,6 +282,94 @@ func TestDefaultPreparerCodexUserSkillNameWinsBeforeTuttiInjection(t *testing.T)
 	}
 	if !strings.Contains(string(tuttiSkill), "tutti agent sessions") {
 		t.Fatalf("tutti fallback skill = %q", string(tuttiSkill))
+	}
+}
+
+func TestDefaultPreparerCodexWritesProjectRootMarkersDisabledConfigWithoutUserConfig(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+
+	stateDir := t.TempDir()
+	cwd := t.TempDir()
+	prepared, err := NewDefaultPreparer(stateDir).Prepare(t.Context(), PrepareInput{
+		WorkspaceID:    "workspace-1",
+		AgentSessionID: "session-1",
+		Provider:       "codex",
+		Cwd:            cwd,
+	})
+	if err != nil {
+		t.Fatalf("Prepare() error = %v", err)
+	}
+
+	if _, err := os.Stat(filepath.Join(cwd, ".tutti-codex-root")); !os.IsNotExist(err) {
+		t.Fatalf("codex preparer should not create project root marker in cwd, err = %v", err)
+	}
+	codexHome := envValue(prepared.Env, "CODEX_HOME")
+	codexConfig, err := os.ReadFile(filepath.Join(codexHome, "config.toml"))
+	if err != nil {
+		t.Fatalf("codex config missing: %v", err)
+	}
+	if strings.TrimSpace(string(codexConfig)) != codexProjectRootMarkersDisabledConfig {
+		t.Fatalf("codex config = %q, want project root markers disabled", string(codexConfig))
+	}
+}
+
+func TestCodexConfigWithProjectRootMarkersDisabledReplacesExistingRootMarkers(t *testing.T) {
+	input := strings.Join([]string{
+		`project_root_markers = [".git"]`,
+		`model = "gpt-5.5"`,
+		"",
+		"[model_providers.proxy]",
+		`base_url = "https://openai.proxy.test/v1"`,
+	}, "\n")
+
+	next, changed := codexConfigWithProjectRootMarkersDisabled(input)
+	if !changed {
+		t.Fatalf("codexConfigWithProjectRootMarkersDisabled changed = false, want true")
+	}
+	if !strings.Contains(next, codexProjectRootMarkersDisabledConfig) ||
+		strings.Contains(next, `project_root_markers = [".git"]`) ||
+		!strings.Contains(next, "[model_providers.proxy]") {
+		t.Fatalf("merged config = %q", next)
+	}
+}
+
+func TestCodexConfigWithProjectRootMarkersDisabledReplacesMultilineRootMarkers(t *testing.T) {
+	input := strings.Join([]string{
+		`project_root_markers = [ # allow project-local config discovery`,
+		`  ".git",`,
+		`  "path]with-bracket",`,
+		`]`,
+		`model = "gpt-5.5"`,
+		"",
+		"[model_providers.proxy]",
+		`base_url = "https://openai.proxy.test/v1"`,
+	}, "\n")
+
+	next, changed := codexConfigWithProjectRootMarkersDisabled(input)
+	if !changed {
+		t.Fatalf("codexConfigWithProjectRootMarkersDisabled changed = false, want true")
+	}
+	if strings.Count(next, "project_root_markers") != 1 ||
+		strings.Contains(next, `".git"`) ||
+		strings.Contains(next, `"path]with-bracket"`) ||
+		strings.Contains(next, "\n]\n") ||
+		!strings.Contains(next, codexProjectRootMarkersDisabledConfig) ||
+		!strings.Contains(next, `model = "gpt-5.5"`) ||
+		!strings.Contains(next, "[model_providers.proxy]") {
+		t.Fatalf("merged config = %q", next)
+	}
+}
+
+func TestCodexConfigWithProjectRootMarkersDisabledKeepsExistingEmptyMarkers(t *testing.T) {
+	input := codexProjectRootMarkersDisabledConfig + "\n\n" + `[model_providers.proxy]`
+
+	next, changed := codexConfigWithProjectRootMarkersDisabled(input)
+	if changed {
+		t.Fatalf("codexConfigWithProjectRootMarkersDisabled changed = true, want false")
+	}
+	if next != input {
+		t.Fatalf("merged config = %q, want original", next)
 	}
 }
 

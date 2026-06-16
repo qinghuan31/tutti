@@ -63,6 +63,8 @@ test("desktop release workflow uses the published desktop package name", async (
 test("desktop release workflow publishes rc tags as prereleases and keeps stable tags as latest", async () => {
   const workflow = await readFile(workflowPath, "utf8");
 
+  assert.match(workflow, /push:\s*\n\s*tags:\s*\n\s*-\s*"v\*"/);
+  assert.doesNotMatch(workflow, /-\s*"tutti-desktop-v\*"/);
   assert.match(workflow, /default:\s*patch_rc_release/);
   assert.match(
     workflow,

@@ -2,6 +2,7 @@ package agent
 
 import (
 	"bufio"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"sort"
@@ -146,7 +147,18 @@ func discoverProviderSkillRoot(
 		if err != nil || info.IsDir() {
 			continue
 		}
-		metadata := readSkillMetadata(skillPath)
+		metadata, ok := readSkillMetadata(skillPath)
+		if !ok {
+			slog.Warn(
+				"composer skill skipped; invalid frontmatter",
+				"error_code", "skill_frontmatter_invalid",
+				"skillName", name,
+				"skillPath", skillPath,
+				"sourceKind", root.sourceKind,
+				"reason", "missing_delimited_yaml_frontmatter",
+			)
+			continue
+		}
 		if metadata.name != "" {
 			name = metadata.name
 		}
@@ -201,24 +213,32 @@ type skillMetadata struct {
 	description string
 }
 
-func readSkillMetadata(path string) skillMetadata {
+func readSkillMetadata(path string) (skillMetadata, bool) {
 	file, err := os.Open(path)
 	if err != nil {
-		return skillMetadata{}
+		return skillMetadata{}, false
 	}
 	defer file.Close()
 
 	scanner := bufio.NewScanner(file)
-	if !scanner.Scan() || strings.TrimSpace(scanner.Text()) != "---" {
-		return skillMetadata{}
+	if !scanner.Scan() || strings.TrimSpace(strings.TrimPrefix(scanner.Text(), "\ufeff")) != "---" {
+		return skillMetadata{}, false
 	}
 	lines := make([]string, 0)
+	foundEnd := false
 	for scanner.Scan() {
 		line := scanner.Text()
 		if strings.TrimSpace(line) == "---" {
+			foundEnd = true
 			break
 		}
 		lines = append(lines, line)
+	}
+	if err := scanner.Err(); err != nil {
+		return skillMetadata{}, false
+	}
+	if !foundEnd {
+		return skillMetadata{}, false
 	}
 
 	metadata := skillMetadata{}
@@ -242,7 +262,7 @@ func readSkillMetadata(path string) skillMetadata {
 			}
 		}
 	}
-	return metadata
+	return metadata, true
 }
 
 func isYAMLBlockScalar(value string) bool {

@@ -82,11 +82,10 @@ export function WorkspaceFileEntryIcon({
     const viewportRoot = resolveWorkspaceFileEntryIconViewport(element);
     const observer = new IntersectionObserver(
       (records) => {
-        if (
-          records.some(
-            (record) => record.isIntersecting && record.intersectionRatio > 0
-          )
-        ) {
+        const intersecting = records.some(
+          (record) => record.isIntersecting && record.intersectionRatio > 0
+        );
+        if (intersecting) {
           reportViewportEnter();
           return;
         }
@@ -95,7 +94,11 @@ export function WorkspaceFileEntryIcon({
       { root: viewportRoot, rootMargin: "0px", threshold: 0 }
     );
     observer.observe(element);
-    if (isWorkspaceFileEntryIconVisible(element, viewportRoot)) {
+    const initiallyVisible = isWorkspaceFileEntryIconVisible(
+      element,
+      viewportRoot
+    );
+    if (initiallyVisible) {
       reportViewportEnter();
     } else {
       reportViewportLeave();
@@ -122,8 +125,15 @@ export function WorkspaceFileEntryIcon({
       ) : iconUrl ? (
         <img
           alt=""
-          className={cn(iconClassName, "rounded-[4px] object-contain")}
+          className={cn(
+            iconClassName,
+            visualKind === "image"
+              ? "rounded-[6px] border border-[var(--border-1)] bg-[var(--transparency-block)] object-contain shadow-sm"
+              : "rounded-[4px] object-contain"
+          )}
+          decoding="async"
           draggable={false}
+          loading="lazy"
           src={iconUrl}
         />
       ) : (
@@ -212,7 +222,8 @@ function ExtensionDocumentIcon({
   const extension = resolveWorkspaceFileExtension(entry.name)
     .slice(0, 5)
     .toUpperCase();
-  const showExtension = extension.length > 0 && iconClassName.includes("52px");
+  const showExtension =
+    extension.length > 0 && !iconClassName.includes("size-4");
 
   return (
     <span

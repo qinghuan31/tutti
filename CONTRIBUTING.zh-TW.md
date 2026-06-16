@@ -132,6 +132,38 @@ git commit -s -m "feat(scope): add something"
 - `pre-commit` 執行暫存區格式化和 UI 邊界檢查
 - `pre-push` 執行 `pnpm check:full`
 
+## Pull Request 評審門禁
+
+Tutti 使用 `external-pr-review-gate` workflow 區分內部團隊變更和外部貢獻。官方作者由組織變數 `TUTTI_RD_MEMBERS` 定義；GitHub 團隊 `tutti-rd` 是外部 PR 的 review 請求目標。
+
+- `tutti-rd` 成員發起的 PR 不會自動請求 reviewer，也不需要額外官方 approve 即可通過評審門禁
+- 非 `tutti-rd` 作者發起的 PR 會自動請求 `@tutti-os/tutti-rd` review
+- 外部 PR 只有在目前 head commit 獲得 `tutti-rd` 成員 approve 後才能合併
+- 推送新提交會刷新門禁；新的 head commit 需要重新獲得通過評審
+- 官方團隊成員變更時，維護者必須同時更新 `TUTTI_RD_MEMBERS` 和 `tutti-rd` 團隊
+
+```mermaid
+---
+config:
+  layout: dagre
+  theme: redux
+  look: neo
+---
+flowchart TB
+    A["PR 開啟 / 重新開啟 / 標記為可評審 / 推送新提交"] --> B{"PR 作者是否在官方成員名單？"}
+    B -- 是 --> C["不自動請求 Reviewer"]
+    C --> P["✅ 通過"]
+    P --> M["可以合併"]
+    B -- 否 --> D["自動請求 @tutti-os/tutti-rd Review"]
+    D --> E{"目前 head commit 是否有官方 Review？"}
+    E -- 已 Approve --> P
+    E -- 沒有通過評審 --> F["❌ 未通過"]
+    F --> N["不能合併"]
+    G["外部貢獻者推送新提交"] --> A
+
+    G@{ shape: rounded}
+```
+
 ## 文件語言策略
 
 - `README.*` 和 `CONTRIBUTING.*` 以英文、簡體中文、繁體中文三種語言維護

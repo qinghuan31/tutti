@@ -17,7 +17,7 @@ test("desktop release notes append direct download links for mirrored assets", (
     existingBody: "## What's Changed\n- Something",
     releaseAssetBaseUrl:
       "https://d111111abcdef8.cloudfront.net/desktop-release-assets",
-    releaseTag: "tutti-desktop-v0.1.0-rc.2"
+    releaseTag: "v0.1.0-rc.2"
   });
 
   assert.match(
@@ -27,15 +27,15 @@ test("desktop release notes append direct download links for mirrored assets", (
   assert.match(nextBody, /### Direct Downloads/);
   assert.match(
     nextBody,
-    /\[macOS\]\(https:\/\/d111111abcdef8\.cloudfront\.net\/desktop-release-assets\/tutti-desktop-v0\.1\.0-rc\.2\/Tutti-0\.1\.0-rc\.2-mac-arm64\.dmg\)/
+    /\[macOS\]\(https:\/\/d111111abcdef8\.cloudfront\.net\/desktop-release-assets\/v0\.1\.0-rc\.2\/Tutti-0\.1\.0-rc\.2-mac-arm64\.dmg\)/
   );
   assert.match(
     nextBody,
-    /\[Windows\]\(https:\/\/d111111abcdef8\.cloudfront\.net\/desktop-release-assets\/tutti-desktop-v0\.1\.0-rc\.2\/Tutti-0\.1\.0-rc\.2-win-x64\.exe\)/
+    /\[Windows\]\(https:\/\/d111111abcdef8\.cloudfront\.net\/desktop-release-assets\/v0\.1\.0-rc\.2\/Tutti-0\.1\.0-rc\.2-win-x64\.exe\)/
   );
   assert.match(
     nextBody,
-    /\[Linux\]\(https:\/\/d111111abcdef8\.cloudfront\.net\/desktop-release-assets\/tutti-desktop-v0\.1\.0-rc\.2\/Tutti-0\.1\.0-rc\.2-linux-x86_64\.AppImage\)/
+    /\[Linux\]\(https:\/\/d111111abcdef8\.cloudfront\.net\/desktop-release-assets\/v0\.1\.0-rc\.2\/Tutti-0\.1\.0-rc\.2-linux-x86_64\.AppImage\)/
   );
 });
 
@@ -55,14 +55,14 @@ test("desktop release notes replace the managed direct download section in place
     assetNames: ["Tutti-1.0.0-mac-arm64.dmg"],
     existingBody,
     releaseAssetBaseUrl: "https://downloads.example.com/tutti",
-    releaseTag: "tutti-desktop-v1.0.0"
+    releaseTag: "v1.0.0"
   });
 
   assert.equal(nextBody.match(new RegExp(SECTION_START, "g"))?.length, 1);
   assert.doesNotMatch(nextBody, /old\.example/);
   assert.match(
     nextBody,
-    /\[macOS\]\(https:\/\/downloads\.example\.com\/tutti\/tutti-desktop-v1\.0\.0\/Tutti-1\.0\.0-mac-arm64\.dmg\)/
+    /\[macOS\]\(https:\/\/downloads\.example\.com\/tutti\/v1\.0\.0\/Tutti-1\.0\.0-mac-arm64\.dmg\)/
   );
 });
 
@@ -82,7 +82,7 @@ test("desktop release notes remove the managed section when no mirrored base URL
     assetNames: ["Tutti-1.0.0-mac-arm64.dmg"],
     existingBody,
     releaseAssetBaseUrl: "",
-    releaseTag: "tutti-desktop-v1.0.0"
+    releaseTag: "v1.0.0"
   });
 
   assert.doesNotMatch(nextBody, /Direct Downloads/);

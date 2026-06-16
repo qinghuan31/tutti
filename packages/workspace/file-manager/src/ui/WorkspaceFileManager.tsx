@@ -457,6 +457,7 @@ function WorkspaceFileManagerPanelsContainer({
     reportEntryIconViewportLeave
   } = useWorkspaceFileEntryIconUrls({
     entries: arrangedEntries,
+    includeImageThumbnails: true,
     resolveEntryIconUrl
   });
 

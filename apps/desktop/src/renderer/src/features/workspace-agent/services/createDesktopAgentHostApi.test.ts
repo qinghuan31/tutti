@@ -96,6 +96,7 @@ interface DesktopAgentHostApiUnderTest {
         permissionModeId?: string | null;
         planMode?: boolean | null;
         reasoningEffort?: string | null;
+        speed?: string | null;
       };
       title?: string;
       visible?: boolean;
@@ -173,6 +174,7 @@ interface DesktopAgentHostApiUnderTest {
         model?: string | null;
         permissionModeId?: string | null;
         reasoningEffort?: string | null;
+        speed?: string | null;
       };
     }): Promise<{
       agentSessionId: string;
@@ -308,7 +310,8 @@ test("desktop agent host api routes session commands through injected tuttid cli
     settings: {
       model: "gpt-5",
       permissionModeId: "auto",
-      reasoningEffort: "high"
+      reasoningEffort: "high",
+      speed: null
     },
     title: "Build"
   });
@@ -380,6 +383,7 @@ test("desktop agent host api routes session commands through injected tuttid cli
           planMode: false,
           provider: "codex",
           reasoningEffort: "high",
+          speed: null,
           title: "Build",
           visible: true
         }
@@ -667,7 +671,8 @@ test("desktop agent host api tracks agent session settings changes", async () =>
           settings: {
             model: request.model ?? null,
             permissionModeId: requestPermissionModeValue(request),
-            reasoningEffort: request.reasoningEffort ?? null
+            reasoningEffort: request.reasoningEffort ?? null,
+            speed: null
           }
         });
       },
@@ -701,7 +706,8 @@ test("desktop agent host api tracks agent session settings changes", async () =>
     settings: {
       model: "gpt-5",
       permissionModeId: "auto",
-      reasoningEffort: "medium"
+      reasoningEffort: "medium",
+      speed: null
     }
   });
   reporterCalls.length = 0;
@@ -711,7 +717,8 @@ test("desktop agent host api tracks agent session settings changes", async () =>
     settings: {
       model: "custom:local-model",
       permissionModeId: "full-access",
-      reasoningEffort: "high"
+      reasoningEffort: "high",
+      speed: null
     }
   });
 
@@ -859,7 +866,8 @@ test("desktop agent host api passes plan mode to new session creation", async ()
       model: "gpt-5.5-codex-spark",
       permissionModeId: "read-only",
       planMode: true,
-      reasoningEffort: "high"
+      reasoningEffort: "high",
+      speed: null
     },
     title: "Plan"
   });
@@ -977,7 +985,8 @@ test("desktop agent host api loads composer options through tuttid without creat
     settings: {
       model: "gpt-5",
       permissionModeId: "auto",
-      reasoningEffort: "high"
+      reasoningEffort: "high",
+      speed: null
     }
   });
 
@@ -1007,7 +1016,8 @@ test("desktop agent host api loads composer options through tuttid without creat
             model: "gpt-5",
             permissionModeId: "auto",
             planMode: false,
-            reasoningEffort: "high"
+            reasoningEffort: "high",
+            speed: null
           }
         }
       ],
@@ -1026,7 +1036,8 @@ test("desktop agent host api exposes persisted session composer options", async 
             model: "gpt-5.2",
             permissionModeId: "auto",
             planMode: false,
-            reasoningEffort: "high"
+            reasoningEffort: "high",
+            speed: null
           },
           runtimeContext: {
             configOptions: [
@@ -1050,7 +1061,8 @@ test("desktop agent host api exposes persisted session composer options", async 
     model: "gpt-5.2",
     permissionModeId: "auto",
     planMode: false,
-    reasoningEffort: "high"
+    reasoningEffort: "high",
+    speed: null
   });
   assert.deepEqual(state.runtimeContext?.configOptions, [
     {
@@ -1118,6 +1130,7 @@ test("desktop agent host api resolves root cwd through tuttid workspace files", 
           planMode: null,
           provider: "codex",
           reasoningEffort: null,
+          speed: null,
           title: "Build",
           visible: true
         }
@@ -1208,6 +1221,7 @@ test("desktop agent host api creates no-project session cwd under user Documents
           planMode: null,
           provider: "codex",
           reasoningEffort: null,
+          speed: null,
           title: "Scratch",
           visible: true
         }
@@ -2193,7 +2207,8 @@ test("desktop agent host api preserves frontend session UUIDs as canonical ids",
     settings: {
       model: "gpt-5",
       permissionModeId: "auto",
-      reasoningEffort: "high"
+      reasoningEffort: "high",
+      speed: null
     },
     title: "Smoke"
   });
@@ -2229,7 +2244,8 @@ test("desktop agent host api preserves frontend session UUIDs as canonical ids",
     model: "gpt-5",
     permissionModeId: "auto",
     planMode: false,
-    reasoningEffort: "high"
+    reasoningEffort: "high",
+    speed: null
   });
   assert.deepEqual(state.runtimeContext?.configOptions, [
     {
@@ -2247,6 +2263,11 @@ test("desktop agent host api preserves frontend session UUIDs as canonical ids",
         { name: "High", value: "high" },
         { name: "X-High", value: "xhigh" }
       ]
+    },
+    {
+      currentValue: null,
+      id: "speed",
+      options: []
     }
   ]);
   assert.equal(state.resumable, true);
@@ -2282,6 +2303,7 @@ test("desktop agent host api preserves frontend session UUIDs as canonical ids",
           planMode: false,
           provider: "codex",
           reasoningEffort: "high",
+          speed: null,
           title: "Smoke",
           visible: true
         }
@@ -2318,7 +2340,8 @@ test("desktop agent host api keeps canonical sessions across adapter recreation"
     settings: {
       model: "gpt-5",
       permissionModeId: "auto",
-      reasoningEffort: "medium"
+      reasoningEffort: "medium",
+      speed: null
     },
     visible: false
   });
@@ -2368,7 +2391,8 @@ test("desktop agent host api keeps canonical sessions across adapter recreation"
     model: "gpt-5",
     permissionModeId: "auto",
     planMode: false,
-    reasoningEffort: "medium"
+    reasoningEffort: "medium",
+    speed: null
   });
   assert.deepEqual(hiddenSnapshot.sessions, []);
   assert.equal(
@@ -2776,7 +2800,8 @@ function createTuttidClient(
           ],
           model: settings.model ?? null,
           permissionModeId: settings.permissionModeId ?? null,
-          reasoningEffort: settings.reasoningEffort ?? null
+          reasoningEffort: settings.reasoningEffort ?? null,
+          speed: null
         },
         skills: []
       };

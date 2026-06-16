@@ -3,10 +3,15 @@ package agentsidecar
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"strconv"
 	"strings"
+)
+
+const (
+	codexProjectRootMarkersDisabledConfig = `project_root_markers = []`
 )
 
 type CodexPreparer struct{}
@@ -44,6 +49,9 @@ func prepareCodexHome(codexHome string, input PrepareInput) error {
 	if err := exposeUserCodexFiles(codexHome); err != nil {
 		return err
 	}
+	if err := ensureCodexProjectRootMarkersDisabledConfig(filepath.Join(codexHome, "config.toml")); err != nil {
+		return err
+	}
 	if err := exposeUserCodexSkillFolders(filepath.Join(codexHome, "skills")); err != nil {
 		return err
 	}
@@ -76,7 +84,7 @@ func exposeUserCodexFiles(codexHome string) error {
 		return nil
 	}
 	userCodexHome := filepath.Join(userHome, ".codex")
-	for _, name := range []string{"auth.json", "config.toml"} {
+	for _, name := range []string{"auth.json"} {
 		source := filepath.Join(userCodexHome, name)
 		if _, err := os.Stat(source); err != nil {
 			continue
@@ -91,7 +99,142 @@ func exposeUserCodexFiles(codexHome string) error {
 			}
 		}
 	}
+	return exposeUserCodexConfig(codexHome, userCodexHome)
+}
+
+func exposeUserCodexConfig(codexHome string, userCodexHome string) error {
+	target := filepath.Join(codexHome, "config.toml")
+	if targetInfo, err := os.Lstat(target); err == nil {
+		if targetInfo.Mode()&os.ModeSymlink == 0 {
+			return nil
+		}
+		if err := os.Remove(target); err != nil {
+			return fmt.Errorf("replace codex config symlink: %w", err)
+		}
+	} else if !os.IsNotExist(err) {
+		return fmt.Errorf("inspect codex config: %w", err)
+	}
+	source := filepath.Join(userCodexHome, "config.toml")
+	if _, err := os.Stat(source); err != nil {
+		return nil
+	}
+	if err := copyFile(source, target, 0o600); err != nil {
+		return fmt.Errorf("copy codex config: %w", err)
+	}
 	return nil
+}
+
+func ensureCodexProjectRootMarkersDisabledConfig(configPath string) error {
+	contentBytes, err := os.ReadFile(configPath)
+	if err != nil && !os.IsNotExist(err) {
+		return fmt.Errorf("read codex config: %w", err)
+	}
+	next, changed := codexConfigWithProjectRootMarkersDisabled(string(contentBytes))
+	if !changed {
+		return nil
+	}
+	if err := os.WriteFile(configPath, []byte(next), 0o600); err != nil {
+		return fmt.Errorf("write codex config: %w", err)
+	}
+	return nil
+}
+
+func codexConfigWithProjectRootMarkersDisabled(content string) (string, bool) {
+	lines := strings.Split(strings.ReplaceAll(content, "\r\n", "\n"), "\n")
+	for index, line := range lines {
+		trimmed := strings.TrimSpace(line)
+		if trimmed == "" || strings.HasPrefix(trimmed, "#") {
+			continue
+		}
+		if strings.HasPrefix(trimmed, "[") {
+			break
+		}
+		if codexConfigLineHasKey(trimmed, "project_root_markers") {
+			endIndex := codexConfigAssignmentEndLine(lines, index)
+			if endIndex == index && trimmed == codexProjectRootMarkersDisabledConfig {
+				return content, false
+			}
+			nextLines := make([]string, 0, len(lines)-(endIndex-index))
+			nextLines = append(nextLines, lines[:index]...)
+			nextLines = append(nextLines, codexProjectRootMarkersDisabledConfig)
+			nextLines = append(nextLines, lines[endIndex+1:]...)
+			return strings.Join(nextLines, "\n"), true
+		}
+	}
+	next := codexProjectRootMarkersDisabledConfig + "\n"
+	if strings.TrimSpace(content) != "" {
+		next += "\n" + strings.TrimLeft(content, "\r\n")
+	}
+	return next, true
+}
+
+func codexConfigLineHasKey(line string, key string) bool {
+	if !strings.HasPrefix(line, key) {
+		return false
+	}
+	return strings.HasPrefix(strings.TrimSpace(strings.TrimPrefix(line, key)), "=")
+}
+
+// Consume a complete multiline TOML array so stale marker entries do not remain
+// after replacing project_root_markers with the session-scoped override.
+func codexConfigAssignmentEndLine(lines []string, startIndex int) int {
+	if startIndex < 0 || startIndex >= len(lines) {
+		return startIndex
+	}
+	_, value, ok := strings.Cut(lines[startIndex], "=")
+	if !ok {
+		return startIndex
+	}
+	depth := tomlSquareBracketDelta(value)
+	if depth <= 0 {
+		return startIndex
+	}
+	for index := startIndex + 1; index < len(lines); index++ {
+		depth += tomlSquareBracketDelta(lines[index])
+		if depth <= 0 {
+			return index
+		}
+	}
+	return startIndex
+}
+
+func tomlSquareBracketDelta(line string) int {
+	depth := 0
+	escaped := false
+	quote := rune(0)
+	for _, char := range line {
+		switch quote {
+		case '"':
+			if escaped {
+				escaped = false
+				continue
+			}
+			if char == '\\' {
+				escaped = true
+				continue
+			}
+			if char == '"' {
+				quote = 0
+			}
+			continue
+		case '\'':
+			if char == '\'' {
+				quote = 0
+			}
+			continue
+		}
+		switch char {
+		case '#':
+			return depth
+		case '"', '\'':
+			quote = char
+		case '[':
+			depth++
+		case ']':
+			depth--
+		}
+	}
+	return depth
 }
 
 func exposeUserCodexSkillFolders(targetRoot string) error {
@@ -120,8 +263,19 @@ func exposeUserCodexSkillFolders(targetRoot string) error {
 		if err != nil || !sourceInfo.IsDir() {
 			continue
 		}
-		skillInfo, err := os.Stat(filepath.Join(source, "SKILL.md"))
+		skillPath := filepath.Join(source, "SKILL.md")
+		skillInfo, err := os.Stat(skillPath)
 		if err != nil || skillInfo.IsDir() {
+			continue
+		}
+		if !hasDelimitedSkillFrontmatter(skillPath) {
+			slog.Warn(
+				"user codex skill skipped; invalid frontmatter",
+				"error_code", "skill_frontmatter_invalid",
+				"skillName", name,
+				"skillPath", skillPath,
+				"reason", "missing_delimited_yaml_frontmatter",
+			)
 			continue
 		}
 		target := filepath.Join(targetRoot, name)
@@ -135,6 +289,23 @@ func exposeUserCodexSkillFolders(targetRoot string) error {
 		}
 	}
 	return nil
+}
+
+func hasDelimitedSkillFrontmatter(path string) bool {
+	content, err := os.ReadFile(path)
+	if err != nil {
+		return false
+	}
+	lines := strings.Split(string(content), "\n")
+	if len(lines) == 0 || strings.TrimSpace(strings.TrimPrefix(lines[0], "\ufeff")) != "---" {
+		return false
+	}
+	for _, line := range lines[1:] {
+		if strings.TrimSpace(line) == "---" {
+			return true
+		}
+	}
+	return false
 }
 
 func copyFile(source string, target string, mode os.FileMode) error {

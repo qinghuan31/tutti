@@ -1,7 +1,7 @@
-// macOS Finder icon view uses 64pt icons; render at ~80% (52px) of that baseline.
-const workspaceFileManagerIconGridIconSizePx = 52;
-const workspaceFileManagerIconGridTileMinWidthPx = 108;
-const workspaceFileManagerIconGridTileMaxWidthPx = 120;
+// Give image thumbnails enough room to be recognizable while keeping dense rows.
+const workspaceFileManagerIconGridIconSizePx = 84;
+const workspaceFileManagerIconGridTileMinWidthPx = 136;
+const workspaceFileManagerIconGridTileMaxWidthPx = 148;
 
 export const workspaceFileManagerIconGridLayout = {
   iconSizePx: workspaceFileManagerIconGridIconSizePx,
@@ -10,9 +10,9 @@ export const workspaceFileManagerIconGridLayout = {
 } as const;
 
 export function workspaceFileManagerIconGridIconClassName(): string {
-  return "size-[52px]";
+  return "size-[84px]";
 }
 
 export function workspaceFileManagerIconGridFrameClassName(): string {
-  return "size-[60px]";
+  return "size-[92px]";
 }

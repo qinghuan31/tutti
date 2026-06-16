@@ -91,6 +91,12 @@ export function normalizeBrowserComparableUrl(rawUrl: string): string | null {
   return resolved.errorCode === null ? resolved.url : null;
 }
 
+export function resolveBrowserOpenExternalUrl(
+  rawUrl: string
+): BrowserNavigationUrlResolution {
+  return resolveHostBrowserNavigationUrl(rawUrl);
+}
+
 export function resolveHostBrowserNavigationUrl(
   rawUrl: string
 ): BrowserNavigationUrlResolution {

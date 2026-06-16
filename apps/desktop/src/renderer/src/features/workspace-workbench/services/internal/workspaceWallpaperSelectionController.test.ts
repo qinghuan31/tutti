@@ -64,6 +64,22 @@ test("workspace wallpaper selection controller initializes from the workspace pr
   assert.match(snapshot.wallpaper.url, /default-dark\.png/);
 });
 
+test("workspace wallpaper selection controller initializes missing preference from the catalog default", () => {
+  const controller = createWorkspaceWallpaperSelectionController(
+    createWallpaperSelectionInput({
+      appearance: "dark",
+      readWallpaperId: () => "tutti",
+      workspaceId: "workspace-default"
+    })
+  );
+
+  const snapshot = controller.getSnapshot();
+
+  assert.equal(snapshot.selectedWallpaperID, "tutti");
+  assert.equal(snapshot.wallpaper.appearance, "dark");
+  assert.match(snapshot.wallpaper.url, /tutti\.png/);
+});
+
 test("workspace wallpaper selection controller writes and publishes selections", () => {
   const writes: { wallpaperID: WorkspaceWallpaperId; workspaceId: string }[] =
     [];
@@ -149,7 +165,7 @@ test("workspace wallpaper selection controller persists repeated selections with
 test("workspace wallpaper selection controller reloads when its input changes", () => {
   const storedWallpaperIds = new Map<string, WorkspaceWallpaperId>([
     ["workspace-1", "default"],
-    ["workspace-2", "galaxy"]
+    ["workspace-2", "ocean"]
   ]);
   const controller = createWorkspaceWallpaperSelectionController(
     createWallpaperSelectionInput({
@@ -172,9 +188,9 @@ test("workspace wallpaper selection controller reloads when its input changes", 
     })
   );
 
-  assert.equal(controller.getSnapshot().selectedWallpaperID, "galaxy");
+  assert.equal(controller.getSnapshot().selectedWallpaperID, "ocean");
   assert.equal(controller.getSnapshot().wallpaper.appearance, "dark");
-  assert.deepEqual(notifications, ["galaxy"]);
+  assert.deepEqual(notifications, ["ocean"]);
 });
 
 test("workspace wallpaper selection controller writes and publishes display mode changes", () => {

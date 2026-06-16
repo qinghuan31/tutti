@@ -27,6 +27,9 @@ export type SlashCommandSelectionEffect =
       kind: "showReviewPicker";
     }
   | {
+      kind: "toggleSpeed";
+    }
+  | {
       kind: "blockCommand";
     };
 
@@ -55,9 +58,13 @@ const UNIVERSAL_IMMEDIATE_COMMANDS = new Set(["compact"]);
 // Commands blocked or handled locally across the ACP providers below.
 const ACP_BLOCKED_COMMANDS = new Set(["plan"]);
 const ACP_LOCAL_STATUS_COMMANDS = new Set(["status"]);
+// `/fast` toggles the orthogonal speed dimension locally rather than reaching
+// the agent as a prompt; supported for codex and claude-code.
+const ACP_LOCAL_TOGGLE_SPEED_COMMANDS = new Set(["fast"]);
 const ACP_FALLBACK_COMMANDS: readonly AgentSessionCommand[] = [
   { name: "compact" },
-  { name: "status" }
+  { name: "status" },
+  { name: "fast" }
 ];
 
 const PROVIDER_SLASH_POLICY: Record<
@@ -125,6 +132,9 @@ export function resolveSlashCommandSelectionEffect({
   if (isBlockedSlashCommand(provider, commandName)) {
     return { kind: "blockCommand" };
   }
+  if (isLocalToggleSpeedCommand(provider, commandName)) {
+    return { kind: "toggleSpeed" };
+  }
   if (isLocalStatusCommand(provider, commandName)) {
     return { kind: "showStatus" };
   }
@@ -166,6 +176,9 @@ export function resolveSlashCommandSubmitEffect({
     return null;
   }
   const commandName = normalizedCommandName(command);
+  if (isLocalToggleSpeedCommand(provider, commandName)) {
+    return { kind: "toggleSpeed" };
+  }
   if (isLocalStatusCommand(provider, commandName)) {
     return { kind: "showStatus" };
   }
@@ -211,6 +224,15 @@ function isLocalStatusCommand(
   commandName: string
 ): boolean {
   return isACPProvider(provider) && ACP_LOCAL_STATUS_COMMANDS.has(commandName);
+}
+
+function isLocalToggleSpeedCommand(
+  provider: AgentSlashCommandProvider,
+  commandName: string
+): boolean {
+  return (
+    isACPProvider(provider) && ACP_LOCAL_TOGGLE_SPEED_COMMANDS.has(commandName)
+  );
 }
 
 function isImmediateCommand(

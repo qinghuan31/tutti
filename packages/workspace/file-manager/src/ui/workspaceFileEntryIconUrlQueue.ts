@@ -9,11 +9,13 @@ export type WorkspaceFileEntryIconUrlResolver = (
 ) => Promise<string | null | undefined>;
 
 export interface WorkspaceFileEntryIconUrlQueueOptions {
+  includeImageThumbnails?: boolean;
   maxConcurrent?: number;
   resolveEntryIconUrl?: WorkspaceFileEntryIconUrlResolver;
 }
 
 export interface WorkspaceFileEntryIconUrlQueue {
+  activate(): void;
   dispose(): void;
   enterViewport(entry: WorkspaceFileEntry): void;
   leaveViewport(entry: WorkspaceFileEntry): void;
@@ -23,6 +25,11 @@ export interface WorkspaceFileEntryIconUrlQueue {
 }
 
 const defaultMaxConcurrentIconRequests = 3;
+const imageThumbnailCacheKeyPrefix = "image-thumbnail:";
+
+function shouldKeepResolvedIconAfterViewportLeave(cacheKey: string): boolean {
+  return cacheKey.startsWith(imageThumbnailCacheKeyPrefix);
+}
 
 export function createWorkspaceFileEntryIconUrlQueue(
   options: WorkspaceFileEntryIconUrlQueueOptions
@@ -39,6 +46,9 @@ export function createWorkspaceFileEntryIconUrlQueue(
   let activeCount = 0;
   let disposed = false;
   let retainedCacheKeys: ReadonlySet<string> | null = null;
+  const policyOptions = {
+    includeImageThumbnails: options.includeImageThumbnails
+  };
 
   function publish(): void {
     for (const listener of listeners) {
@@ -54,6 +64,12 @@ export function createWorkspaceFileEntryIconUrlQueue(
     return (visibleReferenceCountByCacheKey.get(cacheKey) ?? 0) > 0;
   }
 
+  function shouldResolveCacheKey(cacheKey: string): boolean {
+    return (
+      isVisible(cacheKey) || shouldKeepResolvedIconAfterViewportLeave(cacheKey)
+    );
+  }
+
   function retainVisibleReference(cacheKey: string): void {
     visibleReferenceCountByCacheKey.set(
       cacheKey,
@@ -61,20 +77,23 @@ export function createWorkspaceFileEntryIconUrlQueue(
     );
   }
 
-  function releaseVisibleReference(cacheKey: string): boolean {
+  function releaseVisibleReference(cacheKey: string): void {
     const nextCount = (visibleReferenceCountByCacheKey.get(cacheKey) ?? 0) - 1;
     if (nextCount > 0) {
       visibleReferenceCountByCacheKey.set(cacheKey, nextCount);
-      return false;
+      return;
     }
 
     visibleReferenceCountByCacheKey.delete(cacheKey);
+    if (shouldKeepResolvedIconAfterViewportLeave(cacheKey)) {
+      return;
+    }
+
     queuedEntries.delete(cacheKey);
     const hadCachedIcon = iconUrlByCacheKey.delete(cacheKey);
     if (hadCachedIcon) {
       publish();
     }
-    return true;
   }
 
   function drain(): void {
@@ -91,7 +110,7 @@ export function createWorkspaceFileEntryIconUrlQueue(
       const [cacheKey, entry] = next;
       queuedEntries.delete(cacheKey);
       if (
-        !isVisible(cacheKey) ||
+        !shouldResolveCacheKey(cacheKey) ||
         iconUrlByCacheKey.has(cacheKey) ||
         inFlightCacheKeys.has(cacheKey)
       ) {
@@ -104,13 +123,21 @@ export function createWorkspaceFileEntryIconUrlQueue(
       void options
         .resolveEntryIconUrl(entry)
         .then((iconUrl) => {
-          if (!disposed && isRetained(cacheKey) && isVisible(cacheKey)) {
+          const shouldStore =
+            !disposed &&
+            isRetained(cacheKey) &&
+            shouldResolveCacheKey(cacheKey);
+          if (shouldStore) {
             iconUrlByCacheKey.set(cacheKey, iconUrl?.trim() || null);
             publish();
           }
         })
         .catch(() => {
-          if (!disposed && isRetained(cacheKey) && isVisible(cacheKey)) {
+          const shouldStore =
+            !disposed &&
+            isRetained(cacheKey) &&
+            shouldResolveCacheKey(cacheKey);
+          if (shouldStore) {
             iconUrlByCacheKey.set(cacheKey, null);
             publish();
           }
@@ -124,6 +151,9 @@ export function createWorkspaceFileEntryIconUrlQueue(
   }
 
   return {
+    activate(): void {
+      disposed = false;
+    },
     dispose(): void {
       disposed = true;
       queuedEntries.clear();
@@ -131,17 +161,21 @@ export function createWorkspaceFileEntryIconUrlQueue(
       listeners.clear();
     },
     leaveViewport(entry): void {
-      if (disposed || !shouldResolveWorkspaceFileEntryIcon(entry)) {
+      if (
+        disposed ||
+        !shouldResolveWorkspaceFileEntryIcon(entry, policyOptions)
+      ) {
         return;
       }
 
-      releaseVisibleReference(resolveWorkspaceFileEntryIconCacheKey(entry));
+      const cacheKey = resolveWorkspaceFileEntryIconCacheKey(entry);
+      releaseVisibleReference(cacheKey);
     },
     enterViewport(entry): void {
       if (
         disposed ||
         !options.resolveEntryIconUrl ||
-        !shouldResolveWorkspaceFileEntryIcon(entry)
+        !shouldResolveWorkspaceFileEntryIcon(entry, policyOptions)
       ) {
         return;
       }
@@ -162,10 +196,11 @@ export function createWorkspaceFileEntryIconUrlQueue(
     retainEntries(entries): void {
       retainedCacheKeys = new Set(
         entries
-          .filter(shouldResolveWorkspaceFileEntryIcon)
+          .filter((entry) =>
+            shouldResolveWorkspaceFileEntryIcon(entry, policyOptions)
+          )
           .map((entry) => resolveWorkspaceFileEntryIconCacheKey(entry))
       );
-
       let changed = false;
       for (const cacheKey of iconUrlByCacheKey.keys()) {
         if (!isRetained(cacheKey)) {

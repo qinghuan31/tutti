@@ -957,8 +957,8 @@ function MoveDragPreview({
     >
       <WorkspaceFileEntryIcon
         entry={preview.entry}
-        frameClassName="size-[18px]"
-        iconClassName="size-4"
+        frameClassName="size-7"
+        iconClassName="size-6"
         iconUrlByCacheKey={iconUrlByCacheKey}
         onViewportLeave={onEntryIconViewportLeave}
         onViewportEnter={onEntryIconViewportEnter}
@@ -1140,8 +1140,8 @@ function EntryNameCell({
       <span className="flex min-w-0 items-center gap-2">
         <WorkspaceFileEntryIcon
           entry={entry}
-          frameClassName="size-[18px]"
-          iconClassName="size-4"
+          frameClassName="size-7"
+          iconClassName="size-6"
           iconUrlByCacheKey={iconUrlByCacheKey}
           onViewportLeave={onEntryIconViewportLeave}
           onViewportEnter={onEntryIconViewportEnter}
@@ -1205,8 +1205,8 @@ function EntryNameCell({
     <span className="flex min-w-0 items-center gap-2">
       <WorkspaceFileEntryIcon
         entry={entry}
-        frameClassName="size-[18px]"
-        iconClassName="size-4"
+        frameClassName="size-7"
+        iconClassName="size-6"
         iconUrlByCacheKey={iconUrlByCacheKey}
         isEnteringDirectory={isEnteringDirectory}
         onViewportLeave={onEntryIconViewportLeave}
