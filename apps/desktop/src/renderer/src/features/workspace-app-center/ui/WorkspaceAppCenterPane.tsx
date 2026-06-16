@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useSyncExternalStore } from "react";
+import { useCallback, useEffect, useMemo, useSyncExternalStore } from "react";
 import type {
   WorkspaceAppCenterApp,
   WorkspaceAppCenterViewState,
@@ -14,7 +14,8 @@ import { createAppCenterI18nRuntime } from "@tutti-os/workspace-app-center/i18n"
 import type {
   AppCenterAppTab,
   AppCenterFactoryProviderConfiguration,
-  AppCenterFactoryProviderOption
+  AppCenterFactoryProviderOption,
+  AppCenterHostActions
 } from "@tutti-os/workspace-app-center/ui";
 import { AppCenterPanel } from "@tutti-os/workspace-app-center/ui";
 import { agentGuiDockIconUrls } from "@tutti-os/agent-gui";
@@ -166,15 +167,6 @@ export function WorkspaceAppCenterPane({
       providers: [...workspaceAgentGuiProviders]
     });
   }, [agentProviderStatusService]);
-  useEffect(() => {
-    if (!state.error) {
-      return;
-    }
-    const error = service.consumeError();
-    if (error) {
-      Toast.Error(error);
-    }
-  }, [service, state.error]);
   const factoryProviderOptions = useMemo(
     () =>
       resolveAppCenterReadyAgentProviderOptions(agentProviderSnapshot.statuses),
@@ -200,6 +192,69 @@ export function WorkspaceAppCenterPane({
         return service.getFactoryProviderConfiguration(provider);
       },
     [service]
+  );
+  const appCenterActions = useMemo<AppCenterHostActions>(
+    () => ({
+      cancelFactoryJob: (jobId) =>
+        service.cancelFactoryJob({ jobId, workspaceId }),
+      createFactoryJob: (input) =>
+        service.createFactoryJob({ ...input, workspaceId }),
+      deleteFactoryJob: (jobId) =>
+        service.deleteFactoryJob({ jobId, workspaceId }),
+      deleteApp: (appId) => service.deleteApp({ appId, workspaceId }),
+      exportApp: (appId) => service.exportApp({ appId, workspaceId }),
+      fixFactoryJob: (jobId, prompt) =>
+        service.fixFactoryJob({ jobId, prompt, workspaceId }),
+      importApp: () => service.importApp({ workspaceId }),
+      installApp: (appId) => service.installApp({ appId, workspaceId }),
+      openApp: (appId) => service.openApp({ appId, workspaceId }),
+      openAppFolder: (appId) => service.openAppFolder({ appId, workspaceId }),
+      openAppPackageFolder: (appId) =>
+        service.openAppPackageFolder({ appId, workspaceId }),
+      openFactoryJobAgentSession: async (agentSessionId, provider) => {
+        await requestWorkspaceAgentGuiLaunch({
+          agentSessionId,
+          provider: normalizeDesktopAgentGUIProvider(provider),
+          workspaceId
+        });
+      },
+      modifyAppWithAgent: async (jobId, agentSessionId, provider) => {
+        const preparedJob = await service.prepareFactoryJobModification({
+          jobId,
+          workspaceId
+        });
+        if (!preparedJob) {
+          return;
+        }
+        await requestWorkspaceAgentGuiLaunch({
+          agentSessionId: preparedJob.agentSessionId ?? agentSessionId,
+          provider: normalizeDesktopAgentGUIProvider(
+            preparedJob.provider ?? provider
+          ),
+          workspaceId
+        });
+      },
+      publishFactoryJob: (jobId) =>
+        service.publishFactoryJob({ jobId, workspaceId }),
+      refreshCatalog: () => service.refreshCatalog(workspaceId),
+      retryFactoryValidation: (jobId) =>
+        service.retryFactoryValidation({ jobId, workspaceId }),
+      retryApp: (appId) => service.retryApp({ appId, workspaceId }),
+      replaceAppIcon: (appId) => service.replaceAppIcon({ appId, workspaceId }),
+      updateApp: (appId, trigger) =>
+        service.updateApp({ appId, trigger, workspaceId }),
+      uninstallApp: (appId) => service.uninstallApp({ appId, workspaceId })
+    }),
+    [service, workspaceId]
+  );
+  const handleActiveAppTabChange = useCallback(
+    (activeAppTab: AppCenterAppTab) => {
+      service.setViewState({
+        state: { activeAppTab },
+        workspaceId
+      });
+    },
+    [service, workspaceId]
   );
   const viewModel = useMemo(() => {
     const recommendedApps = withComingSoonWorkspaceApps(
@@ -250,76 +305,39 @@ export function WorkspaceAppCenterPane({
   ]);
 
   return (
-    <AppCenterPanel
-      actions={{
-        cancelFactoryJob: (jobId) =>
-          service.cancelFactoryJob({ jobId, workspaceId }),
-        createFactoryJob: (input) =>
-          service.createFactoryJob({ ...input, workspaceId }),
-        deleteFactoryJob: (jobId) =>
-          service.deleteFactoryJob({ jobId, workspaceId }),
-        deleteApp: (appId) => service.deleteApp({ appId, workspaceId }),
-        exportApp: (appId) => service.exportApp({ appId, workspaceId }),
-        fixFactoryJob: (jobId, prompt) =>
-          service.fixFactoryJob({ jobId, prompt, workspaceId }),
-        importApp: () => service.importApp({ workspaceId }),
-        installApp: (appId) => service.installApp({ appId, workspaceId }),
-        openApp: (appId) => service.openApp({ appId, workspaceId }),
-        openAppFolder: (appId) => service.openAppFolder({ appId, workspaceId }),
-        openAppPackageFolder: (appId) =>
-          service.openAppPackageFolder({ appId, workspaceId }),
-        openFactoryJobAgentSession: async (agentSessionId, provider) => {
-          await requestWorkspaceAgentGuiLaunch({
-            agentSessionId,
-            provider: normalizeDesktopAgentGUIProvider(provider),
-            workspaceId
-          });
-        },
-        modifyAppWithAgent: async (jobId, agentSessionId, provider) => {
-          const preparedJob = await service.prepareFactoryJobModification({
-            jobId,
-            workspaceId
-          });
-          if (!preparedJob) {
-            return;
-          }
-          await requestWorkspaceAgentGuiLaunch({
-            agentSessionId: preparedJob.agentSessionId ?? agentSessionId,
-            provider: normalizeDesktopAgentGUIProvider(
-              preparedJob.provider ?? provider
-            ),
-            workspaceId
-          });
-        },
-        publishFactoryJob: (jobId) =>
-          service.publishFactoryJob({ jobId, workspaceId }),
-        refreshCatalog: () => service.refreshCatalog(workspaceId),
-        retryFactoryValidation: (jobId) =>
-          service.retryFactoryValidation({ jobId, workspaceId }),
-        retryApp: (appId) => service.retryApp({ appId, workspaceId }),
-        replaceAppIcon: (appId) =>
-          service.replaceAppIcon({ appId, workspaceId }),
-        updateApp: (appId, trigger) =>
-          service.updateApp({ appId, trigger, workspaceId }),
-        uninstallApp: (appId) => service.uninstallApp({ appId, workspaceId })
-      }}
-      activeAppTab={viewState.activeAppTab}
-      catalogStatus={catalogPanelStatus}
-      copy={copy}
-      defaultAgentProvider={agentProviderSnapshot.defaultProvider}
-      loadProviderConfiguration={loadFactoryProviderConfiguration}
-      onActiveAppTabChange={(activeAppTab: AppCenterAppTab) => {
-        service.setViewState({
-          state: { activeAppTab },
-          workspaceId
-        });
-      }}
-      providerErrorMessage={agentProviderSnapshot.error}
-      providerLoading={agentProviderSnapshot.isLoading}
-      providerOptions={factoryProviderOptions}
-      viewModel={viewModel}
-    />
+    <>
+      <WorkspaceAppCenterErrorToast />
+      <AppCenterPanel
+        actions={appCenterActions}
+        activeAppTab={viewState.activeAppTab}
+        catalogStatus={catalogPanelStatus}
+        copy={copy}
+        defaultAgentProvider={agentProviderSnapshot.defaultProvider}
+        loadProviderConfiguration={loadFactoryProviderConfiguration}
+        onActiveAppTabChange={handleActiveAppTabChange}
+        providerErrorMessage={agentProviderSnapshot.error}
+        providerLoading={agentProviderSnapshot.isLoading}
+        providerOptions={factoryProviderOptions}
+        viewModel={viewModel}
+      />
+    </>
   );
+}
+
+function WorkspaceAppCenterErrorToast() {
+  const { service, state } = useWorkspaceAppCenterService();
+
+  useEffect(() => {
+    if (!state.error) {
+      return;
+    }
+    const error = service.consumeError();
+    if (error) {
+      Toast.Error(error);
+    }
+  }, [service, state.error]);
+
+  return null;
 }
 
 function createComingSoonWorkspaceApps(

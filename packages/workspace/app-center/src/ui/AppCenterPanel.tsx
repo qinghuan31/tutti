@@ -392,43 +392,46 @@ export function AppCenterPanel({
     }
     void actions.openFactoryJobAgentSession?.(agentSessionId, job.provider);
   };
-  const cardActions: AppCenterHostActions = {
-    ...actions,
-    deleteApp: (appId, appName) => {
-      setPendingDeleteApp({
-        id: appId,
-        installed:
-          viewModel.apps.find((app) => app.id === appId)?.installed ?? false,
-        name: appName
-      });
-    },
-    uninstallApp: (appId) => {
-      const app = viewModel.apps.find((item) => item.id === appId);
-      if (!app) {
-        return;
-      }
-      setPendingUninstallApp({
-        id: app.id,
-        name: app.name,
-        sourceKind: app.sourceKind
-      });
-    },
-    updateApp: (appId, trigger) => {
-      const app = viewModel.apps.find((item) => item.id === appId);
-      if (!app) {
-        return;
-      }
-      if (app.installed && app.status === "running") {
-        setPendingUpdateApp({
+  const cardActions = useMemo<AppCenterHostActions>(
+    () => ({
+      ...actions,
+      deleteApp: (appId, appName) => {
+        setPendingDeleteApp({
+          id: appId,
+          installed:
+            viewModel.apps.find((app) => app.id === appId)?.installed ?? false,
+          name: appName
+        });
+      },
+      uninstallApp: (appId) => {
+        const app = viewModel.apps.find((item) => item.id === appId);
+        if (!app) {
+          return;
+        }
+        setPendingUninstallApp({
           id: app.id,
           name: app.name,
-          trigger
+          sourceKind: app.sourceKind
         });
-        return;
+      },
+      updateApp: (appId, trigger) => {
+        const app = viewModel.apps.find((item) => item.id === appId);
+        if (!app) {
+          return;
+        }
+        if (app.installed && app.status === "running") {
+          setPendingUpdateApp({
+            id: app.id,
+            name: app.name,
+            trigger
+          });
+          return;
+        }
+        void actions.updateApp?.(appId, trigger);
       }
-      void actions.updateApp?.(appId, trigger);
-    }
-  };
+    }),
+    [actions, viewModel.apps]
+  );
   const loadingMessage =
     catalogStatus === "loading" ? copy.t("messages.catalogLoading") : null;
   const catalogLoading = catalogStatus === "loading";

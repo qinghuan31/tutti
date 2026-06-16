@@ -1,4 +1,5 @@
-import type { ReactElement } from "react";
+import type { KeyboardEvent, ReactElement } from "react";
+import { memo, useCallback, useMemo } from "react";
 import {
   Button,
   ChatIcon,
@@ -109,7 +110,7 @@ export interface AppCardProps {
   readonly copy: AppCenterI18nRuntime;
 }
 
-export function AppCard({
+export const AppCard = memo(function AppCard({
   actions,
   app,
   className,
@@ -141,7 +142,10 @@ export function AppCard({
     app.canOpenFactorySession &&
     !!app.factoryAgentSessionId &&
     !!app.factoryJobId;
-  const actionContext = createWorkspaceAppActionContext(app);
+  const actionContext = useMemo(
+    () => createWorkspaceAppActionContext(app),
+    [app]
+  );
   const hasMoreActions =
     canPublishFactoryUpdate ||
     canOpenFactorySession ||
@@ -151,7 +155,7 @@ export function AppCard({
     app.canOpenFolder ||
     app.canOpenPackageFolder ||
     app.canUninstall;
-  const executePrimaryAction = (): void => {
+  const executePrimaryAction = useCallback((): void => {
     if (app.primaryAction === "retry") {
       void actions.retryApp?.(app.id);
       return;
@@ -167,12 +171,25 @@ export function AppCard({
     if (app.primaryAction === "open") {
       void actions.openApp?.(app.id, actionContext);
     }
-  };
-  const executeCardAction = (): void => {
+  }, [actionContext, actions, app.id, app.primaryAction]);
+  const executeCardAction = useCallback((): void => {
     if (canOpenFromCard) {
       void actions.openApp?.(app.id, actionContext);
     }
-  };
+  }, [actionContext, actions, app.id, canOpenFromCard]);
+  const handleCardKeyDown = useCallback(
+    (event: KeyboardEvent<HTMLElement>): void => {
+      if (!canOpenFromCard || (event.key !== "Enter" && event.key !== " ")) {
+        return;
+      }
+      event.preventDefault();
+      executeCardAction();
+    },
+    [canOpenFromCard, executeCardAction]
+  );
+  const handleReplaceIcon = useCallback((): void => {
+    void actions.replaceAppIcon?.(app.id);
+  }, [actions, app.id]);
 
   return (
     <article
@@ -186,21 +203,13 @@ export function AppCard({
       role="listitem"
       tabIndex={canOpenFromCard ? 0 : -1}
       onClick={executeCardAction}
-      onKeyDown={(event) => {
-        if (!canOpenFromCard || (event.key !== "Enter" && event.key !== " ")) {
-          return;
-        }
-        event.preventDefault();
-        executeCardAction();
-      }}
+      onKeyDown={handleCardKeyDown}
     >
       <div className="flex items-start justify-between gap-3">
         <AppIcon
           app={app}
           replaceIconLabel={copy.t("actions.replaceIcon")}
-          onReplaceIcon={() => {
-            void actions.replaceAppIcon?.(app.id);
-          }}
+          onReplaceIcon={handleReplaceIcon}
         />
         <div className="flex shrink-0 items-center gap-1">
           <div className="flex size-8 shrink-0 items-center justify-center">
@@ -303,7 +312,7 @@ export function AppCard({
       </div>
     </article>
   );
-}
+});
 
 function createWorkspaceAppActionContext(
   app: WorkspaceAppCardViewModel
