@@ -236,7 +236,7 @@ export function createWorkspaceIssueManagerContribution(input: {
               resolveAgentIconUrl: managedAgentRoundedIconUrl,
               userAvatarPlaceholderUrl,
               resolveStatusView: resolveAgentSessionStatusView
-            }) as unknown as RichTextAtProvider<unknown>;
+            });
           }
           return provider;
         });
