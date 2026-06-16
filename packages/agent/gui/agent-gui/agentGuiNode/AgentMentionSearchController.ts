@@ -130,6 +130,7 @@ export class AgentMentionSearchController {
   private currentUserId = "";
   private currentFilter: AgentMentionFilterId = "all";
   private currentQuery = "";
+  private currentSessionCwd = "";
   private currentFileSearchLimit: number;
   private currentIssueSearchLimit: number;
   private agentGeneratedBrowsePath: string | null = null;
@@ -180,12 +181,14 @@ export class AgentMentionSearchController {
     workspaceId: string;
     currentUserId?: string | null;
     query: string;
+    sessionCwd?: string | null;
   }): void {
     if (this.disposed) {
       return;
     }
     this.activeWorkspaceId = input.workspaceId.trim();
     this.currentUserId = input.currentUserId?.trim() ?? "";
+    this.currentSessionCwd = input.sessionCwd?.trim() ?? "";
     this.currentQuery = normalizeQuery(input.query);
     this.clearTimer();
     const requestId = ++this.requestId;
@@ -795,6 +798,7 @@ export class AgentMentionSearchController {
       context: {
         metadata: {
           currentUserId: input.currentUserId,
+          sessionCwd: this.currentSessionCwd || undefined,
           target: "agent-gui",
           workspaceId: input.workspaceId
         }

@@ -58,17 +58,32 @@ export interface BuildWorkspaceAgentActivityListOptions {
   fallbackMembers?: RoomShareMemberView[];
 }
 
+export interface CollectWorkspaceAgentGeneratedFilesOptions {
+  workspaceRoot?: string | null;
+  /** When set, only include files from sessions whose cwd matches this path. */
+  sessionCwd?: string | null;
+}
+
 export function collectWorkspaceAgentGeneratedFiles(
   snapshot: WorkspaceAgentActivitySnapshot,
-  options: { workspaceRoot?: string | null } = {}
+  options: CollectWorkspaceAgentGeneratedFilesOptions = {}
 ): WorkspaceAgentChangedFile[] {
+  const sessionCwdFilter = normalizeComparablePath(options.sessionCwd ?? "");
   const workspaceRoot =
-    options.workspaceRoot?.trim().replace(/\/+$/, "") ||
+    sessionCwdFilter ||
+    normalizeComparablePath(options.workspaceRoot ?? "") ||
     resolveWorkspaceRootFromSessions(snapshot.sessions);
+  const sessions = sessionCwdFilter
+    ? snapshot.sessions.filter(
+        (session) =>
+          normalizeComparablePath(session.cwd ?? "") === sessionCwdFilter
+      )
+    : snapshot.sessions;
   const filesByPath = new Map<string, WorkspaceAgentChangedFile>();
 
-  for (const session of snapshot.sessions) {
-    const sessionCwd = session.cwd?.trim().replace(/\/+$/, "") || workspaceRoot;
+  for (const session of sessions) {
+    const sessionCwd =
+      normalizeComparablePath(session.cwd ?? "") || workspaceRoot;
     const normalizePath = createAgentGeneratedFilePathNormalizer({
       sessionCwd,
       workspaceRoot
@@ -516,12 +531,16 @@ function resolveWorkspaceRootFromSessions(
   sessions: readonly WorkspaceAgentActivitySession[]
 ): string {
   for (const session of sessions) {
-    const cwd = session.cwd?.trim().replace(/\/+$/, "") ?? "";
+    const cwd = normalizeComparablePath(session.cwd ?? "");
     if (cwd) {
       return cwd;
     }
   }
   return "";
+}
+
+function normalizeComparablePath(path: string): string {
+  return path.trim().replace(/\\/g, "/").replace(/\/+$/, "");
 }
 
 function createAgentGeneratedFilePathNormalizer(input: {

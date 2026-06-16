@@ -46,7 +46,14 @@ export function createDesktopAgentGeneratedFileMentionProvider(input: {
       }
       const refreshedSnapshot =
         input.agentActivityRuntime.getSnapshot(workspaceId);
-      const files = collectWorkspaceAgentGeneratedFiles(refreshedSnapshot);
+      const sessionCwd = metadataString(
+        searchInput.context.metadata,
+        "sessionCwd",
+        ""
+      );
+      const files = collectWorkspaceAgentGeneratedFiles(refreshedSnapshot, {
+        ...(sessionCwd ? { sessionCwd } : {})
+      });
       const keyword = searchInput.keyword.trim().toLowerCase();
       const filtered = keyword
         ? files.filter((file) =>

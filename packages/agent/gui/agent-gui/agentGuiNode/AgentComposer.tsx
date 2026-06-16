@@ -1262,10 +1262,11 @@ export function AgentComposer({
       mentionControllerRef.current?.updateQuery({
         workspaceId,
         currentUserId,
-        query: state.query
+        query: state.query,
+        sessionCwd: selectedProjectPath || null
       });
     },
-    [currentUserId, workspaceId]
+    [currentUserId, selectedProjectPath, workspaceId]
   );
 
   const handleLinkClick = useCallback(
@@ -1817,7 +1818,16 @@ export function AgentComposer({
     }
     previousSelectedProjectPathRef.current = selectedProjectPath;
     setIsSelectedProjectMissing(false);
-  }, [selectedProjectPath]);
+    if (!fileMentionSuggestion) {
+      return;
+    }
+    mentionControllerRef.current?.updateQuery({
+      workspaceId,
+      currentUserId,
+      query: fileMentionSuggestion.query,
+      sessionCwd: selectedProjectPath || null
+    });
+  }, [currentUserId, fileMentionSuggestion, selectedProjectPath, workspaceId]);
 
   useEffect(() => {
     setDismissedPromptRequestId(null);
