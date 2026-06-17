@@ -104,7 +104,7 @@ test("en task terminology and status labels use requested copy", () => {
   assert.equal(copy.t("labels.taskList"), "Tasks");
   assert.equal(copy.t("messages.noIssues"), "No tasks yet");
   assert.equal(copy.t("messages.noTasks"), "No tasks yet");
-  assert.equal(copy.t("status.notStarted"), "To do");
+  assert.equal(copy.t("status.notStarted"), "Todo");
   assert.equal(copy.t("status.running"), "Running");
   assert.equal(copy.t("status.inProgress"), "Running");
   assert.equal(copy.t("status.pendingAcceptance"), "In review");

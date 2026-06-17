@@ -140,7 +140,7 @@ const issueManagerEn = {
     noOutputs: "No outputs yet",
     noRecentRuns: "No runs yet",
     taskContentEmpty: "No task description yet",
-    taskAcceptanceHint: "Accept to complete; reject to return to To do.",
+    taskAcceptanceHint: "Accept to complete; reject to return to Todo.",
     noTaskReferences: "No task references yet",
     noTasksForIssueBody:
       "Create the first subtask for this task and let an agent or yourself execute it",
@@ -224,7 +224,7 @@ const issueManagerEn = {
     completed: "Done",
     failed: "Failed",
     inProgress: "Running",
-    notStarted: "To do",
+    notStarted: "Todo",
     pendingAcceptance: "In review",
     running: "Running",
     unknown: "Unknown"
