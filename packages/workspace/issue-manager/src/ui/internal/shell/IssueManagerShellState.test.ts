@@ -10,6 +10,7 @@ import {
   resolveIssueManagerStatusCounts,
   resolveIssueManagerShellContentViewState,
   resolveIssueManagerSubtaskProgress,
+  resolveIssueManagerSubtaskProgressByIssueId,
   resolveIssueManagerSubtaskProgressFromTasks,
   resolveIssueManagerSidebarViewState
 } from "./IssueManagerShellState.ts";
@@ -275,6 +276,28 @@ test("subtask progress from visible tasks counts only visible completed subtasks
       percent: 50,
       total: 2
     }
+  );
+});
+
+test("subtask progress override hides summary progress when visible subtasks are empty", () => {
+  assert.deepEqual(
+    resolveIssueManagerSubtaskProgressByIssueId({
+      issueId: "issue-1",
+      visibleTasks: []
+    }),
+    {
+      "issue-1": null
+    }
+  );
+});
+
+test("subtask progress override is omitted when no issue detail is available", () => {
+  assert.deepEqual(
+    resolveIssueManagerSubtaskProgressByIssueId({
+      issueId: null,
+      visibleTasks: null
+    }),
+    {}
   );
 });
 

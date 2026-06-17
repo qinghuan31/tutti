@@ -160,6 +160,21 @@ export function resolveIssueManagerSubtaskProgressFromTasks(
   };
 }
 
+export function resolveIssueManagerSubtaskProgressByIssueId(input: {
+  issueId: string | null;
+  visibleTasks: readonly Pick<IssueManagerTaskSummary, "status">[] | null;
+}): Record<string, IssueManagerSubtaskProgressViewState | null> {
+  if (!input.issueId || !input.visibleTasks) {
+    return {};
+  }
+
+  return {
+    [input.issueId]: resolveIssueManagerSubtaskProgressFromTasks(
+      input.visibleTasks
+    )
+  };
+}
+
 export interface IssueManagerShellContentViewState {
   isIssueEditing: boolean;
   isTaskCreating: boolean;

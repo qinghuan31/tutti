@@ -8,10 +8,9 @@ import {
 } from "./IssueManagerSidebarSections.tsx";
 import { resolveIssueManagerSidebarPresentationState } from "./IssueManagerSidebarState.ts";
 import type { IssueManagerController } from "../../react/index.ts";
-import { resolveIssueManagerSubtaskProgressFromTasks } from "./IssueManagerShellState.ts";
+import { resolveIssueManagerSubtaskProgressByIssueId } from "./IssueManagerShellState.ts";
 import type {
   issueManagerStatusFilters,
-  IssueManagerSubtaskProgressViewState,
   IssueManagerSidebarViewState
 } from "./IssueManagerShellState.ts";
 import {
@@ -62,18 +61,10 @@ export function IssueManagerSidebar({
         tasks: currentIssueDetail.tasks
       })
     : [];
-  const visibleSubtaskProgress = currentIssueDetail
-    ? resolveIssueManagerSubtaskProgressFromTasks(visibleTasks)
-    : null;
-  const subtaskProgressByIssueId: Record<
-    string,
-    IssueManagerSubtaskProgressViewState | null
-  > =
-    currentIssueDetail && visibleSubtaskProgress
-      ? {
-          [currentIssueDetail.issue.issueId]: visibleSubtaskProgress
-        }
-      : {};
+  const subtaskProgressByIssueId = resolveIssueManagerSubtaskProgressByIssueId({
+    issueId: currentIssueDetail?.issue.issueId ?? null,
+    visibleTasks: currentIssueDetail ? visibleTasks : null
+  });
 
   return (
     <aside
