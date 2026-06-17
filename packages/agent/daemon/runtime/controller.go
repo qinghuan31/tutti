@@ -400,6 +400,10 @@ func normalizeSessionSettings(settings *SessionSettings, provider string, defaul
 		value := *settings.BrowserUse
 		normalized.BrowserUse = &value
 	}
+	if settings.ComputerUse != nil {
+		value := *settings.ComputerUse
+		normalized.ComputerUse = &value
+	}
 	if mode := strings.TrimSpace(settings.PermissionModeID); mode != "" {
 		normalized.PermissionModeID = normalizePermissionModeIDWithFallback(provider, mode, defaultPermissionModeID)
 	}
@@ -742,6 +746,10 @@ func (c *Controller) UpdateSettings(ctx context.Context, input UpdateSettingsInp
 	if input.Settings.BrowserUse != nil {
 		value := *input.Settings.BrowserUse
 		settings.BrowserUse = &value
+	}
+	if input.Settings.ComputerUse != nil {
+		value := *input.Settings.ComputerUse
+		settings.ComputerUse = &value
 	}
 	permissionChanged := false
 	if input.Settings.PermissionModeID != nil {
@@ -1137,6 +1145,9 @@ func sessionSettingsPayload(settings *SessionSettings) map[string]any {
 	if settings.BrowserUse != nil {
 		payload["browserUse"] = *settings.BrowserUse
 	}
+	if settings.ComputerUse != nil {
+		payload["computerUse"] = *settings.ComputerUse
+	}
 	return payload
 }
 
@@ -1153,11 +1164,15 @@ func sessionSettingsFromPayload(payload map[string]any) *SessionSettings {
 	if value, ok := payload["browserUse"].(bool); ok {
 		settings.BrowserUse = &value
 	}
+	if value, ok := payload["computerUse"].(bool); ok {
+		settings.ComputerUse = &value
+	}
 	if strings.TrimSpace(settings.Model) == "" &&
 		strings.TrimSpace(settings.PermissionModeID) == "" &&
 		strings.TrimSpace(settings.ReasoningEffort) == "" &&
 		!settings.PlanMode &&
-		settings.BrowserUse == nil {
+		settings.BrowserUse == nil &&
+		settings.ComputerUse == nil {
 		return nil
 	}
 	return settings
