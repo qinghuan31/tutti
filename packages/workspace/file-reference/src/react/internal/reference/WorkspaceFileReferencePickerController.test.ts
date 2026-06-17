@@ -273,6 +273,56 @@ test("workspace file reference picker controller ignores stale preview results",
   });
 });
 
+test("workspace file reference picker controller keeps a slow root load when expanding another folder", async () => {
+  // 复现并发竞态:根目录加载在途时展开另一文件夹(不同 key)。全局单 sequence 会把
+  // 迟到的根结果作废、令 isBrowseLoading 永不复位;按 key 隔离后两者互不影响。
+  let resolveRoot!: (value: {
+    directoryPath: string;
+    entries: { kind: "file" | "folder"; path: string }[];
+  }) => void;
+  const pendingRoot = new Promise<{
+    directoryPath: string;
+    entries: { kind: "file" | "folder"; path: string }[];
+  }>((resolve) => {
+    resolveRoot = resolve;
+  });
+  const adapter: WorkspaceFileReferenceAdapter = {
+    async listDirectory({ path }) {
+      if (path === "/workspace/src") {
+        return {
+          directoryPath: "/workspace/src",
+          entries: [{ kind: "file", path: "/workspace/src/index.ts" }]
+        };
+      }
+      return pendingRoot;
+    }
+  };
+  const controller = createWorkspaceFileReferencePickerController({
+    fileAdapter: adapter,
+    searchDebounceMs: 0,
+    workspaceId: "workspace-concurrent"
+  });
+
+  controller.open(); // 触发根加载(在途)。
+  await settlePromises();
+  // 根仍在途时展开另一文件夹(不同 key),其加载立即完成、推进全局 ticket。
+  controller.toggleFolder({ kind: "folder", path: "/workspace/src" });
+  await settlePromises();
+  // 现在根才返回:旧实现里它已被作废。
+  resolveRoot({
+    directoryPath: "/workspace",
+    entries: [{ kind: "folder", path: "/workspace/src" }]
+  });
+  await settlePromises();
+
+  assert.equal(controller.getSnapshot().browseRootPath, "/workspace");
+  assert.equal(controller.getSnapshot().isBrowseLoading, false);
+  assert.equal(
+    controller.getSnapshot().directoryStateByPath["/workspace"]?.loaded,
+    true
+  );
+});
+
 function settlePromises(): Promise<void> {
   return new Promise((resolve) => {
     setImmediate(resolve);

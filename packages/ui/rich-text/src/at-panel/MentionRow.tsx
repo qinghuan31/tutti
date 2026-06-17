@@ -75,11 +75,20 @@ export interface MentionRowClassNames {
 export interface MentionRowRenderOptions {
   classNames?: MentionRowClassNames;
   dataAttributeMode?: MentionRowDataAttributeMode;
+  /**
+   * 当提供时,issue / app 行末尾渲染一个「查看产物文件」入口图标(独立点击热区,
+   * 不触发整行选中)。点击回调由调用方注入(如打开引用文件 picker 并定位到该实体)。
+   */
+  onOpenReferences?: () => void;
+  /** 入口图标的无障碍标签 / tooltip 文案。 */
+  openReferencesLabel?: string;
 }
 
 interface ResolvedMentionRowRenderOptions {
   classNames?: MentionRowClassNames;
   dataAttributeMode: MentionRowDataAttributeMode;
+  onOpenReferences?: () => void;
+  openReferencesLabel?: string;
 }
 
 const DEFAULT_MENTION_ROW_CLASS_NAMES = {
@@ -109,7 +118,9 @@ function resolveMentionRowRenderOptions(
   if (isMentionRowRenderOptions(options)) {
     return {
       classNames: options.classNames,
-      dataAttributeMode: options.dataAttributeMode ?? "shared"
+      dataAttributeMode: options.dataAttributeMode ?? "shared",
+      onOpenReferences: options.onOpenReferences,
+      openReferencesLabel: options.openReferencesLabel
     };
   }
   return {
@@ -140,9 +151,20 @@ export function renderMentionRow(
   item: MentionRowItem,
   options?: MentionRowClassNames | MentionRowRenderOptions
 ): React.ReactNode {
-  const { classNames, dataAttributeMode } =
-    resolveMentionRowRenderOptions(options);
+  const {
+    classNames,
+    dataAttributeMode,
+    onOpenReferences,
+    openReferencesLabel
+  } = resolveMentionRowRenderOptions(options);
   const resolved = resolveMentionRowClassNames(classNames);
+  const referencesButton = onOpenReferences ? (
+    <MentionOpenReferencesButton
+      label={openReferencesLabel}
+      onOpenReferences={onOpenReferences}
+      dataAttributeMode={dataAttributeMode}
+    />
+  ) : null;
   if (item.kind === "file") {
     return (
       <MentionFileRow
@@ -194,6 +216,7 @@ export function renderMentionRow(
             </span>
           ) : null}
         </span>
+        {referencesButton}
       </span>
     );
   }
@@ -209,23 +232,63 @@ export function renderMentionRow(
   }
 
   return (
-    <span className="grid min-w-0 overflow-hidden gap-1">
-      <span className="flex min-w-0 items-center gap-2 overflow-hidden">
-        <span className="min-w-0 truncate text-[13px] font-semibold text-[var(--text-primary)]">
-          {item.title}
+    <span className="flex min-w-0 items-center gap-2 overflow-hidden">
+      <span className="grid min-w-0 flex-1 overflow-hidden gap-1">
+        <span className="flex min-w-0 items-center gap-2 overflow-hidden">
+          <span className="min-w-0 truncate text-[13px] font-semibold text-[var(--text-primary)]">
+            {item.title}
+          </span>
+          {item.statusTag ? (
+            <MentionStatusBadge
+              statusTag={item.statusTag}
+              dataAttributeMode={dataAttributeMode}
+            />
+          ) : null}
         </span>
-        {item.statusTag ? (
-          <MentionStatusBadge
-            statusTag={item.statusTag}
-            dataAttributeMode={dataAttributeMode}
-          />
+        {item.creatorName ? (
+          <span className="truncate text-[13px] font-normal text-[var(--text-secondary)]">
+            {item.creatorName}
+          </span>
         ) : null}
       </span>
-      {item.creatorName ? (
-        <span className="truncate text-[13px] font-normal text-[var(--text-secondary)]">
-          {item.creatorName}
-        </span>
-      ) : null}
+      {referencesButton}
+    </span>
+  );
+}
+
+/**
+ * 「查看产物文件」入口图标。issue / app 行末尾的独立点击热区:点击只触发
+ * {@link onOpenReferences}(如打开引用文件 picker 并定位),阻断冒泡以免触发整行选中。
+ * 行外层按钮的 `[&_svg]:pointer-events-none` 使图标本身不吃事件,点击落在此 `<span>` 上。
+ */
+function MentionOpenReferencesButton({
+  label,
+  onOpenReferences,
+  dataAttributeMode
+}: {
+  label?: string;
+  onOpenReferences: () => void;
+  dataAttributeMode: MentionRowDataAttributeMode;
+}): React.JSX.Element {
+  return (
+    <span
+      role="button"
+      tabIndex={-1}
+      aria-label={label}
+      title={label}
+      className="ml-auto grid h-6 w-6 shrink-0 cursor-pointer place-items-center rounded-[5px] text-[var(--text-tertiary)] transition-colors hover:bg-[var(--transparency-active)] hover:text-[var(--text-secondary)]"
+      {...mentionRowDataAttribute(dataAttributeMode, "openReferences", "true")}
+      onMouseDown={(event) => {
+        event.preventDefault();
+        event.stopPropagation();
+      }}
+      onClick={(event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        onOpenReferences();
+      }}
+    >
+      <ProductIcon size={16} />
     </span>
   );
 }

@@ -191,6 +191,13 @@ function WorkspaceFileReferencePickerTreeEntry({
     return () => window.clearTimeout(timeoutId);
   }, [expanded]);
 
+  const handleRowSelect = () => {
+    onFocusPath(entry.path);
+    if (isFolder) {
+      onToggleFolder(entry);
+    }
+  };
+
   const shouldBuildChildContent = expanded || shouldRenderChildContent;
   const childContent = shouldBuildChildContent ? (
     childState?.loading ? (
@@ -236,15 +243,25 @@ function WorkspaceFileReferencePickerTreeEntry({
   return (
     <div>
       <div
+        aria-current={focused ? "true" : undefined}
         className={cn(
-          "flex items-center gap-2 rounded-[6px] py-1.5 pr-1 transition-colors",
+          "flex cursor-pointer items-center gap-2 rounded-[6px] py-1.5 pr-1 transition-colors select-none",
           "nodrag [-webkit-app-region:no-drag]",
           focused || selected
             ? "bg-transparency-block"
             : "hover:bg-transparency-block"
         )}
+        role="button"
+        tabIndex={0}
         style={{
           paddingLeft: `${(childDepth - 1) * workspaceFileReferenceTreeIndent + 8}px`
+        }}
+        onClick={handleRowSelect}
+        onKeyDown={(event) => {
+          if (event.key === "Enter" || event.key === " ") {
+            event.preventDefault();
+            handleRowSelect();
+          }
         }}
       >
         {isFolder ? (
@@ -265,17 +282,7 @@ function WorkspaceFileReferencePickerTreeEntry({
             />
           </button>
         ) : null}
-        <button
-          className="nodrag flex min-w-0 flex-1 items-center gap-2 text-left [-webkit-app-region:no-drag]"
-          type="button"
-          onClick={(event) => {
-            event.stopPropagation();
-            onFocusPath(entry.path);
-            if (entry.kind === "folder") {
-              onToggleFolder(entry);
-            }
-          }}
-        >
+        <div className="flex min-w-0 flex-1 items-center gap-2 text-left">
           {isFolder ? (
             <FolderFilledIcon className="size-4 shrink-0 text-[var(--rich-text-folder)]" />
           ) : (
@@ -284,7 +291,7 @@ function WorkspaceFileReferencePickerTreeEntry({
           <span className="truncate text-[13px] text-[var(--text-primary)]">
             {resolveWorkspaceFileReferenceLabel(entry)}
           </span>
-        </button>
+        </div>
         <Button
           aria-label={resolveWorkspaceFileReferenceLabel(entry)}
           aria-pressed={selected}
@@ -348,22 +355,25 @@ function WorkspaceFileReferencePickerSearchEntry({
 
   return (
     <div
+      aria-current={focused ? "true" : undefined}
       className={cn(
-        "grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3 rounded-[6px] border py-2.5 pr-1 pl-3 transition-colors",
+        "grid cursor-pointer grid-cols-[minmax(0,1fr)_auto] items-center gap-3 rounded-[6px] border py-2.5 pr-1 pl-3 transition-colors select-none",
         "nodrag [-webkit-app-region:no-drag]",
         focused || selected
           ? "border-border bg-transparency-block"
           : "border-transparent bg-transparent hover:border-border/70 hover:bg-transparency-block"
       )}
-    >
-      <button
-        className="nodrag flex min-w-0 items-center gap-3 text-left [-webkit-app-region:no-drag]"
-        type="button"
-        onClick={(event) => {
-          event.stopPropagation();
+      role="button"
+      tabIndex={0}
+      onClick={() => onFocusPath(entry.path)}
+      onKeyDown={(event) => {
+        if (event.key === "Enter" || event.key === " ") {
+          event.preventDefault();
           onFocusPath(entry.path);
-        }}
-      >
+        }
+      }}
+    >
+      <div className="nodrag flex min-w-0 items-center gap-3 text-left [-webkit-app-region:no-drag]">
         <span className="grid size-9 shrink-0 place-items-center rounded-lg bg-[var(--transparency-block)] text-[var(--text-tertiary)]">
           {isFolder ? (
             <FolderFilledIcon className="size-4 text-[var(--rich-text-folder)]" />
@@ -379,7 +389,7 @@ function WorkspaceFileReferencePickerSearchEntry({
             {entry.path}
           </span>
         </span>
-      </button>
+      </div>
       <Button
         aria-label={resolveWorkspaceFileReferenceLabel(entry)}
         aria-pressed={selected}

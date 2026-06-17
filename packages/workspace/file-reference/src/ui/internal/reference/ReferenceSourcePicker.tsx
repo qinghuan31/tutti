@@ -30,18 +30,30 @@ import {
   cn
 } from "@tutti-os/ui-system";
 import { AddIcon } from "@tutti-os/ui-system/icons";
-import type { ReferenceNode } from "../../../contracts/referenceSource.ts";
+import {
+  WorkspaceFilePreviewSurface,
+  type WorkspaceFilePreviewSurfaceState
+} from "@tutti-os/workspace-file-preview/react";
+import type {
+  ReferenceLocateTarget,
+  ReferenceNode
+} from "../../../contracts/referenceSource.ts";
 import type {
   WorkspaceFileReference,
   WorkspaceFileReferenceCopy
 } from "../../../contracts/index.ts";
 import type { ReferenceSourceAggregator } from "../../../core/referenceSourceAggregator.ts";
 import { nodeRefKey } from "../../../core/index.ts";
-import { useReferenceSourcePickerView } from "../../../react/internal/reference/useReferenceSourcePickerView.ts";
+import {
+  useReferenceSourcePickerView,
+  type ReferenceNodePreviewState
+} from "../../../react/internal/reference/useReferenceSourcePickerView.ts";
 
 export interface ReferenceSourcePickerProps {
   aggregator: ReferenceSourceAggregator;
   copy: WorkspaceFileReferenceCopy;
+  /** 可选:打开时直达某事项/应用分组(展开并聚焦)。 */
+  initialTarget?: ReferenceLocateTarget | null;
   onClose: () => void;
   onConfirm: (refs: WorkspaceFileReference[]) => void;
   open: boolean;
@@ -58,7 +70,13 @@ const L = {
   previewHierarchy: "所属层级",
   reference: "引用",
   loadMore: "加载更多",
-  emptyPreview: "选择一个文件查看详情"
+  emptyPreview: "选择一个文件查看详情",
+  previewLoading: "加载预览…",
+  previewFolder: "文件夹",
+  previewUnsupported: "暂不支持预览此文件",
+  previewError: "预览加载失败",
+  previewBinary: "二进制文件,无法预览",
+  previewTooLarge: "文件过大,无法预览"
 };
 
 type PickerView = ReturnType<typeof useReferenceSourcePickerView>;
@@ -106,6 +124,7 @@ function autoFitPanelWidth(
 export function ReferenceSourcePicker({
   aggregator,
   copy,
+  initialTarget,
   onClose,
   onConfirm,
   open,
@@ -116,6 +135,7 @@ export function ReferenceSourcePicker({
     aggregator,
     workspaceId,
     open,
+    initialTarget,
     onClose,
     onConfirm
   });
@@ -178,9 +198,9 @@ export function ReferenceSourcePicker({
         </CardHeader>
 
         <CardContent className="flex min-h-0 flex-1 overflow-hidden border-t border-[var(--line-1)] p-0">
-          <div ref={layoutRef} className="flex min-h-0 flex-1">
+          <div ref={layoutRef} className="flex min-h-0 min-w-0 flex-1">
             <ResizablePanelGroup
-              className="min-h-0 flex-1"
+              className="min-h-0 min-w-0 flex-1"
               orientation="horizontal"
               // 三栏初始占比 2:5:3。v4 在三面板下 `defaultSize` 初始布局会因注册时序被忽略而回退等分,
               // 这里用 `defaultLayout`(按 panel id 指定 flexGrow 权重)作为权威初始布局。
@@ -188,7 +208,7 @@ export function ReferenceSourcePicker({
             >
               <ResizablePanel
                 id="sidebar"
-                className="min-h-0 border-r border-[var(--line-1)]"
+                className="min-h-0 min-w-0 border-r border-[var(--line-1)]"
                 defaultSize={20}
                 minSize="180px"
                 panelRef={(handle) => {
@@ -204,7 +224,7 @@ export function ReferenceSourcePicker({
               />
               <ResizablePanel
                 id="middle"
-                className="min-h-0"
+                className="min-h-0 min-w-0"
                 defaultSize={50}
                 minSize="260px"
                 panelRef={(handle) => {
@@ -240,7 +260,7 @@ export function ReferenceSourcePicker({
                         // 搜索:扁平结果
                         view.searchResults.length === 0 ? (
                           <Feedback>
-                            {copy.t("referencePicker.emptyDirectory")}
+                            {copy.t("referencePicker.emptySearch")}
                           </Feedback>
                         ) : (
                           view.searchResults.map((node) => (
@@ -294,12 +314,13 @@ export function ReferenceSourcePicker({
               />
               <ResizablePanel
                 id="preview"
-                className="min-h-0 border-l border-[var(--line-1)]"
+                className="min-h-0 min-w-0 border-l border-[var(--line-1)]"
                 defaultSize={30}
                 minSize="200px"
               >
                 <PreviewInfoPane
                   node={view.focusedNode}
+                  previewState={view.previewState}
                   sourceLabel={view.activeTabLabel}
                   hierarchy={view.breadcrumb}
                   onReference={view.toggleSelection}
@@ -345,6 +366,11 @@ function SourceSidebar({
   view: PickerView;
   contentRef: RefObject<HTMLDivElement | null>;
 }): JSX.Element {
+  // 选中分组(含 initialTarget 定位结果)变化时,把它滚入可视区。
+  const selectedGroupRef = useRef<HTMLButtonElement | null>(null);
+  useEffect(() => {
+    selectedGroupRef.current?.scrollIntoView({ block: "nearest" });
+  }, [view.selectedGroupKey]);
   return (
     <ScrollArea className="h-full min-h-0 w-full">
       <div ref={contentRef} className="flex flex-col gap-0.5 p-2">
@@ -391,6 +417,7 @@ function SourceSidebar({
                       return (
                         <button
                           key={key}
+                          ref={selected ? selectedGroupRef : undefined}
                           className={cn(
                             "flex items-center gap-2 rounded-[6px] py-1.5 pr-2 pl-7 text-left text-[13px] transition-colors hover:bg-transparency-block",
                             selected
@@ -451,17 +478,14 @@ function SearchResultRow({
   return (
     <div
       className={cn(
-        "grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3 rounded-[6px] border py-2.5 pr-1 pl-3 transition-colors",
+        "grid cursor-pointer grid-cols-[minmax(0,1fr)_auto] items-center gap-3 rounded-[6px] border py-2.5 pr-1 pl-3 transition-colors",
         focused || selected
           ? "border-border bg-transparency-block"
           : "border-transparent bg-transparent hover:border-border/70 hover:bg-transparency-block"
       )}
+      onClick={() => onFocus(node)}
     >
-      <button
-        className="flex min-w-0 items-center gap-3 text-left"
-        type="button"
-        onClick={() => onFocus(node)}
-      >
+      <div className="flex min-w-0 items-center gap-3 text-left">
         <span className="grid size-9 shrink-0 place-items-center rounded-lg bg-[var(--transparency-block)] text-[var(--text-tertiary)]">
           {isFolder ? (
             <FolderFilledIcon className="size-4 text-[var(--rich-text-folder)]" />
@@ -474,17 +498,18 @@ function SearchResultRow({
             {node.displayName}
           </span>
           <span className="block truncate text-[11px] text-[var(--text-secondary)]">
-            {node.ref.nodeId}
+            {node.contextLabel ?? node.ref.nodeId}
           </span>
         </span>
-      </button>
+      </div>
       <Button
         aria-label={node.displayName}
         aria-pressed={selected}
         size="icon-sm"
         type="button"
         variant="ghost"
-        onClick={() => {
+        onClick={(event) => {
+          event.stopPropagation();
           onFocus(node);
           onToggle(node);
         }}
@@ -499,14 +524,68 @@ function SearchResultRow({
   );
 }
 
+/**
+ * 把 hook 的 node-keyed 预览态映射成共享预览组件的 surface state,补上本地化文案。
+ * previewState 可能短暂滞后于 node(异步加载间隙),不匹配时回退到 loading/directory。
+ */
+function toPreviewSurfaceState(
+  node: ReferenceNode,
+  previewState: ReferenceNodePreviewState
+): WorkspaceFilePreviewSurfaceState<ReferenceNode> {
+  if (
+    !("node" in previewState) ||
+    nodeRefKey(previewState.node.ref) !== nodeRefKey(node.ref)
+  ) {
+    return node.kind === "folder"
+      ? { entry: node, status: "directory" }
+      : { entry: node, status: "loading" };
+  }
+  switch (previewState.status) {
+    case "directory":
+      return { entry: node, status: "directory" };
+    case "loading":
+      return { entry: node, status: "loading" };
+    case "image":
+      return {
+        entry: node,
+        objectUrl: previewState.objectUrl,
+        status: "image"
+      };
+    case "text":
+      return { content: previewState.content, entry: node, status: "text" };
+    case "readonly":
+      return {
+        entry: node,
+        message:
+          previewState.reason === "binary"
+            ? L.previewBinary
+            : previewState.reason === "file_too_large" ||
+                previewState.reason === "text_too_large"
+              ? L.previewTooLarge
+              : L.previewUnsupported,
+        status: "readonly"
+      };
+    case "error":
+      return { entry: node, message: L.previewError, status: "error" };
+    case "unsupported":
+      return {
+        entry: node,
+        message: L.previewUnsupported,
+        status: "unsupported"
+      };
+  }
+}
+
 function PreviewInfoPane({
   node,
+  previewState,
   sourceLabel,
   hierarchy,
   referenced,
   onReference
 }: {
   node: ReferenceNode | null;
+  previewState: ReferenceNodePreviewState;
   sourceLabel: string;
   hierarchy: readonly ReferenceNode[];
   referenced: boolean;
@@ -516,9 +595,27 @@ function PreviewInfoPane({
     <aside className="flex h-full min-h-0 w-full flex-col bg-[var(--background-fronted)]">
       {node ? (
         <div className="flex min-h-0 flex-1 flex-col gap-4 p-4">
-          <div className="grid aspect-[3/2] w-full place-items-center rounded-[8px] border border-[var(--line-2,var(--border-2))] bg-[var(--transparency-block)]">
-            <FileIcon className="size-9 text-[var(--text-tertiary)]" />
-          </div>
+          {/* 文件查看面板:复用 file-manager 的共享预览组件,真实渲染图片/文本内容。 */}
+          <WorkspaceFilePreviewSurface<ReferenceNode>
+            directoryMessage={L.previewFolder}
+            emptyMessage={L.emptyPreview}
+            frameClassName="flex aspect-[3/2] w-full flex-col items-center justify-center overflow-hidden rounded-[8px] border border-[var(--line-2,var(--border-2))] bg-[var(--transparency-block)] p-0 text-center"
+            imageAlt={(entry) => entry.displayName}
+            imageFrameClassName="p-3"
+            loadingIndicator={<Spinner size={16} />}
+            loadingMessage={L.previewLoading}
+            messageClassName="mx-auto max-w-[24ch] text-[13px] leading-5 text-[var(--text-secondary)] [overflow-wrap:anywhere]"
+            renderIcon={(entry) =>
+              entry.kind === "folder" ? (
+                <FolderFilledIcon className="size-9 text-[var(--rich-text-folder)]" />
+              ) : (
+                <FileIcon className="size-9 text-[var(--text-tertiary)]" />
+              )
+            }
+            state={toPreviewSurfaceState(node, previewState)}
+            textClassName="h-full w-full overflow-auto p-3 text-left text-[11px] leading-5 whitespace-pre-wrap break-words text-[var(--text-primary)]"
+            textFrameClassName="items-stretch justify-stretch"
+          />
           <p className="truncate text-[15px] font-semibold">
             {node.displayName}
           </p>
@@ -544,8 +641,12 @@ function PreviewInfoPane({
               </p>
               <div className="flex flex-wrap gap-1">
                 {hierarchy.map((crumb) => (
-                  <Badge key={nodeRefKey(crumb.ref)} variant="secondary">
-                    {crumb.displayName}
+                  <Badge
+                    key={nodeRefKey(crumb.ref)}
+                    className="min-w-0 max-w-full"
+                    variant="secondary"
+                  >
+                    <span className="truncate">{crumb.displayName}</span>
                   </Badge>
                 ))}
               </div>
@@ -607,16 +708,22 @@ function Footer({
   return (
     <div className="flex items-center justify-between gap-3 border-t border-[var(--line-1)] px-4 py-3 sm:px-6">
       <div className="flex min-w-0 items-center gap-2">
-        <span className="text-[13px] text-[var(--text-secondary)]">
+        <span className="shrink-0 text-[13px] text-[var(--text-secondary)]">
           {countLabel}
         </span>
         {selection.slice(0, 2).map((node) => (
-          <Badge key={nodeRefKey(node.ref)} variant="secondary">
+          <Badge
+            key={nodeRefKey(node.ref)}
+            className="min-w-0 max-w-[12rem]"
+            variant="secondary"
+          >
             <span className="truncate">{node.displayName}</span>
           </Badge>
         ))}
         {selection.length > 2 ? (
-          <Badge variant="secondary">+{selection.length - 2}</Badge>
+          <Badge className="shrink-0" variant="secondary">
+            +{selection.length - 2}
+          </Badge>
         ) : null}
       </div>
       <div className="flex items-center gap-2">
@@ -728,21 +835,33 @@ function TreeNodeRow({
 
   return (
     <div>
+      {/* 整行可点:点击监听挂在父级行 div 上,使可点热区与 hover 高亮区一致;
+          内层箭头/选中按钮 stopPropagation 各管各的,避免冒泡到行点击。 */}
       <div
         className={cn(
-          "flex items-center gap-2 rounded-[6px] py-1.5 pr-1 transition-colors",
+          "flex cursor-pointer items-center gap-2 rounded-[6px] py-1.5 pr-1 transition-colors",
           focused || selected
             ? "bg-transparency-block"
             : "hover:bg-transparency-block"
         )}
         style={{ paddingLeft: `${depth * TREE_INDENT + 8}px` }}
+        onClick={() => {
+          view.setFocusedNode(node);
+          if (isFolder) {
+            view.toggleNode(node);
+          }
+        }}
       >
         {isFolder ? (
           <button
             aria-label={node.displayName}
             className="grid size-5 shrink-0 place-items-center rounded-sm text-[var(--text-secondary)] hover:bg-[var(--transparency-hover)]"
             type="button"
-            onClick={() => view.toggleNode(node)}
+            onClick={(event) => {
+              event.stopPropagation();
+              view.setFocusedNode(node);
+              view.toggleNode(node);
+            }}
           >
             <ArrowRightIcon
               className={cn(
@@ -752,28 +871,17 @@ function TreeNodeRow({
             />
           </button>
         ) : null}
-        <button
-          className="flex min-w-0 flex-1 items-center gap-2 text-left"
-          type="button"
-          onClick={() => {
-            view.setFocusedNode(node);
-            if (isFolder) {
-              view.toggleNode(node);
-            }
-          }}
+        {isFolder ? (
+          <FolderFilledIcon className="size-4 shrink-0 text-[var(--rich-text-folder)]" />
+        ) : (
+          <FileIcon className="size-4 shrink-0 text-[var(--text-tertiary)]" />
+        )}
+        <span
+          className="min-w-0 flex-1 truncate text-[13px] text-[var(--text-primary)]"
+          data-autofit-label
         >
-          {isFolder ? (
-            <FolderFilledIcon className="size-4 shrink-0 text-[var(--rich-text-folder)]" />
-          ) : (
-            <FileIcon className="size-4 shrink-0 text-[var(--text-tertiary)]" />
-          )}
-          <span
-            className="truncate text-[13px] text-[var(--text-primary)]"
-            data-autofit-label
-          >
-            {node.displayName}
-          </span>
-        </button>
+          {node.displayName}
+        </span>
         <Button
           aria-label={node.displayName}
           aria-pressed={selected}
@@ -781,7 +889,8 @@ function TreeNodeRow({
           size="icon-sm"
           type="button"
           variant="ghost"
-          onClick={() => {
+          onClick={(event) => {
+            event.stopPropagation();
             view.setFocusedNode(node);
             view.toggleSelection(node);
           }}

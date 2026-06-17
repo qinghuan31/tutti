@@ -882,6 +882,7 @@ export const en = {
       mentionAgentGeneratedFolderBack: "Back",
       mentionAgentGeneratedFolderFileCount: "{{count}} files",
       mentionNoMatchingFiles: "No matching files",
+      mentionOpenReferences: "View output files",
       issueRunPrompt: {
         currentWorkingDirectoryLabel: "Current working directory",
         executionRequirementsLabel: "Execution requirements",

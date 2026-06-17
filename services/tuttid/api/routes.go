@@ -293,6 +293,14 @@ func RegisterRoutes(mux *http.ServeMux, routes Routes) {
 		wrapper.ListWorkspaceAppReferences(w, r)
 	})
 
+	mux.HandleFunc("/v1/workspaces/{workspaceID}/apps/{appID}/references/search", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			tuttitypes.WriteMethodNotAllowed(w)
+			return
+		}
+		wrapper.SearchWorkspaceAppReferences(w, r)
+	})
+
 	mux.HandleFunc("/v1/workspaces/{workspaceID}/apps/{appID}/uninstall", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost {
 			tuttitypes.WriteMethodNotAllowed(w)

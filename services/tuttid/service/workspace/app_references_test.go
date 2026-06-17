@@ -51,6 +51,37 @@ func TestDecodeAppRuntimeReferenceAcceptsFileUnionBranch(t *testing.T) {
 	}
 }
 
+func TestDecodeAppRuntimeReferenceCapturesParentGroupLabel(t *testing.T) {
+	t.Parallel()
+
+	dataRoot := t.TempDir()
+	raw, err := json.Marshal(map[string]any{
+		"kind": "file",
+		"location": map[string]any{
+			"type": "app-data-relative",
+			"path": "projects/q4/cover.svg",
+		},
+		"parentGroupLabel": "Q4 Planning",
+	})
+	if err != nil {
+		t.Fatalf("marshal reference: %v", err)
+	}
+	reference, ok := decodeAppRuntimeReference(raw, appReferenceLocationValidator{
+		dataRoot:    dataRoot,
+		packageRoot: t.TempDir(),
+	})
+	if !ok {
+		t.Fatal("decodeAppRuntimeReference() ok = false, want true")
+	}
+	fileReference, ok := reference.(workspacebiz.AppFileReference)
+	if !ok {
+		t.Fatalf("decodeAppRuntimeReference() = %T, want AppFileReference", reference)
+	}
+	if fileReference.ParentGroupLabel != "Q4 Planning" {
+		t.Fatalf("ParentGroupLabel = %q, want %q", fileReference.ParentGroupLabel, "Q4 Planning")
+	}
+}
+
 func TestDecodeAppRuntimeReferenceAcceptsFileLocationTypes(t *testing.T) {
 	t.Parallel()
 

@@ -375,6 +375,9 @@ type AppFileReference struct {
 	MtimeMs     *int64
 	MimeType    string
 	Score       *float64
+	// ParentGroupLabel is the group/project this file belongs to, used as the
+	// search-result context subtitle. Empty when the app does not provide it.
+	ParentGroupLabel string
 }
 
 func (AppFileReference) AppReferenceKind() AppReferenceKind {

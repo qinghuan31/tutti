@@ -27,6 +27,11 @@ export interface ReferenceNode {
   ref: NodeRef;
   kind: "folder" | "file";
   displayName: string;
+  /**
+   * 可选的「上下文标签」:搜索结果里展示该项的归属(如应用名 / 议题标题),
+   * 替代不透明 nodeId 作为副标题。各源自行填充;本地源不填(回退展示 path)。
+   */
+  contextLabel?: string | null;
   /** folder 是否可下钻(懒加载箭头)。 */
   hasChildren?: boolean;
   /** 可选数量,如 app group 的 referenceCount。 */
@@ -76,6 +81,18 @@ export interface SearchResult {
 
 /** 预览内容(复用 workspace 预览结构)。 */
 export type ReferencePreview = WorkspaceFileReferencePreview;
+
+/**
+ * 「定位到某分组」目标:打开 picker 时直达某事项/应用分组用。
+ * params 为源内不透明语义参数,由各源 backend 自行解释:
+ *  - 应用产物源:{ appId }
+ *  - 议题产出源:{ issueId, topicId? }
+ */
+export interface ReferenceLocateTarget {
+  /** 目标所属源(= picker tab / ReferenceSourceService.metadata.id)。 */
+  sourceId: string;
+  params: Record<string, string>;
+}
 
 /**
  * 选中 → 插入 composer 的产物。
@@ -129,6 +146,15 @@ export interface ReferenceSourceService {
     scope: ReferenceScope,
     input: ListChildrenInput
   ): Promise<ListChildrenResult>;
+
+  /**
+   * 可选:把语义定位参数解析为从源根到目标分组的 NodeRef 路径(root → leaf),
+   * 供 picker 打开时逐层展开/聚焦。返回 null 表示不支持或未找到。
+   */
+  locateTarget?(
+    scope: ReferenceScope,
+    params: Record<string, string>
+  ): Promise<NodeRef[] | null>;
 
   search?(scope: ReferenceScope, input: SearchInput): Promise<SearchResult>;
 

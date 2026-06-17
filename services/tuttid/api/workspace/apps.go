@@ -194,14 +194,15 @@ func generatedAppReferenceFromBiz(reference workspacebiz.AppReference) (tuttigen
 
 func generatedAppFileReferenceFromBiz(reference workspacebiz.AppFileReference) tuttigenerated.AppFileReference {
 	return tuttigenerated.AppFileReference{
-		Kind:        tuttigenerated.AppFileReferenceKindFile,
-		DisplayName: nullableString(reference.DisplayName),
-		Description: nullableString(reference.Description),
-		Path:        reference.Path,
-		SizeBytes:   reference.SizeBytes,
-		MtimeMs:     reference.MtimeMs,
-		MimeType:    nullableString(reference.MimeType),
-		Score:       nullableFloat32(reference.Score),
+		Kind:             tuttigenerated.AppFileReferenceKindFile,
+		DisplayName:      nullableString(reference.DisplayName),
+		Description:      nullableString(reference.Description),
+		Path:             reference.Path,
+		SizeBytes:        reference.SizeBytes,
+		MtimeMs:          reference.MtimeMs,
+		MimeType:         nullableString(reference.MimeType),
+		Score:            nullableFloat32(reference.Score),
+		ParentGroupLabel: nullableString(reference.ParentGroupLabel),
 	}
 }
 

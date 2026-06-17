@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useSnapshot } from "valtio";
 import type {
+  ReferenceLocateTarget,
   ReferenceNode,
   ReferenceScope,
   SelectedReference,
@@ -18,6 +19,10 @@ import {
   type WorkspaceFileManagerArrangeMode
 } from "@tutti-os/workspace-file-manager/services";
 import {
+  createWorkspaceFilePreviewLoadedState,
+  type WorkspaceFilePreviewReadonlyReason
+} from "@tutti-os/workspace-file-preview";
+import {
   ROOT_CHILDREN_KEY,
   createReferenceSourcePickerController
 } from "./referenceSourcePickerController.ts";
@@ -29,10 +34,32 @@ export { WORKSPACE_ROOT_GROUP_NODE_ID } from "../../../core/index.ts";
 /** 本地源「工作区根」二级节点展示名(仅源未自带分组时的回退用)。 */
 const WORKSPACE_ROOT_GROUP_LABEL = "工作区";
 
+/**
+ * 焦点节点的预览态(node-keyed)。复用 file-manager / file-preview 的分类逻辑
+ * (createWorkspaceFilePreviewLoadedState),但只携带状态、不含已本地化文案 ——
+ * 文案由 UI 层(ReferenceSourcePicker)按 status/reason 映射,保持 hook 与 i18n 解耦。
+ */
+export type ReferenceNodePreviewState =
+  | { status: "empty" }
+  | { node: ReferenceNode; status: "directory" }
+  | { node: ReferenceNode; status: "loading" }
+  | { content: string; node: ReferenceNode; status: "text" }
+  | { node: ReferenceNode; objectUrl: string; status: "image" }
+  | {
+      maxSizeBytes?: number;
+      node: ReferenceNode;
+      reason: WorkspaceFilePreviewReadonlyReason;
+      status: "readonly";
+    }
+  | { node: ReferenceNode; status: "unsupported" }
+  | { node: ReferenceNode; status: "error" };
+
 export interface UseReferenceSourcePickerViewInput {
   aggregator: ReferenceSourceAggregator;
   workspaceId: string;
   open: boolean;
+  /** 可选:打开时直达某事项/应用分组(展开并聚焦)。 */
+  initialTarget?: ReferenceLocateTarget | null;
   onClose: () => void;
   onConfirm: (refs: WorkspaceFileReference[]) => void;
 }
@@ -45,6 +72,7 @@ export function useReferenceSourcePickerView({
   aggregator,
   workspaceId,
   open,
+  initialTarget = null,
   onClose,
   onConfirm
 }: UseReferenceSourcePickerViewInput) {
@@ -97,6 +125,8 @@ export function useReferenceSourcePickerView({
   );
   // 每次打开对话框内,已自动进入过首个分组的源(避免覆盖用户手动导航/回到根)。
   const autoEnteredSourcesRef = useRef<Set<string>>(new Set());
+  // 「打开即定位」一次性应用标记:每个 initialTarget 仅应用一次,应用后不再干预用户导航。
+  const appliedInitialTargetRef = useRef<ReferenceLocateTarget | null>(null);
 
   useEffect(() => {
     if (!open) {
@@ -109,10 +139,58 @@ export function useReferenceSourcePickerView({
     setExpandedSources({});
     expandSeededRef.current = false;
     autoEnteredSourcesRef.current = new Set();
+    appliedInitialTargetRef.current = null;
     return () => {
       controller.close();
     };
   }, [controller, open]);
+
+  // 「打开即定位」:一次性把 initialTarget 解析为真实节点路径并应用导航,之后不再干预。
+  //  - path[0] = 左栏二级分组(topic / app):作为面包屑根项进入 → 左栏选中 + 中间栏展示其内容;
+  //  - path[last] 更深(如事项):在该分组内容里 setFocusedNode 高亮。
+  // 解析(含等待 tabs 就绪、逐层取真实节点)全在 controller.locatePath 内完成;这里只应用结果一次。
+  useEffect(() => {
+    const target = initialTarget;
+    if (!open || !target || appliedInitialTargetRef.current === target) {
+      return;
+    }
+    appliedInitialTargetRef.current = target;
+    // 让默认「自动进入首个分组」对该源让位,改由本次定位接管。
+    autoEnteredSourcesRef.current.add(target.sourceId);
+    setExpandedSources((current) =>
+      current[target.sourceId]
+        ? current
+        : { ...current, [target.sourceId]: true }
+    );
+    let canceled = false;
+    void controller
+      .locatePath(target)
+      .then((path) => {
+        if (canceled) {
+          return;
+        }
+        const group = path[0];
+        if (!group) {
+          // 未解析到分组:撤销让位,退回默认(进入首个分组)。
+          autoEnteredSourcesRef.current.delete(target.sourceId);
+          return;
+        }
+        controller.setActiveSource(target.sourceId);
+        setBreadcrumbBySource((current) => ({
+          ...current,
+          [group.ref.sourceId]: [group]
+        }));
+        controller.ensureChildren(group);
+        const deepest = path[path.length - 1];
+        setFocusedNode(path.length > 1 && deepest ? deepest : null);
+      })
+      .catch(() => {
+        autoEnteredSourcesRef.current.delete(target.sourceId);
+      });
+    return () => {
+      canceled = true;
+    };
+  }, [open, initialTarget, controller]);
 
   const activeSourceId = snapshot.activeSourceId;
   const activeTab = useMemo(
@@ -188,16 +266,18 @@ export function useReferenceSourcePickerView({
     ? (sidebarGroupsBySource[activeSourceId] ?? [])
     : [];
 
-  // 当前选中的二级分组 key(本地根选中时 = 合成「工作区根」节点的 key)。
-  const selectedGroupKey =
-    currentNode != null
-      ? nodeRefKey(currentNode.ref)
-      : activeSourceId && !capabilities?.navigable
-        ? nodeRefKey({
-            sourceId: activeSourceId,
-            nodeId: WORKSPACE_ROOT_GROUP_NODE_ID
-          })
-        : null;
+  // 左栏二级分组高亮 = 当前所在的「根 most 分组」(面包屑首项),而非最深叶子节点。
+  // 这样下钻进事项(topic → 事项 → 产物)时,左栏仍高亮其所属 topic;进 app 子目录时仍高亮该 app。
+  // 本地根(无面包屑、非 navigable)回退到合成「工作区根」节点。
+  const rootGroupNode = breadcrumb[0] ?? null;
+  const selectedGroupKey = rootGroupNode
+    ? nodeRefKey(rootGroupNode.ref)
+    : activeSourceId && !capabilities?.navigable
+      ? nodeRefKey({
+          sourceId: activeSourceId,
+          nodeId: WORKSPACE_ROOT_GROUP_NODE_ID
+        })
+      : null;
 
   const setActiveSource = useCallback(
     (sourceId: string) => {
@@ -232,10 +312,15 @@ export function useReferenceSourcePickerView({
     [controller]
   );
 
-  // 切到可逐层进入的源(如「应用」)时,默认进入第一个分组(app),
-  // 而非停在根列表。每个源每次打开只自动选一次,用户回到根/手动导航后不再覆盖。
+  // 进入某源时默认选中它的第一个二级分组,而非停在根列表:
+  //  - 可逐层进入的源(如「应用」/「议题」):进入第一个分组(首个 app / topic);
+  //  - 本地等非 navigable 源:进入第一个固定「位置」分组(本地源即「最近访问」),
+  //    使从 agent GUI「+」按钮打开时默认落在「本地 - 最近访问」。
+  // 每个源每次打开只自动选一次,用户回到根/手动导航后不再覆盖。
+  // 非 navigable 源若无自带分组,sidebarGroups[0] 为合成「工作区根」,
+  // enterFolder 对其 no-op,仍停在源根 —— 与原行为一致,无回归。
   useEffect(() => {
-    if (!open || !activeSourceId || !capabilities?.navigable) {
+    if (!open || !activeSourceId) {
       return;
     }
     if (autoEnteredSourcesRef.current.has(activeSourceId)) {
@@ -254,14 +339,7 @@ export function useReferenceSourcePickerView({
     }
     autoEnteredSourcesRef.current.add(activeSourceId);
     enterFolder(firstGroup);
-  }, [
-    open,
-    activeSourceId,
-    capabilities?.navigable,
-    sidebarGroups,
-    breadcrumbBySource,
-    enterFolder
-  ]);
+  }, [open, activeSourceId, sidebarGroups, breadcrumbBySource, enterFolder]);
 
   // 首次有 active 源时,默认展开它(其余源保持收起,用户可再独立展开)。
   useEffect(() => {
@@ -373,9 +451,113 @@ export function useReferenceSourcePickerView({
     }
   }, [controller, isConfirming, onClose, onConfirm]);
 
+  // 焦点节点预览:文件夹→directory;文件→走源 readPreview,字节经 file-preview 分类
+  // 成 image/text/readonly。image 用 object URL,切换/卸载时回收避免泄漏。
+  const [previewState, setPreviewState] = useState<ReferenceNodePreviewState>({
+    status: "empty"
+  });
+  const previewObjectUrlRef = useRef<string | null>(null);
+  const revokePreviewObjectUrl = useCallback(() => {
+    if (previewObjectUrlRef.current) {
+      URL.revokeObjectURL(previewObjectUrlRef.current);
+      previewObjectUrlRef.current = null;
+    }
+  }, []);
+
+  useEffect(() => {
+    const node = focusedNode;
+    if (!node) {
+      revokePreviewObjectUrl();
+      setPreviewState({ status: "empty" });
+      return;
+    }
+    if (node.kind === "folder") {
+      revokePreviewObjectUrl();
+      setPreviewState({ node, status: "directory" });
+      return;
+    }
+    const previewable =
+      aggregator.getLoadedSource(node.ref.sourceId)?.capabilities.previewable ??
+      false;
+    if (!previewable) {
+      revokePreviewObjectUrl();
+      setPreviewState({ node, status: "unsupported" });
+      return;
+    }
+
+    let cancelled = false;
+    revokePreviewObjectUrl();
+    setPreviewState({ node, status: "loading" });
+    void (async () => {
+      try {
+        const preview = await aggregator.readPreview(scope, node);
+        if (cancelled) {
+          return;
+        }
+        if (!preview) {
+          setPreviewState({ node, status: "unsupported" });
+          return;
+        }
+        const loaded = createWorkspaceFilePreviewLoadedState({
+          bytes: preview.bytes,
+          contentType: preview.contentType,
+          entry: {
+            kind: node.kind,
+            name: node.displayName,
+            path: node.ref.nodeId,
+            mtimeMs: node.mtimeMs ?? null,
+            sizeBytes: node.sizeBytes ?? null
+          },
+          target: {
+            fileKind: preview.kind,
+            name: node.displayName,
+            path: node.ref.nodeId,
+            mtimeMs: node.mtimeMs ?? null,
+            sizeBytes: node.sizeBytes ?? null
+          }
+        });
+        if (cancelled) {
+          return;
+        }
+        if (loaded.status === "image") {
+          const objectUrl = URL.createObjectURL(
+            new Blob([loaded.bytes], { type: loaded.contentType })
+          );
+          previewObjectUrlRef.current = objectUrl;
+          setPreviewState({ node, objectUrl, status: "image" });
+          return;
+        }
+        if (loaded.status === "text") {
+          setPreviewState({ content: loaded.content, node, status: "text" });
+          return;
+        }
+        setPreviewState({
+          node,
+          reason: loaded.reason,
+          ...(loaded.maxSizeBytes == null
+            ? {}
+            : { maxSizeBytes: loaded.maxSizeBytes }),
+          status: "readonly"
+        });
+      } catch {
+        if (!cancelled) {
+          setPreviewState({ node, status: "error" });
+        }
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [aggregator, focusedNode, revokePreviewObjectUrl, scope]);
+
+  // 卸载时回收最后一个 image object URL。
+  useEffect(() => revokePreviewObjectUrl, [revokePreviewObjectUrl]);
+
   return {
     tabs: snapshot.tabs,
     activeSourceId,
+    previewState,
     activeTabLabel: activeTab?.label ?? "",
     capabilities,
     // 内容区递归就地树:当前选中二级节点的子条目(本地根时为源根子条目)。
@@ -398,8 +580,11 @@ export function useReferenceSourcePickerView({
     setArrangeMode,
     isSearch,
     searchQuery: activeTabState?.searchQuery ?? "",
+    // 搜索态:仅在「还没有任何结果」时显示 spinner;细化关键词(已有结果)时
+    // 保留旧结果直到新结果就绪,避免内容区在 spinner/结果间反复切换造成闪烁。
     isLoading: isSearch
-      ? (activeTabState?.isSearchLoading ?? false)
+      ? (activeTabState?.isSearchLoading ?? false) &&
+        (activeTabState?.searchEntries.length ?? 0) === 0
       : (currentChildren?.loading ?? false),
     hasMore: !isSearch && Boolean(currentChildren?.nextCursor),
     focusedNode,

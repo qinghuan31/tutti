@@ -259,14 +259,15 @@ type appRuntimeReferenceKindHeader struct {
 }
 
 type appRuntimeFileReference struct {
-	Kind        string                       `json:"kind"`
-	DisplayName *string                      `json:"displayName,omitempty"`
-	Description *string                      `json:"description,omitempty"`
-	Location    *appRuntimeReferenceLocation `json:"location,omitempty"`
-	SizeBytes   *int64                       `json:"sizeBytes,omitempty"`
-	MtimeMs     *int64                       `json:"mtimeMs,omitempty"`
-	MimeType    *string                      `json:"mimeType,omitempty"`
-	Score       *float64                     `json:"score,omitempty"`
+	Kind             string                       `json:"kind"`
+	DisplayName      *string                      `json:"displayName,omitempty"`
+	Description      *string                      `json:"description,omitempty"`
+	Location         *appRuntimeReferenceLocation `json:"location,omitempty"`
+	SizeBytes        *int64                       `json:"sizeBytes,omitempty"`
+	MtimeMs          *int64                       `json:"mtimeMs,omitempty"`
+	MimeType         *string                      `json:"mimeType,omitempty"`
+	Score            *float64                     `json:"score,omitempty"`
+	ParentGroupLabel *string                      `json:"parentGroupLabel,omitempty"`
 }
 
 type appRuntimeReferenceLocation struct {
@@ -386,14 +387,19 @@ func decodeAppRuntimeFileReference(raw json.RawMessage, validator appReferenceLo
 	if !ok {
 		return nil, false
 	}
+	parentGroupLabel, ok := normalizeOptionalBoundedString(decoded.ParentGroupLabel, appReferenceDisplayNameRunes)
+	if !ok {
+		return nil, false
+	}
 	return workspacebiz.AppFileReference{
-		DisplayName: displayName,
-		Description: description,
-		Path:        referencePath,
-		SizeBytes:   sizeBytes,
-		MtimeMs:     mtimeMs,
-		MimeType:    mimeType,
-		Score:       score,
+		DisplayName:      displayName,
+		Description:      description,
+		Path:             referencePath,
+		SizeBytes:        sizeBytes,
+		MtimeMs:          mtimeMs,
+		MimeType:         mimeType,
+		Score:            score,
+		ParentGroupLabel: parentGroupLabel,
 	}, true
 }
 

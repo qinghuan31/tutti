@@ -14,6 +14,7 @@ import {
 import { useSnapshot } from "valtio";
 import { ChevronRight, Info, X } from "lucide-react";
 import type {
+  ReferenceLocateTarget,
   WorkspaceFileReference,
   WorkspaceFileReferenceAdapter,
   WorkspaceFileReferenceCopy
@@ -113,6 +114,15 @@ import {
 } from "./agentGuiNodeViewConversation";
 import styles from "./AgentGUINode.styles";
 import type { AgentContextMentionProvider } from "./agentContextMentionProvider";
+import type { AgentContextMentionItem } from "./agentRichText/agentFileMentionExtension";
+
+/**
+ * 把 @ 面板里的事项/应用 mention 解析为引用 picker 的定位目标(sourceId + 语义 params)。
+ * 由宿主(desktop)注入 —— 源 id 与 params 形态是宿主侧 reference source 的知识。
+ */
+export type AgentMentionReferenceTargetResolver = (
+  item: AgentContextMentionItem
+) => ReferenceLocateTarget | null;
 
 const AGENT_GUI_STICK_TO_BOTTOM_THRESHOLD_PX = 24;
 
@@ -423,6 +433,7 @@ interface AgentGUINodeViewProps {
   workspaceFileReferenceCopy?: WorkspaceFileReferenceCopy | null;
   contextMentionProviders?: readonly AgentContextMentionProvider[];
   referenceSourceAggregator?: ReferenceSourceAggregator | null;
+  resolveMentionReferenceTarget?: AgentMentionReferenceTargetResolver | null;
   workspaceAppIcons?: readonly AgentMessageMarkdownWorkspaceAppIcon[];
 }
 
@@ -792,6 +803,7 @@ export function AgentGUINodeView({
   onRequestGitBranches = null,
   contextMentionProviders,
   referenceSourceAggregator = null,
+  resolveMentionReferenceTarget = null,
   workspaceAppIcons = EMPTY_WORKSPACE_APP_ICONS
 }: AgentGUINodeViewProps): React.JSX.Element {
   "use memo";
@@ -808,6 +820,9 @@ export function AgentGUINodeView({
   );
   const [workspaceReferencePickerOpen, setWorkspaceReferencePickerOpen] =
     useState(false);
+  // 打开引用 picker 时的定位目标(点事项/应用行的产物图标时设置;「+」按钮则为 null)。
+  const [workspaceReferencePickerTarget, setWorkspaceReferencePickerTarget] =
+    useState<ReferenceLocateTarget | null>(null);
   const [
     localComposerFocusRequestSequence,
     setLocalComposerFocusRequestSequence
@@ -815,36 +830,48 @@ export function AgentGUINodeView({
   const workspaceReferencePickerResolverRef = useRef<
     ((refs: WorkspaceFileReference[]) => void) | null
   >(null);
-  const requestWorkspaceReferences = useCallback(async () => {
-    if (previewMode) {
-      return [];
-    }
-    if (
-      (!workspaceFileReferenceAdapter && !referenceSourceAggregator) ||
-      !workspaceFileReferenceCopy
-    ) {
-      return [];
-    }
-    setWorkspaceReferencePickerOpen(true);
-    return await new Promise<WorkspaceFileReference[]>((resolve) => {
-      workspaceReferencePickerResolverRef.current = resolve;
-    });
-  }, [
-    previewMode,
-    referenceSourceAggregator,
-    workspaceFileReferenceAdapter,
-    workspaceFileReferenceCopy
-  ]);
+  const requestWorkspaceReferences = useCallback(
+    async (entity?: AgentContextMentionItem | null) => {
+      if (previewMode) {
+        return [];
+      }
+      if (
+        (!workspaceFileReferenceAdapter && !referenceSourceAggregator) ||
+        !workspaceFileReferenceCopy
+      ) {
+        return [];
+      }
+      // 仅多源 picker(referenceSourceAggregator)支持定位;本地 picker 不支持。
+      const target =
+        entity && referenceSourceAggregator
+          ? (resolveMentionReferenceTarget?.(entity) ?? null)
+          : null;
+      setWorkspaceReferencePickerTarget(target);
+      setWorkspaceReferencePickerOpen(true);
+      return await new Promise<WorkspaceFileReference[]>((resolve) => {
+        workspaceReferencePickerResolverRef.current = resolve;
+      });
+    },
+    [
+      previewMode,
+      referenceSourceAggregator,
+      resolveMentionReferenceTarget,
+      workspaceFileReferenceAdapter,
+      workspaceFileReferenceCopy
+    ]
+  );
   const closeWorkspaceReferencePicker = useCallback(() => {
     workspaceReferencePickerResolverRef.current?.([]);
     workspaceReferencePickerResolverRef.current = null;
     setWorkspaceReferencePickerOpen(false);
+    setWorkspaceReferencePickerTarget(null);
   }, []);
   const confirmWorkspaceReferencePicker = useCallback(
     (refs: WorkspaceFileReference[]) => {
       workspaceReferencePickerResolverRef.current?.(refs);
       workspaceReferencePickerResolverRef.current = null;
       setWorkspaceReferencePickerOpen(false);
+      setWorkspaceReferencePickerTarget(null);
       if (refs.length > 0) {
         void onWorkspaceFileReferencesAdded?.(refs);
       }
@@ -1137,6 +1164,7 @@ export function AgentGUINodeView({
           copy={
             workspaceFileReferenceCopy ?? fallbackWorkspaceFileReferenceCopy
           }
+          initialTarget={workspaceReferencePickerTarget}
           open={workspaceReferencePickerOpen}
           workspaceId={viewModel.workspaceId}
           onClose={closeWorkspaceReferencePicker}
@@ -1150,6 +1178,7 @@ export function AgentGUINodeView({
           fileAdapter={workspaceFileReferenceAdapter ?? undefined}
           initialPath={viewModel.composerSettings.selectedProjectPath}
           open={workspaceReferencePickerOpen}
+          scoped
           workspaceId={viewModel.workspaceId}
           onClose={closeWorkspaceReferencePicker}
           onConfirm={confirmWorkspaceReferencePicker}
@@ -1176,7 +1205,9 @@ interface AgentGUIDetailPaneProps {
   onCapabilitySettingsRequest?: AgentComposerProps["onCapabilitySettingsRequest"];
   onAgentProviderLogin?: (provider?: string | null) => void;
   onRequestWorkspaceReferences?:
-    | (() => Promise<WorkspaceFileReference[]>)
+    | ((
+        entity?: AgentContextMentionItem | null
+      ) => Promise<WorkspaceFileReference[]>)
     | null;
   onRequestGitBranches?: AgentComposerGitBranchLoader | null;
   contextMentionProviders?: readonly AgentContextMentionProvider[];

@@ -40,6 +40,8 @@ interface FakeOptions {
   search?: Record<string, SearchResult>; // key = `${sourceId}:${query}`
   /** navigable=true 的源(app/issue):confirm 时文件夹递归展开成文件。 */
   navigable?: Record<string, boolean>;
+  /** locateTarget 返回的 NodeRef 路径(root → leaf),key = sourceId。 */
+  locate?: Record<string, NodeRef[]>;
 }
 
 function fakeAggregator(options: FakeOptions): ReferenceSourceAggregator {
@@ -67,6 +69,8 @@ function fakeAggregator(options: FakeOptions): ReferenceSourceAggregator {
     resolveSelection(node): SelectedReference {
       return { path: node.ref.nodeId, kind: node.kind };
     },
+    locateTarget: async (_scope, sourceId) =>
+      options.locate?.[sourceId] ?? null,
     getLoadedSource: (sourceId: string) =>
       options.navigable?.[sourceId]
         ? ({
@@ -330,5 +334,105 @@ test("close 后丢弃迟到的浏览结果", async () => {
   assert.notEqual(
     root?.entries.some((n) => n.ref.nodeId === "/late.md"),
     true
+  );
+});
+
+test("并发取数:慢根加载不被另一 key 的取数作废(按 key 隔离 sequence)", async () => {
+  // 复现「本地-个人」回归:open 触发根(ROOT_CHILDREN_KEY)预取尚未返回时,
+  // 进入某分组又触发另一 key 的取数。全局单 sequence 会把迟到的根结果丢弃、
+  // 令根 loading 永不清除;按 key 隔离后两者互不影响。
+  let resolveRoot!: (value: ListChildrenResult) => void;
+  const pendingRoot = new Promise<ListChildrenResult>((resolve) => {
+    resolveRoot = resolve;
+  });
+  const controller = createReferenceSourcePickerController({
+    aggregator: {
+      ...fakeAggregator({ tabs: tabsTwo, children: {} }),
+      listChildren: (_scope, ref: NodeRef) =>
+        ref.nodeId === SOURCE_ROOT_NODE_ID
+          ? pendingRoot
+          : Promise.resolve({
+              entries: [file("workspace-file", "/group/a.md")],
+              nextCursor: null
+            })
+    },
+    scope,
+    searchDebounceMs: 0
+  });
+  controller.open();
+  await flush();
+  // 根预取在途时,进入一个分组(不同 key)并完成其取数 —— 这会推进全局计数。
+  controller.ensureChildren(folder("workspace-file", "/group"));
+  await flush();
+  // 现在根才返回:旧实现里它已被作废(sequence 不匹配)。
+  resolveRoot({
+    entries: [file("workspace-file", "/root.md")],
+    nextCursor: null
+  });
+  await flush();
+  const root =
+    controller.getSnapshot().bySource["workspace-file"]?.childrenByKey[
+      ROOT_CHILDREN_KEY
+    ];
+  assert.equal(root?.loading, false);
+  assert.equal(root?.loaded, true);
+  assert.equal(
+    root?.entries.some((n) => n.ref.nodeId === "/root.md"),
+    true
+  );
+});
+
+test("locatePath 把定位目标解析为真实节点路径(root → leaf)", async () => {
+  const controller = createReferenceSourcePickerController({
+    aggregator: fakeAggregator({
+      tabs: tabsTwo,
+      children: {
+        [`app-artifact:${SOURCE_ROOT_NODE_ID}`]: {
+          entries: [folder("app-artifact", "g1", "分组一")],
+          nextCursor: null
+        },
+        "app-artifact:g1": {
+          entries: [folder("app-artifact", "i1", "事项一")],
+          nextCursor: null
+        }
+      },
+      locate: {
+        "app-artifact": [
+          { sourceId: "app-artifact", nodeId: "g1" },
+          { sourceId: "app-artifact", nodeId: "i1" }
+        ]
+      }
+    }),
+    scope,
+    searchDebounceMs: 0
+  });
+  controller.open();
+  await flush();
+  const path = await controller.locatePath({
+    sourceId: "app-artifact",
+    params: { issueId: "i1" }
+  });
+  // 返回真实节点(带 displayName),供「打开即定位」一次性应用面包屑/焦点。
+  assert.deepEqual(
+    path.map((node) => node.ref.nodeId),
+    ["g1", "i1"]
+  );
+  assert.deepEqual(
+    path.map((node) => node.displayName),
+    ["分组一", "事项一"]
+  );
+});
+
+test("locatePath 源不支持定位 / 未找到时返回空路径", async () => {
+  const controller = createReferenceSourcePickerController({
+    aggregator: fakeAggregator({ tabs: tabsTwo, children: {} }),
+    scope,
+    searchDebounceMs: 0
+  });
+  controller.open();
+  await flush();
+  assert.deepEqual(
+    await controller.locatePath({ sourceId: "app-artifact", params: {} }),
+    []
   );
 });

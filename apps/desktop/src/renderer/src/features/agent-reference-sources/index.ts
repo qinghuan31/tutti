@@ -10,3 +10,7 @@ export {
   ISSUE_SOURCE_ID,
   createIssueReferenceSource
 } from "./issueReferenceSource.ts";
+export {
+  resolveMentionReferenceTarget,
+  type MentionReferenceTargetResolver
+} from "./mentionReferenceTarget.ts";

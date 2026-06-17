@@ -198,7 +198,8 @@ Response:
         "sizeBytes": 1234,
         "mtimeMs": 1710000000000,
         "mimeType": "text/markdown",
-        "score": 0.92
+        "score": 0.92,
+        "parentGroupLabel": "Q4 Planning"
       }
     }
   ],
@@ -211,3 +212,4 @@ Response:
 - Each reference item must include a valid file reference with a `location`; the same `location` rules and host-path prohibition as the list protocol apply.
 - `nextCursor` is optional; omit it or return `null` when there is no next page.
 - Return an empty `items` array (not an error) when nothing matches.
+- `parentGroupLabel` is optional (string, max 160 chars). Because search is flattened across the whole app, set it to the name of the group/project the file lives in (e.g. the project a design belongs to) so users can tell results apart. Tutti shows each item's `displayName` as the title and `parentGroupLabel` as the context subtitle. When you omit it, Tutti falls back to your app's manifest display name as the subtitle, so still keep the manifest display name and each `displayName` meaningful.

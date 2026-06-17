@@ -1434,6 +1434,9 @@ type AppFileReference struct {
 	MimeType    *string              `json:"mimeType"`
 	MtimeMs     *int64               `json:"mtimeMs"`
 
+	// ParentGroupLabel Optional label of the group/project this file belongs to, surfaced as the result's context subtitle in cross-source search. Apps should set it on search results so users can tell which project a file is in; when omitted, Tutti falls back to the app display name.
+	ParentGroupLabel *string `json:"parentGroupLabel,omitempty"`
+
 	// Path Absolute filesystem path resolved by tuttid from the app runtime reference location. Workspace app runtimes do not provide this public API field directly.
 	Path      string   `json:"path"`
 	Score     *float32 `json:"score"`

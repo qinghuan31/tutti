@@ -1,12 +1,8 @@
-import { useId } from "react";
-import { createPortal } from "react-dom";
 import {
-  Button,
-  Card,
-  CardContent,
-  CardHeader,
-  CardTitle,
-  CloseIcon,
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
   cn
 } from "@tutti-os/ui-system";
 import type {
@@ -28,14 +24,15 @@ export interface WorkspaceFileReferencePickerProps {
   onClose: () => void;
   onConfirm: (refs: WorkspaceFileReference[]) => void;
   open: boolean;
+  /**
+   * When true, the dialog is rendered inline (non-portaled, absolutely
+   * positioned) so it stays clipped within the nearest positioned ancestor —
+   * e.g. an agent GUI node window — instead of covering the whole viewport.
+   * Defaults to false (portal to body + cover the viewport).
+   */
+  scoped?: boolean;
   workspaceId: string;
 }
-
-const workspaceFileReferencePickerBackdropMotionClassName =
-  "motion-safe:animate-in motion-safe:fade-in-0 motion-safe:duration-[180ms] motion-safe:ease-[cubic-bezier(0.22,1,0.36,1)] motion-reduce:animate-none";
-
-const workspaceFileReferencePickerPanelMotionClassName =
-  "motion-safe:animate-in motion-safe:fade-in-0 motion-safe:zoom-in-[0.96] motion-safe:duration-[250ms] motion-safe:ease-[cubic-bezier(0.22,1,0.36,1)] motion-reduce:animate-none";
 
 export function WorkspaceFileReferencePicker({
   copy,
@@ -44,9 +41,9 @@ export function WorkspaceFileReferencePicker({
   onClose,
   onConfirm,
   open,
+  scoped = false,
   workspaceId
 }: WorkspaceFileReferencePickerProps) {
-  const titleId = useId();
   const {
     browseRootEntries,
     directoryStateByPath,
@@ -72,51 +69,30 @@ export function WorkspaceFileReferencePicker({
     workspaceId
   });
 
-  if (!open) {
-    return null;
-  }
-
-  const dialog = (
-    <div
-      className={cn(
-        "nodrag fixed inset-0 grid place-items-center bg-[var(--backdrop)] px-3 py-4 backdrop-blur-md [-webkit-app-region:no-drag] sm:px-6 sm:py-8",
-        workspaceFileReferencePickerBackdropMotionClassName
-      )}
-      style={{ zIndex: "var(--z-panel)" }}
-      onClick={onClose}
+  return (
+    <Dialog
+      open={open}
+      onOpenChange={(nextOpen) => {
+        if (!nextOpen) {
+          onClose();
+        }
+      }}
     >
-      <Card
-        aria-labelledby={titleId}
-        aria-modal="true"
+      <DialogContent
+        // Radix infers the description; this picker has none.
+        aria-describedby={undefined}
         className={cn(
-          "nodrag flex h-[min(88vh,44rem)] w-full max-w-5xl origin-center flex-col gap-0 overflow-hidden border-[var(--line-1)] bg-[var(--background-fronted)] py-0 text-[var(--text-primary)] shadow-panel [-webkit-app-region:no-drag] sm:h-[min(82vh,44rem)]",
-          workspaceFileReferencePickerPanelMotionClassName
+          "nodrag flex h-[min(88vh,44rem)] w-full max-w-5xl flex-col gap-0 overflow-hidden border-[var(--line-1)] bg-[var(--background-fronted)] p-0 text-[var(--text-primary)] shadow-panel [-webkit-app-region:no-drag] sm:h-[min(82vh,44rem)] sm:max-w-5xl"
         )}
-        role="dialog"
-        onClick={(event) => event.stopPropagation()}
+        // When scoped, both overlay and content stay clipped within the nearest
+        // positioned ancestor (the node window) instead of covering the viewport.
+        overlayClassName={cn("nodrag", scoped && "!absolute")}
+        portaled={!scoped}
       >
-        <CardHeader
-          className="border-b px-4 py-4 sm:px-6 sm:py-5"
-          style={{ borderBottomColor: "var(--line-1)" }}
-        >
-          <div className="flex items-start justify-between gap-4">
-            <div className="min-w-0">
-              <CardTitle id={titleId}>
-                {copy.t("referencePicker.title")}
-              </CardTitle>
-            </div>
-            <Button
-              aria-label={copy.t("actions.cancel")}
-              size="icon-sm"
-              type="button"
-              variant="ghost"
-              onClick={onClose}
-            >
-              <CloseIcon size={16} />
-            </Button>
-          </div>
-        </CardHeader>
-        <CardContent className="grid min-h-0 flex-1 grid-rows-[minmax(0,1fr)_auto] gap-0 overflow-hidden p-0 lg:grid-cols-[minmax(0,1.15fr)_minmax(20rem,0.85fr)] lg:grid-rows-1">
+        <DialogHeader className="flex-none border-b border-[var(--line-1)] px-4 py-4 sm:px-6 sm:py-5">
+          <DialogTitle>{copy.t("referencePicker.title")}</DialogTitle>
+        </DialogHeader>
+        <div className="grid min-h-0 flex-1 grid-rows-[minmax(0,1fr)_auto] gap-0 overflow-hidden p-0 lg:grid-cols-[minmax(0,1.15fr)_minmax(20rem,0.85fr)] lg:grid-rows-1">
           <WorkspaceFileReferencePickerBrowserPane
             browseRootEntries={browseRootEntries}
             copy={copy}
@@ -139,19 +115,14 @@ export function WorkspaceFileReferencePicker({
             mode={mode}
             previewState={previewState}
           />
-        </CardContent>
+        </div>
         <WorkspaceFileReferencePickerFooter
           copy={copy}
           onClose={onClose}
           onConfirm={() => onConfirm(selectedRefs)}
           selectedRefs={selectedRefs}
         />
-      </Card>
-    </div>
+      </DialogContent>
+    </Dialog>
   );
-
-  if (typeof document === "undefined") {
-    return dialog;
-  }
-  return createPortal(dialog, document.body);
 }

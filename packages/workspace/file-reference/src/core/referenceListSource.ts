@@ -1,5 +1,6 @@
 import type {
   ListChildrenResult,
+  NodeRef,
   ReferenceNode,
   ReferencePreview,
   ReferenceScope,
@@ -35,6 +36,11 @@ export interface ReferenceListFile {
   /** daemon/host 可解析的文件路径。 */
   path: string;
   displayName?: string | null;
+  /**
+   * 可选的归属标签(如应用名 / 议题标题),用于搜索结果副标题。
+   * 各源在「跨整源搜索拍平」时填入父级上下文;不填则副标题回退展示 nodeId。
+   */
+  parentLabel?: string | null;
   sizeBytes?: number | null;
   mtimeMs?: number | null;
   mimeType?: string | null;
@@ -82,6 +88,15 @@ export interface ReferenceListBackend {
     scope: ReferenceScope,
     request: ReferenceListSearchRequest
   ): Promise<ReferenceListResult>;
+  /**
+   * 可选:把语义定位参数解析为从根到目标分组的「不透明分组 id」路径(root → leaf),
+   * 用各源自家的 group id 方案(与 list 返回的 group.id 同形),wrapper 负责编成 NodeRef。
+   * 返回 null 表示不支持或未找到。
+   */
+  locate?(
+    scope: ReferenceScope,
+    params: Record<string, string>
+  ): Promise<string[] | null>;
 }
 
 export interface CreateReferenceListSourceInput {
@@ -161,6 +176,24 @@ export function createReferenceListSource(
     }
   };
 
+  // 仅当 backend 实现了定位时才暴露 locateTarget;把不透明分组 id 路径编成 NodeRef 路径。
+  const backendLocate = backend.locate?.bind(backend);
+  if (backendLocate) {
+    service.locateTarget = async (
+      scope: ReferenceScope,
+      params: Record<string, string>
+    ): Promise<NodeRef[] | null> => {
+      const groupIds = await backendLocate(scope, params);
+      if (!groupIds) {
+        return null;
+      }
+      return groupIds.map((groupId) => ({
+        sourceId,
+        nodeId: GROUP_PREFIX + base64UrlEncode(groupId)
+      }));
+    };
+  }
+
   // 仅当 backend 实现了递归搜索时才暴露 search,与 capabilities.searchable 保持一致。
   const backendSearch = backend.search?.bind(backend);
   if (backendSearch) {
@@ -202,6 +235,9 @@ function itemToNode(sourceId: string, item: ReferenceListItem): ReferenceNode {
     ref: { sourceId, nodeId: FILE_PREFIX + base64UrlEncode(reference.path) },
     kind: "file",
     displayName: reference.displayName?.trim() || basename(reference.path),
+    ...(reference.parentLabel?.trim()
+      ? { contextLabel: reference.parentLabel.trim() }
+      : {}),
     ...(reference.sizeBytes == null ? {} : { sizeBytes: reference.sizeBytes }),
     ...(reference.mtimeMs == null ? {} : { mtimeMs: reference.mtimeMs }),
     ...(reference.mimeType ? { mimeType: reference.mimeType } : {})

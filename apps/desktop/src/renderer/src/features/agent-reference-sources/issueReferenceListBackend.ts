@@ -82,17 +82,34 @@ export function createIssueReferenceListBackend(
 
       // issue → 直接列产出文件(latestOutputs)。
       const detail = await getDetail(workspaceId, decoded.issueId);
+      // 归属标签 = 所属议题标题(搜索结果副标题用)。
+      const issueLabel = detail.issue?.title?.trim() || decoded.issueId;
       const items: ReferenceListItem[] = detail.latestOutputs.map((output) => ({
         type: "reference",
         reference: {
           path: output.path,
           displayName: output.displayName,
+          parentLabel: issueLabel,
           sizeBytes: output.sizeBytes,
           mimeType: output.mediaType || null,
           mtimeMs: unixSecondsToMs(output.createdAtUnix)
         }
       }));
       return { items, nextCursor: null };
+    },
+
+    // 定位:层级 topic → issue → 产出。带 topicId 时给出完整路径(展开 topic 再进入事项);
+    // 缺 topicId 时直接定位到事项分组(backend.list 对 `i:` 直接列产出,内容仍正确)。
+    locate(_scope, params): Promise<string[] | null> {
+      const issueId = params.issueId?.trim();
+      if (!issueId) {
+        return Promise.resolve(null);
+      }
+      const topicId = params.topicId?.trim();
+      const issuePath = encodeGroup("i", issueId);
+      return Promise.resolve(
+        topicId ? [encodeGroup("t", topicId), issuePath] : [issuePath]
+      );
     }
   };
 }

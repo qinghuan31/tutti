@@ -75,6 +75,11 @@ export function createAppReferenceListBackend(
         await listReferenceSupportingApps(tuttidClient, scope)
       ).filter((app) => app.references.searchSupported);
       if (apps.length === 0) {
+        // 没有任何 app 声明 references.searchEndpoint —— 搜索必空,日志便于排查。
+        console.warn("[app-reference-search] no searchSupported apps", {
+          workspaceId: scope.workspaceId,
+          query
+        });
         return { items: [], nextCursor: null };
       }
       const perApp = await Promise.all(
@@ -89,10 +94,25 @@ export function createAppReferenceListBackend(
                 kinds: ["file"]
               }
             );
-            return response.items.map((item) =>
-              appItemToProtocol(app.appId, item)
+            const appLabel = app.displayName?.trim() || app.appId;
+            const mapped = response.items.map((item) =>
+              appItemToProtocol(app.appId, item, appLabel)
             );
-          } catch {
+            // daemon 仅在 app 运行时才代理到其 server,否则静默返回空。
+            // 记录每个 app 的命中数,便于区分「没起/没匹配/接口异常」。
+            console.debug("[app-reference-search] app result", {
+              appId: app.appId,
+              query,
+              count: mapped.length
+            });
+            return mapped;
+          } catch (error) {
+            // 单 app 失败不影响其他 app —— 但别再静默吞掉,打日志暴露原因。
+            console.warn("[app-reference-search] app search failed", {
+              appId: app.appId,
+              query,
+              error
+            });
             return [];
           }
         })
@@ -102,6 +122,15 @@ export function createAppReferenceListBackend(
         items: limit == null ? items : items.slice(0, limit),
         nextCursor: null
       };
+    },
+
+    // 定位:应用是根层级分组(`app:${appId}`),一步到位。
+    locate(_scope, params): Promise<string[] | null> {
+      const appId = params.appId?.trim();
+      if (!appId) {
+        return Promise.resolve(null);
+      }
+      return Promise.resolve([`${APP_MARKER}${appId}`]);
     }
   };
 }
@@ -118,7 +147,10 @@ export async function listReferenceSupportingApps(
 
 function appItemToProtocol(
   appId: string,
-  item: AppReferenceListItem
+  item: AppReferenceListItem,
+  // 搜索结果归属标签的兜底(应用名);仅搜索拍平时传入,逐层 list(浏览)不需要。
+  // 优先用 app 自报的所属项目名(reference.parentGroupLabel),缺省才回退到应用名。
+  appFallbackLabel?: string
 ): ReferenceListItem {
   if (item.type === "group") {
     return {
@@ -129,11 +161,13 @@ function appItemToProtocol(
     };
   }
   const reference = item.reference;
+  const parentLabel = reference.parentGroupLabel?.trim() || appFallbackLabel;
   return {
     type: "reference",
     reference: {
       path: reference.path,
       displayName: reference.displayName,
+      ...(parentLabel ? { parentLabel } : {}),
       sizeBytes: reference.sizeBytes,
       mtimeMs: reference.mtimeMs,
       mimeType: reference.mimeType

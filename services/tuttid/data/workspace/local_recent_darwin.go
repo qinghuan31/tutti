@@ -23,12 +23,21 @@ const recentCandidateCap = 400
 // stalls the picker.
 const recentLookupTimeout = 4 * time.Second
 
+// recentLookupWindow is the rolling time window for "last used" candidates,
+// mirroring Finder's "Recents" behavior. We use a rolling window (not a natural
+// month) so the list never resets at the start of a month, and bound it because
+// mdfind returns hits unordered: an unbounded query would force us to cap an
+// arbitrary slice of (potentially) hundreds of thousands of all-time hits,
+// dropping the newest ones. 30 days matches Finder's widest named group.
+const recentLookupWindow = "$time.today(-30)"
+
 // mdlsLastUsedDateLayout matches `mdls -name kMDItemLastUsedDate` output, e.g.
 // "kMDItemLastUsedDate = 2026-06-17 06:35:10 +0000".
 const mdlsLastUsedDateLayout = "2006-01-02 15:04:05 -0700"
 
-// ListRecent enumerates the workspace's recently accessed entries (most-recent
+// ListRecent enumerates the workspace's recently accessed files (most-recent
 // first) via Spotlight, scoped to the workspace root so results never escape it.
+// Folders are excluded to match Finder's "Recents".
 func (LocalFilesAdapter) ListRecent(
 	ctx context.Context,
 	root workspacefiles.WorkspaceRoot,
@@ -78,6 +87,13 @@ func (LocalFilesAdapter) ListRecent(
 		if err != nil {
 			continue
 		}
+		// Recents shows files only, matching Finder. The Spotlight query already
+		// drops `public.folder`, but packages (.app, etc.) stat as directories;
+		// skip anything that resolves to a directory so it never renders as an
+		// expandable folder in the picker.
+		if entry.Kind == workspacefiles.EntryKindDirectory {
+			continue
+		}
 		lastUsedMs := candidate.lastUsed.UnixMilli()
 		entry.LastOpenedMs = &lastUsedMs
 		entries = append(entries, entry)
@@ -92,14 +108,15 @@ type recentCandidate struct {
 	lastUsed     time.Time
 }
 
-// spotlightRecentCandidates returns recently used paths under rootPath, capped
-// to recentCandidateCap. Order is Spotlight's (unranked by date here).
+// spotlightRecentCandidates returns recently used, non-folder paths under
+// rootPath within recentLookupWindow, capped to recentCandidateCap. Order is
+// Spotlight's (unranked by date here).
 func spotlightRecentCandidates(ctx context.Context, rootPath string) ([]string, error) {
 	cmd := exec.CommandContext(
 		ctx,
 		"mdfind",
 		"-onlyin", rootPath,
-		"kMDItemLastUsedDate >= $time.this_month",
+		"kMDItemLastUsedDate >= "+recentLookupWindow+" && kMDItemContentTypeTree != 'public.folder'",
 	)
 	output, err := cmd.Output()
 	if err != nil {

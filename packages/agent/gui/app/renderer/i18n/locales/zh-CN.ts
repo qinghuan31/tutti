@@ -814,6 +814,7 @@ export const zhCN = {
       mentionAgentGeneratedFolderBack: "返回",
       mentionAgentGeneratedFolderFileCount: "{{count}} 个文件",
       mentionNoMatchingFiles: "没有匹配到文件",
+      mentionOpenReferences: "查看产物文件",
       issueRunPrompt: {
         currentWorkingDirectoryLabel: "当前工作目录",
         executionRequirementsLabel: "执行要求",

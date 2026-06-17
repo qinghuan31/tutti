@@ -23,7 +23,8 @@ import { createDesktopWorkspaceFileReferenceAdapter } from "../../workspace-file
 import {
   createAppArtifactReferenceSource,
   createIssueReferenceSource,
-  createWorkspaceFileReferenceSource
+  createWorkspaceFileReferenceSource,
+  resolveMentionReferenceTarget
 } from "../../agent-reference-sources/index.ts";
 import { createDesktopAgentActivityRuntime } from "./createDesktopAgentActivityRuntime.ts";
 import { createDesktopAgentHostApi } from "./createDesktopAgentHostApi.ts";
@@ -47,6 +48,9 @@ export interface DesktopAgentGUIWorkbenchHostInput {
   >;
   onRequestGitBranches: NonNullable<AgentGUIProps["onRequestGitBranches"]>;
   referenceSourceAggregator: ReferenceSourceAggregator;
+  resolveMentionReferenceTarget: NonNullable<
+    AgentGUIProps["resolveMentionReferenceTarget"]
+  >;
 }
 
 export interface CreateDesktopAgentGUIWorkbenchHostInputInput {
@@ -185,7 +189,8 @@ export function createDesktopAgentGUIWorkbenchHostInput({
         currentBranch: result.currentBranch ?? null
       };
     },
-    referenceSourceAggregator
+    referenceSourceAggregator,
+    resolveMentionReferenceTarget
   };
 }
 

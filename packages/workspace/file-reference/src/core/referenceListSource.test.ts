@@ -84,6 +84,25 @@ test("根层级:协议 group/reference 映射成 folder/file 节点", async () =
   assert.ok(file.ref.nodeId.startsWith("f:"));
 });
 
+test("reference.parentLabel 透传为节点 contextLabel,缺省时不带", async () => {
+  const { source } = makeSource({
+    __root__: {
+      items: [
+        {
+          type: "reference",
+          reference: { path: "/ws/cover.svg", parentLabel: "Prototype Design" }
+        },
+        { type: "reference", reference: { path: "/ws/plain.txt" } }
+      ],
+      nextCursor: null
+    }
+  });
+  const result = await source.listChildren(scope, { node: null });
+  assert.equal(result.entries[0]?.contextLabel, "Prototype Design");
+  // 没填 parentLabel 的项不应带 contextLabel(UI 回退展示 nodeId)。
+  assert.equal(result.entries[1]?.contextLabel, undefined);
+});
+
 test("下钻:folder 节点的 nodeId 解码回 parentGroupId 原样传给 backend", async () => {
   const { source, calls } = makeSource({
     __root__: {
@@ -133,4 +152,40 @@ test("聚合器源根哨兵进入时,backend 收到 parentGroupId=null", async (
   assert.equal(calls[0]?.parentGroupId, null);
   // 确保哨兵不会被误当作 file/group(由聚合器层处理为 null,这里直接验 null 入参)
   assert.notEqual(SOURCE_ROOT_NODE_ID, "");
+});
+
+test("locateTarget:把 backend 分组 id 路径编成 NodeRef,且与 listChildren 编码一致", async () => {
+  const calls: ReferenceListRequest[] = [];
+  const source = createReferenceListSource({
+    sourceId: "issue-file",
+    label: "议题",
+    capabilities: {
+      searchable: false,
+      previewable: true,
+      paginated: true,
+      navigable: true,
+      typeFilterable: true
+    },
+    isAvailable: () => true,
+    adapter: fakeAdapter,
+    backend: {
+      async list(_scope, request) {
+        calls.push(request);
+        return { items: [], nextCursor: null };
+      },
+      async locate(_scope, params) {
+        return params.issueId ? ["t:topic-1", "i:issue-1"] : null;
+      }
+    }
+  });
+
+  assert.equal(await source.locateTarget?.(scope, {}), null);
+
+  const path = await source.locateTarget?.(scope, { issueId: "issue-1" });
+  assert.equal(path?.length, 2);
+  assert.equal(path?.[0]?.sourceId, "issue-file");
+
+  // 关键:NodeRef 用回 listChildren 时,backend 应收到原始 group id(编码可逆、与 list 一致)。
+  await source.listChildren(scope, { node: path[1]! });
+  assert.equal(calls[0]?.parentGroupId, "i:issue-1");
 });

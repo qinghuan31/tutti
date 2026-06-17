@@ -69,6 +69,11 @@ export interface AgentFileMentionPaletteProps {
   onExpandGroup: (groupId: AgentMentionGroupId) => void;
   onCycleFilter: () => void;
   onMoveSelection: (delta: 1 | -1) => void;
+  /**
+   * 可选:点击 issue / app 行末尾的「查看产物文件」图标时回调(打开引用 picker 并定位)。
+   * 仅 workspace-issue / workspace-app 行渲染该入口。
+   */
+  onOpenReferences?: (item: AgentContextMentionItem) => void;
 }
 
 const AGENT_MENTION_PALETTE_THEME: MentionPaletteTheme = {
@@ -188,9 +193,13 @@ export function AgentFileMentionPalette({
   onSelectFilter,
   onExpandGroup,
   onCycleFilter,
-  onMoveSelection
+  onMoveSelection,
+  onOpenReferences
 }: AgentFileMentionPaletteProps): React.JSX.Element {
   "use memo";
+  const openReferencesLabel = translate(
+    "agentHost.agentGui.mentionOpenReferences"
+  );
   const filter = state.filter as AgentMentionFilterId;
   const highlightedBrowseCategory = highlightedKey?.startsWith("category:")
     ? highlightedKey.slice("category:".length)
@@ -258,7 +267,13 @@ export function AgentFileMentionPalette({
       renderItem={(item) =>
         renderMentionRow(agentMentionItemToRowItem(item), {
           classNames: AGENT_MENTION_ROW_CLASS_NAMES,
-          dataAttributeMode: "agent"
+          dataAttributeMode: "agent",
+          ...(onOpenReferences && isReferenceableMentionItem(item)
+            ? {
+                onOpenReferences: () => onOpenReferences(item),
+                openReferencesLabel
+              }
+            : {})
         })
       }
       labels={{
@@ -495,6 +510,22 @@ function agentMentionItemToRowItem(
     creatorName: item.creatorName ?? null,
     statusTag: agentIssueStatusTag(item.status)
   };
+}
+
+/**
+ * 暂不展示产物文件入口的应用(agent 启动器类,无产物文件):Claude Code / Codex。
+ */
+const NON_REFERENCEABLE_APP_IDS = new Set(["agent-claude-code", "agent-codex"]);
+
+/** 仅 workspace-issue / workspace-app(排除 agent 启动器应用)行有产物文件入口。 */
+function isReferenceableMentionItem(item: AgentContextMentionItem): boolean {
+  if (item.kind === "workspace-issue") {
+    return true;
+  }
+  if (item.kind === "workspace-app") {
+    return !NON_REFERENCEABLE_APP_IDS.has(item.appId);
+  }
+  return false;
 }
 
 function mentionSessionAgentProvider(

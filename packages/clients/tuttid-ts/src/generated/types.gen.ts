@@ -400,6 +400,11 @@ export type AppFileReference = {
   mtimeMs: number | null;
   mimeType: string | null;
   score: number | null;
+  /**
+   * Optional label of the group/project this file belongs to, surfaced as the result's context subtitle in cross-source search. Apps should set it on search results so users can tell which project a file is in; when omitted, Tutti falls back to the app display name.
+   *
+   */
+  parentGroupLabel?: string | null;
 };
 
 export type WorkspaceAppLocalization = {

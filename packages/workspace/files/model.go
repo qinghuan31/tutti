@@ -62,7 +62,8 @@ type DirectoryListInput struct {
 }
 
 // RecentListInput drives the "recently accessed" listing. The listing is a
-// flat set of entries (files and folders) ordered most-recently-used first.
+// flat set of files (folders excluded, matching Finder's "Recents") ordered
+// most-recently-used first.
 type RecentListInput struct {
 	Limit int
 }

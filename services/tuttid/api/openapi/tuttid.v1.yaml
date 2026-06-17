@@ -3678,6 +3678,15 @@ components:
           nullable: true
           minimum: 0
           maximum: 1
+        parentGroupLabel:
+          type: string
+          nullable: true
+          maxLength: 160
+          description: >
+            Optional label of the group/project this file belongs to, surfaced
+            as the result's context subtitle in cross-source search. Apps should
+            set it on search results so users can tell which project a file is
+            in; when omitted, Tutti falls back to the app display name.
     WorkspaceAppLocalization:
       type: object
       additionalProperties: false
