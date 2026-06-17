@@ -31,6 +31,12 @@ export function reasoningConfigOptionIdForProvider(
   return provider === "codex" ? "reasoning_effort" : "effort";
 }
 
+export function speedConfigOptionIdForProvider(
+  provider: AgentGUINodeData["provider"]
+): string {
+  return provider === "codex" ? "service_tier" : "fast";
+}
+
 export function composerSettingOptionsFromActivity(
   options: readonly AgentActivityComposerOptions["models"][number][]
 ): AgentGUIComposerSettingOption[] {
@@ -153,6 +159,10 @@ export function resolveEffectiveComposerSettings(input: {
       (normalizeOptionalText(
         input.settings.reasoningEffort
       ) as AgentSessionReasoningEffort | null) ?? null,
+    speed:
+      (normalizeOptionalText(
+        input.settings.speed
+      ) as AgentSessionSpeed | null) ?? null,
     planMode: Boolean(input.settings.planMode),
     // Browser use defaults on; preserve an explicit opt-out, default unset to on.
     browserUse: input.settings.browserUse ?? true,
@@ -162,10 +172,13 @@ export function resolveEffectiveComposerSettings(input: {
 
 export function runtimeConfigKeyForSetting(
   provider: AgentGUINodeData["provider"],
-  setting: "model" | "reasoningEffort" | "permissionModeId"
+  setting: "model" | "reasoningEffort" | "speed" | "permissionModeId"
 ): string {
   if (setting === "reasoningEffort") {
     return reasoningConfigOptionIdForProvider(provider);
+  }
+  if (setting === "speed") {
+    return speedConfigOptionIdForProvider(provider);
   }
   if (setting === "permissionModeId") {
     return "mode";
@@ -176,13 +189,21 @@ export function runtimeConfigKeyForSetting(
 export function shouldUpdateRuntimeConfigOption(
   provider: AgentGUINodeData["provider"],
   id: string | null,
-  setting: "model" | "reasoningEffort" | "permissionModeId"
+  setting: "model" | "reasoningEffort" | "speed" | "permissionModeId"
 ): boolean {
   if (setting === "model") {
     return id === "model";
   }
   if (setting === "permissionModeId") {
     return id === "mode";
+  }
+  if (setting === "speed") {
+    return (
+      id === speedConfigOptionIdForProvider(provider) ||
+      id === "service_tier" ||
+      id === "speed" ||
+      id === "fast"
+    );
   }
   return (
     id === reasoningConfigOptionIdForProvider(provider) ||
@@ -203,7 +224,7 @@ export function mergeRuntimeContextComposerSettings(
   const nextRuntimeContext: Record<string, unknown> = { ...runtimeContext };
   const runtimeConfigPatch: Record<string, unknown> = {};
   const optionPatches: Array<{
-    setting: "model" | "reasoningEffort" | "permissionModeId";
+    setting: "model" | "reasoningEffort" | "speed" | "permissionModeId";
     value: string | null;
   }> = [];
 
@@ -218,6 +239,11 @@ export function mergeRuntimeContextComposerSettings(
       runtimeConfigKeyForSetting(provider, "reasoningEffort")
     ] = value;
     optionPatches.push({ setting: "reasoningEffort", value });
+  }
+  if (settings.speed !== undefined) {
+    const value = normalizeOptionalText(settings.speed);
+    runtimeConfigPatch[runtimeConfigKeyForSetting(provider, "speed")] = value;
+    optionPatches.push({ setting: "speed", value });
   }
   if (settings.permissionModeId !== undefined) {
     const value = normalizeOptionalText(settings.permissionModeId);
@@ -277,6 +303,7 @@ export function sameComposerSettings(
   return (
     (left?.model ?? null) === (right?.model ?? null) &&
     (left?.reasoningEffort ?? null) === (right?.reasoningEffort ?? null) &&
+    (left?.speed ?? null) === (right?.speed ?? null) &&
     Boolean(left?.planMode) === Boolean(right?.planMode) &&
     (left?.browserUse ?? true) === (right?.browserUse ?? true) &&
     (left?.permissionModeId ?? null) === (right?.permissionModeId ?? null)
@@ -287,6 +314,7 @@ export function buildNodeDefaultComposerSettings(
   data: AgentGUINodeData,
   options?: {
     defaultReasoningEffort?: AgentSessionReasoningEffort | null;
+    defaultSpeed?: AgentSessionSpeed | null;
   }
 ): AgentSessionComposerSettings {
   // Generic cleanup only — provider-level clamping is owned by the daemon
@@ -299,6 +327,12 @@ export function buildNodeDefaultComposerSettings(
         composerOverrides.reasoningEffort
       ) as AgentSessionReasoningEffort | null) ??
       options?.defaultReasoningEffort ??
+      null,
+    speed:
+      (normalizeOptionalText(
+        composerOverrides.speed
+      ) as AgentSessionSpeed | null) ??
+      options?.defaultSpeed ??
       null,
     planMode: Boolean(composerOverrides.planMode),
     browserUse: composerOverrides.browserUse ?? true,
@@ -324,6 +358,7 @@ export function composerSupportForProvider(
   model: boolean;
   permission: boolean;
   reasoning: boolean;
+  speed: boolean;
   plan: boolean;
 } {
   if (
@@ -335,6 +370,7 @@ export function composerSupportForProvider(
       model: true,
       permission: provider === "claude-code" || provider === "codex",
       reasoning: true,
+      speed: provider === "claude-code" || provider === "codex",
       plan: false
     };
   }
@@ -342,6 +378,7 @@ export function composerSupportForProvider(
     model: false,
     permission: provider === "nexight",
     reasoning: false,
+    speed: false,
     plan: false
   };
 }
@@ -368,6 +405,7 @@ export function nodeDataFromComposerSettings(
   const composerOverrides = {
     model: normalizeOptionalText(settings.model),
     reasoningEffort: normalizeOptionalText(settings.reasoningEffort),
+    speed: normalizeOptionalText(settings.speed),
     planMode: Boolean(settings.planMode),
     // Raw passthrough (no Boolean coercion): undefined means "default on", so
     // only an explicit false persists as an opt-out.
@@ -468,13 +506,15 @@ export function readNodeDefaultDraftPrompt(input: {
 export function readNodeDefaultDraftSettings(input: {
   data: AgentGUINodeData;
   defaultReasoningEffort?: AgentSessionReasoningEffort | null;
+  defaultSpeed?: AgentSessionSpeed | null;
   drafts: Record<string, AgentSessionComposerSettings>;
 }): AgentSessionComposerSettings {
   return (
     input.drafts[nodeDefaultDraftKey(input.data.provider)] ??
     input.drafts[NODE_DEFAULT_DRAFT_KEY] ??
     buildNodeDefaultComposerSettings(input.data, {
-      defaultReasoningEffort: input.defaultReasoningEffort
+      defaultReasoningEffort: input.defaultReasoningEffort,
+      defaultSpeed: input.defaultSpeed
     })
   );
 }

@@ -29,6 +29,7 @@ const { mockProjectMissingState } = vi.hoisted(() => ({
 
 afterEach(() => {
   mockProjectMissingState.current = false;
+  vi.restoreAllMocks();
 });
 
 const workspaceUserProjectI18n = createWorkspaceUserProjectI18nRuntime(
@@ -1006,6 +1007,9 @@ describe("AgentComposer", () => {
     fireEvent.submit(container.querySelector("form")!);
 
     const panel = screen.getByTestId("agent-gui-slash-status-panel");
+    expect(
+      screen.getByTestId("agent-gui-command-menu-surface")
+    ).toContainElement(panel);
     expect(panel).toHaveTextContent("Status");
     expect(panel).toHaveTextContent("7d limit");
     expect(panel).toHaveTextContent("95% left");
@@ -1013,11 +1017,130 @@ describe("AgentComposer", () => {
     expect(panel).not.toHaveTextContent("Context");
   });
 
-  it("keeps the status panel inset and squared off against the composer input", () => {
+  it("closes the status command menu with Escape", () => {
+    const { container } = render(
+      <AgentComposer
+        workspaceId="workspace-1"
+        currentUserId="user-1"
+        provider="codex"
+        slashStatus={{
+          limits: [
+            {
+              id: "weekly",
+              label: "7d limit",
+              value: "95% left"
+            }
+          ]
+        }}
+        draftContent={createDraft("/status")}
+        availableCommands={[] satisfies readonly AgentHostAgentSessionCommand[]}
+        disabled={false}
+        submitDisabled={false}
+        placeholder="placeholder"
+        composerSettings={createComposerSettings()}
+        queuedPrompts={[]}
+        drainingQueuedPromptId={null}
+        canQueueWhileBusy={false}
+        showStopButton={false}
+        activePrompt={null}
+        isInterrupting={false}
+        isSendingTurn={false}
+        isSubmittingPrompt={false}
+        labels={createLabels()}
+        workspaceUserProjectI18n={workspaceUserProjectI18n}
+        onDraftContentChange={vi.fn()}
+        onSettingsChange={vi.fn()}
+        onSubmit={vi.fn()}
+        onSendQueuedPromptNext={vi.fn()}
+        onRemoveQueuedPrompt={vi.fn()}
+        onEditQueuedPrompt={vi.fn()}
+        onInterruptCurrentTurn={vi.fn()}
+        onSubmitInteractivePrompt={vi.fn()}
+      />
+    );
+
+    fireEvent.submit(container.querySelector("form")!);
+    expect(
+      screen.getByTestId("agent-gui-slash-status-panel")
+    ).toBeInTheDocument();
+
+    fireEvent.keyDown(screen.getByPlaceholderText("placeholder"), {
+      key: "Escape"
+    });
+
+    expect(
+      screen.queryByTestId("agent-gui-slash-status-panel")
+    ).not.toBeInTheDocument();
+  });
+
+  it("closes the status command menu when focus leaves the composer menu", () => {
+    const { container } = render(
+      <>
+        <AgentComposer
+          workspaceId="workspace-1"
+          currentUserId="user-1"
+          provider="codex"
+          slashStatus={{
+            limits: [
+              {
+                id: "weekly",
+                label: "7d limit",
+                value: "95% left"
+              }
+            ]
+          }}
+          draftContent={createDraft("/status")}
+          availableCommands={
+            [] satisfies readonly AgentHostAgentSessionCommand[]
+          }
+          disabled={false}
+          submitDisabled={false}
+          placeholder="placeholder"
+          composerSettings={createComposerSettings()}
+          queuedPrompts={[]}
+          drainingQueuedPromptId={null}
+          canQueueWhileBusy={false}
+          showStopButton={false}
+          activePrompt={null}
+          isInterrupting={false}
+          isSendingTurn={false}
+          isSubmittingPrompt={false}
+          labels={createLabels()}
+          workspaceUserProjectI18n={workspaceUserProjectI18n}
+          onDraftContentChange={vi.fn()}
+          onSettingsChange={vi.fn()}
+          onSubmit={vi.fn()}
+          onSendQueuedPromptNext={vi.fn()}
+          onRemoveQueuedPrompt={vi.fn()}
+          onEditQueuedPrompt={vi.fn()}
+          onInterruptCurrentTurn={vi.fn()}
+          onSubmitInteractivePrompt={vi.fn()}
+        />
+        <button type="button">outside target</button>
+      </>
+    );
+
+    fireEvent.submit(container.querySelector("form")!);
+    expect(
+      screen.getByTestId("agent-gui-command-menu-surface")
+    ).toBeInTheDocument();
+
+    screen.getByText("outside target").focus();
+    fireEvent.focusIn(screen.getByText("outside target"));
+
+    expect(
+      screen.queryByTestId("agent-gui-command-menu-surface")
+    ).not.toBeInTheDocument();
+  });
+
+  it("keeps the status panel styled as floating command menu content", () => {
     const css = readFileSync(resolve("app/renderer/agentactivity.css"), "utf8");
 
     expect(css).toMatch(
-      /\.agent-gui-node__slash-status-panel\s*{[^}]*position:\s*relative[^}]*z-index:\s*1[^}]*margin:\s*0 12px[^}]*border-bottom:\s*0[^}]*border-radius:\s*10px 10px 0 0/s
+      /\.agent-gui-node__slash-status-panel\s*{[^}]*width:\s*100%[^}]*min-width:\s*0[^}]*padding:\s*10px 12px/s
+    );
+    expect(css).not.toMatch(
+      /\.agent-gui-node__slash-status-panel\s*{[^}]*border-bottom:\s*0/s
     );
   });
 
@@ -2124,6 +2247,9 @@ describe("AgentComposer", () => {
       expect(
         screen.getByTestId("agent-gui-review-picker-panel")
       ).toBeInTheDocument();
+      expect(
+        screen.getByTestId("agent-gui-command-menu-surface")
+      ).toContainElement(screen.getByTestId("agent-gui-review-picker-panel"));
       expect(onSubmit).not.toHaveBeenCalled();
 
       // Selecting the "uncommitted changes" scope submits a bare /review.
@@ -2134,6 +2260,58 @@ describe("AgentComposer", () => {
       ]);
     }
   );
+
+  it("lets the review picker handle staged Escape before closing", () => {
+    const { container } = render(
+      <AgentComposer
+        workspaceId="workspace-1"
+        currentUserId="user-1"
+        provider="codex"
+        slashStatus={{ agentSessionId: "agent-session-1", limits: [] }}
+        draftContent={createDraft("/review")}
+        availableCommands={
+          [{ name: "review" }] satisfies readonly AgentHostAgentSessionCommand[]
+        }
+        disabled={false}
+        submitDisabled={false}
+        placeholder="placeholder"
+        composerSettings={createComposerSettings()}
+        queuedPrompts={[]}
+        drainingQueuedPromptId={null}
+        canQueueWhileBusy={false}
+        showStopButton={false}
+        activePrompt={null}
+        isInterrupting={false}
+        isSendingTurn={false}
+        isSubmittingPrompt={false}
+        labels={createLabels()}
+        workspaceUserProjectI18n={workspaceUserProjectI18n}
+        onDraftContentChange={vi.fn()}
+        onSettingsChange={vi.fn()}
+        onSubmit={vi.fn()}
+        onSendQueuedPromptNext={vi.fn()}
+        onRemoveQueuedPrompt={vi.fn()}
+        onEditQueuedPrompt={vi.fn()}
+        onInterruptCurrentTurn={vi.fn()}
+        onSubmitInteractivePrompt={vi.fn()}
+      />
+    );
+
+    fireEvent.submit(container.querySelector("form")!);
+    fireEvent.click(screen.getByText("与分支比较"));
+    const branchSearch = screen.getByPlaceholderText("选择分支");
+
+    fireEvent.keyDown(branchSearch, { key: "Escape" });
+
+    expect(screen.getByText("未提交的更改")).toBeInTheDocument();
+    const rootSearch = screen.getByPlaceholderText("搜索");
+
+    fireEvent.keyDown(rootSearch, { key: "Escape" });
+
+    expect(
+      screen.queryByTestId("agent-gui-review-picker-panel")
+    ).not.toBeInTheDocument();
+  });
 
   it.each(["codex", "claude-code"] as const)(
     "submits %s /review <text> as a custom review without opening the picker",

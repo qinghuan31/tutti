@@ -5489,18 +5489,9 @@ button.agent-gui-node__conversation-section-toggle:hover
 }
 
 .agent-gui-node__slash-status-panel {
-  position: relative;
-  z-index: 1;
-  display: grid;
-  justify-self: stretch;
-  width: auto;
-  margin: 0 12px;
-  padding: 6px 12px;
-  border: 1px solid var(--agent-gui-border-subtle, var(--line-2));
-  border-bottom: 0;
-  border-radius: 10px 10px 0 0;
-  background: var(--background-fronted);
-  box-shadow: 0 6px 18px rgb(0 0 0 / 4%);
+  width: 100%;
+  min-width: 0;
+  padding: 10px 12px;
   color: var(--agent-gui-text-primary);
   font-size: 11px;
 }

@@ -6,7 +6,6 @@ import {
   useRef,
   useState,
   type CSSProperties,
-  Fragment,
   type FormEvent
 } from "react";
 import { createPortal } from "react-dom";
@@ -31,12 +30,7 @@ import {
 } from "../../app/renderer/components/ui/tooltip";
 import type { AgentConversationPromptVM } from "../../shared/agentConversation/contracts/agentConversationVM";
 import { cn } from "../../app/renderer/lib/utils";
-import {
-  AddIcon,
-  menuItemClassName,
-  Select,
-  SelectTrigger
-} from "@tutti-os/ui-system";
+import { AddIcon, Select, SelectTrigger } from "@tutti-os/ui-system";
 import { X } from "lucide-react";
 import { makeAtPanelKeyDown } from "@tutti-os/ui-rich-text/at-panel";
 import type { WorkspaceFileReference } from "@tutti-os/workspace-file-reference/contracts";
@@ -129,10 +123,11 @@ import {
 } from "../../actions/workspaceLinkActions";
 import type { AgentContextMentionProvider } from "./agentContextMentionProvider";
 import { hasWorkspaceFileDropData } from "../terminalNode/workspaceFileDrop";
-import {
-  AgentReviewBranchController,
-  type AgentReviewBranchState
-} from "./AgentReviewBranchController";
+import { AgentSlashStatusPanel } from "./AgentSlashStatusPanel";
+import { AgentReviewPickerPanel } from "./AgentReviewPickerPanel";
+import { ComposerFloatingMenuSurface } from "./composerFloatingMenu/ComposerFloatingMenuSurface";
+
+export { formatSlashStatusTokenCount } from "./AgentSlashStatusPanel";
 
 export interface AgentComposerProps {
   workspaceId: string;
@@ -346,8 +341,7 @@ const composerStyles = {
   footerGroup: styles.composerFooterLeft,
   footerGroupRight: styles.composerFooterRight,
   dropdownSurface:
-    "nodrag isolate rounded-[12px] border border-hairline bg-background-fronted p-[4px] text-foreground shadow-[var(--tsh-shell-shadow)] [-webkit-app-region:no-drag]",
-  slashDropdown: "overflow-hidden"
+    "nodrag isolate rounded-[12px] border border-hairline bg-background-fronted p-[4px] text-foreground shadow-[var(--tsh-shell-shadow)] [-webkit-app-region:no-drag]"
 };
 
 const workspaceReferenceSelectValue = "__tutti_workspace_reference_idle__";
@@ -419,487 +413,6 @@ function hasInlineOverflow(element: HTMLElement | null): boolean {
   }
 
   return element.scrollWidth > element.clientWidth + 1;
-}
-
-export function formatSlashStatusTokenCount(
-  value: number | null | undefined
-): string {
-  if (typeof value !== "number" || !Number.isFinite(value)) {
-    return "";
-  }
-  return Math.max(0, Math.trunc(value)).toLocaleString("en-US");
-}
-
-function slashStatusContextText(
-  status: AgentComposerSlashStatus | null | undefined,
-  labels: Pick<
-    AgentComposerProps["labels"],
-    "slashStatusContextValue" | "slashStatusContextUnavailable"
-  >
-): string {
-  const usedTokens = status?.contextWindow?.usedTokens;
-  const totalTokens = status?.contextWindow?.totalTokens;
-  if (
-    typeof usedTokens !== "number" ||
-    !Number.isFinite(usedTokens) ||
-    typeof totalTokens !== "number" ||
-    !Number.isFinite(totalTokens) ||
-    totalTokens <= 0
-  ) {
-    return labels.slashStatusContextUnavailable;
-  }
-  const used = Math.max(0, Math.trunc(usedTokens));
-  const total = Math.max(0, Math.trunc(totalTokens));
-  const percentLeft = Math.max(
-    0,
-    Math.min(100, Math.round(((total - used) / total) * 100))
-  );
-  return labels.slashStatusContextValue({
-    percentLeft,
-    usedTokens: formatSlashStatusTokenCount(used),
-    totalTokens: formatSlashStatusTokenCount(total)
-  });
-}
-
-function AgentSlashStatusPanel({
-  status,
-  labels,
-  onClose
-}: {
-  status: AgentComposerSlashStatus | null | undefined;
-  labels: Pick<
-    AgentComposerProps["labels"],
-    | "slashStatusTitle"
-    | "slashStatusSession"
-    | "slashStatusBaseUrl"
-    | "slashStatusContext"
-    | "slashStatusLimits"
-    | "slashStatusClose"
-    | "slashStatusContextValue"
-    | "slashStatusContextUnavailable"
-    | "slashStatusLimitsUnavailable"
-  >;
-  onClose: () => void;
-}): React.JSX.Element {
-  const limits = status?.limits ?? [];
-  const agentSessionId = status?.agentSessionId?.trim() ?? "";
-  const baseUrl = status?.baseUrl?.trim() ?? "";
-  const showSessionDetails = agentSessionId.length > 0;
-  return (
-    <section
-      className="agent-gui-node__slash-status-panel"
-      data-testid="agent-gui-slash-status-panel"
-      role="status"
-    >
-      <div className="mb-2 flex items-center justify-between gap-2">
-        <h3 className="truncate text-[11px] font-semibold leading-4">
-          {labels.slashStatusTitle}
-        </h3>
-        <button
-          className="nodrag shrink-0 rounded-[5px] px-1.5 py-0.5 text-[11px] leading-4 text-muted-foreground transition-colors hover:bg-background-hover hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring [-webkit-app-region:no-drag]"
-          type="button"
-          onClick={onClose}
-        >
-          {labels.slashStatusClose}
-        </button>
-      </div>
-      <dl className="grid grid-cols-[max-content_minmax(0,1fr)] gap-x-3 gap-y-1 font-mono text-[11px] leading-4">
-        {showSessionDetails ? (
-          <>
-            <dt className="text-muted-foreground">
-              {labels.slashStatusSession}:
-            </dt>
-            <dd className="min-w-0 truncate">{agentSessionId}</dd>
-            {baseUrl ? (
-              <>
-                <dt className="text-muted-foreground">
-                  {labels.slashStatusBaseUrl}:
-                </dt>
-                <dd className="min-w-0 truncate">{baseUrl}</dd>
-              </>
-            ) : null}
-            <dt className="text-muted-foreground">
-              {labels.slashStatusContext}:
-            </dt>
-            <dd className="min-w-0">
-              {slashStatusContextText(status, labels)}
-            </dd>
-          </>
-        ) : null}
-        {limits.map((limit) => (
-          <Fragment key={limit.id}>
-            <dt className="text-muted-foreground">{limit.label}:</dt>
-            <dd className="min-w-0">
-              <span className="agent-gui-node__slash-status-limit">
-                {typeof limit.percentRemaining === "number" &&
-                Number.isFinite(limit.percentRemaining) ? (
-                  <span
-                    aria-hidden="true"
-                    className="agent-gui-node__slash-status-limit-meter"
-                  >
-                    <span
-                      className="agent-gui-node__slash-status-limit-meter-fill"
-                      style={{
-                        width: `${Math.max(
-                          0,
-                          Math.min(100, limit.percentRemaining)
-                        )}%`
-                      }}
-                    />
-                  </span>
-                ) : null}
-                <span className="agent-gui-node__slash-status-limit-value">
-                  {limit.value}
-                  {limit.reset ? (
-                    <span className="text-muted-foreground">
-                      {" "}
-                      ({limit.reset})
-                    </span>
-                  ) : null}
-                </span>
-              </span>
-            </dd>
-          </Fragment>
-        ))}
-        {limits.length === 0 && status?.limitsLoading ? (
-          <>
-            <dt className="text-muted-foreground">
-              {labels.slashStatusLimits}:
-            </dt>
-            <dd className="min-w-0 text-muted-foreground">
-              {labels.slashStatusLimitsUnavailable}
-            </dd>
-          </>
-        ) : null}
-      </dl>
-    </section>
-  );
-}
-
-type ReviewStage = "root" | "base" | "commit" | "custom";
-
-interface ReviewMenuEntry {
-  key: string;
-  label: string;
-  description?: string;
-  disabled?: boolean;
-  onSelect: () => void;
-}
-
-const reviewMenuStyles = {
-  panel:
-    "agent-gui-node__slash-status-panel nodrag flex max-h-[280px] flex-col gap-1 overflow-hidden [-webkit-app-region:no-drag]",
-  search:
-    "nodrag h-8 w-full shrink-0 rounded-[6px] border-0 bg-transparent px-2.5 text-[11px] leading-4 text-[var(--text-primary)] placeholder:text-[var(--text-secondary)] focus-visible:outline-none [-webkit-app-region:no-drag]",
-  list: "flex min-h-0 flex-1 flex-col gap-1 overflow-y-auto",
-  option: cn(
-    menuItemClassName,
-    "nodrag min-h-9 w-full min-w-0 justify-start overflow-hidden rounded-[6px] border-0 bg-transparent px-2.5 py-2 text-left hover:bg-[var(--transparency-block)] focus:bg-[var(--transparency-block)] focus-visible:outline-none data-[highlighted]:bg-[var(--transparency-block)] active:bg-[var(--transparency-active)] disabled:pointer-events-none disabled:opacity-50"
-  ),
-  copy: "flex min-w-0 flex-1 items-baseline gap-1 overflow-hidden leading-[16px]",
-  name: "min-w-0 shrink-0 truncate text-[11px] font-semibold text-[var(--text-primary)]",
-  description:
-    "min-w-0 flex-1 truncate text-[11px] font-normal text-[var(--text-secondary)]",
-  message:
-    "select-none px-2.5 py-2 text-[11px] leading-4 text-[var(--text-secondary)]"
-};
-
-// A staged, searchable command menu (root scopes -> branch/commit/custom),
-// mirroring the slash-command palette interaction instead of nested dropdowns.
-function AgentReviewPickerPanel({
-  labels,
-  onRequestGitBranches,
-  onSubmitReview,
-  onClose
-}: {
-  labels: AgentComposerProps["labels"]["reviewPicker"];
-  onRequestGitBranches?: (() => Promise<AgentComposerGitBranches>) | null;
-  onSubmitReview: (command: string) => void;
-  onClose: () => void;
-}): React.JSX.Element {
-  const [stage, setStage] = useState<ReviewStage>("root");
-  const [query, setQuery] = useState("");
-  const [highlightedIndex, setHighlightedIndex] = useState(0);
-  const searchInputRef = useRef<HTMLInputElement | null>(null);
-  const highlightedOptionRef = useRef<HTMLButtonElement | null>(null);
-
-  // The controller owns all branch-load orchestration (lazy load, in-flight
-  // de-duplication, caching, loading/error state). It is created inside the
-  // subscribe effect (and held in a ref) rather than in `useState`, mirroring
-  // AgentMentionSearchController: a persisted instance disposed on effect
-  // cleanup would stay permanently disposed after React StrictMode's
-  // mount -> cleanup -> remount cycle, so `ensureLoaded` would never run.
-  const reviewBranchControllerRef = useRef<AgentReviewBranchController | null>(
-    null
-  );
-  const [branchState, setBranchState] = useState<AgentReviewBranchState>({
-    status: "idle",
-    branches: [],
-    currentBranch: null,
-    error: null
-  });
-
-  useEffect(() => {
-    const controller = new AgentReviewBranchController();
-    reviewBranchControllerRef.current = controller;
-    const unsubscribe = controller.subscribe(setBranchState);
-    return () => {
-      unsubscribe();
-      controller.dispose();
-      reviewBranchControllerRef.current = null;
-    };
-  }, []);
-
-  // Keep the controller pointed at the current loader and trigger a lazy load
-  // once the user drills into the base-branch stage.
-  useEffect(() => {
-    const controller = reviewBranchControllerRef.current;
-    if (!controller) {
-      return;
-    }
-    controller.setLoader(onRequestGitBranches ?? null);
-    if (stage === "base") {
-      controller.ensureLoaded();
-    }
-  }, [onRequestGitBranches, stage]);
-
-  // Keep focus in the search field as the user drills between stages.
-  useEffect(() => {
-    searchInputRef.current?.focus();
-  }, [stage]);
-
-  const submit = useCallback(
-    (command: string): void => {
-      onSubmitReview(command);
-    },
-    [onSubmitReview]
-  );
-
-  const goToStage = useCallback((next: ReviewStage): void => {
-    setStage(next);
-    setQuery("");
-    setHighlightedIndex(0);
-  }, []);
-
-  const goBackToRoot = useCallback((): void => {
-    setStage("root");
-    setQuery("");
-    setHighlightedIndex(0);
-  }, []);
-
-  const trimmedQuery = query.trim();
-  const normalizedQuery = trimmedQuery.toLowerCase();
-
-  const entries = useMemo<ReviewMenuEntry[]>(() => {
-    if (stage === "root") {
-      const options: ReviewMenuEntry[] = [
-        {
-          key: "uncommitted",
-          label: labels.uncommitted,
-          onSelect: () => submit("/review")
-        },
-        {
-          key: "base",
-          label: labels.baseBranch,
-          onSelect: () => goToStage("base")
-        },
-        {
-          key: "commit",
-          label: labels.commit,
-          onSelect: () => goToStage("commit")
-        },
-        {
-          key: "custom",
-          label: labels.custom,
-          onSelect: () => goToStage("custom")
-        }
-      ];
-      if (normalizedQuery === "") {
-        return options;
-      }
-      return options.filter((option) =>
-        option.label.toLowerCase().includes(normalizedQuery)
-      );
-    }
-    if (stage === "base") {
-      const branches =
-        normalizedQuery === ""
-          ? branchState.branches
-          : branchState.branches.filter((name) =>
-              name.toLowerCase().includes(normalizedQuery)
-            );
-      return branches.map((name) => ({
-        key: `branch:${name}`,
-        label: name,
-        onSelect: () => submit(`/review base:${name}`)
-      }));
-    }
-    // commit / custom: the search box doubles as the free-text input; the single
-    // confirm entry submits the typed value when non-empty.
-    const prefix = stage === "commit" ? "commit" : "custom";
-    return [
-      {
-        key: `${prefix}-confirm`,
-        label: labels.submit,
-        description: trimmedQuery || undefined,
-        disabled: trimmedQuery === "",
-        onSelect: () => {
-          if (trimmedQuery !== "") {
-            submit(`/review ${prefix}:${trimmedQuery}`);
-          }
-        }
-      }
-    ];
-  }, [
-    stage,
-    normalizedQuery,
-    trimmedQuery,
-    branchState.branches,
-    labels.uncommitted,
-    labels.baseBranch,
-    labels.commit,
-    labels.custom,
-    labels.submit,
-    submit,
-    goToStage
-  ]);
-
-  const safeHighlightedIndex =
-    entries.length === 0 ? -1 : Math.min(highlightedIndex, entries.length - 1);
-
-  // Keep the highlighted entry visible while navigating a long list with the
-  // arrow keys (e.g. many branches).
-  useEffect(() => {
-    highlightedOptionRef.current?.scrollIntoView({ block: "nearest" });
-  }, [safeHighlightedIndex]);
-
-  const searchPlaceholder =
-    stage === "base"
-      ? labels.branchPlaceholder
-      : stage === "commit"
-        ? labels.commitPlaceholder
-        : stage === "custom"
-          ? labels.customPlaceholder
-          : labels.searchPlaceholder;
-
-  // Shown in place of the list when there are no entries (branch loading /
-  // empty repo / no search matches).
-  let emptyMessage = labels.noResults;
-  if (stage === "base") {
-    if (branchState.status === "loading") {
-      emptyMessage = labels.branchLoading;
-    } else if (branchState.branches.length === 0) {
-      emptyMessage = labels.branchEmpty;
-    }
-  }
-
-  const handleKeyDown = useCallback(
-    (event: React.KeyboardEvent<HTMLInputElement>): void => {
-      if (event.key === "ArrowDown") {
-        event.preventDefault();
-        setHighlightedIndex((current) =>
-          entries.length === 0 ? 0 : Math.min(current + 1, entries.length - 1)
-        );
-        return;
-      }
-      if (event.key === "ArrowUp") {
-        event.preventDefault();
-        setHighlightedIndex((current) => Math.max(current - 1, 0));
-        return;
-      }
-      if (event.key === "Enter") {
-        event.preventDefault();
-        event.stopPropagation();
-        const entry = entries[safeHighlightedIndex];
-        if (entry && !entry.disabled) {
-          entry.onSelect();
-        }
-        return;
-      }
-      if (event.key === "Escape") {
-        event.preventDefault();
-        event.stopPropagation();
-        if (stage === "root") {
-          onClose();
-        } else {
-          goBackToRoot();
-        }
-        return;
-      }
-      if (event.key === "Backspace" && query === "" && stage !== "root") {
-        event.preventDefault();
-        goBackToRoot();
-      }
-    },
-    [entries, safeHighlightedIndex, stage, query, onClose, goBackToRoot]
-  );
-
-  return (
-    <section
-      className={reviewMenuStyles.panel}
-      data-testid="agent-gui-review-picker-panel"
-      role="dialog"
-      aria-label={labels.title}
-    >
-      <input
-        ref={searchInputRef}
-        type="search"
-        className={reviewMenuStyles.search}
-        value={query}
-        placeholder={searchPlaceholder}
-        aria-label={searchPlaceholder}
-        onChange={(event) => {
-          setQuery(event.target.value);
-          setHighlightedIndex(0);
-        }}
-        onKeyDown={handleKeyDown}
-      />
-      <div
-        className={reviewMenuStyles.list}
-        role="listbox"
-        aria-label={labels.title}
-      >
-        {entries.length === 0 ? (
-          <div className={reviewMenuStyles.message}>{emptyMessage}</div>
-        ) : (
-          entries.map((entry, index) => {
-            const isHighlighted = index === safeHighlightedIndex;
-            return (
-              <button
-                key={entry.key}
-                ref={isHighlighted ? highlightedOptionRef : null}
-                type="button"
-                className={cn(
-                  reviewMenuStyles.option,
-                  isHighlighted && "bg-[var(--transparency-block)]"
-                )}
-                role="option"
-                aria-selected={isHighlighted}
-                data-highlighted={isHighlighted ? "" : undefined}
-                disabled={entry.disabled}
-                onMouseEnter={() => setHighlightedIndex(index)}
-                onMouseDown={(event) => event.preventDefault()}
-                onClick={() => {
-                  if (!entry.disabled) {
-                    entry.onSelect();
-                  }
-                }}
-              >
-                <span className={reviewMenuStyles.copy}>
-                  <span className={reviewMenuStyles.name}>{entry.label}</span>
-                  {entry.description ? (
-                    <span className={reviewMenuStyles.description}>
-                      {entry.description}
-                    </span>
-                  ) : null}
-                </span>
-              </button>
-            );
-          })
-        )}
-      </div>
-    </section>
-  );
 }
 
 export function AgentComposer({
@@ -994,6 +507,7 @@ export function AgentComposer({
     });
   const composerRef = useRef<HTMLFormElement | null>(null);
   const inputShellRef = useRef<HTMLDivElement | null>(null);
+  const promptInputAreaRef = useRef<HTMLDivElement | null>(null);
   const paletteContentRef = useRef<HTMLDivElement | null>(null);
   const draftPromptRef = useRef(draftPrompt);
   const submittedImagePreviewObservedBusyRef = useRef(false);
@@ -1114,6 +628,8 @@ export function AgentComposer({
         skillQueryMatch !== null &&
         filteredSkills.length > 0));
   const showPalette = showFileMentionPalette || showSlashPalette;
+  const showCommandMenuPanel = isSlashStatusPanelOpen || isReviewPickerOpen;
+  const showFloatingCommandMenu = showSlashPalette || showCommandMenuPanel;
   const activeHighlight = clampSlashCommandHighlight(
     highlightedIndex,
     slashPaletteEntries.length
@@ -1123,8 +639,6 @@ export function AgentComposer({
     [mentionSearchState]
   );
   const [mentionPaletteFrame, setMentionPaletteFrame] =
-    useState<MentionPaletteFrame | null>(null);
-  const [slashPaletteFrame, setSlashPaletteFrame] =
     useState<MentionPaletteFrame | null>(null);
 
   useEffect(() => {
@@ -1211,6 +725,12 @@ export function AgentComposer({
     setIsReviewPickerOpen(false);
   }, []);
 
+  const closeSlashFloatingMenu = useCallback((): void => {
+    setIsSlashStatusPanelOpen(false);
+    setIsReviewPickerOpen(false);
+    setIsPaletteOpen(false);
+  }, []);
+
   const submitReviewCommand = useCallback(
     (command: string): void => {
       setIsReviewPickerOpen(false);
@@ -1252,11 +772,13 @@ export function AgentComposer({
       }
       if (effect.kind === "showStatus") {
         clearSlashCommandDraft();
+        setIsReviewPickerOpen(false);
         setIsSlashStatusPanelOpen((current) => !current);
         return;
       }
       if (effect.kind === "showReviewPicker") {
         clearSlashCommandDraft();
+        setIsSlashStatusPanelOpen(false);
         setIsReviewPickerOpen(true);
         return;
       }
@@ -1466,6 +988,17 @@ export function AgentComposer({
         return true;
       }
       return false;
+    }
+  );
+
+  const handleSlashCommandMenuKeyDown = useStableEventCallback(
+    (event: KeyboardEvent): boolean => {
+      if (!showCommandMenuPanel || event.key !== "Escape") {
+        return false;
+      }
+      event.preventDefault();
+      closeSlashFloatingMenu();
+      return true;
     }
   );
 
@@ -1682,11 +1215,12 @@ export function AgentComposer({
     (event: KeyboardEvent): boolean =>
       handleFileMentionKeyDown(event) ||
       handleSlashPaletteKeyDown(event) ||
+      handleSlashCommandMenuKeyDown(event) ||
       handleModeCycleKeyDown(event)
   );
 
   useEffect(() => {
-    if (!showPalette) {
+    if (!showFileMentionPalette) {
       return;
     }
     const handleDocumentKeyDown = (event: KeyboardEvent): void => {
@@ -1758,7 +1292,7 @@ export function AgentComposer({
   }, [shouldCenterMentionHighlight, showFileMentionPalette]);
 
   useEffect(() => {
-    if (!showPalette) {
+    if (!showFileMentionPalette) {
       return;
     }
 
@@ -1785,7 +1319,7 @@ export function AgentComposer({
       });
       window.removeEventListener("resize", handleWindowResize);
     };
-  }, [closeOpenPalette, showPalette]);
+  }, [closeOpenPalette, showFileMentionPalette]);
 
   const handleDraftChange = useStableEventCallback(
     (nextDraft: string): void => {
@@ -1917,56 +1451,6 @@ export function AgentComposer({
     });
   }, []);
 
-  const syncSlashPaletteFrame = useCallback((): void => {
-    const anchor = inputShellRef.current;
-    if (!anchor || typeof window === "undefined") {
-      setSlashPaletteFrame(null);
-      return;
-    }
-
-    const rect = anchor.getBoundingClientRect();
-    const viewportWidth = window.innerWidth;
-    const viewportHeight = window.innerHeight;
-    const width = Math.max(
-      0,
-      Math.min(
-        rect.width,
-        viewportWidth - MENTION_PALETTE_VIEWPORT_PADDING_PX * 2
-      )
-    );
-    const left = Math.max(
-      MENTION_PALETTE_VIEWPORT_PADDING_PX,
-      Math.min(
-        rect.left,
-        viewportWidth - MENTION_PALETTE_VIEWPORT_PADDING_PX - width
-      )
-    );
-    const availableAbove =
-      rect.top - MENTION_PALETTE_GAP_PX - MENTION_PALETTE_VIEWPORT_PADDING_PX;
-    const height =
-      availableAbove >= SLASH_PALETTE_HEIGHT_PX
-        ? SLASH_PALETTE_HEIGHT_PX
-        : Math.max(
-            MENTION_PALETTE_MIN_HEIGHT_PX,
-            Math.min(SLASH_PALETTE_HEIGHT_PX, availableAbove)
-          );
-
-    setSlashPaletteFrame({
-      height,
-      left,
-      portalTarget: resolveMentionPalettePortalTarget(anchor),
-      top: Math.max(
-        MENTION_PALETTE_VIEWPORT_PADDING_PX,
-        Math.min(
-          rect.top - MENTION_PALETTE_GAP_PX - height,
-          viewportHeight - MENTION_PALETTE_VIEWPORT_PADDING_PX - height
-        )
-      ),
-      width,
-      zIndex: resolveMentionPaletteZIndex(anchor)
-    });
-  }, []);
-
   useLayoutEffect(() => {
     if (!showFileMentionPalette) {
       setMentionPaletteFrame(null);
@@ -1994,33 +1478,6 @@ export function AgentComposer({
     };
   }, [showFileMentionPalette, syncMentionPaletteFrame]);
 
-  useLayoutEffect(() => {
-    if (!showSlashPalette) {
-      setSlashPaletteFrame(null);
-      return;
-    }
-
-    syncSlashPaletteFrame();
-    const anchor = inputShellRef.current;
-    const resizeObserver =
-      typeof ResizeObserver === "undefined"
-        ? null
-        : new ResizeObserver(syncSlashPaletteFrame);
-    if (anchor) {
-      resizeObserver?.observe(anchor);
-    }
-    window.addEventListener("resize", syncSlashPaletteFrame);
-    window.addEventListener("scroll", syncSlashPaletteFrame, {
-      capture: true,
-      passive: true
-    });
-    return () => {
-      resizeObserver?.disconnect();
-      window.removeEventListener("resize", syncSlashPaletteFrame);
-      window.removeEventListener("scroll", syncSlashPaletteFrame, true);
-    };
-  }, [showSlashPalette, syncSlashPaletteFrame]);
-
   const mentionPaletteStyle = useMemo<CSSProperties>(
     () => ({
       position: "fixed",
@@ -2037,21 +1494,6 @@ export function AgentComposer({
   );
   const mentionPaletteHeightPx =
     mentionPaletteFrame?.height ?? MENTION_PALETTE_MIN_HEIGHT_PX;
-  const slashPaletteStyle = useMemo<CSSProperties>(
-    () => ({
-      position: "fixed",
-      left: `${slashPaletteFrame?.left ?? 0}px`,
-      top: `${slashPaletteFrame?.top ?? 0}px`,
-      width: `${slashPaletteFrame?.width ?? 0}px`,
-      maxWidth: `${slashPaletteFrame?.width ?? 0}px`,
-      minHeight: `${MENTION_PALETTE_MIN_HEIGHT_PX}px`,
-      height: `${slashPaletteFrame?.height ?? SLASH_PALETTE_HEIGHT_PX}px`,
-      maxHeight: `${SLASH_PALETTE_HEIGHT_PX}px`,
-      overflow: "hidden",
-      zIndex: composerPaletteZIndex
-    }),
-    [slashPaletteFrame]
-  );
   const composerClassName =
     layoutMode === "hero" ? styles.composerHero : styles.composer;
   const inputShellClassName = cn(
@@ -2233,8 +1675,11 @@ export function AgentComposer({
     };
   }, [activePromptTipId, activePromptTipText, isPromptTipOverflowing]);
   const inputShellStyle = useMemo<CSSProperties | undefined>(
-    () => (showPalette ? { zIndex: composerPaletteZIndex } : undefined),
-    [showPalette]
+    () =>
+      showFileMentionPalette || showFloatingCommandMenu
+        ? { zIndex: composerPaletteZIndex }
+        : undefined,
+    [showFileMentionPalette, showFloatingCommandMenu]
   );
   const hasDraftContent = agentComposerDraftHasContent(draftContent);
   const isQueueMode = canQueueWhileBusy && hasDraftContent;
@@ -2430,35 +1875,10 @@ export function AgentComposer({
             description={labels.projectMissingDescription}
           />
         ) : null}
-        {isSlashStatusPanelOpen ? (
-          <AgentSlashStatusPanel
-            status={slashStatus}
-            labels={{
-              slashStatusTitle: labels.slashStatusTitle,
-              slashStatusSession: labels.slashStatusSession,
-              slashStatusBaseUrl: labels.slashStatusBaseUrl,
-              slashStatusContext: labels.slashStatusContext,
-              slashStatusLimits: labels.slashStatusLimits,
-              slashStatusClose: labels.slashStatusClose,
-              slashStatusContextValue: labels.slashStatusContextValue,
-              slashStatusContextUnavailable:
-                labels.slashStatusContextUnavailable,
-              slashStatusLimitsUnavailable: labels.slashStatusLimitsUnavailable
-            }}
-            onClose={closeSlashStatusPanel}
-          />
-        ) : null}
-        {isReviewPickerOpen ? (
-          <AgentReviewPickerPanel
-            labels={labels.reviewPicker}
-            onRequestGitBranches={reviewBranchLoader}
-            onSubmitReview={submitReviewCommand}
-            onClose={closeReviewPicker}
-          />
-        ) : null}
         <div
           ref={inputShellRef}
           className={cn(inputShellClassName, "relative")}
+          data-testid="agent-gui-composer-input-shell"
           data-input-disabled={inputDisabled ? "true" : undefined}
           title={
             inputDisabled && disabledReasonText ? disabledReasonText : undefined
@@ -2466,12 +1886,12 @@ export function AgentComposer({
           style={inputShellStyle}
         >
           <Popover
-            open={showPalette}
+            open={showFileMentionPalette}
             onOpenChange={setIsPaletteOpen}
             modal={false}
           >
             <PopoverAnchor asChild>
-              <div className="min-w-0 self-start">
+              <div ref={promptInputAreaRef} className="min-w-0 self-start">
                 {visibleDraftImages.length > 0 ? (
                   <div
                     className="mb-2 grid max-w-[320px] grid-cols-[repeat(auto-fill,minmax(56px,1fr))] gap-2"
@@ -2568,40 +1988,82 @@ export function AgentComposer({
                   mentionPaletteFrame.portalTarget
                 )
               : null}
-            {showSlashPalette && slashPaletteFrame
-              ? createPortal(
-                  <div
-                    data-testid="agent-gui-slash-palette-surface"
-                    ref={paletteContentRef}
-                    className={cn(
-                      composerStyles.dropdownSurface,
-                      composerStyles.slashDropdown,
-                      "max-h-[320px] border-0 p-0"
-                    )}
-                    style={slashPaletteStyle}
-                  >
-                    <AgentSlashCommandPalette
-                      entries={slashPaletteEntries}
-                      highlightedIndex={activeHighlight}
-                      label={
-                        slashQuery === null
-                          ? labels.skillPickerPalette
-                          : labels.slashCommandPalette
-                      }
-                      commandsGroupLabel={labels.slashPaletteCommandsGroup}
-                      capabilitiesGroupLabel={
-                        labels.slashPaletteCapabilitiesGroup
-                      }
-                      skillsGroupLabel={labels.slashPaletteSkillsGroup}
-                      onHighlightChange={setHighlightedIndex}
-                      onSelect={selectCommand}
-                      onSelectCapability={selectCapability}
-                      onSelectSkill={selectSkill}
-                    />
-                  </div>,
-                  slashPaletteFrame.portalTarget
-                )
-              : null}
+            <ComposerFloatingMenuSurface
+              anchorRef={inputShellRef}
+              className="max-h-[320px] border-0 p-0"
+              contentClassName="h-full min-h-0"
+              dismissBoundaryRef={promptInputAreaRef}
+              maxHeight={SLASH_PALETTE_HEIGHT_PX}
+              onDismiss={closeSlashFloatingMenu}
+              open={showSlashPalette}
+              placement="fixed-height"
+              surfaceRef={paletteContentRef}
+              testId="agent-gui-slash-palette-surface"
+            >
+              <AgentSlashCommandPalette
+                entries={slashPaletteEntries}
+                highlightedIndex={activeHighlight}
+                label={
+                  slashQuery === null
+                    ? labels.skillPickerPalette
+                    : labels.slashCommandPalette
+                }
+                commandsGroupLabel={labels.slashPaletteCommandsGroup}
+                capabilitiesGroupLabel={labels.slashPaletteCapabilitiesGroup}
+                skillsGroupLabel={labels.slashPaletteSkillsGroup}
+                onHighlightChange={setHighlightedIndex}
+                onSelect={selectCommand}
+                onSelectCapability={selectCapability}
+                onSelectSkill={selectSkill}
+              />
+            </ComposerFloatingMenuSurface>
+            <ComposerFloatingMenuSurface
+              anchorRef={inputShellRef}
+              className="border-0 p-0"
+              dismissBoundaryRef={promptInputAreaRef}
+              maxHeight={SLASH_PALETTE_HEIGHT_PX}
+              onDismiss={closeSlashFloatingMenu}
+              open={isSlashStatusPanelOpen}
+              placement="dynamic-above"
+              surfaceRef={paletteContentRef}
+              testId="agent-gui-command-menu-surface"
+            >
+              <AgentSlashStatusPanel
+                status={slashStatus}
+                labels={{
+                  slashStatusTitle: labels.slashStatusTitle,
+                  slashStatusSession: labels.slashStatusSession,
+                  slashStatusBaseUrl: labels.slashStatusBaseUrl,
+                  slashStatusContext: labels.slashStatusContext,
+                  slashStatusLimits: labels.slashStatusLimits,
+                  slashStatusClose: labels.slashStatusClose,
+                  slashStatusContextValue: labels.slashStatusContextValue,
+                  slashStatusContextUnavailable:
+                    labels.slashStatusContextUnavailable,
+                  slashStatusLimitsUnavailable:
+                    labels.slashStatusLimitsUnavailable
+                }}
+                onClose={closeSlashStatusPanel}
+              />
+            </ComposerFloatingMenuSurface>
+            <ComposerFloatingMenuSurface
+              anchorRef={inputShellRef}
+              className="border-0 p-0"
+              dismissBoundaryRef={promptInputAreaRef}
+              maxHeight={SLASH_PALETTE_HEIGHT_PX}
+              onDismiss={closeSlashFloatingMenu}
+              open={isReviewPickerOpen}
+              placement="dynamic-above"
+              surfaceRef={paletteContentRef}
+              testId="agent-gui-command-menu-surface"
+            >
+              <AgentReviewPickerPanel
+                labels={labels.reviewPicker}
+                onRequestGitBranches={reviewBranchLoader}
+                onSubmitReview={submitReviewCommand}
+                onClose={closeReviewPicker}
+              />
+            </ComposerFloatingMenuSurface>
           </Popover>
           <div className={styles.composerFooter}>
             <div className={composerStyles.footerGroup}>
