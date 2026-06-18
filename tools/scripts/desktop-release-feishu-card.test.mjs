@@ -90,11 +90,11 @@ test("release Feishu card can prefer mirrored asset links over GitHub asset URLs
 test("release Feishu card resolves mirrored macOS URLs from local artifact names", () => {
   assert.equal(
     resolveMirroredAssetUrl(
-      ["Tutti-0.1.0-rc.4-mac-arm64.dmg", "Tutti-0.1.0-rc.4-win-x64.exe"],
+      ["Tutti-0.1.0-rc.4-mac-universal.dmg", "Tutti-0.1.0-rc.4-win-x64.exe"],
       /\.dmg$/i,
       "https://d1x7gb6wqsqmnm.cloudfront.net/tutti-desktop-release-assets",
       "v0.1.0-rc.4"
     ),
-    "https://d1x7gb6wqsqmnm.cloudfront.net/tutti-desktop-release-assets/v0.1.0-rc.4/Tutti-0.1.0-rc.4-mac-arm64.dmg"
+    "https://d1x7gb6wqsqmnm.cloudfront.net/tutti-desktop-release-assets/v0.1.0-rc.4/Tutti-0.1.0-rc.4-mac-universal.dmg"
   );
 });

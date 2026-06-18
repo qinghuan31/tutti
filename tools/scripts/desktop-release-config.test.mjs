@@ -250,6 +250,19 @@ test("desktop release workflow materializes macOS signing certificate before pac
   );
 });
 
+test("desktop macOS packaging builds universal bundled binaries", async () => {
+  const buildScript = await readFile(buildScriptPath, "utf8");
+
+  assert.match(buildScript, /GOOS=darwin\s+GOARCH=arm64\s+go build/);
+  assert.match(buildScript, /GOOS=darwin\s+GOARCH=amd64\s+go build/);
+  assert.match(buildScript, /lipo\s+-create/);
+  assert.match(
+    buildScript,
+    /lipo\s+"\$\{output_path\}"\s+-verify_arch\s+arm64\s+x86_64\s+\|\|\s+\{/
+  );
+  assert.match(buildScript, /electron-builder --mac --universal/);
+});
+
 test("desktop release workflow opts JavaScript actions into Node 24", async () => {
   const workflow = await readFile(workflowPath, "utf8");
 

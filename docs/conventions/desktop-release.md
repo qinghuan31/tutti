@@ -85,6 +85,8 @@ Before running `electron-builder`, the script builds `services/tuttid` and place
 apps/desktop/build/tuttid/
 ```
 
+For macOS packages, the bundled `tuttid` daemon and `tutti` CLI must be universal binaries. Build both `darwin/arm64` and `darwin/amd64`, merge them with `lipo`, and verify the resulting binary contains `arm64` and `x86_64` slices before packaging.
+
 `electron-builder` then packages that daemon into the desktop app as:
 
 ```text
@@ -95,8 +97,8 @@ On Windows the bundled daemon filename is `tuttid.exe`.
 
 Expected release artifacts include:
 
-- macOS `.dmg`
-- macOS `.zip`
+- macOS universal `.dmg`
+- macOS universal `.zip`
 - Windows `.exe`
 - Linux `.AppImage`
 - update metadata such as `.yml` and `.blockmap`

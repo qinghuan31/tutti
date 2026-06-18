@@ -39,7 +39,7 @@ test("desktop DMG notarization retries transient notarytool submit failures", as
   });
 
   await notarizeMacDmgArtifacts({
-    artifactPaths: ["/tmp/Tutti-0.0.2-rc.17-mac-arm64.dmg"]
+    artifactPaths: ["/tmp/Tutti-0.0.2-rc.17-mac-universal.dmg"]
   });
 
   const submitCalls = calls.filter(
@@ -86,7 +86,7 @@ test("desktop DMG notarization fetches logs for invalid submissions without retr
 
   await assert.rejects(
     notarizeMacDmgArtifacts({
-      artifactPaths: ["/tmp/Tutti-0.0.2-rc.17-mac-arm64.dmg"]
+      artifactPaths: ["/tmp/Tutti-0.0.2-rc.17-mac-universal.dmg"]
     }),
     /notary submission invalid/
   );

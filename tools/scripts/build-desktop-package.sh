@@ -59,6 +59,22 @@ has_signing_identity() {
     security find-identity -p codesigning -v 2>/dev/null | grep -q "Developer ID Application"
 }
 
+is_macos_package_variant() {
+  [[ "${VARIANT}" == "mac" || "${VARIANT}" == "mac-unsigned" || "${VARIANT}" == "mac-signed" ]]
+}
+
+require_macos_packaging_tools() {
+  if [[ "$(uname -s)" != "Darwin" ]]; then
+    echo "macOS universal release packaging requires macOS." >&2
+    exit 1
+  fi
+
+  if ! command -v lipo >/dev/null 2>&1; then
+    echo "macOS universal release packaging requires lipo." >&2
+    exit 1
+  fi
+}
+
 require_signed_macos_release_environment() {
   if [[ "$(uname -s)" != "Darwin" ]]; then
     echo "Signed macOS release packaging requires macOS." >&2
@@ -84,6 +100,37 @@ EOF
   fi
 }
 
+build_macos_universal_go_binary() {
+  local package_dir="$1"
+  local package_path="$2"
+  local output_path="$3"
+  local output_name="$4"
+  local staging_dir
+
+  staging_dir="$(mktemp -d)"
+  (
+    cd "${package_dir}"
+    GOOS=darwin GOARCH=arm64 go build -o "${staging_dir}/${output_name}-arm64" "${package_path}" &&
+      GOOS=darwin GOARCH=amd64 go build -o "${staging_dir}/${output_name}-amd64" "${package_path}"
+  ) || {
+    rm -rf "${staging_dir}"
+    return 1
+  }
+  lipo -create \
+    "${staging_dir}/${output_name}-arm64" \
+    "${staging_dir}/${output_name}-amd64" \
+    -output "${output_path}" || {
+    rm -rf "${staging_dir}"
+    return 1
+  }
+  lipo "${output_path}" -verify_arch arm64 x86_64 || {
+    rm -rf "${staging_dir}"
+    return 1
+  }
+  chmod 755 "${output_path}"
+  rm -rf "${staging_dir}"
+}
+
 prepare_packaged_daemon() {
   rm -rf "${DAEMON_BUNDLE_DIR}" "${CLI_BUNDLE_DIR}"
   mkdir -p "${DAEMON_BUNDLE_DIR}" "${CLI_BUNDLE_DIR}"
@@ -93,6 +140,21 @@ prepare_packaged_daemon() {
   if [[ "${VARIANT}" == "win" ]]; then
     daemon_output_name="tuttid.exe"
     cli_output_name="tutti.exe"
+  fi
+
+  if is_macos_package_variant; then
+    require_macos_packaging_tools
+    build_macos_universal_go_binary \
+      "${ROOT_DIR}/services/tuttid" \
+      "." \
+      "${DAEMON_BUNDLE_DIR}/${daemon_output_name}" \
+      "${daemon_output_name}" || return
+    build_macos_universal_go_binary \
+      "${ROOT_DIR}/apps/cli" \
+      "./cmd/tutti" \
+      "${CLI_BUNDLE_DIR}/${cli_output_name}" \
+      "${cli_output_name}" || return
+    return
   fi
 
   (
@@ -143,11 +205,11 @@ run_electron_builder_mac_unsigned() {
     -u APPLE_TEAM_ID \
     -u APPLE_KEYCHAIN_PROFILE \
     CSC_IDENTITY_AUTO_DISCOVERY=false \
-    pnpm exec electron-builder --mac --publish never -c.mac.notarize=false "-c.extraMetadata.version=${DESKTOP_BUILD_VERSION}"
+    pnpm exec electron-builder --mac --universal --publish never -c.mac.notarize=false "-c.extraMetadata.version=${DESKTOP_BUILD_VERSION}"
 }
 
 run_electron_builder_mac_signed() {
-  pnpm exec electron-builder --mac --publish never -c.mac.notarize=true "-c.extraMetadata.version=${DESKTOP_BUILD_VERSION}"
+  pnpm exec electron-builder --mac --universal --publish never -c.mac.notarize=true "-c.extraMetadata.version=${DESKTOP_BUILD_VERSION}"
 }
 
 run_electron_builder_win() {

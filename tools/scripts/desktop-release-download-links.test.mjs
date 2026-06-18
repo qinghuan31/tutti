@@ -11,7 +11,7 @@ test("desktop release notes append only macOS direct download links for mirrored
   const nextBody = buildUpdatedReleaseBody({
     assetNames: [
       "Tutti-0.1.0-rc.2-linux-x86_64.AppImage",
-      "Tutti-0.1.0-rc.2-mac-arm64.dmg",
+      "Tutti-0.1.0-rc.2-mac-universal.dmg",
       "Tutti-0.1.0-rc.2-win-x64.exe"
     ],
     existingBody: "## What's Changed\n- Something",
@@ -27,7 +27,7 @@ test("desktop release notes append only macOS direct download links for mirrored
   assert.match(nextBody, /### Direct Downloads/);
   assert.match(
     nextBody,
-    /\[macOS\]\(https:\/\/d111111abcdef8\.cloudfront\.net\/desktop-release-assets\/v0\.1\.0-rc\.2\/Tutti-0\.1\.0-rc\.2-mac-arm64\.dmg\)/
+    /\[macOS\]\(https:\/\/d111111abcdef8\.cloudfront\.net\/desktop-release-assets\/v0\.1\.0-rc\.2\/Tutti-0\.1\.0-rc\.2-mac-universal\.dmg\)/
   );
   assert.doesNotMatch(nextBody, /\[Windows\]/);
   assert.doesNotMatch(nextBody, /\[Linux\]/);
@@ -46,7 +46,7 @@ test("desktop release notes replace the managed direct download section in place
   ].join("\n");
 
   const nextBody = buildUpdatedReleaseBody({
-    assetNames: ["Tutti-1.0.0-mac-arm64.dmg"],
+    assetNames: ["Tutti-1.0.0-mac-universal.dmg"],
     existingBody,
     releaseAssetBaseUrl: "https://downloads.example.com/tutti",
     releaseTag: "v1.0.0"
@@ -56,7 +56,7 @@ test("desktop release notes replace the managed direct download section in place
   assert.doesNotMatch(nextBody, /old\.example/);
   assert.match(
     nextBody,
-    /\[macOS\]\(https:\/\/downloads\.example\.com\/tutti\/v1\.0\.0\/Tutti-1\.0\.0-mac-arm64\.dmg\)/
+    /\[macOS\]\(https:\/\/downloads\.example\.com\/tutti\/v1\.0\.0\/Tutti-1\.0\.0-mac-universal\.dmg\)/
   );
 });
 
@@ -73,7 +73,7 @@ test("desktop release notes remove the managed section when no mirrored base URL
   ].join("\n");
 
   const nextBody = buildUpdatedReleaseBody({
-    assetNames: ["Tutti-1.0.0-mac-arm64.dmg"],
+    assetNames: ["Tutti-1.0.0-mac-universal.dmg"],
     existingBody,
     releaseAssetBaseUrl: "",
     releaseTag: "v1.0.0"
