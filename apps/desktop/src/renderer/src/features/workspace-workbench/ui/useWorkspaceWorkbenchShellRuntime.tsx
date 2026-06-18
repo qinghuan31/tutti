@@ -31,6 +31,8 @@ import { createWorkspaceWorkbenchDesktopI18nRuntime } from "@shared/i18n";
 import type { DesktopDockIconStyle } from "@shared/preferences";
 import type { DesktopThemeAppearance } from "@shared/theme";
 import { createWorkspaceFilePreviewLaunchRequest } from "../services/workspaceFilePreviewLaunch";
+import { requestWorkspaceFilesLaunch } from "../services/workspaceFilesLaunchCoordinator";
+import { classifyWorkspaceFilePreviewKind } from "@tutti-os/workspace-file-preview";
 import type { WorkbenchSurfaceWallpaperFit } from "@tutti-os/workbench-surface";
 import type {
   WorkspaceWallpaperDisplayMode,
@@ -45,6 +47,8 @@ import type { WorkspaceMissionControlTrigger } from "../services/workspaceMissio
 import { renderWorkspaceFilesNodeBody } from "./WorkspaceFilesNodeBody";
 import { useWorkspaceSettingsService } from "./useWorkspaceSettingsService";
 import { useWorkspaceWorkbenchHostService } from "./useWorkspaceWorkbenchHostService";
+
+const onboardingAppId = "tutti-onboarding";
 
 export interface WorkspaceWorkbenchShellRuntime {
   appI18n: I18nRuntime<string>;
@@ -86,6 +90,7 @@ export interface WorkspaceWorkbenchShellRuntime {
     fit: WorkbenchSurfaceWallpaperFit;
     url: string;
   };
+  workbenchHostService: ReturnType<typeof useWorkspaceWorkbenchHostService>;
 }
 
 export function useWorkspaceWorkbenchShellRuntime({
@@ -208,6 +213,48 @@ export function useWorkspaceWorkbenchShellRuntime({
   }, [state.workspace.id, workbenchHostService]);
 
   useEffect(() => {
+    return workbenchHostService.onOpenFileRequest((request) => {
+      const host = workbenchHostRef.current;
+      if (!host || request.workspaceId !== state.workspace.id) {
+        return;
+      }
+
+      if (request.mode === "reveal") {
+        void requestWorkspaceFilesLaunch({
+          homeDirectory: workbenchHostService.getHomeDirectory(),
+          path: request.absolutePath,
+          workspaceId: request.workspaceId
+        });
+        return;
+      }
+
+      const fileKind = classifyWorkspaceFilePreviewKind({
+        kind: "file",
+        name: request.name,
+        path: request.absolutePath
+      });
+      if (!fileKind || request.mode === "auto") {
+        void requestWorkspaceFilesLaunch({
+          homeDirectory: workbenchHostService.getHomeDirectory(),
+          path: request.absolutePath,
+          workspaceId: request.workspaceId
+        });
+        return;
+      }
+
+      void host.launchNode(
+        createWorkspaceFilePreviewLaunchRequest({
+          fileKind,
+          mtimeMs: request.mtimeMs,
+          name: request.name,
+          path: request.absolutePath,
+          sizeBytes: request.sizeBytes
+        })
+      );
+    });
+  }, [state.workspace.id, workbenchHostService]);
+
+  useEffect(() => {
     shellRuntimeController.updateHostInput({
       appI18n,
       appCenterRevision: appCenterState.revision,
@@ -303,7 +350,11 @@ export function useWorkspaceWorkbenchShellRuntime({
               await host.launchNode({
                 payload: { appId, prepared, prevStatus },
                 reason: "host",
-                typeId: workspaceAppWebviewTypeID
+                typeId: workspaceAppWebviewTypeID,
+                // 让 onboarding 应用打开时播放“从底部进入并展开”的动画。
+                ...(appId === onboardingAppId
+                  ? { launchSource: "onboarding-auto" }
+                  : {})
               });
             }
           : null
@@ -358,7 +409,8 @@ export function useWorkspaceWorkbenchShellRuntime({
       appearance: shellRuntimeSnapshot.wallpaperSelection.wallpaper.appearance,
       fit: shellRuntimeSnapshot.wallpaperSelection.wallpaper.fit,
       url: shellRuntimeSnapshot.wallpaperSelection.wallpaper.url
-    }
+    },
+    workbenchHostService
   };
 }
 

@@ -260,7 +260,9 @@ export function createAgentActivityController({
       return {
         applied: result.applied,
         messages: result.messages.map(cloneAgentActivityMessage),
-        session: result.session ? { ...result.session } : null,
+        session: result.session
+          ? cloneAgentActivitySession(result.session)
+          : null,
         statePatch: result.statePatch
           ? cloneAgentActivityStatePatch(result.statePatch)
           : null
@@ -452,7 +454,7 @@ export function cloneAgentActivitySnapshot(
 ): AgentActivitySnapshot {
   return {
     workspaceId: snapshot.workspaceId,
-    sessions: snapshot.sessions.map((session) => ({ ...session })),
+    sessions: snapshot.sessions.map(cloneAgentActivitySession),
     presences: snapshot.presences.map((presence) => ({ ...presence })),
     composerOptionsByProvider: Object.fromEntries(
       Object.entries(snapshot.composerOptionsByProvider ?? {}).map(
@@ -501,6 +503,15 @@ function cloneAgentActivityComposerOptions(
     runtimeContext: cloneJSONRecord(options.runtimeContext),
     skills: options.skills.map((skill) => ({ ...skill })),
     loadedAtUnixMs: options.loadedAtUnixMs
+  };
+}
+
+function cloneAgentActivitySession(
+  session: AgentActivitySession
+): AgentActivitySession {
+  return {
+    ...session,
+    runtimeContext: cloneJSONRecord(session.runtimeContext)
   };
 }
 
@@ -1094,6 +1105,9 @@ function sessionFromEvent(
     resumable: booleanValue(source.resumable),
     currentPhase: nullableStringValue(source.currentPhase),
     lastError: nullableStringValue(source.lastError),
+    runtimeContext: cloneJSONRecord(
+      recordValue(source.runtimeContext) ?? undefined
+    ),
     messageVersion: numberValue(source.messageVersion),
     lastEventUnixMs: numberValue(source.lastEventUnixMs),
     startedAtUnixMs: numberValue(source.startedAtUnixMs),
@@ -1193,6 +1207,9 @@ function inlineStatePatchFromActivityUpdateData(
     occurredAtUnixMs: numberValue(source.occurredAtUnixMs),
     provider: stringValue(source.provider) || undefined,
     providerSessionId: stringValue(source.providerSessionId) || undefined,
+    runtimeContext: cloneJSONRecord(
+      recordValue(source.runtimeContext) ?? undefined
+    ),
     startedAtUnixMs: numberValue(source.startedAtUnixMs),
     endedAtUnixMs: numberValue(source.endedAtUnixMs),
     title: stringValue(source.title) || undefined,
@@ -1244,6 +1261,9 @@ function agentActivitySessionFromInlineStatePatch(input: {
       input.patch.turn?.phase ??
       input.existingSession.currentPhase,
     lastError: input.patch.lastError ?? input.existingSession.lastError,
+    runtimeContext:
+      cloneJSONRecord(input.patch.runtimeContext) ??
+      cloneJSONRecord(input.existingSession.runtimeContext),
     lastEventUnixMs:
       input.patch.lastEventUnixMs ??
       input.patch.occurredAtUnixMs ??
@@ -1264,6 +1284,7 @@ function cloneAgentActivityStatePatch(
 ): AgentActivityStatePatch {
   return {
     ...statePatch,
+    runtimeContext: cloneJSONRecord(statePatch.runtimeContext),
     turn: statePatch.turn ? { ...statePatch.turn } : undefined
   };
 }

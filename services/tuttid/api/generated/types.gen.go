@@ -1508,10 +1508,13 @@ type AppReferenceListTimeRange struct {
 
 // AppReferenceSearchRequest defines model for AppReferenceSearchRequest.
 type AppReferenceSearchRequest struct {
-	Cursor *string             `json:"cursor,omitempty"`
-	Kinds  *[]AppReferenceKind `json:"kinds,omitempty"`
-	Limit  *int                `json:"limit,omitempty"`
-	Query  string              `json:"query"`
+	Cursor *string `json:"cursor,omitempty"`
+
+	// Filters 已选「文件类型筛选分类」id(全局统一口径)。筛选与搜索是同一能力:query 可空、filters 非空时即按类型查。空/缺省 = 不按类型过滤。
+	Filters *[]string           `json:"filters,omitempty"`
+	Kinds   *[]AppReferenceKind `json:"kinds,omitempty"`
+	Limit   *int                `json:"limit,omitempty"`
+	Query   string              `json:"query"`
 
 	// TimeRange Inclusive timestamp range for references. For file references, runtimes should filter by the file mtimeMs when available.
 	TimeRange *AppReferenceListTimeRange `json:"timeRange,omitempty"`
@@ -1694,18 +1697,21 @@ type CreateIssueManagerTopicRequest struct {
 
 // CreateWorkspaceAgentSessionRequest defines model for CreateWorkspaceAgentSessionRequest.
 type CreateWorkspaceAgentSessionRequest struct {
-	AgentSessionId   openapi_types.UUID        `json:"agentSessionId"`
-	BrowserUse       *bool                     `json:"browserUse,omitempty"`
-	Cwd              *string                   `json:"cwd,omitempty"`
-	InitialContent   []AgentPromptContentBlock `json:"initialContent"`
-	Model            *string                   `json:"model,omitempty"`
-	PermissionModeId *string                   `json:"permissionModeId,omitempty"`
-	PlanMode         *bool                     `json:"planMode,omitempty"`
-	Provider         WorkspaceAgentProvider    `json:"provider"`
-	ReasoningEffort  *string                   `json:"reasoningEffort,omitempty"`
-	Speed            *string                   `json:"speed,omitempty"`
-	Title            *string                   `json:"title,omitempty"`
-	Visible          *bool                     `json:"visible,omitempty"`
+	AgentSessionId openapi_types.UUID        `json:"agentSessionId"`
+	BrowserUse     *bool                     `json:"browserUse,omitempty"`
+	Cwd            *string                   `json:"cwd,omitempty"`
+	InitialContent []AgentPromptContentBlock `json:"initialContent"`
+
+	// InitialDisplayPrompt Optional display-only text for the first turn (e.g. a folder bundle shown as one chip while initialContent carries the expanded files).
+	InitialDisplayPrompt *string                `json:"initialDisplayPrompt,omitempty"`
+	Model                *string                `json:"model,omitempty"`
+	PermissionModeId     *string                `json:"permissionModeId,omitempty"`
+	PlanMode             *bool                  `json:"planMode,omitempty"`
+	Provider             WorkspaceAgentProvider `json:"provider"`
+	ReasoningEffort      *string                `json:"reasoningEffort,omitempty"`
+	Speed                *string                `json:"speed,omitempty"`
+	Title                *string                `json:"title,omitempty"`
+	Visible              *bool                  `json:"visible,omitempty"`
 }
 
 // CreateWorkspaceAppFactoryJobRequest defines model for CreateWorkspaceAppFactoryJobRequest.
@@ -2056,6 +2062,34 @@ type IssueManagerIssueResponse struct {
 // IssueManagerPriority defines model for IssueManagerPriority.
 type IssueManagerPriority string
 
+// IssueManagerReferenceSearchHit defines model for IssueManagerReferenceSearchHit.
+type IssueManagerReferenceSearchHit struct {
+	// IssueTitle Title of the issue that produced this output file.
+	IssueTitle string                `json:"issueTitle"`
+	Output     IssueManagerRunOutput `json:"output"`
+}
+
+// IssueManagerReferenceSearchRequest defines model for IssueManagerReferenceSearchRequest.
+type IssueManagerReferenceSearchRequest struct {
+	// Filters 已选「文件类型筛选分类」id(全局统一口径:image/video/document/ webpage/other)。筛选与搜索是同一能力:query 可空、filters 非空时即按类型查。空/缺省 = 不按类型过滤。
+	Filters *[]string `json:"filters,omitempty"`
+
+	// IssueId Optional. Limit the search to output files produced by this issue.
+	IssueId *string `json:"issueId,omitempty"`
+	Limit   *int    `json:"limit,omitempty"`
+	Query   string  `json:"query"`
+
+	// TopicId Optional. Limit the search to output files produced by issues under this topic. Ignored when issueId is set.
+	TopicId *string `json:"topicId,omitempty"`
+}
+
+// IssueManagerReferenceSearchResponse defines model for IssueManagerReferenceSearchResponse.
+type IssueManagerReferenceSearchResponse struct {
+	// Items Flat, recency-ordered list of output file references. Search never returns group items.
+	Items       []IssueManagerReferenceSearchHit `json:"items"`
+	WorkspaceId string                           `json:"workspaceId"`
+}
+
 // IssueManagerRun defines model for IssueManagerRun.
 type IssueManagerRun struct {
 	AgentProvider      string             `json:"agentProvider"`
@@ -2294,6 +2328,9 @@ type RollbackWorkspaceAppRequest struct {
 // SendWorkspaceAgentSessionInputRequest defines model for SendWorkspaceAgentSessionInputRequest.
 type SendWorkspaceAgentSessionInputRequest struct {
 	Content []AgentPromptContentBlock `json:"content"`
+
+	// DisplayPrompt Optional display-only text shown in the conversation (e.g. a folder bundle rendered as one chip while content carries the expanded files).
+	DisplayPrompt *string `json:"displayPrompt,omitempty"`
 }
 
 // StartupWorkspaceResponse defines model for StartupWorkspaceResponse.
@@ -2969,6 +3006,9 @@ type WorkspaceFilePrefetchDepth = int
 // WorkspaceFileRecentLimit defines model for WorkspaceFileRecentLimit.
 type WorkspaceFileRecentLimit = int
 
+// WorkspaceFileSearchFilters defines model for WorkspaceFileSearchFilters.
+type WorkspaceFileSearchFilters = []string
+
 // WorkspaceFileSearchKinds defines model for WorkspaceFileSearchKinds.
 type WorkspaceFileSearchKinds = []WorkspaceFileFilterKind
 
@@ -2977,6 +3017,9 @@ type WorkspaceFileSearchLimit = int
 
 // WorkspaceFileSearchQuery defines model for WorkspaceFileSearchQuery.
 type WorkspaceFileSearchQuery = string
+
+// WorkspaceFileSearchWithin defines model for WorkspaceFileSearchWithin.
+type WorkspaceFileSearchWithin = string
 
 // WorkspaceID defines model for WorkspaceID.
 type WorkspaceID = string
@@ -3069,9 +3112,15 @@ type ListWorkspaceRecentFilesParams struct {
 
 // SearchWorkspaceFilesParams defines parameters for SearchWorkspaceFiles.
 type SearchWorkspaceFilesParams struct {
-	Query         WorkspaceFileSearchQuery    `form:"query" json:"query"`
-	Limit         *WorkspaceFileSearchLimit   `form:"limit,omitempty" json:"limit,omitempty"`
-	IncludeKinds  *WorkspaceFileSearchKinds   `form:"includeKinds,omitempty" json:"includeKinds,omitempty"`
+	Query WorkspaceFileSearchQuery `form:"query" json:"query"`
+
+	// Within 可选:把搜索限定在工作区根下的某子路径(对应左栏选中的「位置」,如 文稿/下载/桌面)。相对工作区根的逻辑路径;缺省/空 = 跨整根搜索。
+	Within       *WorkspaceFileSearchWithin `form:"within,omitempty" json:"within,omitempty"`
+	Limit        *WorkspaceFileSearchLimit  `form:"limit,omitempty" json:"limit,omitempty"`
+	IncludeKinds *WorkspaceFileSearchKinds  `form:"includeKinds,omitempty" json:"includeKinds,omitempty"`
+
+	// Filters 已选「文件类型筛选分类」id(全局统一口径:image/video/document/ webpage/other)。筛选与搜索是同一能力:query 可空、filters 非空时即按类型 list-all。空/缺省 = 不按类型过滤。
+	Filters       *WorkspaceFileSearchFilters `form:"filters,omitempty" json:"filters,omitempty"`
 	IncludeHidden *WorkspaceFileIncludeHidden `form:"includeHidden,omitempty" json:"includeHidden,omitempty"`
 }
 
@@ -3215,6 +3264,9 @@ type UploadWorkspaceFilesJSONRequestBody = UploadWorkspaceFilesRequest
 
 // PreflightUploadWorkspaceFilesJSONRequestBody defines body for PreflightUploadWorkspaceFiles for application/json ContentType.
 type PreflightUploadWorkspaceFilesJSONRequestBody = PreflightUploadWorkspaceFilesRequest
+
+// SearchWorkspaceIssueReferencesJSONRequestBody defines body for SearchWorkspaceIssueReferences for application/json ContentType.
+type SearchWorkspaceIssueReferencesJSONRequestBody = IssueManagerReferenceSearchRequest
 
 // CreateWorkspaceIssueTopicJSONRequestBody defines body for CreateWorkspaceIssueTopic for application/json ContentType.
 type CreateWorkspaceIssueTopicJSONRequestBody = CreateIssueManagerTopicRequest

@@ -29,7 +29,6 @@ export interface AgentSessionView extends Required<
   isLoadingMessages: boolean;
   error: string | null;
   watcherCount: number;
-  controlStateRefreshRevision: number;
 }
 
 export interface AgentSessionOverlayMessageHydrationEntry extends Required<
@@ -856,8 +855,7 @@ function createEmptySessionView(
     isLoadingControlState: false,
     isLoadingMessages: false,
     error: null,
-    watcherCount: 0,
-    controlStateRefreshRevision: 0
+    watcherCount: 0
   };
 }
 

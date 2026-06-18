@@ -167,7 +167,6 @@ describe("agentSessionViewStore", () => {
     });
     expect(view?.isLive).toBe(true);
     expect(view?.lastEventAt).toBe(1717200001000);
-    expect(view?.controlStateRefreshRevision).toBe(0);
 
     release();
   });

@@ -3637,7 +3637,8 @@ describe("useAgentGUINodeController", () => {
       await Promise.resolve();
     });
 
-    expect(getState).toHaveBeenCalledTimes(1);
+    // state_patch events now trigger a debounced reload to pick up runtimeContext (e.g. usage)
+    expect(getState).toHaveBeenCalledTimes(2);
   });
 
   it("does not reload session list or timeline for streamed state patches", async () => {
@@ -6112,8 +6113,9 @@ describe("useAgentGUINodeController", () => {
       await Promise.resolve();
     });
 
-    expect(getState).toHaveBeenCalledTimes(1);
-    expect(result.current.viewModel.activeLiveState).toBe("active");
+    // state_patch triggers a debounced reload; non-local error is discovered and blocks further reloads
+    expect(getState).toHaveBeenCalledTimes(2);
+    expect(result.current.viewModel.activeLiveState).toBe("failed");
 
     act(() => {
       activityListener?.({
@@ -6127,7 +6129,8 @@ describe("useAgentGUINodeController", () => {
       vi.advanceTimersByTime(500);
     });
 
-    expect(getState).toHaveBeenCalledTimes(1);
+    // session is blocked after non-local error — subsequent patches don't trigger more reloads
+    expect(getState).toHaveBeenCalledTimes(2);
   });
 
   it("does not auto-reload a blocked non-local session when it is selected again later", async () => {

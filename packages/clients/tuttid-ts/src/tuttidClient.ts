@@ -66,6 +66,7 @@ import {
   resizeWorkspaceTerminal,
   scanWorkspaceExternalAgentSessionImports,
   searchWorkspaceFiles,
+  searchWorkspaceIssueReferences,
   sendWorkspaceAgentSessionInput,
   submitWorkspaceAgentInteractive,
   terminateWorkspaceTerminal,
@@ -405,6 +406,17 @@ export function createTuttidClient(
         path: { issueID, workspaceID }
       });
       return unwrapData(response, "Workspace issue detail request failed.");
+    },
+    async searchWorkspaceIssueReferences(workspaceID, request) {
+      const response = await searchWorkspaceIssueReferences({
+        client,
+        body: request,
+        path: { workspaceID }
+      });
+      return unwrapData(
+        response,
+        "Workspace issue reference search request failed."
+      );
     },
     async getWorkspaceIssueTaskDetail(workspaceID, issueID, taskID) {
       const response = await getWorkspaceIssueTaskDetail({

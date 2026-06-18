@@ -225,15 +225,20 @@ export function createDesktopAgentActivityRuntime(
       });
     },
     reportDiagnostic(input) {
-      void options.runtimeApi
-        ?.logRendererDiagnostic({
-          details: input.details ?? {},
-          event: input.event,
-          level: input.level ?? "info",
-          source: input.source ?? "agent-gui",
-          workspaceId: input.workspaceId ?? undefined
-        })
-        .catch(() => {});
+      try {
+        void options.runtimeApi
+          ?.logRendererDiagnostic({
+            details: input.details ?? {},
+            event: input.event,
+            level: input.level ?? "info",
+            source: input.source ?? "agent-gui",
+            workspaceId: input.workspaceId ?? undefined
+          })
+          .catch(() => {});
+      } catch {
+        // IPC structured-clone can fail if details contains non-serializable values;
+        // diagnostic failures must never propagate into the render tree.
+      }
     },
     ...(options.warmupOpenclawGateway
       ? {

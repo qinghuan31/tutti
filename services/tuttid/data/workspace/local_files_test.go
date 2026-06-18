@@ -706,6 +706,129 @@ func TestLocalFilesAdapterSearchSkipsHiddenNoiseDirectoriesForNormalQueries(t *t
 	}
 }
 
+func TestLocalFilesAdapterSearchTypeFilterExcludesDirectoriesButKeepsMatchingFiles(t *testing.T) {
+	t.Parallel()
+
+	rootDir := t.TempDir()
+	// 一个文件名/路径含 "22" 的目录:无筛选时按名命中,但开启「document」筛选后不应作为结果。
+	docInFolder := filepath.Join(rootDir, "reports22", "q3.csv")
+	if err := os.MkdirAll(filepath.Dir(docInFolder), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(docInFolder, []byte("a,b\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	// 含 "22" 的文档文件(csv 归入 document):类型与关键词都命中,应保留。
+	docMatch := filepath.Join(rootDir, "data22.csv")
+	if err := os.WriteFile(docMatch, []byte("a,b\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	// 含 "22" 但非文档的文件(图片):关键词命中、类型不命中,应被筛选掉。
+	imageMatch := filepath.Join(rootDir, "shot22.png")
+	if err := os.WriteFile(imageMatch, []byte("x"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	adapter := LocalFilesAdapter{}
+	result, err := adapter.Search(context.Background(), localFilesRoot(rootDir), workspacefiles.SearchInput{
+		Query:   "22",
+		Limit:   20,
+		Filters: []string{"document"},
+	})
+	if err != nil {
+		t.Fatalf("Search() error = %v", err)
+	}
+
+	gotPaths := make(map[string]bool, len(result.Entries))
+	for _, entry := range result.Entries {
+		gotPaths[entry.Path.String()] = true
+		if entry.Kind == workspacefiles.EntryKindDirectory {
+			t.Fatalf("entry = %#v, directories must be excluded when a type filter is active", entry)
+		}
+	}
+	// 交集:关键词 "22" ∩ 类型 document,且包含被筛掉目录下的文档文件。
+	wantPaths := []string{"/workspace/data22.csv", "/workspace/reports22/q3.csv"}
+	for _, want := range wantPaths {
+		if !gotPaths[want] {
+			t.Fatalf("entries = %#v, want to include %s", result.Entries, want)
+		}
+	}
+	if gotPaths["/workspace/shot22.png"] {
+		t.Fatalf("entries = %#v, must exclude non-document shot22.png", result.Entries)
+	}
+	if len(result.Entries) != len(wantPaths) {
+		t.Fatalf("entries = %#v, want exactly %d results", result.Entries, len(wantPaths))
+	}
+}
+
+func TestLocalFilesAdapterSearchScopesToWithinSubdirectory(t *testing.T) {
+	t.Parallel()
+
+	rootDir := t.TempDir()
+	// 工作区根下两处同名匹配:仅「文稿」范围内的应被返回,根下另一处不应出现。
+	inDocuments := filepath.Join(rootDir, "Documents", "report-notes.md")
+	if err := os.MkdirAll(filepath.Dir(inDocuments), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(inDocuments, []byte("hi"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	outsideDocuments := filepath.Join(rootDir, "Downloads", "report-notes.md")
+	if err := os.MkdirAll(filepath.Dir(outsideDocuments), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(outsideDocuments, []byte("hi"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	adapter := LocalFilesAdapter{}
+	result, err := adapter.Search(context.Background(), localFilesRoot(rootDir), workspacefiles.SearchInput{
+		Query:  "report",
+		Limit:  20,
+		Within: "Documents",
+	})
+	if err != nil {
+		t.Fatalf("Search() error = %v", err)
+	}
+	if len(result.Entries) != 1 {
+		t.Fatalf("entries = %#v, want exactly 1 scoped result", result.Entries)
+	}
+	// 结果逻辑路径仍以工作区根为基准(含 /Documents 前缀),保持可定位。
+	if got := result.Entries[0].Path.String(); got != "/workspace/Documents/report-notes.md" {
+		t.Fatalf("result path = %q, want /workspace/Documents/report-notes.md", got)
+	}
+}
+
+func TestLocalFilesAdapterSearchWithoutWithinSpansWholeRoot(t *testing.T) {
+	t.Parallel()
+
+	rootDir := t.TempDir()
+	for _, rel := range []string{
+		filepath.Join("Documents", "report-notes.md"),
+		filepath.Join("Downloads", "report-notes.md"),
+	} {
+		full := filepath.Join(rootDir, rel)
+		if err := os.MkdirAll(filepath.Dir(full), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(full, []byte("hi"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	adapter := LocalFilesAdapter{}
+	result, err := adapter.Search(context.Background(), localFilesRoot(rootDir), workspacefiles.SearchInput{
+		Query: "report",
+		Limit: 20,
+	})
+	if err != nil {
+		t.Fatalf("Search() error = %v", err)
+	}
+	if len(result.Entries) != 2 {
+		t.Fatalf("entries = %#v, want both matches across the whole root", result.Entries)
+	}
+}
+
 func TestLocalFilesAdapterSearchReturnsPartialResultsWhenDeadlineExpires(t *testing.T) {
 	t.Parallel()
 

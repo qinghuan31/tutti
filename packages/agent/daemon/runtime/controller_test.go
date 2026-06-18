@@ -2776,6 +2776,52 @@ func TestEnrichReportStatePatchesKeepsIncomingTitle(t *testing.T) {
 	}
 }
 
+func TestEnrichStreamStateEventsWithSessionSnapshotFillsRuntimeContext(t *testing.T) {
+	t.Parallel()
+
+	adapter := &statefulInteractiveAdapter{
+		provider: ProviderClaudeCode,
+		snapshot: SessionStateSnapshot{
+			AgentSessionID: "agent-session-1",
+			Provider:       ProviderClaudeCode,
+			RuntimeContext: map[string]any{
+				"usage": map[string]any{
+					"contextWindow": map[string]any{
+						"usedTokens":  int64(38414),
+						"totalTokens": int64(200000),
+					},
+				},
+			},
+		},
+	}
+	controller := NewController([]Adapter{adapter}, nil)
+	session := Session{
+		RoomID:         "room-1",
+		AgentSessionID: "agent-session-1",
+		Provider:       ProviderClaudeCode,
+	}
+	controller.store(session)
+	events := []StreamEvent{{
+		EventType: StreamEventStatePatch,
+		Data: agentsessionstore.WorkspaceAgentStatePatch{
+			AgentSessionID: "agent-session-1",
+			CurrentPhase:   "idle",
+		},
+	}}
+
+	controller.enrichStreamStateEventsWithSessionSnapshot(session, events)
+
+	patch, ok := events[0].Data.(agentsessionstore.WorkspaceAgentStatePatch)
+	if !ok {
+		t.Fatalf("stream patch type = %T, want WorkspaceAgentStatePatch", events[0].Data)
+	}
+	usage, _ := patch.RuntimeContext["usage"].(map[string]any)
+	contextWindow, _ := usage["contextWindow"].(map[string]any)
+	if got, _ := acpInt64Value(contextWindow["totalTokens"]); got != 200000 {
+		t.Fatalf("runtime context usage = %#v, want totalTokens=200000", patch.RuntimeContext["usage"])
+	}
+}
+
 func TestDeriveSessionStatusFromEvents(t *testing.T) {
 	t.Parallel()
 

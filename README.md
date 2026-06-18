@@ -118,7 +118,7 @@ Everything in the local version, plus:
 |                   | Tutti · Local (open source)                                                | Tutti · Cloud (coming soon)                                                                                 |
 | ----------------- | -------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------- |
 | **Best for**      | One person, multiple agents                                                | One person, multiple agents · One person, multiple devices · Two or more people, each with their own agents |
-| **Runs on**       | Runs locally. Outputs stay local.                                          | Runs locally. Outputs live in the cloud.                                                                    |
+| **Runs on**       | Runs locally. Outputs stay local.                                          | Agents run locally. Outputs live in the cloud.                                                                    |
 | **Shares**        | Context, files, outputs, tasks, running state, and apps across your agents | Everything in the Local version, plus sharing across multiple people and multiple devices                   |
 | **Subscriptions** | Use your existing Claude, Codex, Gemini, and other agent subscriptions     | Use your existing Claude, Codex, Gemini, and other agent subscriptions                                      |
 

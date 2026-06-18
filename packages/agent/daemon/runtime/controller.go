@@ -1456,6 +1456,7 @@ func (c *Controller) publish(session Session, events []activityshared.Event) {
 		return
 	}
 	projected := ProjectActivityEventsToStreamEvents(session, events)
+	c.enrichStreamStateEventsWithSessionSnapshot(session, projected)
 	slog.Debug(
 		"agent session publish events",
 		"event", "agent_session.publish",
@@ -1722,6 +1723,34 @@ func (c *Controller) enrichReportStatePatchesWithSessionSnapshot(
 		return
 	}
 	enrichReportStatePatches(report, statePatchFromSessionStateSnapshot(snapshot))
+}
+
+func (c *Controller) enrichStreamStateEventsWithSessionSnapshot(
+	session Session,
+	events []StreamEvent,
+) {
+	if c == nil || len(events) == 0 {
+		return
+	}
+	snapshot := c.sessionStateSnapshot(session)
+	if snapshot.AgentSessionID == "" {
+		return
+	}
+	snapshotPatch := statePatchFromSessionStateSnapshot(snapshot)
+	for index := range events {
+		if events[index].EventType != StreamEventStatePatch {
+			continue
+		}
+		patch, ok := events[index].Data.(agentsessionstore.WorkspaceAgentStatePatch)
+		if !ok {
+			continue
+		}
+		tmp := agentsessionstore.ReportActivityInput{
+			StatePatches: []agentsessionstore.WorkspaceAgentStatePatch{patch},
+		}
+		enrichReportStatePatches(&tmp, snapshotPatch)
+		events[index].Data = tmp.StatePatches[0]
+	}
 }
 
 func enrichReportStatePatches(

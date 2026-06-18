@@ -147,6 +147,12 @@ func applyACPUpdateToLiveState(
 
 func mergeACPUsageState(previous acpUsageState, next acpUsageState) acpUsageState {
 	merged := next
+	if merged.contextKnown &&
+		merged.contextWindowTokens <= 0 &&
+		previous.contextKnown &&
+		previous.contextWindowTokens > 0 {
+		merged.contextWindowTokens = previous.contextWindowTokens
+	}
 	if !merged.contextKnown && previous.contextKnown {
 		merged.contextKnown = true
 		merged.contextUsedTokens = previous.contextUsedTokens

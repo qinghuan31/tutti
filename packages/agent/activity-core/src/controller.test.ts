@@ -640,6 +640,51 @@ test("controller canonicalizes provider-session state patches to the agent sessi
   assert.equal(controller.getSnapshot().sessions[0]?.status, "completed");
 });
 
+test("controller preserves runtime context from inline state patches", async () => {
+  const controller = createAgentActivityController({
+    adapter: fakeAdapter({
+      listSessions: () =>
+        Promise.resolve({
+          sessions: [
+            createSession({
+              agentSessionId: "session-1",
+              status: "working",
+              updatedAtUnixMs: 100
+            })
+          ]
+        })
+    }),
+    workspaceId: "workspace-1"
+  });
+  await controller.load();
+
+  const runtimeContext = {
+    usage: {
+      contextWindow: {
+        usedTokens: 38660,
+        totalTokens: 1000000
+      }
+    }
+  };
+  const result = controller.applyActivityUpdatedEvent({
+    workspaceId: "workspace-1",
+    agentSessionId: "session-1",
+    eventType: "state_patch",
+    data: {
+      agentSessionId: "session-1",
+      occurredAtUnixMs: 200,
+      runtimeContext
+    }
+  });
+
+  assert.equal(result.applied, true);
+  assert.deepEqual(result.statePatch?.runtimeContext, runtimeContext);
+  assert.deepEqual(
+    controller.getSnapshot().sessions[0]?.runtimeContext,
+    runtimeContext
+  );
+});
+
 test("controller uses cached latest message version when retaining events", async () => {
   let retainedAfterVersion: number | undefined;
   const adapter = fakeAdapter({

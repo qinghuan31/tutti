@@ -28,7 +28,9 @@ import type {
   DesktopTerminalDiagnosticPayload,
   DesktopTerminalStreamUrlRequest,
   DesktopWorkspaceAppExternalRendererRequest,
-  DesktopWorkspaceAppExternalRendererResult
+  DesktopWorkspaceAppExternalRendererResult,
+  DesktopWorkspaceAppOpenFileResolvedPayload,
+  DesktopWorkspaceOpenFeatureRequest
 } from "../shared/contracts/ipc";
 import type { BrowserNodeHostApi } from "@tutti-os/browser-node";
 
@@ -63,6 +65,12 @@ export interface DesktopPlatformApi {
 }
 
 export interface DesktopHostWorkspaceApi {
+  onOpenFeatureRequest(
+    listener: (request: DesktopWorkspaceOpenFeatureRequest) => void
+  ): () => void;
+  onOpenFileRequest(
+    listener: (request: DesktopWorkspaceAppOpenFileResolvedPayload) => void
+  ): () => void;
   openWorkspaceAppFolder(input: {
     appId: string;
     folderKind: DesktopWorkspaceAppFolderKind;
@@ -143,6 +151,7 @@ export interface DesktopHostFilesApi {
     workspaceID: string;
   }): Promise<void>;
   readLocalFileText(path: string): Promise<DesktopLocalFileTextResult>;
+  readLocalPreviewFile(path: string): Promise<Uint8Array>;
   readPreviewFile(workspaceID: string, path: string): Promise<Uint8Array>;
   resolveEntryIcon(
     workspaceID: string,

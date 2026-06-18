@@ -29,6 +29,7 @@ export interface AgentActivitySession {
   resumable?: boolean;
   currentPhase?: string | null;
   lastError?: string | null;
+  runtimeContext?: Record<string, unknown>;
   messageVersion?: number;
   lastEventUnixMs?: number;
   startedAtUnixMs?: number;
@@ -186,6 +187,7 @@ export interface AgentActivityStatePatch {
   occurredAtUnixMs?: number;
   provider?: string;
   providerSessionId?: string;
+  runtimeContext?: Record<string, unknown>;
   startedAtUnixMs?: number;
   endedAtUnixMs?: number;
   title?: string;
@@ -212,6 +214,8 @@ export interface AgentActivityCreateSessionInput {
   agentSessionId?: string | null;
   cwd?: string | null;
   initialContent?: AgentPromptContentBlock[] | null;
+  /** 仅展示用的首轮文本(bundle 折叠成一个 chip);initialContent 仍带展开后的文件。 */
+  initialDisplayPrompt?: string | null;
   model?: string | null;
   planMode?: boolean | null;
   permissionModeId?: string | null;
@@ -227,6 +231,8 @@ export interface AgentActivitySendInput {
   workspaceId: string;
   agentSessionId: string;
   content: AgentPromptContentBlock[];
+  /** 仅展示用文本(bundle 折叠成一个 chip);content 仍带展开后的文件。 */
+  displayPrompt?: string | null;
   signal?: AbortSignal;
 }
 

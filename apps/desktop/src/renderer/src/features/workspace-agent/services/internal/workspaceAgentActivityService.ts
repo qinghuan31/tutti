@@ -271,6 +271,7 @@ export class WorkspaceAgentActivityService implements IWorkspaceAgentActivitySer
             agentSessionId: requestedAgentSessionId,
             cwd: resolvedCwd?.cwd ?? null,
             initialContent: input.initialContent ?? [],
+            initialDisplayPrompt: input.initialDisplayPrompt ?? null,
             model: input.settings?.model ?? null,
             planMode: input.settings?.planMode ?? null,
             permissionModeId: resolveComposerPermissionMode(input.settings),
@@ -1226,6 +1227,7 @@ function hostStatePatchEventFromSession(
         Date.now(),
       provider: session.provider,
       providerSessionId: session.providerSessionId ?? undefined,
+      runtimeContext: session.runtimeContext ?? undefined,
       title: session.title,
       ...(inferredTurnState
         ? {

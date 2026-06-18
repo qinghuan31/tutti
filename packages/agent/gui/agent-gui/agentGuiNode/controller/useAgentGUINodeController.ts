@@ -6,6 +6,7 @@ import {
   useRef,
   useState
 } from "react";
+import { debounce } from "lodash";
 import { toast } from "@tutti-os/ui-system";
 import { translate } from "../../../i18n/index";
 import {
@@ -109,7 +110,6 @@ import {
   type AgentSessionViewRef
 } from "../../../contexts/workspace/presentation/renderer/agentSessions/agentSessionViewStore";
 import {
-  useAgentSessionDurableRefresh,
   useAgentSessionView,
   useWatchAgentSession,
   useWatchAgentSessions
@@ -2505,11 +2505,6 @@ export function useAgentGUINodeController({
     query: null,
     conversations: []
   });
-  const activityStreamStateReloadSeqRef = useRef(0);
-  const stateReloadTimerRef = useRef<number | null>(null);
-  const stateReloadInFlightRef = useRef(false);
-  const stateReloadQueuedRef = useRef(false);
-  const stateReloadTargetSessionIdRef = useRef<string | null>(null);
   const selectedConversationMessageLoadSeqRef = useRef(0);
   const selectedConversationPendingMessageLoadIdsRef = useRef(
     new Set<string>()
@@ -2523,11 +2518,6 @@ export function useAgentGUINodeController({
   const handledOpenSessionSequenceRef = useRef<number | null>(null);
   const pendingOpenSessionRequestRef =
     useRef<AgentGUIOpenSessionRequest | null>(null);
-  const stateReloadCauseRef = useRef<{
-    source: "activity-stream";
-    eventType?: string;
-    requestId?: number;
-  } | null>(null);
   const selectedConversationNotFoundRetryIdsRef = useRef(new Set<string>());
   const selectedConversationNotFoundRetryTimerRef = useRef<number | null>(null);
   const sessionStateSnapshotCauseBySessionIdRef = useRef<
@@ -4009,81 +3999,26 @@ export function useAgentGUINodeController({
     previewMode
   ]);
 
-  const clearPendingSessionStateReload = useCallback(() => {
-    if (stateReloadTimerRef.current !== null) {
-      window.clearTimeout(stateReloadTimerRef.current);
-      stateReloadTimerRef.current = null;
-    }
-    stateReloadQueuedRef.current = false;
-    stateReloadTargetSessionIdRef.current = null;
-    stateReloadCauseRef.current = null;
-  }, []);
-
-  const scheduleActivityStreamStateReload = useCallback(
-    (
-      agentSessionId: string,
-      cause: {
-        source: "activity-stream";
-        eventType?: string;
-        requestId?: number;
-      }
-    ) => {
-      if (
-        blockedActivityStreamStateReloadSessionIdsRef.current.has(
-          agentSessionId
-        )
-      ) {
-        return;
-      }
-      stateReloadTargetSessionIdRef.current = agentSessionId;
-      stateReloadCauseRef.current = cause;
-      if (stateReloadInFlightRef.current) {
-        stateReloadQueuedRef.current = true;
-        return;
-      }
-      if (stateReloadTimerRef.current !== null) {
-        return;
-      }
-      stateReloadTimerRef.current = window.setTimeout(() => {
-        stateReloadTimerRef.current = null;
-        const targetSessionId = stateReloadTargetSessionIdRef.current;
-        const pendingCause = stateReloadCauseRef.current;
-        stateReloadTargetSessionIdRef.current = null;
-        stateReloadCauseRef.current = null;
-        if (
-          !targetSessionId ||
-          !pendingCause ||
-          blockedActivityStreamStateReloadSessionIdsRef.current.has(
-            targetSessionId
-          ) ||
-          activeConversationIdRef.current !== targetSessionId ||
-          !isMountedRef.current
-        ) {
-          stateReloadQueuedRef.current = false;
-          return;
-        }
-        stateReloadInFlightRef.current = true;
-        void loadSessionState(targetSessionId, {
-          ...pendingCause
-        }).finally(() => {
-          stateReloadInFlightRef.current = false;
+  const scheduleActivityStreamStateReload = useMemo(
+    () =>
+      debounce(
+        (
+          agentSessionId: string,
+          cause: { source: "activity-stream"; eventType?: string }
+        ) => {
           if (
-            stateReloadQueuedRef.current &&
-            activeConversationIdRef.current === targetSessionId &&
-            isMountedRef.current
+            blockedActivityStreamStateReloadSessionIdsRef.current.has(
+              agentSessionId
+            ) ||
+            activeConversationIdRef.current !== agentSessionId ||
+            !isMountedRef.current
           ) {
-            stateReloadQueuedRef.current = false;
-            scheduleActivityStreamStateReload(targetSessionId, {
-              source: "activity-stream",
-              eventType: pendingCause.eventType,
-              requestId: pendingCause.requestId
-            });
             return;
           }
-          stateReloadQueuedRef.current = false;
-        });
-      }, ACTIVITY_STREAM_STATE_RELOAD_DEBOUNCE_MS);
-    },
+          void loadSessionState(agentSessionId, cause);
+        },
+        ACTIVITY_STREAM_STATE_RELOAD_DEBOUNCE_MS
+      ),
     [loadSessionState]
   );
 
@@ -4467,28 +4402,6 @@ export function useAgentGUINodeController({
     });
   }, [activeConversationId, previewMode, reloadSelectedConversation]);
 
-  useAgentSessionDurableRefresh({
-    agentSessionId: activeConversationId,
-    sessionView: activeSessionView,
-    blockControlStateRefresh:
-      previewMode ||
-      activeConversationId === null ||
-      blockedActivityStreamStateReloadSessionIdsRef.current.has(
-        activeConversationId
-      ),
-    onControlStateRefresh: () => {
-      if (!activeConversationId) {
-        return;
-      }
-      const requestId = ++activityStreamStateReloadSeqRef.current;
-      void loadSessionState(activeConversationId, {
-        source: "activity-stream",
-        eventType: "state_patch",
-        requestId
-      });
-    }
-  });
-
   useWatchAgentSession({
     workspaceId,
     agentSessionId: activeConversationId,
@@ -4511,12 +4424,10 @@ export function useAgentGUINodeController({
       ) {
         return;
       }
-      if (event.eventType === "config_options_update") {
-        const requestId = ++activityStreamStateReloadSeqRef.current;
+      if (event.eventType !== "message_update") {
         scheduleActivityStreamStateReload(activeConversationId, {
           source: "activity-stream",
-          eventType: event.eventType,
-          requestId
+          eventType: event.eventType
         });
       }
     },
@@ -4539,7 +4450,7 @@ export function useAgentGUINodeController({
   useEffect(() => {
     isMountedRef.current = true;
     return () => {
-      clearPendingSessionStateReload();
+      scheduleActivityStreamStateReload.cancel();
       clearSelectedConversationNotFoundRetry();
       const current = activeConversationIdRef.current;
       const pendingNewConversationId = startingConversationIdRef.current;
@@ -4554,10 +4465,13 @@ export function useAgentGUINodeController({
         void unactivateRef.current(pendingNewConversationId);
       }
     };
-  }, [clearPendingSessionStateReload, clearSelectedConversationNotFoundRetry]);
+  }, [
+    scheduleActivityStreamStateReload,
+    clearSelectedConversationNotFoundRetry
+  ]);
 
   const startConversation = useCallback(
-    (initialContentInput?: unknown) => {
+    (initialContentInput?: unknown, displayPrompt?: string) => {
       if (
         isCreatingConversation ||
         (data.provider === "openclaw" && openclawGateway?.status !== "ready")
@@ -4569,9 +4483,12 @@ export function useAgentGUINodeController({
             initialContentInput as AgentPromptContentBlock[]
           )
         : textPromptContent(normalizeOptionalPrompt(initialContentInput));
-      const normalizedInitialPrompt = agentPromptContentDisplayText(
-        normalizedInitialContent
-      );
+      const initialDisplayPrompt =
+        displayPrompt && displayPrompt.trim() ? displayPrompt : undefined;
+      // bundle 折叠时,标题/回显用 displayPrompt(单 chip),而非展开后的文件列表。
+      const normalizedInitialPrompt =
+        initialDisplayPrompt ??
+        agentPromptContentDisplayText(normalizedInitialContent);
       const initialConversationTitle =
         normalizedInitialPrompt || AGENT_PROVIDER_LABEL[data.provider];
       isCreatingConversationRef.current = true;
@@ -4646,6 +4563,7 @@ export function useAgentGUINodeController({
           provider,
           cwd: selectedProjectPath ?? "",
           initialContent: normalizedInitialContent,
+          initialDisplayPrompt,
           title: initialConversationTitle,
           settings: initialSettings,
           openclawGatewayReady:
@@ -5040,14 +4958,18 @@ export function useAgentGUINodeController({
     (
       agentSessionId: string,
       content: AgentPromptContentBlock[],
-      queuedPromptId?: string | null
+      queuedPromptId?: string | null,
+      displayPrompt?: string
     ) => {
       const normalizedContent = normalizeAgentPromptContentBlocks(content);
       if (!agentSessionId || normalizedContent.length === 0) {
         return;
       }
+      // displayPrompt(如 bundle 折叠成单 chip)优先用于回显;否则回退到 content 派生文本。
       const submittedPromptText =
-        agentPromptContentDisplayText(normalizedContent);
+        displayPrompt && displayPrompt.trim()
+          ? displayPrompt
+          : agentPromptContentDisplayText(normalizedContent);
       const submittedAtUnixMs = Date.now();
       const previousConversationStatus =
         resolveConversationSummaryById(
@@ -5110,7 +5032,9 @@ export function useAgentGUINodeController({
           return agentActivityRuntime.sendInput({
             workspaceId,
             agentSessionId,
-            content: normalizedContent
+            content: normalizedContent,
+            displayPrompt:
+              displayPrompt && displayPrompt.trim() ? displayPrompt : null
           });
         })
         .then((result) => {
@@ -5326,7 +5250,11 @@ export function useAgentGUINodeController({
   }, [executePrompt]);
 
   const queuePromptLocally = useCallback(
-    (agentSessionId: string, content: readonly AgentPromptContentBlock[]) => {
+    (
+      agentSessionId: string,
+      content: readonly AgentPromptContentBlock[],
+      displayPrompt?: string
+    ) => {
       const normalizedContent = normalizeAgentPromptContentBlocks(content);
       if (!agentSessionId || normalizedContent.length === 0) {
         return;
@@ -5334,6 +5262,7 @@ export function useAgentGUINodeController({
       const queuedPrompt: AgentGUIQueuedPromptVM = {
         id: `local-${createAgentGUIConversationId()}`,
         content: normalizedContent,
+        ...(displayPrompt && displayPrompt.trim() ? { displayPrompt } : {}),
         createdAtUnixMs: Date.now()
       };
       setQueuedPromptsBySessionId((current) => ({
@@ -5369,12 +5298,14 @@ export function useAgentGUINodeController({
   );
 
   const submitPrompt = useCallback(
-    (content: AgentPromptContentBlock[]) => {
+    (content: AgentPromptContentBlock[], displayPrompt?: string) => {
       const agentSessionId = activeConversationIdRef.current;
       const normalizedContent = normalizeAgentPromptContentBlocks(content);
       if (normalizedContent.length === 0) {
         return;
       }
+      const displayPromptText =
+        displayPrompt && displayPrompt.trim() ? displayPrompt : undefined;
       if (
         resolvedPromptImagesSupported === false &&
         agentPromptContentHasImage(normalizedContent)
@@ -5383,7 +5314,7 @@ export function useAgentGUINodeController({
         return;
       }
       if (!agentSessionId) {
-        startConversation(normalizedContent);
+        startConversation(normalizedContent, displayPromptText);
         return;
       }
       if (isSessionMarkedNonResumable(agentSessionId)) {
@@ -5408,10 +5339,19 @@ export function useAgentGUINodeController({
         return;
       }
       if (shouldQueuePromptLocally(agentSessionId)) {
-        queuePromptLocally(agentSessionId, normalizedContent);
+        queuePromptLocally(
+          agentSessionId,
+          normalizedContent,
+          displayPromptText
+        );
         return;
       }
-      executePrompt(agentSessionId, normalizedContent);
+      executePrompt(
+        agentSessionId,
+        normalizedContent,
+        undefined,
+        displayPromptText
+      );
     },
     [
       activation,
@@ -6132,7 +6072,12 @@ export function useAgentGUINodeController({
       return;
     }
     setDrainingQueuedPromptSessionId(activeConversationId);
-    executePrompt(activeConversationId, queuedPrompt.content, queuedPrompt.id);
+    executePrompt(
+      activeConversationId,
+      queuedPrompt.content,
+      queuedPrompt.id,
+      queuedPrompt.displayPrompt
+    );
   }, [
     activeConversationId,
     agentActivityDisplayStatuses,

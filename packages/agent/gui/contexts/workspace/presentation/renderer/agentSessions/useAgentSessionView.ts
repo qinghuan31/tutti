@@ -3,7 +3,6 @@ import type { AgentHostAgentActivityStreamEvent } from "../../../../../shared/co
 import {
   createAgentSessionViewKey,
   getAgentSessionView,
-  type AgentSessionView,
   watchAgentSession,
   type AgentSessionViewRef,
   useAgentSessionView as useStoreAgentSessionView
@@ -97,46 +96,6 @@ export function useWatchAgentSessions(input: {
       }
     };
   }, [agentSessionIdsKey, input.enabled, input.workspaceId]);
-}
-
-export function useAgentSessionDurableRefresh(input: {
-  agentSessionId: string | null | undefined;
-  sessionView: AgentSessionView | null;
-  blockControlStateRefresh?: boolean;
-  onControlStateRefresh?: (revision: number) => void;
-}) {
-  const {
-    agentSessionId,
-    sessionView,
-    blockControlStateRefresh,
-    onControlStateRefresh
-  } = input;
-  const seenControlStateRefreshRevisionBySessionKeyRef = useRef<
-    Record<string, number>
-  >({});
-
-  useEffect(() => {
-    if (!agentSessionId || !sessionView || blockControlStateRefresh) {
-      return;
-    }
-    const sessionKey = sessionView.sessionKey;
-    const revision = sessionView.controlStateRefreshRevision;
-    if (
-      revision <= 0 ||
-      seenControlStateRefreshRevisionBySessionKeyRef.current[sessionKey] ===
-        revision
-    ) {
-      return;
-    }
-    seenControlStateRefreshRevisionBySessionKeyRef.current[sessionKey] =
-      revision;
-    onControlStateRefresh?.(revision);
-  }, [
-    agentSessionId,
-    blockControlStateRefresh,
-    onControlStateRefresh,
-    sessionView
-  ]);
 }
 
 export function useAgentSessionViewSnapshot(ref: AgentSessionViewRef) {
