@@ -40,9 +40,9 @@ func TestAppendAssistantChunkIgnoresDuplicateSnapshotChunk(t *testing.T) {
 
 	session := testSession()
 	normalizer := newACPTurnNormalizer()
-	fullText := "你好！有什么可以帮你的吗？"
+	fullText := "Hello! How can I help you?"
 
-	for _, chunk := range []string{"你好", "！有什么", "可以帮你的吗？"} {
+	for _, chunk := range []string{"Hello", "! How can", " I help you?"} {
 		events := normalizer.AppendAssistantChunk(session, "turn-1", chunk)
 		if len(events) != 1 {
 			t.Fatalf("AppendAssistantChunk(%q) events = %d, want 1", chunk, len(events))
@@ -74,8 +74,8 @@ func TestApplyAssistantFinalTextReplacesEditedSnapshot(t *testing.T) {
 
 	session := testSession()
 	normalizer := newACPTurnNormalizer()
-	streamed := "我刚才只是打招呼。你可以直接把要做的事发来，比如改代码、查问题、跑命令、整理文档等。"
-	finalText := "我刚才只是打招呼。你可以直接把要我做的事发来，比如改代码、查问题、跑命令、整理文档等。"
+	streamed := "I was just saying hello. You can send the task over, such as changing code, investigating an issue, running a command, or organizing docs."
+	finalText := "I was just saying hello. You can send me the task, such as changing code, investigating an issue, running a command, or organizing docs."
 
 	events := normalizer.AppendAssistantChunk(session, "turn-1", streamed)
 	if len(events) != 1 {
