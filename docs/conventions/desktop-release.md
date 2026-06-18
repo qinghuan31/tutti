@@ -118,6 +118,10 @@ Current updater behavior:
 - scheduled update check interval is six hours
 - macOS update checks are disabled for unsupported unsigned or ad-hoc bundles
 
+macOS auto-update metadata must keep x64, arm64, and universal zip entries in `latest-mac.yml`. The file names must include `${arch}` so `electron-updater` can distinguish `mac-x64`, `mac-arm64`, and `mac-universal` assets.
+
+For automatic updates, electron-updater should download the same-architecture zip first: Intel Macs use `mac-x64.zip`, Apple Silicon Macs use `mac-arm64.zip`, and `mac-universal.zip` remains a fallback and the primary manual download. Do not make universal the only auto-update zip while architecture-specific packages exist.
+
 Policy meanings:
 
 - `off`: update checks are disabled

@@ -252,7 +252,9 @@ test("desktop release workflow materializes macOS signing certificate before pac
 
 test("desktop macOS packaging builds architecture-specific and universal artifacts", async () => {
   const buildScript = await readFile(buildScriptPath, "utf8");
+  const packageJson = JSON.parse(await readFile(desktopPackagePath, "utf8"));
 
+  assert.match(packageJson.build.artifactName, /\$\{arch\}/);
   assert.match(buildScript, /GOOS=darwin\s+GOARCH=arm64\s+go build/);
   assert.match(buildScript, /GOOS=darwin\s+GOARCH=amd64\s+go build/);
   assert.match(buildScript, /lipo\s+-create/);
@@ -300,6 +302,23 @@ test("desktop package ships ws as a runtime dependency for packaged main-process
     packageJson.devDependencies.ws,
     undefined,
     "ws should not live only in devDependencies or packaged apps will miss it"
+  );
+});
+
+test("desktop release docs describe same-architecture macOS updater preference", async () => {
+  const releaseDocsPath = new URL(
+    "../../docs/conventions/desktop-release.md",
+    import.meta.url
+  );
+  const releaseDocs = await readFile(releaseDocsPath, "utf8");
+
+  assert.match(
+    releaseDocs,
+    /macOS auto-update metadata must keep x64, arm64, and universal zip entries/
+  );
+  assert.match(
+    releaseDocs,
+    /electron-updater should download the same-architecture zip first/
   );
 });
 
