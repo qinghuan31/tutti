@@ -24,7 +24,7 @@ export const zhCNSettingsPanel = {
     agentNotInstalledBadge: "暂未安装",
     permissionLabel: "权限",
     permissionPreset: "默认权限",
-    permissionAutoReview: "代我批准",
+    permissionAutoReview: "替我审批",
     permissionFullAccess: "完全访问权限",
     personalizationTitle: "个性化"
   },

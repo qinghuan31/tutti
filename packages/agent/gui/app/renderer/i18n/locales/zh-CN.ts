@@ -346,7 +346,7 @@ export const zhCN = {
       speedOptionStandard: "标准",
       speedOptionFast: "快速",
       permissionModeReadOnly: "请求批准",
-      permissionModeAuto: "代我批准",
+      permissionModeAuto: "替我审批",
       permissionModeFullAccess: "完全访问权限",
       permissionSemantics: {
         "ask-before-write": {
@@ -362,7 +362,7 @@ export const zhCN = {
           description: "不会弹出确认；未获允许的操作会被直接拒绝"
         },
         auto: {
-          label: "代我批准",
+          label: "替我审批",
           description: "仅在检测到可能不安全的操作时询问你"
         },
         "full-access": {
@@ -381,7 +381,7 @@ export const zhCN = {
             description: "编辑外部文件或使用互联网前始终询问你"
           },
           auto: {
-            label: "代我批准",
+            label: "替我审批",
             description: "仅在检测到可能不安全的操作时询问你"
           },
           "full-access": {
@@ -395,7 +395,7 @@ export const zhCN = {
             description: "编辑外部文件或使用互联网前始终询问你"
           },
           auto: {
-            label: "代我批准",
+            label: "替我审批",
             description: "仅在检测到可能不安全的操作时询问你"
           },
           "full-access": {

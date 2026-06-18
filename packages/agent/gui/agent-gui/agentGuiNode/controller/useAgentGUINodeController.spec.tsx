@@ -8852,7 +8852,7 @@ describe("useAgentGUINodeController", () => {
         },
         {
           value: "auto",
-          label: "代我批准",
+          label: "替我审批",
           description: "仅在检测到可能不安全的操作时询问你"
         },
         {

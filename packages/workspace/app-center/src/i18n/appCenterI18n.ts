@@ -376,7 +376,7 @@ export const appCenterZhCN = {
         label: "请求批准"
       },
       auto: {
-        label: "代我批准"
+        label: "替我审批"
       },
       "full-access": {
         label: "完全访问"

@@ -105,7 +105,7 @@ func (f *fakeAgentSessions) GetComposerOptions(_ context.Context, input agentser
 			DefaultValue: input.Settings.PermissionModeID,
 			Modes: []agentservice.PermissionModeOption{{
 				ID:       input.Settings.PermissionModeID,
-				Label:    "代我批准",
+				Label:    "替我审批",
 				Semantic: agentservice.PermissionModeSemanticAuto,
 			}},
 		},
@@ -362,7 +362,7 @@ func TestComposerOptionsCommandReturnsProviderOptions(t *testing.T) {
 		t.Fatalf("permissionConfig = %#v", permissionConfig)
 	}
 	modes := permissionConfig["modes"].([]any)
-	if modes[0].(map[string]any)["label"] != "代我批准" {
+	if modes[0].(map[string]any)["label"] != "替我审批" {
 		t.Fatalf("permission modes = %#v", modes)
 	}
 }

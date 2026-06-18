@@ -21,7 +21,7 @@
     "codex": {
       "auto": {
         "description": "仅在检测到可能不安全的操作时询问你",
-        "label": "代我批准"
+        "label": "替我审批"
       },
       "full-access": {
         "description": "可不受限制地访问互联网和你电脑上的任何文件",
@@ -47,7 +47,7 @@
     "nexight": {
       "auto": {
         "description": "仅在检测到可能不安全的操作时询问你",
-        "label": "代我批准"
+        "label": "替我审批"
       },
       "full-access": {
         "description": "可不受限制地访问互联网和你电脑上的任何文件",
@@ -70,7 +70,7 @@
     },
     "auto": {
       "description": "仅在检测到可能不安全的操作时询问你",
-      "label": "代我批准"
+      "label": "替我审批"
     },
     "full-access": {
       "description": "可不受限制地访问互联网和你电脑上的任何文件",

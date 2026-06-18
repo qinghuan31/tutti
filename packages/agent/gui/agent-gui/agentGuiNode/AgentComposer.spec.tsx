@@ -2646,7 +2646,7 @@ function createLabels(): Parameters<typeof AgentComposer>[0]["labels"] {
     speedOptionFast: "Fast",
     permissionLabel: "运行权限",
     permissionModeReadOnly: "请求批准",
-    permissionModeAuto: "代我批准",
+    permissionModeAuto: "替我审批",
     permissionModeFullAccess: "完全访问权限",
     modelDescriptions: {
       frontierComplexCoding: "复杂编码模型说明",
