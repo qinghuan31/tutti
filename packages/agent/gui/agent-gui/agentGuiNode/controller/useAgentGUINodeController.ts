@@ -46,7 +46,6 @@ import { AGENT_PROVIDER_LABEL } from "../../../contexts/settings/domain/agentSet
 import type { AgentGUINodeData } from "../../../types";
 import {
   AGENT_GUI_RUNTIME_SESSION_ORIGIN,
-  buildAgentGUIConversationSummaries,
   buildAgentGUIConversationDetail,
   buildAgentGUIConversationVM,
   conversationSummaryFromAgentSession,
@@ -133,10 +132,8 @@ import {
   upsertLocalCreatedAgentGUIConversation,
   updateAgentGUIConversationListConversations,
   isAgentGUIConversationListRefreshing,
-  getDeletedAgentGUIConversationIds,
   type AgentGUIConversationListQuery
 } from "../../../contexts/workspace/presentation/renderer/agentGuiConversationList/agentGuiConversationListStore";
-import { workspaceAgentSnapshotForConversations } from "../../../contexts/workspace/presentation/renderer/agentGuiConversationList/agentGuiConversationListSnapshot";
 import { useAgentGuiConversationList } from "../../../contexts/workspace/presentation/renderer/agentGuiConversationList/useAgentGuiConversationList";
 import { useAgentGUIActivation } from "./useAgentGUIActivation";
 import {
@@ -763,116 +760,6 @@ function sessionHasRenderableMessages(input: {
   }
   return (
     (input.snapshotMessagesById[normalizedAgentSessionId]?.length ?? 0) > 0
-  );
-}
-
-function maxOptionalTimeUnixMs(
-  left: number | null | undefined,
-  right: number | null | undefined
-): number | undefined {
-  const leftTime =
-    typeof left === "number" && Number.isFinite(left) ? left : undefined;
-  const rightTime =
-    typeof right === "number" && Number.isFinite(right) ? right : undefined;
-  if (leftTime === undefined) {
-    return rightTime;
-  }
-  if (rightTime === undefined) {
-    return leftTime;
-  }
-  return Math.max(leftTime, rightTime);
-}
-
-function mergeSnapshotConversationSummary(
-  existing: AgentGUIConversationSummary | undefined,
-  incoming: AgentGUIConversationSummary,
-  provider: AgentProviderId,
-  completedConversationIds: Set<string>
-): AgentGUIConversationSummary {
-  if (!existing) {
-    return {
-      ...incoming,
-      hasUnreadCompletion: incoming.hasUnreadCompletion ?? false
-    };
-  }
-  const titleFields =
-    hasPromptConversationTitle(existing) &&
-    (isWorkspaceAgentUntitledTask(incoming.title) ||
-      shouldPreserveExistingConversationTitle(
-        existing,
-        incoming.title,
-        provider
-      ))
-      ? {
-          title: existing.title,
-          titleFallback: existing.titleFallback
-        }
-      : mergeConversationTitleUpdateFields(existing, incoming.title, provider);
-  const incomingWouldSettleBusyStatus =
-    conversationBusyStatus(existing.status) &&
-    !conversationBusyStatus(incoming.status);
-  const shouldKeepExistingStatus =
-    existing.updatedAtUnixMs > incoming.updatedAtUnixMs &&
-    incomingWouldSettleBusyStatus;
-  const status = shouldKeepExistingStatus ? existing.status : incoming.status;
-  if (status === "completed" && existing.status !== "completed") {
-    completedConversationIds.add(incoming.id);
-  }
-  const syncState =
-    incoming.syncState &&
-    shouldApplySyncState(existing.syncState, incoming.syncState) &&
-    !syncStateRenderFieldsEqual(existing.syncState, incoming.syncState)
-      ? incoming.syncState
-      : existing.syncState;
-  const hasUnreadCompletion =
-    incoming.status === "completed"
-      ? (existing.hasUnreadCompletion ?? incoming.hasUnreadCompletion ?? false)
-      : false;
-  const merged: AgentGUIConversationSummary = {
-    ...existing,
-    ...incoming,
-    ...titleFields,
-    status,
-    syncState,
-    sortTimeUnixMs: maxOptionalTimeUnixMs(
-      existing.sortTimeUnixMs,
-      incoming.sortTimeUnixMs
-    ),
-    updatedAtUnixMs: shouldKeepExistingStatus
-      ? existing.updatedAtUnixMs
-      : titleFields.title === existing.title &&
-          titleFields.titleFallback === existing.titleFallback &&
-          status === existing.status &&
-          syncState === existing.syncState
-        ? existing.updatedAtUnixMs
-        : incoming.updatedAtUnixMs,
-    hasUnreadCompletion
-  };
-  return areAgentGUIConversationSummariesEqual(existing, merged)
-    ? existing
-    : merged;
-}
-
-function areAgentGUIConversationSummariesEqual(
-  left: AgentGUIConversationSummary,
-  right: AgentGUIConversationSummary
-): boolean {
-  return (
-    left.id === right.id &&
-    left.userId === right.userId &&
-    left.provider === right.provider &&
-    left.title === right.title &&
-    left.titleFallback === right.titleFallback &&
-    left.status === right.status &&
-    left.cwd === right.cwd &&
-    (left.project?.id ?? null) === (right.project?.id ?? null) &&
-    (left.project?.path ?? null) === (right.project?.path ?? null) &&
-    (left.project?.label ?? null) === (right.project?.label ?? null) &&
-    left.sortTimeUnixMs === right.sortTimeUnixMs &&
-    left.updatedAtUnixMs === right.updatedAtUnixMs &&
-    (left.pinnedAtUnixMs ?? 0) === (right.pinnedAtUnixMs ?? 0) &&
-    left.hasUnreadCompletion === right.hasUnreadCompletion &&
-    left.syncState === right.syncState
   );
 }
 
@@ -2752,156 +2639,6 @@ export function useAgentGUINodeController({
     };
   }, [agentHostApi.userProjects, previewMode, setUserProjectsSnapshot]);
 
-  useEffect(() => {
-    if (previewMode) {
-      return;
-    }
-    const filteredSnapshot = workspaceAgentSnapshotForConversations(
-      agentActivitySnapshot
-    );
-    if (!conversationListQuery || filteredSnapshot.sessions.length === 0) {
-      return;
-    }
-    const snapshotConversations = buildAgentGUIConversationSummaries({
-      isNoProjectPath,
-      snapshot: filteredSnapshot,
-      provider: data.provider,
-      sessionMessagesById: agentActivitySnapshot.sessionMessagesById,
-      userProjects
-    });
-    if (snapshotConversations.length === 0) {
-      return;
-    }
-    const completedConversationIds = new Set<string>();
-    updateConversationList((current) => {
-      const snapshotById = new Map(
-        snapshotConversations.map((conversation) => [
-          conversation.id,
-          conversation
-        ])
-      );
-      if (hasLoadedConversations && current.length > 0) {
-        let changed = false;
-        const patched = current.map((existing) => {
-          const incoming = snapshotById.get(existing.id);
-          if (!incoming) {
-            return existing;
-          }
-          const merged = mergeSnapshotConversationSummary(
-            existing,
-            incoming,
-            data.provider,
-            completedConversationIds
-          );
-          if (merged !== existing) {
-            changed = true;
-          }
-          return merged;
-        });
-        const activeConversationId =
-          activeConversationIdRef.current?.trim() ?? "";
-        if (
-          activeConversationId &&
-          !patched.some(
-            (conversation) => conversation.id === activeConversationId
-          )
-        ) {
-          const incoming = snapshotById.get(activeConversationId);
-          if (incoming) {
-            patched.unshift(
-              mergeSnapshotConversationSummary(
-                undefined,
-                incoming,
-                data.provider,
-                completedConversationIds
-              )
-            );
-            changed = true;
-          }
-        }
-        const transientConversation = transientConversationRef.current;
-        if (
-          transientConversation &&
-          !patched.some(
-            (conversation) => conversation.id === transientConversation.id
-          )
-        ) {
-          const snapshotVersion = snapshotById.get(transientConversation.id);
-          patched.unshift(
-            snapshotVersion
-              ? mergeSnapshotConversationSummary(
-                  undefined,
-                  snapshotVersion,
-                  data.provider,
-                  completedConversationIds
-                )
-              : transientConversation
-          );
-          changed = true;
-        }
-        if (!changed) {
-          return current;
-        }
-        const next = applyAgentGUIConversationProjects(patched, userProjects, {
-          isNoProjectPath
-        });
-        if (
-          next.length === current.length &&
-          next.every((conversation, index) => conversation === current[index])
-        ) {
-          return current;
-        }
-        return next;
-      }
-
-      const currentById = new Map(
-        current.map((conversation) => [conversation.id, conversation])
-      );
-      const deletedIds = getDeletedAgentGUIConversationIds(
-        conversationListQuery
-      );
-      const filteredSnapshotConversations =
-        deletedIds.size > 0
-          ? snapshotConversations.filter((c) => !deletedIds.has(c.id))
-          : snapshotConversations;
-      const snapshotIds = new Set(
-        filteredSnapshotConversations.map((conversation) => conversation.id)
-      );
-      const merged: AgentGUIConversationSummary[] =
-        filteredSnapshotConversations.map((conversation) =>
-          mergeSnapshotConversationSummary(
-            currentById.get(conversation.id),
-            conversation,
-            data.provider,
-            completedConversationIds
-          )
-        );
-      for (const conversation of current) {
-        if (!snapshotIds.has(conversation.id)) {
-          merged.push(conversation);
-        }
-      }
-      return applyAgentGUIConversationProjects(merged, userProjects, {
-        isNoProjectPath
-      });
-    });
-    for (const conversationId of completedConversationIds) {
-      markAgentGUIConversationCompletionObserved({
-        query: conversationListQuery,
-        conversationId
-      });
-    }
-  }, [
-    agentActivitySnapshot,
-    conversationListQuery,
-    data.provider,
-    hasLoadedConversations,
-    isNoProjectPath,
-    previewMode,
-    updateConversationList,
-    userProjects
-  ]);
-
   const setTransientConversation = useCallback(
     (
       value:
@@ -2946,6 +2683,7 @@ export function useAgentGUINodeController({
     );
   }, [
     isNoProjectPath,
+    conversations,
     previewMode,
     setTransientConversation,
     updateConversationList,

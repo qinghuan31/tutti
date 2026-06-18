@@ -146,6 +146,60 @@ describe("agentGuiConversationListStore", () => {
     });
   });
 
+  it("marks background completed runtime updates unread during projection", async () => {
+    const query: AgentGUIConversationListQuery = {
+      workspaceId: "workspace-1",
+      userId: "user-1",
+      provider: "codex",
+      sessionOrigin: "WORKSPACE_AGENT_SESSION_ORIGIN_RUNTIME"
+    };
+    let snapshot: WorkspaceAgentActivitySnapshot = {
+      ...emptySnapshot(),
+      sessions: [runtimeSession("session-1", 1_000)]
+    };
+    let runtimeListener: (() => void) | undefined;
+    setAgentActivityRuntimeForTests({
+      getSnapshot: () => snapshot,
+      load: async () => snapshot,
+      subscribe: (_workspaceId, listener) => {
+        runtimeListener = () => listener(snapshot as AgentActivitySnapshot);
+        return () => {};
+      }
+    } as Partial<AgentActivityRuntime> as AgentActivityRuntime);
+
+    ensureAgentGUIConversationListQuery(query);
+    scheduleAgentGUIConversationListProjection(query, "projection-sync");
+    await waitFor(() => {
+      expect(
+        getAgentGUIConversationListQuerySnapshot(query)?.conversations[0]
+          ?.status
+      ).toBe("ready");
+    });
+
+    snapshot = {
+      ...snapshot,
+      sessions: [
+        {
+          ...runtimeSession("session-1", 2_000),
+          status: "completed"
+        }
+      ]
+    };
+    runtimeListener?.();
+
+    await waitFor(() => {
+      expect(
+        getAgentGUIConversationListQuerySnapshot(query)?.conversations[0]
+      ).toEqual(
+        expect.objectContaining({
+          id: "session-1",
+          status: "completed",
+          hasUnreadCompletion: true
+        })
+      );
+    });
+  });
+
   it("sorts conversations by stable sort time before update time", () => {
     const query: AgentGUIConversationListQuery = {
       workspaceId: "workspace-1",

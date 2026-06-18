@@ -57,7 +57,9 @@ export function createDesktopAgentHostWorkspaceAgentsApi({
     list: async (_payload) => {
       const activitySnapshot = await agentActivityService.load(workspaceId);
       const visibleSessions = activitySnapshot.sessions.filter(
-        (session) => !isHiddenAgentSession(workspaceState, session)
+        (session) =>
+          session.visible !== false &&
+          !isHiddenAgentSession(workspaceState, session)
       );
       return {
         presences: desktopAgentGUIPresenceProviders.map((provider, index) => ({

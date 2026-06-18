@@ -2409,6 +2409,36 @@ test("desktop agent host api keeps canonical sessions across adapter recreation"
   );
 });
 
+test("desktop agent host api excludes invisible persisted sessions from workspace agent list", async () => {
+  const api = createAgentHostApi({
+    workspaceId: "workspace-invisible",
+    tuttidClient: createTuttidClient({
+      async listWorkspaceAgentSessions() {
+        return {
+          sessions: [
+            createSession({
+              id: "visible-session",
+              visible: true
+            }),
+            createSession({
+              id: "invisible-session",
+              visible: false
+            })
+          ],
+          workspaceId: "workspace-invisible"
+        };
+      }
+    })
+  });
+
+  const snapshot = await api.workspaceAgents.list();
+
+  assert.deepEqual(
+    snapshot.sessions.map((session) => session.agentSessionId),
+    ["visible-session"]
+  );
+});
+
 test("desktop agent host api reuses desktop host file operations", async () => {
   const usedProjectPaths: string[] = [];
   const writtenFiles: Array<{
