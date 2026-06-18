@@ -11,6 +11,7 @@ import {
   tuttiExternalAtDefaultMaxResults,
   tuttiExternalAtMaxResultsLimit,
   tuttiExternalAtProviderIds,
+  tuttiExternalWorkspaceAgentProviders,
   tuttiExternalManagedAiModelProviderIds
 } from "./index.ts";
 
@@ -201,6 +202,25 @@ test("rejects invalid workspace feature open input", () => {
       }),
     /feature is unsupported/
   );
+  assert.throws(
+    () =>
+      normalizeTuttiExternalWorkspaceOpenFeatureInput({
+        feature: "agent-chat",
+        provider: "unknown-agent"
+      }),
+    /provider is unsupported/
+  );
+});
+
+test("keeps the workspace agent provider set explicit", () => {
+  assert.deepEqual(tuttiExternalWorkspaceAgentProviders, [
+    "claude-code",
+    "codex",
+    "nexight",
+    "hermes",
+    "gemini",
+    "openclaw"
+  ]);
 });
 
 test("keeps the managed AI model provider set explicit", () => {

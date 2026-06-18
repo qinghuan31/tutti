@@ -133,6 +133,8 @@ export interface IWorkspaceWorkbenchHostService {
   onOpenFileRequest(
     listener: (request: DesktopWorkspaceAppOpenFileResolvedPayload) => void
   ): () => void;
+  hasWorkspaceOnboardingAutoOpened(workspaceId: string): Promise<boolean>;
+  markWorkspaceOnboardingAutoOpened(workspaceId: string): Promise<void>;
   readWallpaperDisplayMode(workspaceId: string): WorkspaceWallpaperDisplayMode;
   readWallpaperId(workspaceId: string): WorkspaceWallpaperId;
   ensureAgentProviderStatusesLoaded(): Promise<void>;

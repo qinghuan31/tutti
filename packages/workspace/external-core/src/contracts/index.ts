@@ -125,9 +125,21 @@ export type TuttiExternalWorkspaceFeature =
   | "agent-connect"
   | "agent-chat";
 
+export const tuttiExternalWorkspaceAgentProviders = [
+  "claude-code",
+  "codex",
+  "nexight",
+  "hermes",
+  "gemini",
+  "openclaw"
+] as const;
+
+export type TuttiExternalWorkspaceAgentProvider =
+  (typeof tuttiExternalWorkspaceAgentProviders)[number];
+
 export interface TuttiExternalWorkspaceOpenFeatureInput {
   feature: TuttiExternalWorkspaceFeature;
-  provider?: string;
+  provider?: TuttiExternalWorkspaceAgentProvider;
 }
 
 export const tuttiExternalLogLevels = [

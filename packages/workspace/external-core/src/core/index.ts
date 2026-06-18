@@ -1,6 +1,7 @@
 import {
   tuttiExternalManagedAiModelProviderIds,
   tuttiExternalAtProviderIds,
+  tuttiExternalWorkspaceAgentProviders,
   type TuttiExternalAtProviderId,
   type TuttiExternalAtQueryInput,
   type TuttiExternalFileOpenInput,
@@ -10,13 +11,15 @@ import {
   type TuttiExternalManagedAiModelProviderId,
   type TuttiExternalPermissionRequestInput,
   type TuttiExternalSettingsOpenInput,
+  type TuttiExternalWorkspaceAgentProvider,
   type TuttiExternalWorkspaceFeature,
   type TuttiExternalWorkspaceOpenFeatureInput
 } from "../contracts/index.ts";
 
 export {
   tuttiExternalAtProviderIds,
-  tuttiExternalManagedAiModelProviderIds
+  tuttiExternalManagedAiModelProviderIds,
+  tuttiExternalWorkspaceAgentProviders
 } from "../contracts/index.ts";
 
 export const tuttiExternalAtMaxResultsLimit = 50;
@@ -197,7 +200,9 @@ export function normalizeTuttiExternalWorkspaceOpenFeatureInput(
   return {
     feature,
     ...(typeof input.provider === "string" && input.provider.trim() !== ""
-      ? { provider: input.provider.trim() }
+      ? {
+          provider: normalizeTuttiExternalWorkspaceAgentProvider(input.provider)
+        }
       : {})
   };
 }
@@ -231,6 +236,27 @@ export function isTuttiExternalWorkspaceFeature(
       value as TuttiExternalWorkspaceFeature
     )
   );
+}
+
+export function isTuttiExternalWorkspaceAgentProvider(
+  value: unknown
+): value is TuttiExternalWorkspaceAgentProvider {
+  return (
+    typeof value === "string" &&
+    tuttiExternalWorkspaceAgentProviders.includes(
+      value as TuttiExternalWorkspaceAgentProvider
+    )
+  );
+}
+
+function normalizeTuttiExternalWorkspaceAgentProvider(
+  value: unknown
+): TuttiExternalWorkspaceAgentProvider {
+  const provider = typeof value === "string" ? value.trim() : value;
+  if (!isTuttiExternalWorkspaceAgentProvider(provider)) {
+    throw new Error("workspace.openFeature provider is unsupported.");
+  }
+  return provider;
 }
 
 function normalizeTuttiExternalLogLevel(value: unknown): TuttiExternalLogLevel {

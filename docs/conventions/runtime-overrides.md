@@ -87,6 +87,7 @@ Use the owner documents linked below for detailed behavior. This file exists to 
 | `TUTTI_AGENT_SESSION_ID`     | This document                                   | Identifies the caller agent session for CLI invoke context and agent runtime logs.      |
 | `TUTTI_AGENT_ROUTING`        | This document                                   | Marks provider subprocesses launched through the migrated agent routing path.           |
 | `TUTTI_ACP_TOOL_DEBUG`       | This document                                   | Enables verbose migrated ACP tool-call normalization diagnostics.                       |
+| `TUTTI_MOCK_AGENT_UNBOUND`   | This document                                   | Forces Codex unbound and Claude Code auth-required for onboarding diagnostics.          |
 | `TUTTI_WORKSPACE_ID`         | This document                                   | Supplies a workspace id to migrated agent context readers when no input id is provided. |
 
 ## Desktop Renderer Diagnostics

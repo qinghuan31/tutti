@@ -74,6 +74,10 @@ import {
   writeWorkspaceWallpaperDisplayModeToSnapshot,
   writeWorkspaceWallpaperIdToSnapshot
 } from "../workspaceWallpaper";
+import {
+  hasWorkspaceOnboardingAutoOpened,
+  writeWorkspaceOnboardingAutoOpenedToSnapshot
+} from "../workspaceOnboarding.ts";
 import { createWorkspaceAgentProviderDockStateSource } from "./workspaceAgentProviderDockStateSource.ts";
 import { createWindowCloseRequestTracker } from "../windowCloseRequestTracker";
 import { runWorkspaceAgentProviderDockAction } from "./workspaceAgentProviderDockActions.ts";
@@ -324,6 +328,27 @@ export class WorkspaceWorkbenchHostService implements IWorkspaceWorkbenchHostSer
     listener: (request: DesktopWorkspaceAppOpenFileResolvedPayload) => void
   ): () => void {
     return this.dependencies.hostWorkspaceApi.onOpenFileRequest(listener);
+  }
+
+  async hasWorkspaceOnboardingAutoOpened(
+    workspaceId: string
+  ): Promise<boolean> {
+    const cachedSnapshot = this.dependencies.repository.readCached(workspaceId);
+    const snapshot = cachedSnapshot
+      ? cachedSnapshot
+      : await this.dependencies.repository.load(workspaceId);
+    return hasWorkspaceOnboardingAutoOpened(snapshot);
+  }
+
+  async markWorkspaceOnboardingAutoOpened(workspaceId: string): Promise<void> {
+    const cachedSnapshot = this.dependencies.repository.readCached(workspaceId);
+    const snapshot = cachedSnapshot
+      ? cachedSnapshot
+      : await this.dependencies.repository.load(workspaceId);
+    await this.dependencies.repository.save(
+      workspaceId,
+      writeWorkspaceOnboardingAutoOpenedToSnapshot(snapshot)
+    );
   }
 
   readWallpaperDisplayMode(workspaceId: string) {

@@ -1,12 +1,5 @@
 import type * as React from "react";
-import {
-  useCallback,
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-  useSyncExternalStore
-} from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { WorkspaceSummary } from "@tutti-os/client-tuttid-ts";
 import {
   defaultIssueManagerWorkbenchTypeId,
@@ -45,6 +38,7 @@ import {
   createWorkspaceAgentGuiDraftLaunchRequest,
   createWorkspaceAgentGuiSessionLaunchRequest
 } from "../services/workspaceAgentGuiLaunch.ts";
+import { resolveWorkspaceAgentChatProvider } from "../services/workspaceOpenFeatureRequest.ts";
 import type { WorkspaceLaunchpadOpenTrigger } from "../services/workspaceLaunchpadAnalytics.ts";
 import {
   registerWorkspaceBrowserLaunchHandler,
@@ -65,7 +59,6 @@ import {
 } from "../services/workspaceIssueManagerLaunchCoordinator.ts";
 import { workspaceLaunchpadDockActionId } from "../services/workspaceLaunchpadModel.ts";
 import { requestWorkspaceMessageCenterOpen } from "../services/workspaceMessageCenterCoordinator.ts";
-import { resolveWorkspaceAgentGuiLabel } from "../services/workspaceAgentProviderCatalog.ts";
 import { workspaceBrowserNodeID } from "../services/workspaceWorkbenchNodeIds.ts";
 import { WorkspaceChrome } from "./WorkspaceChrome";
 import { WorkspaceAppExternalBridge } from "./WorkspaceAppExternalBridge";
@@ -308,11 +301,12 @@ function ReadyWorkspaceWorkbench({
         return;
       }
       if (request.feature === "agent-chat") {
-        // “已绑定，去使用”：打开已绑定（默认）provider 的对话框。
+        // “已绑定，去使用”：优先打开请求指定的 provider，再回退到默认 provider。
         const snapshot = agentProviderStatusService.getSnapshot();
-        const preferred = normalizeDesktopAgentGUIProvider(
-          snapshot.defaultProvider ?? request.provider
-        );
+        const preferred = resolveWorkspaceAgentChatProvider({
+          defaultProvider: snapshot.defaultProvider,
+          requestedProvider: request.provider
+        });
         void requestWorkspaceAgentGuiLaunch({
           provider: preferred,
           workspaceId
@@ -379,6 +373,13 @@ function ReadyWorkspaceWorkbench({
 
     let canceled = false;
     const openOnboarding = async () => {
+      if (
+        await runtime.workbenchHostService.hasWorkspaceOnboardingAutoOpened(
+          workspaceId
+        )
+      ) {
+        return;
+      }
       for (let attempt = 0; attempt < 20 && !canceled; attempt += 1) {
         await appCenterService.refresh(workspaceId);
         const app = appCenterService.store.apps.find(
@@ -400,6 +401,9 @@ function ReadyWorkspaceWorkbench({
             appId: onboardingAppId,
             workspaceId
           });
+          await runtime.workbenchHostService.markWorkspaceOnboardingAutoOpened(
+            workspaceId
+          );
           return;
         }
         await new Promise((resolve) => setTimeout(resolve, 500));
@@ -411,7 +415,12 @@ function ReadyWorkspaceWorkbench({
     return () => {
       canceled = true;
     };
-  }, [appCenterService, state.workspace.id, workbenchHost]);
+  }, [
+    appCenterService,
+    runtime.workbenchHostService,
+    state.workspace.id,
+    workbenchHost
+  ]);
 
   useEffect(() => {
     const missionControlShortcutsEnabled =
@@ -517,46 +526,12 @@ function ReadyWorkspaceWorkbench({
         workspaceId={state.workspace.id}
         onClose={closeLaunchpad}
       />
-      <WorkspaceAgentConnectingCard service={agentProviderStatusService} />
       <WorkspaceCloseGuardDialog
         request={runtime.closeDialog.request}
         onCancel={runtime.closeDialog.onCancel}
         onConfirm={runtime.closeDialog.onConfirm}
       />
     </main>
-  );
-}
-
-function WorkspaceAgentConnectingCard({
-  service
-}: {
-  service: IAgentProviderStatusService;
-}) {
-  const { t } = useTranslation();
-  const snapshot = useSyncExternalStore(
-    (listener) => service.subscribe(listener),
-    () => service.getSnapshot(),
-    () => service.getSnapshot()
-  );
-  const pending = snapshot.pendingActions.find(
-    (action) => action.actionId === "install"
-  );
-  if (!pending) {
-    return null;
-  }
-  const label = resolveWorkspaceAgentGuiLabel(
-    normalizeDesktopAgentGUIProvider(pending.provider)
-  );
-  return (
-    <div className="pointer-events-none fixed inset-x-0 bottom-28 z-50 flex justify-center">
-      <div className="pointer-events-auto flex w-64 flex-col items-center gap-3 rounded-2xl border border-border bg-background px-6 py-5 text-center shadow-xl">
-        <div className="text-[15px] font-semibold text-foreground">{label}</div>
-        <div className="text-[12.5px] leading-relaxed text-muted-foreground">
-          {t("workspace.workbenchDesktop.agentProviders.installing")}
-        </div>
-        <LoadingIcon className="size-5 animate-spin text-muted-foreground" />
-      </div>
-    </div>
   );
 }
 
