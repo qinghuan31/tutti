@@ -2120,7 +2120,6 @@ func TestAppCenterServiceInstallReturnsWhileRemoteBuiltinDownloadRuns(t *testing
 		t.Fatalf("PutAppPackage() error = %v", err)
 	}
 	fetcher := newBlockingArtifactFetcher()
-	defer close(fetcher.release)
 	service := AppCenterService{
 		Store:           store,
 		WorkspaceStore:  &catalogStoreStub{getWorkspace: workspacebiz.Summary{ID: "ws-1", Name: "Workspace"}},
@@ -2177,6 +2176,13 @@ func TestAppCenterServiceInstallReturnsWhileRemoteBuiltinDownloadRuns(t *testing
 		}
 	case <-time.After(100 * time.Millisecond):
 		t.Fatal("Install() blocked on remote artifact download")
+	}
+
+	close(fetcher.release)
+	select {
+	case <-fetcher.done:
+	case <-time.After(time.Second):
+		t.Fatal("background remote builtin install job did not finish")
 	}
 }
 
