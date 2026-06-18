@@ -1011,7 +1011,7 @@ function FactoryProviderSelect({
     <Select
       disabled={options.length === 0}
       open={open}
-      value={selectedOption?.provider}
+      value={selectedProvider}
       onOpenChange={onOpenChange}
       onValueChange={onSelectProvider}
     >
@@ -1091,7 +1091,7 @@ function FactoryPermissionDropdown({
     <Select
       disabled={disabled}
       open={open}
-      value={selectedOption?.value}
+      value={selectedPermissionModeId}
       onOpenChange={onOpenChange}
       onValueChange={onSelectPermissionMode}
     >
@@ -1183,10 +1183,10 @@ function FactoryModelReasoningDropdown({
   const selectedValue = showModelSection
     ? selectedModel
       ? `model:${selectedModel}`
-      : undefined
+      : ""
     : selectedReasoningEffort
       ? `reasoning:${selectedReasoningEffort}`
-      : undefined;
+      : "";
   const applySettingsValue = (nextValue: string): void => {
     if (nextValue.startsWith("reasoning:")) {
       onSelectReasoningEffort(nextValue.slice("reasoning:".length));

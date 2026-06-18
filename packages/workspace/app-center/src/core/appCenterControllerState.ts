@@ -34,10 +34,14 @@ export abstract class WorkspaceAppCenterControllerState extends WorkspaceAppCent
         this.withPendingInstallState(workspaceId, snapshot.apps)
       )
     );
+    const previousAppsById = new Map(
+      this.store.apps.map((app) => [app.appId, app])
+    );
     for (const app of nextApps) {
       this.settlePendingInstallReport({
         app,
         failureReason: app.failureReason ?? app.lastError ?? null,
+        previousApp: previousAppsById.get(app.appId),
         workspaceId
       });
     }
@@ -154,6 +158,7 @@ export abstract class WorkspaceAppCenterControllerState extends WorkspaceAppCent
           currentApp.failureReason ??
           currentApp.lastError ??
           null,
+        previousApp: currentApp,
         workspaceId
       });
       return;
@@ -188,6 +193,7 @@ export abstract class WorkspaceAppCenterControllerState extends WorkspaceAppCent
         mergedApp.failureReason ??
         mergedApp.lastError ??
         null,
+      previousApp: currentApp,
       workspaceId
     });
     this.closeWorkspaceAppViews(workspaceId, appIdsToClose);
@@ -231,6 +237,7 @@ export abstract class WorkspaceAppCenterControllerState extends WorkspaceAppCent
       }
       void this.refreshInstallState(workspaceId, appId);
     }, this.dependencies.installRefreshDelayMs ?? defaultInstallRefreshDelayMs);
+    timer.unref?.();
     this.installRefreshTimers.set(key, timer);
   }
 
@@ -411,6 +418,7 @@ export abstract class WorkspaceAppCenterControllerState extends WorkspaceAppCent
       }
       void this.refresh(workspaceId);
     }, this.dependencies.catalogLoadingRefreshDelayMs ?? defaultCatalogLoadingRefreshDelayMs);
+    this.catalogRefreshTimer.unref?.();
   }
 
   protected mergeActiveInstallAppState(
@@ -520,13 +528,16 @@ export abstract class WorkspaceAppCenterControllerState extends WorkspaceAppCent
   private settlePendingInstallReport(input: {
     app: WorkspaceAppCenterApp;
     failureReason: string | null;
+    previousApp?: WorkspaceAppCenterApp;
     workspaceId: string;
   }): void {
     const installKey = appRuntimeKey(input.workspaceId, input.app.appId);
     if (!this.pendingInstallKeys.has(installKey)) {
       return;
     }
-    if (!this.isPendingInstallSettled(installKey, input.app)) {
+    if (
+      !this.isPendingInstallSettled(installKey, input.app, input.previousApp)
+    ) {
       return;
     }
 

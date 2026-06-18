@@ -354,6 +354,17 @@ test("WorkspaceAppCenterController requests restart when updating a running inst
   assert.deepEqual(closeRequests, [
     { appIds: ["app-1"], workspaceId: "workspace-1" }
   ]);
+  controller.applyAppUpdate({
+    app: createApp({
+      appId: "app-1",
+      availableVersion: null,
+      runtimeStatus: "running",
+      stateRevision: 3,
+      updateAvailable: false,
+      version: "1.1.0"
+    }),
+    workspaceId: "workspace-1"
+  });
 });
 
 test("WorkspaceAppCenterController preserves install progress during pending install app updates", async () => {
