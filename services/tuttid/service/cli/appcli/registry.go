@@ -499,7 +499,12 @@ func (r *Registry) httpClient() *http.Client {
 	if r.HTTPClient != nil {
 		return r.HTTPClient
 	}
-	return &http.Client{Timeout: 35 * time.Second}
+	// Cover the largest command budget the manifest allows (maxTimeoutMs) plus a
+	// small buffer; the per-command context.WithTimeout(command.timeout) still
+	// enforces the real deadline. A shorter client timeout would cut long
+	// synchronous commands (e.g. vibe-design session-start at 300s) short and
+	// surface them as app_cli_runtime_unavailable.
+	return &http.Client{Timeout: maxTimeoutMs*time.Millisecond + 30*time.Second}
 }
 
 func (r *Registry) ensureLocked() {
