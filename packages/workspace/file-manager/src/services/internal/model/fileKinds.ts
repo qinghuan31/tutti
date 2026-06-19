@@ -26,6 +26,7 @@ export {
   resolveWorkspaceFileExtension,
   resolveWorkspaceFileVisualKind,
   resolveWorkspaceImageMimeType,
+  resolveWorkspaceVideoMimeType,
   workspaceFilePreviewMaxBytes,
   workspaceFileTextMaxBytes
 } from "@tutti-os/workspace-file-preview";

@@ -40,6 +40,7 @@ import {
 import { requestWorkspaceBrowserLaunch } from "../workspaceBrowserLaunchCoordinator.ts";
 import { requestWorkspaceFilesLaunch } from "../workspaceFilesLaunchCoordinator.ts";
 import { requestWorkspaceIssueManagerLaunch } from "../workspaceIssueManagerLaunchCoordinator.ts";
+import { requestGroupChatLaunch } from "../groupChatLaunchCoordinator.ts";
 import { workspaceAgentGuiNodeFrame } from "./workspaceWorkbenchComposition.ts";
 import { isWorkspaceAgentGuiDefaultDockProvider } from "./workspaceAgentProviderCatalog.ts";
 
@@ -88,6 +89,11 @@ export function createWorkspaceAgentGuiContribution(input: {
       launchAgentGui: requestWorkspaceAgentGuiLaunch,
       launchWorkspaceIssueManager: requestWorkspaceIssueManagerLaunch,
       launchWorkspaceFiles: requestWorkspaceFilesLaunch,
+      launchWorkspaceApp: async ({ appId, workspaceId }) => {
+        await input.appCenterService.openApp({ appId, workspaceId });
+        return true;
+      },
+      launchGroupChat: requestGroupChatLaunch,
       openBrowserUrl: requestWorkspaceBrowserLaunch,
       workspaceId: input.workspaceId
     });

@@ -10,6 +10,7 @@ import type {
   AppReferenceSearchResponse,
   AgentProviderStatusListResponse,
   CancelWorkspaceAgentSessionResponse,
+  ClearWorkspaceAgentSessionsResponse,
   CliCapabilitiesResponse,
   AgentSessionComposerSettings,
   GetAgentProviderComposerOptionsRequest,
@@ -212,6 +213,9 @@ export interface TuttidClient {
     workspaceID: string,
     agentSessionID: string
   ): Promise<DeleteWorkspaceAgentSessionResponse>;
+  clearWorkspaceAgentSessions(
+    workspaceID: string
+  ): Promise<ClearWorkspaceAgentSessionsResponse>;
   moveWorkspaceFileEntry(
     workspaceID: string,
     request: MoveWorkspaceFileEntryRequest

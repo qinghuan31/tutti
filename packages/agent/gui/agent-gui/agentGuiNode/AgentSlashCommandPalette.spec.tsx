@@ -153,4 +153,47 @@ describe("AgentSlashCommandPalette", () => {
       aliases: ["电脑"]
     });
   });
+
+  it("separates slash palette categories with dividers", () => {
+    render(
+      <AgentSlashCommandPalette
+        label="Slash commands"
+        commandsGroupLabel="Commands"
+        capabilitiesGroupLabel="Capabilities"
+        skillsGroupLabel="Skills"
+        highlightedIndex={0}
+        entries={[
+          {
+            type: "command",
+            key: "command:status",
+            label: "status",
+            command: {
+              name: "status"
+            }
+          },
+          {
+            type: "capability",
+            key: "capability:browserUse",
+            label: "Browser",
+            capability: {
+              kind: "capability",
+              capability: "browserUse",
+              name: "browser",
+              aliases: []
+            }
+          }
+        ]}
+        onHighlightChange={vi.fn()}
+        onSelect={vi.fn()}
+        onSelectCapability={vi.fn()}
+        onSelectSkill={vi.fn()}
+      />
+    );
+
+    expect(screen.getByText("Commands")).not.toHaveClass("border-t");
+    expect(screen.getByText("Capabilities")).toHaveClass(
+      "border-t",
+      "border-[var(--border-1)]"
+    );
+  });
 });

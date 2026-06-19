@@ -96,10 +96,16 @@ type externalImportedSession struct {
 }
 
 type externalImportedMessage struct {
-	RawID            string
-	Role             string
-	Text             string
-	OccurredAtUnixMS int64
+	RawID             string
+	MessageIDSeed     string
+	Role              string
+	Kind              string
+	Status            string
+	Text              string
+	Payload           map[string]any
+	OccurredAtUnixMS  int64
+	StartedAtUnixMS   int64
+	CompletedAtUnixMS int64
 }
 
 type externalScanData struct {
@@ -439,7 +445,7 @@ func (s *Service) importExternalSession(ctx context.Context, workspaceID string,
 	}
 	updates := make([]agentactivitybiz.MessageUpdate, 0, len(session.Messages))
 	for i, message := range session.Messages {
-		messageID := externalImportedMessageID(session.Provider, session.ProviderSessionID, message.RawID, i)
+		messageID := externalImportedMessageIDForMessage(session.Provider, session.ProviderSessionID, message, i)
 		if _, ok := existingIDs[messageID]; ok {
 			continue
 		}
@@ -447,12 +453,12 @@ func (s *Service) importExternalSession(ctx context.Context, workspaceID string,
 			MessageID:         messageID,
 			TurnID:            externalImportedTurnID(session.Provider, session.ProviderSessionID, i),
 			Role:              message.Role,
-			Kind:              "text",
-			Status:            "completed",
-			Payload:           map[string]any{"text": message.Text},
+			Kind:              message.Kind,
+			Status:            message.Status,
+			Payload:           externalImportedMessagePayload(message),
 			OccurredAtUnixMS:  message.OccurredAtUnixMS,
-			StartedAtUnixMS:   message.OccurredAtUnixMS,
-			CompletedAtUnixMS: message.OccurredAtUnixMS,
+			StartedAtUnixMS:   message.StartedAtUnixMS,
+			CompletedAtUnixMS: message.CompletedAtUnixMS,
 		})
 	}
 	if _, err := s.ExternalImportStore.ReportSessionState(ctx, agentactivitybiz.SessionStateReport{
@@ -608,8 +614,26 @@ func externalImportedMessageID(provider string, providerSessionID string, rawID 
 	return "imported-" + externalStableHash(provider + "\x00" + providerSessionID + "\x00" + rawID + "\x00" + strconv.Itoa(index))[:32]
 }
 
+func externalImportedMessageIDForMessage(provider string, providerSessionID string, message externalImportedMessage, index int) string {
+	if seed := strings.TrimSpace(message.MessageIDSeed); seed != "" {
+		return "imported-" + externalStableHash(provider + "\x00" + providerSessionID + "\x00" + seed)[:32]
+	}
+	return externalImportedMessageID(provider, providerSessionID, message.RawID, index)
+}
+
 func externalImportedTurnID(provider string, providerSessionID string, index int) string {
 	return "imported-turn-" + externalStableHash(provider + "\x00" + providerSessionID + "\x00" + strconv.Itoa(index/2))[:24]
+}
+
+func externalImportedMessagePayload(message externalImportedMessage) map[string]any {
+	payload := clonePayload(message.Payload)
+	if payload == nil {
+		payload = map[string]any{}
+	}
+	if strings.TrimSpace(message.Kind) == "text" {
+		payload["text"] = message.Text
+	}
+	return payload
 }
 
 func externalStableHash(input string) string {
@@ -658,6 +682,26 @@ func normalizeExternalMessageRole(role string) string {
 		return strings.TrimSpace(strings.ToLower(role))
 	default:
 		return ""
+	}
+}
+
+func normalizeExternalMessageKind(kind string) string {
+	switch strings.TrimSpace(strings.ToLower(kind)) {
+	case "tool_call":
+		return "tool_call"
+	case "reasoning":
+		return "reasoning"
+	default:
+		return "text"
+	}
+}
+
+func normalizeExternalMessageStatus(status string) string {
+	switch strings.TrimSpace(strings.ToLower(status)) {
+	case "running", "completed", "failed", "canceled", "waiting":
+		return strings.TrimSpace(strings.ToLower(status))
+	default:
+		return "completed"
 	}
 }
 

@@ -28,6 +28,12 @@ export interface DesktopAgentGUILinkActionDependencies {
     appId: string;
     workspaceId: string;
   }) => Promise<boolean> | boolean;
+  launchGroupChat?: (input: {
+    conversationId?: string | null;
+    messageId?: string | null;
+    summaryTaskId?: string | null;
+    workspaceId: string;
+  }) => Promise<boolean> | boolean;
   openBrowserUrl(input: {
     source?: "agent_command";
     url: string;
@@ -37,6 +43,7 @@ export interface DesktopAgentGUILinkActionDependencies {
 }
 
 const issueManagerWorkspaceAppId = "issue-manager";
+const groupChatWorkspaceAppId = "group-chat";
 
 export async function runDesktopAgentGUILinkAction(
   action: WorkspaceLinkAction,
@@ -94,6 +101,22 @@ export async function runDesktopAgentGUILinkAction(
       if (appId === issueManagerWorkspaceAppId) {
         return dependencies.launchWorkspaceIssueManager({
           workspaceId: dependencies.workspaceId
+        });
+      }
+      if (
+        appId === groupChatWorkspaceAppId &&
+        dependencies.launchGroupChat &&
+        (action.messageId || action.summaryTaskId)
+      ) {
+        return dependencies.launchGroupChat({
+          workspaceId: dependencies.workspaceId,
+          ...(action.messageId ? { messageId: action.messageId } : {}),
+          ...(action.summaryTaskId
+            ? { summaryTaskId: action.summaryTaskId }
+            : {}),
+          ...(action.conversationId
+            ? { conversationId: action.conversationId }
+            : {})
         });
       }
       if (!dependencies.launchWorkspaceApp) {

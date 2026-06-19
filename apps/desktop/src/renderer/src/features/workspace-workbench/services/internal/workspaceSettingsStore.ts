@@ -8,6 +8,7 @@ export function createWorkspaceSettingsStore(): WorkspaceSettingsStoreState {
     developerPanelVisible: readDeveloperPanelVisible(),
     developerLogs: {
       clearing: false,
+      clearingConversationHistory: false,
       exporting: false,
       loading: false,
       logs: null

@@ -40,6 +40,11 @@ export type WorkspaceFilePreviewNodeControllerState =
       objectUrl: string;
       status: "image";
     }
+  | {
+      entry: WorkspaceFileActivationTarget;
+      objectUrl: string;
+      status: "video";
+    }
   | { entry: WorkspaceFileActivationTarget; message: string; status: "error" }
   | {
       entry: WorkspaceFileActivationTarget;
@@ -249,7 +254,7 @@ class WorkspaceFilePreviewNodeControllerImpl implements WorkspaceFilePreviewNode
         target
       });
 
-      if (loadedState.status === "image") {
+      if (loadedState.status === "image" || loadedState.status === "video") {
         const objectUrl = URL.createObjectURL(
           new Blob([loadedState.bytes], {
             type: loadedState.contentType
@@ -264,7 +269,7 @@ class WorkspaceFilePreviewNodeControllerImpl implements WorkspaceFilePreviewNode
         this.updateState(() => ({
           entry: target,
           objectUrl,
-          status: "image"
+          status: loadedState.status
         }));
         return;
       }
@@ -276,6 +281,17 @@ class WorkspaceFilePreviewNodeControllerImpl implements WorkspaceFilePreviewNode
           entry: target,
           saveStatus: "idle",
           status: "text"
+        }));
+        return;
+      }
+
+      if (loadedState.status === "html") {
+        this.updateState(() => ({
+          entry: target,
+          message: this.input.appI18n.t(
+            "workspaceFileManager.previewUnsupported"
+          ),
+          status: "unsupported"
         }));
         return;
       }

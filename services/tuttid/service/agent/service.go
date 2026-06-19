@@ -361,6 +361,29 @@ func (s *Service) Delete(ctx context.Context, workspaceID string, agentSessionID
 	return removed || runtimeClosed, nil
 }
 
+func (s *Service) Clear(ctx context.Context, workspaceID string) (ClearSessionsResult, error) {
+	workspaceID = strings.TrimSpace(workspaceID)
+	if workspaceID == "" {
+		return ClearSessionsResult{}, ErrInvalidArgument
+	}
+	for _, session := range s.controller().Sessions(workspaceID) {
+		if err := s.controller().Close(ctx, RuntimeCloseInput{
+			WorkspaceID:    workspaceID,
+			AgentSessionID: session.ID,
+		}); err != nil {
+			return ClearSessionsResult{}, normalizeRuntimeError(err)
+		}
+		if err := s.cleanupRuntime(ctx, workspaceID, session.ID); err != nil {
+			return ClearSessionsResult{}, err
+		}
+	}
+	clearer, ok := s.SessionReader.(SessionClearer)
+	if !ok {
+		return ClearSessionsResult{}, ErrSessionNotFound
+	}
+	return clearer.ClearSessions(ctx, workspaceID)
+}
+
 func (s *Service) UpdatePin(ctx context.Context, workspaceID string, agentSessionID string, pinned bool) (Session, error) {
 	workspaceID = strings.TrimSpace(workspaceID)
 	agentSessionID = strings.TrimSpace(agentSessionID)

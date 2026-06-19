@@ -28,7 +28,7 @@ export function createAgentSkillTokenExtension(
     group: "inline",
     inline: true,
     atom: true,
-    selectable: false,
+    selectable: true,
 
     addOptions() {
       return options;
@@ -48,6 +48,7 @@ export function createAgentSkillTokenExtension(
 
     renderHTML({ HTMLAttributes }) {
       const attrs = attrsToSkillTokenAttrs(HTMLAttributes);
+      const displayLabel = skillTokenDisplayLabel(attrs);
       return [
         "span",
         mergeAttributes(HTMLAttributes, {
@@ -73,7 +74,7 @@ export function createAgentSkillTokenExtension(
             ""
           ]
         ],
-        ["span", { class: "tsh-agent-object-token__main" }, attrs.label]
+        ["span", { class: "tsh-agent-object-token__main" }, displayLabel]
       ];
     },
 
@@ -141,4 +142,12 @@ function attrsToSkillTokenAttrs(
     name: typeof attrs.name === "string" ? attrs.name : "",
     trigger: typeof attrs.trigger === "string" ? attrs.trigger : ""
   };
+}
+
+function skillTokenDisplayLabel(attrs: AgentSkillTokenAttrs): string {
+  const label = attrs.label.trim() || attrs.trigger.trim();
+  if (!label || label.startsWith("/") || label.startsWith("$")) {
+    return label;
+  }
+  return `/${label}`;
 }

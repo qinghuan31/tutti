@@ -5,7 +5,9 @@ export type WorkspaceFilePreviewSurfaceState<TEntry> =
   | { entry: TEntry; status: "directory" }
   | { entry: TEntry; status: "loading" }
   | { content: string; entry: TEntry; status: "text" }
+  | { content: string; entry: TEntry; status: "html" }
   | { entry: TEntry; objectUrl: string; status: "image" }
+  | { entry: TEntry; objectUrl: string; status: "video" }
   | { entry: TEntry; message: string; status: "readonly" }
   | { entry: TEntry; message: string; status: "unsupported" }
   | { entry: TEntry; message: string; status: "error" };
@@ -14,6 +16,9 @@ export interface WorkspaceFilePreviewSurfaceProps<TEntry> {
   directoryMessage: string;
   emptyMessage: string;
   frameClassName: string;
+  htmlClassName?: string;
+  htmlFrameClassName?: string;
+  htmlTitle?: (entry: TEntry) => string;
   imageAlt: (entry: TEntry) => string;
   imageFrameClassName?: string;
   imageClassName?: string;
@@ -24,12 +29,17 @@ export interface WorkspaceFilePreviewSurfaceProps<TEntry> {
   state: WorkspaceFilePreviewSurfaceState<TEntry>;
   textClassName?: string;
   textFrameClassName?: string;
+  videoClassName?: string;
+  videoFrameClassName?: string;
 }
 
 export function WorkspaceFilePreviewSurface<TEntry>({
   directoryMessage,
   emptyMessage,
   frameClassName,
+  htmlClassName = "h-full w-full border-0 bg-white",
+  htmlFrameClassName,
+  htmlTitle,
   imageAlt,
   imageClassName = "max-h-full max-w-full rounded-[6px] object-contain",
   imageFrameClassName,
@@ -39,7 +49,9 @@ export function WorkspaceFilePreviewSurface<TEntry>({
   renderIcon,
   state,
   textClassName = "h-full overflow-auto p-4 text-[11px] leading-5 whitespace-pre-wrap break-words text-[var(--text-primary)]",
-  textFrameClassName
+  textFrameClassName,
+  videoClassName = "block max-h-full max-w-full rounded-[6px] object-contain",
+  videoFrameClassName
 }: WorkspaceFilePreviewSurfaceProps<TEntry>): ReactElement {
   switch (state.status) {
     case "directory":
@@ -78,6 +90,40 @@ export function WorkspaceFilePreviewSurface<TEntry>({
           className={joinClassNames(frameClassName, textFrameClassName)}
         >
           <pre className={textClassName}>{state.content}</pre>
+        </WorkspaceFilePreviewFrame>
+      );
+    case "html":
+      return (
+        <WorkspaceFilePreviewFrame
+          className={joinClassNames(frameClassName, htmlFrameClassName)}
+        >
+          <iframe
+            className={htmlClassName}
+            sandbox="allow-forms allow-scripts"
+            srcDoc={state.content}
+            title={htmlTitle?.(state.entry) ?? "HTML preview"}
+          />
+        </WorkspaceFilePreviewFrame>
+      );
+    case "video":
+      return (
+        <WorkspaceFilePreviewFrame
+          className={joinClassNames(frameClassName, videoFrameClassName)}
+        >
+          <video
+            aria-label={imageAlt(state.entry)}
+            className={videoClassName}
+            muted
+            playsInline
+            preload="metadata"
+            src={state.objectUrl}
+            onLoadedMetadata={(event) => {
+              const video = event.currentTarget;
+              if (video.duration > 0 && video.currentTime === 0) {
+                video.currentTime = Math.min(0.1, video.duration / 2);
+              }
+            }}
+          />
         </WorkspaceFilePreviewFrame>
       );
     case "readonly":

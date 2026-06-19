@@ -3582,6 +3582,38 @@ aside.workspace-agents-status-panel
   color: var(--tutti-purple);
 }
 
+[data-agent-mention-kind="skill"].tsh-agent-object-token--entity,
+[data-agent-mention-kind="capability"].tsh-agent-object-token--entity {
+  top: -1px;
+  gap: 0;
+  padding: 0 4px 0 0;
+  background: transparent;
+  color: var(--tutti-purple);
+}
+
+[data-agent-mention-kind="skill"].tsh-agent-object-token--entity
+  .tsh-agent-object-token__main,
+[data-agent-mention-kind="capability"].tsh-agent-object-token--entity
+  .tsh-agent-object-token__main {
+  padding: 0 6px;
+  border-radius: 6px;
+  background: var(--tutti-purple-bg);
+}
+
+[data-agent-mention-kind="skill"].tsh-agent-object-token--entity.ProseMirror-selectednode
+  .tsh-agent-object-token__main,
+[data-agent-mention-kind="capability"].tsh-agent-object-token--entity.ProseMirror-selectednode
+  .tsh-agent-object-token__main {
+  background: color-mix(in srgb, var(--tutti-purple) 20%, transparent);
+}
+
+[data-agent-mention-kind="skill"].tsh-agent-object-token--entity
+  .tsh-agent-object-token__kind,
+[data-agent-mention-kind="capability"].tsh-agent-object-token--entity
+  .tsh-agent-object-token__kind {
+  display: none;
+}
+
 [data-agent-mention-kind="workspace-app"]
   [data-agent-mention-app-icon="true"]
   .tsh-agent-object-token__kind-icon {
@@ -5179,7 +5211,7 @@ button.agent-gui-node__conversation-section-toggle:hover
   box-sizing: border-box;
   height: 64px;
   min-height: 64px;
-  padding: 0 32px;
+  padding: 0 var(--agent-gui-detail-padding-x);
 }
 
 .agent-gui-node__detail-header-title-group {
@@ -5233,14 +5265,6 @@ button.agent-gui-node__conversation-section-toggle:hover
   background: var(--transparency-hover);
   color: var(--text-primary);
   outline: none;
-}
-
-.agent-gui-node__detail-header-status {
-  color: var(--text-secondary);
-  font-size: 13px;
-  font-weight: 600;
-  line-height: 18px;
-  text-transform: capitalize;
 }
 
 .agent-gui-node__usage-alert-banner {

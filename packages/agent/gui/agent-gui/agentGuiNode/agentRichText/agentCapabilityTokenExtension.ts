@@ -31,7 +31,7 @@ export function createAgentCapabilityTokenExtension(
     group: "inline",
     inline: true,
     atom: true,
-    selectable: false,
+    selectable: true,
 
     addOptions() {
       return options;
@@ -52,6 +52,7 @@ export function createAgentCapabilityTokenExtension(
 
     renderHTML({ HTMLAttributes }) {
       const attrs = attrsToCapabilityTokenAttrs(HTMLAttributes);
+      const displayLabel = capabilityTokenDisplayLabel(attrs);
       return [
         "span",
         mergeAttributes(HTMLAttributes, {
@@ -77,7 +78,7 @@ export function createAgentCapabilityTokenExtension(
             ""
           ]
         ],
-        ["span", { class: "tsh-agent-object-token__main" }, attrs.label]
+        ["span", { class: "tsh-agent-object-token__main" }, displayLabel]
       ];
     },
 
@@ -145,4 +146,12 @@ function attrsToCapabilityTokenAttrs(
     name: typeof attrs.name === "string" ? attrs.name : "",
     trigger: typeof attrs.trigger === "string" ? attrs.trigger : ""
   };
+}
+
+function capabilityTokenDisplayLabel(attrs: AgentCapabilityTokenAttrs): string {
+  const label = attrs.label.trim() || attrs.trigger.trim();
+  if (!label || label.startsWith("/") || label.startsWith("$")) {
+    return label;
+  }
+  return `/${label}`;
 }

@@ -107,6 +107,39 @@ describe("parseAgentMentionMarkdown", () => {
     });
   });
 
+  it("accepts workspace app mention hrefs without an @ prefix", () => {
+    expect(
+      parseAgentMentionMarkdown(
+        "[任务管理](mention://workspace-app/issue-manager?workspaceId=workspace-1)"
+      )
+    ).toMatchObject({
+      item: {
+        kind: "workspace-app",
+        workspaceId: "workspace-1",
+        targetId: "issue-manager",
+        appId: "issue-manager",
+        name: "任务管理"
+      },
+      end: 69
+    });
+  });
+
+  it("accepts workspace issue mention hrefs without an @ prefix", () => {
+    expect(
+      parseAgentMentionMarkdown(
+        "[做一个音乐app](mention://workspace-issue/issue-1?workspaceId=workspace-1&topicId=default)"
+      )
+    ).toMatchObject({
+      item: {
+        kind: "workspace-issue",
+        workspaceId: "workspace-1",
+        targetId: "issue-1",
+        topicId: "default",
+        name: "做一个音乐app"
+      }
+    });
+  });
+
   it("rejects legacy query-only provider mention hrefs", () => {
     expect(
       parseAgentMentionMarkdown(

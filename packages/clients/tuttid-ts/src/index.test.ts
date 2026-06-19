@@ -775,6 +775,34 @@ test("shared tuttid client deletes workspace agent sessions", async () => {
   assert.deepEqual(result, { removed: true });
 });
 
+test("shared tuttid client clears workspace agent sessions", async () => {
+  let requestMethod = "";
+  let requestPath = "";
+
+  const client = createTuttidClient({
+    fetch: async (input, init) => {
+      const request =
+        input instanceof Request ? input : new Request(input, init);
+      requestMethod = request.method;
+      requestPath = new URL(request.url).pathname;
+
+      return new Response(
+        JSON.stringify({ removedMessages: 5, removedSessions: 2 }),
+        {
+          status: 200,
+          headers: { "content-type": "application/json" }
+        }
+      );
+    }
+  });
+
+  const result = await client.clearWorkspaceAgentSessions("ws-1");
+
+  assert.equal(requestMethod, "DELETE");
+  assert.equal(requestPath, "/v1/workspaces/ws-1/agent-sessions");
+  assert.deepEqual(result, { removedMessages: 5, removedSessions: 2 });
+});
+
 test("shared tuttid client keeps cancel session compatibility", async () => {
   let requestMethod = "";
   let requestPath = "";

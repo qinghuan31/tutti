@@ -79,7 +79,6 @@ const styles = {
   conversationUnreadLamp: "agent-gui-node__conversation-unread-lamp",
   detailHeader: "agent-gui-node__detail-header",
   detailHeaderPathInfo: "agent-gui-node__detail-header-path-info",
-  detailHeaderStatus: "agent-gui-node__detail-header-status",
   usageAlertBanner: "agent-gui-node__usage-alert-banner",
   usageAlertMessage: "agent-gui-node__usage-alert-message",
   usageAlertActions: "agent-gui-node__usage-alert-actions",

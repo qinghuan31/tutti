@@ -1932,6 +1932,34 @@
       "iconVariant": "lined"
     },
     {
+      "id": "add-slim-lined-icon",
+      "layer": "base",
+      "name": "AddLinedIcon",
+      "export": "AddLinedIcon",
+      "from": "@tutti-os/ui-system/icons",
+      "category": "icon",
+      "status": "stable",
+      "source": "src/icons/system-icons.tsx",
+      "description": "Slim system icon for add or attach actions.",
+      "useCases": ["Reference pickers", "Dense add controls"],
+      "migrationHints": [],
+      "iconVariant": "lined"
+    },
+    {
+      "id": "import-lined-icon",
+      "layer": "base",
+      "name": "ImportLinedIcon",
+      "export": "ImportLinedIcon",
+      "from": "@tutti-os/ui-system/icons",
+      "category": "icon",
+      "status": "stable",
+      "source": "src/icons/system-icons.tsx",
+      "description": "System icon for importing files or apps into a workspace.",
+      "useCases": ["Import buttons", "App Center import controls"],
+      "migrationHints": [],
+      "iconVariant": "lined"
+    },
+    {
       "id": "copy-lined-icon",
       "layer": "base",
       "name": "CopyIcon",

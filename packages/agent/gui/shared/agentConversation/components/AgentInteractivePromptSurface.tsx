@@ -34,7 +34,6 @@ import {
 } from "../planImplementation";
 import {
   getPromptToolDetails,
-  isPromptRequestIdTitle,
   type PromptToolDetail
 } from "../promptToolDetails";
 import styles from "../../../agent-gui/agentGuiNode/AgentGUIConversation.styles";
@@ -248,14 +247,6 @@ function ApprovalPromptSurface({
     () => formatToolDetails(prompt.input ?? null),
     [prompt.input]
   );
-  const visiblePromptTitle = approvalPromptTitle(
-    prompt.title,
-    promptDetails.length
-  );
-  const details = useMemo(
-    () => filterDuplicatePromptTitleDetails(promptDetails, visiblePromptTitle),
-    [promptDetails, visiblePromptTitle]
-  );
   const [submittingOptionId, setSubmittingOptionId] = useState<string | null>(
     null
   );
@@ -357,14 +348,9 @@ function ApprovalPromptSurface({
         <div className={styles.interactivePromptLead}>
           {stripPromptTitlePunctuation(labels.approvalLead)}
         </div>
-        {visiblePromptTitle ? (
-          <div className={styles.interactivePromptQuestion}>
-            {visiblePromptTitle}
-          </div>
-        ) : null}
-        {details.length > 0 ? (
+        {promptDetails.length > 0 ? (
           <div className={styles.interactivePromptOptions}>
-            {details.map((detail) => (
+            {promptDetails.map((detail) => (
               <div
                 key={`${detail.label}:${detail.value}`}
                 className={styles.interactiveOptionDisplay}
@@ -1088,23 +1074,6 @@ function promptToolDetailLabel(kind: PromptToolDetail["kind"]): string {
   }
 }
 
-function filterDuplicatePromptTitleDetails(
-  details: LabeledPromptToolDetail[],
-  title: string | null | undefined
-): LabeledPromptToolDetail[] {
-  const normalizedTitle = normalizePromptDetailText(title);
-  if (!normalizedTitle) {
-    return details;
-  }
-  return details.filter(
-    (detail) => normalizePromptDetailText(detail.value) !== normalizedTitle
-  );
-}
-
-function normalizePromptDetailText(value: string | null | undefined): string {
-  return value?.trim() ?? "";
-}
-
 function isApprovalFeedbackOption(option: {
   id: string;
   kind: string;
@@ -1166,16 +1135,6 @@ function isDenyApprovalOptionToken(value: string | null | undefined): boolean {
     default:
       return false;
   }
-}
-
-function approvalPromptTitle(
-  value: string,
-  detailCount: number
-): string | null {
-  const title = value.trim();
-  return title && detailCount === 0 && !isPromptRequestIdTitle(title)
-    ? title
-    : null;
 }
 
 function stripPromptTitlePunctuation(value: string): string {

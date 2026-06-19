@@ -135,9 +135,11 @@ const workspaceFileReferenceLocaleKeyByPickerKey: Record<string, string> = {
     "agentHost.agentGui.referencePicker.selectGroupHint",
   "referencePicker.selectedCount":
     "agentHost.agentGui.referencePicker.selectedCount",
-  "referencePicker.title": "agentHost.agentGui.referencePicker.title",
   "referencePicker.workspaceRootGroup":
-    "agentHost.agentGui.referencePicker.workspaceRootGroup"
+    "agentHost.agentGui.referencePicker.workspaceRootGroup",
+  "referencePicker.sourceColumn":
+    "agentHost.agentGui.referencePicker.sourceColumn",
+  "referencePicker.title": "agentHost.agentGui.referencePicker.title"
 };
 
 export interface AgentGUINodeProps {
@@ -724,15 +726,23 @@ export const AgentGUINode = memo(function AgentGUINode({
       inheritedUnavailable: t("agentHost.agentGui.inheritedUnavailable"),
       reasoningLabel: t("agentHost.agentGui.reasoningLabel"),
       reasoningDegreeLabel: t("agentHost.agentGui.reasoningDegreeLabel"),
+      reasoningOptionDefault: t("agentHost.agentGui.reasoningOptionDefault"),
       reasoningOptionMinimal: t("agentHost.agentGui.reasoningOptionMinimal"),
       reasoningOptionLow: t("agentHost.agentGui.reasoningOptionLow"),
       reasoningOptionMedium: t("agentHost.agentGui.reasoningOptionMedium"),
       reasoningOptionHigh: t("agentHost.agentGui.reasoningOptionHigh"),
       reasoningOptionXHigh: t("agentHost.agentGui.reasoningOptionXHigh"),
+      reasoningOptionMax: t("agentHost.agentGui.reasoningOptionMax"),
       speedLabel: t("agentHost.agentGui.speedLabel"),
       speedSelectionLabel: t("agentHost.agentGui.speedSelectionLabel"),
       speedOptionStandard: t("agentHost.agentGui.speedOptionStandard"),
+      speedOptionStandardDescription: t(
+        "agentHost.agentGui.speedOptionStandardDescription"
+      ),
       speedOptionFast: t("agentHost.agentGui.speedOptionFast"),
+      speedOptionFastDescription: t(
+        "agentHost.agentGui.speedOptionFastDescription"
+      ),
       permissionLabel: t("agentHost.agentGui.permissionLabel"),
       permissionModeReadOnly: t("agentHost.agentGui.permissionModeReadOnly"),
       permissionModeAuto: t("agentHost.agentGui.permissionModeAuto"),
@@ -795,6 +805,7 @@ export const AgentGUINode = memo(function AgentGUINode({
       usageChipLabel: (input: { percent: number }) =>
         t("agentHost.agentGui.usageChipLabel", { percent: input.percent }),
       usagePopoverTitle: t("agentHost.agentGui.usagePopoverTitle"),
+      usageContextWindowLabel: t("agentHost.agentGui.usageContextWindowLabel"),
       usageTokensLabel: t("agentHost.agentGui.usageTokensLabel"),
       usageLimitsLabel: t("agentHost.agentGui.usageLimitsLabel"),
       usageCompactAction: t("agentHost.agentGui.usageCompactAction"),
@@ -940,12 +951,6 @@ export const AgentGUINode = memo(function AgentGUINode({
       projectMissingDescription: t(
         "agentHost.agentGui.projectMissingDescription"
       ),
-      statusWorking: t("agentHost.workspaceAgentStatusWorking"),
-      statusWaiting: t("agentHost.workspaceAgentStatusWaiting"),
-      statusReady: t("agentHost.workspaceAgentStatusReady"),
-      statusCompleted: t("agentHost.workspaceAgentStatusCompleted"),
-      statusFailed: t("agentHost.workspaceAgentStatusFailed"),
-      statusCanceled: t("agentHost.workspaceAgentStatusCanceled"),
       openclawGatewayStarting: t("agentHost.agentGui.openclawGatewayStarting"),
       openclawGatewayFailed: t("agentHost.agentGui.openclawGatewayFailed"),
       openclawGatewayRetry: t("agentHost.agentGui.openclawGatewayRetry"),

@@ -13,6 +13,7 @@ import {
   DialogHeader,
   DialogTitle,
   FileCreateIcon,
+  ImportLinedIcon as ImportIcon,
   Input,
   OpenSessionsIcon as OpenSessionsFilledIcon,
   RefreshIcon,
@@ -35,7 +36,6 @@ import {
   ToastProvider,
   ToastRoot,
   ToastTitle,
-  UploadIcon as ImportIcon,
   cn
 } from "@tutti-os/ui-system";
 import type {
@@ -863,7 +863,7 @@ export function AppCenterPanel({
                 </label>
                 <div className="relative min-w-0">
                   <Textarea
-                    className="min-h-[148px] resize-none rounded-[10px] border border-[color:var(--line-2)] bg-[var(--background-fronted)] pb-14 leading-[1.45] sm:pb-8"
+                    className="min-h-[148px] resize-none rounded-[10px] pb-14 leading-[1.45] sm:pb-8"
                     id={promptTextareaId}
                     placeholder={copy.t("factory.placeholders.prompt")}
                     value={prompt}
@@ -1404,7 +1404,7 @@ function AppCardGrid({
   return (
     <div
       aria-label={title}
-      className="grid min-h-0 min-w-0 grid-cols-[repeat(auto-fill,minmax(min(100%,260px),1fr))] gap-3"
+      className="grid min-h-0 min-w-0 grid-cols-[repeat(auto-fill,minmax(min(100%,260px),1fr))] gap-3 pb-6"
       role="list"
     >
       {apps.map((app) => (

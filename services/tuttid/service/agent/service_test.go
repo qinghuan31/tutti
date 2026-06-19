@@ -103,6 +103,18 @@ func TestServiceImportsExternalAgentSessionsByProject(t *testing.T) {
 			"content": []any{map[string]any{"type": "input_text", "text": "Plan the import"}},
 		}},
 		map[string]any{"timestamp": timestamp(2 * time.Second), "type": "response_item", "payload": map[string]any{
+			"type":      "function_call",
+			"id":        "codex-a-tool-1",
+			"name":      "exec_command",
+			"call_id":   "call-codex-a-status",
+			"arguments": `{"cmd":"git status --short","workdir":"/repo"}`,
+		}},
+		map[string]any{"timestamp": timestamp(3 * time.Second), "type": "response_item", "payload": map[string]any{
+			"type":    "function_call_output",
+			"call_id": "call-codex-a-status",
+			"output":  "Chunk ID: abc\nOutput:\n M file.go\n",
+		}},
+		map[string]any{"timestamp": timestamp(4 * time.Second), "type": "response_item", "payload": map[string]any{
 			"type": "message", "id": "codex-a-2", "role": "assistant",
 			"content": []any{map[string]any{"type": "output_text", "text": "Import planned"}},
 		}},
@@ -151,8 +163,8 @@ func TestServiceImportsExternalAgentSessionsByProject(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ScanExternalImports error = %v", err)
 	}
-	if scan.ScannedSessions != 3 || scan.ScannedMessages != 5 || len(scan.Projects) != 2 {
-		t.Fatalf("scan = %#v, want 3 sessions, 5 messages, 2 projects", scan)
+	if scan.ScannedSessions != 3 || scan.ScannedMessages != 7 || len(scan.Projects) != 2 {
+		t.Fatalf("scan = %#v, want 3 sessions, 7 messages, 2 projects", scan)
 	}
 	codexAID := externalImportedSessionID("codex", "codex-a")
 	if !slices.ContainsFunc(scan.Sessions, func(session ExternalImportSession) bool {
@@ -167,8 +179,8 @@ func TestServiceImportsExternalAgentSessionsByProject(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ImportExternalSessions error = %v", err)
 	}
-	if result.ImportedProjects != 1 || result.ImportedSessions != 1 || result.ImportedMessages != 2 {
-		t.Fatalf("import result = %#v, want one project, one session, two messages", result)
+	if result.ImportedProjects != 1 || result.ImportedSessions != 1 || result.ImportedMessages != 4 {
+		t.Fatalf("import result = %#v, want one project, one session, four message updates", result)
 	}
 	importedSession, err := service.Get(ctx, "ws-1", codexAID)
 	if err != nil {
@@ -176,6 +188,22 @@ func TestServiceImportsExternalAgentSessionsByProject(t *testing.T) {
 	}
 	if value(importedSession.Title) != "Plan the import" {
 		t.Fatalf("imported session title = %q, want first user message", value(importedSession.Title))
+	}
+	importedMessages, err := service.ListMessages(ctx, "ws-1", codexAID, ListMessagesInput{Limit: 10})
+	if err != nil {
+		t.Fatalf("ListMessages imported session error = %v", err)
+	}
+	if !slices.ContainsFunc(importedMessages.Messages, func(message SessionMessage) bool {
+		input, _ := message.Payload["input"].(map[string]any)
+		output, _ := message.Payload["output"].(map[string]any)
+		return message.Kind == "tool_call" &&
+			message.Role == "assistant" &&
+			message.Status == "completed" &&
+			message.Payload["toolName"] == "exec_command" &&
+			input["cmd"] == "git status --short" &&
+			output["output"] == "Chunk ID: abc\nOutput:\n M file.go"
+	}) {
+		t.Fatalf("imported messages = %#v, want structured Codex tool call", importedMessages.Messages)
 	}
 	sessions, err := service.List(ctx, "ws-1")
 	if err != nil {
@@ -228,6 +256,18 @@ func TestServiceImportsExternalAgentSessionsByProject(t *testing.T) {
 			"content": []any{map[string]any{"type": "input_text", "text": "Updated first prompt"}},
 		}},
 		map[string]any{"timestamp": timestamp(2 * time.Second), "type": "response_item", "payload": map[string]any{
+			"type":      "function_call",
+			"id":        "codex-a-tool-1",
+			"name":      "exec_command",
+			"call_id":   "call-codex-a-status",
+			"arguments": `{"cmd":"git status --short","workdir":"/repo"}`,
+		}},
+		map[string]any{"timestamp": timestamp(3 * time.Second), "type": "response_item", "payload": map[string]any{
+			"type":    "function_call_output",
+			"call_id": "call-codex-a-status",
+			"output":  "Chunk ID: abc\nOutput:\n M file.go\n",
+		}},
+		map[string]any{"timestamp": timestamp(4 * time.Second), "type": "response_item", "payload": map[string]any{
 			"type": "message", "id": "codex-a-2", "role": "assistant",
 			"content": []any{map[string]any{"type": "output_text", "text": "Import planned"}},
 		}},
@@ -1338,6 +1378,41 @@ func TestActivityProjectionPublishesCanonicalSessionIDForMessageUpdates(t *testi
 	}
 }
 
+func TestActivityProjectionPublishesDeletedEventsForClearedSessions(t *testing.T) {
+	repo := &activityProjectionRepoStub{
+		clearResult: agentactivitybiz.ClearSessionsResult{
+			RemovedMessages:   5,
+			RemovedSessions:   2,
+			RemovedSessionIDs: []string{"session-1", "session-2"},
+		},
+	}
+	publisher := &activityUpdatePublisherStub{}
+	projection := NewActivityProjection(repo)
+	projection.SetPublisher(publisher)
+
+	result, err := projection.ClearSessions(context.Background(), " ws-1 ")
+	if err != nil {
+		t.Fatalf("ClearSessions() error = %v", err)
+	}
+	if result.RemovedSessions != 2 || result.RemovedMessages != 5 {
+		t.Fatalf("ClearSessions() = %#v, want clear result", result)
+	}
+	if len(publisher.events) != 2 {
+		t.Fatalf("published events = %d, want 2", len(publisher.events))
+	}
+	for _, event := range publisher.events {
+		if event.workspaceID != "ws-1" || event.eventType != "session_deleted" {
+			t.Fatalf("published event = %#v, want workspace session_deleted", event)
+		}
+		if !slices.Contains([]string{"session-1", "session-2"}, event.agentSessionID) {
+			t.Fatalf("published agentSessionID = %q, want cleared session id", event.agentSessionID)
+		}
+		if event.payload["agentSessionId"] != event.agentSessionID {
+			t.Fatalf("payload agentSessionId = %#v, want %q", event.payload["agentSessionId"], event.agentSessionID)
+		}
+	}
+}
+
 func TestStaleResumeMessageUpdatesFailOpenToolCallsForLatestTurn(t *testing.T) {
 	updates := staleResumeMessageUpdates([]SessionMessage{
 		{
@@ -1704,6 +1779,41 @@ func TestServiceDeleteClosesRuntimeSession(t *testing.T) {
 	}
 	if len(runtime.closeCalls) != 1 || runtime.closeCalls[0].AgentSessionID != session.ID {
 		t.Fatalf("close calls = %#v", runtime.closeCalls)
+	}
+}
+
+func TestServiceClearClosesRuntimeAndClearsPersistedSessions(t *testing.T) {
+	runtime := newFakeRuntime()
+	runtime.sessions["ws-1:session-1"] = RuntimeSession{
+		ID:          "session-1",
+		WorkspaceID: "ws-1",
+		Provider:    "codex",
+	}
+	runtime.sessions["ws-2:session-2"] = RuntimeSession{
+		ID:          "session-2",
+		WorkspaceID: "ws-2",
+		Provider:    "codex",
+	}
+	service := NewService(runtime)
+	service.SessionReader = fakeSessionReader{
+		sessions: map[string]PersistedSession{
+			"ws-1:session-1": {ID: "session-1", WorkspaceID: "ws-1"},
+			"ws-2:session-2": {ID: "session-2", WorkspaceID: "ws-2"},
+		},
+	}
+
+	result, err := service.Clear(context.Background(), "ws-1")
+	if err != nil {
+		t.Fatalf("Clear returned error: %v", err)
+	}
+	if result.RemovedSessions != 1 {
+		t.Fatalf("Clear removed sessions = %d, want 1", result.RemovedSessions)
+	}
+	if len(runtime.closeCalls) != 1 || runtime.closeCalls[0].AgentSessionID != "session-1" {
+		t.Fatalf("close calls = %#v", runtime.closeCalls)
+	}
+	if _, ok := runtime.Session("ws-2", "session-2"); !ok {
+		t.Fatal("runtime session for another workspace was closed")
 	}
 }
 
@@ -2440,6 +2550,19 @@ func (f fakeSessionReader) DeleteSession(_ context.Context, workspaceID string, 
 	return true, nil
 }
 
+func (f fakeSessionReader) ClearSessions(_ context.Context, workspaceID string) (ClearSessionsResult, error) {
+	removed := 0
+	removedIDs := make([]string, 0)
+	for key, session := range f.sessions {
+		if session.WorkspaceID == workspaceID {
+			delete(f.sessions, key)
+			removed++
+			removedIDs = append(removedIDs, session.ID)
+		}
+	}
+	return ClearSessionsResult{RemovedSessions: removed, RemovedSessionIDs: removedIDs}, nil
+}
+
 func (f fakeSessionReader) ReconcileStaleTurnOnResume(_ context.Context, session PersistedSession) error {
 	if f.reconciled != nil {
 		*f.reconciled = append(*f.reconciled, session)
@@ -2492,10 +2615,15 @@ func (*fakeRuntime) Subscribe(string, string) (<-chan RuntimeStreamEvent, func()
 }
 
 type activityProjectionRepoStub struct {
+	clearResult   agentactivitybiz.ClearSessionsResult
 	stateResult   agentactivitybiz.StateReportResult
 	stateInput    agentactivitybiz.SessionStateReport
 	messageInput  agentactivitybiz.SessionMessageReport
 	messageResult agentactivitybiz.MessageReportResult
+}
+
+func (r *activityProjectionRepoStub) ClearSessions(context.Context, string) (agentactivitybiz.ClearSessionsResult, error) {
+	return r.clearResult, nil
 }
 
 func (*activityProjectionRepoStub) DeleteSession(context.Context, string, string) (bool, error) {

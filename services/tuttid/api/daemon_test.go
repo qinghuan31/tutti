@@ -64,6 +64,7 @@ type stubAppCenterService struct {
 }
 
 type stubAgentSessionService struct {
+	clearFn                  func(context.Context, string) (agentservice.ClearSessionsResult, error)
 	composerOptionsFn        func(context.Context, agentservice.ComposerOptionsInput) (agentservice.ComposerOptions, error)
 	createFn                 func(context.Context, string, agentservice.CreateSessionInput) (agentservice.Session, error)
 	deleteFn                 func(context.Context, string, string) (bool, error)
@@ -171,6 +172,13 @@ func (s stubAgentSessionService) ListFiltered(ctx context.Context, workspaceID s
 		return nil, nil
 	}
 	return s.listFn(ctx, workspaceID, input)
+}
+
+func (s stubAgentSessionService) Clear(ctx context.Context, workspaceID string) (agentservice.ClearSessionsResult, error) {
+	if s.clearFn == nil {
+		return agentservice.ClearSessionsResult{}, nil
+	}
+	return s.clearFn(ctx, workspaceID)
 }
 
 func (s stubAgentSessionService) GetComposerOptions(ctx context.Context, input agentservice.ComposerOptionsInput) (agentservice.ComposerOptions, error) {
@@ -1104,6 +1112,37 @@ func TestDaemonAPIGeneratedRoutesDeleteAgentSession(t *testing.T) {
 	decodeGeneratedRouteResponse(t, recorder, &response)
 	if !response.Removed {
 		t.Fatal("removed = false, want true")
+	}
+}
+
+func TestDaemonAPIGeneratedRoutesClearAgentSessions(t *testing.T) {
+	mux := http.NewServeMux()
+	RegisterRoutes(mux, NewRoutes(DaemonAPI{
+		AgentSessionService: stubAgentSessionService{
+			clearFn: func(_ context.Context, workspaceID string) (agentservice.ClearSessionsResult, error) {
+				if workspaceID != "ws-1" {
+					t.Fatalf("workspaceID = %q, want ws-1", workspaceID)
+				}
+				return agentservice.ClearSessionsResult{RemovedMessages: 5, RemovedSessions: 2}, nil
+			},
+		},
+	}))
+
+	recorder := performGeneratedRouteRequest(
+		t,
+		mux,
+		http.MethodDelete,
+		"/v1/workspaces/ws-1/agent-sessions",
+		nil,
+	)
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d; body: %s", recorder.Code, http.StatusOK, recorder.Body.String())
+	}
+
+	var response tuttigenerated.ClearWorkspaceAgentSessionsResponse
+	decodeGeneratedRouteResponse(t, recorder, &response)
+	if response.RemovedSessions != 2 || response.RemovedMessages != 5 {
+		t.Fatalf("response = %#v, want 2 sessions and 5 messages", response)
 	}
 }
 

@@ -21,7 +21,10 @@ type Client struct {
 }
 
 const (
-	defaultClientTimeout    = 60 * time.Second
+	// 覆盖最长的命令预算(如 vibe-design session-start 声明 timeoutMs=300000),
+	// 留出网络/排队余量,避免长命令在客户端侧误报 "daemon request timed out"。
+	// TODO: 改为按命令的 timeoutMs 透传后,此全局值可回落。
+	defaultClientTimeout    = 360 * time.Second
 	healthPath              = "/v1/health"
 	cliCapabilitiesPath     = "/v1/cli/capabilities"
 	cliCommandInvokePattern = "/v1/cli/commands/{commandID}/invoke"

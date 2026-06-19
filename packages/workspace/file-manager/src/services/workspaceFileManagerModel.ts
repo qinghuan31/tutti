@@ -14,6 +14,7 @@ export {
   resolveWorkspaceFilePreviewReadiness,
   resolveWorkspaceFileVisualKind,
   resolveWorkspaceImageMimeType,
+  resolveWorkspaceVideoMimeType,
   type WorkspaceFilePreviewLoadedResult,
   type WorkspaceFilePreviewReadiness,
   type WorkspaceFileVisualKind,

@@ -32,6 +32,20 @@ test("workspace file preview classifies previewable files", () => {
   );
   assert.equal(
     classifyWorkspaceFilePreviewKind({
+      kind: "file",
+      path: "/workspace/demo.mp4"
+    }),
+    "video"
+  );
+  assert.equal(
+    classifyWorkspaceFilePreviewKind({
+      kind: "file",
+      path: "/workspace/demo.webm"
+    }),
+    "video"
+  );
+  assert.equal(
+    classifyWorkspaceFilePreviewKind({
       kind: "folder",
       path: "/workspace/docs"
     }),
@@ -89,7 +103,7 @@ test("workspace file preview decodes bytes and formats limits", () => {
   assert.equal(formatWorkspacePreviewByteLimit(1024 * 1024), "1 MiB");
 });
 
-test("workspace file preview creates loaded image, text, and readonly states", () => {
+test("workspace file preview creates loaded image, video, text, and readonly states", () => {
   assert.deepEqual(
     createWorkspaceFilePreviewLoadedState({
       bytes: new Uint8Array([0x89, 0x50]),
@@ -109,6 +123,29 @@ test("workspace file preview creates loaded image, text, and readonly states", (
         path: "/workspace/image.png"
       },
       status: "image"
+    }
+  );
+
+  assert.deepEqual(
+    createWorkspaceFilePreviewLoadedState({
+      bytes: new Uint8Array([0x00, 0x00, 0x00, 0x18]),
+      contentType: "video/mp4",
+      entry: { kind: "file", path: "/workspace/demo.mp4" },
+      target: {
+        fileKind: "video",
+        name: "demo.mp4",
+        path: "/workspace/demo.mp4"
+      }
+    }),
+    {
+      bytes: new Uint8Array([0x00, 0x00, 0x00, 0x18]),
+      contentType: "video/mp4",
+      entry: {
+        fileKind: "video",
+        name: "demo.mp4",
+        path: "/workspace/demo.mp4"
+      },
+      status: "video"
     }
   );
 
@@ -146,6 +183,30 @@ test("workspace file preview creates loaded image, text, and readonly states", (
       entry: { kind: "file", path: "/workspace/readme.md" },
       reason: "decode_failed",
       status: "readonly"
+    }
+  );
+});
+
+test("workspace file preview can create rendered html preview states", () => {
+  assert.deepEqual(
+    createWorkspaceFilePreviewLoadedState({
+      bytes: new TextEncoder().encode("<!doctype html><h1>Hello</h1>"),
+      entry: { kind: "file", path: "/workspace/index.html" },
+      renderHtml: true,
+      target: {
+        fileKind: "text",
+        name: "index.html",
+        path: "/workspace/index.html"
+      }
+    }),
+    {
+      content: "<!doctype html><h1>Hello</h1>",
+      entry: {
+        fileKind: "text",
+        name: "index.html",
+        path: "/workspace/index.html"
+      },
+      status: "html"
     }
   );
 });

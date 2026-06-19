@@ -113,7 +113,7 @@ describe("AgentRichTextEditor", () => {
     const editor = await screen.findByRole("textbox", { name: "Prompt" });
     const skillToken = editor.querySelector('[data-agent-skill-token="true"]');
     expect(skillToken).not.toBeNull();
-    expect(skillToken).toHaveTextContent("caveman");
+    expect(skillToken).toHaveTextContent("/caveman");
     expect(skillToken).toHaveAttribute("data-agent-skill-trigger", "/caveman");
     expect(editor).toHaveTextContent("/compact");
   });
@@ -146,12 +146,80 @@ describe("AgentRichTextEditor", () => {
       '[data-agent-capability-token="true"]'
     );
     expect(capabilityToken).not.toBeNull();
-    expect(capabilityToken).toHaveTextContent("浏览器");
+    expect(capabilityToken).toHaveTextContent("/浏览器");
     expect(capabilityToken).toHaveAttribute(
       "data-agent-capability-trigger",
       "/browser"
     );
     expect(editor).toHaveTextContent("/compact");
+  });
+
+  it("selects a skill token before Backspace deletes it", async () => {
+    const onChange = vi.fn();
+    render(
+      <AgentRichTextEditor
+        value="/caveman"
+        disabled={false}
+        placeholder="Prompt"
+        onChange={onChange}
+        onSubmit={vi.fn()}
+        availableSkills={[
+          {
+            name: "caveman",
+            trigger: "$caveman",
+            sourceKind: "personal"
+          }
+        ]}
+      />
+    );
+
+    const editor = await screen.findByRole("textbox", { name: "Prompt" });
+    const skillToken = editor.querySelector('[data-agent-skill-token="true"]');
+    expect(skillToken).not.toBeNull();
+
+    fireEvent.keyDown(editor, { key: "Backspace" });
+    await waitFor(() =>
+      expect(skillToken).toHaveClass("ProseMirror-selectednode")
+    );
+    expect(onChange).not.toHaveBeenCalled();
+
+    fireEvent.keyDown(editor, { key: "Backspace" });
+    await waitFor(() => expect(onChange).toHaveBeenLastCalledWith(""));
+  });
+
+  it("selects a skill token before ArrowLeft skips over it", async () => {
+    const onChange = vi.fn();
+    render(
+      <AgentRichTextEditor
+        value="/caveman"
+        disabled={false}
+        placeholder="Prompt"
+        onChange={onChange}
+        onSubmit={vi.fn()}
+        availableSkills={[
+          {
+            name: "caveman",
+            trigger: "$caveman",
+            sourceKind: "personal"
+          }
+        ]}
+      />
+    );
+
+    const editor = await screen.findByRole("textbox", { name: "Prompt" });
+    const skillToken = editor.querySelector('[data-agent-skill-token="true"]');
+    expect(skillToken).not.toBeNull();
+
+    fireEvent.keyDown(editor, { key: "ArrowLeft" });
+    await waitFor(() =>
+      expect(skillToken).toHaveClass("ProseMirror-selectednode")
+    );
+
+    fireEvent.keyDown(editor, { key: "ArrowLeft" });
+    await waitFor(() =>
+      expect(skillToken).not.toHaveClass("ProseMirror-selectednode")
+    );
+    expect(onChange).not.toHaveBeenCalled();
   });
 
   it("emits prompt text when pasting known skill trigger tokens", async () => {

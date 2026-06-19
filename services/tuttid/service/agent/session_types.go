@@ -125,6 +125,16 @@ type SessionReader interface {
 	ListSessions(workspaceID string) ([]PersistedSession, bool)
 }
 
+type ClearSessionsResult struct {
+	RemovedMessages   int
+	RemovedSessions   int
+	RemovedSessionIDs []string
+}
+
+type SessionClearer interface {
+	ClearSessions(context.Context, string) (ClearSessionsResult, error)
+}
+
 type SessionDeleter interface {
 	DeleteSession(context.Context, string, string) (bool, error)
 }

@@ -31,6 +31,7 @@ export type SlashCommandSelectionEffect =
   | {
       kind: "submitPrompt";
       prompt: string;
+      displayPrompt?: string;
       enableBrowserUse?: boolean;
     }
   | {
@@ -249,8 +250,14 @@ export function resolveTuttiBrowserUseSubmitEffect(input: {
   return {
     kind: "submitPrompt",
     prompt: buildTuttiBrowserUseSubmitPrompt(invocation.args),
+    displayPrompt: browserUseDisplayPrompt(invocation),
     enableBrowserUse: true
   };
+}
+
+function browserUseDisplayPrompt({ args }: { args: string }): string {
+  const trimmedArgs = args.trim();
+  return trimmedArgs ? `/browser ${trimmedArgs}` : "/browser";
 }
 
 export function resolveSlashCommandSubmitEffect({

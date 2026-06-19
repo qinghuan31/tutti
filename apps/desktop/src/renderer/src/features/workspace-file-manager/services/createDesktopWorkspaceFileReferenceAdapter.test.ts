@@ -166,3 +166,32 @@ test("desktop workspace file reference adapter forwards within scope to tuttid",
 
   assert.equal(observedRequest?.within, "Documents");
 });
+
+test("desktop workspace file reference adapter reads video previews", async () => {
+  const previewReads: Array<[string, string]> = [];
+  const adapter = createDesktopWorkspaceFileReferenceAdapter({
+    hostFilesApi: {
+      async readPreviewFile(workspaceID, path) {
+        previewReads.push([workspaceID, path]);
+        return new Uint8Array([0x00, 0x00, 0x00, 0x18]);
+      }
+    } as DesktopHostFilesApi,
+    tuttidClient: {} as TuttidClient,
+    workspaceId: "workspace-1"
+  });
+
+  const videoPreview = await adapter.readReferencePreview?.({
+    reference: {
+      kind: "file",
+      path: "/workspace/demo.mp4"
+    },
+    workspaceId: "workspace-2"
+  });
+
+  assert.deepEqual(videoPreview, {
+    bytes: new Uint8Array([0x00, 0x00, 0x00, 0x18]),
+    contentType: "video/mp4",
+    kind: "video"
+  });
+  assert.deepEqual(previewReads, [["workspace-2", "/workspace/demo.mp4"]]);
+});

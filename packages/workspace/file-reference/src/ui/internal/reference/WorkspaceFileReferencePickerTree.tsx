@@ -10,6 +10,9 @@ import {
   ScrollArea,
   SearchIcon,
   Spinner,
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
   cn
 } from "@tutti-os/ui-system";
 import { AddIcon as AddLinedIcon } from "@tutti-os/ui-system/icons";
@@ -385,9 +388,19 @@ function WorkspaceFileReferencePickerSearchEntry({
           <span className="block truncate text-[13px] font-medium text-[var(--text-primary)]">
             {resolveWorkspaceFileReferenceLabel(entry)}
           </span>
-          <span className="block truncate text-[11px] text-[var(--text-secondary)]">
-            {entry.path}
-          </span>
+          <Tooltip delayDuration={300}>
+            <TooltipTrigger asChild>
+              <span className="block truncate text-[11px] text-[var(--text-secondary)]">
+                {entry.path}
+              </span>
+            </TooltipTrigger>
+            <TooltipContent
+              className="max-w-[min(520px,calc(100vw-32px))] whitespace-normal text-left [overflow-wrap:anywhere]"
+              side="top"
+            >
+              {entry.path}
+            </TooltipContent>
+          </Tooltip>
         </span>
       </div>
       <Button

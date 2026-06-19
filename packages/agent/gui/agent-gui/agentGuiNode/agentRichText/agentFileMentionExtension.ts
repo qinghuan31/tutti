@@ -685,7 +685,11 @@ export function parseAgentMentionMarkdown(
       if (!item) {
         return null;
       }
-      if (item.kind !== "file" && !prefixedMention) {
+      if (
+        item.kind !== "file" &&
+        !prefixedMention &&
+        !href.trim().toLowerCase().startsWith("mention://")
+      ) {
         return null;
       }
       return {

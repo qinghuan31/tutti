@@ -81,6 +81,7 @@ export interface WorkspaceSettingsManagedModelsSnapshotState {
 
 export interface WorkspaceSettingsDeveloperLogsMutableState {
   clearing: boolean;
+  clearingConversationHistory: boolean;
   exporting: boolean;
   loading: boolean;
   logs: DesktopDeveloperLogsState | null;
@@ -88,6 +89,7 @@ export interface WorkspaceSettingsDeveloperLogsMutableState {
 
 export interface WorkspaceSettingsDeveloperLogsState {
   readonly clearing: boolean;
+  readonly clearingConversationHistory: boolean;
   readonly exporting: boolean;
   readonly loading: boolean;
   readonly logs: DesktopDeveloperLogsState | null;
@@ -95,6 +97,7 @@ export interface WorkspaceSettingsDeveloperLogsState {
 
 export interface WorkspaceSettingsDeveloperLogsSnapshotState {
   readonly clearing: boolean;
+  readonly clearingConversationHistory: boolean;
   readonly exporting: boolean;
   readonly loading: boolean;
   readonly logs: {

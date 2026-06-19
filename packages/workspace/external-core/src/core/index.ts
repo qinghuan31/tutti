@@ -198,8 +198,12 @@ export function normalizeTuttiExternalWorkspaceOpenFeatureInput(
   if (!isTuttiExternalWorkspaceFeature(feature)) {
     throw new Error("workspace.openFeature feature is unsupported.");
   }
+  const draftPrompt =
+    typeof input.draftPrompt === "string" ? input.draftPrompt.trim() : "";
   return {
     feature,
+    ...(draftPrompt ? { draftPrompt } : {}),
+    ...(input.autoSubmit === true ? { autoSubmit: true } : {}),
     ...(typeof input.provider === "string" && input.provider.trim() !== ""
       ? {
           provider: normalizeTuttiExternalWorkspaceAgentProvider(input.provider)

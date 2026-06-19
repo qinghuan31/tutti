@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 import { createDefaultWorkspaceUserProjectI18nRuntime } from "@tutti-os/workspace-user-project/i18n";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { WorkspaceAgentSessionDetailViewModel } from "../../shared/workspaceAgentSessionDetailViewModel";
@@ -623,19 +623,31 @@ describe("AgentGUINodeView layout persistence", () => {
     expect(conversationFlowMock.calls).toHaveLength(initialRenderCount);
   });
 
-  it("hides the ready detail status indicator and label", () => {
+  it("hides the detail conversation status indicator and label", () => {
     renderAgentGUINodeView({
       viewModel: {
         ...createViewModel(),
-        activeConversation: createConversationSummary("session-1"),
+        activeConversation: {
+          ...createConversationSummary("session-1"),
+          status: "working"
+        },
         activeConversationId: "session-1",
-        conversations: [createConversationSummary("session-1")]
+        conversations: [
+          {
+            ...createConversationSummary("session-1"),
+            status: "working"
+          }
+        ]
       }
     });
 
     expect(screen.queryByText("statusReady")).not.toBeInTheDocument();
+    expect(screen.queryByText("statusWorking")).not.toBeInTheDocument();
     expect(statusDotMock.calls).not.toContainEqual(
       expect.objectContaining({ ariaLabel: "statusReady" })
+    );
+    expect(statusDotMock.calls).not.toContainEqual(
+      expect.objectContaining({ ariaLabel: "statusWorking" })
     );
   });
 
@@ -674,7 +686,7 @@ describe("AgentGUINodeView layout persistence", () => {
       }
     });
 
-    expect(screen.getByText("statusWorking")).toBeInTheDocument();
+    expect(screen.queryByText("statusWorking")).not.toBeInTheDocument();
     expect(composerMock.calls.at(-1)).toMatchObject({
       isSendingTurn: true,
       showStopButton: true
@@ -694,7 +706,7 @@ describe("AgentGUINodeView layout persistence", () => {
       }
     });
 
-    expect(screen.getByText("statusWorking")).toBeInTheDocument();
+    expect(screen.queryByText("statusWorking")).not.toBeInTheDocument();
     expect(composerMock.calls.at(-1)).toMatchObject({
       isSendingTurn: true,
       showStopButton: false
@@ -783,7 +795,10 @@ describe("AgentGUINodeView usage chip", () => {
     statusDotMock.calls = [];
   });
 
-  function renderWithUsage(usage: AgentGUINodeViewModel["usage"]) {
+  function renderWithUsage(
+    usage: AgentGUINodeViewModel["usage"],
+    slashStatusLimits: AgentGUINodeViewProps["slashStatusLimits"] = []
+  ) {
     const activeConversation = createConversationSummary("session-1");
     return renderAgentGUINodeView({
       viewModel: {
@@ -793,11 +808,12 @@ describe("AgentGUINodeView usage chip", () => {
         activeConversationId: activeConversation.id,
         conversationDetail: createConversationDetail(),
         usage
-      }
+      },
+      slashStatusLimits
     });
   }
 
-  it("renders the usage chip with the context percent", () => {
+  it("renders the usage ring with the context percent as its accessible label", () => {
     renderWithUsage({
       usedTokens: 50_000,
       totalTokens: 200_000,
@@ -806,20 +822,44 @@ describe("AgentGUINodeView usage chip", () => {
     });
 
     const chip = screen.getByTestId("agent-gui-usage-chip");
-    expect(chip).toHaveTextContent("usageChip:25");
+    expect(chip).toHaveAccessibleName("usageChip:25");
+    expect(chip).not.toHaveTextContent("usageChip:25");
     expect(chip).toHaveAttribute("data-usage-level", "normal");
-    expect(chip).toHaveClass("text-[13px]");
-    expect(chip).toHaveClass("font-normal");
-    expect(chip).toHaveClass("cursor-default");
-    expect(chip.tagName).toBe("SPAN");
+    expect(chip.tagName).toBe("BUTTON");
+  });
 
-    const source = readFileSync(
-      resolve("agent-gui/agentGuiNode/AgentGUINodeView.tsx"),
-      "utf8"
+  it("opens a usage menu with context and limit meters", () => {
+    renderWithUsage(
+      {
+        usedTokens: 50_000,
+        totalTokens: 200_000,
+        percentUsed: 25,
+        quotas: []
+      },
+      [
+        {
+          id: "weekly",
+          label: "Weekly",
+          value: "75% left",
+          reset: "resets tomorrow",
+          percentRemaining: 75
+        }
+      ]
     );
-    expect(source).toContain(
-      'className="max-w-[320px] cursor-default text-xs"'
+
+    fireEvent.click(screen.getByTestId("agent-gui-usage-chip"));
+
+    expect(screen.getByTestId("agent-gui-usage-popover")).toHaveTextContent(
+      "usagePopoverTitle"
     );
+    expect(
+      screen.getByTestId("agent-gui-usage-context-meter")
+    ).toHaveTextContent("usageContextWindowLabel");
+    expect(
+      screen.getByTestId("agent-gui-usage-context-meter")
+    ).toHaveTextContent("50,000 / 200,000 (25%)");
+    expect(screen.getByText("Weekly")).toBeInTheDocument();
+    expect(screen.getByText("75% left (resets tomorrow)")).toBeInTheDocument();
   });
 
   it("marks the chip with the warning level at 80 percent and above", () => {
@@ -866,161 +906,16 @@ describe("AgentGUINodeView usage chip", () => {
 
     expect(screen.queryByTestId("agent-gui-usage-chip")).toBeNull();
   });
-});
-
-describe("AgentGUINodeView compact action", () => {
-  afterEach(() => {
-    conversationFlowMock.calls = [];
-    composerMock.calls = [];
-    statusDotMock.calls = [];
-  });
-
-  const usageWithWindow: AgentGUINodeViewModel["usage"] = {
-    usedTokens: 170_000,
-    totalTokens: 200_000,
-    percentUsed: 85,
-    quotas: []
-  };
-
-  function compactViewModel({
-    usage = usageWithWindow,
-    compactSupported = null,
-    status = "ready"
-  }: {
-    usage?: AgentGUINodeViewModel["usage"];
-    compactSupported?: boolean | null;
-    status?: AgentGUINodeViewModel["conversations"][number]["status"];
-  } = {}): AgentGUINodeViewModel {
-    const activeConversation = {
-      ...createConversationSummary("session-1"),
-      status
-    };
-    const conversationDetail = createConversationDetail();
-    return {
-      ...createViewModel(),
-      conversations: [activeConversation],
-      activeConversation,
-      activeConversationId: activeConversation.id,
-      conversationDetail: {
-        ...conversationDetail,
-        session: {
-          ...conversationDetail.session,
-          effectiveStatus: status,
-          turnPhase: status === "working" ? "working" : "idle"
-        }
-      },
-      usage,
-      compactSupported
-    };
-  }
-
-  it("renders the compact button beside the usage chip when capability is unknown", () => {
-    renderAgentGUINodeView({ viewModel: compactViewModel() });
+  it("does not render the header compact button", () => {
+    renderWithUsage({
+      usedTokens: 170_000,
+      totalTokens: 200_000,
+      percentUsed: 85,
+      quotas: []
+    });
 
     expect(screen.getByTestId("agent-gui-usage-chip")).toBeInTheDocument();
-    const compactButton = screen.getByTestId("agent-gui-compact-button");
-    expect(compactButton).toBeEnabled();
-    expect(compactButton).toHaveClass("text-[13px]");
-    expect(compactButton).toHaveClass("font-normal");
-  });
-
-  it("renders the compact button when the capability resolves true", () => {
-    renderAgentGUINodeView({
-      viewModel: compactViewModel({ compactSupported: true })
-    });
-
-    expect(screen.getByTestId("agent-gui-compact-button")).toBeInTheDocument();
-  });
-
-  it("does not render the compact button when the capability resolves false", () => {
-    renderAgentGUINodeView({
-      viewModel: compactViewModel({ compactSupported: false })
-    });
-
     expect(screen.queryByTestId("agent-gui-compact-button")).toBeNull();
-  });
-
-  it("does not render the compact button when usage is null", () => {
-    renderAgentGUINodeView({ viewModel: compactViewModel({ usage: null }) });
-
-    expect(screen.queryByTestId("agent-gui-compact-button")).toBeNull();
-  });
-
-  it("submits compact on click and stays disabled until the session returns to ready", () => {
-    const actions = createActions();
-    const view = renderAgentGUINodeView({
-      viewModel: compactViewModel(),
-      actions
-    });
-
-    fireEvent.click(screen.getByTestId("agent-gui-compact-button"));
-
-    expect(actions.submitCompact).toHaveBeenCalledTimes(1);
-    expect(screen.getByTestId("agent-gui-compact-button")).toBeDisabled();
-
-    view.rerender(
-      buildAgentGUINodeViewElement({
-        viewModel: compactViewModel({ status: "working" }),
-        actions
-      })
-    );
-    expect(screen.getByTestId("agent-gui-compact-button")).toBeDisabled();
-
-    view.rerender(
-      buildAgentGUINodeViewElement({
-        viewModel: compactViewModel({ status: "ready" }),
-        actions
-      })
-    );
-    expect(screen.getByTestId("agent-gui-compact-button")).toBeEnabled();
-  });
-
-  it("enables compact retry when a pending compact submission fails the session", () => {
-    const actions = createActions();
-    const view = renderAgentGUINodeView({
-      viewModel: compactViewModel(),
-      actions
-    });
-
-    fireEvent.click(screen.getByTestId("agent-gui-compact-button"));
-    expect(screen.getByTestId("agent-gui-compact-button")).toBeDisabled();
-
-    view.rerender(
-      buildAgentGUINodeViewElement({
-        viewModel: compactViewModel({ status: "failed" }),
-        actions
-      })
-    );
-
-    expect(screen.getByTestId("agent-gui-compact-button")).toBeEnabled();
-  });
-
-  it("enables compact retry when compact submission is rejected", async () => {
-    const rejectedSubmission = Promise.reject(new Error("submit rejected"));
-    void rejectedSubmission.catch(() => undefined);
-    const actions = {
-      ...createActions(),
-      submitCompact: vi.fn(() => rejectedSubmission)
-    };
-    renderAgentGUINodeView({
-      viewModel: compactViewModel(),
-      actions
-    });
-
-    fireEvent.click(screen.getByTestId("agent-gui-compact-button"));
-    expect(screen.getByTestId("agent-gui-compact-button")).toBeDisabled();
-
-    await waitFor(() => {
-      expect(screen.getByTestId("agent-gui-compact-button")).toBeEnabled();
-    });
-  });
-
-  it("disables the compact button while the session is working", () => {
-    renderAgentGUINodeView({
-      viewModel: compactViewModel({ status: "working" })
-    });
-
-    expect(screen.getByTestId("agent-gui-compact-button")).toBeDisabled();
   });
 });
 
@@ -1143,6 +1038,7 @@ interface RenderAgentGUINodeViewOptions {
   viewModel?: AgentGUINodeViewModel;
   actions?: AgentGUINodeViewProps["actions"];
   labels?: AgentGUIViewLabels;
+  slashStatusLimits?: AgentGUINodeViewProps["slashStatusLimits"];
   showProjectSelector?: boolean;
 }
 
@@ -1153,12 +1049,14 @@ function buildAgentGUINodeViewElement({
   viewModel = createViewModel(),
   actions = createActions(),
   labels = createLabels(),
+  slashStatusLimits = [],
   showProjectSelector = true
 }: RenderAgentGUINodeViewOptions = {}) {
   return (
     <AgentGUINodeView
       viewModel={viewModel}
       isAgentProviderReady={true}
+      slashStatusLimits={slashStatusLimits}
       actions={actions}
       workspaceUserProjectI18n={workspaceUserProjectI18n}
       conversationRailCollapsed={conversationRailCollapsed}
@@ -1362,15 +1260,19 @@ function createLabels(): AgentGUIViewLabels {
     inheritedUnavailable: "inheritedUnavailable",
     reasoningLabel: "reasoning",
     reasoningDegreeLabel: "reasoningDegreeLabel",
+    reasoningOptionDefault: "reasoningOptionDefault",
     reasoningOptionMinimal: "reasoningOptionMinimal",
     reasoningOptionLow: "reasoningOptionLow",
     reasoningOptionMedium: "reasoningOptionMedium",
     reasoningOptionHigh: "reasoningOptionHigh",
     reasoningOptionXHigh: "reasoningOptionXHigh",
+    reasoningOptionMax: "reasoningOptionMax",
     speedLabel: "Speed",
     speedSelectionLabel: "Speed",
     speedOptionStandard: "Standard",
+    speedOptionStandardDescription: "Standard speed",
     speedOptionFast: "Fast",
+    speedOptionFastDescription: "Fast speed",
     permissionLabel: "permissionLabel",
     permissionModeReadOnly: "permissionModeReadOnly",
     permissionModeAuto: "permissionModeAuto",
@@ -1524,6 +1426,7 @@ function createLabels(): AgentGUIViewLabels {
     slashStatusLimitsUnavailable: "slashStatusLimitsUnavailable",
     usageChipLabel: ({ percent }) => `usageChip:${percent}`,
     usagePopoverTitle: "usagePopoverTitle",
+    usageContextWindowLabel: "usageContextWindowLabel",
     usageTokensLabel: "usageTokensLabel",
     usageLimitsLabel: "usageLimitsLabel",
     usageCompactAction: "usageCompactAction",
@@ -1547,12 +1450,6 @@ function createLabels(): AgentGUIViewLabels {
     referenceWorkspaceFiles: "referenceWorkspaceFiles",
     syncPending: "syncPending",
     syncSynced: "syncSynced",
-    syncFailed: "syncFailed",
-    statusWorking: "statusWorking",
-    statusWaiting: "statusWaiting",
-    statusReady: "statusReady",
-    statusCompleted: "statusCompleted",
-    statusFailed: "statusFailed",
-    statusCanceled: "statusCanceled"
+    syncFailed: "syncFailed"
   };
 }

@@ -90,7 +90,7 @@ describe("AgentRichTextReadonly", () => {
     const skillToken = container.querySelector(
       '[data-agent-skill-token="true"]'
     );
-    expect(skillToken).toHaveTextContent("caveman");
+    expect(skillToken).toHaveTextContent("/caveman");
     expect(skillToken).toHaveAttribute("data-agent-skill-trigger", "/caveman");
     expect(container).toHaveTextContent("/compact");
   });

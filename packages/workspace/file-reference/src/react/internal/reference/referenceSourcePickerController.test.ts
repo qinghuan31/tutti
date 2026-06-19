@@ -159,6 +159,55 @@ test("toggleNode 展开 folder 并懒加载子节点", async () => {
   );
 });
 
+test("expandNode 展开定位到的 folder 并懒加载子节点", async () => {
+  const controller = createReferenceSourcePickerController({
+    aggregator: fakeAggregator({
+      tabs: tabsTwo,
+      children: {
+        [`app-artifact:${SOURCE_ROOT_NODE_ID}`]: {
+          entries: [folder("app-artifact", "g1", "分组一")],
+          nextCursor: null
+        },
+        "app-artifact:g1": {
+          entries: [folder("app-artifact", "task-1", "任务一")],
+          nextCursor: null
+        },
+        "app-artifact:task-1": {
+          entries: [file("app-artifact", "artifact-1", "产物.md")],
+          nextCursor: null
+        }
+      }
+    }),
+    scope,
+    searchDebounceMs: 0
+  });
+  controller.open();
+  await flush();
+  controller.setActiveSource("app-artifact");
+  await flush();
+
+  controller.expandNode(folder("app-artifact", "task-1", "任务一"));
+  await flush();
+
+  const taskKey = nodeRefKey({
+    sourceId: "app-artifact",
+    nodeId: "task-1"
+  });
+  const tab = controller.getSnapshot().bySource["app-artifact"];
+  assert.equal(tab?.expandedKeys[taskKey], true);
+  assert.deepEqual(
+    tab?.childrenByKey[taskKey]?.entries.map((node) => node.displayName),
+    ["产物.md"]
+  );
+
+  controller.expandNode(folder("app-artifact", "task-1", "任务一"));
+  await flush();
+  assert.equal(
+    controller.getSnapshot().bySource["app-artifact"]?.expandedKeys[taskKey],
+    true
+  );
+});
+
 test("loadMore 按 cursor 累积分页(保序不重排)", async () => {
   const children: Record<string, ListChildrenResult> = {
     [`app-artifact:${SOURCE_ROOT_NODE_ID}`]: {

@@ -13,15 +13,19 @@ export type AgentComposerSettingsMenuLabels = {
   loadingSettings: string;
   reasoningLabel: string;
   reasoningDegreeLabel: string;
+  reasoningOptionDefault: string;
   reasoningOptionMinimal: string;
   reasoningOptionLow: string;
   reasoningOptionMedium: string;
   reasoningOptionHigh: string;
   reasoningOptionXHigh: string;
+  reasoningOptionMax: string;
   speedLabel: string;
   speedSelectionLabel: string;
   speedOptionStandard: string;
+  speedOptionStandardDescription: string;
   speedOptionFast: string;
+  speedOptionFastDescription: string;
   permissionLabel: string;
   planModeLabel: string;
   permissionModeReadOnly?: string;
@@ -158,7 +162,9 @@ export function buildComposerModelMenuModel(
       options: speedItems.map((option) => ({
         value: option.value,
         label: resolveSpeedOptionLabel(option.value, labels),
-        description: option.description
+        description:
+          resolveSpeedOptionDescription(option.value, labels) ??
+          option.description
       }))
     }
   };
@@ -193,11 +199,13 @@ function modelOptionPresentation(input: {
     AgentComposerSettingsMenuLabels,
     | "modelContextWindowSuffix"
     | "modelTooltipVersionLabel"
+    | "reasoningOptionDefault"
     | "reasoningOptionMinimal"
     | "reasoningOptionLow"
     | "reasoningOptionMedium"
     | "reasoningOptionHigh"
     | "reasoningOptionXHigh"
+    | "reasoningOptionMax"
     | "speedOptionFast"
   >;
 }): {
@@ -255,11 +263,13 @@ function reasoningSummaryLabel(
   effort: string,
   labels: Pick<
     AgentComposerSettingsMenuLabels,
+    | "reasoningOptionDefault"
     | "reasoningOptionMinimal"
     | "reasoningOptionLow"
     | "reasoningOptionMedium"
     | "reasoningOptionHigh"
     | "reasoningOptionXHigh"
+    | "reasoningOptionMax"
   >
 ): string {
   return resolveReasoningOptionLabel(effort, labels);
@@ -457,14 +467,18 @@ export function resolveReasoningOptionLabel(
   value: string,
   labels: Pick<
     AgentComposerSettingsMenuLabels,
+    | "reasoningOptionDefault"
     | "reasoningOptionMinimal"
     | "reasoningOptionLow"
     | "reasoningOptionMedium"
     | "reasoningOptionHigh"
     | "reasoningOptionXHigh"
+    | "reasoningOptionMax"
   >
 ): string {
   switch (value) {
+    case "default":
+      return labels.reasoningOptionDefault;
     case "minimal":
       return labels.reasoningOptionMinimal;
     case "low":
@@ -475,6 +489,8 @@ export function resolveReasoningOptionLabel(
       return labels.reasoningOptionHigh;
     case "xhigh":
       return labels.reasoningOptionXHigh;
+    case "max":
+      return labels.reasoningOptionMax;
     default:
       return value;
   }
@@ -494,6 +510,23 @@ export function resolveSpeedOptionLabel(
       return labels.speedOptionFast;
     default:
       return value;
+  }
+}
+
+function resolveSpeedOptionDescription(
+  value: string,
+  labels: Pick<
+    AgentComposerSettingsMenuLabels,
+    "speedOptionStandardDescription" | "speedOptionFastDescription"
+  >
+): string | undefined {
+  switch (value) {
+    case "standard":
+      return labels.speedOptionStandardDescription;
+    case "fast":
+      return labels.speedOptionFastDescription;
+    default:
+      return undefined;
   }
 }
 

@@ -3,6 +3,7 @@ package agentactivity
 import "context"
 
 type Repository interface {
+	ClearSessions(context.Context, string) (ClearSessionsResult, error)
 	DeleteSession(context.Context, string, string) (bool, error)
 	GetSession(context.Context, string, string) (Session, bool, error)
 	ListSessions(context.Context, string) ([]Session, bool, error)
@@ -11,6 +12,12 @@ type Repository interface {
 	ReportSessionMessages(context.Context, SessionMessageReport) (MessageReportResult, error)
 	ReportSessionState(context.Context, SessionStateReport) (StateReportResult, error)
 	UpdateSessionPinned(context.Context, string, string, bool) (Session, bool, error)
+}
+
+type ClearSessionsResult struct {
+	RemovedMessages   int
+	RemovedSessions   int
+	RemovedSessionIDs []string
 }
 
 type MessageOrder string

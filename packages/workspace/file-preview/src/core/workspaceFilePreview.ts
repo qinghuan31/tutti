@@ -5,7 +5,7 @@ export type WorkspaceFilePreviewEntryKind =
   | "unknown"
   | (string & {});
 
-export type WorkspaceFilePreviewKind = "image" | "text";
+export type WorkspaceFilePreviewKind = "image" | "text" | "video";
 
 export type WorkspaceFileVisualKind =
   | "binary"
@@ -62,11 +62,18 @@ export type WorkspaceFilePreviewLoadedState<
   TTarget extends WorkspaceFilePreviewActivationTarget
 > =
   | { content: string; entry: TTarget; status: "text" }
+  | { content: string; entry: TTarget; status: "html" }
   | {
       bytes: Uint8Array<ArrayBuffer>;
       contentType: string;
       entry: TTarget;
       status: "image";
+    }
+  | {
+      bytes: Uint8Array<ArrayBuffer>;
+      contentType: string;
+      entry: TTarget;
+      status: "video";
     }
   | {
       entry: TEntry;
@@ -316,6 +323,19 @@ export function resolveWorkspaceImageMimeType(
   }
 }
 
+export function resolveWorkspaceVideoMimeType(
+  pathOrName: string
+): string | null {
+  switch (resolveWorkspaceFileExtension(pathOrName)) {
+    case "mp4":
+      return "video/mp4";
+    case "webm":
+      return "video/webm";
+    default:
+      return null;
+  }
+}
+
 export function classifyWorkspaceFilePreviewKind(
   entry: Pick<
     WorkspaceFilePreviewEntry,
@@ -329,6 +349,9 @@ export function classifyWorkspaceFilePreviewKind(
   const name = resolveWorkspaceFilePreviewName(entry);
   if (resolveWorkspaceImageMimeType(name) !== null) {
     return "image";
+  }
+  if (resolveWorkspaceVideoMimeType(name) !== null) {
+    return "video";
   }
 
   const normalizedName = name.trim().toLowerCase();
@@ -415,6 +438,7 @@ export function createWorkspaceFilePreviewLoadedState<
   bytes: Uint8Array | ArrayBuffer;
   contentType?: string | null;
   entry: TEntry;
+  renderHtml?: boolean;
   target: TTarget;
 }): WorkspaceFilePreviewLoadedState<TEntry, TTarget> {
   if (input.target.fileKind === "image") {
@@ -428,6 +452,17 @@ export function createWorkspaceFilePreviewLoadedState<
       status: "image"
     };
   }
+  if (input.target.fileKind === "video") {
+    return {
+      bytes: copyWorkspaceFilePreviewBytes(input.bytes),
+      contentType:
+        input.contentType ??
+        resolveWorkspaceVideoMimeType(input.target.name) ??
+        "application/octet-stream",
+      entry: input.target,
+      status: "video"
+    };
+  }
 
   try {
     const content = decodeWorkspaceTextFile(input.bytes);
@@ -436,6 +471,13 @@ export function createWorkspaceFilePreviewLoadedState<
         entry: input.entry,
         reason: "binary",
         status: "readonly"
+      };
+    }
+    if (input.renderHtml && isWorkspaceHtmlFileName(input.target.name)) {
+      return {
+        content,
+        entry: input.target,
+        status: "html"
       };
     }
     return {
@@ -450,6 +492,12 @@ export function createWorkspaceFilePreviewLoadedState<
       status: "readonly"
     };
   }
+}
+
+function isWorkspaceHtmlFileName(pathOrName: string): boolean {
+  return browserOpenableHtmlExtensions.has(
+    resolveWorkspaceFileExtension(pathOrName)
+  );
 }
 
 export function resolveWorkspaceFilePreviewName(

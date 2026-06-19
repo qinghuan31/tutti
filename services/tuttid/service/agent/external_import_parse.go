@@ -28,7 +28,7 @@ func parseCodexJSONL(path string, reader io.Reader) (externalImportedSession, bo
 		case "response_item":
 			payload := mapField(raw, "payload")
 			message := codexMessageFromPayload(payload, index, timestamp)
-			if message.Text != "" {
+			if externalImportedMessageHasContent(message) {
 				session.Messages = append(session.Messages, message)
 			}
 		case "event_msg":
@@ -50,28 +50,106 @@ func codexMessageFromPayload(payload map[string]any, index int, timestamp int64)
 	switch itemType {
 	case "message":
 		return externalImportedMessage{
-			RawID:            rawID,
-			Role:             normalizeExternalMessageRole(stringField(payload, "role")),
-			Text:             externalContentText(payload["content"]),
-			OccurredAtUnixMS: timestamp,
+			RawID:             rawID,
+			Role:              normalizeExternalMessageRole(stringField(payload, "role")),
+			Kind:              "text",
+			Status:            "completed",
+			Text:              externalContentText(payload["content"]),
+			OccurredAtUnixMS:  timestamp,
+			StartedAtUnixMS:   timestamp,
+			CompletedAtUnixMS: timestamp,
 		}
 	case "function_call":
-		name := firstNonEmptyString(stringField(payload, "name"), stringField(payload, "call_id"))
-		return externalImportedMessage{
-			RawID:            rawID,
-			Role:             "assistant",
-			Text:             externalToolText(name),
-			OccurredAtUnixMS: timestamp,
-		}
+		return codexFunctionCallMessage(payload, rawID, timestamp)
 	case "function_call_output":
-		return externalImportedMessage{
-			RawID:            rawID,
-			Role:             "tool",
-			Text:             firstNonEmptyString(externalContentText(payload["output"]), externalContentText(payload["content"])),
-			OccurredAtUnixMS: timestamp,
-		}
+		return codexFunctionCallOutputMessage(payload, rawID, timestamp)
 	default:
 		return externalImportedMessage{}
+	}
+}
+
+func codexFunctionCallMessage(payload map[string]any, rawID string, timestamp int64) externalImportedMessage {
+	callID := stringField(payload, "call_id")
+	name := firstNonEmptyString(stringField(payload, "name"), callID)
+	arguments := codexFunctionCallArguments(payload["arguments"])
+	toolPayload := map[string]any{
+		"source":   "external_import",
+		"provider": agentproviderbiz.Codex,
+		"status":   "running",
+	}
+	if callID != "" {
+		toolPayload["callId"] = callID
+	}
+	if name != "" {
+		toolPayload["name"] = name
+		toolPayload["toolName"] = name
+	}
+	if len(arguments) > 0 {
+		toolPayload["input"] = arguments
+	}
+	return externalImportedMessage{
+		RawID:            rawID,
+		MessageIDSeed:    codexToolMessageIDSeed(rawID, callID),
+		Role:             "assistant",
+		Kind:             "tool_call",
+		Status:           "running",
+		Text:             name,
+		Payload:          toolPayload,
+		OccurredAtUnixMS: timestamp,
+		StartedAtUnixMS:  timestamp,
+	}
+}
+
+func codexFunctionCallOutputMessage(payload map[string]any, rawID string, timestamp int64) externalImportedMessage {
+	callID := stringField(payload, "call_id")
+	output := firstNonEmptyString(externalContentText(payload["output"]), externalContentText(payload["content"]))
+	toolPayload := map[string]any{
+		"source":   "external_import",
+		"provider": agentproviderbiz.Codex,
+		"status":   "completed",
+		"output": map[string]any{
+			"output": output,
+		},
+	}
+	if callID != "" {
+		toolPayload["callId"] = callID
+	}
+	return externalImportedMessage{
+		RawID:             rawID,
+		MessageIDSeed:     codexToolMessageIDSeed(rawID, callID),
+		Role:              "assistant",
+		Kind:              "tool_call",
+		Status:            "completed",
+		Text:              output,
+		Payload:           toolPayload,
+		OccurredAtUnixMS:  timestamp,
+		CompletedAtUnixMS: timestamp,
+	}
+}
+
+func codexToolMessageIDSeed(rawID string, callID string) string {
+	if callID = strings.TrimSpace(callID); callID != "" {
+		return "toolcall:" + callID
+	}
+	return "toolcall:" + strings.TrimSpace(rawID)
+}
+
+func codexFunctionCallArguments(value any) map[string]any {
+	switch typed := value.(type) {
+	case map[string]any:
+		return typed
+	case string:
+		trimmed := strings.TrimSpace(typed)
+		if trimmed == "" {
+			return nil
+		}
+		var decoded map[string]any
+		if err := json.Unmarshal([]byte(trimmed), &decoded); err == nil {
+			return decoded
+		}
+		return map[string]any{"arguments": trimmed}
+	default:
+		return nil
 	}
 }
 
@@ -92,10 +170,14 @@ func parseClaudeCodeJSONL(path string, reader io.Reader) (externalImportedSessio
 		message := externalImportedMessage{
 			RawID:            firstNonEmptyString(stringField(raw, "uuid"), stringField(messageMap, "id"), strconv.Itoa(index)),
 			Role:             role,
+			Kind:             "text",
+			Status:           "completed",
 			Text:             externalContentText(content),
 			OccurredAtUnixMS: unixMSFromAny(raw["timestamp"]),
 		}
 		if message.Text != "" {
+			message.StartedAtUnixMS = message.OccurredAtUnixMS
+			message.CompletedAtUnixMS = message.OccurredAtUnixMS
 			session.Messages = append(session.Messages, message)
 		}
 	})
@@ -117,12 +199,23 @@ func normalizeExternalParsedSession(session externalImportedSession) (externalIm
 	messages := make([]externalImportedMessage, 0, len(session.Messages))
 	for i, message := range session.Messages {
 		message.Role = normalizeExternalMessageRole(message.Role)
+		message.Kind = normalizeExternalMessageKind(message.Kind)
+		message.Status = normalizeExternalMessageStatus(message.Status)
 		message.Text = strings.TrimSpace(message.Text)
-		if message.Role == "" || message.Text == "" {
+		if message.Role == "" || !externalImportedMessageHasContent(message) {
 			continue
 		}
 		if message.RawID == "" {
 			message.RawID = strconv.Itoa(i)
+		}
+		if message.OccurredAtUnixMS <= 0 {
+			message.OccurredAtUnixMS = firstNonZeroInt64(message.CompletedAtUnixMS, message.StartedAtUnixMS)
+		}
+		if message.StartedAtUnixMS <= 0 && message.Kind == "text" {
+			message.StartedAtUnixMS = message.OccurredAtUnixMS
+		}
+		if message.CompletedAtUnixMS <= 0 && message.Status == "completed" {
+			message.CompletedAtUnixMS = message.OccurredAtUnixMS
 		}
 		messages = append(messages, message)
 	}
@@ -134,6 +227,13 @@ func normalizeExternalParsedSession(session externalImportedSession) (externalIm
 	session.UpdatedAtUnixMS = lastExternalMessageUnixMS(messages)
 	session.Title = externalParsedSessionTitle(session.Title, messages)
 	return session, true, nil
+}
+
+func externalImportedMessageHasContent(message externalImportedMessage) bool {
+	if strings.TrimSpace(message.Text) != "" {
+		return true
+	}
+	return strings.TrimSpace(message.Kind) == "tool_call" && len(message.Payload) > 0
 }
 
 func externalParsedSessionTitle(hint string, messages []externalImportedMessage) string {

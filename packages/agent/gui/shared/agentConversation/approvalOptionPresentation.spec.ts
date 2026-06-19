@@ -32,14 +32,14 @@ describe("approvalOptionDisplayLabel", () => {
       approvalOptionDisplayLabel({
         id: "approved",
         kind: "allow_once",
-        label: "Allow"
+        label: "Approve"
       })
     ).toBe("允许执行");
     expect(
       approvalOptionDisplayLabel({
         id: "approved-for-session",
         kind: "allow_always",
-        label: "Allow for this session"
+        label: "Approve for session"
       })
     ).toBe("本次会话允许");
     expect(

@@ -2079,6 +2079,33 @@ describe("AgentFileMentionPalette", () => {
     expect(issueIconRule).toMatch(/height:\s*16px/);
   });
 
+  it("renders skill and capability tokens as purple badges", () => {
+    const css = readFileSync(resolve("app/renderer/agentactivity.css"), "utf8");
+    const skillCapabilityRule =
+      css.match(
+        /\[data-agent-mention-kind="skill"\]\.tsh-agent-object-token--entity,[\s\S]*?\[data-agent-mention-kind="capability"\]\.tsh-agent-object-token--entity\s*{[^}]*}/s
+      )?.[0] ?? "";
+    const skillCapabilityKindRule =
+      css.match(
+        /\[data-agent-mention-kind="skill"\]\.tsh-agent-object-token--entity\s+\.tsh-agent-object-token__kind,[\s\S]*?\[data-agent-mention-kind="capability"\]\.tsh-agent-object-token--entity\s+\.tsh-agent-object-token__kind\s*{[^}]*}/s
+      )?.[0] ?? "";
+    const skillCapabilityMainRule =
+      css.match(
+        /\[data-agent-mention-kind="skill"\]\.tsh-agent-object-token--entity\s+\.tsh-agent-object-token__main,[\s\S]*?\[data-agent-mention-kind="capability"\]\.tsh-agent-object-token--entity\s+\.tsh-agent-object-token__main\s*{[^}]*}/s
+      )?.[0] ?? "";
+
+    expect(skillCapabilityRule).toMatch(/padding:\s*0 4px 0 0/);
+    expect(skillCapabilityRule).toMatch(/background:\s*transparent/);
+    expect(skillCapabilityRule).toMatch(/color:\s*var\(--tutti-purple\)/);
+    expect(skillCapabilityMainRule).toMatch(
+      /background:\s*var\(--tutti-purple-bg\)/
+    );
+    expect(skillCapabilityKindRule).toMatch(/display:\s*none/);
+    expect(css).toMatch(
+      /\.tsh-agent-object-token--entity\.ProseMirror-selectednode\s+\.tsh-agent-object-token__main,[\s\S]*?background:\s*color-mix\(in srgb,\s*var\(--tutti-purple\) 20%,\s*transparent\)/s
+    );
+  });
+
   it("keeps file and folder mention icons at 16px with folder token color", () => {
     const css = readFileSync(resolve("app/renderer/agentactivity.css"), "utf8");
     const shellRule =

@@ -6,7 +6,7 @@ import {
   type HTMLAttributes,
   type ReactElement
 } from "react";
-import { ChevronDown } from "lucide-react";
+import { ChevronDown, ZapIcon } from "lucide-react";
 import {
   WorkspaceUserProjectSelect,
   type WorkspaceUserProjectSelectChangeAction,
@@ -437,13 +437,12 @@ export function AgentModelReasoningDropdown({
         >
           <span className="flex min-w-0 flex-1 items-center gap-2 overflow-hidden">
             {menu.speed.show && menu.trigger.isFast ? (
-              <span
+              <ZapIcon
                 aria-hidden
-                className="shrink-0"
+                className="size-3.5 shrink-0"
                 data-agent-speed-indicator="fast"
-              >
-                ⚡
-              </span>
+                strokeWidth={2.5}
+              />
             ) : null}
             {menu.trigger.showCombined ? (
               <span className="min-w-0 truncate">

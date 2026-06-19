@@ -8,7 +8,7 @@ export const workspaceFileManagerLogicalRoot = "/" as const;
 export type WorkspaceFileEntryKind = "file" | "directory" | "unknown";
 export type WorkspaceFileSearchMatchTarget = "basename" | "path";
 export type WorkspaceFileImportConflictKind = "replaceable" | "type_mismatch";
-export type WorkspaceFilePreviewKind = "image" | "text";
+export type WorkspaceFilePreviewKind = "image" | "text" | "video";
 export const workspaceFileManagerPersistedStateSchemaVersion = 2 as const;
 
 export interface WorkspaceFileEntry {
@@ -35,7 +35,9 @@ export type WorkspaceFilePreviewState =
   | { entry: WorkspaceFileEntry; status: "directory" }
   | { entry: WorkspaceFileActivationTarget; status: "loading" }
   | { content: string; entry: WorkspaceFileActivationTarget; status: "text" }
+  | { content: string; entry: WorkspaceFileActivationTarget; status: "html" }
   | { entry: WorkspaceFileActivationTarget; objectUrl: string; status: "image" }
+  | { entry: WorkspaceFileActivationTarget; objectUrl: string; status: "video" }
   | { entry: WorkspaceFileEntry; message: string; status: "unsupported" }
   | { entry: WorkspaceFileEntry; message: string; status: "readonly" }
   | { entry: WorkspaceFileEntry; message: string; status: "error" };

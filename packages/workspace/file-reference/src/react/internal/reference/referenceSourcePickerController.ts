@@ -105,6 +105,8 @@ export interface ReferenceSourcePickerController {
   ensureChildren(node: ReferenceNode | null): void;
   /** 确保指定源的根层级已加载(左栏可同时展开多源时,为非 active 源预载分组)。 */
   ensureSourceRoot(sourceId: string): void;
+  /** 幂等展开某 folder 并确保其子节点已加载(定位目标默认展开用)。 */
+  expandNode(node: ReferenceNode): void;
   toggleNode(node: ReferenceNode): void;
   loadMore(node: ReferenceNode | null): void;
   /**
@@ -686,6 +688,25 @@ export function createReferenceSourcePickerController(
         return;
       }
       ensureRootLoaded(sourceId);
+    },
+    expandNode(node) {
+      if (node.kind !== "folder") {
+        return;
+      }
+      const sourceId = node.ref.sourceId;
+      const key = nodeRefKey(node.ref);
+      updateTab(sourceId, (tab) =>
+        tab.expandedKeys[key] === true
+          ? tab
+          : {
+              ...tab,
+              expandedKeys: { ...tab.expandedKeys, [key]: true }
+            }
+      );
+      const childState = snapshot.bySource[sourceId]?.childrenByKey[key];
+      if (!childState?.loaded && !childState?.loading) {
+        void loadChildren(sourceId, node, { append: false });
+      }
     },
     toggleNode(node) {
       if (node.kind !== "folder") {

@@ -47,7 +47,7 @@ export interface WorkspaceFileReferenceTreeSnapshot {
   rootPath: string;
 }
 
-export type WorkspaceFileReferencePreviewKind = "image" | "text";
+export type WorkspaceFileReferencePreviewKind = "image" | "text" | "video";
 
 export interface WorkspaceFileReferencePreview {
   bytes: Uint8Array | ArrayBuffer;

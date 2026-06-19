@@ -850,6 +850,29 @@ test("WorkspaceSettingsService tracks theme changes without developer log clear 
   ]);
 });
 
+test("WorkspaceSettingsService clears workspace conversation history", async () => {
+  const calls: string[] = [];
+  const service = new WorkspaceSettingsService(
+    {
+      client: createWorkspaceSettingsClient({
+        async clearWorkspaceAgentSessions(workspaceID) {
+          calls.push(workspaceID);
+          return { removedMessages: 3, removedSessions: 2 };
+        }
+      })
+    },
+    createDesktopPreferencesService({
+      state: createPreferencesState({})
+    })
+  );
+
+  service.openPanel({ id: "workspace-1" });
+  await service.clearConversationHistory();
+
+  assert.deepEqual(calls, ["workspace-1"]);
+  assert.equal(service.store.developerLogs.clearingConversationHistory, false);
+});
+
 test("WorkspaceSettingsService tracks language changes", async () => {
   const reporterCalls: ReporterEventInput[][] = [];
   const service = new WorkspaceSettingsService(
@@ -898,6 +921,10 @@ function createWorkspaceSettingsClient(
       clearedFiles: 0,
       clearedPaths: [],
       clearedSizeBytes: 0
+    }),
+    clearWorkspaceAgentSessions: async () => ({
+      removedMessages: 0,
+      removedSessions: 0
     }),
     exportLogs: async () => ({
       canceled: true,

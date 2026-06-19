@@ -1989,6 +1989,7 @@ export interface AgentGUIOpenSessionRequest {
 }
 
 export interface AgentGUIPrefillPromptRequest {
+  autoSubmit?: boolean;
   draftPrompt: string;
   sequence: number;
   userProjectPath?: string | null;
@@ -2486,6 +2487,7 @@ export function useAgentGUINodeController({
   const onDataChangeRef = useRef(onDataChange);
   const onShowMessageRef = useRef(onShowMessage);
   const handledPrefillPromptSequenceRef = useRef<number | null>(null);
+  const pendingAutoSubmitPromptRef = useRef<string | null>(null);
   const [transientConversation, setTransientConversationState] =
     useState<AgentGUIConversationSummary | null>(null);
   const transientConversationRef = useRef<AgentGUIConversationSummary | null>(
@@ -4821,6 +4823,9 @@ export function useAgentGUINodeController({
         prompt: draftPrompt
       }
     }));
+    if (prefillPromptRequest.autoSubmit) {
+      pendingAutoSubmitPromptRef.current = draftPrompt;
+    }
     persistActiveConversation(null);
     loadDraftComposerOptions();
   }, [
@@ -5367,6 +5372,18 @@ export function useAgentGUINodeController({
   const submitCompact = useCallback(() => {
     submitPrompt(textPromptContent("/compact"));
   }, [submitPrompt]);
+
+  useEffect(() => {
+    if (previewMode) {
+      return;
+    }
+    const prompt = pendingAutoSubmitPromptRef.current?.trim() ?? "";
+    if (!prompt) {
+      return;
+    }
+    pendingAutoSubmitPromptRef.current = null;
+    submitPrompt(textPromptContent(prompt));
+  }, [prefillPromptRequest?.sequence, previewMode, submitPrompt]);
 
   const showPromptImagesUnsupported = useCallback(() => {
     setDetailError(translate("agentHost.agentGui.promptImagesUnsupported"));

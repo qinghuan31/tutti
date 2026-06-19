@@ -14,12 +14,12 @@ import {
   DialogTitle,
   EyeIcon,
   FileLinedIcon,
+  ImportLinedIcon as ImportIcon,
   Input,
   LaunchIcon,
   LocateFolderIcon,
   MenuSurface,
   NewWorkspaceLinedIcon,
-  UploadIcon as ImportIcon,
   ViewportMenuSurface,
   WebIcon,
   cn

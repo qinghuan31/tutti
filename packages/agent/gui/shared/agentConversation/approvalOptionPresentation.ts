@@ -38,6 +38,9 @@ export function approvalOptionDisplayLabel(
   ) {
     return translate("agentHost.agentGui.approvalOptions.allowOnce");
   }
+  if (isGenericAllowForSessionLabel(label)) {
+    return translate("agentHost.agentGui.approvalOptions.allowForSession");
+  }
   if (
     (idToken === "allowalways" ||
       idToken === "allowall" ||
@@ -105,7 +108,7 @@ function approvalOptionSpecificTranslationKey(
         ? "agentHost.agentGui.approvalOptions.allowOnce"
         : null;
     case "approvedforsession":
-      return labelToken === "allowforthissession"
+      return isGenericAllowForSessionLabel(label)
         ? "agentHost.agentGui.approvalOptions.allowForSession"
         : null;
     case "approvedalways":
@@ -188,8 +191,19 @@ function isGenericAllowOnceLabel(label: string): boolean {
     token === "" ||
     token === "allow" ||
     token === "allowonce" ||
+    token === "approve" ||
+    token === "approveonce" ||
     token === "yes" ||
     token === "yesproceed" ||
     token === "yesandproceed"
+  );
+}
+
+function isGenericAllowForSessionLabel(label: string): boolean {
+  const token = normalizeApprovalOptionToken(label);
+  return (
+    token === "allowforthissession" ||
+    token === "allowforsession" ||
+    token === "approveforsession"
   );
 }

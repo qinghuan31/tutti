@@ -72,7 +72,7 @@ export function getPromptToolDetails(
 }
 
 export function isPromptRequestIdTitle(value: string): boolean {
-  return /^request(?:id|ID)\s*:/u.test(value.trim());
+  return /^requestid\s*:/iu.test(value.trim());
 }
 
 function resolveToolDetailInput(

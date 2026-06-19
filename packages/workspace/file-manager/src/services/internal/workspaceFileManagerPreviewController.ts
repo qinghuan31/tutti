@@ -121,9 +121,10 @@ export class WorkspaceFileManagerPreviewController {
       const loadedState = createWorkspaceFilePreviewLoadedState({
         bytes,
         entry: selectedEntry,
+        renderHtml: true,
         target: activationTarget
       });
-      if (loadedState.status === "image") {
+      if (loadedState.status === "image" || loadedState.status === "video") {
         const objectUrl = URL.createObjectURL(
           new Blob([loadedState.bytes], {
             type: loadedState.contentType
@@ -138,12 +139,17 @@ export class WorkspaceFileManagerPreviewController {
         this.store.previewState = {
           entry: activationTarget,
           objectUrl,
-          status: "image"
+          status: loadedState.status
         };
         return;
       }
 
       if (loadedState.status === "text") {
+        this.store.previewState = loadedState;
+        return;
+      }
+
+      if (loadedState.status === "html") {
         this.store.previewState = loadedState;
         return;
       }

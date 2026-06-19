@@ -682,7 +682,7 @@ describe("AgentInteractivePromptSurface", () => {
     }
   });
 
-  it("hides request id approval titles when structured details are available", () => {
+  it("renders structured details instead of approval titles", () => {
     render(
       <AgentInteractivePromptSurface
         prompt={{
@@ -725,6 +725,74 @@ describe("AgentInteractivePromptSurface", () => {
     expect(
       screen.queryByText(/4601155f-fdab-47b8-9b1a-a569e7a79df3/)
     ).toBeNull();
+  });
+
+  it("does not render approval titles without structured details", () => {
+    render(
+      <AgentInteractivePromptSurface
+        prompt={{
+          kind: "approval",
+          id: "approval:2",
+          turnId: "turn-1",
+          requestId: "2",
+          callId: "approval-2",
+          title: "requestId: 2",
+          status: "waiting_approval",
+          toolName: "Approval",
+          input: {},
+          options: [
+            {
+              id: "allow_once",
+              label: "Yes",
+              kind: "allow_once",
+              description: ""
+            }
+          ],
+          output: null,
+          occurredAtUnixMs: 1
+        }}
+        isSubmitting={false}
+        onSubmit={vi.fn()}
+        labels={{ ...labels, approvalLead: "Claude Code needs your choice." }}
+      />
+    );
+
+    expect(screen.getByText("Claude Code needs your choice")).toBeTruthy();
+    expect(screen.queryByText(/requestId:/)).toBeNull();
+  });
+
+  it("does not render approval metadata titles", () => {
+    render(
+      <AgentInteractivePromptSurface
+        prompt={{
+          kind: "approval",
+          id: "approval:level-2",
+          turnId: "turn-1",
+          requestId: "level-2",
+          callId: "approval-level-2",
+          title: "level: 2",
+          status: "waiting_approval",
+          toolName: "Approval",
+          input: {},
+          options: [
+            {
+              id: "allow_once",
+              label: "Yes",
+              kind: "allow_once",
+              description: ""
+            }
+          ],
+          output: null,
+          occurredAtUnixMs: 1
+        }}
+        isSubmitting={false}
+        onSubmit={vi.fn()}
+        labels={{ ...labels, approvalLead: "Claude Code needs your choice." }}
+      />
+    );
+
+    expect(screen.getByText("Claude Code needs your choice")).toBeTruthy();
+    expect(screen.queryByText(/level:/)).toBeNull();
   });
 
   it("uses structured approval details instead of repeating the prompt title", () => {
@@ -838,8 +906,13 @@ describe("AgentInteractivePromptSurface", () => {
           options: [
             {
               id: "allow_once",
-              label: "Yes, proceed",
+              label: "Approve",
               kind: "allow_once"
+            },
+            {
+              id: "approved_for_session",
+              label: "Approve for session",
+              kind: "allow_always"
             },
             {
               id: "allow_always",
@@ -898,6 +971,7 @@ describe("AgentInteractivePromptSurface", () => {
     );
 
     expect(screen.getByRole("button", { name: "允许执行" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "本次会话允许" })).toBeTruthy();
     expect(
       screen.getByRole("button", {
         name: "允许，并且不再询问以 `curl -I https://example.com` 开头的命令"

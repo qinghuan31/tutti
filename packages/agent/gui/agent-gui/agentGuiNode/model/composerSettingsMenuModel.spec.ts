@@ -16,15 +16,19 @@ const labels: AgentComposerSettingsMenuLabels = {
   loadingSettings: "Loading",
   reasoningLabel: "Reasoning",
   reasoningDegreeLabel: "Reasoning degree",
+  reasoningOptionDefault: "Default",
   reasoningOptionMinimal: "Minimal",
   reasoningOptionLow: "Low",
   reasoningOptionMedium: "Medium",
   reasoningOptionHigh: "High",
   reasoningOptionXHigh: "X-High",
+  reasoningOptionMax: "Max",
   speedLabel: "Speed",
   speedSelectionLabel: "Speed",
   speedOptionStandard: "Standard",
+  speedOptionStandardDescription: "Standard localized",
   speedOptionFast: "Fast",
+  speedOptionFastDescription: "Fast localized",
   permissionLabel: "Permissions",
   planModeLabel: "Plan",
   modelDescriptions: {
@@ -67,8 +71,10 @@ function vm(
       { value: "gpt-5.4", label: "gpt-5.4" }
     ],
     availableReasoningEfforts: [
+      { value: "default", label: "Default" },
       { value: "low", label: "Low" },
-      { value: "high", label: "High" }
+      { value: "high", label: "High" },
+      { value: "max", label: "Max" }
     ],
     ...overrides
   };
@@ -97,15 +103,21 @@ describe("buildComposerModelMenuModel", () => {
     expect(menu.reasoning.show).toBe(true);
     expect(menu.reasoning.selectedLabel).toBe("High");
     expect(menu.reasoning.options).toEqual([
+      { value: "default", label: "Default" },
       { value: "low", label: "Low" },
-      { value: "high", label: "High" }
+      { value: "high", label: "High" },
+      { value: "max", label: "Max" }
     ]);
 
     expect(menu.speed.show).toBe(true);
     expect(menu.speed.selectedLabel).toBe("Standard");
     expect(menu.speed.options).toEqual([
-      { value: "standard", label: "Standard", description: "Standard speed" },
-      { value: "fast", label: "Fast", description: "1.5x speed" }
+      {
+        value: "standard",
+        label: "Standard",
+        description: "Standard localized"
+      },
+      { value: "fast", label: "Fast", description: "Fast localized" }
     ]);
   });
 

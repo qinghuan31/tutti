@@ -56,7 +56,9 @@ const paletteStyles = {
   descriptionText:
     "min-w-0 flex-1 truncate text-[11px] font-normal text-[var(--text-secondary)]",
   groupHeader:
-    "select-none px-2.5 pb-0.5 pt-1.5 text-[11px] font-normal text-[var(--text-secondary)]",
+    "select-none px-2.5 pb-0.5 text-[11px] font-normal text-[var(--text-secondary)]",
+  groupHeaderFirst: "pt-1.5",
+  groupHeaderSeparated: "mt-1 border-t border-[var(--border-1)] pt-2",
   settingsButton:
     "nodrag ml-1 shrink-0 rounded-[5px] border-0 bg-[var(--transparency-hover)] px-2 py-1 text-[11px] font-semibold leading-[14px] text-[var(--text-secondary)] outline-none transition-colors duration-150 hover:bg-[var(--transparency-active)] hover:text-[var(--text-primary)] focus-visible:ring-2 focus-visible:ring-[var(--agent-gui-focus-ring,var(--border-focus))]"
 };
@@ -104,7 +106,15 @@ export function AgentSlashCommandPalette({
         const groupType = entryGroupType(entry);
         const groupHeader =
           showGroupHeaders && firstEntryIndexByType.get(groupType) === index ? (
-            <div aria-hidden="true" className={paletteStyles.groupHeader}>
+            <div
+              aria-hidden="true"
+              className={cn(
+                paletteStyles.groupHeader,
+                index === 0
+                  ? paletteStyles.groupHeaderFirst
+                  : paletteStyles.groupHeaderSeparated
+              )}
+            >
               {groupType === "command"
                 ? commandsGroupLabel
                 : groupType === "capability"

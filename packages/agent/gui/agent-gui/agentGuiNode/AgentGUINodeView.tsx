@@ -37,9 +37,10 @@ import {
 import { WorkspaceUserProjectSelect } from "@tutti-os/workspace-user-project/ui";
 import type { WorkspaceUserProjectI18nRuntime } from "@tutti-os/workspace-user-project/i18n";
 import {
-  Badge,
   BareIconButton,
-  Button as UiSystemButton,
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
   ScrollArea
 } from "@tutti-os/ui-system/components";
 import { Button } from "../../app/renderer/components/ui/button";
@@ -209,15 +210,19 @@ export interface AgentGUIViewLabels {
   inheritedUnavailable: string;
   reasoningLabel: string;
   reasoningDegreeLabel: string;
+  reasoningOptionDefault: string;
   reasoningOptionMinimal: string;
   reasoningOptionLow: string;
   reasoningOptionMedium: string;
   reasoningOptionHigh: string;
   reasoningOptionXHigh: string;
+  reasoningOptionMax: string;
   speedLabel: string;
   speedSelectionLabel: string;
   speedOptionStandard: string;
+  speedOptionStandardDescription: string;
   speedOptionFast: string;
+  speedOptionFastDescription: string;
   permissionLabel: string;
   permissionModeReadOnly: string;
   permissionModeAuto: string;
@@ -341,6 +346,7 @@ export interface AgentGUIViewLabels {
   slashStatusLimitsUnavailable: string;
   usageChipLabel: (input: { percent: number }) => string;
   usagePopoverTitle: string;
+  usageContextWindowLabel: string;
   usageTokensLabel: string;
   usageLimitsLabel: string;
   usageCompactAction: string;
@@ -366,12 +372,6 @@ export interface AgentGUIViewLabels {
   syncPending: string;
   syncSynced: string;
   syncFailed: string;
-  statusWorking: string;
-  statusWaiting: string;
-  statusReady: string;
-  statusCompleted: string;
-  statusFailed: string;
-  statusCanceled: string;
   openclawGatewayStarting: string;
   openclawGatewayFailed: string;
   openclawGatewayRetry: string;
@@ -497,72 +497,6 @@ function syncStateTone(status: SyncIndicatorStatus): StatusDotTone {
       return "red";
     case "synced":
       return "blue";
-  }
-}
-
-function conversationStatusTone(
-  status: AgentGUINodeViewModel["conversations"][number]["status"] | undefined
-): StatusDotTone {
-  switch (status) {
-    case "working":
-      return "blue";
-    case "waiting":
-      return "amber";
-    case "completed":
-      return "green";
-    case "failed":
-      return "red";
-    case "canceled":
-      return "amber";
-    case "ready":
-    default:
-      return "green";
-  }
-}
-
-function conversationStatusPulse(
-  status: AgentGUINodeViewModel["conversations"][number]["status"] | undefined
-): boolean {
-  switch (status) {
-    case "working":
-    case "waiting":
-    case "ready":
-    case undefined:
-      return true;
-    case "completed":
-    case "failed":
-    case "canceled":
-    default:
-      return false;
-  }
-}
-
-function conversationStatusLabel(
-  status: AgentGUINodeViewModel["conversations"][number]["status"] | undefined,
-  labels: Pick<
-    AgentGUIViewLabels,
-    | "statusWorking"
-    | "statusWaiting"
-    | "statusReady"
-    | "statusCompleted"
-    | "statusFailed"
-    | "statusCanceled"
-  >
-): string {
-  switch (status) {
-    case "working":
-      return labels.statusWorking;
-    case "waiting":
-      return labels.statusWaiting;
-    case "completed":
-      return labels.statusCompleted;
-    case "failed":
-      return labels.statusFailed;
-    case "canceled":
-      return labels.statusCanceled;
-    case "ready":
-    default:
-      return labels.statusReady;
   }
 }
 
@@ -1539,9 +1473,6 @@ const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
     detailStatus: activeDetailStatus,
     conversation
   });
-  const displayConversationStatus = viewModel.isSubmitting
-    ? "working"
-    : (derivedBusyStatus ?? viewModel.activeConversation?.status);
   const activeConversationTurnBusy =
     viewModel.isSubmitting || derivedBusyStatus !== null;
   const isComposerSending =
@@ -1592,13 +1523,6 @@ const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
   const syncLabel = syncStateLabel(syncStatus, labels);
   const showSyncIndicator = Boolean(viewModel.activeConversation?.syncState);
   const showFailedSyncLabel = showSyncIndicator && syncStatus === "failed";
-  const activeConversationStatusLabel = conversationStatusLabel(
-    displayConversationStatus,
-    labels
-  );
-  const statusGroupTitle = showSyncIndicator
-    ? `${activeConversationStatusLabel} · ${syncLabel}`
-    : activeConversationStatusLabel;
   const conversationFlowLabels = useMemo(
     () => ({
       thinkingLabel: labels.thinkingLabel,
@@ -1695,15 +1619,19 @@ const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
       loadingConversation: labels.loadingConversation,
       reasoningLabel: labels.reasoningLabel,
       reasoningDegreeLabel: labels.reasoningDegreeLabel,
+      reasoningOptionDefault: labels.reasoningOptionDefault,
       reasoningOptionMinimal: labels.reasoningOptionMinimal,
       reasoningOptionLow: labels.reasoningOptionLow,
       reasoningOptionMedium: labels.reasoningOptionMedium,
       reasoningOptionHigh: labels.reasoningOptionHigh,
       reasoningOptionXHigh: labels.reasoningOptionXHigh,
+      reasoningOptionMax: labels.reasoningOptionMax,
       speedLabel: labels.speedLabel,
       speedSelectionLabel: labels.speedSelectionLabel,
       speedOptionStandard: labels.speedOptionStandard,
+      speedOptionStandardDescription: labels.speedOptionStandardDescription,
       speedOptionFast: labels.speedOptionFast,
+      speedOptionFastDescription: labels.speedOptionFastDescription,
       permissionLabel: labels.permissionLabel,
       permissionModeReadOnly: labels.permissionModeReadOnly,
       permissionModeAuto: labels.permissionModeAuto,
@@ -1807,15 +1735,19 @@ const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
       labels.removeMention,
       labels.reasoningDegreeLabel,
       labels.reasoningLabel,
+      labels.reasoningOptionDefault,
       labels.reasoningOptionHigh,
       labels.reasoningOptionLow,
+      labels.reasoningOptionMax,
       labels.reasoningOptionMedium,
       labels.reasoningOptionMinimal,
       labels.reasoningOptionXHigh,
       labels.speedLabel,
       labels.speedSelectionLabel,
       labels.speedOptionStandard,
+      labels.speedOptionStandardDescription,
       labels.speedOptionFast,
+      labels.speedOptionFastDescription,
       labels.send,
       labels.sendQueuedPromptNext,
       labels.slashCommandPalette,
@@ -2175,17 +2107,12 @@ const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
         activeConversation={viewModel.activeConversation}
         labels={labels}
         uiLanguage={uiLanguage}
-        statusGroupTitle={statusGroupTitle}
         showSyncIndicator={showSyncIndicator}
         syncStatus={syncStatus}
         syncLabel={syncLabel}
-        activeConversationStatus={displayConversationStatus}
-        activeConversationStatusLabel={activeConversationStatusLabel}
         showFailedSyncLabel={showFailedSyncLabel}
         usage={viewModel.usage}
         usageLimits={slashStatusLimits}
-        compactSupported={viewModel.compactSupported}
-        onSubmitCompact={actions.submitCompact}
       />
       <ScrollArea
         scrollbarMode="native"
@@ -2315,42 +2242,28 @@ interface AgentGUIDetailHeaderProps {
     | "selectConversation"
     | "usageChipLabel"
     | "usagePopoverTitle"
-    | "usageTokensLabel"
+    | "usageContextWindowLabel"
     | "usageLimitsLabel"
-    | "usageCompactAction"
-    | "usageCompactTooltip"
   >;
   uiLanguage: UiLanguage;
-  statusGroupTitle: string;
   showSyncIndicator: boolean;
   syncStatus: SyncIndicatorStatus;
   syncLabel: string;
-  activeConversationStatus:
-    | AgentGUINodeViewModel["conversations"][number]["status"]
-    | undefined;
-  activeConversationStatusLabel: string;
   showFailedSyncLabel: boolean;
   usage: AgentActivityUsage | null;
   usageLimits: readonly AgentComposerSlashStatusLimit[];
-  compactSupported: boolean | null;
-  onSubmitCompact: () => Promise<void> | void;
 }
 
 const AgentGUIDetailHeader = memo(function AgentGUIDetailHeader({
   activeConversation,
   labels,
   uiLanguage,
-  statusGroupTitle,
   showSyncIndicator,
   syncStatus,
   syncLabel,
-  activeConversationStatus,
-  activeConversationStatusLabel,
   showFailedSyncLabel,
   usage,
-  usageLimits,
-  compactSupported,
-  onSubmitCompact
+  usageLimits
 }: AgentGUIDetailHeaderProps): React.JSX.Element | null {
   "use memo";
 
@@ -2359,13 +2272,7 @@ const AgentGUIDetailHeader = memo(function AgentGUIDetailHeader({
   }
 
   const runPath = activeConversation.cwd.trim();
-  const showConversationStatus = activeConversationStatus !== "ready";
-  let statusTitle: string | undefined;
-  if (showConversationStatus) {
-    statusTitle = statusGroupTitle;
-  } else if (showSyncIndicator) {
-    statusTitle = syncLabel;
-  }
+  const statusTitle = showSyncIndicator ? syncLabel : undefined;
 
   return (
     <div className={styles.detailHeader}>
@@ -2387,29 +2294,6 @@ const AgentGUIDetailHeader = memo(function AgentGUIDetailHeader({
             limits={usageLimits}
             labels={labels}
           />
-        ) : null}
-        {usage && usage.percentUsed !== null && compactSupported !== false ? (
-          <AgentGUICompactButton
-            conversationId={activeConversation.id}
-            status={activeConversationStatus}
-            label={labels.usageCompactAction}
-            tooltip={labels.usageCompactTooltip}
-            onSubmitCompact={onSubmitCompact}
-          />
-        ) : null}
-        {showConversationStatus ? (
-          <>
-            <StatusDot
-              tone={conversationStatusTone(activeConversationStatus)}
-              pulse={conversationStatusPulse(activeConversationStatus)}
-              size="sm"
-              ariaLabel={activeConversationStatusLabel}
-              title={activeConversationStatusLabel}
-            />
-            <span className={styles.detailHeaderStatus}>
-              {activeConversationStatusLabel}
-            </span>
-          </>
         ) : null}
         {showSyncIndicator ? (
           <StatusDot
@@ -2455,83 +2339,7 @@ function AgentRunPathInfo({ path }: { path: string }): React.JSX.Element {
   );
 }
 
-function AgentGUICompactButton({
-  conversationId,
-  status,
-  label,
-  tooltip,
-  onSubmitCompact
-}: {
-  conversationId: string;
-  status: AgentGUINodeViewModel["conversations"][number]["status"] | undefined;
-  label: string;
-  tooltip: string;
-  onSubmitCompact: () => Promise<void> | void;
-}): React.JSX.Element {
-  "use memo";
-
-  const [pendingConversationId, setPendingConversationId] = useState<
-    string | null
-  >(null);
-  const lastStatusRef = useRef(status);
-
-  useEffect(() => {
-    const previousStatus = lastStatusRef.current;
-    lastStatusRef.current = status;
-    if (
-      pendingConversationId === conversationId &&
-      ((status === "ready" && previousStatus !== "ready") ||
-        status === "completed" ||
-        status === "failed" ||
-        status === "canceled")
-    ) {
-      setPendingConversationId(null);
-    }
-  }, [conversationId, pendingConversationId, status]);
-
-  const isPending = pendingConversationId === conversationId;
-  const disabled = isPending || status === "working";
-
-  return (
-    <Tooltip>
-      <TooltipTrigger asChild>
-        <UiSystemButton
-          type="button"
-          variant="secondary"
-          size="xs"
-          className="text-[13px] font-normal"
-          data-testid="agent-gui-compact-button"
-          disabled={disabled}
-          aria-label={label}
-          onClick={() => {
-            if (disabled) {
-              return;
-            }
-            setPendingConversationId(conversationId);
-            const submission = onSubmitCompact();
-            if (submission) {
-              void submission.catch(() => {
-                setPendingConversationId(null);
-              });
-            }
-          }}
-        >
-          {label}
-        </UiSystemButton>
-      </TooltipTrigger>
-      <TooltipContent
-        side="bottom"
-        align="end"
-        className="max-w-[320px] cursor-default text-xs"
-      >
-        {tooltip}
-      </TooltipContent>
-    </Tooltip>
-  );
-}
-
 type AgentUsageChipLevel = "normal" | "warning" | "critical";
-type AgentUsageBadgeVariant = "secondary" | "warning" | "destructive";
 
 function agentUsageChipLevel(percentUsed: number): AgentUsageChipLevel {
   if (percentUsed >= USAGE_CRITICAL_PERCENT) {
@@ -2543,16 +2351,14 @@ function agentUsageChipLevel(percentUsed: number): AgentUsageChipLevel {
   return "normal";
 }
 
-function agentUsageBadgeVariant(
-  level: AgentUsageChipLevel
-): AgentUsageBadgeVariant {
+function agentUsageRingColor(level: AgentUsageChipLevel): string {
   if (level === "critical") {
-    return "destructive";
+    return "var(--agent-gui-danger, var(--state-danger))";
   }
   if (level === "warning") {
-    return "warning";
+    return "var(--agent-gui-warning, var(--cove-label-orange))";
   }
-  return "secondary";
+  return "var(--agent-gui-text-primary, var(--text-primary))";
 }
 
 function AgentUsageChip({
@@ -2570,7 +2376,7 @@ function AgentUsageChip({
     AgentGUIViewLabels,
     | "usageChipLabel"
     | "usagePopoverTitle"
-    | "usageTokensLabel"
+    | "usageContextWindowLabel"
     | "usageLimitsLabel"
   >;
 }): React.JSX.Element {
@@ -2579,48 +2385,111 @@ function AgentUsageChip({
   const chipLabel = labels.usageChipLabel({ percent: percentUsed });
   const showTokens = usedTokens !== null && totalTokens !== null;
   const usageLevel = agentUsageChipLevel(percentUsed);
+  const ringColor = agentUsageRingColor(usageLevel);
+  const displayPercent = Math.max(0, Math.min(100, percentUsed));
 
   return (
-    <Tooltip>
-      <TooltipTrigger asChild>
-        <Badge
-          asChild
-          variant={agentUsageBadgeVariant(usageLevel)}
-          className="cursor-default text-[13px] font-normal"
+    <Popover>
+      <PopoverTrigger asChild>
+        <button
+          type="button"
+          className="nodrag inline-flex size-6 items-center justify-center rounded-[6px] bg-transparent p-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:color-mix(in_srgb,var(--text-primary)_34%,transparent)] [-webkit-app-region:no-drag]"
           data-testid="agent-gui-usage-chip"
           data-usage-level={usageLevel}
+          aria-label={chipLabel}
+          title={chipLabel}
         >
-          <span aria-label={chipLabel}>{chipLabel}</span>
-        </Badge>
-      </TooltipTrigger>
-      <TooltipContent
+          <span
+            aria-hidden="true"
+            className="relative ml-auto inline-flex size-4.5 rounded-full"
+            style={{
+              background: `conic-gradient(${ringColor} ${displayPercent}%, color-mix(in srgb, ${ringColor} 16%, transparent) 0)`
+            }}
+          >
+            <span className="absolute inset-[3px] rounded-full bg-[var(--background-fronted)]" />
+          </span>
+        </button>
+      </PopoverTrigger>
+      <PopoverContent
         side="bottom"
         align="end"
-        className="max-w-[320px] text-xs"
+        className="w-[320px] max-w-[calc(100vw-32px)] gap-3 text-xs"
+        data-testid="agent-gui-usage-popover"
       >
-        <div className="flex min-w-0 flex-col gap-1">
-          <span className="font-semibold">{labels.usagePopoverTitle}</span>
+        <div className="flex min-w-0 flex-col gap-3">
+          <span className="text-[13px] font-semibold leading-4">
+            {labels.usagePopoverTitle}
+          </span>
           {showTokens ? (
-            <span className="whitespace-nowrap">
-              {labels.usageTokensLabel}:{" "}
-              {formatSlashStatusTokenCount(usedTokens)} /{" "}
-              {formatSlashStatusTokenCount(totalTokens)}
-            </span>
+            <AgentUsageMeter
+              label={labels.usageContextWindowLabel}
+              value={`${formatSlashStatusTokenCount(usedTokens)} / ${formatSlashStatusTokenCount(totalTokens)} (${displayPercent}%)`}
+              percent={displayPercent}
+              testId="agent-gui-usage-context-meter"
+            />
           ) : null}
           {limits.length > 0 ? (
-            <>
+            <div className="flex min-w-0 flex-col gap-2">
               <span className="font-semibold">{labels.usageLimitsLabel}</span>
               {limits.map((limit) => (
-                <span key={limit.id} className="whitespace-nowrap">
-                  {limit.label}: {limit.value}
-                  {limit.reset ? ` (${limit.reset})` : ""}
-                </span>
+                <AgentUsageMeter
+                  key={limit.id}
+                  label={limit.label}
+                  value={`${limit.value}${limit.reset ? ` (${limit.reset})` : ""}`}
+                  percent={
+                    typeof limit.percentRemaining === "number" &&
+                    Number.isFinite(limit.percentRemaining)
+                      ? limit.percentRemaining
+                      : null
+                  }
+                />
               ))}
-            </>
+            </div>
           ) : null}
         </div>
-      </TooltipContent>
-    </Tooltip>
+      </PopoverContent>
+    </Popover>
+  );
+}
+
+function AgentUsageMeter({
+  label,
+  value,
+  percent,
+  testId
+}: {
+  label: string;
+  value: string;
+  percent: number | null;
+  testId?: string;
+}): React.JSX.Element {
+  const clampedPercent =
+    typeof percent === "number" && Number.isFinite(percent)
+      ? Math.max(0, Math.min(100, percent))
+      : null;
+
+  return (
+    <div className="grid min-w-0 gap-1" data-testid={testId}>
+      <div className="flex min-w-0 items-center justify-between gap-3">
+        <span className="min-w-0 truncate text-[var(--text-secondary)]">
+          {label}
+        </span>
+        <span className="shrink-0 whitespace-nowrap text-[var(--text-secondary)]">
+          {value}
+        </span>
+      </div>
+      {clampedPercent !== null ? (
+        <span
+          aria-hidden="true"
+          className="relative h-1.5 overflow-hidden rounded-full bg-[color-mix(in_srgb,var(--text-primary)_10%,transparent)]"
+        >
+          <span
+            className="absolute inset-y-0 left-0 min-w-0.5 rounded-full bg-[var(--agent-gui-text-primary,var(--text-primary))]"
+            style={{ width: `${clampedPercent}%` }}
+          />
+        </span>
+      ) : null}
+    </div>
   );
 }
 

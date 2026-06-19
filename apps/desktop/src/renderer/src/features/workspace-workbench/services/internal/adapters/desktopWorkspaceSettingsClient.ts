@@ -28,6 +28,11 @@ interface ManagedProviderModelsResponse {
   models: WorkspaceManagedModelProviderConfig["models"];
 }
 
+interface ClearWorkspaceAgentSessionsResponse {
+  removedMessages: number;
+  removedSessions: number;
+}
+
 export interface PutManagedModelProviderInput {
   apiKey?: string;
   baseUrl?: string;
@@ -50,6 +55,9 @@ export interface DesktopWorkspaceSettingsClient {
   uninstallComputerUse(): Promise<DesktopComputerUseActionResult>;
   grantComputerUsePermissions(): Promise<DesktopComputerUseActionResult>;
   clearLogs(): Promise<ClearDeveloperLogsResult>;
+  clearWorkspaceAgentSessions(
+    workspaceID: string
+  ): Promise<ClearWorkspaceAgentSessionsResponse>;
   deleteManagedModelProvider(
     workspaceID: string,
     providerID: WorkspaceManagedModelProviderID
@@ -127,6 +135,15 @@ export function createDesktopWorkspaceSettingsClient(input: {
         }
       );
       return response.models;
+    },
+    async clearWorkspaceAgentSessions(workspaceID) {
+      return await requestDaemon<ClearWorkspaceAgentSessionsResponse>(
+        input.runtimeApi,
+        `/v1/workspaces/${encodeURIComponent(workspaceID)}/agent-sessions`,
+        {
+          method: "DELETE"
+        }
+      );
     },
     async putManagedModelProvider(workspaceID, providerID, body) {
       const response = await requestDaemon<ManagedProviderResponse>(

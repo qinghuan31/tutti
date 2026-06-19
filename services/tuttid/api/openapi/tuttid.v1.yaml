@@ -1266,6 +1266,30 @@ paths:
           $ref: "#/components/responses/WorkspaceOperationError"
         "503":
           $ref: "#/components/responses/ServiceUnavailableError"
+    delete:
+      operationId: clearWorkspaceAgentSessions
+      tags:
+        - agent-session
+      summary: Hard-delete all agent sessions for one workspace
+      responses:
+        "200":
+          description: Workspace agent sessions cleared
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ClearWorkspaceAgentSessionsResponse"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "400":
+          $ref: "#/components/responses/InvalidRequestError"
+        "404":
+          $ref: "#/components/responses/WorkspaceNotFoundError"
+        "405":
+          $ref: "#/components/responses/MethodNotAllowedError"
+        "502":
+          $ref: "#/components/responses/WorkspaceOperationError"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailableError"
     post:
       operationId: createWorkspaceAgentSession
       tags:
@@ -5279,6 +5303,19 @@ components:
       properties:
         removed:
           type: boolean
+    ClearWorkspaceAgentSessionsResponse:
+      type: object
+      additionalProperties: false
+      required:
+        - removedMessages
+        - removedSessions
+      properties:
+        removedMessages:
+          type: integer
+          minimum: 0
+        removedSessions:
+          type: integer
+          minimum: 0
     UpdateWorkspaceAgentSessionPinRequest:
       type: object
       additionalProperties: false

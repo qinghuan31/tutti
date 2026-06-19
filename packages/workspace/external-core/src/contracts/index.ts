@@ -138,6 +138,8 @@ export type TuttiExternalWorkspaceAgentProvider =
   (typeof tuttiExternalWorkspaceAgentProviders)[number];
 
 export interface TuttiExternalWorkspaceOpenFeatureInput {
+  autoSubmit?: boolean;
+  draftPrompt?: string;
   feature: TuttiExternalWorkspaceFeature;
   provider?: TuttiExternalWorkspaceAgentProvider;
 }

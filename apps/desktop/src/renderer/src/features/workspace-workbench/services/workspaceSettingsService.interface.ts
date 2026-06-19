@@ -74,6 +74,7 @@ export interface IWorkspaceSettingsService {
   changeThemeSource(nextThemeSource: DesktopThemeSource): Promise<void>;
   changeUpdateChannel(channel: DesktopUpdateChannel): Promise<void>;
   changeUpdatePolicy(policy: DesktopUpdatePolicy): Promise<void>;
+  clearConversationHistory(): Promise<void>;
   clearDeveloperLogs(): Promise<void>;
   exportDeveloperLogs(): Promise<void>;
   openLogDirectory(): Promise<void>;

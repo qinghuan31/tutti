@@ -80,6 +80,9 @@ export interface OpenWorkspaceAppLinkAction {
   type: "open-workspace-app";
   workspaceId: string;
   appId: string;
+  conversationId?: string | null;
+  messageId?: string | null;
+  summaryTaskId?: string | null;
   source: WorkspaceLinkActionSource;
 }
 
@@ -236,10 +239,17 @@ export function resolveWorkspaceMentionLinkAction({
   }
 
   if (url.hostname === "workspace-app") {
+    const messageId = url.searchParams.get("messageId")?.trim() || null;
+    const summaryTaskId = url.searchParams.get("summaryTaskId")?.trim() || null;
+    const conversationId =
+      url.searchParams.get("conversationId")?.trim() || null;
     return {
       type: "open-workspace-app",
       workspaceId,
       appId: targetId,
+      ...(messageId ? { messageId } : {}),
+      ...(summaryTaskId ? { summaryTaskId } : {}),
+      ...(conversationId ? { conversationId } : {}),
       source
     };
   }

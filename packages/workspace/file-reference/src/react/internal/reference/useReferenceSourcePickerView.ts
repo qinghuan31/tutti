@@ -42,7 +42,9 @@ export type ReferenceNodePreviewState =
   | { node: ReferenceNode; status: "directory" }
   | { node: ReferenceNode; status: "loading" }
   | { content: string; node: ReferenceNode; status: "text" }
+  | { content: string; node: ReferenceNode; status: "html" }
   | { node: ReferenceNode; objectUrl: string; status: "image" }
+  | { node: ReferenceNode; objectUrl: string; status: "video" }
   | {
       maxSizeBytes?: number;
       node: ReferenceNode;
@@ -193,6 +195,9 @@ export function useReferenceSourcePickerView({
           [group.ref.sourceId]: [group]
         }));
         controller.ensureChildren(group);
+        for (const node of path.slice(1)) {
+          controller.expandNode(node);
+        }
         const deepest = path[path.length - 1];
         setFocusedNode(path.length > 1 && deepest ? deepest : null);
       })
@@ -563,6 +568,7 @@ export function useReferenceSourcePickerView({
             mtimeMs: node.mtimeMs ?? null,
             sizeBytes: node.sizeBytes ?? null
           },
+          renderHtml: true,
           target: {
             fileKind: preview.kind,
             name: node.displayName,
@@ -582,8 +588,20 @@ export function useReferenceSourcePickerView({
           setPreviewState({ node, objectUrl, status: "image" });
           return;
         }
+        if (loaded.status === "video") {
+          const objectUrl = URL.createObjectURL(
+            new Blob([loaded.bytes], { type: loaded.contentType })
+          );
+          previewObjectUrlRef.current = objectUrl;
+          setPreviewState({ node, objectUrl, status: "video" });
+          return;
+        }
         if (loaded.status === "text") {
           setPreviewState({ content: loaded.content, node, status: "text" });
+          return;
+        }
+        if (loaded.status === "html") {
+          setPreviewState({ content: loaded.content, node, status: "html" });
           return;
         }
         setPreviewState({

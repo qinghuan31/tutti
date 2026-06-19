@@ -9,7 +9,8 @@ import type {
 import {
   classifyWorkspaceFilePreviewKind,
   resolveWorkspaceFilePreviewName,
-  resolveWorkspaceImageMimeType
+  resolveWorkspaceImageMimeType,
+  resolveWorkspaceVideoMimeType
 } from "@tutti-os/workspace-file-preview";
 import type { DesktopHostFilesApi } from "@preload/types";
 
@@ -85,7 +86,9 @@ export function createDesktopWorkspaceFileReferenceAdapter(input: {
         contentType:
           previewKind === "image"
             ? resolveWorkspaceImageMimeType(name)
-            : "text/plain;charset=utf-8",
+            : previewKind === "video"
+              ? resolveWorkspaceVideoMimeType(name)
+              : "text/plain;charset=utf-8",
         kind: previewKind
       };
     },

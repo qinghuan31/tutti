@@ -58,6 +58,7 @@ describe("agentSlashCommandProviderPolicy", () => {
     ).toEqual({
       kind: "submitPrompt",
       prompt: expect.stringContaining("browser-use"),
+      displayPrompt: "/browser",
       enableBrowserUse: true
     });
     expect(
@@ -69,6 +70,7 @@ describe("agentSlashCommandProviderPolicy", () => {
     ).toEqual({
       kind: "submitPrompt",
       prompt: expect.stringContaining("帮我访问下 google.com"),
+      displayPrompt: "/browser 帮我访问下 google.com",
       enableBrowserUse: true
     });
     expect(

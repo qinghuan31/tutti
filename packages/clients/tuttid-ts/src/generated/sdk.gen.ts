@@ -28,6 +28,9 @@ import type {
   CheckWorkspaceTerminalCloseGuardData,
   CheckWorkspaceTerminalCloseGuardErrors,
   CheckWorkspaceTerminalCloseGuardResponses,
+  ClearWorkspaceAgentSessionsData,
+  ClearWorkspaceAgentSessionsErrors,
+  ClearWorkspaceAgentSessionsResponses,
   CompleteWorkspaceIssueRunData,
   CompleteWorkspaceIssueRunErrors,
   CompleteWorkspaceIssueRunResponses,
@@ -1155,6 +1158,24 @@ export const publishWorkspaceAppFactoryJob = <
   >({
     security: [{ scheme: "bearer", type: "http" }],
     url: "/v1/workspaces/{workspaceID}/app-factory/jobs/{jobID}/publish",
+    ...options
+  });
+
+/**
+ * Hard-delete all agent sessions for one workspace
+ */
+export const clearWorkspaceAgentSessions = <
+  ThrowOnError extends boolean = false
+>(
+  options: Options<ClearWorkspaceAgentSessionsData, ThrowOnError>
+) =>
+  (options.client ?? client).delete<
+    ClearWorkspaceAgentSessionsResponses,
+    ClearWorkspaceAgentSessionsErrors,
+    ThrowOnError
+  >({
+    security: [{ scheme: "bearer", type: "http" }],
+    url: "/v1/workspaces/{workspaceID}/agent-sessions",
     ...options
   });
 

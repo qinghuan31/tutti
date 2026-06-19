@@ -273,6 +273,42 @@ test("workspace file reference picker controller ignores stale preview results",
   });
 });
 
+test("workspace file reference picker controller loads video previews", async () => {
+  const adapter: WorkspaceFileReferenceAdapter = {
+    async readReferencePreview() {
+      return {
+        bytes: new Uint8Array([0x00, 0x00, 0x00, 0x18]),
+        contentType: "video/mp4",
+        kind: "video"
+      };
+    }
+  };
+  const controller = createWorkspaceFileReferencePickerController({
+    fileAdapter: adapter,
+    searchDebounceMs: 0,
+    workspaceId: "workspace-video"
+  });
+
+  controller.open();
+  controller.setPreviewReference({
+    kind: "file",
+    path: "/workspace/demo.mp4"
+  });
+  await settlePromises();
+
+  const previewState = controller.getSnapshot().previewState;
+  assert.equal(previewState.status, "video");
+  assert.equal(
+    previewState.status === "video" ? previewState.reference.path : null,
+    "/workspace/demo.mp4"
+  );
+  assert.match(
+    previewState.status === "video" ? previewState.objectUrl : "",
+    /^blob:/u
+  );
+  controller.close();
+});
+
 test("workspace file reference picker controller keeps a slow root load when expanding another folder", async () => {
   // 复现并发竞态:根目录加载在途时展开另一文件夹(不同 key)。全局单 sequence 会把
   // 迟到的根结果作废、令 isBrowseLoading 永不复位;按 key 隔离后两者互不影响。

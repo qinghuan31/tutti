@@ -11,7 +11,7 @@
       },
       "default": {
         "description": "默认较保守；需要执行修改或高风险操作时会先询问你。",
-        "label": "默认"
+        "label": "默认权限"
       },
       "dontAsk": {
         "description": "不会弹出确认；未预先允许的操作会被直接拒绝。",

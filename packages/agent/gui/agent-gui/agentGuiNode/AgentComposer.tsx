@@ -181,15 +181,19 @@ export interface AgentComposerProps {
     loadingConversation: string;
     reasoningLabel: string;
     reasoningDegreeLabel: string;
+    reasoningOptionDefault: string;
     reasoningOptionMinimal: string;
     reasoningOptionLow: string;
     reasoningOptionMedium: string;
     reasoningOptionHigh: string;
     reasoningOptionXHigh: string;
+    reasoningOptionMax: string;
     speedLabel: string;
     speedSelectionLabel: string;
     speedOptionStandard: string;
+    speedOptionStandardDescription: string;
     speedOptionFast: string;
+    speedOptionFastDescription: string;
     permissionLabel: string;
     permissionModeReadOnly: string;
     permissionModeAuto: string;
@@ -885,7 +889,11 @@ export function AgentComposer({
         if (effect.enableBrowserUse && !settingsControlsDisabled) {
           onSettingsChange({ browserUse: true });
         }
-        onSubmit(textPromptContent(effect.prompt));
+        if (effect.displayPrompt) {
+          onSubmit(textPromptContent(effect.prompt), effect.displayPrompt);
+        } else {
+          onSubmit(textPromptContent(effect.prompt));
+        }
         return;
       }
       if (effect.kind === "showStatus") {
@@ -1067,14 +1075,16 @@ export function AgentComposer({
     const agentPrompt =
       editorHandleRef.current?.getAgentExpandedText() ?? nextPrompt;
     const hasBundleExpansion = agentPrompt !== nextPrompt;
-    onSubmit(
-      agentComposerDraftToPromptContent({
-        draft: { ...nextDraftContent, prompt: agentPrompt },
-        provider,
-        skills: availableSkills
-      }),
-      hasBundleExpansion ? nextPrompt : undefined
-    );
+    const submitContent = agentComposerDraftToPromptContent({
+      draft: { ...nextDraftContent, prompt: agentPrompt },
+      provider,
+      skills: availableSkills
+    });
+    if (hasBundleExpansion) {
+      onSubmit(submitContent, nextPrompt);
+    } else {
+      onSubmit(submitContent);
+    }
     if (draftImages.length > 0 && !canQueueWhileBusy) {
       setSubmittedImagePreview(draftImages);
       submittedImagePreviewObservedBusyRef.current = false;
@@ -2305,15 +2315,21 @@ export function AgentComposer({
                     planModeLabel: labels.planModeLabel,
                     reasoningLabel: labels.reasoningLabel,
                     reasoningDegreeLabel: labels.reasoningDegreeLabel,
+                    reasoningOptionDefault: labels.reasoningOptionDefault,
                     reasoningOptionMinimal: labels.reasoningOptionMinimal,
                     reasoningOptionLow: labels.reasoningOptionLow,
                     reasoningOptionMedium: labels.reasoningOptionMedium,
                     reasoningOptionHigh: labels.reasoningOptionHigh,
                     reasoningOptionXHigh: labels.reasoningOptionXHigh,
+                    reasoningOptionMax: labels.reasoningOptionMax,
                     speedLabel: labels.speedLabel,
                     speedSelectionLabel: labels.speedSelectionLabel,
                     speedOptionStandard: labels.speedOptionStandard,
+                    speedOptionStandardDescription:
+                      labels.speedOptionStandardDescription,
                     speedOptionFast: labels.speedOptionFast,
+                    speedOptionFastDescription:
+                      labels.speedOptionFastDescription,
                     permissionLabel: labels.permissionLabel,
                     modelDescriptions: labels.modelDescriptions,
                     defaultModel: labels.defaultModel,

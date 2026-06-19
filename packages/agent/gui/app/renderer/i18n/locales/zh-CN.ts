@@ -336,15 +336,19 @@ export const zhCN = {
       inheritedUnavailable: "继承 / 不可用",
       reasoningLabel: "推理强度",
       reasoningDegreeLabel: "推理程度",
+      reasoningOptionDefault: "默认",
       reasoningOptionMinimal: "最低",
       reasoningOptionLow: "低",
       reasoningOptionMedium: "中",
       reasoningOptionHigh: "高",
       reasoningOptionXHigh: "超高",
+      reasoningOptionMax: "最高",
       speedLabel: "速度",
       speedSelectionLabel: "速度",
       speedOptionStandard: "标准",
+      speedOptionStandardDescription: "标准速度",
       speedOptionFast: "快速",
+      speedOptionFastDescription: "1.5 倍速度，用量增加",
       permissionModeReadOnly: "请求批准",
       permissionModeAuto: "替我审批",
       permissionModeFullAccess: "完全访问权限",
@@ -405,7 +409,7 @@ export const zhCN = {
         },
         "claude-code": {
           default: {
-            label: "默认",
+            label: "默认权限",
             description: "默认较保守；需要执行修改或高风险操作时会先询问你。"
           },
           acceptEdits: {
@@ -472,7 +476,8 @@ export const zhCN = {
       slashStatusContextUnavailable: "上下文用量不可用",
       slashStatusLimitsUnavailable: "当前 Agent 未提供额度限制",
       usageChipLabel: "上下文 {{percent}}%",
-      usagePopoverTitle: "用量",
+      usagePopoverTitle: "计划用量",
+      usageContextWindowLabel: "上下文窗口",
       usageTokensLabel: "Token 用量",
       usageLimitsLabel: "限额",
       usageCompactAction: "压缩",
@@ -800,6 +805,7 @@ export const zhCN = {
         selectGroupHint: "从左侧选择一个目录",
         selectedCount: "已选择 {{count}} 项",
         title: "选择工作区引用",
+        sourceColumn: "分类",
         workspaceRootGroup: "工作区"
       },
       projectLocked: "会话开始后项目不可更改",

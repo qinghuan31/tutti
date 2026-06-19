@@ -19,6 +19,7 @@ import {
   FolderIcon,
   LoadingIcon,
   RefreshIcon,
+  SuccessFilledIcon,
   UploadIcon
 } from "@tutti-os/ui-system";
 import { useService } from "@tutti-os/infra/di";
@@ -425,7 +426,9 @@ function ImportResultSummary({
   return (
     <div className="flex flex-col gap-4">
       <CenteredImportState
-        icon={<UploadIcon className="size-5" />}
+        icon={
+          <SuccessFilledIcon className="size-7 text-[var(--tutti-purple)]" />
+        }
         text={t("workspace.externalImport.result", {
           messages: result.importedMessages,
           projects: result.importedProjects,

@@ -388,6 +388,36 @@ export class WorkspaceSettingsService implements IWorkspaceSettingsService {
     }
   }
 
+  async clearConversationHistory(): Promise<void> {
+    const workspaceID = this.store.workspaceID;
+    if (!workspaceID || this.store.developerLogs.clearingConversationHistory) {
+      return;
+    }
+
+    this.store.developerLogs.clearingConversationHistory = true;
+
+    try {
+      const result =
+        await this.dependencies.client.clearWorkspaceAgentSessions(workspaceID);
+      this.notifications.success({
+        title: createActiveTranslator().t(
+          "workspace.settings.developer.conversationHistoryCleared",
+          {
+            count: String(result.removedSessions)
+          }
+        )
+      });
+    } catch {
+      this.notifications.error({
+        title: createActiveTranslator().t(
+          "workspace.settings.developer.conversationHistoryClearFailed"
+        )
+      });
+    } finally {
+      this.store.developerLogs.clearingConversationHistory = false;
+    }
+  }
+
   async exportDeveloperLogs(): Promise<void> {
     if (this.store.developerLogs.exporting) {
       return;

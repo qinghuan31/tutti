@@ -689,12 +689,15 @@ describe("AgentComposer", () => {
     fireEvent.submit(container.querySelector("form")!);
 
     expect(onSettingsChange).toHaveBeenCalledWith({ browserUse: true });
-    expect(onSubmit).toHaveBeenCalledWith([
-      {
-        type: "text",
-        text: expect.stringMatching(/browser-use[\s\S]*inspect this page/)
-      }
-    ]);
+    expect(onSubmit).toHaveBeenCalledWith(
+      [
+        {
+          type: "text",
+          text: expect.stringMatching(/browser-use[\s\S]*inspect this page/)
+        }
+      ],
+      "/browser inspect this page"
+    );
   });
 
   it("matches the browser-use slash capability by its English alias", async () => {
@@ -2635,15 +2638,19 @@ function createLabels(): Parameters<typeof AgentComposer>[0]["labels"] {
     loadingConversation: "加载会话中",
     reasoningLabel: "推理",
     reasoningDegreeLabel: "推理强度",
+    reasoningOptionDefault: "默认",
     reasoningOptionMinimal: "最少",
     reasoningOptionLow: "低",
     reasoningOptionMedium: "中",
     reasoningOptionHigh: "高",
     reasoningOptionXHigh: "超高",
+    reasoningOptionMax: "最高",
     speedLabel: "Speed",
     speedSelectionLabel: "Speed",
     speedOptionStandard: "Standard",
+    speedOptionStandardDescription: "Standard speed",
     speedOptionFast: "Fast",
+    speedOptionFastDescription: "1.5x speed",
     permissionLabel: "运行权限",
     permissionModeReadOnly: "请求批准",
     permissionModeAuto: "替我审批",

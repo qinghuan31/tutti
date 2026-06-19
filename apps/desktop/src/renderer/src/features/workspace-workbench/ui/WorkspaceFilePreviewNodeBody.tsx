@@ -6,7 +6,12 @@ import {
   useState,
   type ChangeEvent
 } from "react";
-import { FileTextIcon, ImageFileIcon, LoadingIcon } from "@tutti-os/ui-system";
+import {
+  FileTextIcon,
+  ImageFileIcon,
+  LoadingIcon,
+  VideoFileIcon
+} from "@tutti-os/ui-system";
 import type { WorkspaceFileActivationTarget } from "@tutti-os/workspace-file-manager/services";
 import { WorkspaceFilePreviewSurface } from "@tutti-os/workspace-file-preview/react";
 import type { WorkbenchHostNodeBodyContext } from "@tutti-os/workbench-surface";
@@ -163,6 +168,8 @@ export function WorkspaceFilePreviewNodeBody({
       renderIcon={(entry) =>
         entry.fileKind === "image" ? (
           <ImageFileIcon className="h-8 w-8" aria-hidden />
+        ) : entry.fileKind === "video" ? (
+          <VideoFileIcon className="h-8 w-8" aria-hidden />
         ) : (
           <FileTextIcon className="h-8 w-8" aria-hidden />
         )

@@ -25,6 +25,7 @@ type AgentSessionService interface {
 	ReadAttachment(context.Context, string, string, string) (agentservice.PromptAttachment, error)
 	ListGitBranches(context.Context, string, string) (agentservice.GitBranches, error)
 	ListGitBranchesForPath(context.Context, string, string) (agentservice.GitBranches, error)
+	Clear(context.Context, string) (agentservice.ClearSessionsResult, error)
 	Delete(context.Context, string, string) (bool, error)
 	Cancel(context.Context, string, string) (agentservice.CancelSessionResult, error)
 	SendInput(context.Context, string, string, agentservice.SendInput) (agentservice.Session, error)
@@ -70,6 +71,22 @@ func (api DaemonAPI) ListWorkspaceAgentSessions(ctx context.Context, request tut
 	return tuttigenerated.ListWorkspaceAgentSessions200JSONResponse{
 		Sessions:    generatedAgentSessions(sessions),
 		WorkspaceId: string(request.WorkspaceID),
+	}, nil
+}
+
+func (api DaemonAPI) ClearWorkspaceAgentSessions(ctx context.Context, request tuttigenerated.ClearWorkspaceAgentSessionsRequestObject) (tuttigenerated.ClearWorkspaceAgentSessionsResponseObject, error) {
+	if api.AgentSessionService == nil {
+		return tuttigenerated.ClearWorkspaceAgentSessions503JSONResponse{
+			ServiceUnavailableErrorJSONResponse: agentSessionServiceUnavailableError(),
+		}, nil
+	}
+	result, err := api.AgentSessionService.Clear(ctx, string(request.WorkspaceID))
+	if err != nil {
+		return writeClearWorkspaceAgentSessionsError(err), nil
+	}
+	return tuttigenerated.ClearWorkspaceAgentSessions200JSONResponse{
+		RemovedMessages: result.RemovedMessages,
+		RemovedSessions: result.RemovedSessions,
 	}, nil
 }
 

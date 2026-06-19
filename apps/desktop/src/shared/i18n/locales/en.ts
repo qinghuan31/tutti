@@ -443,8 +443,15 @@ export const en = {
         analyticsDebugDescription:
           "Shows a floating panel with local analytics events in development builds",
         analyticsDebugLabel: "Analytics event panel",
+        clearConversationHistory: "Clear all conversations",
+        clearConversationHistoryConfirm:
+          "Delete all agent conversation history in this workspace? This cannot be undone.",
         clearLogs: "Clear logs",
+        clearingConversationHistory: "Clearing...",
         clearingLogs: "Clearing...",
+        conversationHistoryCleared: "Cleared {{count}} conversations.",
+        conversationHistoryClearFailed:
+          "We couldn't clear conversation history right now.",
         daemonLogLabel: "Daemon log",
         desktopLogLabel: "Desktop log",
         exportLogs: "Export logs",

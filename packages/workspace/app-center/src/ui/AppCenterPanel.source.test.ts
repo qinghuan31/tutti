@@ -25,3 +25,10 @@ test("recommended category tabs keep enough vertical room for the selected pill"
   );
   assert.match(source, /shadow-\[inset_0_0_0_1px_var\(--line-1\)\]/);
 });
+
+test("App Center app grid keeps bottom padding above the window edge", () => {
+  assert.match(
+    source,
+    /className="grid min-h-0 min-w-0 grid-cols-\[repeat\(auto-fill,minmax\(min\(100%,260px\),1fr\)\)\] gap-3 pb-6"/
+  );
+});

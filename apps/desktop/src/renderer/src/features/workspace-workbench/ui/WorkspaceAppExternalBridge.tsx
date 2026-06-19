@@ -19,6 +19,7 @@ import type { DesktopWorkspaceAppExternalRendererRequest } from "@shared/contrac
 import type { TuttiExternalFileOpenInput } from "@tutti-os/workspace-external-core/contracts";
 import { resolveWorkspaceMentionLinkAction } from "@contexts/workspace/presentation/renderer/actions/workspaceLinkActions";
 import { runDesktopAgentGUILinkAction } from "@renderer/features/workspace-agent/services/desktopAgentGUILinkActions.ts";
+import { requestGroupChatLaunch } from "../services/groupChatLaunchCoordinator.ts";
 import { requestWorkspaceAgentGuiLaunch } from "@renderer/features/workspace-agent";
 import { useWorkspaceAppCenterService } from "@renderer/features/workspace-app-center";
 import { useTranslation } from "@renderer/i18n";
@@ -167,6 +168,7 @@ export function WorkspaceAppExternalBridge({
               await appCenterService.openApp({ appId, workspaceId });
               return true;
             },
+            launchGroupChat: requestGroupChatLaunch,
             launchWorkspaceFiles: () => false,
             launchWorkspaceIssueManager: requestWorkspaceIssueManagerLaunch,
             openBrowserUrl: () => false,

@@ -70,6 +70,7 @@ import { createWorkspaceAgentGuiSessionLaunchRequest } from "../services/workspa
 import { requestWorkspaceBrowserLaunch } from "../services/workspaceBrowserLaunchCoordinator";
 import { requestWorkspaceFilesLaunch } from "../services/workspaceFilesLaunchCoordinator";
 import { requestWorkspaceIssueManagerLaunch } from "../services/workspaceIssueManagerLaunchCoordinator";
+import { requestGroupChatLaunch } from "../services/groupChatLaunchCoordinator";
 import {
   resolveWorkspaceAgentStatusPetMood,
   type WorkspaceAgentStatusPetMood
@@ -644,6 +645,7 @@ function WorkspaceAgentMessageCenterAction({
         },
         launchWorkspaceIssueManager: requestWorkspaceIssueManagerLaunch,
         launchWorkspaceFiles: requestWorkspaceFilesLaunch,
+        launchGroupChat: requestGroupChatLaunch,
         openBrowserUrl: requestWorkspaceBrowserLaunch,
         workspaceId: workspace.id
       });

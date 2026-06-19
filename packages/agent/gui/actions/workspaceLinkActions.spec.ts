@@ -136,6 +136,22 @@ describe("resolveWorkspaceMentionLinkAction", () => {
     });
   });
 
+  it("parses workspace-app mention navigation params", () => {
+    expect(
+      resolveWorkspaceMentionLinkAction({
+        href: "mention://workspace-app/group-chat?workspaceId=workspace-1&messageId=msg-1&conversationId=conv-1",
+        source: "agent-markdown"
+      })
+    ).toEqual({
+      type: "open-workspace-app",
+      workspaceId: "workspace-1",
+      appId: "group-chat",
+      messageId: "msg-1",
+      conversationId: "conv-1",
+      source: "agent-markdown"
+    });
+  });
+
   it("rejects legacy query-only workspace mention context", () => {
     expect(
       resolveWorkspaceMentionLinkAction({

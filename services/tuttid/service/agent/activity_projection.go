@@ -363,6 +363,29 @@ func (p *ActivityProjection) DeleteSession(ctx context.Context, workspaceID stri
 	return removed, nil
 }
 
+func (p *ActivityProjection) ClearSessions(ctx context.Context, workspaceID string) (ClearSessionsResult, error) {
+	if p == nil || p.repo == nil {
+		return ClearSessionsResult{}, nil
+	}
+	workspaceID = strings.TrimSpace(workspaceID)
+	result, err := p.repo.ClearSessions(ctx, workspaceID)
+	if err != nil {
+		return ClearSessionsResult{}, err
+	}
+	for _, agentSessionID := range result.RemovedSessionIDs {
+		agentSessionID = strings.TrimSpace(agentSessionID)
+		if agentSessionID == "" {
+			continue
+		}
+		p.publishActivityUpdated(ctx, workspaceID, agentSessionID, "session_deleted", activitySessionDeletedEventPayload(workspaceID, agentSessionID))
+	}
+	return ClearSessionsResult{
+		RemovedMessages:   result.RemovedMessages,
+		RemovedSessions:   result.RemovedSessions,
+		RemovedSessionIDs: result.RemovedSessionIDs,
+	}, nil
+}
+
 func (p *ActivityProjection) UpdateSessionPinned(ctx context.Context, workspaceID string, agentSessionID string, pinned bool) (PersistedSession, bool, error) {
 	if p == nil || p.repo == nil {
 		return PersistedSession{}, false, nil

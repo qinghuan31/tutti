@@ -251,6 +251,95 @@ WHERE workspace_id = ? AND agent_session_id = ? AND deleted_at_unix_ms = 0
 	return removed, nil
 }
 
+func (s *SQLiteStore) ClearSessions(
+	ctx context.Context,
+	workspaceID string,
+) (agentactivitybiz.ClearSessionsResult, error) {
+	if s == nil || s.db == nil {
+		return agentactivitybiz.ClearSessionsResult{}, errors.New("workspace database is not initialized")
+	}
+	workspaceID = strings.TrimSpace(workspaceID)
+	if workspaceID == "" {
+		return agentactivitybiz.ClearSessionsResult{}, nil
+	}
+
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return agentactivitybiz.ClearSessionsResult{}, fmt.Errorf("begin clear workspace agent sessions: %w", err)
+	}
+	committed := false
+	defer func() {
+		if !committed {
+			_ = tx.Rollback()
+		}
+	}()
+
+	removedSessionIDs, err := listAgentSessionIDsTx(ctx, tx, workspaceID)
+	if err != nil {
+		return agentactivitybiz.ClearSessionsResult{}, err
+	}
+	messageResult, err := tx.ExecContext(ctx, `
+DELETE FROM workspace_agent_messages
+WHERE workspace_id = ?
+`, workspaceID)
+	if err != nil {
+		return agentactivitybiz.ClearSessionsResult{}, fmt.Errorf("clear workspace agent messages: %w", err)
+	}
+	sessionResult, err := tx.ExecContext(ctx, `
+DELETE FROM workspace_agent_sessions
+WHERE workspace_id = ?
+`, workspaceID)
+	if err != nil {
+		return agentactivitybiz.ClearSessionsResult{}, fmt.Errorf("clear workspace agent sessions: %w", err)
+	}
+	if err := tx.Commit(); err != nil {
+		return agentactivitybiz.ClearSessionsResult{}, fmt.Errorf("commit clear workspace agent sessions: %w", err)
+	}
+	committed = true
+	removedMessages, err := messageResult.RowsAffected()
+	if err != nil {
+		return agentactivitybiz.ClearSessionsResult{}, fmt.Errorf("clear workspace agent messages rows affected: %w", err)
+	}
+	removedSessions, err := sessionResult.RowsAffected()
+	if err != nil {
+		return agentactivitybiz.ClearSessionsResult{}, fmt.Errorf("clear workspace agent sessions rows affected: %w", err)
+	}
+	return agentactivitybiz.ClearSessionsResult{
+		RemovedMessages:   int(removedMessages),
+		RemovedSessions:   int(removedSessions),
+		RemovedSessionIDs: removedSessionIDs,
+	}, nil
+}
+
+func listAgentSessionIDsTx(ctx context.Context, tx *sql.Tx, workspaceID string) ([]string, error) {
+	rows, err := tx.QueryContext(ctx, `
+SELECT agent_session_id
+FROM workspace_agent_sessions
+WHERE workspace_id = ?
+ORDER BY updated_at_unix_ms DESC, agent_session_id ASC
+`, workspaceID)
+	if err != nil {
+		return nil, fmt.Errorf("list workspace agent sessions for clear: %w", err)
+	}
+	defer rows.Close()
+
+	sessionIDs := make([]string, 0)
+	for rows.Next() {
+		var sessionID string
+		if err := rows.Scan(&sessionID); err != nil {
+			return nil, fmt.Errorf("scan workspace agent session id for clear: %w", err)
+		}
+		sessionID = strings.TrimSpace(sessionID)
+		if sessionID != "" {
+			sessionIDs = append(sessionIDs, sessionID)
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate workspace agent session ids for clear: %w", err)
+	}
+	return sessionIDs, nil
+}
+
 func (s *SQLiteStore) UpdateSessionPinned(
 	ctx context.Context,
 	workspaceID string,

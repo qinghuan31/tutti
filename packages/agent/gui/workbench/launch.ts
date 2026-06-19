@@ -110,6 +110,7 @@ export function createAgentGuiWorkbenchSessionLaunchRequest(input: {
 }
 
 export function createAgentGuiWorkbenchDraftLaunchRequest(input: {
+  autoSubmit?: boolean;
   draftPrompt: string;
   provider: unknown;
   userProjectPath?: string | null;
@@ -123,6 +124,7 @@ export function createAgentGuiWorkbenchDraftLaunchRequest(input: {
     payload: {
       draftPrompt: input.draftPrompt,
       provider,
+      ...(input.autoSubmit ? { autoSubmit: true } : {}),
       ...(userProjectPath ? { userProjectPath } : {})
     },
     reason: "host" as const,
@@ -207,6 +209,7 @@ function prefillPromptFromLaunchPayload(
   if (typeof draftPrompt !== "string" || !draftPrompt.trim()) {
     return null;
   }
+  const autoSubmit = (payload as { autoSubmit?: unknown }).autoSubmit === true;
   const userProjectPath = (payload as { userProjectPath?: unknown })
     .userProjectPath;
   const normalizedUserProjectPath =
@@ -215,6 +218,7 @@ function prefillPromptFromLaunchPayload(
       : null;
   return {
     draftPrompt,
+    ...(autoSubmit ? { autoSubmit: true } : {}),
     ...(normalizedUserProjectPath
       ? { userProjectPath: normalizedUserProjectPath }
       : {})

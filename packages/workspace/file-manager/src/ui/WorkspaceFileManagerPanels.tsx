@@ -1347,7 +1347,11 @@ function resolveWorkspaceFilePreviewIconKind(
   if ("kind" in entry) {
     return resolveWorkspaceFileVisualKind(entry);
   }
-  return entry.fileKind === "image" ? "image" : "document";
+  return entry.fileKind === "image"
+    ? "image"
+    : entry.fileKind === "video"
+      ? "video"
+      : "document";
 }
 
 function PreviewDetail({

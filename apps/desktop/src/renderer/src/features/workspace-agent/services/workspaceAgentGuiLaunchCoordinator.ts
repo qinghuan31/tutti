@@ -2,6 +2,7 @@ import type { DesktopAgentGUIProvider } from "../desktopAgentGUINodeState.ts";
 
 export interface WorkspaceAgentGuiLaunchRequest {
   agentSessionId?: string;
+  autoSubmit?: boolean;
   draftPrompt?: string;
   provider: DesktopAgentGUIProvider;
   userProjectPath?: string | null;

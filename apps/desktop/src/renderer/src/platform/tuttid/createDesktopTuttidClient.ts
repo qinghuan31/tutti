@@ -230,6 +230,9 @@ export function createDesktopTuttidClient(
         agentSessionID
       );
     },
+    async clearWorkspaceAgentSessions(workspaceID) {
+      return (await resolveClient()).clearWorkspaceAgentSessions(workspaceID);
+    },
     async moveWorkspaceFileEntry(workspaceID, request) {
       return (await resolveClient()).moveWorkspaceFileEntry(
         workspaceID,

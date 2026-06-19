@@ -407,6 +407,8 @@ func RegisterRoutes(mux *http.ServeMux, routes Routes) {
 		switch r.Method {
 		case http.MethodGet:
 			wrapper.ListWorkspaceAgentSessions(w, r)
+		case http.MethodDelete:
+			wrapper.ClearWorkspaceAgentSessions(w, r)
 		case http.MethodPost:
 			wrapper.CreateWorkspaceAgentSession(w, r)
 		default:
