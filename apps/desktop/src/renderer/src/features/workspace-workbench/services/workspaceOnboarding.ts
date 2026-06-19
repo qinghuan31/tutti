@@ -1,5 +1,7 @@
 import type { WorkbenchSnapshot } from "@tutti-os/workbench-snapshot";
 
+export const workspaceOnboardingAppId = "tutti-onboarding";
+
 const workspaceOnboardingMetadataKey = "workspaceOnboarding";
 const workspaceOnboardingMetadataSchemaVersion = 1;
 
@@ -29,6 +31,29 @@ export function writeWorkspaceOnboardingAutoOpenedToSnapshot(
         autoOpenedAt,
         schemaVersion: workspaceOnboardingMetadataSchemaVersion
       } satisfies WorkspaceOnboardingSnapshotMetadata
+    }
+  };
+}
+
+export function preserveWorkspaceOnboardingSnapshotMetadata(
+  previousSnapshot: WorkbenchSnapshot | null | undefined,
+  nextSnapshot: WorkbenchSnapshot
+): WorkbenchSnapshot {
+  if (nextSnapshot.metadata?.[workspaceOnboardingMetadataKey] !== undefined) {
+    return nextSnapshot;
+  }
+
+  const onboardingMetadata =
+    previousSnapshot?.metadata?.[workspaceOnboardingMetadataKey];
+  if (onboardingMetadata === undefined) {
+    return nextSnapshot;
+  }
+
+  return {
+    ...nextSnapshot,
+    metadata: {
+      ...(nextSnapshot.metadata ?? {}),
+      [workspaceOnboardingMetadataKey]: onboardingMetadata
     }
   };
 }

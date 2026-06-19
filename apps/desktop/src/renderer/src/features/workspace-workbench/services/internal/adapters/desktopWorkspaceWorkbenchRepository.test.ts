@@ -9,6 +9,10 @@ import {
   readWorkspaceWallpaperIdFromSnapshot,
   writeWorkspaceWallpaperIdToSnapshot
 } from "../../workspaceWallpaper.ts";
+import {
+  hasWorkspaceOnboardingAutoOpened,
+  writeWorkspaceOnboardingAutoOpenedToSnapshot
+} from "../../workspaceOnboarding.ts";
 import { createDesktopWorkspaceWorkbenchRepository } from "./desktopWorkspaceWorkbenchRepository.ts";
 
 test("desktop workspace workbench repository caches loaded snapshots", async () => {
@@ -48,6 +52,26 @@ test("desktop workspace workbench repository preserves wallpaper metadata on hos
   await repository.save("workspace-1", createSnapshot());
 
   assert.equal(readWorkspaceWallpaperIdFromSnapshot(savedSnapshot), "sky");
+});
+
+test("desktop workspace workbench repository preserves onboarding metadata on host saves", async () => {
+  let savedSnapshot: WorkbenchSnapshot | null = null;
+  const repository = createDesktopWorkspaceWorkbenchRepository(
+    createTuttidClient({
+      initialSnapshot: writeWorkspaceOnboardingAutoOpenedToSnapshot(
+        createSnapshot(),
+        "2026-06-19T10:00:00.000Z"
+      ),
+      onSave(snapshot) {
+        savedSnapshot = snapshot;
+      }
+    })
+  );
+
+  await repository.load("workspace-1");
+  await repository.save("workspace-1", createSnapshot());
+
+  assert.equal(hasWorkspaceOnboardingAutoOpened(savedSnapshot), true);
 });
 
 function createTuttidClient(input: {

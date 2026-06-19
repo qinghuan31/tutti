@@ -78,6 +78,7 @@ test("WorkspaceAppCenterService tracks app install and forwards app open status"
   });
   service.setWorkspaceAppLauncher(async (input) => {
     launchCalls.push(input);
+    return true;
   });
 
   await service.refresh("workspace-1");
@@ -505,6 +506,7 @@ test("WorkspaceAppCenterService forwards running status when reopening a running
   });
   service.setWorkspaceAppLauncher(async (input) => {
     launchCalls.push(input);
+    return true;
   });
 
   await service.refresh("workspace-1");

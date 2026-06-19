@@ -246,7 +246,9 @@ export function WorkspaceAppCenterPane({
         service.fixFactoryJob({ jobId, prompt, workspaceId }),
       importApp: () => service.importApp({ workspaceId }),
       installApp: (appId) => service.installApp({ appId, workspaceId }),
-      openApp: (appId) => service.openApp({ appId, workspaceId }),
+      openApp: async (appId) => {
+        await service.openApp({ appId, workspaceId });
+      },
       openAppFolder: (appId) => service.openAppFolder({ appId, workspaceId }),
       openAppPackageFolder: (appId) =>
         service.openAppPackageFolder({ appId, workspaceId }),

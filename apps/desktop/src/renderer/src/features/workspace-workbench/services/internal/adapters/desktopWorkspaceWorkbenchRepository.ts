@@ -4,6 +4,7 @@ import {
 } from "@tutti-os/workbench-snapshot";
 import type { TuttidClient } from "@tutti-os/client-tuttid-ts";
 import { preserveWorkspaceWallpaperSnapshotMetadata } from "../../workspaceWallpaper.ts";
+import { preserveWorkspaceOnboardingSnapshotMetadata } from "../../workspaceOnboarding.ts";
 
 export interface DesktopWorkspaceWorkbenchRepository {
   hasLoaded(workspaceID: string): boolean;
@@ -51,7 +52,10 @@ export function createDesktopWorkspaceWorkbenchRepository(
     async save(workspaceID: string, snapshot: WorkbenchSnapshot) {
       const snapshotWithMetadata = preserveWorkspaceWallpaperSnapshotMetadata(
         cachedSnapshots.get(workspaceID),
-        snapshot
+        preserveWorkspaceOnboardingSnapshotMetadata(
+          cachedSnapshots.get(workspaceID),
+          snapshot
+        )
       );
       const savedSnapshot = migrateWorkbenchSnapshot(
         await tuttidClient.putWorkspaceWorkbench(

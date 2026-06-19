@@ -931,6 +931,17 @@ describe("AgentGUINodeView provider setup notice", () => {
     expect(notice).toHaveAttribute("role", "status");
   });
 
+  it("keeps breathing room above the setup notice", () => {
+    const css = readFileSync(resolve("app/renderer/agentactivity.css"), "utf8");
+    const setupNoticeRule = css.match(
+      /\.agent-gui-node__provider-setup-notice\s*{[^}]*}/s
+    )?.[0];
+
+    expect(setupNoticeRule).toContain(
+      "margin: 16px var(--agent-gui-detail-padding-x) 8px;"
+    );
+  });
+
   it("hides the setup notice when the provider is ready", () => {
     renderAgentGUINodeView({ isAgentProviderReady: true });
 

@@ -78,7 +78,7 @@ type WorkspaceAppLauncher = (input: {
   prepared: boolean;
   prevStatus?: WorkspaceAppCenterRuntimeStatus;
   workspaceId: string;
-}) => Promise<void>;
+}) => Promise<boolean>;
 
 export class WorkspaceAppCenterService implements IWorkspaceAppCenterService {
   readonly _serviceBrand = undefined;
@@ -143,20 +143,25 @@ export class WorkspaceAppCenterService implements IWorkspaceAppCenterService {
     await this.controller.installApp(input);
   }
 
-  async openApp(input: { appId: string; workspaceId: string }): Promise<void> {
+  async openApp(input: {
+    appId: string;
+    workspaceId: string;
+  }): Promise<boolean> {
     const previousApp = this.store.apps.find(
       (candidate) => candidate.appId === input.appId
     );
     const launchableApp = await this.controller.prepareAppLaunch(input);
     if (!launchableApp) {
-      return;
+      return false;
     }
-    await this.workspaceAppLauncher?.({
-      appId: launchableApp.appId,
-      prepared: true,
-      prevStatus: previousApp?.runtimeStatus ?? launchableApp.runtimeStatus,
-      workspaceId: input.workspaceId
-    });
+    return (
+      (await this.workspaceAppLauncher?.({
+        appId: launchableApp.appId,
+        prepared: true,
+        prevStatus: previousApp?.runtimeStatus ?? launchableApp.runtimeStatus,
+        workspaceId: input.workspaceId
+      })) === true
+    );
   }
 
   getViewState(

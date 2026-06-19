@@ -47,8 +47,7 @@ import type { WorkspaceMissionControlTrigger } from "../services/workspaceMissio
 import { renderWorkspaceFilesNodeBody } from "./WorkspaceFilesNodeBody";
 import { useWorkspaceSettingsService } from "./useWorkspaceSettingsService";
 import { useWorkspaceWorkbenchHostService } from "./useWorkspaceWorkbenchHostService";
-
-const onboardingAppId = "tutti-onboarding";
+import { workspaceOnboardingAppId } from "../services/workspaceOnboarding.ts";
 
 export interface WorkspaceWorkbenchShellRuntime {
   appI18n: I18nRuntime<string>;
@@ -347,15 +346,17 @@ export function useWorkspaceWorkbenchShellRuntime({
       appCenterService.setWorkspaceAppLauncher(
         host
           ? async ({ appId, prepared, prevStatus }) => {
-              await host.launchNode({
-                payload: { appId, prepared, prevStatus },
-                reason: "host",
-                typeId: workspaceAppWebviewTypeID,
-                // 让 onboarding 应用打开时播放“从底部进入并展开”的动画。
-                ...(appId === onboardingAppId
-                  ? { launchSource: "onboarding-auto" }
-                  : {})
-              });
+              return (
+                (await host.launchNode({
+                  payload: { appId, prepared, prevStatus },
+                  reason: "host",
+                  typeId: workspaceAppWebviewTypeID,
+                  // 让 onboarding 应用打开时播放“从底部进入并展开”的动画。
+                  ...(appId === workspaceOnboardingAppId
+                    ? { launchSource: "onboarding-auto" }
+                    : {})
+                })) !== null
+              );
             }
           : null
       );

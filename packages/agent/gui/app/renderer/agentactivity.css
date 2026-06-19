@@ -5325,7 +5325,7 @@ button.agent-gui-node__conversation-section-toggle:hover
   align-items: center;
   gap: 8px;
   box-sizing: border-box;
-  margin: 0 var(--agent-gui-detail-padding-x) 8px;
+  margin: 16px var(--agent-gui-detail-padding-x) 8px;
   border: 1px solid
     color-mix(
       in srgb,

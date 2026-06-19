@@ -36,7 +36,7 @@ export interface IWorkspaceAppCenterService {
     prompt: string;
     workspaceId: string;
   }): Promise<void>;
-  openApp(input: { appId: string; workspaceId: string }): Promise<void>;
+  openApp(input: { appId: string; workspaceId: string }): Promise<boolean>;
   getViewState(
     workspaceId: string,
     restoredState?: WorkspaceAppCenterViewState | null
@@ -82,7 +82,7 @@ export interface IWorkspaceAppCenterService {
           prepared: boolean;
           prevStatus?: WorkspaceAppCenterApp["runtimeStatus"];
           workspaceId: string;
-        }) => Promise<void>)
+        }) => Promise<boolean>)
       | null
   ): void;
   setWorkspaceAppViewCloser(

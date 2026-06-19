@@ -557,6 +557,7 @@ test("Workspace App Center service refreshes stuck startup state after timeout",
   });
   service.setWorkspaceAppLauncher(async ({ appId }) => {
     launchedAppId = appId;
+    return true;
   });
 
   await service.refresh("workspace-1");
@@ -616,6 +617,7 @@ test("Workspace App Center service marks startup failed when timeout refresh is 
   });
   service.setWorkspaceAppLauncher(async ({ appId }) => {
     launchedAppId = appId;
+    return true;
   });
 
   await service.refresh("workspace-1");
@@ -901,6 +903,7 @@ test("Workspace App Center service does not launch deleted apps", async () => {
   });
   service.setWorkspaceAppLauncher(async () => {
     launchCalls += 1;
+    return true;
   });
   service.setWorkspaceAppViewCloser(({ appId }) => {
     closedApps.push(appId);
@@ -1048,6 +1051,7 @@ test("Workspace App Center service launches already-running apps without restart
   });
   service.setWorkspaceAppLauncher(async (input) => {
     launchCalls.push(input);
+    return true;
   });
 
   await service.refresh("workspace-1");
@@ -1119,6 +1123,7 @@ test("Workspace App Center service starts non-running apps before launching them
   });
   service.setWorkspaceAppLauncher(async (input) => {
     launchCalls.push(input);
+    return true;
   });
 
   await service.refresh("workspace-1");

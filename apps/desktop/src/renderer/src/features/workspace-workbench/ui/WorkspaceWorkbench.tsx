@@ -77,11 +77,10 @@ import { WorkspaceChrome } from "./WorkspaceChrome";
 import { WorkspaceAppExternalBridge } from "./WorkspaceAppExternalBridge";
 import { WorkspaceLaunchpadOverlay } from "./WorkspaceLaunchpadOverlay.tsx";
 import { useWorkspaceWorkbenchShellRuntime } from "./useWorkspaceWorkbenchShellRuntime";
+import { useWorkspaceOnboardingAutoOpen } from "./useWorkspaceOnboardingAutoOpen.ts";
 import { resolveWorkspaceWorkbenchLayoutConstraints } from "./workspaceWorkbenchLayoutConstraints.ts";
 import type { DesktopWorkspaceAppExternalHostApi } from "@preload/types";
 import type { TuttiExternalFileOpenInput } from "@tutti-os/workspace-external-core/contracts";
-
-const onboardingAppId = "tutti-onboarding";
 
 interface WorkspaceWorkbenchProps {
   enableWindowCloseGuard: boolean;
@@ -172,7 +171,6 @@ function ReadyWorkspaceWorkbench({
   const unregisterFilesLaunchRef = useRef<(() => void) | null>(null);
   const unregisterIssueManagerLaunchRef = useRef<(() => void) | null>(null);
   const unregisterGroupChatLaunchRef = useRef<(() => void) | null>(null);
-  const openedOnboardingWorkspacesRef = useRef(new Set<string>());
   const closeLaunchpad = useCallback(() => {
     setLaunchpadOpen(false);
   }, []);
@@ -404,66 +402,12 @@ function ReadyWorkspaceWorkbench({
     workbenchHost
   ]);
 
-  useEffect(() => {
-    if (!workbenchHost) {
-      return;
-    }
-    const workspaceId = state.workspace.id;
-    if (openedOnboardingWorkspacesRef.current.has(workspaceId)) {
-      return;
-    }
-    openedOnboardingWorkspacesRef.current.add(workspaceId);
-
-    let canceled = false;
-    const openOnboarding = async () => {
-      if (
-        await runtime.workbenchHostService.hasWorkspaceOnboardingAutoOpened(
-          workspaceId
-        )
-      ) {
-        return;
-      }
-      for (let attempt = 0; attempt < 20 && !canceled; attempt += 1) {
-        await appCenterService.refresh(workspaceId);
-        const app = appCenterService.store.apps.find(
-          (candidate) => candidate.appId === onboardingAppId
-        );
-        if (!app) {
-          await new Promise((resolve) => setTimeout(resolve, 500));
-          continue;
-        }
-        if (!app.installed) {
-          await appCenterService.installApp({
-            appId: onboardingAppId,
-            workspaceId
-          });
-          continue;
-        }
-        if (app?.installed) {
-          await appCenterService.openApp({
-            appId: onboardingAppId,
-            workspaceId
-          });
-          await runtime.workbenchHostService.markWorkspaceOnboardingAutoOpened(
-            workspaceId
-          );
-          return;
-        }
-        await new Promise((resolve) => setTimeout(resolve, 500));
-      }
-    };
-    void openOnboarding().catch(() => {
-      openedOnboardingWorkspacesRef.current.delete(workspaceId);
-    });
-    return () => {
-      canceled = true;
-    };
-  }, [
+  useWorkspaceOnboardingAutoOpen({
     appCenterService,
-    runtime.workbenchHostService,
-    state.workspace.id,
-    workbenchHost
-  ]);
+    workbenchHost,
+    workbenchHostService: runtime.workbenchHostService,
+    workspaceId: state.workspace.id
+  });
 
   useEffect(() => {
     const missionControlShortcutsEnabled =
