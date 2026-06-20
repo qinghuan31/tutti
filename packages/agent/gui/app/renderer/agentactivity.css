@@ -6618,6 +6618,11 @@ html[data-theme="light"] [data-message-center-item-id].agent-gui-edge-glow {
   transform: rotate(180deg);
 }
 
+.agent-gui-node__composer-menu-trigger[data-agent-permission-mode-trigger="true"] {
+  flex: 0 0 auto;
+  max-width: min(100%, 180px);
+}
+
 .agent-gui-node__composer-menu-trigger[data-permission-tone="accent"],
 .agent-gui-node__composer-menu-trigger[data-permission-tone="accent"]:hover:not(
     :disabled
@@ -6686,10 +6691,20 @@ html[data-theme="light"] [data-message-center-item-id].agent-gui-edge-glow {
   color: var(--agent-gui-text-primary);
   max-height: min(
     360px,
-    var(--radix-dropdown-menu-content-available-height, 360px)
+    var(
+      --radix-select-content-available-height,
+      var(--radix-dropdown-menu-content-available-height, 360px)
+    )
   );
   overflow-y: auto;
   overscroll-behavior: contain;
+}
+
+.agent-gui-node__composer-menu-content[data-agent-composer-settings-layout="permission"] {
+  max-width: min(
+    calc(100vw - 32px),
+    var(--radix-select-content-available-width, calc(100vw - 32px))
+  );
 }
 
 .agent-gui-node__composer-menu-label {

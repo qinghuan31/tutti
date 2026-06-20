@@ -205,6 +205,7 @@ export function AgentPermissionModeDropdown({
           composerSettings.isSettingsLoading && "animate-pulse"
         )}
         aria-label={labels.permissionLabel}
+        data-agent-permission-mode-trigger="true"
         data-permission-tone={triggerTone}
       >
         <span className="flex min-w-0 flex-1 items-center">
@@ -221,6 +222,7 @@ export function AgentPermissionModeDropdown({
             styles.composerMenuContent,
             "w-max min-w-[220px] max-w-[calc(100vw-32px)] data-[side=top]:!translate-y-0"
           )}
+          data-agent-composer-settings-layout="permission"
         >
           {permissionOptions.map((option) => (
             <SelectItem

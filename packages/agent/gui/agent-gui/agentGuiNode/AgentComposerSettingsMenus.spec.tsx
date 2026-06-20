@@ -1177,6 +1177,29 @@ describe("AgentPermissionModeDropdown", () => {
       })
     ).closest('[data-slot="select-content"]');
     expect(menu).toHaveClass("data-[side=top]:!translate-y-0");
+    expect(menu).toHaveAttribute(
+      "data-agent-composer-settings-layout",
+      "permission"
+    );
+  });
+
+  it("keeps permission select sizing tied to the Select collision bounds", () => {
+    const css = readFileSync(resolve("app/renderer/agentactivity.css"), "utf8");
+
+    renderPermissionModeDropdown("auto");
+
+    expect(
+      screen.getByRole("combobox", { name: "Run permissions" })
+    ).toHaveAttribute("data-agent-permission-mode-trigger", "true");
+    expect(css).toMatch(
+      /\.agent-gui-node__composer-menu-trigger\[data-agent-permission-mode-trigger="true"\]\s*{[^}]*flex:\s*0 0 auto[^}]*max-width:\s*min\(100%, 180px\)/s
+    );
+    expect(css).toMatch(
+      /\.agent-gui-node__composer-menu-content\s*{[^}]*max-height:\s*min\([^}]*--radix-select-content-available-height[\s\S]*?--radix-dropdown-menu-content-available-height/s
+    );
+    expect(css).toMatch(
+      /\.agent-gui-node__composer-menu-content\[data-agent-composer-settings-layout="permission"\]\s*{[^}]*--radix-select-content-available-width/s
+    );
   });
 
   it("shows permission descriptions in an info tooltip", async () => {
