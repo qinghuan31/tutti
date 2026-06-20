@@ -64,6 +64,7 @@ export interface AgentRichTextEditorProps {
 }
 
 export interface AgentRichTextEditorHandle {
+  focusAtStart: () => void;
   focusAtEnd: () => void;
   getPromptTextBeforeSelection: () => string;
   insertWorkspaceReferences: (items: readonly WorkspaceFileReference[]) => void;
@@ -539,6 +540,18 @@ export const AgentRichTextEditor = forwardRef<
   useImperativeHandle(
     ref,
     () => ({
+      focusAtStart() {
+        const currentEditor = editorRef.current;
+        if (!currentEditor || currentEditor.isDestroyed) {
+          return;
+        }
+        currentEditor
+          .chain()
+          .focus()
+          .setTextSelection(1)
+          .scrollIntoView()
+          .run();
+      },
       focusAtEnd() {
         const currentEditor = editorRef.current;
         if (!currentEditor || currentEditor.isDestroyed) {

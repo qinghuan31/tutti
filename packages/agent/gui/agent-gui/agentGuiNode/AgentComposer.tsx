@@ -986,8 +986,16 @@ export function AgentComposer({
   }, [contextMentionProviders]);
 
   useEffect(() => {
+    const isExternalDraftReplacement = draftPromptRef.current !== draftPrompt;
     draftPromptRef.current = draftPrompt;
     setPaletteDraftPrompt(draftPrompt);
+    if (isExternalDraftReplacement && draftPrompt) {
+      window.requestAnimationFrame(() => {
+        window.requestAnimationFrame(() => {
+          editorHandleRef.current?.focusAtStart();
+        });
+      });
+    }
   }, [draftPrompt]);
 
   useEffect(() => {
