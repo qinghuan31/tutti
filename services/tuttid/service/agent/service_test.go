@@ -61,6 +61,85 @@ func TestServiceCreatesAndListsSessions(t *testing.T) {
 	}
 }
 
+func TestServiceImportExternalSessionsOmitsProjectsWithoutValidSessions(t *testing.T) {
+	ctx := context.Background()
+	store := openAgentServiceSQLiteStore(t)
+	if err := store.Create(ctx, workspacebiz.Summary{ID: "ws-1", Name: "Workspace One"}); err != nil {
+		t.Fatalf("Create workspace error = %v", err)
+	}
+	root := t.TempDir()
+	emptyProject := filepath.Join(root, "empty-project")
+	if err := os.MkdirAll(emptyProject, 0o755); err != nil {
+		t.Fatalf("create empty project error = %v", err)
+	}
+	if canonical, ok := canonicalExistingDir(emptyProject); ok {
+		emptyProject = canonical
+	}
+	// No Codex/Claude history exists under these homes, so the selected project
+	// has no valid session.
+	t.Setenv("CODEX_HOME", filepath.Join(root, "codex-home"))
+	t.Setenv("CLAUDE_CONFIG_DIR", filepath.Join(root, "claude-home"))
+
+	service := NewService(newFakeRuntime())
+	projection := NewActivityProjection(store)
+	service.SessionReader = projection
+	service.MessageReader = projection
+	service.ExternalImportStore = store
+
+	result, err := service.ImportExternalSessions(ctx, "ws-1", ExternalImportInput{
+		Projects: []ExternalImportProjectSelection{{Path: emptyProject}},
+	})
+	if err != nil {
+		t.Fatalf("ImportExternalSessions error = %v", err)
+	}
+	if len(result.ProjectPaths) != 0 {
+		t.Fatalf("project paths = %#v, want none for project without valid sessions", result.ProjectPaths)
+	}
+	if result.ImportedSessions != 0 || result.ImportedProjects != 0 {
+		t.Fatalf("import result = %#v, want nothing imported", result)
+	}
+}
+
+func TestServiceExternalImportValidProjectPaths(t *testing.T) {
+	ctx := context.Background()
+	root := t.TempDir()
+	project := filepath.Join(root, "project-a")
+	empty := filepath.Join(root, "empty-project")
+	for _, dir := range []string{project, empty} {
+		if err := os.MkdirAll(dir, 0o755); err != nil {
+			t.Fatalf("create dir error = %v", err)
+		}
+	}
+	if canonical, ok := canonicalExistingDir(project); ok {
+		project = canonical
+	}
+	codexHome := filepath.Join(root, "codex-home")
+	t.Setenv("CODEX_HOME", codexHome)
+	t.Setenv("CLAUDE_CONFIG_DIR", filepath.Join(root, "claude-home"))
+	writeAgentServiceJSONL(t, filepath.Join(codexHome, "sessions", "codex-a.jsonl"),
+		map[string]any{
+			"timestamp": time.Now().Add(-time.Hour).Format(time.RFC3339),
+			"type":      "session_meta",
+			"payload":   map[string]any{"id": "codex-a", "cwd": project},
+		},
+		map[string]any{"timestamp": time.Now().Add(-time.Hour).Format(time.RFC3339), "type": "response_item", "payload": map[string]any{
+			"type": "message", "id": "codex-a-1", "role": "user",
+			"content": []any{map[string]any{"type": "input_text", "text": "A prompt"}},
+		}},
+	)
+
+	service := NewService(newFakeRuntime())
+	paths, err := service.ExternalImportValidProjectPaths(ctx, ExternalImportInput{
+		Projects: []ExternalImportProjectSelection{{Path: project}, {Path: empty}},
+	})
+	if err != nil {
+		t.Fatalf("ExternalImportValidProjectPaths error = %v", err)
+	}
+	if len(paths) != 1 || paths[0] != project {
+		t.Fatalf("valid paths = %#v, want only the project with a session (%s)", paths, project)
+	}
+}
+
 func TestServiceImportsExternalAgentSessionsByProject(t *testing.T) {
 	ctx := context.Background()
 	store := openAgentServiceSQLiteStore(t)
@@ -181,6 +260,9 @@ func TestServiceImportsExternalAgentSessionsByProject(t *testing.T) {
 	}
 	if result.ImportedProjects != 1 || result.ImportedSessions != 1 || result.ImportedMessages != 4 {
 		t.Fatalf("import result = %#v, want one project, one session, four message updates", result)
+	}
+	if len(result.ProjectPaths) != 1 || result.ProjectPaths[0] != projectA {
+		t.Fatalf("project paths = %#v, want [%s]", result.ProjectPaths, projectA)
 	}
 	importedSession, err := service.Get(ctx, "ws-1", codexAID)
 	if err != nil {

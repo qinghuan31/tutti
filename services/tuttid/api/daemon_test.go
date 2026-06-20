@@ -69,6 +69,7 @@ type stubAgentSessionService struct {
 	createFn                 func(context.Context, string, agentservice.CreateSessionInput) (agentservice.Session, error)
 	deleteFn                 func(context.Context, string, string) (bool, error)
 	importExternalFn         func(context.Context, string, agentservice.ExternalImportInput) (agentservice.ExternalImportResult, error)
+	validImportPathsFn       func(context.Context, agentservice.ExternalImportInput) ([]string, error)
 	listFn                   func(context.Context, string, agentservice.ListSessionsInput) ([]agentservice.Session, error)
 	listGeneratedFilesFn     func(context.Context, string, agentservice.ListGeneratedFilesInput) (agentservice.GeneratedFileList, error)
 	listMessagesFn           func(context.Context, string, string, agentservice.ListMessagesInput) (agentservice.SessionMessagesPage, error)
@@ -217,6 +218,13 @@ func (s stubAgentSessionService) ImportExternalSessions(ctx context.Context, wor
 		return agentservice.ExternalImportResult{}, nil
 	}
 	return s.importExternalFn(ctx, workspaceID, input)
+}
+
+func (s stubAgentSessionService) ExternalImportValidProjectPaths(ctx context.Context, input agentservice.ExternalImportInput) ([]string, error) {
+	if s.validImportPathsFn == nil {
+		return nil, nil
+	}
+	return s.validImportPathsFn(ctx, input)
 }
 
 func (s stubAgentSessionService) Create(ctx context.Context, workspaceID string, input agentservice.CreateSessionInput) (agentservice.Session, error) {

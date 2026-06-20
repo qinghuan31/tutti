@@ -158,6 +158,19 @@ func parseClaudeCodeJSONL(path string, reader io.Reader) (externalImportedSessio
 	err := readJSONLLines(reader, func(index int, raw map[string]any) {
 		session.ProviderSessionID = firstNonEmptyString(session.ProviderSessionID, stringField(raw, "sessionId"), stringField(raw, "session_id"))
 		session.Cwd = firstNonEmptyString(session.Cwd, stringField(raw, "cwd"))
+		// Claude Code records the human/auto-generated conversation title inline.
+		// `custom-title` is the canonical rename; the older `summary` line is a
+		// fallback. The last occurrence wins.
+		switch stringField(raw, "type") {
+		case "custom-title":
+			if title := strings.TrimSpace(stringField(raw, "customTitle")); title != "" {
+				session.SummaryTitle = title
+			}
+		case "summary":
+			if title := strings.TrimSpace(stringField(raw, "summary")); title != "" {
+				session.SummaryTitle = title
+			}
+		}
 		messageMap := mapField(raw, "message")
 		if len(messageMap) == 0 {
 			return
@@ -225,7 +238,7 @@ func normalizeExternalParsedSession(session externalImportedSession) (externalIm
 	session.Messages = messages
 	session.StartedAtUnixMS = firstExternalMessageUnixMS(messages)
 	session.UpdatedAtUnixMS = lastExternalMessageUnixMS(messages)
-	session.Title = externalParsedSessionTitle(session.Title, messages)
+	session.Title = resolveExternalSessionTitle(session.Provider, session.SummaryTitle, session.Title, messages)
 	return session, true, nil
 }
 
@@ -236,16 +249,106 @@ func externalImportedMessageHasContent(message externalImportedMessage) bool {
 	return strings.TrimSpace(message.Kind) == "tool_call" && len(message.Payload) > 0
 }
 
-func externalParsedSessionTitle(hint string, messages []externalImportedMessage) string {
-	if hint = strings.TrimSpace(hint); hint != "" {
-		return truncateExternalTitle(hint)
+// resolveExternalSessionTitle picks the best conversation title using the
+// priority: provider-supplied summary title -> first real user message (with
+// system preambles skipped) -> raw first message text.
+func resolveExternalSessionTitle(provider string, summaryTitle string, hint string, messages []externalImportedMessage) string {
+	if title := strings.TrimSpace(summaryTitle); title != "" {
+		return truncateExternalTitle(title)
+	}
+	if title, ok := externalImportTitleCandidate(provider, hint); ok {
+		return truncateExternalTitle(title)
 	}
 	for _, message := range messages {
-		if message.Role == "user" && !strings.HasPrefix(message.Text, "<environment_context>") {
-			return truncateExternalTitle(message.Text)
+		if message.Role != "user" {
+			continue
+		}
+		if title, ok := externalImportTitleCandidate(provider, message.Text); ok {
+			return truncateExternalTitle(title)
 		}
 	}
 	return externalSessionTitle(messages)
+}
+
+// VS Code injects IDE context ahead of the real Codex prompt; the actual
+// request lives under the final "## My request for Codex:" heading.
+const (
+	codexIDEContextPrefix = "# Context from my IDE setup:"
+	codexRequestMarker    = "my request for codex"
+)
+
+// externalImportTitleCandidate cleans a user message for use as a session title,
+// returning false when the text is a system-injected preamble that should not be
+// surfaced. The Codex/Claude preamble rules are ported from cc-switch (MIT, see
+// NOTICE).
+func externalImportTitleCandidate(provider string, text string) (string, bool) {
+	trimmed := strings.TrimSpace(text)
+	if trimmed == "" {
+		return "", false
+	}
+	switch provider {
+	case agentproviderbiz.ClaudeCode:
+		if strings.Contains(trimmed, "<local-command-caveat>") || strings.HasPrefix(trimmed, "<command-name>") {
+			return "", false
+		}
+		return trimmed, true
+	default:
+		if strings.HasPrefix(trimmed, "# AGENTS.md") || strings.HasPrefix(trimmed, "<environment_context>") {
+			return "", false
+		}
+		if strings.HasPrefix(trimmed, codexIDEContextPrefix) {
+			return extractCodexPromptFromIDEContext(trimmed)
+		}
+		return trimmed, true
+	}
+}
+
+func extractCodexPromptFromIDEContext(text string) (string, bool) {
+	normalized := strings.ReplaceAll(text, "\r\n", "\n")
+	lines := strings.Split(normalized, "\n")
+	prompt := ""
+	found := false
+	for index, line := range lines {
+		inline, ok := codexRequestHeadingPayload(line)
+		if !ok {
+			continue
+		}
+		if inline != "" {
+			prompt = inline
+			found = true
+			continue
+		}
+		following := strings.TrimSpace(strings.Join(lines[index+1:], "\n"))
+		prompt = following
+		found = following != ""
+	}
+	if !found || strings.TrimSpace(prompt) == "" {
+		return "", false
+	}
+	return strings.TrimSpace(prompt), true
+}
+
+func codexRequestHeadingPayload(line string) (string, bool) {
+	trimmed := strings.TrimSpace(line)
+	if !strings.HasPrefix(trimmed, "#") {
+		return "", false
+	}
+	heading := strings.TrimLeft(trimmed, "#")
+	heading = strings.TrimLeft(heading, " \t")
+	if !strings.HasPrefix(strings.ToLower(heading), codexRequestMarker) {
+		return "", false
+	}
+	suffix := strings.TrimLeft(heading[len(codexRequestMarker):], " \t")
+	if suffix == "" {
+		return "", true
+	}
+	separator := []rune(suffix)[0]
+	switch separator {
+	case ':', '：', '-', '—':
+	default:
+		return "", false
+	}
+	return strings.TrimSpace(strings.TrimLeft(suffix, ":：-— \t")), true
 }
 
 func readJSONLLines(reader io.Reader, handle func(int, map[string]any)) error {

@@ -82,6 +82,10 @@ type ExternalImportResult struct {
 	ImportedMessages int
 	SkippedSessions  int
 	Errors           []ExternalImportError
+	// ProjectPaths lists the selected project paths that matched at least one
+	// valid imported session. Callers use it to avoid registering user projects
+	// that would surface with no sessions underneath them.
+	ProjectPaths []string
 }
 
 type externalImportedSession struct {
@@ -90,9 +94,14 @@ type externalImportedSession struct {
 	SourcePath        string
 	Cwd               string
 	Title             string
-	StartedAtUnixMS   int64
-	UpdatedAtUnixMS   int64
-	Messages          []externalImportedMessage
+	// SummaryTitle holds an authoritative, provider-supplied conversation title
+	// (e.g. Claude `custom-title`/`summary` transcript lines or the Codex
+	// app-server `threads.title`). When present it wins over message-derived
+	// titles.
+	SummaryTitle    string
+	StartedAtUnixMS int64
+	UpdatedAtUnixMS int64
+	Messages        []externalImportedMessage
 }
 
 type externalImportedMessage struct {
@@ -136,6 +145,7 @@ func (s *Service) ImportExternalSessions(ctx context.Context, workspaceID string
 		Errors:          append([]ExternalImportError(nil), data.result.Errors...),
 	}
 	importedProjectPaths := map[string]struct{}{}
+	validProjectPaths := map[string]struct{}{}
 	for _, session := range data.sessions {
 		if ctx.Err() != nil {
 			return result, ctx.Err()
@@ -144,6 +154,7 @@ func (s *Service) ImportExternalSessions(ctx context.Context, workspaceID string
 		if !selected {
 			continue
 		}
+		validProjectPaths[projectPath] = struct{}{}
 		importedMessages, imported, err := s.importExternalSession(ctx, workspaceID, session)
 		if err != nil {
 			result.Errors = append(result.Errors, ExternalImportError{
@@ -162,6 +173,7 @@ func (s *Service) ImportExternalSessions(ctx context.Context, workspaceID string
 		}
 	}
 	result.ImportedProjects = len(importedProjectPaths)
+	result.ProjectPaths = sortedStringSet(validProjectPaths)
 	return result, nil
 }
 
@@ -341,6 +353,13 @@ func scanExternalProviderSessions(provider string, cutoffUnixMS int64) ([]extern
 		summary.Error = err.Error()
 		return nil, summary, []ExternalImportError{{Provider: provider, Message: err.Error()}}
 	}
+	// Codex stores the generated conversation title in its app-server SQLite
+	// state DB rather than in the rollout transcript, so resolve it up front and
+	// let it override the message-derived title.
+	var codexTitles map[string]string
+	if provider == agentproviderbiz.Codex {
+		codexTitles = codexThreadTitles(root)
+	}
 	sessions := make([]externalImportedSession, 0, len(files))
 	errors := make([]ExternalImportError, 0)
 	for _, file := range files {
@@ -354,6 +373,9 @@ func scanExternalProviderSessions(provider string, cutoffUnixMS int64) ([]extern
 		}
 		if session.UpdatedAtUnixMS < cutoffUnixMS {
 			continue
+		}
+		if title := strings.TrimSpace(codexTitles[session.ProviderSessionID]); title != "" {
+			session.Title = truncateExternalTitle(title)
 		}
 		sessions = append(sessions, session)
 		summary.SessionCount++
@@ -652,10 +674,12 @@ func externalSessionTitle(messages []externalImportedMessage) string {
 
 func truncateExternalTitle(input string) string {
 	input = strings.Join(strings.Fields(input), " ")
-	if len(input) <= 80 {
+	const maxTitleRunes = 80
+	runes := []rune(input)
+	if len(runes) <= maxTitleRunes {
 		return input
 	}
-	return strings.TrimSpace(input[:80])
+	return strings.TrimSpace(string(runes[:maxTitleRunes]))
 }
 
 func firstExternalMessageUnixMS(messages []externalImportedMessage) int64 {

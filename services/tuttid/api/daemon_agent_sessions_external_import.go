@@ -43,30 +43,48 @@ func (api DaemonAPI) ImportWorkspaceExternalAgentSessions(ctx context.Context, r
 	projects := externalImportProjectSelectionsFromGenerated(request.Body.Projects)
 	register := request.Body.RegisterUserProjects == nil || *request.Body.RegisterUserProjects
 	importSessions := request.Body.ImportSessions == nil || *request.Body.ImportSessions
-	projects, registrationErrors := api.registerExternalImportUserProjects(ctx, projects, register)
-	if len(projects) == 0 {
-		return tuttigenerated.ImportWorkspaceExternalAgentSessions200JSONResponse(
-			generatedExternalImportResult(agentservice.ExternalImportResult{Errors: registrationErrors}),
-		), nil
+
+	// Import sessions first, then register only the projects that actually
+	// matched at least one valid session so empty projects never get surfaced.
+	// validPaths are canonical project paths (see the agent service), so register
+	// them directly instead of mapping back to the raw request selections.
+	var result agentservice.ExternalImportResult
+	var validPaths []string
+	if importSessions {
+		var err error
+		result, err = api.AgentSessionService.ImportExternalSessions(ctx, string(request.WorkspaceID), agentservice.ExternalImportInput{
+			Projects: projects,
+		})
+		if err != nil {
+			return writeImportWorkspaceExternalAgentSessionsError(err), nil
+		}
+		validPaths = result.ProjectPaths
+	} else {
+		var err error
+		validPaths, err = api.AgentSessionService.ExternalImportValidProjectPaths(ctx, agentservice.ExternalImportInput{
+			Projects: projects,
+		})
+		if err != nil {
+			return writeImportWorkspaceExternalAgentSessionsError(err), nil
+		}
 	}
-	if !importSessions {
-		return tuttigenerated.ImportWorkspaceExternalAgentSessions200JSONResponse(
-			generatedExternalImportResult(agentservice.ExternalImportResult{
-				ImportedProjects: len(projects),
-				Errors:           registrationErrors,
-			}),
-		), nil
-	}
-	result, err := api.AgentSessionService.ImportExternalSessions(ctx, string(request.WorkspaceID), agentservice.ExternalImportInput{
-		Projects: projects,
-	})
-	if err != nil {
-		return writeImportWorkspaceExternalAgentSessionsError(err), nil
-	}
+
+	registeredSelections, registrationErrors := api.registerExternalImportUserProjects(ctx, externalImportSelectionsFromPaths(validPaths), register)
+	result.ImportedProjects = len(registeredSelections)
 	result.Errors = append(registrationErrors, result.Errors...)
 	return tuttigenerated.ImportWorkspaceExternalAgentSessions200JSONResponse(
 		generatedExternalImportResult(result),
 	), nil
+}
+
+func externalImportSelectionsFromPaths(paths []string) []agentservice.ExternalImportProjectSelection {
+	selections := make([]agentservice.ExternalImportProjectSelection, 0, len(paths))
+	for _, path := range paths {
+		if trimmed := strings.TrimSpace(path); trimmed != "" {
+			selections = append(selections, agentservice.ExternalImportProjectSelection{Path: trimmed})
+		}
+	}
+	return selections
 }
 
 func externalImportProvidersFromGenerated(input *[]tuttigenerated.WorkspaceAgentProvider) []string {

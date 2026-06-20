@@ -5,6 +5,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"unicode/utf8"
 )
 
 func TestParseCodexJSONLUsesFirstUserEventAsTitle(t *testing.T) {
@@ -122,6 +123,116 @@ func TestParseCodexJSONLPreservesToolCallStructure(t *testing.T) {
 	output, _ := completed.Payload["output"].(map[string]any)
 	if output["output"] != "Chunk ID: abc\nOutput:\n M file.go" {
 		t.Fatalf("completed output = %#v, want command output", output)
+	}
+}
+
+func TestParseCodexJSONLExtractsPromptFromIDEContext(t *testing.T) {
+	cwd := t.TempDir()
+	ideMessage := "# Context from my IDE setup:\n" +
+		"The user is in file foo.go\n\n" +
+		"## My request for Codex: Refactor the parser\n"
+	session, ok, err := parseCodexJSONL(
+		filepath.Join(cwd, "rollout.jsonl"),
+		strings.NewReader(testAgentJSONL(t,
+			map[string]any{
+				"timestamp": "2026-06-18T00:00:00Z",
+				"type":      "session_meta",
+				"payload":   map[string]any{"id": "codex-ide", "cwd": cwd},
+			},
+			map[string]any{
+				"timestamp": "2026-06-18T00:00:01Z",
+				"type":      "response_item",
+				"payload": map[string]any{
+					"type":    "message",
+					"role":    "user",
+					"content": []any{map[string]any{"type": "input_text", "text": ideMessage}},
+				},
+			},
+		)),
+	)
+	if err != nil || !ok {
+		t.Fatalf("parseCodexJSONL ok=%v err=%v", ok, err)
+	}
+	if session.Title != "Refactor the parser" {
+		t.Fatalf("title = %q, want IDE request payload", session.Title)
+	}
+}
+
+func TestParseCodexJSONLSkipsAgentsAndEnvironmentPreamble(t *testing.T) {
+	cwd := t.TempDir()
+	session, ok, err := parseCodexJSONL(
+		filepath.Join(cwd, "rollout.jsonl"),
+		strings.NewReader(testAgentJSONL(t,
+			map[string]any{
+				"timestamp": "2026-06-18T00:00:00Z",
+				"type":      "session_meta",
+				"payload":   map[string]any{"id": "codex-preamble", "cwd": cwd},
+			},
+			map[string]any{
+				"timestamp": "2026-06-18T00:00:01Z",
+				"type":      "response_item",
+				"payload": map[string]any{
+					"type":    "message",
+					"role":    "user",
+					"content": []any{map[string]any{"type": "input_text", "text": "# AGENTS.md\nrules"}},
+				},
+			},
+			map[string]any{
+				"timestamp": "2026-06-18T00:00:02Z",
+				"type":      "response_item",
+				"payload": map[string]any{
+					"type":    "message",
+					"role":    "user",
+					"content": []any{map[string]any{"type": "input_text", "text": "Real question here"}},
+				},
+			},
+		)),
+	)
+	if err != nil || !ok {
+		t.Fatalf("parseCodexJSONL ok=%v err=%v", ok, err)
+	}
+	if session.Title != "Real question here" {
+		t.Fatalf("title = %q, want first non-preamble user message", session.Title)
+	}
+}
+
+func TestParseClaudeCodeJSONLPrefersCustomTitle(t *testing.T) {
+	cwd := t.TempDir()
+	session, ok, err := parseClaudeCodeJSONL(
+		filepath.Join(cwd, "claude.jsonl"),
+		strings.NewReader(testAgentJSONL(t,
+			map[string]any{
+				"timestamp": "2026-06-18T00:00:00Z",
+				"sessionId": "claude-title",
+				"cwd":       cwd,
+				"uuid":      "claude-1",
+				"message":   map[string]any{"role": "user", "content": []any{map[string]any{"type": "text", "text": "Some long first prompt"}}},
+			},
+			map[string]any{
+				"type":        "custom-title",
+				"customTitle": "Summarize user persona prompts",
+				"sessionId":   "claude-title",
+			},
+		)),
+	)
+	if err != nil || !ok {
+		t.Fatalf("parseClaudeCodeJSONL ok=%v err=%v", ok, err)
+	}
+	if session.Title != "Summarize user persona prompts" {
+		t.Fatalf("title = %q, want custom-title", session.Title)
+	}
+}
+
+func TestTruncateExternalTitleKeepsMultibyteRunesIntact(t *testing.T) {
+	// 120 CJK runes (360 bytes) — must truncate by rune, not byte, so the
+	// result stays valid UTF-8 instead of being cut mid-character.
+	long := strings.Repeat("测", 120)
+	got := truncateExternalTitle(long)
+	if !utf8.ValidString(got) {
+		t.Fatalf("truncated title = %q is not valid UTF-8", got)
+	}
+	if runes := utf8.RuneCountInString(got); runes != 80 {
+		t.Fatalf("truncated rune count = %d, want 80", runes)
 	}
 }
 

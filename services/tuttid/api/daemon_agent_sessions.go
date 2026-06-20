@@ -20,6 +20,7 @@ type AgentSessionService interface {
 	ListMessages(context.Context, string, string, agentservice.ListMessagesInput) (agentservice.SessionMessagesPage, error)
 	ScanExternalImports(context.Context, agentservice.ExternalImportScanInput) (agentservice.ExternalImportScanResult, error)
 	ImportExternalSessions(context.Context, string, agentservice.ExternalImportInput) (agentservice.ExternalImportResult, error)
+	ExternalImportValidProjectPaths(context.Context, agentservice.ExternalImportInput) ([]string, error)
 	Create(context.Context, string, agentservice.CreateSessionInput) (agentservice.Session, error)
 	Get(context.Context, string, string) (agentservice.Session, error)
 	ReadAttachment(context.Context, string, string, string) (agentservice.PromptAttachment, error)
