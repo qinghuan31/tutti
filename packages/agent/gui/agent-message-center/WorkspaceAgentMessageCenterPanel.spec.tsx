@@ -837,6 +837,30 @@ describe("WorkspaceAgentMessageCenterCard", () => {
 });
 
 describe("WorkspaceAgentMessageCenterPanel", () => {
+  it("closes immediately when the user presses outside the panel", async () => {
+    const onClose = vi.fn();
+    render(
+      <WorkspaceAgentMessageCenterPanel
+        open
+        model={emptyModel}
+        onClose={onClose}
+        onOpenChat={vi.fn()}
+        onSubmitPrompt={vi.fn()}
+      />
+    );
+    await new Promise<void>((resolve) => {
+      window.setTimeout(resolve, 0);
+    });
+
+    fireEvent.pointerDown(document.body, {
+      button: 0,
+      ctrlKey: false,
+      pointerType: "mouse"
+    });
+
+    expect(onClose).toHaveBeenCalledOnce();
+  });
+
   it("groups visible message center items by status when selected", () => {
     render(
       <WorkspaceAgentMessageCenterPanel

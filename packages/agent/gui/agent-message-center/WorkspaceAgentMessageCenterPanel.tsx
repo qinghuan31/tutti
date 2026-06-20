@@ -431,6 +431,10 @@ function WorkspaceAgentMessageCenterPanelContent({
         portalContainer={portalContainer ?? undefined}
         showOverlay={false}
         aria-label={t("agentHost.workspaceAgentMessageCenterTitle")}
+        onPointerDownOutside={(event) => {
+          event.preventDefault();
+          onClose();
+        }}
       >
         <TooltipProvider delayDuration={MESSAGE_CENTER_TOOLTIP_DELAY_MS}>
           <div className="flex-none border-b border-[var(--border-1)] px-3.5 pt-3 pb-3">
