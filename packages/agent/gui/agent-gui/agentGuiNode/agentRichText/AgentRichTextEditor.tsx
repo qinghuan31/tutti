@@ -48,6 +48,7 @@ export interface AgentRichTextEditorProps {
   className?: string;
   onChange: (value: string) => void;
   onSubmit: () => void;
+  onFocus?: () => void;
   availableSkills?: readonly AgentGUIProviderSkillOption[];
   availableCapabilities?: readonly AgentCapabilityTokenOption[];
   submitOnEnter?: boolean;
@@ -192,6 +193,7 @@ export const AgentRichTextEditor = forwardRef<
     className,
     onChange,
     onSubmit,
+    onFocus,
     availableCapabilities = [],
     availableSkills = [],
     submitOnEnter = true,
@@ -211,6 +213,7 @@ export const AgentRichTextEditor = forwardRef<
   const editorRef = useRef<Editor | null>(null);
   const onChangeRef = useRef(onChange);
   const onSubmitRef = useRef(onSubmit);
+  const onFocusRef = useRef(onFocus);
   const onKeyDownForPaletteRef = useRef(onKeyDownForPalette);
   const onFileMentionSuggestionChangeRef = useRef(
     onFileMentionSuggestionChange
@@ -271,6 +274,7 @@ export const AgentRichTextEditor = forwardRef<
 
   onChangeRef.current = onChange;
   onSubmitRef.current = onSubmit;
+  onFocusRef.current = onFocus;
   onKeyDownForPaletteRef.current = onKeyDownForPalette;
   onFileMentionSuggestionChangeRef.current = onFileMentionSuggestionChange;
   onFileMentionSuggestionKeyDownRef.current = onFileMentionSuggestionKeyDown;
@@ -483,6 +487,9 @@ export const AgentRichTextEditor = forwardRef<
       }
       lastEmittedPromptRef.current = nextPrompt;
       onChangeRef.current(nextPrompt);
+    },
+    onFocus: () => {
+      onFocusRef.current?.();
     },
     onCreate: ({ editor: nextEditor }) => {
       editorRef.current = nextEditor;

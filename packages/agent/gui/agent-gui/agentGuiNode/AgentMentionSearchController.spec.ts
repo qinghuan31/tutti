@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { setAgentGuiI18nTestLocale } from "../../i18n/testUtils";
 import {
   AgentMentionSearchController as BaseAgentMentionSearchController,
+  MAX_BROWSE_CACHE_ENTRIES,
   resetAgentMentionSearchBrowseCacheForTests
 } from "./AgentMentionSearchController";
 import { issuePreviewText } from "./agentMentionSearchHelpers";
@@ -644,6 +645,64 @@ describe("AgentMentionSearchController", () => {
       ])
     });
     expect(queryFiles).toHaveBeenCalledTimes(1);
+  });
+
+  it("evicts the oldest browse cache entry once the shared cap is exceeded", async () => {
+    const now = 5_000;
+    const queryFiles = vi.fn().mockResolvedValue({
+      workspaceId: "room",
+      root: "/workspace",
+      entries: [{ path: "/workspace/a.md", name: "a.md", kind: "file" }]
+    });
+    const providerOptions: TestContextMentionProviderOptions = {
+      queryFiles,
+      queryIssues: vi.fn().mockResolvedValue({
+        issues: [],
+        totalCount: 0,
+        statusCounts: undefined
+      }),
+      querySessions: vi.fn().mockResolvedValue({ presences: [], sessions: [] }),
+      loadSessionMessages: vi
+        .fn()
+        .mockResolvedValue({ messages: [], latestVersion: 0, hasMore: false }),
+      loadSessionSummary: vi.fn(),
+      loadUserProfiles: vi.fn().mockResolvedValue({ users: [] }),
+      diagnosticNow: () => now
+    };
+    const controller = new AgentMentionSearchController({
+      ...providerOptions,
+      contextMentionProviders:
+        createTestContextMentionProviders(providerOptions)
+    });
+    controller.subscribe(() => {});
+
+    // Warm one more distinct workspace than the cache can hold. Each distinct
+    // workspace is a cache miss, so this drives MAX + 1 fetches and evicts the
+    // oldest (room-0) on the final insert.
+    const warmCount = MAX_BROWSE_CACHE_ENTRIES + 1;
+    for (let index = 0; index < warmCount; index += 1) {
+      controller.updateQuery({ workspaceId: `room-${index}`, query: "" });
+      // eslint-disable-next-line no-await-in-loop
+      await vi.waitFor(() =>
+        expect(queryFiles).toHaveBeenCalledTimes(index + 1)
+      );
+    }
+
+    // The most recently warmed workspace is still cached -> no extra fetch.
+    controller.updateQuery({
+      workspaceId: `room-${warmCount - 1}`,
+      query: ""
+    });
+    await Promise.resolve();
+    expect(queryFiles).toHaveBeenCalledTimes(warmCount);
+
+    // The oldest workspace was evicted by the cap -> reopening must re-fetch.
+    controller.updateQuery({ workspaceId: "room-0", query: "" });
+    await vi.waitFor(() =>
+      expect(queryFiles).toHaveBeenCalledTimes(warmCount + 1)
+    );
+
+    controller.dispose();
   });
 
   it("uses preloaded browse results when the mention palette first opens", async () => {

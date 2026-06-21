@@ -130,6 +130,48 @@ const sharedAgentMentionBrowseFetches = new Map<
   Promise<AgentMentionBrowseFetchResult>
 >();
 
+// Bound the shared browse cache so long-lived renderer sessions cannot grow it
+// without limit. Eviction happens on write (LRU-by-insertion-order); reads keep
+// returning stale entries so the stale-while-revalidate path stays intact.
+export const MAX_BROWSE_CACHE_ENTRIES = 64;
+
+function writeBrowseCacheEntry(
+  cacheKey: string,
+  entry: AgentMentionBrowseCacheEntry
+): void {
+  // Re-insert so the freshly written key becomes the newest (Map preserves
+  // insertion order), then drop the oldest keys past the cap.
+  sharedAgentMentionBrowseCache.delete(cacheKey);
+  sharedAgentMentionBrowseCache.set(cacheKey, entry);
+  while (sharedAgentMentionBrowseCache.size > MAX_BROWSE_CACHE_ENTRIES) {
+    const oldestKey = sharedAgentMentionBrowseCache.keys().next().value;
+    if (oldestKey === undefined) {
+      break;
+    }
+    sharedAgentMentionBrowseCache.delete(oldestKey);
+  }
+}
+
+// Defer speculative warm-up to a browser idle slot so it never blocks the
+// caller's synchronous path (e.g. a composer focus handler) or a render commit.
+// Falls back to a macrotask where requestIdleCallback is unavailable (jsdom,
+// older runtimes). Returns a canceller the owner uses on teardown.
+function scheduleIdleTask(task: () => void): () => void {
+  const scope = globalThis as typeof globalThis & {
+    requestIdleCallback?: (
+      cb: () => void,
+      opts?: { timeout: number }
+    ) => number;
+    cancelIdleCallback?: (handle: number) => void;
+  };
+  if (typeof scope.requestIdleCallback === "function") {
+    const handle = scope.requestIdleCallback(() => task(), { timeout: 500 });
+    return () => scope.cancelIdleCallback?.(handle);
+  }
+  const handle = setTimeout(task, 0);
+  return () => clearTimeout(handle);
+}
+
 export function resetAgentMentionSearchBrowseCacheForTests(): void {
   sharedAgentMentionBrowseCache.clear();
   sharedAgentMentionBrowseFetches.clear();
@@ -183,6 +225,8 @@ export class AgentMentionSearchController {
   private readonly totalCounts: Partial<Record<AgentMentionGroupId, number>> =
     {};
   private timer: ReturnType<typeof setTimeout> | null = null;
+  private preloadCancel: (() => void) | null = null;
+  private pendingPreloadKey: string | null = null;
   private requestId = 0;
   private disposed = false;
   private activeWorkspaceId = "";
@@ -342,6 +386,42 @@ export class AgentMentionSearchController {
       sessionCwd,
       workspaceId
     });
+    // Already warm — nothing to schedule.
+    if (this.readBrowseCache(cacheKey).isFresh) {
+      return;
+    }
+    // A warm-up for this exact key is already queued; let it run rather than
+    // re-scheduling on every focus/dependency churn.
+    if (this.pendingPreloadKey === cacheKey) {
+      return;
+    }
+    // The controller owns *when* the warm-up runs: callers just declare intent.
+    this.cancelPendingPreload();
+    this.pendingPreloadKey = cacheKey;
+    this.preloadCancel = scheduleIdleTask(() => {
+      this.preloadCancel = null;
+      this.pendingPreloadKey = null;
+      if (this.disposed) {
+        return;
+      }
+      this.runBrowsePreload({
+        cacheKey,
+        currentUserId,
+        filter,
+        sessionCwd,
+        workspaceId
+      });
+    });
+  }
+
+  private runBrowsePreload(input: {
+    cacheKey: string;
+    currentUserId: string;
+    filter: AgentMentionFilterId;
+    sessionCwd: string;
+    workspaceId: string;
+  }): void {
+    const { cacheKey, currentUserId, filter, sessionCwd, workspaceId } = input;
     this.logLifecycle("browse.preload", {
       filter,
       providerIds: this.providerIdsForDiagnostics(),
@@ -356,6 +436,8 @@ export class AgentMentionSearchController {
       reason: "preload",
       workspaceId
     });
+    // Re-check freshness: another path may have warmed this key while the idle
+    // task was queued.
     if (cached.isFresh) {
       return;
     }
@@ -376,6 +458,14 @@ export class AgentMentionSearchController {
         workspaceId
       });
     });
+  }
+
+  private cancelPendingPreload(): void {
+    if (this.preloadCancel) {
+      this.preloadCancel();
+      this.preloadCancel = null;
+    }
+    this.pendingPreloadKey = null;
   }
 
   enterCategory(category: Exclude<AgentMentionFilterId, "all">): void {
@@ -539,6 +629,7 @@ export class AgentMentionSearchController {
   dispose(): void {
     this.disposed = true;
     this.clearTimer();
+    this.cancelPendingPreload();
     this.listeners.clear();
     this.requestId += 1;
     this.logLifecycle("controller.dispose", {
@@ -830,7 +921,7 @@ export class AgentMentionSearchController {
     });
     const fetchPromise = this.fetchBrowseResult(input)
       .then((result) => {
-        sharedAgentMentionBrowseCache.set(cacheKey, {
+        writeBrowseCacheEntry(cacheKey, {
           ...result,
           cachedAt: this.diagnosticNow()
         });
@@ -1119,6 +1210,10 @@ export class AgentMentionSearchController {
     if (!entry) {
       return { entry: null, isFresh: false };
     }
+    // Touch for LRU recency. We deliberately keep returning stale entries (no
+    // delete here) so the stale-while-revalidate path can still surface them.
+    sharedAgentMentionBrowseCache.delete(cacheKey);
+    sharedAgentMentionBrowseCache.set(cacheKey, entry);
     const ageMs = this.diagnosticNow() - entry.cachedAt;
     const isFresh =
       this.browseCacheTtlMs >= 0 &&
