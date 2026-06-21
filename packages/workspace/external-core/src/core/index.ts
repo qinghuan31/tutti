@@ -10,6 +10,8 @@ import {
   type TuttiExternalLogLevel,
   type TuttiExternalManagedAiModelProviderId,
   type TuttiExternalPermissionRequestInput,
+  type TuttiExternalPdfMargin,
+  type TuttiExternalPdfPrintHtmlInput,
   type TuttiExternalReferenceOpenInput,
   type TuttiExternalSettingsOpenInput,
   type TuttiExternalWorkspaceAgentProvider,
@@ -225,6 +227,35 @@ export function normalizeTuttiExternalReferenceOpenInput(
   return { href };
 }
 
+export function normalizeTuttiExternalPdfPrintHtmlInput(
+  input: unknown
+): TuttiExternalPdfPrintHtmlInput {
+  if (!isRecord(input)) {
+    throw new Error("pdf.printHtmlToPdf input must be an object.");
+  }
+  const html = normalizeRequiredString(input.html, "pdf.printHtmlToPdf html");
+  const title =
+    typeof input.title === "string" && input.title.trim() !== ""
+      ? input.title.trim().slice(0, 200)
+      : undefined;
+  const baseUrl =
+    typeof input.baseUrl === "string" && input.baseUrl.trim() !== ""
+      ? normalizePdfBaseUrl(input.baseUrl)
+      : undefined;
+  return {
+    html,
+    ...(baseUrl ? { baseUrl } : {}),
+    ...(title ? { title } : {}),
+    ...(input.printBackground === false ? { printBackground: false } : {}),
+    ...(input.pageSize !== undefined && input.pageSize !== null
+      ? { pageSize: normalizePdfPageSize(input.pageSize) }
+      : {}),
+    ...(input.margin !== undefined && input.margin !== null
+      ? { margin: normalizePdfMargin(input.margin) }
+      : {})
+  };
+}
+
 export function isTuttiExternalAtProviderId(
   value: unknown
 ): value is TuttiExternalAtProviderId {
@@ -384,6 +415,55 @@ function normalizeManagedAiModelProvider(
     throw new Error("managed AI model provider is unsupported.");
   }
   return value;
+}
+
+function normalizePdfBaseUrl(value: string): string {
+  let url: URL;
+  try {
+    url = new URL(value.trim());
+  } catch {
+    throw new Error("pdf.printHtmlToPdf baseUrl must be a valid URL.");
+  }
+  if (url.protocol !== "http:" && url.protocol !== "https:") {
+    throw new Error("pdf.printHtmlToPdf baseUrl protocol is unsupported.");
+  }
+  return url.toString();
+}
+
+function normalizePdfPageSize(value: unknown): "A4" | "Letter" {
+  if (value === "A4" || value === "Letter") {
+    return value;
+  }
+  throw new Error("pdf.printHtmlToPdf pageSize is unsupported.");
+}
+
+function normalizePdfMargin(value: unknown): TuttiExternalPdfMargin {
+  if (!isRecord(value)) {
+    throw new Error("pdf.printHtmlToPdf margin must be an object.");
+  }
+  return {
+    ...normalizePdfMarginSide(value.top, "top"),
+    ...normalizePdfMarginSide(value.right, "right"),
+    ...normalizePdfMarginSide(value.bottom, "bottom"),
+    ...normalizePdfMarginSide(value.left, "left")
+  };
+}
+
+function normalizePdfMarginSide(
+  value: unknown,
+  side: keyof TuttiExternalPdfMargin
+): TuttiExternalPdfMargin {
+  if (value === undefined || value === null || value === "") {
+    return {};
+  }
+  if (typeof value !== "string" || value.trim() === "") {
+    throw new Error(`pdf.printHtmlToPdf margin ${side} must be a string.`);
+  }
+  const normalized = value.trim();
+  if (!/^\d+(?:\.\d+)?(?:px|in|cm|mm)$/u.test(normalized)) {
+    throw new Error(`pdf.printHtmlToPdf margin ${side} unit is unsupported.`);
+  }
+  return { [side]: normalized };
 }
 
 function normalizeFileOpenMode(

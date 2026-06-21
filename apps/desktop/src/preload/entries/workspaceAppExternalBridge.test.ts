@@ -289,6 +289,62 @@ test("workspace app external bridge invokes file open with activation", async ()
   ]);
 });
 
+test("workspace app external bridge invokes PDF print with activation", async () => {
+  const calls: Array<{ channel: string; payload?: unknown }> = [];
+  const bridge = createWorkspaceAppExternalBridge({
+    appContext: {
+      async get() {
+        return { locale: "en" };
+      },
+      subscribe() {
+        throw new Error("unexpected subscribe");
+      }
+    },
+    isUserActivationActive: () => true,
+    send: unexpectedSend,
+    async invoke<TResult>(channel: string, payload?: unknown) {
+      calls.push({ channel, payload });
+      return { bytes: new Uint8Array([37, 80, 68, 70]) } as TResult;
+    }
+  });
+
+  assert.deepEqual(
+    await bridge.pdf.printHtmlToPdf({ html: "<h1>Hello</h1>" }),
+    {
+      bytes: new Uint8Array([37, 80, 68, 70])
+    }
+  );
+  assert.deepEqual(calls, [
+    {
+      channel: workspaceAppExternalChannels.pdfPrintHtml,
+      payload: { html: "<h1>Hello</h1>" }
+    }
+  ]);
+});
+
+test("workspace app external bridge requires activation for PDF print", () => {
+  const bridge = createWorkspaceAppExternalBridge({
+    appContext: {
+      async get() {
+        return { locale: "en" };
+      },
+      subscribe() {
+        throw new Error("unexpected subscribe");
+      }
+    },
+    isUserActivationActive: () => false,
+    send: unexpectedSend,
+    async invoke() {
+      throw new Error("unexpected invoke");
+    }
+  });
+
+  assert.throws(
+    () => bridge.pdf.printHtmlToPdf({ html: "<h1>Hello</h1>" }),
+    /pdf\.printHtmlToPdf requires a user action/
+  );
+});
+
 test("workspace app external bridge requires activation for permission request", () => {
   const bridge = createWorkspaceAppExternalBridge({
     appContext: {

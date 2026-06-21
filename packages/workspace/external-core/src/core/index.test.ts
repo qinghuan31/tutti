@@ -5,6 +5,7 @@ import {
   normalizeTuttiExternalFileOpenInput,
   normalizeTuttiExternalFileSelectInput,
   normalizeTuttiExternalLogInput,
+  normalizeTuttiExternalPdfPrintHtmlInput,
   normalizeTuttiExternalPermissionRequestInput,
   normalizeTuttiExternalReferenceOpenInput,
   normalizeTuttiExternalSettingsOpenInput,
@@ -175,6 +176,60 @@ test("rejects invalid settings open input", () => {
   assert.throws(
     () => normalizeTuttiExternalSettingsOpenInput({ provider: "codex" }),
     /provider is unsupported/
+  );
+});
+
+test("normalizes PDF print HTML input", () => {
+  assert.deepEqual(
+    normalizeTuttiExternalPdfPrintHtmlInput({
+      baseUrl: " http://127.0.0.1:8790/project/ ",
+      html: " <h1>Doc</h1> ",
+      margin: {
+        bottom: "14mm",
+        left: " 10mm ",
+        right: "10mm",
+        top: "12mm"
+      },
+      pageSize: "A4",
+      printBackground: false,
+      title: " Report "
+    }),
+    {
+      baseUrl: "http://127.0.0.1:8790/project/",
+      html: "<h1>Doc</h1>",
+      margin: {
+        bottom: "14mm",
+        left: "10mm",
+        right: "10mm",
+        top: "12mm"
+      },
+      pageSize: "A4",
+      printBackground: false,
+      title: "Report"
+    }
+  );
+});
+
+test("rejects invalid PDF print HTML input", () => {
+  assert.throws(
+    () => normalizeTuttiExternalPdfPrintHtmlInput({ html: "" }),
+    /html is required/
+  );
+  assert.throws(
+    () =>
+      normalizeTuttiExternalPdfPrintHtmlInput({
+        baseUrl: "file:///tmp/doc.html",
+        html: "<h1>Doc</h1>"
+      }),
+    /baseUrl protocol is unsupported/
+  );
+  assert.throws(
+    () =>
+      normalizeTuttiExternalPdfPrintHtmlInput({
+        html: "<h1>Doc</h1>",
+        margin: { top: "12pt" }
+      }),
+    /margin top unit is unsupported/
   );
 });
 

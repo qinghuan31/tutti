@@ -35,6 +35,8 @@ import type {
   TuttiExternalLogInput,
   TuttiExternalPermissionRequestInput,
   TuttiExternalPermissionRequestResult,
+  TuttiExternalPdfPrintHtmlInput,
+  TuttiExternalPdfPrintHtmlResult,
   TuttiExternalReferenceOpenInput,
   TuttiExternalRendererRequest,
   TuttiExternalSettingsOpenInput,
@@ -62,6 +64,7 @@ export const desktopIpcChannels = {
     filesSelect: "workspace-app-files:select",
     logsWrite: "workspace-app-logs:write",
     permissionsRequest: "workspace-app-permissions:request",
+    pdfPrintHtml: "workspace-app-pdf:print-html",
     referencesOpen: "workspace-app-references:open",
     rendererRequest: "workspace-app-external:renderer-request",
     rendererResponse: "workspace-app-external:renderer-response",
@@ -557,6 +560,8 @@ export interface DesktopInvokePayloadByChannel {
   [desktopIpcChannels.appExternal
     .permissionsRequest]: TuttiExternalPermissionRequestInput;
   [desktopIpcChannels.appExternal
+    .pdfPrintHtml]: TuttiExternalPdfPrintHtmlInput;
+  [desktopIpcChannels.appExternal
     .referencesOpen]: TuttiExternalReferenceOpenInput;
   [desktopIpcChannels.appExternal.settingsOpen]: TuttiExternalSettingsOpenInput;
   [desktopIpcChannels.appExternal
@@ -653,6 +658,8 @@ export interface DesktopInvokeResultByChannel {
   [desktopIpcChannels.appExternal.filesSelect]: TuttiExternalFileSelectResult;
   [desktopIpcChannels.appExternal
     .permissionsRequest]: TuttiExternalPermissionRequestResult;
+  [desktopIpcChannels.appExternal
+    .pdfPrintHtml]: TuttiExternalPdfPrintHtmlResult;
   [desktopIpcChannels.appExternal.referencesOpen]: void;
   [desktopIpcChannels.appExternal.settingsOpen]: void;
   [desktopIpcChannels.appExternal.workspaceFeatureOpen]: void;

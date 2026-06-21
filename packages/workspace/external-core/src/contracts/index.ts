@@ -163,6 +163,26 @@ export interface TuttiExternalLogInput {
   level?: TuttiExternalLogLevel;
 }
 
+export interface TuttiExternalPdfMargin {
+  bottom?: string;
+  left?: string;
+  right?: string;
+  top?: string;
+}
+
+export interface TuttiExternalPdfPrintHtmlInput {
+  baseUrl?: string;
+  html: string;
+  margin?: TuttiExternalPdfMargin;
+  pageSize?: "A4" | "Letter";
+  printBackground?: boolean;
+  title?: string;
+}
+
+export interface TuttiExternalPdfPrintHtmlResult {
+  bytes: Uint8Array;
+}
+
 export interface TuttiExternalBridge {
   app: {
     getContext(): Promise<unknown>;
@@ -192,6 +212,11 @@ export interface TuttiExternalBridge {
   };
   references: {
     open(input: TuttiExternalReferenceOpenInput): Promise<void>;
+  };
+  pdf: {
+    printHtmlToPdf(
+      input: TuttiExternalPdfPrintHtmlInput
+    ): Promise<TuttiExternalPdfPrintHtmlResult>;
   };
   logs: {
     write(input: TuttiExternalLogInput): void;

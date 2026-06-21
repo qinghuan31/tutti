@@ -9,6 +9,8 @@ import type {
   TuttiExternalLogInput,
   TuttiExternalPermissionRequestInput,
   TuttiExternalPermissionRequestResult,
+  TuttiExternalPdfPrintHtmlInput,
+  TuttiExternalPdfPrintHtmlResult,
   TuttiExternalReferenceOpenInput,
   TuttiExternalSettingsOpenInput,
   TuttiExternalWorkspaceOpenFeatureInput
@@ -33,6 +35,7 @@ export const workspaceAppExternalChannels = {
   filesSelect: "workspace-app-files:select",
   logsWrite: "workspace-app-logs:write",
   permissionsRequest: "workspace-app-permissions:request",
+  pdfPrintHtml: "workspace-app-pdf:print-html",
   referencesOpen: "workspace-app-references:open",
   settingsOpen: "workspace-app-settings:open",
   workspaceFeatureOpen: "workspace-app-feature:open"
@@ -124,6 +127,18 @@ export function createWorkspaceAppExternalBridge(
         );
         return dependencies.invoke<void>(
           workspaceAppExternalChannels.workspaceFeatureOpen,
+          input
+        );
+      }
+    },
+    pdf: {
+      printHtmlToPdf(input: TuttiExternalPdfPrintHtmlInput) {
+        requireUserActivation(
+          dependencies.isUserActivationActive(),
+          "pdf.printHtmlToPdf"
+        );
+        return dependencies.invoke<TuttiExternalPdfPrintHtmlResult>(
+          workspaceAppExternalChannels.pdfPrintHtml,
           input
         );
       }
