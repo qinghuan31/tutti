@@ -53,6 +53,11 @@ const catalogAppDisplayDefinitions = [
     nameKey: "appCenter.catalogApps.dailyProductRadar.name"
   },
   {
+    appIds: ["ai-doc"],
+    descriptionKey: "appCenter.comingSoonApps.aiDocument.description",
+    nameKey: "appCenter.comingSoonApps.aiDocument.name"
+  },
+  {
     appIds: ["group-chat"],
     descriptionKey: "appCenter.catalogApps.groupChat.description",
     nameKey: "appCenter.catalogApps.groupChat.name"
@@ -466,13 +471,7 @@ function withComingSoonWorkspaceApps(
       return app;
     }
     comingSoonByAppId.delete(app.appId);
-    return {
-      ...comingSoonApp,
-      ...(app.iconUrl ? { iconUrl: app.iconUrl } : {}),
-      ...(app.availableIconUrl
-        ? { availableIconUrl: app.availableIconUrl }
-        : {})
-    };
+    return app;
   });
   const remainingComingSoonApps = [...comingSoonByAppId.values()];
   return remainingComingSoonApps.length > 0
