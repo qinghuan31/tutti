@@ -13,6 +13,7 @@ import type { WorkspaceFileManagerI18nRuntime } from "../../i18n/workspaceFileMa
 export interface WorkspaceFileManagerCommands {
   applyRevealIntent(
     intent: {
+      mode?: "reveal" | "open-directory";
       path: string;
       requestID: string;
     } | null

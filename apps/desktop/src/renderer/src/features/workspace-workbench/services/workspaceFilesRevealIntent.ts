@@ -2,6 +2,7 @@ import type { WorkbenchHostActivation } from "@tutti-os/workbench-surface";
 import type { WorkspaceFilesNodeActivationPayload } from "./workspaceWorkbenchHostService.interface";
 
 export interface WorkspaceFilesRevealIntent {
+  mode?: "reveal" | "open-directory";
   path: string;
   requestID: string;
 }
@@ -14,6 +15,7 @@ export function toWorkspaceFilesRevealIntent(
   }
 
   return {
+    ...(activation.payload.mode ? { mode: activation.payload.mode } : {}),
     path: activation.payload.path,
     requestID: String(activation.sequence)
   };

@@ -22,6 +22,24 @@ test("toWorkspaceFilesRevealIntent maps file activations to pane reveal intents"
   );
 });
 
+test("toWorkspaceFilesRevealIntent preserves directory open mode", () => {
+  assert.deepEqual(
+    toWorkspaceFilesRevealIntent({
+      payload: {
+        mode: "open-directory",
+        path: "/Users/example/demo"
+      },
+      sequence: 9,
+      type: "reveal-file"
+    }),
+    {
+      mode: "open-directory",
+      path: "/Users/example/demo",
+      requestID: "9"
+    }
+  );
+});
+
 test("toWorkspaceFilesRevealIntent returns null without activation payload", () => {
   assert.equal(toWorkspaceFilesRevealIntent(null), null);
   assert.equal(
@@ -62,6 +80,39 @@ test("workspace files launch coordinator dispatches normalized workspace request
     {
       path: "docs/spec.md",
       workspaceId: "workspace-1"
+    }
+  ]);
+});
+
+test("workspace files launch coordinator preserves open directory mode", async () => {
+  const requests: Array<{
+    mode?: "reveal" | "open-directory";
+    path: string;
+    workspaceId: string;
+  }> = [];
+  const dispose = registerWorkspaceFilesLaunchHandler(
+    "workspace-directory",
+    (request) => {
+      requests.push(request);
+      return true;
+    }
+  );
+
+  assert.equal(
+    await requestWorkspaceFilesLaunch({
+      homeDirectory: "/Users/example",
+      mode: "open-directory",
+      path: "/Users/example/demo",
+      workspaceId: "workspace-directory"
+    }),
+    true
+  );
+  dispose();
+  assert.deepEqual(requests, [
+    {
+      mode: "open-directory",
+      path: "/Users/example/demo",
+      workspaceId: "workspace-directory"
     }
   ]);
 });

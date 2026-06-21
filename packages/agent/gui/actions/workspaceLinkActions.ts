@@ -27,6 +27,7 @@ export interface ResolvedWorkspaceFilePathCandidate {
 
 export interface OpenWorkspaceFileLinkAction {
   type: "open-workspace-file";
+  mode?: "reveal" | "open-directory";
   path: string;
   directoryPath: string;
   workspaceRoot: string;

@@ -1,9 +1,12 @@
 export interface WorkspaceFilesLaunchRequest {
   homeDirectory?: string | null;
+  mode?: WorkspaceFilesLaunchMode;
   path: string;
   source?: "agent_command" | "issue_manager";
   workspaceId: string;
 }
+
+export type WorkspaceFilesLaunchMode = "reveal" | "open-directory";
 
 export const workspaceFilesLaunchTypeId = "workspace-files";
 
@@ -51,6 +54,7 @@ export async function requestWorkspaceFilesLaunch(
   }
 
   return handler({
+    ...(request.mode ? { mode: request.mode } : {}),
     path: normalizedPath,
     ...(request.source ? { source: request.source } : {}),
     workspaceId: normalizedWorkspaceId

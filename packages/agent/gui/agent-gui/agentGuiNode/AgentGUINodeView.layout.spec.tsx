@@ -311,6 +311,51 @@ describe("AgentGUINodeView layout persistence", () => {
     expect(composerMock.calls.at(-1)?.composerFocusRequestSequence).toBe(1);
   });
 
+  it("opens project folders through the workspace files action", async () => {
+    const actions = createActions();
+    const onLinkAction = vi.fn();
+    renderAgentGUINodeView({
+      actions,
+      onLinkAction,
+      viewModel: {
+        ...createViewModel(),
+        conversations: [
+          {
+            ...createConversationSummary("session-1"),
+            cwd: "/workspace/app",
+            project: {
+              id: "project-app",
+              path: "/workspace/app",
+              label: "App"
+            }
+          }
+        ]
+      },
+      labels: {
+        ...createLabels(),
+        projectSectionMoreActions: "Project actions",
+        projectSectionViewFiles: "Open folder"
+      }
+    });
+
+    const projectActionsButton = screen.getByLabelText("Project actions");
+    fireEvent.pointerDown(projectActionsButton, { button: 0, ctrlKey: false });
+    fireEvent.click(projectActionsButton);
+    const menuItems = await screen.findAllByRole("menuitem");
+    expect(menuItems[0]).toHaveTextContent("Open folder");
+
+    fireEvent.click(screen.getByText("Open folder"));
+
+    expect(onLinkAction).toHaveBeenCalledWith({
+      directoryPath: "/workspace/app",
+      mode: "open-directory",
+      path: "/workspace/app",
+      source: "agent-project-menu",
+      type: "open-workspace-file",
+      workspaceRoot: "/workspace/app"
+    });
+  });
+
   it("hides the project rail header when the project selector is disabled", () => {
     const { container } = renderAgentGUINodeView({
       showProjectSelector: false,
@@ -1066,6 +1111,7 @@ interface RenderAgentGUINodeViewOptions {
   conversationRailWidthPx?: number;
   isAgentProviderReady?: boolean;
   onConversationRailWidthChanged?: (widthPx: number) => void;
+  onLinkAction?: AgentGUINodeViewProps["onLinkAction"];
   viewModel?: AgentGUINodeViewModel;
   actions?: AgentGUINodeViewProps["actions"];
   labels?: AgentGUIViewLabels;
@@ -1078,6 +1124,7 @@ function buildAgentGUINodeViewElement({
   conversationRailWidthPx = 240,
   isAgentProviderReady = true,
   onConversationRailWidthChanged = vi.fn(),
+  onLinkAction,
   viewModel = createViewModel(),
   actions = createActions(),
   labels = createLabels(),
@@ -1087,6 +1134,7 @@ function buildAgentGUINodeViewElement({
   return (
     <AgentGUINodeView
       viewModel={viewModel}
+      onLinkAction={onLinkAction}
       isAgentProviderReady={isAgentProviderReady}
       slashStatusLimits={slashStatusLimits}
       actions={actions}
@@ -1371,6 +1419,7 @@ function createLabels(): AgentGUIViewLabels {
     sectionEarlier: "sectionEarlier",
     projectSectionEdit: "projectSectionEdit",
     projectSectionMoreActions: "projectSectionMoreActions",
+    projectSectionViewFiles: "projectSectionViewFiles",
     projectRailCreateProject: "projectRailCreateProject",
     projectRailLinkExistingProject: "projectRailLinkExistingProject",
     removeProject: "removeProject",

@@ -839,6 +839,52 @@ test("persisted state restores navigation state and excludes transient selection
   session.dispose();
 });
 
+test("applyRevealIntent opens target directories directly when requested", async () => {
+  const listedPaths: string[] = [];
+  const session = createWorkspaceFileManagerService().createSession({
+    host: {
+      async listDirectory(input) {
+        listedPaths.push(input.path);
+        assert.equal(input.path, "/Users/demo/project/src");
+        return {
+          directoryPath: input.path,
+          entries: [
+            {
+              hasChildren: false,
+              kind: "file",
+              mtimeMs: null,
+              name: "index.ts",
+              path: "/Users/demo/project/src/index.ts",
+              sizeBytes: 42
+            }
+          ],
+          root: "/Users/demo/project",
+          workspaceID: input.workspaceID
+        };
+      }
+    },
+    i18n: createTestI18nRuntime(),
+    persistedState: {
+      currentDirectoryPath: "/Users/demo/project",
+      navigationBackStack: [],
+      navigationForwardStack: [],
+      schemaVersion: 2
+    },
+    workspaceID: "workspace-1"
+  });
+
+  await session.applyRevealIntent({
+    mode: "open-directory",
+    path: "/Users/demo/project/src",
+    requestID: "open-directory-1"
+  });
+
+  assert.deepEqual(listedPaths, ["/Users/demo/project/src"]);
+  assert.equal(session.store.currentDirectoryPath, "/Users/demo/project/src");
+  assert.equal(session.store.selectedPath, null);
+  session.dispose();
+});
+
 test("initialize preserves directory state already loaded by a reveal intent", async () => {
   const listedPaths: string[] = [];
   const session = createWorkspaceFileManagerService().createSession({

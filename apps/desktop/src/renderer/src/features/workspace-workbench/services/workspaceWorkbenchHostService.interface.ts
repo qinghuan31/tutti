@@ -50,6 +50,7 @@ export interface WorkspaceCustomWallpaperSnapshot {
 }
 
 export interface WorkspaceFilesNodeActivationPayload {
+  mode?: "reveal" | "open-directory";
   path: string;
 }
 

@@ -18,6 +18,7 @@ import { useWorkspaceFileManagerService } from "./useWorkspaceFileManagerService
 interface WorkspaceFileManagerPaneProps {
   className?: string;
   revealIntent?: {
+    mode?: "reveal" | "open-directory";
     path: string;
     requestID: string;
   } | null;

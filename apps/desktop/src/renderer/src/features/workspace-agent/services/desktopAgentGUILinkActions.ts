@@ -20,6 +20,7 @@ export interface DesktopAgentGUILinkActionDependencies {
   }): Promise<boolean> | boolean;
   launchWorkspaceFiles(input: {
     homeDirectory?: string | null;
+    mode?: "reveal" | "open-directory";
     path: string;
     source?: "agent_command";
     workspaceId: string;
@@ -53,6 +54,7 @@ export async function runDesktopAgentGUILinkAction(
     case "open-workspace-file":
       return dependencies.launchWorkspaceFiles({
         homeDirectory: dependencies.homeDirectory,
+        ...(action.mode ? { mode: action.mode } : {}),
         path: action.path,
         source: "agent_command",
         workspaceId: dependencies.workspaceId

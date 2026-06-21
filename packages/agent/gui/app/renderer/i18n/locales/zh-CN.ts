@@ -632,6 +632,7 @@ export const zhCN = {
       sectionEarlier: "更早",
       projectSectionEdit: "编辑",
       projectSectionMoreActions: "项目操作",
+      projectSectionViewFiles: "打开文件夹",
       projectRailCreateProject: "新建项目",
       projectRailLinkExistingProject: "关联已有项目文件",
       removeProject: "移除",
