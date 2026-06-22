@@ -40,6 +40,24 @@ export interface IssueManagerIdentityAdapter {
 }
 
 export type IssueManagerFileReference = WorkspaceFileReference;
+
+/**
+ * 一个被折叠成单条引用的「项目/分组」(navigable 源文件夹,如某个应用项目)。
+ * 不展开成文件,而是作为一个 `mention://workspace-reference/...` chip 插入草稿,
+ * 运行时由 agent 自行解析句柄(source + id + groupId)。
+ */
+export interface IssueManagerReferenceBundle {
+  source: "app" | "task";
+  /** 顶层容器 id:appId / topicId。 */
+  id: string;
+  /** 子级 id:app 子分组 / issueId。缺省表示整个容器。 */
+  groupId?: string | null;
+  displayName: string;
+  iconUrl?: string | null;
+  /** 该项目下文件数(仅展示用)。 */
+  fileCount: number;
+}
+
 export type IssueManagerFileDirectoryListing =
   WorkspaceFileReferenceDirectoryListing;
 export type IssueManagerReferencePrefetchState =

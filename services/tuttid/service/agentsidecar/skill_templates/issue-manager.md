@@ -16,6 +16,7 @@ Run this on every invocation:
 1. Resolve the target issue. Parse `mention://workspace-issue/<issueId>?workspaceId=...` when present; otherwise use explicit issue id, issue title, or issue-panel context when the turn clearly targets one issue.
    - **Done when:** you have `<issue-id>` and any query fields: `workspaceId`, `topicId`, `taskId`, `runId`, `mode`.
 2. Recover minimal context. Start with `issue get --issue-id <issue-id> --json`; add task, run, or topic reads only when query fields or the user request require them.
+   - `issue get` and `issue task get` return `detail.references` — a flat, fully-resolved list of referenced input files (`{ path, displayName, source }`) gathered from the issue/task content, attached context refs, and any embedded `mention://workspace-reference/...` project/folder references (already expanded server-side; `source` is `content`, `context`, or `reference`). Read the references relevant to the request directly with your normal file tools; do not re-resolve them with `reference list`, and do not dump every file.
    - **Done when:** you can answer or choose inspection, execution, or breakdown without guessing issue state.
 3. Pick one mode and keep later CLI calls inside that mode.
    - **Done when:** you can name the active mode and no planned command violates it.

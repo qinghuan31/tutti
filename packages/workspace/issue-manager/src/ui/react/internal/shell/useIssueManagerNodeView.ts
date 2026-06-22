@@ -1,5 +1,6 @@
 import type { RichTextTriggerProvider } from "@tutti-os/ui-rich-text/types";
 import type { ReactNode } from "react";
+import type { ReferenceGroupedSelection } from "@tutti-os/workspace-file-reference/ui";
 import type {
   IssueManagerFileReference,
   IssueManagerNodeState,
@@ -87,6 +88,21 @@ export function useIssueManagerNodeView({
       },
       onConfirm: (refs: IssueManagerFileReference[]) => {
         void controller.submitReferenceSelection(refs);
+      },
+      onConfirmBundles: (result: ReferenceGroupedSelection) => {
+        void controller.submitReferenceBundleSelection({
+          bundles: result.bundles
+            .filter((bundle) => bundle.handle !== null)
+            .map((bundle) => ({
+              source: bundle.handle!.source,
+              id: bundle.handle!.id,
+              groupId: bundle.handle!.groupId ?? null,
+              displayName: bundle.displayName,
+              iconUrl: bundle.iconUrl ?? null,
+              fileCount: bundle.fileCount
+            })),
+          files: result.files
+        });
       },
       open: controller.referenceTarget !== null
     },

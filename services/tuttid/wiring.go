@@ -319,7 +319,7 @@ func buildDaemonAPI(ctx context.Context, store workspacedata.CatalogStore, analy
 	}
 	cliProviders := []cliservice.Provider{
 		diagnosticscli.NewProvider(),
-		issuemanagercli.NewProvider(workspaceService, issueService),
+		issuemanagercli.NewProvider(workspaceService, issueService, appCenterService),
 		referencescli.NewProvider(workspaceService, appCenterService, issueService),
 		agentcontextcli.NewProviderWithLaunchPublisher(
 			workspaceService,

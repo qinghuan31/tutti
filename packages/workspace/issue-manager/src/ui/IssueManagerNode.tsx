@@ -6,7 +6,10 @@ import {
   type ReactNode
 } from "react";
 import { Button, PanelIcon, cn } from "@tutti-os/ui-system";
-import { WorkspaceFileReferencePicker } from "@tutti-os/workspace-file-reference/ui";
+import {
+  ReferenceSourcePicker,
+  WorkspaceFileReferencePicker
+} from "@tutti-os/workspace-file-reference/ui";
 import type { IssueManagerI18nRuntime } from "../i18n/issueManagerI18n.ts";
 import type { IssueManagerOpenSource } from "../contracts/index.ts";
 import { logIssueManagerDiagnostic } from "../internal/issueManagerDiagnostics.ts";
@@ -158,14 +161,26 @@ export function IssueManagerNode({
         selectedTask={selectedTask}
       />
 
-      <WorkspaceFileReferencePicker
-        copy={controller.copy}
-        fileAdapter={feature.fileAdapter}
-        open={referencePicker.open}
-        workspaceId={workspaceId}
-        onClose={referencePicker.onClose}
-        onConfirm={referencePicker.onConfirm}
-      />
+      {feature.referenceSourceAggregator ? (
+        <ReferenceSourcePicker
+          aggregator={feature.referenceSourceAggregator}
+          copy={controller.copy}
+          open={referencePicker.open}
+          workspaceId={workspaceId}
+          onClose={referencePicker.onClose}
+          onConfirm={referencePicker.onConfirm}
+          onConfirmBundles={referencePicker.onConfirmBundles}
+        />
+      ) : (
+        <WorkspaceFileReferencePicker
+          copy={controller.copy}
+          fileAdapter={feature.fileAdapter}
+          open={referencePicker.open}
+          workspaceId={workspaceId}
+          onClose={referencePicker.onClose}
+          onConfirm={referencePicker.onConfirm}
+        />
+      )}
     </section>
   );
 }

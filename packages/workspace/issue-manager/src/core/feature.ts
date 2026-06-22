@@ -4,6 +4,7 @@ import {
   createWorkspaceUserProjectI18nRuntime,
   type WorkspaceUserProjectI18nRuntime
 } from "@tutti-os/workspace-user-project/i18n";
+import type { ReferenceSourceAggregator } from "@tutti-os/workspace-file-reference/core";
 import {
   createIssueManagerI18nRuntime,
   type IssueManagerI18nRuntime
@@ -52,6 +53,7 @@ export interface IssueManagerFeature {
   identityAdapter: IssueManagerIdentityAdapter;
   mentionActionHandler?: IssueManagerMentionActionHandler;
   notifications?: IssueManagerNotificationSink;
+  referenceSourceAggregator?: ReferenceSourceAggregator;
   shareAdapter?: IssueManagerShareAdapter;
   ui: IssueManagerFeatureUIConfig;
   workspaceUserProjectI18n: WorkspaceUserProjectI18nRuntime;
@@ -71,6 +73,7 @@ export interface CreateIssueManagerFeatureInput {
   identityAdapter: IssueManagerIdentityAdapter;
   mentionActionHandler?: IssueManagerMentionActionHandler;
   notifications?: IssueManagerNotificationSink;
+  referenceSourceAggregator?: ReferenceSourceAggregator;
   shareAdapter?: IssueManagerShareAdapter;
   ui?: Partial<IssueManagerFeatureUIConfig>;
 }
@@ -103,6 +106,7 @@ export function createIssueManagerFeature(
     identityAdapter: input.identityAdapter,
     mentionActionHandler: input.mentionActionHandler,
     notifications: input.notifications,
+    referenceSourceAggregator: input.referenceSourceAggregator,
     shareAdapter: input.shareAdapter,
     ui: {
       showInviteCollaborator: input.ui?.showInviteCollaborator ?? true

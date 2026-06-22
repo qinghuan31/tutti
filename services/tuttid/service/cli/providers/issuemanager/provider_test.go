@@ -180,8 +180,12 @@ func (f *fakeIssueManager) CompleteRun(_ context.Context, _ string, _ string, _ 
 	return workspaceissues.RunDetail{Run: workspaceissues.Run{RunID: "RUN-1", Status: workspaceissues.Status(input.Status)}, Outputs: outputs}, nil
 }
 
+func (*fakeIssueManager) SearchIssueOutputs(context.Context, workspaceissues.RunOutputSearchParams) ([]workspaceissues.RunOutputSearchHit, error) {
+	return nil, nil
+}
+
 func TestCommandsExposeIssueManagerAsWorkspaceAppSource(t *testing.T) {
-	commands := NewProvider(fakeWorkspaceCatalog{}, &fakeIssueManager{}).Commands()
+	commands := NewProvider(fakeWorkspaceCatalog{}, &fakeIssueManager{}, nil).Commands()
 
 	if len(commands) == 0 {
 		t.Fatal("Commands() returned no commands")
@@ -205,7 +209,7 @@ func TestCommandsExposeIssueManagerAsWorkspaceAppSource(t *testing.T) {
 
 func TestIssueListCommandUsesStartupWorkspace(t *testing.T) {
 	issues := &fakeIssueManager{}
-	command := NewProvider(fakeWorkspaceCatalog{startup: workspacebiz.Summary{ID: "workspace-1"}}, issues).newIssueListCommand()
+	command := NewProvider(fakeWorkspaceCatalog{startup: workspacebiz.Summary{ID: "workspace-1"}}, issues, nil).newIssueListCommand()
 
 	output, err := command.Handler(context.Background(), cliservice.InvokeRequest{
 		Input:      map[string]any{"topic-id": workspaceissues.DefaultTopicID, "status": "closed", "search": "startup", "page-size": "25"},
@@ -224,7 +228,7 @@ func TestIssueListCommandUsesStartupWorkspace(t *testing.T) {
 }
 
 func TestTopicListCommandReturnsWorkspaceTopics(t *testing.T) {
-	command := NewProvider(fakeWorkspaceCatalog{startup: workspacebiz.Summary{ID: "workspace-1"}}, &fakeIssueManager{}).newTopicListCommand()
+	command := NewProvider(fakeWorkspaceCatalog{startup: workspacebiz.Summary{ID: "workspace-1"}}, &fakeIssueManager{}, nil).newTopicListCommand()
 
 	output, err := command.Handler(context.Background(), cliservice.InvokeRequest{
 		OutputMode: cliservice.OutputModeJSON,
@@ -249,7 +253,7 @@ func TestTopicListCommandReturnsWorkspaceTopics(t *testing.T) {
 
 func TestTopicUpdateTracksPinnedFalse(t *testing.T) {
 	issues := &fakeIssueManager{}
-	command := NewProvider(fakeWorkspaceCatalog{startup: workspacebiz.Summary{ID: "workspace-1"}}, issues).newTopicUpdateCommand()
+	command := NewProvider(fakeWorkspaceCatalog{startup: workspacebiz.Summary{ID: "workspace-1"}}, issues, nil).newTopicUpdateCommand()
 
 	output, err := command.Handler(context.Background(), cliservice.InvokeRequest{
 		Input: map[string]any{"topic-id": "topic-1", "pinned": "false"},
@@ -266,7 +270,7 @@ func TestTopicUpdateTracksPinnedFalse(t *testing.T) {
 }
 
 func TestTaskGetIncludesLatestRunAndOutputs(t *testing.T) {
-	command := NewProvider(fakeWorkspaceCatalog{startup: workspacebiz.Summary{ID: "workspace-1"}}, &fakeIssueManager{}).newTaskGetCommand()
+	command := NewProvider(fakeWorkspaceCatalog{startup: workspacebiz.Summary{ID: "workspace-1"}}, &fakeIssueManager{}, nil).newTaskGetCommand()
 
 	output, err := command.Handler(context.Background(), cliservice.InvokeRequest{
 		Input: map[string]any{"issue-id": "ISS-1", "task-id": "TASK-1"},
@@ -288,7 +292,7 @@ func TestTaskGetIncludesLatestRunAndOutputs(t *testing.T) {
 }
 
 func TestTaskCreateReturnsSummaryJSON(t *testing.T) {
-	command := NewProvider(fakeWorkspaceCatalog{startup: workspacebiz.Summary{ID: "workspace-1"}}, &fakeIssueManager{}).newTaskCreateCommand()
+	command := NewProvider(fakeWorkspaceCatalog{startup: workspacebiz.Summary{ID: "workspace-1"}}, &fakeIssueManager{}, nil).newTaskCreateCommand()
 
 	output, err := command.Handler(context.Background(), cliservice.InvokeRequest{
 		Input: map[string]any{"issue-id": "ISS-1", "title": "Task"},
@@ -305,7 +309,7 @@ func TestTaskCreateReturnsSummaryJSON(t *testing.T) {
 }
 
 func TestTaskListReturnsSummaryItems(t *testing.T) {
-	command := NewProvider(fakeWorkspaceCatalog{startup: workspacebiz.Summary{ID: "workspace-1"}}, &fakeIssueManager{}).newTaskListCommand()
+	command := NewProvider(fakeWorkspaceCatalog{startup: workspacebiz.Summary{ID: "workspace-1"}}, &fakeIssueManager{}, nil).newTaskListCommand()
 
 	output, err := command.Handler(context.Background(), cliservice.InvokeRequest{
 		Input:      map[string]any{"issue-id": "ISS-1"},
@@ -325,7 +329,7 @@ func TestTaskListReturnsSummaryItems(t *testing.T) {
 
 func TestIssueUpdateTracksStatus(t *testing.T) {
 	issues := &fakeIssueManager{}
-	command := NewProvider(fakeWorkspaceCatalog{startup: workspacebiz.Summary{ID: "workspace-1"}}, issues).newIssueUpdateCommand()
+	command := NewProvider(fakeWorkspaceCatalog{startup: workspacebiz.Summary{ID: "workspace-1"}}, issues, nil).newIssueUpdateCommand()
 
 	output, err := command.Handler(context.Background(), cliservice.InvokeRequest{
 		Input: map[string]any{"issue-id": "ISS-1", "status": "completed"},
@@ -343,7 +347,7 @@ func TestIssueUpdateTracksStatus(t *testing.T) {
 
 func TestTaskUpdateTracksOnlyPassedFields(t *testing.T) {
 	issues := &fakeIssueManager{}
-	command := NewProvider(fakeWorkspaceCatalog{startup: workspacebiz.Summary{ID: "workspace-1"}}, issues).newTaskUpdateCommand()
+	command := NewProvider(fakeWorkspaceCatalog{startup: workspacebiz.Summary{ID: "workspace-1"}}, issues, nil).newTaskUpdateCommand()
 
 	_, err := command.Handler(context.Background(), cliservice.InvokeRequest{
 		Input: map[string]any{"issue-id": "ISS-1", "task-id": "TASK-1", "status": "completed"},
@@ -358,7 +362,7 @@ func TestTaskUpdateTracksOnlyPassedFields(t *testing.T) {
 
 func TestRunCompleteParsesFlexibleOutputs(t *testing.T) {
 	issues := &fakeIssueManager{}
-	command := NewProvider(fakeWorkspaceCatalog{startup: workspacebiz.Summary{ID: "workspace-1"}}, issues).newRunCompleteCommand()
+	command := NewProvider(fakeWorkspaceCatalog{startup: workspacebiz.Summary{ID: "workspace-1"}}, issues, nil).newRunCompleteCommand()
 
 	output, err := command.Handler(context.Background(), cliservice.InvokeRequest{
 		Input: map[string]any{
@@ -382,7 +386,7 @@ func TestRunCompleteParsesFlexibleOutputs(t *testing.T) {
 
 func TestIssueRunCreateDoesNotRequireTaskID(t *testing.T) {
 	issues := &fakeIssueManager{}
-	command := NewProvider(fakeWorkspaceCatalog{startup: workspacebiz.Summary{ID: "workspace-1"}}, issues).newIssueRunCreateCommand()
+	command := NewProvider(fakeWorkspaceCatalog{startup: workspacebiz.Summary{ID: "workspace-1"}}, issues, nil).newIssueRunCreateCommand()
 
 	output, err := command.Handler(context.Background(), cliservice.InvokeRequest{
 		Input: map[string]any{
@@ -407,7 +411,7 @@ func TestIssueRunCreateDoesNotRequireTaskID(t *testing.T) {
 
 func TestIssueRunCompleteDoesNotRequireTaskID(t *testing.T) {
 	issues := &fakeIssueManager{}
-	command := NewProvider(fakeWorkspaceCatalog{startup: workspacebiz.Summary{ID: "workspace-1"}}, issues).newIssueRunCompleteCommand()
+	command := NewProvider(fakeWorkspaceCatalog{startup: workspacebiz.Summary{ID: "workspace-1"}}, issues, nil).newIssueRunCompleteCommand()
 
 	output, err := command.Handler(context.Background(), cliservice.InvokeRequest{
 		Input: map[string]any{
@@ -429,7 +433,7 @@ func TestIssueRunCompleteDoesNotRequireTaskID(t *testing.T) {
 }
 
 func TestIssueListReportsMissingTopicID(t *testing.T) {
-	command := NewProvider(fakeWorkspaceCatalog{startup: workspacebiz.Summary{ID: "workspace-1"}}, &fakeIssueManager{}).newIssueListCommand()
+	command := NewProvider(fakeWorkspaceCatalog{startup: workspacebiz.Summary{ID: "workspace-1"}}, &fakeIssueManager{}, nil).newIssueListCommand()
 
 	_, err := command.Handler(context.Background(), cliservice.InvokeRequest{
 		Input: map[string]any{},

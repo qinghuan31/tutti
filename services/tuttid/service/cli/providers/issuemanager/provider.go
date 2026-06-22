@@ -5,6 +5,7 @@ import (
 
 	workspaceissues "github.com/tutti-os/tutti/packages/workspace/issues"
 	cliservice "github.com/tutti-os/tutti/services/tuttid/service/cli"
+	"github.com/tutti-os/tutti/services/tuttid/service/cli/providers/refresolve"
 	workspaceservice "github.com/tutti-os/tutti/services/tuttid/service/workspace"
 )
 
@@ -34,15 +35,23 @@ type IssueManager interface {
 	CreateRun(context.Context, string, string, string, workspaceservice.CreateIssueManagerRunInput) (workspaceissues.Run, error)
 	GetRunDetail(context.Context, string, string, string, string) (workspaceissues.RunDetail, error)
 	CompleteRun(context.Context, string, string, string, string, workspaceservice.CompleteIssueManagerRunInput) (workspaceissues.RunDetail, error)
+	// SearchIssueOutputs backs inline expansion of whole-topic workspace-reference handles.
+	SearchIssueOutputs(context.Context, workspaceissues.RunOutputSearchParams) ([]workspaceissues.RunOutputSearchHit, error)
 }
 
 type Provider struct {
 	workspaces cliservice.WorkspaceCatalog
 	issues     IssueManager
+	apps       refresolve.AppReferences
 }
 
-func NewProvider(workspaces cliservice.WorkspaceCatalog, issues IssueManager) Provider {
-	return Provider{workspaces: workspaces, issues: issues}
+func NewProvider(workspaces cliservice.WorkspaceCatalog, issues IssueManager, apps refresolve.AppReferences) Provider {
+	return Provider{workspaces: workspaces, issues: issues, apps: apps}
+}
+
+// referenceResolver expands embedded workspace-reference handles found in issue/task content.
+func (p Provider) referenceResolver() refresolve.Resolver {
+	return refresolve.Resolver{Apps: p.apps, Issues: p.issues}
 }
 
 func (Provider) AppID() string {

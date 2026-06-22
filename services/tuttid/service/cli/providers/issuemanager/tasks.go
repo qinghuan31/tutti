@@ -174,15 +174,29 @@ func taskListJSONValue(result any) map[string]any {
 	return value
 }
 
+// taskGetResult carries the task detail plus its resolved referenced input files (see issueGetResult).
+type taskGetResult struct {
+	detail     workspaceissues.TaskDetail
+	references []issueReferenceFile
+}
+
 func (p Provider) runTaskGet(ctx context.Context, invoke framework.InvokeContext, input issueTaskInput) (any, error) {
 	if err := p.requireIssueManager(); err != nil {
 		return nil, err
 	}
-	return p.issues.GetTaskDetail(ctx, invoke.WorkspaceID, input.IssueID, input.TaskID)
+	detail, err := p.issues.GetTaskDetail(ctx, invoke.WorkspaceID, input.IssueID, input.TaskID)
+	if err != nil {
+		return nil, err
+	}
+	return taskGetResult{
+		detail:     detail,
+		references: p.collectTaskReferences(ctx, invoke.WorkspaceID, detail),
+	}, nil
 }
 
 func taskDetailJSONValue(result any) map[string]any {
-	detail := result.(workspaceissues.TaskDetail)
+	res := result.(taskGetResult)
+	detail := res.detail
 	var latestRun any
 	if detail.LatestRun != nil {
 		latestRun = runSummaryValue(*detail.LatestRun)
@@ -193,6 +207,7 @@ func taskDetailJSONValue(result any) map[string]any {
 			"latestRun":     latestRun,
 			"recentRuns":    runSummaryValues(detail.RecentRuns),
 			"latestOutputs": runOutputValues(detail.LatestOutputs),
+			"references":    referenceFileValues(res.references),
 		},
 	}
 }

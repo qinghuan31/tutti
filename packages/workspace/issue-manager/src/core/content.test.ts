@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   appendIssueManagerWorkspaceFileLinksToContent,
+  appendIssueManagerWorkspaceReferenceMentionsToContent,
   buildIssueManagerRunPrompt,
   buildIssueManagerTaskBreakdownPrompt,
   createIssueManagerMentionMarkdown,
@@ -234,6 +235,44 @@ test("issue-manager prompts escape markdown-sensitive issue mention labels", () 
     prompt,
     /\[@\\\[iOS\\\] Login \\\\ refresh\]\(mention:\/\/workspace-issue\/issue-1\?workspaceId=workspace-1&topicId=topic-1&mode=execute\)/
   );
+});
+
+test("issue-manager folds a project bundle into a single workspace-reference chip", () => {
+  const content = appendIssueManagerWorkspaceReferenceMentionsToContent(
+    "Reference this project",
+    [
+      {
+        source: "app",
+        id: "app-proto-design",
+        groupId: "project-42",
+        displayName: "Payments rewrite",
+        iconUrl: "https://example.com/icon.png",
+        fileCount: 7,
+        workspaceId: "workspace-1"
+      }
+    ]
+  );
+
+  // 折叠成单条 chip(不展开文件),句柄随 query 编码供 agent 运行时解析。
+  assert.match(
+    content,
+    /^Reference this project \[@Payments rewrite\]\(mention:\/\/workspace-reference\/app-proto-design\?/
+  );
+  assert.deepEqual(extractIssueManagerMentionsFromContent(content), [
+    {
+      trigger: "@",
+      providerId: "workspace-reference",
+      entityId: "app-proto-design",
+      label: "Payments rewrite",
+      scope: {
+        count: "7",
+        groupId: "project-42",
+        icon: "https://example.com/icon.png",
+        source: "app",
+        workspaceId: "workspace-1"
+      }
+    }
+  ]);
 });
 
 test("issue-manager content helpers round-trip rich text mentions", () => {

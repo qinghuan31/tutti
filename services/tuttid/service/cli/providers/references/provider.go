@@ -1,29 +1,19 @@
 package references
 
 import (
-	"context"
-
-	workspaceissues "github.com/tutti-os/tutti/packages/workspace/issues"
-	workspacebiz "github.com/tutti-os/tutti/services/tuttid/biz/workspace"
 	cliservice "github.com/tutti-os/tutti/services/tuttid/service/cli"
+	"github.com/tutti-os/tutti/services/tuttid/service/cli/providers/refresolve"
 )
 
 const appID = "references"
 
-// AppReferences is the unified egress to a workspace app's produced artifacts.
-// Satisfied by *workspaceservice.AppCenterService — the same in-process method the
-// desktop picker funnels through (DaemonAPI.ListWorkspaceAppReferences → here → app
-// /tutti/references/list). The CLI provider MUST go through this, never its own HTTP.
-type AppReferences interface {
-	ListReferences(context.Context, string, string, workspacebiz.AppReferenceListInput) (workspacebiz.AppReferenceListResult, error)
-}
-
-// IssueOutputs is the unified egress to task (issue / topic) produced artifacts.
-// Satisfied by workspaceservice.IssueManagerService.
-type IssueOutputs interface {
-	GetIssueDetail(context.Context, string, string) (workspaceissues.IssueDetail, error)
-	SearchIssueOutputs(context.Context, workspaceissues.RunOutputSearchParams) ([]workspaceissues.RunOutputSearchHit, error)
-}
+// AppReferences / IssueOutputs are the unified egresses to app / task produced artifacts.
+// Defined in refresolve (shared with inline issue-detail reference expansion); aliased here so
+// the provider constructor signature stays stable.
+type (
+	AppReferences = refresolve.AppReferences
+	IssueOutputs  = refresolve.IssueOutputs
+)
 
 // Provider backs the `reference list` CLI command. It resolves a workspace-reference
 // mention handle (app+group / topic+issue) into a flat list of artifact files, so the

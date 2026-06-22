@@ -14,6 +14,7 @@ import type {
   IssueManagerNodeState,
   IssueManagerOpenSource,
   IssueManagerPriority,
+  IssueManagerReferenceBundle,
   IssueManagerRun,
   IssueManagerTaskDetail,
   IssueManagerTopic,
@@ -131,6 +132,10 @@ export interface IssueManagerController {
   submitReferenceSelection: (
     refs: IssueManagerFileReference[]
   ) => Promise<void>;
+  submitReferenceBundleSelection: (input: {
+    files: IssueManagerFileReference[];
+    bundles: IssueManagerReferenceBundle[];
+  }) => Promise<void>;
   taskDetail: AsyncCollectionState<IssueManagerTaskDetail | null>;
   taskDraft: TaskDraft;
   taskEditorMode: IssueManagerEditorMode;

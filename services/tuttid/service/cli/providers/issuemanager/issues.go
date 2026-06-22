@@ -101,19 +101,34 @@ func issueListJSONValue(result any) map[string]any {
 	return value
 }
 
+// issueGetResult carries the issue detail plus its resolved referenced input files so the JSON
+// view can surface `detail.references` without re-resolving (resolution needs ctx + services).
+type issueGetResult struct {
+	detail     workspaceissues.IssueDetail
+	references []issueReferenceFile
+}
+
 func (p Provider) runIssueGet(ctx context.Context, invoke framework.InvokeContext, input issueGetInput) (any, error) {
 	if err := p.requireIssueManager(); err != nil {
 		return nil, err
 	}
-	return p.issues.GetIssueDetail(ctx, invoke.WorkspaceID, input.IssueID)
+	detail, err := p.issues.GetIssueDetail(ctx, invoke.WorkspaceID, input.IssueID)
+	if err != nil {
+		return nil, err
+	}
+	return issueGetResult{
+		detail:     detail,
+		references: p.collectIssueReferences(ctx, invoke.WorkspaceID, detail),
+	}, nil
 }
 
 func issueDetailJSONValue(result any) map[string]any {
-	detail := result.(workspaceissues.IssueDetail)
+	res := result.(issueGetResult)
 	return map[string]any{
 		"detail": map[string]any{
-			"issue": issueDetailValue(detail.Issue),
-			"tasks": taskSummaryValues(detail.Tasks),
+			"issue":      issueDetailValue(res.detail.Issue),
+			"tasks":      taskSummaryValues(res.detail.Tasks),
+			"references": referenceFileValues(res.references),
 		},
 	}
 }

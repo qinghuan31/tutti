@@ -8,9 +8,11 @@ export {
 } from "./feature.ts";
 export {
   appendIssueManagerWorkspaceFileLinksToContent,
+  appendIssueManagerWorkspaceReferenceMentionsToContent,
   createIssueManagerMentionHref,
   createIssueManagerMentionMarkdown,
   createIssueManagerWorkspaceFileLinkMarkdown,
+  createIssueManagerWorkspaceReferenceMentionMarkdown,
   extractIssueManagerMentionsFromContent,
   extractIssueManagerPlainTextFromContent,
   extractIssueManagerPlainTextWithoutFilesFromContent,
@@ -23,7 +25,8 @@ export {
   type IssueManagerMentionAttrs,
   type IssueManagerMentionRef,
   type IssueManagerWorkspaceFileLinkInput,
-  type IssueManagerWorkspaceFileLinkRef
+  type IssueManagerWorkspaceFileLinkRef,
+  type IssueManagerWorkspaceReferenceMentionInput
 } from "./content.ts";
 export {
   clampIssueManagerSidebarWidth,

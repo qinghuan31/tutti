@@ -3,6 +3,7 @@ import type {
   IssueManagerContextRef,
   IssueManagerFileReference,
   IssueManagerIssueDetail,
+  IssueManagerReferenceBundle,
   IssueManagerRun,
   IssueManagerNodeState,
   IssueManagerTaskDetail
@@ -25,6 +26,7 @@ import {
 } from "./controllerOutcomes.ts";
 import {
   createIssueManagerAttachReferencesOutcome,
+  createIssueManagerInsertReferenceBundlesOutcome,
   createIssueManagerInsertReferencesOutcome,
   createIssueManagerOpenReferencePickerOutcome
 } from "./reference/controllerReferenceOutcomes.ts";
@@ -754,6 +756,38 @@ export function createIssueManagerControllerActions(
 
     async submitReferenceSelection(refs: IssueManagerFileReference[]) {
       await submitReferences(refs);
+    },
+
+    async submitReferenceBundleSelection(input: {
+      files: IssueManagerFileReference[];
+      bundles: IssueManagerReferenceBundle[];
+    }) {
+      const target = referenceTarget;
+      if (!target) {
+        applyOutcome({ referenceTarget: null });
+        return;
+      }
+
+      // 项目/分组(bundle)只在插入模式下折叠成 chip 追加到草稿;附加到已存在事项
+      // 的后端 context-ref 仍是按路径存储,暂不支持句柄,故附加模式只提交松散文件。
+      if (target.mode === "insert" && input.bundles.length > 0) {
+        applyOutcome(
+          createIssueManagerInsertReferenceBundlesOutcome({
+            bundles: input.bundles,
+            files: input.files,
+            target,
+            workspaceId
+          })
+        );
+        trackIssueManagerContextRefsAdded({
+          feature,
+          refs: input.files,
+          targetType: target.parentKind
+        });
+        return;
+      }
+
+      await submitReferences(input.files, target);
     }
   };
 }
