@@ -539,6 +539,23 @@ func (s Service) runExternalAgentRegistryNPMInstaller(ctx context.Context, spec 
 
 func (s Service) selectInstallDir() (string, error) {
 	resolver := s.commandResolver()
+	// Prefer a stable, user-global location (~/.local/bin, then ~/bin) so
+	// installed binaries survive toolchain/version-manager churn and never
+	// land in a volatile or app-scoped PATH entry (e.g. a node-version
+	// manager's bin dir that disappears when that version is removed). These
+	// dirs are always searched by the resolver's knownExecutableDirs, so the
+	// binary stays discoverable even when ~/.local/bin is not on PATH.
+	if home, err := s.homeDir(); err == nil && strings.TrimSpace(home) != "" {
+		for _, dir := range []string{
+			filepath.Join(home, ".local", "bin"),
+			filepath.Join(home, "bin"),
+		} {
+			if err := ensureWritableInstallDir(dir); err == nil {
+				return dir, nil
+			}
+		}
+	}
+	// Fall back to the first writable directory already on the user's PATH.
 	for _, dir := range resolver.UserBinInstallDirs(nil) {
 		if err := ensureWritableInstallDir(dir); err == nil {
 			return dir, nil

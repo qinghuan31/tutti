@@ -1855,8 +1855,10 @@ func TestRegistrySelectNormalizesAndDeduplicatesProviders(t *testing.T) {
 	}
 }
 
-func TestServiceSelectInstallDirPrefersWritablePathDir(t *testing.T) {
+func TestServiceSelectInstallDirPrefersUserLocalBin(t *testing.T) {
 	home := t.TempDir()
+	// A writable directory on PATH must NOT be preferred over the stable
+	// user-global ~/.local/bin (created on demand).
 	pathDir := filepath.Join(home, "custom-bin")
 	if err := os.MkdirAll(pathDir, 0o755); err != nil {
 		t.Fatalf("mkdir path dir: %v", err)
@@ -1874,8 +1876,33 @@ func TestServiceSelectInstallDirPrefersWritablePathDir(t *testing.T) {
 	if err != nil {
 		t.Fatalf("selectInstallDir() error = %v", err)
 	}
+	want := filepath.Join(home, ".local", "bin")
+	if installDir != want {
+		t.Fatalf("installDir = %q, want %q", installDir, want)
+	}
+}
+
+func TestServiceSelectInstallDirFallsBackToPathDirWhenHomeUnavailable(t *testing.T) {
+	root := t.TempDir()
+	pathDir := filepath.Join(root, "custom-bin")
+	if err := os.MkdirAll(pathDir, 0o755); err != nil {
+		t.Fatalf("mkdir path dir: %v", err)
+	}
+	service := Service{
+		Environ: func() []string {
+			return []string{"PATH=" + pathDir}
+		},
+		HomeDir: func() (string, error) {
+			return "", errors.New("home unavailable")
+		},
+	}
+
+	installDir, err := service.selectInstallDir()
+	if err != nil {
+		t.Fatalf("selectInstallDir() error = %v", err)
+	}
 	if installDir != pathDir {
-		t.Fatalf("installDir = %q, want %q", installDir, pathDir)
+		t.Fatalf("installDir = %q, want %q (PATH fallback)", installDir, pathDir)
 	}
 }
 
