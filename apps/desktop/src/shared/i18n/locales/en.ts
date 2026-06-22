@@ -382,14 +382,13 @@ export const en = {
       },
       apps: {
         appCatalogChannelDescription:
-          "Choose which App Center catalog this desktop uses.",
-        appCatalogChannelLabel: "App Center source",
+          "Choose whether App Center shows released apps or test versions.",
+        appCatalogChannelLabel: "App source",
         appCatalogChannelOptions: {
-          production: "Production",
-          staging: "Staging"
+          production: "Released",
+          staging: "Test"
         },
-        appCatalogChannelSaveFailed:
-          "We couldn't update the App Center source right now.",
+        appCatalogChannelSaveFailed: "We couldn't switch the app source.",
         managedModels: {
           apiKey: "API key",
           addModel: "Add",

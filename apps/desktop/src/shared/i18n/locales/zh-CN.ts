@@ -362,11 +362,11 @@ export const zhCN = {
       },
       apps: {
         appCatalogChannelDescription:
-          "选择应用中心显示正式发布的应用，还是正在测试的新版本。",
+          "选择应用中心显示已正式发布的应用，还是用于试用的新版本。",
         appCatalogChannelLabel: "应用来源",
         appCatalogChannelOptions: {
-          production: "正式版",
-          staging: "测试版"
+          production: "正式应用",
+          staging: "测试应用"
         },
         appCatalogChannelSaveFailed: "暂时无法切换应用来源。",
         managedModels: {
