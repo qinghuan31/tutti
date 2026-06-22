@@ -8796,12 +8796,12 @@ describe("useAgentGUINodeController", () => {
         {
           value: "read-only",
           label: "请求批准",
-          description: "编辑外部文件或使用互联网前始终询问你"
+          description: "编辑外部文件和使用互联网时始终询问"
         },
         {
           value: "auto",
           label: "替我审批",
-          description: "仅在检测到可能不安全的操作时询问你"
+          description: "仅对检测到的风险操作请求批准"
         },
         {
           value: "custom-safe",

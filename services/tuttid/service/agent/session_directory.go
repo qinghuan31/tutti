@@ -20,7 +20,7 @@ func (a LocalSessionDirectoryAllocator) CreateSessionDirectory(ctx context.Conte
 		return "", errors.New("agent session state directory is not configured")
 	}
 
-	root := filepath.Join(stateDir, "sessions")
+	root := filepath.Join(stateDir, "agent", "sessions")
 	if err := os.MkdirAll(root, 0o755); err != nil {
 		return "", fmt.Errorf("create agent sessions directory: %w", err)
 	}

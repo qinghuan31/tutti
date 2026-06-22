@@ -141,14 +141,14 @@ test("revealPath includes hidden entries when parent path contains a hidden segm
       async listDirectory(input) {
         assert.equal(
           input.path,
-          "/Users/demo/.tutti-dev/agent/runs/generated_images"
+          "/Users/demo/.tutti-dev/agent/runs/session-1/codex-home/generated_images"
         );
         assert.equal(input.includeHidden, true);
         return {
           directoryPath: input.path,
           entries: [
             createFileEntry(
-              "/Users/demo/.tutti-dev/agent/runs/generated_images/image.png"
+              "/Users/demo/.tutti-dev/agent/runs/session-1/codex-home/generated_images/image.png"
             )
           ],
           root: "/Users/demo",
@@ -161,16 +161,16 @@ test("revealPath includes hidden entries when parent path contains a hidden segm
   });
 
   await controller.revealPath(
-    "/Users/demo/.tutti-dev/agent/runs/generated_images/image.png"
+    "/Users/demo/.tutti-dev/agent/runs/session-1/codex-home/generated_images/image.png"
   );
 
   assert.equal(
     store.currentDirectoryPath,
-    "/Users/demo/.tutti-dev/agent/runs/generated_images"
+    "/Users/demo/.tutti-dev/agent/runs/session-1/codex-home/generated_images"
   );
   assert.equal(
     store.selectedPath,
-    "/Users/demo/.tutti-dev/agent/runs/generated_images/image.png"
+    "/Users/demo/.tutti-dev/agent/runs/session-1/codex-home/generated_images/image.png"
   );
 });
 

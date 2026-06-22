@@ -10,6 +10,7 @@ import {
   normalizeWorkspaceAppDiagnosticLogRecord,
   resolveWorkspaceAppWebLogPath
 } from "./workspaceAppFrontendLogging.ts";
+import { workspaceAppScopeSegment } from "../host/workspaceAppFolderPaths.ts";
 
 test("formats workspace app web log lines with injected context", () => {
   const line = formatWorkspaceAppWebLogLine(
@@ -46,9 +47,9 @@ test("resolves workspace app web log path under app logs dir", () => {
     join(
       "/tmp/tutti-state",
       "apps",
-      "workspaces",
-      "workspace-1",
+      "installations",
       "demo-app",
+      workspaceAppScopeSegment("workspace-1", "demo-app"),
       "logs",
       "web.log"
     )

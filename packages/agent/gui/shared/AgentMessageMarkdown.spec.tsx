@@ -263,7 +263,7 @@ describe("AgentMessageMarkdown", () => {
     render(
       <AgentMessageMarkdown
         content={
-          "图片在这里： `/Users/local/.tutti-dev/agent/runs/run-1/session-1/codex-home/generated_images/imagegen/ig_123.png`"
+          "图片在这里： `/Users/local/.tutti-dev/agent/runs/session-1/codex-home/generated_images/imagegen/ig_123.png`"
         }
         onLinkAction={onLinkAction}
         workspaceLinkContext={{
@@ -276,15 +276,15 @@ describe("AgentMessageMarkdown", () => {
 
     fireEvent.click(
       screen.getByRole("link", {
-        name: "/Users/local/.tutti-dev/agent/runs/run-1/session-1/codex-home/generated_images/imagegen/ig_123.png"
+        name: "/Users/local/.tutti-dev/agent/runs/session-1/codex-home/generated_images/imagegen/ig_123.png"
       })
     );
 
     expect(onLinkAction).toHaveBeenCalledWith({
       type: "open-workspace-file",
-      path: "/Users/local/.tutti-dev/agent/runs/run-1/session-1/codex-home/generated_images/imagegen/ig_123.png",
+      path: "/Users/local/.tutti-dev/agent/runs/session-1/codex-home/generated_images/imagegen/ig_123.png",
       directoryPath:
-        "/Users/local/.tutti-dev/agent/runs/run-1/session-1/codex-home/generated_images/imagegen",
+        "/Users/local/.tutti-dev/agent/runs/session-1/codex-home/generated_images/imagegen",
       workspaceRoot: "/Users/local/project",
       source: "agent-markdown"
     });

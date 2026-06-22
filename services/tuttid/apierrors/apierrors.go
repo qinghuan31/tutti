@@ -2,6 +2,7 @@ package apierrors
 
 import (
 	"errors"
+	"strings"
 
 	workspacefiles "github.com/tutti-os/tutti/packages/workspace/files"
 	workspaceissues "github.com/tutti-os/tutti/packages/workspace/issues"
@@ -61,6 +62,7 @@ const (
 	ReasonWorkspaceFileServiceUnavailable            = "workspace_file_service_unavailable"
 	ReasonWorkspaceAgentSessionNotFound              = "workspace_agent_session_not_found"
 	ReasonWorkspaceAgentSessionUnavailable           = "workspace_agent_session_service_unavailable"
+	ReasonAgentProviderUnavailable                   = "agent_provider_unavailable"
 	ReasonWorkspaceAppNotFound                       = "workspace_app_not_found"
 	ReasonWorkspaceAppDeleteForbidden                = "workspace_app_delete_forbidden"
 	ReasonWorkspaceAppIconInvalid                    = "workspace_app_icon_invalid"
@@ -259,6 +261,26 @@ func WorkspaceOperationFailed(options ...Option) *ProtocolError {
 	return New(StatusWorkspaceOperationFailed, tuttigenerated.WorkspaceOperationFailed, ReasonWorkspaceOperationFailed, options...)
 }
 
+func AgentProviderUnavailable(err *agentservice.ProviderUnavailableError) *ProtocolError {
+	reason := ReasonAgentProviderUnavailable
+	params := map[string]any{}
+	if err != nil {
+		if reasonCode := strings.TrimSpace(err.ReasonCode); reasonCode != "" {
+			reason = reasonCode
+		}
+		if provider := strings.TrimSpace(err.Provider); provider != "" {
+			params["provider"] = provider
+		}
+	}
+	return New(
+		StatusWorkspaceOperationFailed,
+		tuttigenerated.WorkspaceOperationFailed,
+		reason,
+		WithCause(err),
+		WithParams(params),
+	)
+}
+
 func PreferencesOperationFailed(options ...Option) *ProtocolError {
 	return New(StatusPreferencesOperationFailed, tuttigenerated.PreferencesOperationFailed, ReasonPreferencesOperationFailed, options...)
 }
@@ -278,6 +300,10 @@ func Classify(err error) *ProtocolError {
 	var protocolErr *ProtocolError
 	if errors.As(err, &protocolErr) {
 		return protocolErr
+	}
+	var providerUnavailableErr *agentservice.ProviderUnavailableError
+	if errors.As(err, &providerUnavailableErr) {
+		return AgentProviderUnavailable(providerUnavailableErr)
 	}
 	switch {
 	case errors.Is(err, workspacedata.ErrWorkspaceNotFound):

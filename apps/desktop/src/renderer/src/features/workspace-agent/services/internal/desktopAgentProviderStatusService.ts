@@ -632,17 +632,11 @@ function isTransientProviderStatusDowngrade(
   }
   const reasonCode = next.availability.reasonCode ?? "";
   return (
-    (previous.cli.installed &&
-      !next.cli.installed &&
-      reasonCode === "cli_not_found") ||
-    (previous.adapter.installed &&
-      !next.adapter.installed &&
-      reasonCode === "acp_adapter_not_found") ||
-    (previous.availability.status === "ready" &&
-      next.cli.installed &&
-      next.adapter.installed &&
-      next.availability.status === "auth_required" &&
-      (reasonCode === "auth_required" || reasonCode === "auth_unknown"))
+    previous.availability.status === "ready" &&
+    next.cli.installed &&
+    next.adapter.installed &&
+    next.availability.status === "auth_required" &&
+    (reasonCode === "auth_required" || reasonCode === "auth_unknown")
   );
 }
 

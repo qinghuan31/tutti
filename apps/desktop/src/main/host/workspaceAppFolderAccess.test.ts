@@ -1,10 +1,14 @@
 import assert from "node:assert/strict";
 import { join } from "node:path";
 import test from "node:test";
-import { resolveWorkspaceAppFolderPath } from "./workspaceAppFolderPaths.ts";
+import {
+  resolveWorkspaceAppFolderPath,
+  workspaceAppScopeSegment
+} from "./workspaceAppFolderPaths.ts";
 
 test("resolveWorkspaceAppFolderPath resolves workspace app runtime folders", () => {
   const stateRoot = "/state";
+  const scope = workspaceAppScopeSegment("workspace-1", "automation.center");
 
   assert.equal(
     resolveWorkspaceAppFolderPath(stateRoot, {
@@ -12,7 +16,7 @@ test("resolveWorkspaceAppFolderPath resolves workspace app runtime folders", () 
       folderKind: "workspace",
       workspaceId: "workspace-1"
     }),
-    join(stateRoot, "apps", "workspaces", "workspace-1", "automation.center")
+    join(stateRoot, "apps", "installations", "automation.center", scope)
   );
   assert.equal(
     resolveWorkspaceAppFolderPath(stateRoot, {
@@ -20,14 +24,7 @@ test("resolveWorkspaceAppFolderPath resolves workspace app runtime folders", () 
       folderKind: "data",
       workspaceId: "workspace-1"
     }),
-    join(
-      stateRoot,
-      "apps",
-      "workspaces",
-      "workspace-1",
-      "automation.center",
-      "data"
-    )
+    join(stateRoot, "apps", "installations", "automation.center", scope, "data")
   );
   assert.equal(
     resolveWorkspaceAppFolderPath(stateRoot, {
@@ -35,14 +32,7 @@ test("resolveWorkspaceAppFolderPath resolves workspace app runtime folders", () 
       folderKind: "logs",
       workspaceId: "workspace-1"
     }),
-    join(
-      stateRoot,
-      "apps",
-      "workspaces",
-      "workspace-1",
-      "automation.center",
-      "logs"
-    )
+    join(stateRoot, "apps", "installations", "automation.center", scope, "logs")
   );
   assert.equal(
     resolveWorkspaceAppFolderPath(stateRoot, {
@@ -53,9 +43,9 @@ test("resolveWorkspaceAppFolderPath resolves workspace app runtime folders", () 
     join(
       stateRoot,
       "apps",
-      "workspaces",
-      "workspace-1",
+      "installations",
       "automation.center",
+      scope,
       "runtime"
     )
   );

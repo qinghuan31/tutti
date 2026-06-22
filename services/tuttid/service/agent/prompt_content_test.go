@@ -2,6 +2,8 @@ package agent
 
 import (
 	"errors"
+	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -13,7 +15,6 @@ func TestPromptAttachmentStoreRejectsDotPathSegments(t *testing.T) {
 		agentSessionID string
 		attachmentID   string
 	}{
-		{name: "workspace dotdot", workspaceID: "..", agentSessionID: "session-1", attachmentID: "attachment-1"},
 		{name: "session dotdot", workspaceID: "workspace-1", agentSessionID: "..", attachmentID: "attachment-1"},
 		{name: "attachment dot", workspaceID: "workspace-1", agentSessionID: "session-1", attachmentID: "."},
 	} {
@@ -23,5 +24,23 @@ func TestPromptAttachmentStoreRejectsDotPathSegments(t *testing.T) {
 				t.Fatalf("attachmentPath error = %v, want ErrInvalidArgument", err)
 			}
 		})
+	}
+}
+
+func TestPromptAttachmentStoreUsesSessionScopedPath(t *testing.T) {
+	root := t.TempDir()
+	store := PromptAttachmentStore{RootDir: root}
+
+	path, err := store.attachmentPath("workspace-1", "session-1", "attachment-1", "image/png")
+	if err != nil {
+		t.Fatalf("attachmentPath() error = %v", err)
+	}
+
+	want := filepath.Join(root, "agent", "attachments", "session-1", "attachment-1.png")
+	if path != want {
+		t.Fatalf("attachmentPath() = %q, want %q", path, want)
+	}
+	if strings.Contains(path, "workspace-1") {
+		t.Fatalf("attachment path leaks workspace id: %q", path)
 	}
 }

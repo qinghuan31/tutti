@@ -21,18 +21,24 @@ type LocalStore struct {
 	StateDir string
 }
 
-func (s LocalStore) RuntimeRoot(workspaceID string, agentSessionID string) (string, error) {
+func (s LocalStore) RuntimeRoot(_ string, agentSessionID string) (string, error) {
 	stateDir := filepath.Clean(strings.TrimSpace(s.StateDir))
 	if stateDir == "." || stateDir == string(filepath.Separator) {
 		return "", errors.New("agent sidecar state directory is not configured")
 	}
-	return filepath.Join(
+	if strings.TrimSpace(agentSessionID) == "" {
+		return "", errors.New("agent sidecar runtime root requires session")
+	}
+	runtimeRoot := filepath.Join(
 		stateDir,
 		"agent",
 		"runs",
-		safePathSegment(workspaceID),
 		safePathSegment(agentSessionID),
-	), nil
+	)
+	if err := s.validateRuntimeRoot(runtimeRoot); err != nil {
+		return "", err
+	}
+	return runtimeRoot, nil
 }
 
 func (s LocalStore) EnsureRuntimeRoot(runtimeRoot string) error {
@@ -101,19 +107,22 @@ func (s LocalStore) SaveManifest(runtimeRoot string, manifest *agentsidecarbiz.M
 }
 
 func (s LocalStore) CleanupRuntime(input agentsidecarbiz.CleanupInput) error {
-	workspaceID := strings.TrimSpace(input.WorkspaceID)
 	agentSessionID := strings.TrimSpace(input.AgentSessionID)
-	if workspaceID == "" || agentSessionID == "" {
-		return errors.New("agent sidecar cleanup requires workspace and session")
+	if agentSessionID == "" {
+		return errors.New("agent sidecar cleanup requires session")
 	}
 	runtimeRoot := strings.TrimSpace(input.RuntimeRoot)
 	if runtimeRoot == "" {
 		var err error
-		runtimeRoot, err = s.RuntimeRoot(workspaceID, agentSessionID)
+		runtimeRoot, err = s.RuntimeRoot("", agentSessionID)
 		if err != nil {
 			return err
 		}
 	}
+	return s.cleanupRuntimeRoot(filepath.Clean(runtimeRoot))
+}
+
+func (s LocalStore) cleanupRuntimeRoot(runtimeRoot string) error {
 	runtimeRoot = filepath.Clean(runtimeRoot)
 	if err := s.validateRuntimeRoot(runtimeRoot); err != nil {
 		return err

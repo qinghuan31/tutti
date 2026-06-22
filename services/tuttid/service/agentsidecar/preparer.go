@@ -75,7 +75,6 @@ func (p *DefaultPreparer) Prepare(ctx context.Context, input PrepareInput) (Prep
 	}
 
 	manifest := agentsidecarbiz.NewManifest(agentsidecarbiz.ManifestInput{
-		WorkspaceID:    workspaceID,
 		AgentSessionID: agentSessionID,
 		Provider:       providerID,
 		Cwd:            cwd,

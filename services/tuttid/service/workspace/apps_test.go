@@ -2661,6 +2661,27 @@ func TestAppCenterServiceRemoveDeletesWorkspaceAppState(t *testing.T) {
 	}
 }
 
+func TestWorkspaceAppStateRootUsesHashedInstallationScope(t *testing.T) {
+	t.Parallel()
+
+	stateDir := t.TempDir()
+	service := AppCenterService{StateDir: stateDir}
+
+	first := service.workspaceAppStateRoot("workspace-1", "sample-app")
+	second := service.workspaceAppStateRoot("workspace-2", "sample-app")
+
+	if strings.Contains(first, "workspace-1") || strings.Contains(first, "workspace-2") {
+		t.Fatalf("workspace app state root leaks workspace id: %q", first)
+	}
+	if first == second {
+		t.Fatalf("workspace app state roots collide: %q", first)
+	}
+	wantPrefix := filepath.Join(stateDir, "apps", "installations", "sample-app") + string(os.PathSeparator)
+	if !strings.HasPrefix(first, wantPrefix) {
+		t.Fatalf("workspace app state root = %q, want prefix %q", first, wantPrefix)
+	}
+}
+
 func TestAppCenterServiceRemoveDeletesUnusedRemoteBuiltinPackage(t *testing.T) {
 	t.Parallel()
 
