@@ -15,7 +15,6 @@ const comingSoonRecommendedAppIds = [
   "open-cut",
   "product-competition",
   "design-review",
-  "calendar",
   "document-summarizer"
 ] as const;
 

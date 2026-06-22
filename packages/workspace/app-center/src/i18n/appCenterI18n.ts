@@ -241,11 +241,6 @@ export const appCenterEn = {
         "Open-source video editor with media arrangement and timeline editing.",
       name: "Open Cut"
     },
-    calendar: {
-      category: "Other tools",
-      description: "Manage schedules, meetings, and to-dos.",
-      name: "Calendar"
-    },
     documentSummarizer: {
       category: "Other tools",
       description:
@@ -516,11 +511,6 @@ export const appCenterZhCN = {
       category: "内容创作",
       description: "开源视频剪辑工具，支持素材编排和时间线编辑",
       name: "Open Cut"
-    },
-    calendar: {
-      category: "其他工具",
-      description: "管理日程、会议和待办事项",
-      name: "Calendar"
     },
     documentSummarizer: {
       category: "其他工具",

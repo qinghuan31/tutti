@@ -113,10 +113,6 @@ const designReviewAppIconUrl = new URL(
   "../../../assets/workspace-canvas/dock/default/apps/design-review.png",
   import.meta.url
 ).href;
-const calendarAppIconUrl = new URL(
-  "../../../assets/workspace-canvas/dock/default/apps/calendar.png",
-  import.meta.url
-).href;
 const documentSummarizerAppIconUrl = new URL(
   "../../../assets/workspace-canvas/dock/default/apps/aisummary.png",
   import.meta.url
@@ -164,13 +160,6 @@ const comingSoonWorkspaceAppDefinitions = [
     iconUrl: designReviewAppIconUrl,
     nameKey: "appCenter.comingSoonApps.designReview.name",
     tags: ["coming-soon", "product", "design"]
-  },
-  {
-    appId: "calendar",
-    descriptionKey: "appCenter.comingSoonApps.calendar.description",
-    iconUrl: calendarAppIconUrl,
-    nameKey: "appCenter.comingSoonApps.calendar.name",
-    tags: ["coming-soon", "productivity", "calendar", "schedule"]
   },
   {
     appId: "document-summarizer",
@@ -523,7 +512,6 @@ function resolveWorkspaceAppCategory(
     case "issue-manager":
     case "workspace-issue":
     case "workspace-issue-manager":
-    case "calendar":
     case "document-summarizer":
       return labels.tools;
     default:
