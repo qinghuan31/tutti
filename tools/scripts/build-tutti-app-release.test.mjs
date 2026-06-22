@@ -26,6 +26,10 @@ const stagingCatalogWorkflowPath = new URL(
   "../../.github/workflows/publish-tutti-app-catalog-staging.yml",
   import.meta.url
 );
+const releaseReferencePath = new URL(
+  "../../services/tuttid/service/workspace/agent_workspace_app_reference/references/github-actions-release.md",
+  import.meta.url
+);
 
 test("buildTuttiAppRelease writes immutable release and latest metadata", async () => {
   const packageDir = await createPackageForTest("vibe-design");
@@ -490,6 +494,36 @@ test("Tutti app staging catalog workflow uses an isolated prefix", async () => {
     /packages\/workspace\/app-release-tools\/bin\/verify-tutti-app-release-artifacts\.mjs/
   );
   assert.match(workflow, /--catalog-file tutti-app-catalog\/catalog\.json/);
+});
+
+test("Tutti app staging release template requires an explicit staging asset base URL", async () => {
+  const reference = await readFile(releaseReferencePath, "utf8");
+
+  assert.match(reference, /TUTTI_APP_RELEASES_STAGING_BASE_URL/);
+  assert.match(reference, /push:\n\s+branches:\n\s+- main/);
+  assert.ok(
+    reference.includes(
+      "release_assets_base_url: ${{ vars.TUTTI_APP_RELEASES_STAGING_BASE_URL }}"
+    )
+  );
+  assert.ok(
+    reference.includes(
+      "publish_catalog: ${{ github.event_name == 'push' || inputs.publish_catalog }}"
+    )
+  );
+  assert.ok(
+    reference.includes(
+      "catalog_only: ${{ github.event_name == 'workflow_dispatch' && inputs.catalog_only }}"
+    )
+  );
+  assert.doesNotMatch(
+    reference,
+    /TUTTI_APP_RELEASES_STAGING_BASE_URL \|\| vars\.TUTTI_APP_RELEASES_BASE_URL/
+  );
+  assert.match(
+    reference,
+    /private repositories that cannot read organization variables/
+  );
 });
 
 function assertCatalogWorkflowRefreshesExistingAppLatestMetadata(workflow) {

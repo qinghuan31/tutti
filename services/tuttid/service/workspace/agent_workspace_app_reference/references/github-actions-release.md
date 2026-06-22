@@ -90,10 +90,13 @@ Staging should not require semver bump or tag creation. It can publish a build-a
 name: Publish Tutti App Staging
 
 on:
+  push:
+    branches:
+      - main
   workflow_dispatch:
     inputs:
       publish_catalog:
-        description: Whether to publish the staging App Center catalog after this release.
+        description: Whether to publish the staging App Center catalog after this release. Main branch pushes always publish the catalog.
         required: false
         type: boolean
         default: false
@@ -121,9 +124,9 @@ jobs:
       aws_role_arn: ${{ vars.TUTTI_APP_RELEASES_STAGING_AWS_ROLE_ARN || vars.TUTTI_APP_RELEASES_AWS_ROLE_ARN }}
       s3_bucket: ${{ vars.TUTTI_APP_RELEASES_STAGING_S3_BUCKET || vars.TUTTI_APP_RELEASES_S3_BUCKET }}
       s3_prefix: ${{ vars.TUTTI_APP_RELEASES_STAGING_S3_PREFIX || 'tutti-app-releases-staging' }}
-      release_assets_base_url: ${{ vars.TUTTI_APP_RELEASES_STAGING_BASE_URL || vars.TUTTI_APP_RELEASES_BASE_URL }}
-      publish_catalog: ${{ inputs.publish_catalog }}
-      catalog_only: ${{ inputs.catalog_only }}
+      release_assets_base_url: ${{ vars.TUTTI_APP_RELEASES_STAGING_BASE_URL }}
+      publish_catalog: ${{ github.event_name == 'push' || inputs.publish_catalog }}
+      catalog_only: ${{ github.event_name == 'workflow_dispatch' && inputs.catalog_only }}
       catalog_cloudfront_distribution_id: ${{ vars.TUTTI_APP_RELEASES_STAGING_CLOUDFRONT_DISTRIBUTION_ID || vars.TUTTI_APP_RELEASES_CLOUDFRONT_DISTRIBUTION_ID || '' }}
 ```
 
@@ -152,7 +155,9 @@ Recommended organization variables:
 - `TUTTI_APP_RELEASES_PRODUCTION_BASE_URL`
 - `TUTTI_APP_RELEASES_PRODUCTION_CLOUDFRONT_DISTRIBUTION_ID`
 
-Use repository-level variables only for app-specific overrides, migration periods, or repositories that publish to a separate bucket, prefix, base URL, or role. Do not create long-lived AWS secrets for this flow; the release workflow uses GitHub OIDC with `id-token: write` and an AWS role ARN.
+Use repository-level variables for app-specific overrides, migration periods, repositories that publish to a separate bucket, prefix, base URL, or role, and private repositories that cannot read organization variables. Do not create long-lived AWS secrets for this flow; the release workflow uses GitHub OIDC with `id-token: write` and an AWS role ARN.
+
+Staging callers must set `TUTTI_APP_RELEASES_STAGING_BASE_URL` explicitly. Do not let staging inherit `TUTTI_APP_RELEASES_BASE_URL`, because that can upload release objects under the staging S3 prefix while writing production asset URLs into `latest.json` and `catalog.json`.
 
 ## Validation
 

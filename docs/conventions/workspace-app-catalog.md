@@ -104,6 +104,12 @@ Staging app releases do not create release tags. When `release_bump` is empty,
 the reusable workflow publishes `manifest.version+<short git sha>` from the
 packaged manifest.
 
+Staging caller workflows should run automatically on `push` to `main`, which is
+the event produced after a pull request is merged. Push-triggered staging runs
+should publish the staging catalog by default so App Center sees the merged app
+without a second manual dispatch. Manual staging dispatch remains useful for
+catalog repair, reruns, and targeted validation.
+
 When `publish_catalog` is enabled, releases targeting the same S3 bucket and
 prefix are serialized so concurrent app releases cannot overwrite each other's
 catalog merge. The release workflow reads the existing catalog from the same S3
@@ -181,6 +187,14 @@ tutti-app-releases/catalog.json
 tutti-app-releases-staging/apps/<appId>/latest.json
 tutti-app-releases-staging/catalog.json
 ```
+
+The staging asset base URL must also point at the staging prefix, for example
+`https://d1x7gb6wqsqmnm.cloudfront.net/tutti-app-releases-staging`. Do not
+reuse the production `TUTTI_APP_RELEASES_BASE_URL` for staging, because the
+published `latest.json` and `catalog.json` would then reference production
+artifact URLs. For private app repositories that cannot read organization
+variables, set the Tutti release variables as repository variables on each app
+repository.
 
 Use `.github/workflows/publish-tutti-app-catalog-staging.yml` to publish a
 staging catalog. Use `.github/workflows/publish-tutti-app-catalog.yml` to
