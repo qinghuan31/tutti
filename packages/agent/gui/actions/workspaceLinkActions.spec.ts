@@ -50,22 +50,22 @@ describe("resolveWorkspaceFileLinkAction", () => {
   it("allows direct generated image paths under Tutti state outside the workspace root", () => {
     expect(
       resolveWorkspaceFileLinkAction({
-        path: "/Users/test/.tutti-dev/agent/runs/run-1/session-1/codex-home/generated_images/imagegen/ig_123.png",
+        path: "/Users/test/.tutti-dev/agent/runs/session-1/codex-home/generated_images/imagegen/ig_123.png",
         workspaceRoot: "/Users/test/project/tutti",
         basePath: "/Users/test/project/tutti",
         source: "agent-markdown"
       })
     ).toMatchObject({
       type: "open-workspace-file",
-      path: "/Users/test/.tutti-dev/agent/runs/run-1/session-1/codex-home/generated_images/imagegen/ig_123.png",
+      path: "/Users/test/.tutti-dev/agent/runs/session-1/codex-home/generated_images/imagegen/ig_123.png",
       directoryPath:
-        "/Users/test/.tutti-dev/agent/runs/run-1/session-1/codex-home/generated_images/imagegen",
+        "/Users/test/.tutti-dev/agent/runs/session-1/codex-home/generated_images/imagegen",
       workspaceRoot: "/Users/test/project/tutti"
     });
 
     expect(
       resolveWorkspaceFileLinkAction({
-        path: "/Users/test/.tutti-dev/agent/runs/run-1/session-1/codex-home/secrets.txt",
+        path: "/Users/test/.tutti-dev/agent/runs/session-1/codex-home/secrets.txt",
         workspaceRoot: "/Users/test/project/tutti",
         basePath: "/Users/test/project/tutti",
         source: "agent-markdown"

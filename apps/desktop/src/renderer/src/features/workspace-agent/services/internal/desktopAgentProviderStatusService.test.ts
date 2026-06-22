@@ -689,7 +689,7 @@ test("refresh waits for an in-flight load and then requests a fresh status", asy
   assert.equal(service.getStatus("codex")?.availability.status, "ready");
 });
 
-test("provider-scoped refresh confirms missing CLI downgrades before replacing a known installed status", async () => {
+test("provider-scoped refresh immediately replaces ready status when CLI is missing", async () => {
   const missingCodexStatus = createProviderStatus({
     actions: [{ id: "install", kind: "daemon_action" }],
     availability: "not_installed",
@@ -719,14 +719,47 @@ test("provider-scoped refresh confirms missing CLI downgrades before replacing a
   await service.refresh();
   await service.refresh(["codex"]);
 
-  assert.equal(service.getStatus("codex")?.availability.status, "ready");
-
-  await service.refresh(["codex"]);
-
   assert.equal(
     service.getStatus("codex")?.availability.status,
     "not_installed"
   );
+});
+
+test("provider-scoped refresh immediately replaces ready status when ACP adapter is missing", async () => {
+  const missingClaudeAdapterStatus = createProviderStatus({
+    actions: [{ id: "install", kind: "daemon_action" }],
+    adapterInstalled: false,
+    availability: "not_installed",
+    cliInstalled: true,
+    provider: "claude-code",
+    reasonCode: "acp_adapter_not_found"
+  });
+  const service = new DesktopAgentProviderStatusService({
+    tuttidClient: createTuttidClient({
+      snapshots: [
+        createStatusResponse([
+          createProviderStatus({
+            actions: [],
+            availability: "ready",
+            provider: "claude-code"
+          })
+        ]),
+        createStatusResponse([missingClaudeAdapterStatus])
+      ]
+    }),
+    terminalCommandRunner: {
+      async runTerminalCommand() {}
+    }
+  });
+
+  await service.refresh();
+  await service.refresh(["claude-code"]);
+
+  assert.equal(
+    service.getStatus("claude-code")?.availability.status,
+    "not_installed"
+  );
+  assert.equal(service.getStatus("claude-code")?.adapter.installed, false);
 });
 
 test("provider-scoped refresh confirms auth downgrades before replacing a ready status", async () => {
@@ -1084,6 +1117,7 @@ function createNotificationRecorder(): {
 
 function createProviderStatus(input: {
   actions: AgentProviderStatus["actions"];
+  adapterInstalled?: boolean;
   availability: AgentProviderStatus["availability"]["status"];
   cliInstalled?: boolean;
   provider?: WorkspaceAgentProvider;
@@ -1098,8 +1132,9 @@ function createProviderStatus(input: {
     adapter: {
       command: ["codex-acp"],
       installed:
-        input.availability !== "not_installed" &&
-        input.availability !== "unsupported"
+        input.adapterInstalled ??
+        (input.availability !== "not_installed" &&
+          input.availability !== "unsupported")
     },
     auth: {
       status: input.availability === "auth_required" ? "required" : "unknown"

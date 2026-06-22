@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { join } from "node:path";
 import type { DesktopWorkspaceAppPayload } from "../../shared/contracts/ipc";
 
@@ -11,9 +12,9 @@ export function resolveWorkspaceAppFolderPath(
       return join(
         stateRootDir,
         "apps",
-        "workspaces",
-        safeWorkspaceAppPathSegment(payload.workspaceId),
-        appID
+        "installations",
+        appID,
+        workspaceAppScopeSegment(payload.workspaceId, payload.appId)
       );
     case "data":
     case "logs":
@@ -21,9 +22,9 @@ export function resolveWorkspaceAppFolderPath(
       return join(
         stateRootDir,
         "apps",
-        "workspaces",
-        safeWorkspaceAppPathSegment(payload.workspaceId),
+        "installations",
         appID,
+        workspaceAppScopeSegment(payload.workspaceId, payload.appId),
         payload.folderKind
       );
     case "package": {
@@ -36,6 +37,16 @@ export function resolveWorkspaceAppFolderPath(
     default:
       throw new Error("unsupported workspace app folder kind");
   }
+}
+
+export function workspaceAppScopeSegment(
+  workspaceId: string,
+  appId: string
+): string {
+  return createHash("sha256")
+    .update(`${workspaceId.trim()}\0${appId.trim()}`)
+    .digest("hex")
+    .slice(0, 16);
 }
 
 export function safeWorkspaceAppPathSegment(value: string): string {

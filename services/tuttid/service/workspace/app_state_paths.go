@@ -1,6 +1,8 @@
 package workspace
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -19,7 +21,13 @@ func (s *AppCenterService) packageCacheRoot() string {
 }
 
 func (s *AppCenterService) workspaceAppStateRoot(workspaceID string, appID string) string {
-	return filepath.Join(s.stateDir(), "apps", "workspaces", safeAppPathSegment(workspaceID), safeAppPathSegment(appID))
+	return filepath.Join(
+		s.stateDir(),
+		"apps",
+		"installations",
+		safeAppPathSegment(appID),
+		workspaceAppScopeSegment(workspaceID, appID),
+	)
 }
 
 func (s *AppCenterService) removeWorkspaceAppStateRoot(workspaceID string, appID string) error {
@@ -30,17 +38,16 @@ func (s *AppCenterService) removeWorkspaceAppStateRoot(workspaceID string, appID
 }
 
 func (s *AppCenterService) removeAllWorkspaceAppStateRoots(appID string) error {
-	pattern := filepath.Join(s.stateDir(), "apps", "workspaces", "*", safeAppPathSegment(appID))
-	stateRoots, err := filepath.Glob(pattern)
-	if err != nil {
-		return fmt.Errorf("list workspace app state dirs: %w", err)
-	}
-	for _, stateRoot := range stateRoots {
-		if err := os.RemoveAll(stateRoot); err != nil {
-			return fmt.Errorf("delete workspace app state dir: %w", err)
-		}
+	stateRoot := filepath.Join(s.stateDir(), "apps", "installations", safeAppPathSegment(appID))
+	if err := os.RemoveAll(stateRoot); err != nil {
+		return fmt.Errorf("delete workspace app state dir: %w", err)
 	}
 	return nil
+}
+
+func workspaceAppScopeSegment(workspaceID string, appID string) string {
+	sum := sha256.Sum256([]byte(strings.TrimSpace(workspaceID) + "\x00" + strings.TrimSpace(appID)))
+	return hex.EncodeToString(sum[:])[:16]
 }
 
 func (s *AppCenterService) stateDir() string {

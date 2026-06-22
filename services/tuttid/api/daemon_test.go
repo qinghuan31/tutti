@@ -938,7 +938,7 @@ func TestDaemonAPIGeneratedRoutesGetAgentProviderComposerOptions(t *testing.T) {
 						Modes: []agentservice.PermissionModeOption{{
 							ID:          "auto",
 							Label:       "替我审批",
-							Description: "仅在检测到可能不安全的操作时询问你",
+							Description: "仅对检测到的风险操作请求批准",
 							Semantic:    agentservice.PermissionModeSemanticAuto,
 						}},
 					},

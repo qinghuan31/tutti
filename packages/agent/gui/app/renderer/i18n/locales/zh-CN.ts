@@ -355,7 +355,7 @@ export const zhCN = {
       permissionSemantics: {
         "ask-before-write": {
           label: "请求批准",
-          description: "编辑外部文件或使用互联网前始终询问你"
+          description: "编辑外部文件和使用互联网时始终询问"
         },
         "accept-edits": {
           label: "接受编辑",
@@ -367,11 +367,11 @@ export const zhCN = {
         },
         auto: {
           label: "替我审批",
-          description: "仅在检测到可能不安全的操作时询问你"
+          description: "仅对检测到的风险操作请求批准"
         },
         "full-access": {
-          label: "完全访问",
-          description: "可不受限制地访问互联网和你电脑上的任何文件"
+          label: "完全访问权限",
+          description: "可不受限制地访问互联网和您电脑上的任何文件"
         },
         unconfigurable: {
           label: "固定模式",
@@ -382,15 +382,15 @@ export const zhCN = {
         codex: {
           "read-only": {
             label: "请求批准",
-            description: "编辑外部文件或使用互联网前始终询问你"
+            description: "编辑外部文件和使用互联网时始终询问"
           },
           auto: {
             label: "替我审批",
-            description: "仅在检测到可能不安全的操作时询问你"
+            description: "仅对检测到的风险操作请求批准"
           },
           "full-access": {
-            label: "完全访问",
-            description: "可不受限制地访问互联网和你电脑上的任何文件"
+            label: "完全访问权限",
+            description: "可不受限制地访问互联网和您电脑上的任何文件"
           }
         },
         nexight: {

@@ -8,7 +8,6 @@ import (
 const SidecarManifestFileName = "sidecar-manifest.json"
 
 type ManifestInput struct {
-	WorkspaceID    string
 	AgentSessionID string
 	Provider       string
 	Cwd            string
@@ -17,7 +16,6 @@ type ManifestInput struct {
 
 type Manifest struct {
 	Version         int           `json:"version"`
-	WorkspaceID     string        `json:"workspaceId"`
 	AgentSessionID  string        `json:"agentSessionId"`
 	Provider        string        `json:"provider"`
 	Cwd             string        `json:"cwd"`
@@ -48,7 +46,6 @@ func NewManifest(input ManifestInput) *Manifest {
 	now := time.Now().UTC().UnixMilli()
 	return &Manifest{
 		Version:         1,
-		WorkspaceID:     strings.TrimSpace(input.WorkspaceID),
 		AgentSessionID:  strings.TrimSpace(input.AgentSessionID),
 		Provider:        strings.TrimSpace(input.Provider),
 		Cwd:             strings.TrimSpace(input.Cwd),

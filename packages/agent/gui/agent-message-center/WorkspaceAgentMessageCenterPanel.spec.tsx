@@ -600,7 +600,7 @@ describe("WorkspaceAgentMessageCenterCard", () => {
       <TooltipProvider>
         <WorkspaceAgentMessageCenterCard
           item={createTestCardItem({
-            cwd: "/Users/local/.tutti/sessions/2026-06-05-001",
+            cwd: "/Users/local/.tutti/agent/sessions/2026-06-05-001",
             lastAgentMessageSummary:
               "已完成项目文件总结，并新增文档：[PROJECT_SUMMARY.md](PROJECT_SUMMARY.md)"
           })}
@@ -621,9 +621,9 @@ describe("WorkspaceAgentMessageCenterCard", () => {
 
     expect(onLinkAction).toHaveBeenCalledWith({
       type: "open-workspace-file",
-      path: "/Users/local/.tutti/sessions/2026-06-05-001/PROJECT_SUMMARY.md",
-      directoryPath: "/Users/local/.tutti/sessions/2026-06-05-001",
-      workspaceRoot: "/Users/local/.tutti/sessions/2026-06-05-001",
+      path: "/Users/local/.tutti/agent/sessions/2026-06-05-001/PROJECT_SUMMARY.md",
+      directoryPath: "/Users/local/.tutti/agent/sessions/2026-06-05-001",
+      workspaceRoot: "/Users/local/.tutti/agent/sessions/2026-06-05-001",
       source: "agent-markdown"
     });
   });
@@ -730,9 +730,9 @@ describe("WorkspaceAgentMessageCenterCard", () => {
       <TooltipProvider>
         <WorkspaceAgentMessageCenterCard
           item={createTestCardItem({
-            cwd: "/Users/local/.tutti/sessions/2026-06-05-001",
+            cwd: "/Users/local/.tutti/agent/sessions/2026-06-05-001",
             lastAgentMessageSummary:
-              "![generated image](/Users/local/.tutti/sessions/2026-06-05-001/output/imagegen/sheep.png)"
+              "![generated image](/Users/local/.tutti/agent/sessions/2026-06-05-001/output/imagegen/sheep.png)"
           })}
           isSubmitting={false}
           onOpenChat={vi.fn()}
@@ -749,7 +749,7 @@ describe("WorkspaceAgentMessageCenterCard", () => {
 
     expect(await screen.findByRole("dialog")).toBeInTheDocument();
     expect(readFile).toHaveBeenCalledWith({
-      path: "/Users/local/.tutti/sessions/2026-06-05-001/output/imagegen/sheep.png"
+      path: "/Users/local/.tutti/agent/sessions/2026-06-05-001/output/imagegen/sheep.png"
     });
   });
 

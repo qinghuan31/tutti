@@ -609,49 +609,49 @@ async function listManagedLogFiles(logsDir: string): Promise<ManagedLogFile[]> {
 async function listWorkspaceAppLogFiles(
   stateRootDir: string
 ): Promise<DiscoveredLogFile[]> {
-  const appWorkspacesDir = join(stateRootDir, "apps", "workspaces");
-  let workspaceEntries: Dirent[];
+  const appInstallationsDir = join(stateRootDir, "apps", "installations");
+  let appEntries: Dirent[];
   try {
-    workspaceEntries = await readdir(appWorkspacesDir, { withFileTypes: true });
+    appEntries = await readdir(appInstallationsDir, { withFileTypes: true });
   } catch {
     return [];
   }
 
-  const workspaceFiles = await Promise.all(
-    workspaceEntries
+  const appFiles = await Promise.all(
+    appEntries
       .filter((entry) => entry.isDirectory())
-      .map(async (workspaceEntry) => {
-        const workspaceID = workspaceEntry.name;
-        const workspaceDir = join(appWorkspacesDir, workspaceID);
-        let appEntries: Dirent[];
+      .map(async (appEntry) => {
+        const appID = appEntry.name;
+        const appDir = join(appInstallationsDir, appID);
+        let scopeEntries: Dirent[];
         try {
-          appEntries = await readdir(workspaceDir, { withFileTypes: true });
+          scopeEntries = await readdir(appDir, { withFileTypes: true });
         } catch {
           return [];
         }
 
-        const appFiles = await Promise.all(
-          appEntries
+        const scopeFiles = await Promise.all(
+          scopeEntries
             .filter((entry) => entry.isDirectory())
-            .map((appEntry) =>
+            .map((scopeEntry) =>
               listWorkspaceAppLogDirFiles({
-                appID: appEntry.name,
-                logsDir: join(workspaceDir, appEntry.name, "logs"),
-                workspaceID
+                appID,
+                logsDir: join(appDir, scopeEntry.name, "logs"),
+                scopeID: scopeEntry.name
               })
             )
         );
-        return appFiles.flat();
+        return scopeFiles.flat();
       })
   );
 
-  return workspaceFiles.flat();
+  return appFiles.flat();
 }
 
 async function listWorkspaceAppLogDirFiles(input: {
   appID: string;
   logsDir: string;
-  workspaceID: string;
+  scopeID: string;
 }): Promise<DiscoveredLogFile[]> {
   const files: DiscoveredLogFile[] = [];
   const pending = [input.logsDir];
@@ -688,8 +688,8 @@ async function listWorkspaceAppLogDirFiles(input: {
         files.push({
           archivePath: joinZipPath(
             "app-logs",
-            safeZipPathSegment(input.workspaceID),
             safeZipPathSegment(input.appID),
+            safeZipPathSegment(input.scopeID),
             ...relative(input.logsDir, path)
               .split(/[\\/]+/)
               .map(safeZipPathSegment)

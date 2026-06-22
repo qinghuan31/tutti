@@ -5,6 +5,7 @@ import { tmpdir } from "node:os";
 import test from "node:test";
 import { createDeveloperLogsService } from "./developerLogs.ts";
 import type { DeveloperLogsAgentSessionRecord } from "./developerLogsAgentSessions.ts";
+import { workspaceAppScopeSegment } from "./host/workspaceAppFolderPaths.ts";
 
 test("developer logs service summarizes managed desktop and daemon logs", async () => {
   const root = join(tmpdir(), `tutti-developer-logs-${Date.now()}`);
@@ -62,12 +63,14 @@ test("developer logs service truncates active logs, removes rotated logs, and cl
   const daemonPath = join(logsDir, "tuttid.log");
   const desktopPath = join(logsDir, "tutti-desktop.log");
   const rotatedPath = join(logsDir, "tutti-desktop.2026-05-23.log");
+  const appID = "app.alpha";
+  const workspaceID = "workspace-1";
   const appLogPath = join(
     root,
     "apps",
-    "workspaces",
-    "workspace-1",
-    "app.alpha",
+    "installations",
+    appID,
+    workspaceAppScopeSegment(workspaceID, appID),
     "logs",
     "runtime.log"
   );
@@ -400,12 +403,13 @@ test("developer logs service exports workspace app log files", async () => {
   await mkdir(root, { recursive: true });
   const logsDir = join(root, "logs");
   const downloadsDir = join(root, "downloads");
+  const appScope = workspaceAppScopeSegment("workspace-1", "app.alpha");
   const appLogsDir = join(
     root,
     "apps",
-    "workspaces",
-    "workspace-1",
+    "installations",
     "app.alpha",
+    appScope,
     "logs"
   );
   const nestedAppLogsDir = join(appLogsDir, "nested");
@@ -444,15 +448,15 @@ test("developer logs service exports workspace app log files", async () => {
   assert.ok(result.filePath);
   const zipText = (await readFile(result.filePath)).toString("utf8");
   assert.equal(
-    zipText.includes("app-logs/workspace-1/app.alpha/runtime.log"),
+    zipText.includes(`app-logs/app.alpha/${appScope}/runtime.log`),
     true
   );
   assert.equal(
-    zipText.includes("app-logs/workspace-1/app.alpha/nested/custom.LOG"),
+    zipText.includes(`app-logs/app.alpha/${appScope}/nested/custom.LOG`),
     true
   );
   assert.equal(
-    zipText.includes("app-logs/workspace-1/app.alpha/events.jsonl"),
+    zipText.includes(`app-logs/app.alpha/${appScope}/events.jsonl`),
     true
   );
 });
@@ -618,12 +622,14 @@ test("developer logs service does not clear generated diagnostics", async () => 
   await mkdir(root, { recursive: true });
   const logsDir = join(root, "logs");
   const downloadsDir = join(root, "downloads");
+  const appID = "app.alpha";
+  const workspaceID = "workspace-1";
   const appLogPath = join(
     root,
     "apps",
-    "workspaces",
-    "workspace-1",
-    "app.alpha",
+    "installations",
+    appID,
+    workspaceAppScopeSegment(workspaceID, appID),
     "logs",
     "events.jsonl"
   );
@@ -637,7 +643,6 @@ test("developer logs service does not clear generated diagnostics", async () => 
   await writeFile(desktopPath, "desktop-live");
   await writeFile(appLogPath, "app-events");
 
-  const workspaceID = "workspace-1";
   const service = createDeveloperLogsService({
     agentSessionsProvider: async () => [
       {

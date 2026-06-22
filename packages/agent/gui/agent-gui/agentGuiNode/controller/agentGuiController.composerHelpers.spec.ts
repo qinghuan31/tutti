@@ -28,7 +28,7 @@ describe("permissionModeOptions", () => {
       {
         value: "auto",
         label: "替我审批",
-        description: "仅在检测到可能不安全的操作时询问你"
+        description: "仅对检测到的风险操作请求批准"
       }
     ]);
   });

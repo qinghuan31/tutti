@@ -355,7 +355,7 @@ test("workspace file manager service includes hidden entries for direct reveal i
           lastOpenedMs: null,
           mtimeMs: null,
           name: "image.png",
-          path: "/Users/demo/.tutti-dev/agent/runs/generated_images/image.png",
+          path: "/Users/demo/.tutti-dev/agent/runs/session-1/codex-home/generated_images/image.png",
           sizeBytes: 5
         }
       ],
@@ -372,17 +372,17 @@ test("workspace file manager service includes hidden entries for direct reveal i
   const session = service.getSession("workspace-1", copy);
 
   await session.revealPath(
-    "/Users/demo/.tutti-dev/agent/runs/generated_images/image.png"
+    "/Users/demo/.tutti-dev/agent/runs/session-1/codex-home/generated_images/image.png"
   );
 
   assert.equal(capturedRequest?.includeHidden, true);
   assert.equal(
     capturedRequest?.path,
-    "/Users/demo/.tutti-dev/agent/runs/generated_images"
+    "/Users/demo/.tutti-dev/agent/runs/session-1/codex-home/generated_images"
   );
   assert.equal(
     session.store.selectedPath,
-    "/Users/demo/.tutti-dev/agent/runs/generated_images/image.png"
+    "/Users/demo/.tutti-dev/agent/runs/session-1/codex-home/generated_images/image.png"
   );
 });
 

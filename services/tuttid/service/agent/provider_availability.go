@@ -3,6 +3,7 @@ package agent
 import (
 	"context"
 	"errors"
+	"fmt"
 	"strings"
 	"time"
 
@@ -11,10 +12,38 @@ import (
 )
 
 const (
-	ProviderAvailabilityAvailable   = "available"
-	ProviderAvailabilityUnavailable = "unavailable"
-	ProviderAvailabilityUnknown     = "unknown"
+	ProviderAvailabilityAvailable      = "available"
+	ProviderAvailabilityUnavailable    = "unavailable"
+	ProviderAvailabilityUnknown        = "unknown"
+	providerAvailabilityReasonFallback = "agent_provider_unavailable"
 )
+
+var ErrProviderUnavailable = errors.New("agent provider unavailable")
+
+type ProviderUnavailableError struct {
+	Provider   string
+	ReasonCode string
+	Message    string
+}
+
+func (e *ProviderUnavailableError) Error() string {
+	if e == nil {
+		return ErrProviderUnavailable.Error()
+	}
+	message := strings.TrimSpace(e.Message)
+	if message == "" {
+		message = ErrProviderUnavailable.Error()
+	}
+	provider := strings.TrimSpace(e.Provider)
+	if provider == "" {
+		return message
+	}
+	return fmt.Sprintf("%s: %s", provider, message)
+}
+
+func (*ProviderUnavailableError) Unwrap() error {
+	return ErrProviderUnavailable
+}
 
 type ProviderAvailabilityCheck struct {
 	Name   string
@@ -65,6 +94,23 @@ func (s *Service) ListProviderAvailability(ctx context.Context, input ProviderAv
 		return nil, ErrInvalidArgument
 	}
 	return availability, err
+}
+
+func (s *Service) ensureProviderRuntimeInstalled(ctx context.Context, provider string) error {
+	checker := s.AvailabilityChecker
+	if checker == nil {
+		return nil
+	}
+	availability, err := checker.ListProviderAvailability(ctx, []string{provider})
+	if err != nil {
+		return err
+	}
+	for _, item := range availability {
+		if providerAvailabilityNeedsInstall(item) {
+			return providerUnavailableErrorFromAvailability(item)
+		}
+	}
+	return nil
 }
 
 func providerAvailabilityInputProviders(input ProviderAvailabilityInput) ([]string, error) {
@@ -155,6 +201,55 @@ func providerAvailabilityChecksFromAgentStatus(status agentstatusservice.Provide
 			Passed: status.Auth.Status == agentstatusservice.AuthAuthenticated,
 			Detail: providerAvailabilityAuthDetail(status.Auth),
 		},
+	}
+}
+
+func providerAvailabilityNeedsInstall(availability ProviderAvailability) bool {
+	if availability.Status == ProviderAvailabilityAvailable {
+		return false
+	}
+	for _, check := range availability.Checks {
+		switch strings.TrimSpace(check.Name) {
+		case "cli", "adapter":
+			if !check.Passed {
+				return true
+			}
+		}
+	}
+	if availability.LastError == nil {
+		return false
+	}
+	switch strings.TrimSpace(availability.LastError.Code) {
+	case "cli_not_found", "acp_adapter_not_found":
+		return true
+	default:
+		return false
+	}
+}
+
+func providerUnavailableErrorFromAvailability(availability ProviderAvailability) error {
+	reasonCode := providerAvailabilityReasonFallback
+	message := "agent provider runtime is unavailable"
+	if availability.LastError != nil {
+		if code := strings.TrimSpace(availability.LastError.Code); code != "" {
+			reasonCode = code
+		}
+		if detail := strings.TrimSpace(availability.LastError.Message); detail != "" {
+			message = detail
+		}
+	}
+	if message == "agent provider runtime is unavailable" {
+		for _, check := range availability.Checks {
+			if !check.Passed && strings.TrimSpace(check.Detail) != "" {
+				message = strings.TrimSpace(check.Detail)
+				break
+			}
+		}
+	}
+	return &ProviderUnavailableError{
+		Provider:   strings.TrimSpace(availability.Provider),
+		ReasonCode: reasonCode,
+		Message:    message,
 	}
 }
 

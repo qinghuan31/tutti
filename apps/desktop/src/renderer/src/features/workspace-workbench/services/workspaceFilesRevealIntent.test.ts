@@ -141,7 +141,7 @@ test("workspace files launch coordinator preserves hidden internal state paths u
   assert.equal(
     await requestWorkspaceFilesLaunch({
       homeDirectory: "/Users/example",
-      path: "/Users/example/.tutti-dev/agent/runs/run-1/session-1/codex-home/generated_images/imagegen/ig_123.png",
+      path: "/Users/example/.tutti-dev/agent/runs/session-1/codex-home/generated_images/imagegen/ig_123.png",
       workspaceId: "workspace-hidden"
     }),
     true
@@ -149,7 +149,7 @@ test("workspace files launch coordinator preserves hidden internal state paths u
   dispose();
   assert.deepEqual(requests, [
     {
-      path: "/Users/example/.tutti-dev/agent/runs/run-1/session-1/codex-home/generated_images/imagegen/ig_123.png",
+      path: "/Users/example/.tutti-dev/agent/runs/session-1/codex-home/generated_images/imagegen/ig_123.png",
       workspaceId: "workspace-hidden"
     }
   ]);

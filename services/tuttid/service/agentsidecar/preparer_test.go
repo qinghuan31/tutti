@@ -262,8 +262,16 @@ func TestDefaultPreparerCodexWritesInstructionsSkillManifestAndEnv(t *testing.T)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := os.Stat(filepath.Join(runtimeRoot, agentsidecarbiz.SidecarManifestFileName)); err != nil {
+	manifestPath := filepath.Join(runtimeRoot, agentsidecarbiz.SidecarManifestFileName)
+	if _, err := os.Stat(manifestPath); err != nil {
 		t.Fatalf("manifest missing: %v", err)
+	}
+	manifestContent, err := os.ReadFile(manifestPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(manifestContent), `"workspaceId"`) {
+		t.Fatalf("manifest leaks workspace id: %s", manifestContent)
 	}
 	if envValue(prepared.Env, "TUTTI_WORKSPACE_ID") != "workspace-1" {
 		t.Fatalf("prepared env = %#v, want workspace id", prepared.Env)

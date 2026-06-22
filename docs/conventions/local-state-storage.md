@@ -89,11 +89,15 @@ Migrated agent runtime state should derive from the same root:
 ```text
 ~/.tutti[-dev]/
   agent/
+    sessions/
+      <date>-<sequence>/
     runs/
-      <workspace-id>/
-        <agent-session-id>/
-          sidecar-manifest.json
-          codex-home/
+      <agent-session-id>/
+        sidecar-manifest.json
+        codex-home/
+    attachments/
+      <agent-session-id>/
+        <attachment-id>.<ext>
     codex/
       tutti/
         current/
@@ -106,11 +110,44 @@ Migrated agent runtime state should derive from the same root:
         <agent-id>/
       binaries/
         <agent-id>/
+  apps/
+    packages/
+      <app-id>/
+        <version>/
+    installations/
+      <app-id>/
+        <installation-scope>/
+          runtime/
+          data/
+          logs/
+    factory/
+      jobs/
+        <factory-job-id>/
+          draft/
+          runtime/
+          data/
+          logs/
 ```
 
-`agent/runs` stores per-session provider sidecar state that can be recreated or
-cleaned up when the owning agent session is deleted. Provider-specific homes,
-generated skills, and cleanup manifests live under the matching run directory.
+`agent/sessions` stores daemon-created working directories for agent sessions
+that do not receive an explicit cwd. `agent/runs` stores per-session provider
+sidecar state that can be recreated or cleaned up when the owning agent session
+is deleted. Provider-specific homes, generated skills, and cleanup manifests
+live under the matching run directory. `agent/attachments` stores persisted
+prompt attachments by agent session.
+
+Filesystem paths under `<state-dir>` must not expose `workspaceId` as a
+directory segment. Workspace ownership belongs in the SQLite database and
+transport/domain contracts; local file paths should use user-meaningful or
+session-scoped names. Workspace app installation state uses an opaque
+`<installation-scope>` derived from the workspace/app identity so separate
+workspace installations stay isolated without exposing workspace IDs in the
+filesystem.
+
+Pre-release layouts that exposed workspace IDs as state-directory segments are
+intentionally unsupported by runtime fallback or automatic migration. Internal
+testers who need to keep data should move it to the current layout before
+upgrading.
 
 The exact files may appear gradually as features are implemented, but new daemon-owned local files should follow this layout.
 
@@ -130,6 +167,8 @@ Tutti provider startup.
 - the bundled CLI discovers the managed daemon by reading `<state-dir>/run/tuttid.listener.json`
 - packaged desktop shim install or repair uses `<state-dir>/bin/tutti` as the user-level command path and points it at the packaged CLI binary
 - local development scripts install or repair `<state-dir>/bin/tutti-dev` as the development CLI command and default it to `TUTTI_ENV=development`
+- workspace app package cache, per-installation runtime/data/log state, and
+  app factory job working directories live under `<state-dir>/apps`
 
 ## Validation
 

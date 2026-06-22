@@ -2,9 +2,53 @@ package agentsidecar
 
 import (
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
+
+	agentsidecarbiz "github.com/tutti-os/tutti/services/tuttid/biz/agentsidecar"
 )
+
+func TestLocalStoreRuntimeRootUsesSessionScopedPath(t *testing.T) {
+	stateDir := t.TempDir()
+	root, err := LocalStore{StateDir: stateDir}.RuntimeRoot("workspace-1", "session-1")
+	if err != nil {
+		t.Fatalf("RuntimeRoot() error = %v", err)
+	}
+
+	if want := filepath.Join(stateDir, "agent", "runs", "session-1"); root != want {
+		t.Fatalf("RuntimeRoot() = %q, want %q", root, want)
+	}
+	if strings.Contains(root, "workspace-1") {
+		t.Fatalf("runtime root leaks workspace id: %q", root)
+	}
+}
+
+func TestLocalStoreCleanupRemovesSessionScopedRuntimeRoot(t *testing.T) {
+	stateDir := t.TempDir()
+	store := LocalStore{StateDir: stateDir}
+	runtimeRoot, err := store.RuntimeRoot("workspace-1", "session-1")
+	if err != nil {
+		t.Fatalf("RuntimeRoot() error = %v", err)
+	}
+	if err := os.MkdirAll(runtimeRoot, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(runtimeRoot, "runtime.txt"), []byte("runtime"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := store.CleanupRuntime(agentsidecarbiz.CleanupInput{
+		WorkspaceID:    "workspace-1",
+		AgentSessionID: "session-1",
+	}); err != nil {
+		t.Fatalf("CleanupRuntime() error = %v", err)
+	}
+
+	if _, err := os.Stat(runtimeRoot); !os.IsNotExist(err) {
+		t.Fatalf("runtime root still exists, err = %v", err)
+	}
+}
 
 func TestReplaceManagedBlockPreservesUserContentAndReplacesPreviousBlock(t *testing.T) {
 	existing := "user notes\n\n" + managedBlockBegin + "\nold\n" + managedBlockEnd + "\n\nmore notes\n"
