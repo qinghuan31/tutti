@@ -123,6 +123,10 @@ test("dock overflow keeps scroll controls viewport-bound", () => {
   );
   assert.match(
     css,
+    /\.desktop-dock__label-tooltip\s*{[^}]*width:\s*max-content;[^}]*overflow:\s*hidden;[^}]*text-overflow:\s*ellipsis;[^}]*white-space:\s*nowrap;/s
+  );
+  assert.match(
+    css,
     /\.desktop-dock__label-tooltip\[data-dock-placement="left"\]\s*{[^}]*left:\s*calc\(\s*var\(--desktop-dock-label-tooltip-anchor-left\)\s*\+\s*var\(--desktop-dock-label-tooltip-anchor-width\)\s*\+\s*var\(--desktop-dock-tooltip-gap, 32px\)\s*\);/s
   );
   assert.match(
