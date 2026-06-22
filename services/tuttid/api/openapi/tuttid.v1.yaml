@@ -76,6 +76,13 @@ paths:
           schema:
             type: string
           description: Optional workspace context. When omitted, the daemon uses the startup workspace.
+        - name: includeHidden
+          in: query
+          required: false
+          schema:
+            type: boolean
+            default: false
+          description: Include capabilities hidden from CLI command discovery by provider availability filters. Intended for metadata consumers, not command routing.
       responses:
         "200":
           description: Visible CLI capabilities

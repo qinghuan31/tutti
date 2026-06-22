@@ -113,10 +113,13 @@ export function createTuttidClient(
   });
 
   return {
-    async listCliCapabilities(workspaceID) {
+    async listCliCapabilities(workspaceID, options) {
       const response = await listCliCapabilities({
         client,
-        query: workspaceID ? { workspaceID } : undefined
+        query: {
+          ...(workspaceID ? { workspaceID } : {}),
+          ...(options?.includeHidden ? { includeHidden: true } : {})
+        }
       });
       return unwrapData(response, "CLI capabilities request failed.");
     },

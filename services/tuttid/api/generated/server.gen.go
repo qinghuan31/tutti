@@ -547,6 +547,19 @@ func (siw *ServerInterfaceWrapper) ListCliCapabilities(w http.ResponseWriter, r 
 		return
 	}
 
+	// ------------- Optional query parameter "includeHidden" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "includeHidden", r.URL.Query(), &params.IncludeHidden, runtime.BindQueryParameterOptions{Type: "boolean", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "includeHidden"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "includeHidden", Err: err})
+		}
+		return
+	}
+
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.ListCliCapabilities(w, r, params)
 	}))

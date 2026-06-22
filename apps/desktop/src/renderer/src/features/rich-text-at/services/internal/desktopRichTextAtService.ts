@@ -242,7 +242,8 @@ function createWorkspaceAppAtContributor(contributorInput: {
             }
             const response =
               await contributorInput.tuttidClient.listCliCapabilities(
-                input.workspaceId
+                input.workspaceId,
+                { includeHidden: true }
               );
             if (searchInput.abortSignal?.aborted) {
               return [];
@@ -281,7 +282,8 @@ function createWorkspaceAppAtContributor(contributorInput: {
             return resolveMentionSafely(async () => {
               const response =
                 await contributorInput.tuttidClient.listCliCapabilities(
-                  workspaceId
+                  workspaceId,
+                  { includeHidden: true }
                 );
               const item = workspaceAppAtItemsFromCapabilities({
                 agentProviderStatuses:

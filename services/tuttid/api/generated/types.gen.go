@@ -3242,6 +3242,9 @@ type GetAgentProviderStatusesParams struct {
 type ListCliCapabilitiesParams struct {
 	// WorkspaceID Optional workspace context. When omitted, the daemon uses the startup workspace.
 	WorkspaceID *string `form:"workspaceID,omitempty" json:"workspaceID,omitempty"`
+
+	// IncludeHidden Include capabilities hidden from CLI command discovery by provider availability filters. Intended for metadata consumers, not command routing.
+	IncludeHidden *bool `form:"includeHidden,omitempty" json:"includeHidden,omitempty"`
 }
 
 // ListWorkspaceAgentGeneratedFilesParams defines parameters for ListWorkspaceAgentGeneratedFiles.

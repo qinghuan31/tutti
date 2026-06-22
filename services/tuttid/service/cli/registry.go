@@ -173,7 +173,10 @@ func (r *Registry) Capabilities(ctx context.Context, invokeContext InvokeContext
 		}
 		return []Capability{}
 	}
-	allowedByProvider := r.filteredCapabilityIDsByProvider(ctx, invokeContext)
+	var allowedByProvider map[string]map[string]struct{}
+	if !invokeContext.SkipCapabilityFilters {
+		allowedByProvider = r.filteredCapabilityIDsByProvider(ctx, invokeContext)
+	}
 	result := make([]Capability, 0, len(r.commands))
 	for _, id := range r.order {
 		if command, ok := r.commands[id]; ok {

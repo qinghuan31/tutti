@@ -148,6 +148,37 @@ func TestRegistryProviderCapabilityFilterHidesStaticCapabilitiesOnlyFromList(t *
 	}
 }
 
+func TestRegistryCapabilitiesCanSkipProviderFilters(t *testing.T) {
+	provider := &filteringTestProvider{
+		testProvider: testProvider{
+			appID: "diagnostics",
+			commands: []Command{
+				testCommandWithPath("diagnostics.hidden", []string{"hidden"}),
+				testCommandWithPath("diagnostics.visible", []string{"visible"}),
+			},
+		},
+		visibleIDs: map[string]bool{
+			"diagnostics.visible": true,
+		},
+	}
+	registry, err := NewRegistryFromProviders(provider)
+	if err != nil {
+		t.Fatalf("NewRegistryFromProviders: %v", err)
+	}
+
+	capabilities := registry.Capabilities(context.Background(), InvokeContext{
+		Source:                "cli",
+		SkipCapabilityFilters: true,
+		WorkspaceID:           "ws-1",
+	})
+	if got, want := capabilityIDs(capabilities), []string{"diagnostics.hidden", "diagnostics.visible"}; !stringSlicesEqual(got, want) {
+		t.Fatalf("capability ids = %#v, want %#v", got, want)
+	}
+	if len(provider.contexts) != 0 {
+		t.Fatalf("filter contexts = %#v, want none", provider.contexts)
+	}
+}
+
 type filteringTestProvider struct {
 	testProvider
 	visibleIDs map[string]bool

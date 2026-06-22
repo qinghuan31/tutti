@@ -36,6 +36,181 @@ test("workspace app mention provider lists installed App Center apps without CLI
   assert.equal(provider.getItemLabel(items[0]!), "Vibe Design");
 });
 
+test("workspace app mention provider returns App Center apps while CLI capabilities are pending", async () => {
+  type BaseItem = {
+    appId: string;
+    description?: string;
+    label: string;
+  };
+  let resolveBaseItems: ((items: BaseItem[]) => void) | null = null;
+  const requestedKeywords: string[] = [];
+  const baseProvider: AgentContextMentionProvider<BaseItem> = {
+    id: "workspace-app",
+    trigger: "@",
+    getItemKey: (item) => item.appId,
+    getItemLabel: (item) => item.label,
+    getItemSubtitle: (item) => item.description ?? "",
+    query(input) {
+      requestedKeywords.push(input.keyword);
+      return new Promise<BaseItem[]>((resolve) => {
+        resolveBaseItems = resolve;
+      });
+    },
+    toInsertResult: (item) => ({
+      kind: "mention",
+      mention: {
+        entityId: item.appId,
+        label: item.label,
+        scope: { workspaceId: "workspace-1" },
+        presentation: { description: item.description ?? "" }
+      }
+    })
+  };
+  const provider = createDesktopWorkspaceAppMentionProvider({
+    apps: [
+      createWorkspaceApp({
+        appId: "vibe-design",
+        description: "Design prototypes in Tutti.",
+        name: "Vibe Design"
+      })
+    ],
+    baseProvider,
+    locale: "en",
+    workspaceId: "workspace-1"
+  });
+
+  const initialItems = await provider.query({
+    context: {},
+    trigger: "@",
+    keyword: "",
+    maxResults: 10
+  });
+
+  assert.deepEqual(
+    initialItems.map((item) => item.appId),
+    ["vibe-design"]
+  );
+  assert.deepEqual(requestedKeywords, [""]);
+
+  const resolveItems = resolveBaseItems as ((items: BaseItem[]) => void) | null;
+  assert.ok(resolveItems);
+  resolveItems([
+    {
+      appId: "automation",
+      description: "Schedule recurring work.",
+      label: "Automation"
+    }
+  ]);
+  await new Promise((resolve) => setTimeout(resolve, 0));
+
+  const filteredItems = await provider.query({
+    context: {},
+    trigger: "@",
+    keyword: "automation",
+    maxResults: 10
+  });
+
+  assert.deepEqual(
+    filteredItems.map((item) => item.appId),
+    ["automation"]
+  );
+  assert.deepEqual(requestedKeywords, [""]);
+});
+
+test("workspace app mention provider reuses base query results while filtering keywords", async () => {
+  const requestedKeywords: string[] = [];
+  const provider = createDesktopWorkspaceAppMentionProvider({
+    apps: [],
+    baseProvider: createBaseWorkspaceAppProvider(
+      [
+        {
+          appId: "vibe-design",
+          description: "Design prototypes in Tutti.",
+          label: "Vibe Design"
+        },
+        {
+          appId: "automation",
+          description: "Schedule and review recurring automation runs.",
+          label: "Automation"
+        }
+      ],
+      [],
+      requestedKeywords
+    ),
+    locale: "en",
+    workspaceId: "workspace-1"
+  });
+
+  const allItems = await provider.query({
+    context: {},
+    trigger: "@",
+    keyword: "",
+    maxResults: 10
+  });
+  const filteredItems = await provider.query({
+    context: {},
+    trigger: "@",
+    keyword: "design",
+    maxResults: 10
+  });
+
+  assert.deepEqual(
+    allItems.map((item) => item.appId),
+    ["vibe-design", "automation"]
+  );
+  assert.deepEqual(
+    filteredItems.map((item) => item.appId),
+    ["vibe-design"]
+  );
+  assert.deepEqual(requestedKeywords, [""]);
+});
+
+test("workspace app mention provider retries base query after transient failure", async () => {
+  let queryCount = 0;
+  const baseProvider = createBaseWorkspaceAppProvider([
+    {
+      appId: "automation",
+      description: "Schedule recurring work.",
+      label: "Automation"
+    }
+  ]);
+  const provider = createDesktopWorkspaceAppMentionProvider({
+    apps: [],
+    baseProvider: {
+      ...baseProvider,
+      query(input) {
+        queryCount += 1;
+        if (queryCount === 1) {
+          throw new Error("temporary failure");
+        }
+        return baseProvider.query(input);
+      }
+    },
+    locale: "en",
+    workspaceId: "workspace-1"
+  });
+
+  const failedItems = await provider.query({
+    context: {},
+    trigger: "@",
+    keyword: "",
+    maxResults: 10
+  });
+  const retryItems = await provider.query({
+    context: {},
+    trigger: "@",
+    keyword: "",
+    maxResults: 10
+  });
+
+  assert.deepEqual(failedItems, []);
+  assert.deepEqual(
+    retryItems.map((item) => item.appId),
+    ["automation"]
+  );
+  assert.equal(queryCount, 2);
+});
+
 test("workspace app mention provider uses localized Chinese app text", async () => {
   const provider = createDesktopWorkspaceAppMentionProvider({
     apps: [
@@ -481,7 +656,8 @@ function createBaseWorkspaceAppProvider(
     label: string;
     scopes?: string;
   }>,
-  requestedMaxResults: Array<number | undefined> = []
+  requestedMaxResults: Array<number | undefined> = [],
+  requestedKeywords: string[] = []
 ): AgentContextMentionProvider<(typeof items)[number]> {
   return {
     id: "workspace-app",
@@ -491,6 +667,7 @@ function createBaseWorkspaceAppProvider(
     getItemSubtitle: (item) => item.description ?? "",
     query(input) {
       requestedMaxResults.push(input.maxResults);
+      requestedKeywords.push(input.keyword);
       return items;
     },
     toInsertResult: (item) => ({

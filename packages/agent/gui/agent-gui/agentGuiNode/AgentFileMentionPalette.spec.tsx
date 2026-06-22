@@ -664,8 +664,8 @@ describe("AgentFileMentionPalette", () => {
       mode: "browse",
       filter: "session",
       categories: [
-        { id: "all", label: "All" },
         { id: "file", label: "Files" },
+        { id: "issue", label: "Issues" },
         { id: "session", label: "Sessions" }
       ],
       groups: [],

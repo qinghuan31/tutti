@@ -22,8 +22,8 @@ export function createDesktopTuttidClient(
   };
 
   return {
-    async listCliCapabilities(workspaceID) {
-      return (await resolveClient()).listCliCapabilities(workspaceID);
+    async listCliCapabilities(workspaceID, options) {
+      return (await resolveClient()).listCliCapabilities(workspaceID, options);
     },
     async addWorkspaceIssueContextRefs(workspaceID, issueID, request) {
       return (await resolveClient()).addWorkspaceIssueContextRefs(

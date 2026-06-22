@@ -50,6 +50,7 @@ const mockCancelDeleteConversation = vi.fn();
 const mockConfirmDeleteConversation = vi.fn();
 const mockSearchWorkspaceFileManagerEntries = vi.fn();
 const mockListWorkspaceIssues = vi.fn();
+const mockListWorkspaceApps = vi.fn();
 const mockListWorkspaceAgents = vi.fn();
 const mockListWorkspaceAgentSessionMessages = vi.fn();
 const mockGetWorkspaceAgentSessionSummary = vi.fn();
@@ -58,6 +59,7 @@ const mockBatchGetUserInfo = vi.fn();
 const {
   agentSession: AGENT_SESSION_PROVIDER_ID,
   file: FILE_PROVIDER_ID,
+  workspaceApp: WORKSPACE_APP_PROVIDER_ID,
   workspaceIssue: WORKSPACE_ISSUE_PROVIDER_ID
 } = AGENT_CONTEXT_MENTION_PROVIDER_IDS;
 const mockSelectFiles = vi.fn();
@@ -175,6 +177,34 @@ function createAgentGUITestContextMentionProviders(): readonly AgentContextMenti
           presentation: {
             description: extractAgentGUITestIssuePreview(item),
             status: item.status
+          }
+        }
+      })
+    },
+    {
+      id: WORKSPACE_APP_PROVIDER_ID,
+      trigger: "@",
+      async query({ context, keyword, maxResults }) {
+        const workspaceId = String(context.metadata?.workspaceId ?? "");
+        const result = await mockListWorkspaceApps({
+          workspaceId,
+          query: keyword,
+          limit: maxResults
+        });
+        return result.apps ?? [];
+      },
+      getItemKey: (item: any) => item.appId,
+      getItemLabel: (item: any) => item.name,
+      getItemSubtitle: (item: any) => item.description ?? "",
+      toInsertResult: (item: any) => ({
+        kind: "mention",
+        mention: {
+          entityId: item.appId,
+          label: item.name,
+          scope: { workspaceId: item.workspaceId },
+          presentation: {
+            description: item.description ?? "",
+            iconUrl: item.iconUrl ?? ""
           }
         }
       })
@@ -655,6 +685,7 @@ describe("AgentGUINode", () => {
     mockConfirmDeleteConversation.mockClear();
     mockSearchWorkspaceFileManagerEntries.mockReset();
     mockListWorkspaceIssues.mockReset();
+    mockListWorkspaceApps.mockReset();
     mockListWorkspaceAgents.mockReset();
     mockListWorkspaceAgentSessionMessages.mockReset();
     mockGetWorkspaceAgentSessionSummary.mockReset();
@@ -674,6 +705,9 @@ describe("AgentGUINode", () => {
       issues: [],
       totalCount: 0,
       statusCounts: undefined
+    });
+    mockListWorkspaceApps.mockResolvedValue({
+      apps: []
     });
     mockListWorkspaceAgents.mockResolvedValue({
       presences: [],
@@ -4295,7 +4329,13 @@ describe("AgentGUINode", () => {
         includeKinds: ["file", "directory"]
       })
     );
-    await within(palette).findByText("README.md");
+    const fileOption = (await within(palette).findByText("README.md")).closest(
+      "button"
+    );
+    expect(fileOption).not.toBeNull();
+    await waitFor(() =>
+      expect(fileOption).toHaveAttribute("aria-selected", "true")
+    );
 
     fireEvent.keyDown(getComposerEditor(), { key: "Enter" });
 
@@ -4715,6 +4755,48 @@ describe("AgentGUINode", () => {
 
     fireEvent.keyDown(getComposerEditor(), { key: "Tab" });
     await expectSelectedTab("会话");
+  });
+
+  it("loads app mentions when selecting the app tab with an empty query", async () => {
+    mockViewModel = createViewModel({
+      activeConversationId: "session-1",
+      draftPrompt: ""
+    });
+    mockListWorkspaceApps.mockResolvedValue({
+      apps: [
+        {
+          appId: "vibe-design",
+          description: "Design prototypes in Tutti.",
+          iconUrl: "tutti://workspace-apps/vibe-design/icon.png",
+          name: "Vibe Design",
+          workspaceId: "room-1"
+        }
+      ]
+    });
+    renderAgentGUINode();
+
+    pasteComposerText("@");
+
+    const palette = await screen.findByRole("listbox", {
+      name: "agentHost.agentGui.fileMentionPalette"
+    });
+    await within(palette).findByText("暂无会话");
+    fireEvent.click(within(palette).getByRole("tab", { name: "App" }));
+
+    await waitFor(() =>
+      expect(mockListWorkspaceApps).toHaveBeenCalledWith({
+        workspaceId: "room-1",
+        query: "",
+        limit: 10
+      })
+    );
+    expect(within(palette).getByRole("tab", { name: "App" })).toHaveAttribute(
+      "aria-selected",
+      "true"
+    );
+    expect(await within(palette).findByText("Vibe Design")).toBeVisible();
+    expect(mockSearchWorkspaceFileManagerEntries).not.toHaveBeenCalled();
+    expect(mockListWorkspaceIssues).not.toHaveBeenCalled();
   });
 
   it("keeps the default browse tab scoped to sessions", async () => {

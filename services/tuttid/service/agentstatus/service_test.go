@@ -1276,13 +1276,19 @@ func TestInstallCommandLockRecoverRetriesMalformedMetadataBeforeRemoving(t *test
 }
 
 func TestServiceRunActionStartsInstallTimeoutAfterLockAcquisition(t *testing.T) {
+	const (
+		installTimeout        = 2 * time.Second
+		firstInstallHold      = 800 * time.Millisecond
+		secondInstallDuration = 1400 * time.Millisecond
+	)
+
 	home := t.TempDir()
 	binDir := filepath.Join(home, ".nvm", "versions", "node", "v24.12.0", "bin")
 	if err := os.MkdirAll(binDir, 0o755); err != nil {
 		t.Fatalf("mkdir bin dir: %v", err)
 	}
 	service := probeTestService(home)
-	service.InstallTimeout = 200 * time.Millisecond
+	service.InstallTimeout = installTimeout
 	service.Registry = Registry{Specs: []ProviderSpec{{
 		Provider:           "codex",
 		BinaryNames:        []string{"codex"},
@@ -1315,7 +1321,7 @@ func TestServiceRunActionStartsInstallTimeoutAfterLockAcquisition(t *testing.T) 
 				return InstallCommandResult{ExitCode: 1, Stderr: ctx.Err().Error()}, ctx.Err()
 			}
 		} else {
-			time.Sleep(80 * time.Millisecond)
+			time.Sleep(secondInstallDuration)
 		}
 		writeExecutable(t, filepath.Join(binDir, "codex"), "#!/bin/sh\nexit 0\n")
 		writeExecutable(t, filepath.Join(binDir, "codex-acp"), "#!/bin/sh\nsleep 5\n")
@@ -1346,7 +1352,7 @@ func TestServiceRunActionStartsInstallTimeoutAfterLockAcquisition(t *testing.T) 
 		secondDone <- runResult{result: result, err: err}
 	}()
 
-	time.Sleep(150 * time.Millisecond)
+	time.Sleep(firstInstallHold)
 	close(releaseFirstInstall)
 
 	first := <-firstDone
@@ -1373,7 +1379,7 @@ func TestServiceRunActionStartsInstallTimeoutAfterLockAcquisition(t *testing.T) 
 	if len(startedAt) != 2 {
 		t.Fatalf("len(startedAt) = %d, want 2", len(startedAt))
 	}
-	if wait := startedAt[1].Sub(secondStartedAt); wait < 140*time.Millisecond {
+	if wait := startedAt[1].Sub(secondStartedAt); wait < firstInstallHold-100*time.Millisecond {
 		t.Fatalf("second install started too early after %v, want it to wait for the lock", wait)
 	}
 }

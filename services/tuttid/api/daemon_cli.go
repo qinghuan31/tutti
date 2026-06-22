@@ -22,7 +22,12 @@ func (api DaemonAPI) ListCliCapabilities(ctx context.Context, request tuttigener
 	if request.Params.WorkspaceID != nil {
 		workspaceID = *request.Params.WorkspaceID
 	}
-	capabilities := api.CLIRegistry.Capabilities(ctx, cliservice.InvokeContext{Source: "cli", WorkspaceID: workspaceID})
+	includeHidden := request.Params.IncludeHidden != nil && *request.Params.IncludeHidden
+	capabilities := api.CLIRegistry.Capabilities(ctx, cliservice.InvokeContext{
+		Source:                "cli",
+		WorkspaceID:           workspaceID,
+		SkipCapabilityFilters: includeHidden,
+	})
 	return tuttigenerated.ListCliCapabilities200JSONResponse{
 		Commands: generatedCliCapabilities(capabilities),
 	}, nil

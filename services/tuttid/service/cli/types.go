@@ -55,10 +55,11 @@ type Capability struct {
 }
 
 type InvokeContext struct {
-	Source          string
-	WorkspaceID     string
-	ParentCommandID string
-	AgentSessionID  string
+	Source                string
+	WorkspaceID           string
+	ParentCommandID       string
+	AgentSessionID        string
+	SkipCapabilityFilters bool
 }
 
 type InvokeRequest struct {

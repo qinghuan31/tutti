@@ -1838,6 +1838,10 @@ export type ListCliCapabilitiesData = {
      * Optional workspace context. When omitted, the daemon uses the startup workspace.
      */
     workspaceID?: string;
+    /**
+     * Include capabilities hidden from CLI command discovery by provider availability filters. Intended for metadata consumers, not command routing.
+     */
+    includeHidden?: boolean;
   };
   url: "/v1/cli/capabilities";
 };

@@ -36,6 +36,8 @@ interface BuiltInWorkspaceAppResource {
   };
 }
 
+const BASE_ITEMS_INTERACTIVE_WAIT_MS = 150;
+
 export interface CreateDesktopWorkspaceAppMentionProviderInput {
   readonly apps: readonly WorkspaceAppCenterApp[];
   readonly baseProvider: AgentContextMentionProvider;
@@ -49,6 +51,55 @@ export function createDesktopWorkspaceAppMentionProvider({
   locale,
   workspaceId
 }: CreateDesktopWorkspaceAppMentionProviderInput): AgentContextMentionProvider<DesktopWorkspaceAppMentionItem> {
+  let cachedBaseItems: readonly unknown[] | null = null;
+  let pendingBaseItems: Promise<readonly unknown[]> | null = null;
+
+  const loadBaseItems = (
+    input: Parameters<AgentContextMentionProvider["query"]>[0]
+  ): Promise<readonly unknown[]> => {
+    if (cachedBaseItems) {
+      return Promise.resolve(cachedBaseItems);
+    }
+    pendingBaseItems ??= Promise.resolve()
+      .then(() =>
+        baseProvider.query({
+          ...input,
+          abortSignal: undefined,
+          keyword: "",
+          maxResults: undefined
+        })
+      )
+      .then((items) => {
+        cachedBaseItems = items;
+        return items;
+      })
+      .catch(() => {
+        return [] as readonly unknown[];
+      })
+      .finally(() => {
+        pendingBaseItems = null;
+      });
+    return pendingBaseItems;
+  };
+
+  const loadBaseItemsForInteractiveQuery = (
+    input: Parameters<AgentContextMentionProvider["query"]>[0]
+  ): Promise<readonly unknown[]> => {
+    if (cachedBaseItems) {
+      return Promise.resolve(cachedBaseItems);
+    }
+    const baseItemsPromise = loadBaseItems(input);
+    return new Promise((resolve) => {
+      const timeout = setTimeout(() => {
+        resolve(cachedBaseItems ?? []);
+      }, BASE_ITEMS_INTERACTIVE_WAIT_MS);
+      void baseItemsPromise.then((items) => {
+        clearTimeout(timeout);
+        resolve(items);
+      });
+    });
+  };
+
   return {
     id: AGENT_CONTEXT_MENTION_PROVIDER_IDS.workspaceApp,
     trigger: "@",
@@ -58,13 +109,7 @@ export function createDesktopWorkspaceAppMentionProvider({
     getItemIconUrl: (item) => item.iconUrl,
     async query(input) {
       const normalizedKeyword = normalizeSearchText(input.keyword);
-      const baseItems = await Promise.resolve(
-        baseProvider.query({
-          ...input,
-          keyword: "",
-          maxResults: undefined
-        })
-      );
+      const baseItems = await loadBaseItemsForInteractiveQuery(input);
       const appMetadataById = new Map(
         apps.map((app) => [app.appId, app] as const)
       );

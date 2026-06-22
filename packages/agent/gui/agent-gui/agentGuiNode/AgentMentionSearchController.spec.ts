@@ -500,6 +500,87 @@ describe("AgentMentionSearchController", () => {
     expect(queryIssues).not.toHaveBeenCalled();
   });
 
+  it("loads the app provider when switching to the app tab for blank queries", async () => {
+    const queryWorkspaceApps = vi.fn().mockResolvedValue({
+      apps: [
+        {
+          appId: "vibe-design",
+          description: "Design prototypes in Tutti.",
+          name: "Vibe Design",
+          workspaceId: "room-1"
+        }
+      ]
+    });
+    const queryFiles = vi.fn().mockResolvedValue({
+      workspaceId: "room-1",
+      root: "/workspace",
+      entries: []
+    });
+    const queryIssues = vi.fn().mockResolvedValue({
+      issues: [],
+      totalCount: 0,
+      statusCounts: undefined
+    });
+    const querySessions = vi
+      .fn()
+      .mockResolvedValue({ presences: [], sessions: [] });
+    const controller = new AgentMentionSearchController({
+      queryFiles,
+      queryIssues,
+      querySessions,
+      queryWorkspaceApps,
+      loadSessionMessages: vi
+        .fn()
+        .mockResolvedValue({ messages: [], latestVersion: 0, hasMore: false }),
+      loadSessionSummary: vi.fn(),
+      loadUserProfiles: vi.fn().mockResolvedValue({ users: [] })
+    });
+    const states: unknown[] = [];
+    controller.subscribe((state) => states.push(state));
+
+    controller.updateQuery({ workspaceId: "room-1", query: "" });
+    await vi.waitFor(() =>
+      expect(states.at(-1)).toMatchObject({
+        status: "ready",
+        mode: "browse",
+        filter: "session"
+      })
+    );
+    controller.setFilter("app");
+
+    expect(states.at(-1)).toMatchObject({
+      status: "loading",
+      mode: "browse",
+      filter: "app"
+    });
+    await vi.waitFor(() =>
+      expect(states.at(-1)).toMatchObject({
+        status: "ready",
+        mode: "browse",
+        filter: "app",
+        groups: [
+          expect.objectContaining({
+            id: "apps",
+            items: [
+              expect.objectContaining({
+                kind: "workspace-app",
+                appId: "vibe-design"
+              })
+            ]
+          })
+        ]
+      })
+    );
+    expect(queryWorkspaceApps).toHaveBeenCalledWith({
+      workspaceId: "room-1",
+      query: "",
+      limit: 10
+    });
+    expect(queryFiles).not.toHaveBeenCalled();
+    expect(queryIssues).not.toHaveBeenCalled();
+    expect(querySessions).toHaveBeenCalledTimes(1);
+  });
+
   it("reuses fresh browse results when the mention palette reopens", async () => {
     let now = 1_000;
     const queryFiles = vi.fn().mockResolvedValue({
@@ -2686,6 +2767,97 @@ describe("AgentMentionSearchController", () => {
     expect(querySessions).toHaveBeenCalledTimes(1);
     expect(queryFiles).not.toHaveBeenCalled();
     expect(queryApps).not.toHaveBeenCalled();
+    vi.useRealTimers();
+  });
+
+  it("searches the app provider with the existing query after switching to the app tab", async () => {
+    vi.useFakeTimers();
+    const queryFiles = vi.fn().mockResolvedValue({
+      workspaceId: "room-1",
+      root: "/workspace",
+      entries: []
+    });
+    const queryIssues = vi.fn().mockResolvedValue({
+      issues: [],
+      totalCount: 0,
+      statusCounts: undefined
+    });
+    const queryWorkspaceApps = vi.fn().mockResolvedValue({
+      apps: [
+        {
+          appId: "vibe-design",
+          description: "Design prototypes in Tutti.",
+          name: "Vibe Design",
+          workspaceId: "room-1"
+        }
+      ]
+    });
+    const querySessions = vi
+      .fn()
+      .mockResolvedValue({ presences: [], sessions: [] });
+    const controller = new AgentMentionSearchController({
+      queryFiles,
+      queryIssues,
+      querySessions,
+      queryWorkspaceApps,
+      loadSessionMessages: vi
+        .fn()
+        .mockResolvedValue({ messages: [], latestVersion: 0, hasMore: false }),
+      loadSessionSummary: vi.fn(),
+      loadUserProfiles: vi.fn().mockResolvedValue({ users: [] }),
+      debounceMs: 20
+    });
+    const states: unknown[] = [];
+    controller.subscribe((state) => states.push(state));
+
+    controller.updateQuery({
+      workspaceId: "room-1",
+      currentUserId: "local",
+      query: "design"
+    });
+    await vi.advanceTimersByTimeAsync(20);
+    await vi.waitFor(() =>
+      expect(states.at(-1)).toMatchObject({
+        status: "ready",
+        mode: "results",
+        filter: "session"
+      })
+    );
+    controller.setFilter("app");
+
+    expect(states.at(-1)).toMatchObject({
+      status: "loading",
+      mode: "results",
+      filter: "app",
+      query: "design"
+    });
+    await vi.waitFor(() =>
+      expect(states.at(-1)).toMatchObject({
+        status: "ready",
+        mode: "results",
+        filter: "app",
+        query: "design",
+        groups: [
+          expect.objectContaining({
+            id: "apps",
+            items: [
+              expect.objectContaining({
+                kind: "workspace-app",
+                appId: "vibe-design"
+              })
+            ]
+          })
+        ]
+      })
+    );
+    expect(queryWorkspaceApps).toHaveBeenCalledWith({
+      workspaceId: "room-1",
+      query: "design",
+      limit: 10
+    });
+    expect(queryFiles).not.toHaveBeenCalled();
+    expect(queryIssues).not.toHaveBeenCalled();
+    expect(querySessions).toHaveBeenCalledTimes(1);
     vi.useRealTimers();
   });
 

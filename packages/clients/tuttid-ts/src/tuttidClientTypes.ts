@@ -117,7 +117,10 @@ export type TuttidTrackEvent = TrackEvent;
 export type TuttidTrackEventsRequest = TrackEventsRequest;
 
 export interface TuttidClient {
-  listCliCapabilities(workspaceID?: string): Promise<CliCapabilitiesResponse>;
+  listCliCapabilities(
+    workspaceID?: string,
+    options?: { includeHidden?: boolean }
+  ): Promise<CliCapabilitiesResponse>;
   addWorkspaceIssueContextRefs(
     workspaceID: string,
     issueID: string,
