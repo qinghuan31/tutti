@@ -23,6 +23,7 @@ import { normalizeAgentTitleText } from "../shared/utils/agentTitleText";
 import { AgentInteractivePromptSurface } from "../shared/agentConversation/components/AgentInteractivePromptSurface";
 import { AgentMessageMarkdown } from "../shared/AgentMessageMarkdown";
 import { AgentVerticalScrollArea } from "../shared/AgentVerticalScrollArea";
+import { WorkspaceAgentSessionDetail } from "../shared/WorkspaceAgentSessionDetail";
 import { managedAgentRoundedIconUrl } from "../shared/managedAgentIcons";
 import { workspaceAgentActivityStatusLabel } from "../shared/workspaceAgentActivityStatusLabel";
 import { workspaceAgentProviderLabel } from "../shared/workspaceAgentProviderLabel";
@@ -128,7 +129,9 @@ export function WorkspaceAgentMessageCenterCard({
         </span>
       </div>
 
-      {summary ? (
+      {item.detail?.turns.length ? (
+        <MessageCenterSessionDetail item={item} onLinkAction={onLinkAction} />
+      ) : summary ? (
         <MessageCenterSummary
           item={item}
           onLinkAction={onLinkAction}
@@ -593,6 +596,57 @@ function MessageCenterSummary({
         emptyLabel
       )}
     </AgentVerticalScrollArea>
+  );
+}
+
+function MessageCenterSessionDetail({
+  item,
+  onLinkAction
+}: {
+  item: WorkspaceAgentMessageCenterItem;
+  onLinkAction?: (action: WorkspaceLinkAction) => void;
+}): JSX.Element | null {
+  "use memo";
+  const { t } = useTranslation();
+  const detail = item.detail ?? null;
+  const handleLinkAction = useCallback(
+    (action: WorkspaceLinkAction): void => {
+      onLinkAction?.(
+        action.type === "open-agent-session" && !action.provider
+          ? { ...action, provider: item.provider }
+          : action
+      );
+    },
+    [item.provider, onLinkAction]
+  );
+
+  if (!detail || detail.turns.length === 0) {
+    return null;
+  }
+
+  return (
+    <div
+      className="workspace-agent-message-center__session-detail min-w-0 rounded-md bg-transparency-block"
+      onPointerDown={stopMessageCenterTextPointerPropagation}
+    >
+      <AgentVerticalScrollArea
+        className="max-h-[360px] min-w-0"
+        viewportClassName="max-h-[360px] p-2.5 pr-4"
+        scrollbarClassName="top-2 bottom-2 right-1.5"
+        syncKey={`${item.agentSessionId}:${item.timelineItemCount ?? detail.turns.length}`}
+      >
+        <WorkspaceAgentSessionDetail
+          detail={detail}
+          isLoading={item.status === "working" || item.status === "waiting"}
+          timelineItemCount={item.timelineItemCount ?? detail.turns.length}
+          onLinkAction={handleLinkAction}
+          toolCallsLabel={(count) =>
+            t("agentHost.workspaceAgentSessionDetailToolCalls", { count })
+          }
+          thinkingLabel={t("agentHost.workspaceAgentSessionDetailThinking")}
+        />
+      </AgentVerticalScrollArea>
+    </div>
   );
 }
 

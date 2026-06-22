@@ -27,3 +27,12 @@ test("issue manager card does not submit the deck prompt interactively", () => {
     /workspaceAgentActivityService\.submitInteractive\(/
   );
 });
+
+test("issue manager card projects latest runs through message center snapshot", () => {
+  assert.match(source, /issueManagerLatestRunMessageCenterSnapshot/);
+  assert.match(
+    source,
+    /buildWorkspaceAgentMessageCenterModel\(messageCenterSnapshot,/
+  );
+  assert.match(source, /findWorkspaceAgentSession\(messageCenterSnapshot,/);
+});

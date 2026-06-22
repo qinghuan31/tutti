@@ -169,6 +169,40 @@ describe("buildWorkspaceAgentMessageCenterModel", () => {
     });
   });
 
+  it("builds session detail from the same message timeline used by conversations", () => {
+    const model = buildWorkspaceAgentMessageCenterModel(
+      snapshot({
+        messages: [
+          message({
+            agentSessionId: "session-1",
+            messageId: "user-1",
+            role: "user",
+            kind: "text",
+            payload: { text: "Please inspect the workspace." },
+            occurredAtUnixMs: 10,
+            turnId: "turn-1"
+          }),
+          message({
+            agentSessionId: "session-1",
+            messageId: "assistant-1",
+            role: "assistant",
+            kind: "text",
+            payload: { text: "I found the relevant files." },
+            occurredAtUnixMs: 20,
+            turnId: "turn-1"
+          })
+        ],
+        sessions: [session({ agentSessionId: "session-1" })]
+      })
+    );
+
+    expect(model.items[0]?.timelineItemCount).toBe(2);
+    expect(model.items[0]?.detail?.turns[0]).toMatchObject({
+      userMessage: { body: "Please inspect the workspace." },
+      agentMessages: [{ body: "I found the relevant files." }]
+    });
+  });
+
   it("prefers displayPrompt for message-center model summaries", () => {
     const model = buildWorkspaceAgentMessageCenterModel(
       snapshot({

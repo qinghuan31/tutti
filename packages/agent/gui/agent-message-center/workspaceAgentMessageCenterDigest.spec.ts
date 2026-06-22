@@ -61,6 +61,32 @@ describe("buildWorkspaceAgentMessageCenterDigest", () => {
     });
   });
 
+  it("renders structured content arrays as message summaries", () => {
+    const digest = buildWorkspaceAgentMessageCenterDigest({
+      fallbackTitle: "Fallback title",
+      messages: [
+        message({
+          messageId: "assistant-1",
+          role: "assistant",
+          payload: {
+            content: [
+              { type: "text", text: "First paragraph." },
+              { type: "text", text: "Second paragraph." }
+            ]
+          },
+          occurredAtUnixMs: 10
+        })
+      ],
+      needsAttention: null,
+      pendingPrompt: null,
+      status: "idle"
+    });
+
+    expect(digest.primary).toMatchObject({
+      summary: "First paragraph. Second paragraph."
+    });
+  });
+
   it("prioritizes input-required over terminal-looking message summaries", () => {
     const digest = buildWorkspaceAgentMessageCenterDigest({
       fallbackTitle: "Fallback title",

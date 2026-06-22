@@ -108,9 +108,18 @@ function IssueManagerLatestRunMessageCenterCard({
     void workspaceAgentActivityService.load(workspaceId);
   }, [workspaceAgentActivityService, workspaceId]);
 
+  const messageCenterSnapshot = useMemo(
+    () =>
+      issueManagerLatestRunMessageCenterSnapshot({
+        agentSessionId,
+        input,
+        snapshot
+      }),
+    [agentSessionId, input, snapshot]
+  );
   const model = useMemo(
     () =>
-      buildWorkspaceAgentMessageCenterModel(snapshot, {
+      buildWorkspaceAgentMessageCenterModel(messageCenterSnapshot, {
         promptFallbackLabels: {
           constraintHeader: i18n.t(
             "workspace.agentMessageCenter.promptConstraintHeader"
@@ -121,11 +130,11 @@ function IssueManagerLatestRunMessageCenterCard({
         },
         workspaceRoot: null
       }),
-    [i18n, snapshot]
+    [i18n, messageCenterSnapshot]
   );
   const targetSession = useMemo(
-    () => findWorkspaceAgentSession(snapshot, agentSessionId),
-    [agentSessionId, snapshot]
+    () => findWorkspaceAgentSession(messageCenterSnapshot, agentSessionId),
+    [agentSessionId, messageCenterSnapshot]
   );
   const modelItem = useMemo(
     () =>
@@ -286,6 +295,68 @@ function findWorkspaceAgentSession(
   );
 }
 
+function issueManagerLatestRunMessageCenterSnapshot({
+  agentSessionId,
+  input,
+  snapshot
+}: {
+  agentSessionId: string;
+  input: IssueManagerLatestRunStatusRenderInput;
+  snapshot: AgentActivitySnapshot;
+}): AgentActivitySnapshot {
+  if (
+    !agentSessionId ||
+    findWorkspaceAgentSession(snapshot, agentSessionId) ||
+    !hasCachedIssueManagerRunMessages(
+      snapshot.sessionMessagesById,
+      agentSessionId
+    )
+  ) {
+    return snapshot;
+  }
+  const latestRun = input.latestRun;
+  const timestamp = issueManagerRunTimestampToUnixMs(
+    latestRun.updatedAtUnix ??
+      latestRun.completedAtUnix ??
+      latestRun.startedAtUnix ??
+      latestRun.createdAtUnix
+  );
+  return {
+    ...snapshot,
+    sessions: [
+      ...snapshot.sessions,
+      {
+        workspaceId: snapshot.workspaceId || latestRun.workspaceId,
+        agentSessionId,
+        provider: latestRun.agentProvider?.trim() || "codex",
+        cwd: latestRun.executionDirectory?.trim() || "",
+        title: input.title || agentSessionId,
+        status: issueManagerRunStatusToAgentActivityStatus(latestRun.status),
+        userId: latestRun.requesterUserId?.trim() || undefined,
+        visible: true,
+        createdAtUnixMs: issueManagerRunTimestampToUnixMs(
+          latestRun.createdAtUnix
+        ),
+        startedAtUnixMs: issueManagerRunTimestampToUnixMs(
+          latestRun.startedAtUnix
+        ),
+        endedAtUnixMs: issueManagerRunTimestampToUnixMs(
+          latestRun.completedAtUnix
+        ),
+        updatedAtUnixMs: timestamp,
+        lastEventUnixMs: timestamp
+      }
+    ]
+  };
+}
+
+function hasCachedIssueManagerRunMessages(
+  sessionMessagesById: AgentActivitySnapshot["sessionMessagesById"],
+  agentSessionId: string
+): boolean {
+  return (sessionMessagesById[agentSessionId.trim()]?.length ?? 0) > 0;
+}
+
 function findWorkspaceAgentMessageCenterItem({
   agentSessionId,
   itemCandidates,
@@ -369,6 +440,24 @@ function issueManagerRunStatusToMessageCenterStatus(
       return "canceled";
     default:
       return "idle";
+  }
+}
+
+function issueManagerRunStatusToAgentActivityStatus(status: string): string {
+  switch (status) {
+    case "running":
+    case "in_progress":
+      return "working";
+    case "pending_acceptance":
+      return "waiting";
+    case "completed":
+    case "failed":
+    case "canceled":
+      return status;
+    case "not_started":
+      return "queued";
+    default:
+      return "unknown";
   }
 }
 
