@@ -107,6 +107,10 @@ test("off minimize gives immediate shell feedback and defers the state commit", 
   );
   assert.match(
     source,
+    /flushSync\(\(\) => \{\s*clearPendingMinimizedNode\(nodeID\);\s*showNodeForGenie\(nodeID\);\s*runMinimize\(\);/
+  );
+  assert.match(
+    source,
     /frameID = window\.requestAnimationFrame\(\(\) => \{[\s\S]*timerID = setTimeout\(commitMinimize, 0\);/
   );
 });

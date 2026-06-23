@@ -1009,6 +1009,7 @@ export function useWorkbenchGenieAnimation<TData>({
             animationCleanupRef.current = null;
             flushSync(() => {
               clearPendingMinimizedNode(nodeID);
+              showNodeForGenie(nodeID);
               runMinimize();
             });
             scheduleReleaseMinimizedDockEnterAnimation(nodeID);
