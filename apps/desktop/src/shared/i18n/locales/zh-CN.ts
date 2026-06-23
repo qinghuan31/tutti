@@ -166,6 +166,12 @@ export const zhCN = {
       runningCount: "{{count}} 个运行中",
       waitingCount: "{{count}} 个等待"
     },
+    feedbackGroup: {
+      instruction: "请使用微信扫码",
+      qrAlt: "反馈群二维码",
+      trigger: "加入反馈群",
+      triggerAria: "加入反馈群"
+    },
     externalImport: {
       back: "返回",
       description: "按项目导入本机 Codex 和 Claude Code 最近 30 天的会话历史",

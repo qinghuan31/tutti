@@ -1536,6 +1536,20 @@
       "iconVariant": "lined"
     },
     {
+      "id": "feedback-filled-icon",
+      "layer": "base",
+      "name": "FeedbackIcon",
+      "export": "FeedbackIcon",
+      "from": "@tutti-os/ui-system/icons",
+      "category": "icon",
+      "status": "stable",
+      "source": "src/icons/system-icons.tsx",
+      "description": "System icon for feedback or feedback group entry actions.",
+      "useCases": ["Feedback actions", "Feedback group entry buttons"],
+      "migrationHints": [],
+      "iconVariant": "filled"
+    },
+    {
       "id": "pause-lined-icon",
       "layer": "base",
       "name": "PauseIcon",

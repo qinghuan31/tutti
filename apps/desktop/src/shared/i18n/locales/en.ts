@@ -171,6 +171,12 @@ export const en = {
       runningCount: "{{count}} running",
       waitingCount: "{{count}} waiting"
     },
+    feedbackGroup: {
+      instruction: "Scan with WeChat",
+      qrAlt: "Feedback group QR code",
+      trigger: "Join Feedback Group",
+      triggerAria: "Join feedback group"
+    },
     externalImport: {
       back: "Back",
       description:
