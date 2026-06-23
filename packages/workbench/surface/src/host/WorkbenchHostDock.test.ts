@@ -231,7 +231,7 @@ test("pending minimized dock slots reuse minimized layout without preview captur
   );
   assert.match(
     source,
-    /providePreview=\{\s*isPendingMinimizedNode\s*\?\s*undefined\s*:\s*provideMinimizedNodePreview\s*\}/
+    /providePreview=\{\s*isPendingMinimizedNode\s*\?\s*undefined\s*:\s*provideMinimizedNodePreviewForNode\(node\)\s*\}/
   );
 });
 
@@ -240,6 +240,18 @@ test("component minimized dock previews freeze without snapshot capture", () => 
   assert.match(
     source,
     /if \(minimizedDock\?\.kind !== "component"\) \{\s*return null;\s*\}/
+  );
+  assert.match(
+    source,
+    /const provideMinimizedNodePreviewForNode = useCallback/
+  );
+  assert.match(
+    source,
+    /return minimizedDock\?\.kind === "component"\s*\?\s*provideMinimizedNodePreview\s*:\s*undefined;/
+  );
+  assert.match(
+    source,
+    /providePreview=\{provideMinimizedNodePreviewForNode\(\s*node\s*\)\}/
   );
   assert.match(
     source,

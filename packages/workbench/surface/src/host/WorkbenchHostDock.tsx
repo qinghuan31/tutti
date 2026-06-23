@@ -1209,6 +1209,17 @@ export function WorkbenchHostDock({
     ]
   );
 
+  const provideMinimizedNodePreviewForNode = useCallback(
+    (node: WorkbenchMinimizedDockNode) => {
+      const minimizedDock = nodeDefinitions.get(node.data.typeId)?.window
+        ?.minimizedDock;
+      return minimizedDock?.kind === "component"
+        ? provideMinimizedNodePreview
+        : undefined;
+    },
+    [nodeDefinitions, provideMinimizedNodePreview]
+  );
+
   if (dockItems.length === 0 && presentDockItems.length === 0) {
     return null;
   }
@@ -1725,7 +1736,9 @@ export function WorkbenchHostDock({
                                 className={`desktop-dock__minimized-stack-layer desktop-dock__minimized-stack-layer--${index}`}
                                 dockPreviewCache={dockPreviewCache}
                                 node={node}
-                                providePreview={provideMinimizedNodePreview}
+                                providePreview={provideMinimizedNodePreviewForNode(
+                                  node
+                                )}
                                 workspaceId={workspaceId}
                               />
                             );
@@ -1880,7 +1893,7 @@ export function WorkbenchHostDock({
                     providePreview={
                       isPendingMinimizedNode
                         ? undefined
-                        : provideMinimizedNodePreview
+                        : provideMinimizedNodePreviewForNode(node)
                     }
                     workspaceId={workspaceId}
                   />
