@@ -1,6 +1,7 @@
 import {
   useCallback,
   useEffect,
+  memo,
   useMemo,
   useRef,
   useState,
@@ -135,6 +136,60 @@ type DesktopAgentProbeState = NonNullable<
   AgentGUIProps["workspaceAgentProbes"]
 >;
 
+function areDesktopAgentGUIWorkbenchBodyPropsEqual(
+  previous: DesktopAgentGUIWorkbenchBodyProps,
+  next: DesktopAgentGUIWorkbenchBodyProps
+): boolean {
+  return (
+    previous.agentActivityRuntime === next.agentActivityRuntime &&
+    previous.agentHostApi === next.agentHostApi &&
+    previous.appCenterService === next.appCenterService &&
+    previous.agentProviderStatusService === next.agentProviderStatusService &&
+    previous.computerUseApi === next.computerUseApi &&
+    previous.dockPreviewCache === next.dockPreviewCache &&
+    previous.onLinkAction === next.onLinkAction &&
+    previous.onCapabilitySettingsRequest === next.onCapabilitySettingsRequest &&
+    previous.onOpenAgentConversationWindow ===
+      next.onOpenAgentConversationWindow &&
+    previous.previewMode === next.previewMode &&
+    previous.contextMentionProviders === next.contextMentionProviders &&
+    previous.runtimeApi === next.runtimeApi &&
+    previous.trackWorkspaceFileReferences ===
+      next.trackWorkspaceFileReferences &&
+    previous.workspaceFileReferenceAdapter ===
+      next.workspaceFileReferenceAdapter &&
+    previous.onRequestGitBranches === next.onRequestGitBranches &&
+    previous.referenceSourceAggregator === next.referenceSourceAggregator &&
+    previous.resolveMentionReferenceTarget ===
+      next.resolveMentionReferenceTarget &&
+    previous.workspaceId === next.workspaceId &&
+    areDesktopAgentGUIWorkbenchBodyContextsEqual(previous.context, next.context)
+  );
+}
+
+function areDesktopAgentGUIWorkbenchBodyContextsEqual(
+  previous: WorkbenchHostNodeBodyContext,
+  next: WorkbenchHostNodeBodyContext
+): boolean {
+  return (
+    previous === next ||
+    (previous.activation === next.activation &&
+      previous.displayMode === next.displayMode &&
+      previous.externalNodeState === next.externalNodeState &&
+      previous.host === next.host &&
+      previous.instanceId === next.instanceId &&
+      previous.instanceKey === next.instanceKey &&
+      previous.isFocused === next.isFocused &&
+      previous.node.id === next.node.id &&
+      previous.node.title === next.node.title &&
+      previous.node.frame.width === next.node.frame.width &&
+      previous.node.frame.height === next.node.frame.height &&
+      previous.node.frame.x === next.node.frame.x &&
+      previous.node.frame.y === next.node.frame.y &&
+      previous.node.data.runtimeNodeState === next.node.data.runtimeNodeState)
+  );
+}
+
 function desktopComputerUseStatusesEqual(
   left: DesktopComputerUseStatus | null,
   right: DesktopComputerUseStatus | null
@@ -153,7 +208,7 @@ function desktopComputerUseStatusesEqual(
   );
 }
 
-export function DesktopAgentGUIWorkbenchBody({
+function DesktopAgentGUIWorkbenchBodyImpl({
   agentActivityRuntime,
   agentHostApi,
   appCenterService,
@@ -850,3 +905,8 @@ export function DesktopAgentGUIWorkbenchBody({
     />
   );
 }
+
+export const DesktopAgentGUIWorkbenchBody = memo(
+  DesktopAgentGUIWorkbenchBodyImpl,
+  areDesktopAgentGUIWorkbenchBodyPropsEqual
+);

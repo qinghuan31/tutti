@@ -96,6 +96,7 @@ export interface PreferencesDesktopPreferencesV1 {
     "appBrowser" | "defaultBrowser" | "fileViewer" | "system"
   >;
   locale: "en" | "zh-CN";
+  minimizeAnimation: "scale" | "genie" | "off";
   sleepPreventionMode: "never" | "whileAgentRunning" | "always";
   themeSource: "system" | "dark" | "light";
   updateChannel: "stable" | "rc";

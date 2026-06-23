@@ -18,16 +18,19 @@ import {
   defaultDesktopDockIconStyle,
   defaultDesktopDockPlacement,
   defaultDesktopFileDefaultOpenersByExtension,
+  defaultDesktopMinimizeAnimation,
   defaultDesktopSleepPreventionMode,
   defaultDesktopUpdateChannel,
   defaultDesktopUpdatePolicy,
   desktopFileDefaultOpenersByExtensionEqual,
+  isDesktopMinimizeAnimation,
   type DesktopAgentProvider,
   type DesktopAppCatalogChannel,
   type DesktopBrowserUseConnectionMode,
   type DesktopDockIconStyle,
   type DesktopDockPlacement,
   type DesktopFileDefaultOpenersByExtension,
+  type DesktopMinimizeAnimation,
   type DesktopSleepPreventionMode,
   type DesktopUpdateChannel,
   type DesktopUpdatePolicy
@@ -52,6 +55,7 @@ export interface DesktopHostPreferencesState {
   getDockPlacement(): DesktopDockPlacement;
   getFileDefaultOpenersByExtension(): DesktopFileDefaultOpenersByExtension;
   getLocale(): DesktopLocale;
+  getMinimizeAnimation(): DesktopMinimizeAnimation;
   getSleepPreventionMode(): DesktopSleepPreventionMode;
   getThemeSource(): DesktopThemeSource;
   getUpdateChannel(): DesktopUpdateChannel;
@@ -67,6 +71,7 @@ export interface DesktopHostPreferencesState {
     dockPlacement?: DesktopDockPlacement;
     fileDefaultOpenersByExtension?: DesktopFileDefaultOpenersByExtension;
     locale?: DesktopLocale;
+    minimizeAnimation?: DesktopMinimizeAnimation;
     sleepPreventionMode?: DesktopSleepPreventionMode;
     themeSource?: DesktopThemeSource;
     updateChannel?: DesktopUpdateChannel;
@@ -110,6 +115,11 @@ export async function createDesktopHostPreferencesState(
     initialPreferences.fileDefaultOpenersByExtension ??
     defaultDesktopFileDefaultOpenersByExtension;
   let locale = initialPreferences.locale;
+  let minimizeAnimation = isDesktopMinimizeAnimation(
+    initialPreferences.minimizeAnimation
+  )
+    ? initialPreferences.minimizeAnimation
+    : defaultDesktopMinimizeAnimation;
   let sleepPreventionMode = initialPreferences.sleepPreventionMode;
   let themeSource = initialPreferences.themeSource;
   let updateChannel = initialPreferences.updateChannel;
@@ -144,6 +154,9 @@ export async function createDesktopHostPreferencesState(
     getLocale() {
       return locale;
     },
+    getMinimizeAnimation() {
+      return minimizeAnimation;
+    },
     getSleepPreventionMode() {
       return sleepPreventionMode;
     },
@@ -175,6 +188,7 @@ export async function createDesktopHostPreferencesState(
       const previousFileDefaultOpenersByExtension =
         fileDefaultOpenersByExtension;
       const previousLocale = locale;
+      const previousMinimizeAnimation = minimizeAnimation;
       const previousSleepPreventionMode = sleepPreventionMode;
       const previousThemeSource = themeSource;
       const previousUpdateChannel = updateChannel;
@@ -238,6 +252,9 @@ export async function createDesktopHostPreferencesState(
       if (input.locale) {
         locale = input.locale;
       }
+      if (input.minimizeAnimation) {
+        minimizeAnimation = input.minimizeAnimation;
+      }
       if (input.sleepPreventionMode) {
         sleepPreventionMode = input.sleepPreventionMode;
       }
@@ -263,6 +280,7 @@ export async function createDesktopHostPreferencesState(
         fileDefaultOpenersByExtension !==
           previousFileDefaultOpenersByExtension ||
         locale !== previousLocale ||
+        minimizeAnimation !== previousMinimizeAnimation ||
         sleepPreventionMode !== previousSleepPreventionMode ||
         themeSource !== previousThemeSource ||
         updateChannel !== previousUpdateChannel ||
@@ -301,6 +319,7 @@ async function resolveInitialDesktopPreferences(
           fileDefaultOpenersByExtension:
             defaultDesktopFileDefaultOpenersByExtension,
           locale: options.fallbackLocale,
+          minimizeAnimation: defaultDesktopMinimizeAnimation,
           sleepPreventionMode: defaultDesktopSleepPreventionMode,
           themeSource: defaultDesktopThemeSource,
           updateChannel: defaultDesktopUpdateChannel,
@@ -323,6 +342,7 @@ async function resolveInitialDesktopPreferences(
       fileDefaultOpenersByExtension:
         defaultDesktopFileDefaultOpenersByExtension,
       locale: options.fallbackLocale,
+      minimizeAnimation: defaultDesktopMinimizeAnimation,
       sleepPreventionMode: defaultDesktopSleepPreventionMode,
       themeSource: defaultDesktopThemeSource,
       updateChannel: defaultDesktopUpdateChannel,
@@ -335,22 +355,40 @@ async function migrateInitializedDesktopPreferences(
   options: CreateDesktopHostPreferencesOptions,
   preferences: PutDesktopPreferencesRequest["preferences"]
 ): Promise<PutDesktopPreferencesRequest["preferences"]> {
+  const normalizedMinimizeAnimation = isDesktopMinimizeAnimation(
+    preferences.minimizeAnimation
+  )
+    ? preferences.minimizeAnimation
+    : defaultDesktopMinimizeAnimation;
   if (
     preferences.updateChannel !== "stable" ||
     defaultDesktopUpdateChannel !== "rc"
   ) {
-    return preferences;
+    if (preferences.minimizeAnimation === normalizedMinimizeAnimation) {
+      return preferences;
+    }
+    return {
+      ...preferences,
+      minimizeAnimation: normalizedMinimizeAnimation
+    };
   }
 
   const markerPath = resolveUpdateChannelDefaultMigrationMarkerPath(options);
   if (await hasMigrationMarker(markerPath)) {
-    return preferences;
+    if (preferences.minimizeAnimation === normalizedMinimizeAnimation) {
+      return preferences;
+    }
+    return {
+      ...preferences,
+      minimizeAnimation: normalizedMinimizeAnimation
+    };
   }
 
   try {
     const response = await options.tuttidClient.putDesktopPreferences({
       preferences: {
         ...preferences,
+        minimizeAnimation: normalizedMinimizeAnimation,
         updateChannel: defaultDesktopUpdateChannel
       }
     });
@@ -360,7 +398,10 @@ async function migrateInitializedDesktopPreferences(
     options.logger.warn("failed to migrate default desktop update channel", {
       error: error instanceof Error ? error.message : String(error)
     });
-    return preferences;
+    return {
+      ...preferences,
+      minimizeAnimation: normalizedMinimizeAnimation
+    };
   }
 }
 

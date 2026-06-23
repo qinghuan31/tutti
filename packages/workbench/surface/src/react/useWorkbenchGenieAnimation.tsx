@@ -8,6 +8,7 @@ import {
 import { createPortal, flushSync } from "react-dom";
 import type { WorkbenchController } from "../store/types.ts";
 import type { WorkbenchNode } from "../core/types.ts";
+import type { WorkbenchMinimizeAnimation } from "./types.ts";
 import type {
   WorkbenchDockPreviewCache,
   WorkbenchDockPreviewCacheKeyResolver
@@ -24,6 +25,7 @@ import {
 } from "./genieAnimation.ts";
 
 const genieDurationMs = 400;
+const scaleMinimizeDurationMs = 220;
 const genieMaxDevicePixelRatio = 2;
 const genieSnapshotScale = 1;
 const minimizedDockSlotEnterAnimationMs = 720;
@@ -71,15 +73,17 @@ function isFocusedWorkbenchNode<TData>(
   return controller.getSnapshot().nodeStack.at(-1) === nodeID;
 }
 
-export interface WorkbenchGenieController {
+export interface WorkbenchGenieController<TData = unknown> {
   genieLayer: ReactNode;
   isNodeGenieHidden: (nodeID: string) => boolean;
+  isPendingMinimizedDockNode: (nodeID: string) => boolean;
   launchNodeFromAnchor: (
     anchorKey: string,
     nodeID: string,
     launch: () => Promise<string | null | void> | string | null | void
   ) => void;
   minimizeNodeToAnchor: (nodeID: string, minimize?: () => void) => void;
+  pendingMinimizedNode: WorkbenchNode<TData> | null;
   registerDockAnchor: (anchorKey: string, element: HTMLElement | null) => void;
   shouldAnimateMinimizedDockEnter: (nodeID: string) => boolean;
 }
@@ -362,7 +366,7 @@ export async function captureWorkbenchNodePreviewImage(
   return previewImageUrl;
 }
 
-async function captureWorkbenchNodePreviewImageForNode<TData>(
+async function captureProvidedWorkbenchNodePreviewImageForNode<TData>(
   node: WorkbenchNode<TData>,
   input: {
     captureNodePreviewImage?: WorkbenchNodePreviewImageCapture<TData>;
@@ -373,16 +377,12 @@ async function captureWorkbenchNodePreviewImageForNode<TData>(
   const previewImageUrl = await Promise.resolve(
     input.captureNodePreviewImage?.(node) ?? null
   ).catch(() => null);
-  if (previewImageUrl) {
-    writeCachedWorkbenchNodePreviewImage(node.id, previewImageUrl);
-    persistWorkbenchNodePreviewImage(node, previewImageUrl, input);
-    return previewImageUrl;
+  if (!previewImageUrl) {
+    return null;
   }
-  const capturedPreviewImageUrl = await captureWorkbenchNodePreviewImage(
-    node.id
-  );
-  persistWorkbenchNodePreviewImage(node, capturedPreviewImageUrl, input);
-  return capturedPreviewImageUrl;
+  writeCachedWorkbenchNodePreviewImage(node.id, previewImageUrl);
+  persistWorkbenchNodePreviewImage(node, previewImageUrl, input);
+  return previewImageUrl;
 }
 
 function persistWorkbenchNodePreviewImage<TData>(
@@ -437,15 +437,19 @@ export function useWorkbenchGenieAnimation<TData>({
   captureNodePreviewImage,
   controller,
   dockPreviewCache,
+  minimizeAnimation = "scale",
   resolveDockAnchorKey,
-  resolveDockPreviewCacheKey
+  resolveDockPreviewCacheKey,
+  shouldCaptureNodePreviewImage
 }: {
   captureNodePreviewImage?: WorkbenchNodePreviewImageCapture<TData>;
   controller: WorkbenchController<TData>;
   dockPreviewCache?: WorkbenchDockPreviewCache;
+  minimizeAnimation?: WorkbenchMinimizeAnimation;
   resolveDockAnchorKey?: (node: WorkbenchNode<TData>) => string;
   resolveDockPreviewCacheKey?: WorkbenchDockPreviewCacheKeyResolver<TData>;
-}): WorkbenchGenieController {
+  shouldCaptureNodePreviewImage?: (node: WorkbenchNode<TData>) => boolean;
+}): WorkbenchGenieController<TData> {
   const dockAnchorElementsRef = useRef(new Map<string, HTMLElement>());
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const rafRef = useRef<number | null>(null);
@@ -459,6 +463,8 @@ export function useWorkbenchGenieAnimation<TData>({
   const [genieHiddenNodeIDs, setGenieHiddenNodeIDs] = useState(
     () => new Set<string>()
   );
+  const [pendingMinimizedNode, setPendingMinimizedNode] =
+    useState<WorkbenchNode<TData> | null>(null);
 
   const registerDockAnchor = useCallback(
     (anchorKey: string, element: HTMLElement | null) => {
@@ -546,6 +552,12 @@ export function useWorkbenchGenieAnimation<TData>({
       next.delete(nodeID);
       return next;
     });
+  }, []);
+
+  const clearPendingMinimizedNode = useCallback((nodeID: string) => {
+    setPendingMinimizedNode((current) =>
+      current?.id === nodeID ? null : current
+    );
   }, []);
 
   const setupCanvas = useCallback(() => {
@@ -676,6 +688,116 @@ export function useWorkbenchGenieAnimation<TData>({
     [setupCanvas, stopAnimation]
   );
 
+  const runScaleWindowAnimation = useCallback(
+    ({
+      direction,
+      dockRect,
+      nodeElement,
+      onCancel,
+      onComplete,
+      skipStop
+    }: {
+      direction: WorkbenchGenieDirection;
+      dockRect: WorkbenchGenieViewportRect;
+      nodeElement: HTMLElement;
+      onCancel: () => void;
+      onComplete: () => void;
+      skipStop?: boolean;
+    }) => {
+      if (!skipStop) {
+        stopAnimation();
+      }
+      const windowRect = viewportRectFromElement(nodeElement);
+      if (!isUsableGenieRect(windowRect) || !isUsableGenieRect(dockRect)) {
+        onComplete();
+        return;
+      }
+
+      const generation = animationGenerationRef.current;
+      const fromCenter = centerPointFromRect(windowRect);
+      const toCenter = centerPointFromRect(dockRect);
+      const targetScale = Math.max(
+        0.04,
+        Math.min(
+          0.32,
+          dockRect.width / Math.max(1, windowRect.width),
+          dockRect.height / Math.max(1, windowRect.height)
+        )
+      );
+      const previousPointerEvents = nodeElement.style.pointerEvents;
+      const previousTransformOrigin = nodeElement.style.transformOrigin;
+      const previousVisibility = nodeElement.style.visibility;
+      const previousZIndex = nodeElement.style.zIndex;
+      nodeElement.style.pointerEvents = "none";
+      nodeElement.style.transformOrigin = "center center";
+      nodeElement.style.visibility = "visible";
+      nodeElement.style.zIndex = "var(--z-workbench-genie)";
+
+      const dockTransform = `translate3d(${toCenter.x - fromCenter.x}px, ${
+        toCenter.y - fromCenter.y
+      }px, 0) scale(${targetScale})`;
+      const windowTransform = "translate3d(0, 0, 0) scale(1)";
+      const keyframes =
+        direction === "open"
+          ? [
+              {
+                opacity: 0,
+                transform: dockTransform
+              },
+              {
+                opacity: 1,
+                transform: windowTransform
+              }
+            ]
+          : [
+              {
+                opacity: 1,
+                transform: windowTransform
+              },
+              {
+                opacity: 0,
+                transform: dockTransform
+              }
+            ];
+      const animation = nodeElement.animate(keyframes, {
+        duration: scaleMinimizeDurationMs,
+        easing: "cubic-bezier(0.4, 0, 0.2, 1)",
+        fill: "forwards"
+      });
+
+      const restoreElement = () => {
+        animation.cancel();
+        nodeElement.style.pointerEvents = previousPointerEvents;
+        nodeElement.style.transformOrigin = previousTransformOrigin;
+        nodeElement.style.visibility = previousVisibility;
+        nodeElement.style.zIndex = previousZIndex;
+      };
+
+      animationCleanupRef.current = () => {
+        restoreElement();
+        onCancel();
+      };
+      animation.finished
+        .then(() => {
+          if (generation !== animationGenerationRef.current) {
+            return;
+          }
+          animationCleanupRef.current = null;
+          restoreElement();
+          onComplete();
+        })
+        .catch(() => {
+          if (generation !== animationGenerationRef.current) {
+            return;
+          }
+          animationCleanupRef.current = null;
+          restoreElement();
+          onComplete();
+        });
+    },
+    [stopAnimation]
+  );
+
   useEffect(() => () => stopAnimation(false), [stopAnimation]);
 
   const startOpenOrRestoreAnimation = useCallback(
@@ -685,7 +807,10 @@ export function useWorkbenchGenieAnimation<TData>({
       generation: number,
       dockRectFallback: WorkbenchGenieViewportRect | null
     ) => {
-      if (shouldReduceMotion()) {
+      const effectiveMinimizeAnimation = shouldReduceMotion()
+        ? "off"
+        : minimizeAnimation;
+      if (effectiveMinimizeAnimation === "off") {
         animationCleanupRef.current = null;
         showNodeForGenie(nodeID);
         return;
@@ -701,6 +826,33 @@ export function useWorkbenchGenieAnimation<TData>({
           ? resolvedDockRect
           : dockRectFallback;
       const nodeElement = resolveNodeElement(nodeID);
+      if (effectiveMinimizeAnimation === "scale") {
+        if (!dockRect || !nodeElement || !isUsableGenieRect(dockRect)) {
+          animationCleanupRef.current = null;
+          showNodeForGenie(nodeID);
+          return;
+        }
+        flushSync(() => {
+          showNodeForGenie(nodeID);
+        });
+        runScaleWindowAnimation({
+          direction: "open",
+          dockRect,
+          nodeElement,
+          onCancel: () => {
+            flushSync(() => {
+              showNodeForGenie(nodeID);
+            });
+          },
+          onComplete: () => {
+            flushSync(() => {
+              showNodeForGenie(nodeID);
+            });
+          }
+        });
+        return;
+      }
+
       const captureTarget = nodeElement
         ? resolveWorkbenchCaptureElement(nodeElement)
         : null;
@@ -748,9 +900,11 @@ export function useWorkbenchGenieAnimation<TData>({
     },
     [
       clearCanvas,
+      minimizeAnimation,
       resolveDockAnchorRect,
       resolveNodeElement,
       runGenieAnimation,
+      runScaleWindowAnimation,
       showNodeForGenie
     ]
   );
@@ -770,6 +924,18 @@ export function useWorkbenchGenieAnimation<TData>({
       }
 
       if (target.isMinimized !== true) {
+        void Promise.resolve(launch()).catch(() => {});
+        return;
+      }
+
+      const effectiveMinimizeAnimation = shouldReduceMotion()
+        ? "off"
+        : minimizeAnimation;
+      if (effectiveMinimizeAnimation === "off") {
+        stopAnimation();
+        flushSync(() => {
+          showNodeForGenie(nodeID);
+        });
         void Promise.resolve(launch()).catch(() => {});
         return;
       }
@@ -798,6 +964,7 @@ export function useWorkbenchGenieAnimation<TData>({
       clearCanvas,
       controller,
       hideNodeForGenie,
+      minimizeAnimation,
       resolveDockAnchorRect,
       showNodeForGenie,
       startOpenOrRestoreAnimation,
@@ -816,23 +983,152 @@ export function useWorkbenchGenieAnimation<TData>({
         }
         const runMinimize =
           minimize ?? (() => controller.commands.minimizeNode(nodeID));
-        if (shouldReduceMotion()) {
-          const wasFocusedForCapture = isFocusedWorkbenchNode(
-            controller,
-            nodeID
-          );
-          if (!wasFocusedForCapture) {
+        const effectiveMinimizeAnimation = shouldReduceMotion()
+          ? "off"
+          : minimizeAnimation;
+        const shouldCapturePreview =
+          shouldCaptureNodePreviewImage?.(target) ?? true;
+        if (effectiveMinimizeAnimation === "off") {
+          stopAnimation();
+          let frameID: number | null = null;
+          let timerID: ReturnType<typeof setTimeout> | null = null;
+          let minimizeCommitted = false;
+          const commitMinimize = () => {
+            if (minimizeCommitted) {
+              return;
+            }
+            minimizeCommitted = true;
+            if (frameID !== null) {
+              window.cancelAnimationFrame(frameID);
+              frameID = null;
+            }
+            if (timerID !== null) {
+              clearTimeout(timerID);
+              timerID = null;
+            }
+            animationCleanupRef.current = null;
+            flushSync(() => {
+              clearPendingMinimizedNode(nodeID);
+              showNodeForGenie(nodeID);
+              runMinimize();
+            });
+            scheduleReleaseMinimizedDockEnterAnimation(nodeID);
+          };
+          animationCleanupRef.current = () => {
+            releaseMinimizedDockEnterAnimation(nodeID);
+            commitMinimize();
+          };
+          registerMinimizedDockEnterAnimation(nodeID);
+          flushSync(() => {
+            hideNodeForGenie(nodeID);
+            setPendingMinimizedNode({
+              ...target,
+              isMinimized: true,
+              minimizedAtUnixMs: Date.now()
+            });
+          });
+          if (shouldCapturePreview) {
+            void captureProvidedWorkbenchNodePreviewImageForNode(target, {
+              captureNodePreviewImage,
+              dockPreviewCache,
+              resolveDockPreviewCacheKey
+            });
+          }
+          frameID = window.requestAnimationFrame(() => {
+            frameID = null;
+            timerID = setTimeout(commitMinimize, 0);
+          });
+          return;
+        }
+
+        if (effectiveMinimizeAnimation === "scale") {
+          stopAnimation();
+          const generation = animationGenerationRef.current;
+          const nodeElement = resolveNodeElement(nodeID);
+          if (!nodeElement) {
+            runMinimize();
+            return;
+          }
+          const wasFocusedForCapture =
+            shouldCapturePreview && isFocusedWorkbenchNode(controller, nodeID);
+          if (shouldCapturePreview && !wasFocusedForCapture) {
             flushSync(() => {
               controller.commands.focusNode(nodeID);
             });
             await waitForNextAnimationFrame();
+            if (generation !== animationGenerationRef.current) {
+              return;
+            }
           }
-          await captureWorkbenchNodePreviewImageForNode(target, {
-            captureNodePreviewImage,
-            dockPreviewCache,
-            resolveDockPreviewCacheKey
+
+          if (shouldCapturePreview) {
+            void captureProvidedWorkbenchNodePreviewImageForNode(target, {
+              captureNodePreviewImage,
+              dockPreviewCache,
+              resolveDockPreviewCacheKey
+            });
+          }
+
+          let minimizeCommitted = false;
+          const commitMinimize = () => {
+            if (minimizeCommitted) {
+              return;
+            }
+            minimizeCommitted = true;
+            runMinimize();
+          };
+          const cleanupPendingMinimize = () => {
+            releaseMinimizedDockEnterAnimation(nodeID);
+            flushSync(() => {
+              clearPendingMinimizedNode(nodeID);
+              commitMinimize();
+            });
+          };
+          const pendingMinimizedNode: WorkbenchNode<TData> = {
+            ...target,
+            isMinimized: true,
+            minimizedAtUnixMs: Date.now()
+          };
+          registerMinimizedDockEnterAnimation(nodeID);
+
+          flushSync(() => {
+            setPendingMinimizedNode(pendingMinimizedNode);
           });
-          runMinimize();
+          animationCleanupRef.current = cleanupPendingMinimize;
+
+          await waitForNextAnimationFrame();
+          if (generation !== animationGenerationRef.current) {
+            return;
+          }
+
+          const anchorKey = resolveAnchorKeyForNode(pendingMinimizedNode);
+          const dockRect = resolveDockAnchorRect(anchorKey);
+          if (
+            !nodeElement.isConnected ||
+            !dockRect ||
+            !isUsableGenieRect(dockRect)
+          ) {
+            cleanupPendingMinimize();
+            return;
+          }
+
+          runScaleWindowAnimation({
+            direction: "minimize",
+            dockRect,
+            nodeElement,
+            onCancel: () => {
+              cleanupPendingMinimize();
+            },
+            onComplete: () => {
+              animationCleanupRef.current = null;
+              flushSync(() => {
+                clearPendingMinimizedNode(nodeID);
+                commitMinimize();
+              });
+              scheduleReleaseMinimizedDockEnterAnimation(nodeID);
+            },
+            skipStop: true
+          });
           return;
         }
 
@@ -900,36 +1196,47 @@ export function useWorkbenchGenieAnimation<TData>({
           });
         }
 
-        const cleanupHiddenNode = () => {
+        let minimizeCommitted = false;
+        const commitMinimize = () => {
+          if (minimizeCommitted) {
+            return;
+          }
+          minimizeCommitted = true;
+          runMinimize();
+        };
+        const pendingMinimizedNode: WorkbenchNode<TData> = {
+          ...target,
+          isMinimized: true,
+          minimizedAtUnixMs: Date.now()
+        };
+        const cleanupPendingGenieMinimize = () => {
+          releaseMinimizedDockEnterAnimation(nodeID);
           flushSync(() => {
+            clearPendingMinimizedNode(nodeID);
             showNodeForGenie(nodeID);
+            commitMinimize();
           });
           clearCanvas();
         };
-        animationCleanupRef.current = cleanupHiddenNode;
+        animationCleanupRef.current = cleanupPendingGenieMinimize;
 
         registerMinimizedDockEnterAnimation(nodeID);
 
         flushSync(() => {
+          setPendingMinimizedNode(pendingMinimizedNode);
           hideNodeForGenie(nodeID);
-          runMinimize();
         });
 
         await waitForNextAnimationFrame();
         if (generation !== animationGenerationRef.current) {
-          releaseMinimizedDockEnterAnimation(nodeID);
           return;
         }
 
-        const minimizedTarget =
-          controller.getSnapshot().nodes.find((node) => node.id === nodeID) ??
-          target;
-        const anchorKey = resolveAnchorKeyForNode(minimizedTarget);
+        const anchorKey = resolveAnchorKeyForNode(pendingMinimizedNode);
         const dockRect = resolveDockAnchorRect(anchorKey);
         if (!dockRect || !isUsableGenieRect(dockRect)) {
-          releaseMinimizedDockEnterAnimation(nodeID);
           animationCleanupRef.current = null;
-          cleanupHiddenNode();
+          cleanupPendingGenieMinimize();
           return;
         }
 
@@ -937,16 +1244,14 @@ export function useWorkbenchGenieAnimation<TData>({
           direction: "minimize",
           dockRect,
           onCancel: () => {
-            releaseMinimizedDockEnterAnimation(nodeID);
-            flushSync(() => {
-              showNodeForGenie(nodeID);
-            });
-            clearCanvas();
+            cleanupPendingGenieMinimize();
           },
           onComplete: () => {
             scheduleReleaseMinimizedDockEnterAnimation(nodeID);
             flushSync(() => {
+              clearPendingMinimizedNode(nodeID);
               showNodeForGenie(nodeID);
+              commitMinimize();
             });
             clearCanvas();
           },
@@ -959,8 +1264,10 @@ export function useWorkbenchGenieAnimation<TData>({
       clearCanvas,
       controller,
       captureNodePreviewImage,
+      clearPendingMinimizedNode,
       dockPreviewCache,
       hideNodeForGenie,
+      minimizeAnimation,
       registerMinimizedDockEnterAnimation,
       releaseMinimizedDockEnterAnimation,
       resolveAnchorKeyForNode,
@@ -968,7 +1275,9 @@ export function useWorkbenchGenieAnimation<TData>({
       resolveDockAnchorRect,
       resolveNodeElement,
       runGenieAnimation,
+      runScaleWindowAnimation,
       scheduleReleaseMinimizedDockEnterAnimation,
+      shouldCaptureNodePreviewImage,
       setupCanvas,
       showNodeForGenie,
       stopAnimation
@@ -1005,8 +1314,13 @@ export function useWorkbenchGenieAnimation<TData>({
       (nodeID: string) => genieHiddenNodeIDs.has(nodeID),
       [genieHiddenNodeIDs]
     ),
+    isPendingMinimizedDockNode: useCallback(
+      (nodeID: string) => pendingMinimizedNode?.id === nodeID,
+      [pendingMinimizedNode]
+    ),
     launchNodeFromAnchor,
     minimizeNodeToAnchor,
+    pendingMinimizedNode,
     registerDockAnchor,
     shouldAnimateMinimizedDockEnter
   };

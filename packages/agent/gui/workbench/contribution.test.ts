@@ -298,6 +298,67 @@ describe("agent GUI workbench contribution copy", () => {
     expect(preview?.revision).not.toContain("Stale session title");
   });
 
+  it("falls back to snapshot minimized previews when the host has no minimized renderer", () => {
+    const contribution = createAgentGuiWorkbenchContribution({
+      renderBody: () => null,
+      workspaceId: "workspace-1"
+    });
+
+    expect(contribution.nodes?.[0]?.window?.minimizedDock).toEqual({
+      kind: "snapshot"
+    });
+  });
+
+  it("uses the host minimized preview renderer for agent GUI minimized slots", () => {
+    const contribution = createAgentGuiWorkbenchContribution({
+      renderBody: () => null,
+      renderMinimizedPreview: () => "minimized-preview",
+      resolveDockPopupTitle: (state) =>
+        state?.lastActiveAgentSessionId === "session-1"
+          ? "Current session title"
+          : null,
+      workspaceId: "workspace-1"
+    });
+    const minimizedDock = contribution.nodes?.[0]?.window?.minimizedDock;
+    expect(minimizedDock?.kind).toBe("component");
+    if (minimizedDock?.kind !== "component") {
+      throw new Error("expected component minimized preview");
+    }
+
+    const preview =
+      minimizedDock.providePreview({
+        externalNodeState: {
+          lastActiveAgentSessionId: "session-1",
+          lastActiveConversationTitle: "Stale session title"
+        },
+        externalWorkspaceState: null,
+        host: {} as never,
+        isFocused: false,
+        isMinimized: true,
+        node: {
+          data: {
+            dockEntryId: agentGuiWorkbenchTypeId,
+            instanceId: "agent-gui:codex:panel:test-1",
+            typeId: agentGuiWorkbenchTypeId
+          },
+          displayMode: "floating",
+          frame: { height: 560, width: 1040, x: 0, y: 0 },
+          id: "agent-gui:agent-gui:codex:panel:test-1",
+          isMinimized: true,
+          restoreFrame: null,
+          title: "Codex"
+        } as never
+      }) ?? null;
+
+    expect(preview?.kind).toBe("component");
+    if (preview?.kind !== "component") {
+      throw new Error("expected component preview content");
+    }
+    expect(preview.element).toBe("minimized-preview");
+    expect(preview.revision).toContain("Current session title");
+    expect(preview.revision).not.toContain("Stale session title");
+  });
+
   it("shows a new-session action when collapsed", () => {
     const contribution = createAgentGuiWorkbenchContribution({
       renderBody: () => null,

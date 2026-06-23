@@ -26,6 +26,7 @@ CREATE TABLE IF NOT EXISTS desktop_preferences (
   agent_gui_conversation_rail_collapsed_by_provider_json TEXT NOT NULL DEFAULT '{}',
   file_default_openers_by_extension_json TEXT NOT NULL DEFAULT '{"htm":"appBrowser","html":"appBrowser","shtml":"appBrowser","xhtml":"appBrowser"}',
   locale TEXT NOT NULL,
+  minimize_animation TEXT NOT NULL DEFAULT 'scale',
   theme_source TEXT NOT NULL,
   sleep_prevention_mode TEXT NOT NULL DEFAULT 'never',
   browser_use_connection_mode TEXT NOT NULL DEFAULT 'isolated',
@@ -105,6 +106,43 @@ INSERT INTO tuttid_schema_migrations (id, applied_at_unix_ms)
 		return fmt.Errorf("record desktop app catalog channel migration: %w", err)
 	}
 
+	return nil
+}
+
+func (s *SQLiteStore) applyDesktopPreferencesMinimizeAnimationV1(ctx context.Context) error {
+	applied, err := s.hasMigration(ctx, schemaMigrationDesktopPreferencesMinimizeAnimationV1)
+	if err != nil {
+		return err
+	}
+	if applied {
+		return nil
+	}
+
+	hasMinimizeAnimation, err := s.hasColumn(ctx, "desktop_preferences", "minimize_animation")
+	if err != nil {
+		return err
+	}
+
+	now := unixMs(time.Now().UTC())
+	if !hasMinimizeAnimation {
+		_, err = s.db.ExecContext(ctx, `
+ALTER TABLE desktop_preferences ADD COLUMN minimize_animation TEXT NOT NULL DEFAULT 'scale';
+INSERT INTO tuttid_schema_migrations (id, applied_at_unix_ms)
+  VALUES (?, ?);
+`, schemaMigrationDesktopPreferencesMinimizeAnimationV1, now)
+		if err != nil {
+			return fmt.Errorf("migrate workspace database for desktop preferences minimize animation: %w", err)
+		}
+		return nil
+	}
+
+	_, err = s.db.ExecContext(ctx, `
+INSERT INTO tuttid_schema_migrations (id, applied_at_unix_ms)
+  VALUES (?, ?);
+`, schemaMigrationDesktopPreferencesMinimizeAnimationV1, now)
+	if err != nil {
+		return fmt.Errorf("mark desktop preferences minimize animation migration: %w", err)
+	}
 	return nil
 }
 

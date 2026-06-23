@@ -43,6 +43,7 @@ test("desktop host preferences follows authoritative preference events", async (
       dockPlacement: "bottom",
       fileDefaultOpenersByExtension: { html: "defaultBrowser" },
       locale: "zh-CN",
+      minimizeAnimation: "scale",
       sleepPreventionMode: "never",
       themeSource: "dark",
       updateChannel: "stable",
@@ -78,6 +79,7 @@ test("desktop host preferences follows authoritative preference events", async (
       dockPlacement: "bottom",
       fileDefaultOpenersByExtension: { html: "defaultBrowser" },
       locale: "en",
+      minimizeAnimation: "scale",
       sleepPreventionMode: "never",
       themeSource: "dark",
       updateChannel: "stable",
@@ -115,6 +117,8 @@ function createHostPreferencesState(): DesktopHostPreferencesState {
   let fileDefaultOpenersByExtension: DesktopPreferencesStateResponse["preferences"]["fileDefaultOpenersByExtension"] =
     { html: "defaultBrowser" };
   let locale: DesktopPreferencesStateResponse["preferences"]["locale"] = "en";
+  let minimizeAnimation: DesktopPreferencesStateResponse["preferences"]["minimizeAnimation"] =
+    "scale";
   let sleepPreventionMode: DesktopPreferencesStateResponse["preferences"]["sleepPreventionMode"] =
     "never";
   let themeSource: DesktopThemeSource = "system";
@@ -135,6 +139,9 @@ function createHostPreferencesState(): DesktopHostPreferencesState {
     },
     getLocale() {
       return locale;
+    },
+    getMinimizeAnimation() {
+      return minimizeAnimation;
     },
     getDefaultAgentProvider() {
       return defaultAgentProvider;
@@ -176,6 +183,9 @@ function createHostPreferencesState(): DesktopHostPreferencesState {
       }
       if (input.locale) {
         locale = input.locale;
+      }
+      if (input.minimizeAnimation) {
+        minimizeAnimation = input.minimizeAnimation;
       }
       if (input.defaultAgentProvider) {
         defaultAgentProvider = input.defaultAgentProvider;

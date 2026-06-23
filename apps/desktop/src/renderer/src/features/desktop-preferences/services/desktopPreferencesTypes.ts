@@ -8,6 +8,7 @@ import type {
   DesktopDockIconStyle,
   DesktopDockPlacement,
   DesktopFileDefaultOpenersByExtension,
+  DesktopMinimizeAnimation,
   DesktopSleepPreventionMode,
   DesktopUpdateChannel,
   DesktopUpdatePolicy
@@ -21,6 +22,7 @@ export interface DesktopPreferencesStoreState {
   changingDockIconStyle: DesktopDockIconStyle | null;
   changingDockPlacement: DesktopDockPlacement | null;
   changingLocale: DesktopLocale | null;
+  changingMinimizeAnimation: DesktopMinimizeAnimation | null;
   changingSleepPreventionMode: DesktopSleepPreventionMode | null;
   changingThemeSource: DesktopThemeSource | null;
   changingUpdateChannel: DesktopUpdateChannel | null;
@@ -34,6 +36,7 @@ export interface DesktopPreferencesStoreState {
   dockPlacement: DesktopDockPlacement;
   fileDefaultOpenersByExtension: DesktopFileDefaultOpenersByExtension;
   locale: DesktopLocale;
+  minimizeAnimation: DesktopMinimizeAnimation;
   sleepPreventionMode: DesktopSleepPreventionMode;
   theme: DesktopThemeState;
   updateChannel: DesktopUpdateChannel;
@@ -47,6 +50,7 @@ export interface DesktopPreferencesReadableStoreState {
   readonly changingDockIconStyle: DesktopDockIconStyle | null;
   readonly changingDockPlacement: DesktopDockPlacement | null;
   readonly changingLocale: DesktopLocale | null;
+  readonly changingMinimizeAnimation: DesktopMinimizeAnimation | null;
   readonly changingSleepPreventionMode: DesktopSleepPreventionMode | null;
   readonly changingThemeSource: DesktopThemeSource | null;
   readonly changingUpdateChannel: DesktopUpdateChannel | null;
@@ -60,6 +64,7 @@ export interface DesktopPreferencesReadableStoreState {
   readonly dockPlacement: DesktopDockPlacement;
   readonly fileDefaultOpenersByExtension: DesktopFileDefaultOpenersByExtension;
   readonly locale: DesktopLocale;
+  readonly minimizeAnimation: DesktopMinimizeAnimation;
   readonly sleepPreventionMode: DesktopSleepPreventionMode;
   readonly theme: DesktopThemeState;
   readonly updateChannel: DesktopUpdateChannel;

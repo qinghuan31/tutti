@@ -10,6 +10,14 @@ export type DesktopDockIconStyle = (typeof desktopDockIconStyles)[number];
 
 export const defaultDesktopDockIconStyle: DesktopDockIconStyle = "default";
 
+export const desktopMinimizeAnimations = ["scale", "genie", "off"] as const;
+
+export type DesktopMinimizeAnimation =
+  (typeof desktopMinimizeAnimations)[number];
+
+export const defaultDesktopMinimizeAnimation: DesktopMinimizeAnimation =
+  "scale";
+
 export const desktopBrowserUseConnectionModes = [
   "isolated",
   "autoConnect"
@@ -57,6 +65,15 @@ export function isDesktopDockIconStyle(
   return (
     typeof value === "string" &&
     desktopDockIconStyles.includes(value as DesktopDockIconStyle)
+  );
+}
+
+export function isDesktopMinimizeAnimation(
+  value: unknown
+): value is DesktopMinimizeAnimation {
+  return (
+    typeof value === "string" &&
+    desktopMinimizeAnimations.includes(value as DesktopMinimizeAnimation)
   );
 }
 

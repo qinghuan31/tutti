@@ -181,6 +181,22 @@ test("dock overflow keeps scroll controls viewport-bound", () => {
     css,
     /\.desktop-dock\[data-dock-placement="left"\]\s+\.desktop-dock__minimized-preview\s*{[^}]*transform-origin:\s*left center;/s
   );
+  assert.match(
+    css,
+    /\.desktop-dock__minimized-preview--component\s*{[^}]*padding:\s*0;[^}]*background:\s*var\(--background-panel\);/s
+  );
+  assert.match(
+    css,
+    /\.desktop-dock__minimized-preview--component > \*\s*{[^}]*width:\s*100%;[^}]*height:\s*100%;/s
+  );
+  assert.match(
+    css,
+    /\.desktop-dock__minimized-preview-freeze-source\s*{[^}]*visibility:\s*hidden;[^}]*pointer-events:\s*none;/s
+  );
+  assert.match(
+    css,
+    /\.desktop-dock__minimized-preview-frozen-content\s*{[^}]*display:\s*block;[^}]*overflow:\s*hidden;/s
+  );
   assert.match(css, /\.desktop-dock__slot\s*{[^}]*flex:\s*0 0 auto;/s);
   assert.match(
     css,

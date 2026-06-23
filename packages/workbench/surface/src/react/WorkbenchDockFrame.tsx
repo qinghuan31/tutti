@@ -12,7 +12,7 @@ import type { WorkbenchGenieController } from "./useWorkbenchGenieAnimation.tsx"
 
 export interface WorkbenchDockFrameProps<TData = unknown> {
   dockPlacement?: WorkbenchDockPlacement;
-  genie: WorkbenchGenieController;
+  genie: WorkbenchGenieController<TData>;
   interactive?: boolean;
   renderDock?: (context: WorkbenchDockContext<TData>) => ReactNode;
 }
@@ -36,9 +36,17 @@ export function WorkbenchDockFrame<TData>({
   const nodes = useWorkbenchSelector<TData, readonly WorkbenchNode<TData>[]>(
     selectDockNodes
   );
+  const minimizedNodesWithPending = useMemo(
+    () =>
+      mergePendingMinimizedDockNode(
+        nodes.filter((node) => node.isMinimized),
+        genie.pendingMinimizedNode
+      ),
+    [genie.pendingMinimizedNode, nodes]
+  );
   const minimizedNodes = useMemo(
-    () => nodes.filter((node) => node.isMinimized),
-    [nodes]
+    () => minimizedNodesWithPending.filter((node) => node.isMinimized),
+    [minimizedNodesWithPending]
   );
   const focusedNodeId = useWorkbenchSelector(
     (state) => selectFocusedWorkbenchNode(state)?.id ?? null
@@ -84,6 +92,9 @@ export function WorkbenchDockFrame<TData>({
                 },
                 shouldAnimateMinimizedDockEnter: (nodeID) => {
                   return genie.shouldAnimateMinimizedDockEnter(nodeID);
+                },
+                isPendingMinimizedDockNode: (nodeID) => {
+                  return genie.isPendingMinimizedDockNode(nodeID);
                 }
               },
               minimizedNodes,
@@ -93,4 +104,20 @@ export function WorkbenchDockFrame<TData>({
       </div>
     </>
   );
+}
+
+function mergePendingMinimizedDockNode<TData>(
+  nodes: readonly WorkbenchNode<TData>[],
+  pendingNode: WorkbenchNode<TData> | null
+): readonly WorkbenchNode<TData>[] {
+  if (!pendingNode) {
+    return nodes;
+  }
+
+  const existingNode = nodes.find((node) => node.id === pendingNode.id);
+  if (existingNode?.isMinimized) {
+    return nodes;
+  }
+
+  return [...nodes.filter((node) => node.id !== pendingNode.id), pendingNode];
 }

@@ -82,6 +82,9 @@ function createHostServices(): DesktopHostServices {
       getLocale() {
         return "en";
       },
+      getMinimizeAnimation() {
+        return "scale";
+      },
       getSleepPreventionMode() {
         return "never";
       },

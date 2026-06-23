@@ -240,6 +240,7 @@ export type DesktopPreferences = {
   dockPlacement: DesktopDockPlacement;
   fileDefaultOpenersByExtension: DesktopFileDefaultOpenersByExtension;
   locale: DesktopLocale;
+  minimizeAnimation: DesktopMinimizeAnimation;
   sleepPreventionMode: DesktopSleepPreventionMode;
   themeSource: DesktopThemeSource;
   updateChannel: DesktopUpdateChannel;
@@ -279,6 +280,8 @@ export type DesktopFileDefaultOpener =
 export type DesktopFileDefaultOpenersByExtension = {
   [key: string]: DesktopFileDefaultOpener;
 };
+
+export type DesktopMinimizeAnimation = "scale" | "genie" | "off";
 
 export type DesktopPreferencesStateResponse = {
   initialized: boolean;

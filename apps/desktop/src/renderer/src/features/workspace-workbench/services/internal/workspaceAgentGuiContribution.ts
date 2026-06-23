@@ -170,6 +170,16 @@ export function createWorkspaceAgentGuiContribution(input: {
         { height: context.node.frame.height, width: context.node.frame.width },
         renderAgentGuiWorkbenchBody(context, helpers, { previewMode: true })
       ),
+    renderMinimizedPreview: (context, helpers) =>
+      createElement(
+        DesktopAgentGUIWorkbenchDockPreviewFrame,
+        {
+          height: context.node.frame.height,
+          viewport: minimizedDockPreviewViewport,
+          width: context.node.frame.width
+        },
+        renderAgentGuiWorkbenchBody(context, helpers, { previewMode: true })
+      ),
     resolveDockPopupTitle: (state) =>
       resolveWorkspaceAgentGuiDockPopupTitle(state, {
         workspaceAgentActivityService: input.workspaceAgentActivityService,
@@ -217,20 +227,27 @@ const dockPopupPreviewViewport = {
   width: 157
 };
 
+const minimizedDockPreviewViewport = {
+  height: 34.2,
+  width: 46.8
+};
+
 function DesktopAgentGUIWorkbenchDockPreviewFrame({
   children,
   height,
+  viewport = dockPopupPreviewViewport,
   width
 }: {
   children?: ReactNode;
   height: number;
+  viewport?: { height: number; width: number };
   width: number;
 }): ReactNode {
   const safeWidth = Math.max(1, width);
   const safeHeight = Math.max(1, height);
   const scale = Math.min(
-    dockPopupPreviewViewport.width / safeWidth,
-    dockPopupPreviewViewport.height / safeHeight
+    viewport.width / safeWidth,
+    viewport.height / safeHeight
   );
   const bodyStyle = {
     height: `${safeHeight}px`,
@@ -249,8 +266,8 @@ function DesktopAgentGUIWorkbenchDockPreviewFrame({
       className:
         "relative block h-full w-full overflow-hidden rounded-md bg-transparent",
       style: {
-        height: `${dockPopupPreviewViewport.height}px`,
-        width: `${dockPopupPreviewViewport.width}px`
+        height: `${viewport.height}px`,
+        width: `${viewport.width}px`
       } satisfies CSSProperties
     },
     createElement(

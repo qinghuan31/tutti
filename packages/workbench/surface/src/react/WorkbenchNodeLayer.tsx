@@ -24,7 +24,7 @@ import type { WorkbenchWindowChromeI18nRuntime } from "./workbenchWindowI18n.ts"
 import { resolveWorkbenchWindowChromeMode } from "./windowHeader.ts";
 
 export interface WorkbenchNodeLayerProps<TData = unknown> {
-  genie: WorkbenchGenieController;
+  genie: WorkbenchGenieController<TData>;
   interactive?: boolean;
   presentation?: WorkbenchSurfacePresentation | null;
   renderNode: WorkbenchRenderNode<TData>;
@@ -110,7 +110,7 @@ export function WorkbenchNodeLayer<TData>({
 
 interface WorkbenchNodeLayerItemProps<TData = unknown> {
   fullscreenHeaderMode?: WorkbenchResolveFullscreenHeaderMode<TData>;
-  genie: WorkbenchGenieController;
+  genie: WorkbenchGenieController<TData>;
   interactive: boolean;
   nodeID: string;
   presentation?: WorkbenchSurfacePresentation | null;

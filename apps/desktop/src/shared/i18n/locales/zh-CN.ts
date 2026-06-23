@@ -262,6 +262,14 @@ export const zhCN = {
         },
         dockPlacementSaveFailed: "暂时无法更新 Dock 布局。",
         dockIconStyleSaveFailed: "暂时无法更新 Dock 图标风格。",
+        minimizeAnimationDescription: "控制窗口最小化到 Dock 时使用的动画",
+        minimizeAnimationLabel: "最小化动画",
+        minimizeAnimationOptions: {
+          genie: "Genie",
+          off: "关闭",
+          scale: "缩放"
+        },
+        minimizeAnimationSaveFailed: "暂时无法更新最小化动画。",
         themeDescription: "控制窗口外观以及信息的颜色模式",
         themeLabel: "外观",
         themeOptions: {

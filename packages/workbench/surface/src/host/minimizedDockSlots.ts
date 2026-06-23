@@ -83,7 +83,7 @@ export function isWorkbenchMinimizedDockEligibleNode(input: {
   nodeDefinitions: ReadonlyMap<string, WorkbenchHostNodeDefinition>;
 }): boolean {
   const definition = input.nodeDefinitions.get(input.node.data.typeId);
-  return definition?.window?.minimizedDock?.kind === "snapshot";
+  return definition?.window?.minimizedDock !== undefined;
 }
 
 function orderWorkbenchMinimizedDockNodes(input: {
