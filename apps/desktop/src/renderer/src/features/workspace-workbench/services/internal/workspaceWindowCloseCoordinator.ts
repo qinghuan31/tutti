@@ -16,38 +16,30 @@ export async function confirmWorkspaceWindowClose(input: {
   requestApprovedClose(): Promise<void>;
   tracker: WindowCloseRequestTracker;
 }): Promise<"approved" | "blocked"> {
+  if (input.reason === "window-close") {
+    return requestWorkspaceWindowClose({
+      requestApprovedClose: () => input.requestApprovedClose(),
+      tracker: input.tracker
+    });
+  }
+
   const host = input.host;
   if (host) {
-    if (input.reason === "quit") {
-      const snapshot = host.getSnapshot();
-      const nodes = snapshot.nodes;
-      if (
-        nodes.length > 0 &&
-        input.hostInput.prepareHostClose &&
-        !(await input.hostInput.prepareHostClose({
-          host,
-          workspaceId: input.hostInput.workspaceId
-        }))
-      ) {
-        return "blocked";
-      }
-      if (nodes.length > 0) {
-        host.closeNode(resolveQuitCloseNodeId(snapshot));
-        return "blocked";
-      }
-    } else {
-      const focusedNodeId = resolveFocusedNodeId(host);
-      if (focusedNodeId) {
-        host.minimizeNode(focusedNodeId);
-        return "blocked";
-      }
-
-      const effects = await host.collectWindowCloseEffects();
-      const request =
-        input.hostInput.createWindowCloseDialogRequest?.(effects) ?? null;
-      if (request && !(await input.confirmCloseGuard(request))) {
-        return "blocked";
-      }
+    const snapshot = host.getSnapshot();
+    const nodes = snapshot.nodes;
+    if (
+      nodes.length > 0 &&
+      input.hostInput.prepareHostClose &&
+      !(await input.hostInput.prepareHostClose({
+        host,
+        workspaceId: input.hostInput.workspaceId
+      }))
+    ) {
+      return "blocked";
+    }
+    if (nodes.length > 0) {
+      host.closeNode(resolveQuitCloseNodeId(snapshot));
+      return "blocked";
     }
   }
 
@@ -72,20 +64,6 @@ async function requestWorkspaceWindowClose(input: {
   } finally {
     input.tracker.finish();
   }
-}
-
-function resolveFocusedNodeId(host: WorkbenchHostHandle): string | null {
-  const snapshot = host.getSnapshot();
-  const focusedNodeId = snapshot.nodeStack.at(-1);
-  const visibleNodes = snapshot.nodes.filter((node) => !node.isMinimized);
-  if (focusedNodeId) {
-    const focusedNode = visibleNodes.find((node) => node.id === focusedNodeId);
-    if (focusedNode) {
-      return focusedNode.id;
-    }
-  }
-
-  return visibleNodes.at(-1)?.id ?? null;
 }
 
 function resolveQuitCloseNodeId(
