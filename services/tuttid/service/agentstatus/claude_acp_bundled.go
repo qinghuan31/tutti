@@ -56,8 +56,16 @@ func (s Service) resolveBundledClaudeACPSpec(
 	if !ok {
 		return spec, false
 	}
+	env := cloneStrings(appRuntime.EnvOverrides)
+	// The vendored bridge has the SDK's bundled Claude Code CLI pruned (see
+	// vendor-claude-acp.mjs), so point it at the system-managed claude binary.
+	// The bridge's claudeCliPath() honors CLAUDE_CODE_EXECUTABLE before falling
+	// back to the (now absent) bundled native package.
+	if claudePath := resolveBinaryWithResolver(s.commandResolver(), spec.BinaryNames, nil); strings.TrimSpace(claudePath) != "" {
+		env = append(env, "CLAUDE_CODE_EXECUTABLE="+claudePath)
+	}
 	spec.AdapterCommand = []string{appRuntime.Node, entry}
-	spec.AdapterEnv = cloneStrings(appRuntime.EnvOverrides)
+	spec.AdapterEnv = env
 	spec.AdapterPackage = AdapterPackageRequirement{
 		Name:    claudeACPPackageName,
 		Version: claudeACPPinnedVersion,

@@ -46,6 +46,13 @@ func TestServiceResolveProviderCommandUsesBundledClaudeACP(t *testing.T) {
 		return []string{"PATH=/usr/bin:/bin", claudeACPEntryPathEnv + "=" + entry}
 	}
 	service.FileExists = func(path string) bool { return path == entry }
+	// System claude is installed; the bundled bridge must be pointed at it.
+	service.LookPath = func(name string) (string, error) {
+		if name == "claude" {
+			return "/usr/local/bin/claude", nil
+		}
+		return "", errors.New("not found")
+	}
 
 	result, err := service.ResolveProviderCommand(context.Background(), "claude-code")
 	if err != nil {
@@ -57,6 +64,9 @@ func TestServiceResolveProviderCommandUsesBundledClaudeACP(t *testing.T) {
 	}
 	if slices.Contains(result.Command, "exec") || slices.Contains(result.Command, "install") {
 		t.Fatalf("Command = %#v, want bundled run without npm exec/install", result.Command)
+	}
+	if !slices.Contains(result.Env, "CLAUDE_CODE_EXECUTABLE=/usr/local/bin/claude") {
+		t.Fatalf("Env = %#v, want CLAUDE_CODE_EXECUTABLE pointing at system claude", result.Env)
 	}
 }
 

@@ -14,7 +14,13 @@
 // Keep CLAUDE_ACP_VERSION in sync with claudeACPPinnedVersion in
 // services/tuttid/service/agentstatus/claude_acp_bundled.go.
 import { execFileSync } from "node:child_process";
-import { existsSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
+import {
+  existsSync,
+  mkdirSync,
+  readdirSync,
+  rmSync,
+  writeFileSync
+} from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -99,5 +105,23 @@ log(`patching bridge at ${patchTarget}`);
 execFileSync("node", [patchScript, "--dist", patchTarget], {
   stdio: "inherit"
 });
+
+// Prune the SDK's bundled Claude Code CLI. @anthropic-ai/claude-agent-sdk ships
+// the full CLI as a ~200MB platform-specific optional dependency
+// (@anthropic-ai/claude-agent-sdk-<os>-<arch>). We must not bundle it:
+//   1. Only the build host's arch is installed, which breaks @electron/universal
+//      packaging (it cannot merge a single-arch native binary across x64/arm64).
+//   2. The daemon points the bridge at Tutti's system-managed `claude` binary
+//      via CLAUDE_CODE_EXECUTABLE (see claude_acp_bundled.go), so the bundled CLI
+//      is never used. The bridge's claudeCliPath() honors that env var first.
+const anthropicScope = join(outDir, "node_modules", "@anthropic-ai");
+if (existsSync(anthropicScope)) {
+  for (const name of readdirSync(anthropicScope)) {
+    if (name.startsWith("claude-agent-sdk-")) {
+      rmSync(join(anthropicScope, name), { recursive: true, force: true });
+      log(`pruned bundled CLI package @anthropic-ai/${name}`);
+    }
+  }
+}
 
 log(`OK: vendored entry at ${runEntry}`);
