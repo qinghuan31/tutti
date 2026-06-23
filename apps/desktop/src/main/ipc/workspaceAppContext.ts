@@ -878,6 +878,7 @@ function createWorkspaceAppContext(
   return {
     appId: context.appID,
     capabilities: [
+      "browser.openUrl@1",
       "files.open@1",
       "pdf.printHtmlToPdf@1",
       "userProjects@1",

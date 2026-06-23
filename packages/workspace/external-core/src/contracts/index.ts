@@ -127,6 +127,10 @@ export interface TuttiExternalSettingsOpenInput {
   tab?: "models";
 }
 
+export interface TuttiExternalBrowserOpenUrlInput {
+  url: string;
+}
+
 export type TuttiExternalWorkspaceFeature =
   | "app-center"
   | "issue-manager"
@@ -217,6 +221,9 @@ export interface TuttiExternalBridge {
   app: {
     getContext(): Promise<unknown>;
     subscribe(listener: (context: unknown) => void): () => void;
+  };
+  browser: {
+    openUrl(input: TuttiExternalBrowserOpenUrlInput): Promise<void>;
   };
   at: {
     query(

@@ -146,6 +146,59 @@ test("workspace app external bridge invokes workspace feature open", async () =>
   ]);
 });
 
+test("workspace app external bridge sends browser open URL requests", async () => {
+  const calls: Array<{ channel: string; payload?: unknown }> = [];
+  const bridge = createWorkspaceAppExternalBridge({
+    appContext: {
+      async get() {
+        return { locale: "en" };
+      },
+      subscribe() {
+        throw new Error("unexpected subscribe");
+      }
+    },
+    isUserActivationActive: () => true,
+    send(channel: string, payload?: unknown) {
+      calls.push({ channel, payload });
+    },
+    async invoke() {
+      throw new Error("unexpected invoke");
+    }
+  });
+
+  await bridge.browser.openUrl({ url: "https://example.com/design" });
+
+  assert.deepEqual(calls, [
+    {
+      channel: workspaceAppExternalChannels.browserOpenUrl,
+      payload: { url: "https://example.com/design" }
+    }
+  ]);
+});
+
+test("workspace app external bridge requires activation for browser open URL", () => {
+  const bridge = createWorkspaceAppExternalBridge({
+    appContext: {
+      async get() {
+        return { locale: "en" };
+      },
+      subscribe() {
+        throw new Error("unexpected subscribe");
+      }
+    },
+    isUserActivationActive: () => false,
+    send: unexpectedSend,
+    async invoke() {
+      throw new Error("unexpected invoke");
+    }
+  });
+
+  assert.throws(
+    () => bridge.browser.openUrl({ url: "https://example.com/design" }),
+    /browser\.openUrl requires a user action/
+  );
+});
+
 test("workspace app external bridge requires activation for workspace feature open", () => {
   const bridge = createWorkspaceAppExternalBridge({
     appContext: {

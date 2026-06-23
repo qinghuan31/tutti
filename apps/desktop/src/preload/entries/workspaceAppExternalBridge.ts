@@ -45,6 +45,7 @@ export interface WorkspaceAppExternalBridgeDependencies {
 
 export const workspaceAppExternalChannels = {
   atQuery: "workspace-app-at:query",
+  browserOpenUrl: "workspace-app:open-url",
   filesOpen: "workspace-app-files:open",
   filesSelect: "workspace-app-files:select",
   logsWrite: "workspace-app-logs:write",
@@ -77,6 +78,16 @@ export function createWorkspaceAppExternalBridge(
       },
       subscribe(listener) {
         return dependencies.appContext.subscribe(listener);
+      }
+    },
+    browser: {
+      openUrl(input) {
+        requireUserActivation(
+          dependencies.isUserActivationActive(),
+          "browser.openUrl"
+        );
+        dependencies.send(workspaceAppExternalChannels.browserOpenUrl, input);
+        return Promise.resolve();
       }
     },
     at: {
