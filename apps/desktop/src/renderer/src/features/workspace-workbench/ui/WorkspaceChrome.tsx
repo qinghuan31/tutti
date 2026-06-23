@@ -53,6 +53,7 @@ import { useTranslation } from "@renderer/i18n";
 import { cn } from "@renderer/lib/format";
 import { ExternalAgentSessionImportPrompt } from "./ExternalAgentSessionImportPrompt";
 import { ExternalAgentSessionImportWizard } from "./ExternalAgentSessionImportWizard";
+import { WorkspaceFeedbackGroupPopover } from "./WorkspaceFeedbackGroupPopover";
 import { WorkspaceSettingsPanel } from "./WorkspaceSettingsPanel";
 import { useWorkspaceChromeState } from "./useWorkspaceChromeState";
 import { useWorkspaceWorkbenchHostService } from "./useWorkspaceWorkbenchHostService";
@@ -204,6 +205,7 @@ export function WorkspaceChrome({
           data-workbench-wallpaper-appearance={wallpaperAppearance}
         >
           {headerSlot ? <div className="min-w-0">{headerSlot}</div> : null}
+          <WorkspaceFeedbackGroupPopover />
           <WorkspaceAgentMessageCenterAction
             launchNode={launchNode}
             workspace={workspace}
