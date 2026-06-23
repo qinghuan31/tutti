@@ -181,6 +181,14 @@ prepare_browser_mcp() {
   node "${ROOT_DIR}/apps/desktop/scripts/vendor-browser-mcp.mjs"
 }
 
+prepare_claude_acp() {
+  # Vendors a pinned, pre-patched @agentclientprotocol/claude-agent-acp into
+  # build/claude-acp so packaged Claude Code never has to npm-install the ACP
+  # bridge over the network at runtime. The daemon launcher
+  # (resolveClaudeAcpDaemonEnv) points the daemon at the bundled run entry.
+  node "${ROOT_DIR}/apps/desktop/scripts/vendor-claude-acp.mjs"
+}
+
 run_pnpm_build() {
   pnpm build
 }
@@ -236,6 +244,7 @@ case "${VARIANT}" in
     run_timed_phase "prepare_builtin_apps" prepare_builtin_apps
     run_timed_phase "prepare_packaged_daemon" prepare_packaged_daemon
     run_timed_phase "prepare_browser_mcp" prepare_browser_mcp
+    run_timed_phase "prepare_claude_acp" prepare_claude_acp
     (
       cd "${APP_DIR}"
       run_timed_phase "resolve_desktop_build_version" resolve_desktop_build_version

@@ -16,6 +16,7 @@ import test from "node:test";
 import {
   isLikelyTuttidProcess,
   resolveBrowserMcpDaemonEnv,
+  resolveClaudeAcpDaemonEnv,
   resolveLaunchSpec,
   resolveManagedDaemonProcessEnv
 } from "./tuttidManager.ts";
@@ -132,6 +133,75 @@ test("resolveBrowserMcpDaemonEnv points the daemon at a vendored bundle when pre
     const got = resolveBrowserMcpDaemonEnv({ isPackaged: true, resourcesPath });
     assert.deepEqual(got, {
       TUTTI_BROWSER_MCP_ENTRY_PATH: entry
+    });
+  } finally {
+    restoreEnv(previousEnv);
+  }
+});
+
+test("resolveClaudeAcpDaemonEnv is a no-op in development (daemon uses the ACP registry npm install)", () => {
+  const previousEnv = { ...process.env };
+  try {
+    delete process.env.TUTTI_CLAUDE_ACP_ENTRY_PATH;
+    const got = resolveClaudeAcpDaemonEnv({
+      isPackaged: false,
+      resourcesPath: join(tmpdir(), "tutti-resources")
+    });
+    assert.deepEqual(got, {});
+  } finally {
+    restoreEnv(previousEnv);
+  }
+});
+
+test("resolveClaudeAcpDaemonEnv respects an explicit operator override", () => {
+  const previousEnv = { ...process.env };
+  try {
+    process.env.TUTTI_CLAUDE_ACP_ENTRY_PATH = "/custom/claude-agent-acp.js";
+    const got = resolveClaudeAcpDaemonEnv({
+      isPackaged: true,
+      resourcesPath: join(tmpdir(), "tutti-resources")
+    });
+    assert.deepEqual(got, {});
+  } finally {
+    restoreEnv(previousEnv);
+  }
+});
+
+test("resolveClaudeAcpDaemonEnv falls back to the registry when the vendored bundle is absent", () => {
+  const previousEnv = { ...process.env };
+  try {
+    delete process.env.TUTTI_CLAUDE_ACP_ENTRY_PATH;
+    const got = resolveClaudeAcpDaemonEnv({
+      isPackaged: true,
+      resourcesPath: join(tmpdir(), "tutti-resources-missing")
+    });
+    assert.deepEqual(got, {});
+  } finally {
+    restoreEnv(previousEnv);
+  }
+});
+
+test("resolveClaudeAcpDaemonEnv points the daemon at a vendored bridge when present", async () => {
+  const previousEnv = { ...process.env };
+  try {
+    delete process.env.TUTTI_CLAUDE_ACP_ENTRY_PATH;
+    const resourcesPath = await mkdtemp(join(tmpdir(), "tutti-resources-"));
+    const entry = join(
+      resourcesPath,
+      "bin",
+      "claude-acp",
+      "node_modules",
+      "@agentclientprotocol",
+      "claude-agent-acp",
+      "dist",
+      "index.js"
+    );
+    await mkdir(dirname(entry), { recursive: true });
+    await writeFile(entry, "// stub\n");
+
+    const got = resolveClaudeAcpDaemonEnv({ isPackaged: true, resourcesPath });
+    assert.deepEqual(got, {
+      TUTTI_CLAUDE_ACP_ENTRY_PATH: entry
     });
   } finally {
     restoreEnv(previousEnv);

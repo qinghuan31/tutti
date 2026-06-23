@@ -251,6 +251,50 @@ export function resolveBrowserMcpDaemonEnv(
   };
 }
 
+// Relative path (under the packaged Resources dir) to the vendored, pre-patched
+// claude-agent-acp bridge run entry (the package's `claude-agent-acp` bin, i.e.
+// dist/index.js). Kept in sync with the desktop build's extraResources staging
+// (apps/desktop build/claude-acp) and CLAUDE_ACP_VERSION in
+// scripts/vendor-claude-acp.mjs.
+const vendoredClaudeAcpRelPath = join(
+  "bin",
+  "claude-acp",
+  "node_modules",
+  "@agentclientprotocol",
+  "claude-agent-acp",
+  "dist",
+  "index.js"
+);
+
+// resolveClaudeAcpDaemonEnv points the daemon at the vendored, pre-patched
+// claude-agent-acp bridge in packaged builds so Claude Code never has to install
+// it over the network at runtime. Mirrors resolveBrowserMcpDaemonEnv: it is a
+// no-op in development (the daemon falls back to the ACP external agent registry
+// npm install) and respects an explicit operator override.
+export function resolveClaudeAcpDaemonEnv(
+  runtime?: DesktopElectronAppRuntime
+): Record<string, string> {
+  if (process.env.TUTTI_CLAUDE_ACP_ENTRY_PATH?.trim()) {
+    return {};
+  }
+  let appRuntime: DesktopElectronAppRuntime;
+  try {
+    appRuntime = runtime ?? resolveElectronAppRuntime();
+  } catch {
+    return {};
+  }
+  if (!appRuntime.isPackaged) {
+    return {};
+  }
+  const entry = join(appRuntime.resourcesPath, vendoredClaudeAcpRelPath);
+  if (!existsSync(entry)) {
+    return {};
+  }
+  return {
+    TUTTI_CLAUDE_ACP_ENTRY_PATH: entry
+  };
+}
+
 export function resolveManagedDaemonProcessEnv(
   input: ManagedDaemonProcessEnvInput
 ): NodeJS.ProcessEnv {
@@ -259,6 +303,7 @@ export function resolveManagedDaemonProcessEnv(
     ...(input.userShellEnv ?? {}),
     ...resolveEndpointEnv(input.endpoint),
     ...resolveBrowserMcpDaemonEnv(),
+    ...resolveClaudeAcpDaemonEnv(),
     TUTTI_APP_VERSION: process.env.TUTTI_APP_VERSION?.trim() ?? "",
     TUTTI_DESKTOP_PARENT_PID: String(input.parentPID ?? process.pid),
     TUTTI_LOG_DIR: input.logDir ?? resolveDesktopLogsDir(),
