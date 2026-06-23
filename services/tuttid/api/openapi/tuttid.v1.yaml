@@ -3455,6 +3455,7 @@ components:
         - dockPlacement
         - fileDefaultOpenersByExtension
         - locale
+        - minimizeAnimation
         - sleepPreventionMode
         - themeSource
         - updateChannel
@@ -3478,6 +3479,8 @@ components:
           $ref: "#/components/schemas/DesktopFileDefaultOpenersByExtension"
         locale:
           $ref: "#/components/schemas/DesktopLocale"
+        minimizeAnimation:
+          $ref: "#/components/schemas/DesktopMinimizeAnimation"
         sleepPreventionMode:
           $ref: "#/components/schemas/DesktopSleepPreventionMode"
         themeSource:
@@ -3539,6 +3542,12 @@ components:
       type: object
       additionalProperties:
         $ref: "#/components/schemas/DesktopFileDefaultOpener"
+    DesktopMinimizeAnimation:
+      type: string
+      enum:
+        - scale
+        - genie
+        - off
     DesktopPreferencesStateResponse:
       type: object
       additionalProperties: false

@@ -363,6 +363,7 @@ export type {
   DesktopFileDefaultOpener,
   DesktopFileDefaultOpenersByExtension,
   DesktopLocale,
+  DesktopMinimizeAnimation,
   DesktopPreferences,
   DesktopPreferencesStateResponse,
   DesktopSleepPreventionMode,

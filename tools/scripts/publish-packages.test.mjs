@@ -57,6 +57,7 @@ test("resolveReleaseTagNames includes package Go module tags", async () => {
   assert.equal(tagNames[0], "packages-v0.0.25");
   assert.equal(
     [
+      "packages/appcli/core/v0.0.25",
       "packages/workbench/service/v0.0.25",
       "packages/workspace/files/v0.0.25",
       "packages/workspace/issues/v0.0.25"

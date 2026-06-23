@@ -483,6 +483,7 @@ function ReadyWorkspaceWorkbench({
           mode: runtime.missionControl.mode,
           onRequestClose: runtime.missionControl.close
         }}
+        minimizeAnimation={runtime.minimizeAnimation}
         nodes={hostInput.nodes}
         onDockEntryAction={onDockEntryAction}
         onDockEntryClick={onDockEntryClick}

@@ -173,6 +173,7 @@ func TestPreferencesIntentHandlerUsesAuthoritativeMutationPath(t *testing.T) {
 			DockPlacement:       "bottom",
 			Initialized:         true,
 			Locale:              "zh-CN",
+			MinimizeAnimation:   "scale",
 			SleepPreventionMode: "whileAgentRunning",
 			ThemeSource:         "dark",
 			UpdateChannel:       "rc",
@@ -195,7 +196,7 @@ func TestPreferencesIntentHandlerUsesAuthoritativeMutationPath(t *testing.T) {
 
 	if err := service.PublishFromClient(context.Background(), ClientEvent{
 		Topic:   TopicPreferencesDesktopUpdateRequested,
-		Payload: []byte(`{"preferences":{"agentComposerDefaultsByProvider":{},"agentGuiConversationRailCollapsedByProvider":{"codex":true},"appCatalogChannel":"staging","defaultAgentProvider":"codex","dockIconStyle":"flat","dockPlacement":"left","locale":"zh-CN","sleepPreventionMode":"never","themeSource":"dark","updateChannel":"rc","updatePolicy":"auto"}}`),
+		Payload: []byte(`{"preferences":{"agentComposerDefaultsByProvider":{},"agentGuiConversationRailCollapsedByProvider":{"codex":true},"appCatalogChannel":"staging","defaultAgentProvider":"codex","dockIconStyle":"flat","dockPlacement":"left","locale":"zh-CN","minimizeAnimation":"scale","sleepPreventionMode":"never","themeSource":"dark","updateChannel":"rc","updatePolicy":"auto"}}`),
 	}); err != nil {
 		t.Fatalf("PublishFromClient() error = %v", err)
 	}
@@ -207,6 +208,7 @@ func TestPreferencesIntentHandlerUsesAuthoritativeMutationPath(t *testing.T) {
 		mutator.inputs[0].AppCatalogChannel != "staging" ||
 		mutator.inputs[0].DockIconStyle != "flat" ||
 		mutator.inputs[0].Locale != "zh-CN" ||
+		mutator.inputs[0].MinimizeAnimation != "scale" ||
 		mutator.inputs[0].ThemeSource != "dark" ||
 		mutator.inputs[0].UpdateChannel != "rc" ||
 		mutator.inputs[0].UpdatePolicy != "auto" {
@@ -238,6 +240,7 @@ func TestDesktopPreferencesPublisherIncludesDockIconStyle(t *testing.T) {
 		DockPlacement:        "bottom",
 		Initialized:          true,
 		Locale:               "zh-CN",
+		MinimizeAnimation:    "scale",
 		SleepPreventionMode:  "never",
 		ThemeSource:          "dark",
 		UpdateChannel:        "stable",
@@ -300,7 +303,7 @@ func TestServiceFiltersScopedSubscriptions(t *testing.T) {
 	if err := service.PublishFromServerScoped(
 		context.Background(),
 		TopicPreferencesDesktopUpdated,
-		[]byte(`{"initialized":true,"preferences":{"agentComposerDefaultsByProvider":{},"agentGuiConversationRailCollapsedByProvider":{},"appCatalogChannel":"production","defaultAgentProvider":"codex","dockIconStyle":"default","dockPlacement":"bottom","locale":"zh-CN","sleepPreventionMode":"never","themeSource":"dark","updateChannel":"stable","updatePolicy":"prompt"}}`),
+		[]byte(`{"initialized":true,"preferences":{"agentComposerDefaultsByProvider":{},"agentGuiConversationRailCollapsedByProvider":{},"appCatalogChannel":"production","defaultAgentProvider":"codex","dockIconStyle":"default","dockPlacement":"bottom","locale":"zh-CN","minimizeAnimation":"scale","sleepPreventionMode":"never","themeSource":"dark","updateChannel":"stable","updatePolicy":"prompt"}}`),
 		EventScope{WorkspaceID: "workspace-1"},
 	); err != nil {
 		t.Fatalf("PublishFromServerScoped() error = %v", err)

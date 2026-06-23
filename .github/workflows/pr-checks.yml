@@ -30,6 +30,7 @@ jobs:
           cache-dependency-path: |
             go.work
             go.work.sum
+            packages/appcli/core/go.mod
             packages/workbench/service/go.mod
             packages/workspace/files/go.mod
             packages/workspace/issues/go.mod
@@ -210,6 +211,10 @@ jobs:
       - name: Generate builtin apps
         run: pnpm generate:builtin-apps
 
+      - name: Run App CLI core tests
+        working-directory: packages/appcli/core
+        run: go test ./...
+
       - name: Run shared Workbench service tests
         working-directory: packages/workbench/service
         run: go test ./...
@@ -245,6 +250,7 @@ jobs:
           cache-dependency-path: |
             go.work
             go.work.sum
+            packages/appcli/core/go.mod
             packages/workbench/service/go.mod
             packages/workspace/files/go.mod
             packages/workspace/issues/go.mod

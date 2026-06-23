@@ -22,6 +22,7 @@ import type {
   WorkbenchDockContext,
   WorkbenchDockPlacement,
   WorkbenchKeepMinimizedNodeMounted,
+  WorkbenchMinimizeAnimation,
   WorkbenchRenderNode,
   WorkbenchSurfacePresentation,
   WorkbenchRenderWindowActions,
@@ -47,6 +48,7 @@ export interface WorkbenchSurfaceProps<TData = unknown> {
   interactive?: boolean;
   layoutConstraints?: WorkbenchLayoutConstraintsInput;
   missionControlPhase?: "closed" | "entering" | "open" | "closing";
+  minimizeAnimation?: WorkbenchMinimizeAnimation;
   presentation?: WorkbenchSurfacePresentation | null;
   renderBackdrop?: () => ReactNode;
   renderBottomChrome?: () => ReactNode;
@@ -61,6 +63,7 @@ export interface WorkbenchSurfaceProps<TData = unknown> {
   resolveDockAnchorKey?: (node: WorkbenchNode<TData>) => string;
   resolveDockPreviewCacheKey?: WorkbenchDockPreviewCacheKeyResolver<TData>;
   shortcutsEnabled?: boolean;
+  shouldCaptureNodePreviewImage?: (node: WorkbenchNode<TData>) => boolean;
   wallpaper?: WorkbenchSurfaceWallpaper;
   windowChromeMode?:
     | WorkbenchWindowChromeMode
@@ -90,6 +93,7 @@ export function WorkbenchSurface<TData>({
   interactive,
   layoutConstraints,
   missionControlPhase,
+  minimizeAnimation,
   presentation,
   renderBackdrop,
   renderBottomChrome,
@@ -104,6 +108,7 @@ export function WorkbenchSurface<TData>({
   resolveDockAnchorKey,
   resolveDockPreviewCacheKey,
   shortcutsEnabled,
+  shouldCaptureNodePreviewImage,
   wallpaper,
   windowChromeMode,
   windowChromeI18n
@@ -118,6 +123,7 @@ export function WorkbenchSurface<TData>({
         interactive={interactive}
         layoutConstraints={layoutConstraints}
         missionControlPhase={missionControlPhase}
+        minimizeAnimation={minimizeAnimation}
         presentation={presentation}
         renderBackdrop={renderBackdrop}
         renderBottomChrome={renderBottomChrome}
@@ -132,6 +138,7 @@ export function WorkbenchSurface<TData>({
         resolveDockAnchorKey={resolveDockAnchorKey}
         resolveDockPreviewCacheKey={resolveDockPreviewCacheKey}
         shortcutsEnabled={shortcutsEnabled}
+        shouldCaptureNodePreviewImage={shouldCaptureNodePreviewImage}
         wallpaper={wallpaper}
         windowChromeMode={windowChromeMode}
         windowChromeI18n={windowChromeI18n}
@@ -148,6 +155,7 @@ function WorkbenchSurfaceInner<TData>({
   interactive = true,
   layoutConstraints,
   missionControlPhase,
+  minimizeAnimation,
   presentation,
   renderBackdrop,
   renderBottomChrome,
@@ -162,6 +170,7 @@ function WorkbenchSurfaceInner<TData>({
   resolveDockAnchorKey,
   resolveDockPreviewCacheKey,
   shortcutsEnabled,
+  shouldCaptureNodePreviewImage,
   wallpaper,
   windowChromeMode,
   windowChromeI18n
@@ -178,8 +187,10 @@ function WorkbenchSurfaceInner<TData>({
     captureNodePreviewImage,
     controller,
     dockPreviewCache,
+    minimizeAnimation,
     resolveDockAnchorKey,
-    resolveDockPreviewCacheKey
+    resolveDockPreviewCacheKey,
+    shouldCaptureNodePreviewImage
   });
   useWorkbenchShortcuts<TData>((shortcutsEnabled ?? true) && interactive);
   useEffect(() => {

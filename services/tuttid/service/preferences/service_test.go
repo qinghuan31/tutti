@@ -45,6 +45,7 @@ func TestServiceGetReturnsStoredDesktopPreferences(t *testing.T) {
 				DockPlacement:            "left",
 				Initialized:              true,
 				Locale:                   "zh-CN",
+				MinimizeAnimation:        "scale",
 				SleepPreventionMode:      "whileAgentRunning",
 				ThemeSource:              "dark",
 				UpdateChannel:            "rc",
@@ -123,6 +124,7 @@ func TestServicePutTrimsDesktopPreferences(t *testing.T) {
 			"_tmp":    "system",
 		},
 		Locale:              " zh-CN ",
+		MinimizeAnimation:   "scale",
 		SleepPreventionMode: "whileAgentRunning",
 		ThemeSource:         " dark ",
 		UpdateChannel:       " rc ",
@@ -212,6 +214,7 @@ func TestServicePutReturnsStoredPreferencesWhenPublishFails(t *testing.T) {
 
 		DockIconStyle:       "default",
 		Locale:              "zh-CN",
+		MinimizeAnimation:   "scale",
 		SleepPreventionMode: "whileAgentRunning",
 		ThemeSource:         "dark",
 		UpdateChannel:       "stable",

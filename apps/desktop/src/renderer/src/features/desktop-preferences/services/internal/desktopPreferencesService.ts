@@ -12,6 +12,7 @@ import {
   defaultDesktopDockIconStyle,
   defaultDesktopDockPlacement,
   defaultDesktopFileDefaultOpenersByExtension,
+  defaultDesktopMinimizeAnimation,
   defaultDesktopSleepPreventionMode,
   defaultDesktopUpdateChannel,
   defaultDesktopUpdatePolicy,
@@ -31,6 +32,7 @@ import {
   type DesktopDockIconStyle,
   type DesktopDockPlacement,
   type DesktopFileDefaultOpenersByExtension,
+  type DesktopMinimizeAnimation,
   type DesktopSleepPreventionMode,
   type DesktopUpdateChannel,
   type DesktopUpdatePolicy
@@ -68,6 +70,7 @@ export class DesktopPreferencesService implements IDesktopPreferencesService {
       fileDefaultOpenersByExtension:
         defaultDesktopFileDefaultOpenersByExtension,
       locale: this.dependencies.initialLocale,
+      minimizeAnimation: defaultDesktopMinimizeAnimation,
       sleepPreventionMode: defaultDesktopSleepPreventionMode,
       theme: this.dependencies.initialTheme,
       updateChannel: defaultDesktopUpdateChannel,
@@ -283,6 +286,37 @@ export class DesktopPreferencesService implements IDesktopPreferencesService {
     } finally {
       if (this.store.changingLocale === locale) {
         this.store.changingLocale = null;
+      }
+    }
+  }
+
+  async setMinimizeAnimation(
+    animation: DesktopMinimizeAnimation
+  ): Promise<DesktopMinimizeAnimation> {
+    if (this.store.changingMinimizeAnimation === animation) {
+      return animation;
+    }
+
+    const previousAnimation = this.store.minimizeAnimation;
+    this.store.changingMinimizeAnimation = animation;
+    this.store.minimizeAnimation = animation;
+    try {
+      const authoritativePreferences =
+        await this.dependencies.client.updateDesktopPreferences({
+          preferences: this.currentPreferences({
+            minimizeAnimation: animation
+          })
+        });
+      return (
+        authoritativePreferences.minimizeAnimation ??
+        defaultDesktopMinimizeAnimation
+      );
+    } catch (error) {
+      this.store.minimizeAnimation = previousAnimation;
+      throw error;
+    } finally {
+      if (this.store.changingMinimizeAnimation === animation) {
+        this.store.changingMinimizeAnimation = null;
       }
     }
   }
@@ -519,6 +553,7 @@ export class DesktopPreferencesService implements IDesktopPreferencesService {
     dockPlacement: DesktopDockPlacement;
     fileDefaultOpenersByExtension?: DesktopFileDefaultOpenersByExtension;
     locale: DesktopLocale;
+    minimizeAnimation?: DesktopMinimizeAnimation;
     sleepPreventionMode: DesktopSleepPreventionMode;
     themeSource: DesktopThemeSource;
     updateChannel: DesktopUpdateChannel;
@@ -545,6 +580,8 @@ export class DesktopPreferencesService implements IDesktopPreferencesService {
         preferences.fileDefaultOpenersByExtension
       );
     this.applyLocale(preferences.locale);
+    this.store.minimizeAnimation =
+      preferences.minimizeAnimation ?? defaultDesktopMinimizeAnimation;
     this.store.sleepPreventionMode = preferences.sleepPreventionMode;
     this.applyTheme(this.dependencies.resolveTheme(preferences.themeSource));
     this.store.updateChannel = preferences.updateChannel;
@@ -562,6 +599,7 @@ export class DesktopPreferencesService implements IDesktopPreferencesService {
       dockPlacement: DesktopDockPlacement;
       fileDefaultOpenersByExtension: DesktopFileDefaultOpenersByExtension;
       locale: DesktopLocale;
+      minimizeAnimation: DesktopMinimizeAnimation;
       sleepPreventionMode: DesktopSleepPreventionMode;
       themeSource: DesktopThemeSource;
       updateChannel: DesktopUpdateChannel;
@@ -577,6 +615,7 @@ export class DesktopPreferencesService implements IDesktopPreferencesService {
     dockPlacement: DesktopDockPlacement;
     fileDefaultOpenersByExtension: DesktopFileDefaultOpenersByExtension;
     locale: DesktopLocale;
+    minimizeAnimation: DesktopMinimizeAnimation;
     sleepPreventionMode: DesktopSleepPreventionMode;
     themeSource: DesktopThemeSource;
     updateChannel: DesktopUpdateChannel;
@@ -608,6 +647,8 @@ export class DesktopPreferencesService implements IDesktopPreferencesService {
             this.store.fileDefaultOpenersByExtension
         ),
       locale: overrides.locale ?? this.store.locale,
+      minimizeAnimation:
+        overrides.minimizeAnimation ?? this.store.minimizeAnimation,
       sleepPreventionMode:
         overrides.sleepPreventionMode ?? this.store.sleepPreventionMode,
       themeSource: overrides.themeSource ?? this.store.theme.source,

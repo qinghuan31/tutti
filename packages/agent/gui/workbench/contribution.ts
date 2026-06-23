@@ -2,6 +2,7 @@ import { createElement, type ReactNode } from "react";
 import {
   getWorkbenchLayoutFrame,
   type WorkbenchContribution,
+  type WorkbenchDockPreviewContent,
   type WorkbenchFrame,
   type WorkbenchHostDockEntry,
   type WorkbenchHostDockPopupItemInput,
@@ -108,6 +109,13 @@ export interface CreateAgentGuiWorkbenchContributionInput {
     >,
     helpers: AgentGuiWorkbenchRenderBodyHelpers
   ): ReactNode;
+  renderMinimizedPreview?(
+    context: WorkbenchHostNodeBodyContext<
+      AgentGuiWorkbenchState | null,
+      unknown
+    >,
+    helpers: AgentGuiWorkbenchRenderBodyHelpers
+  ): ReactNode;
   resolveDockPopupTitle?: (
     state: AgentGuiWorkbenchState | null
   ) => string | null;
@@ -125,6 +133,7 @@ export function createAgentGuiWorkbenchContribution(
   });
   const frame = input.frame ?? agentGuiWorkbenchDefaultNodeFrame;
   const copy = resolveAgentGuiWorkbenchContributionCopy(input.copy);
+  const renderMinimizedPreview = input.renderMinimizedPreview;
 
   return {
     dockEntries: agentGuiWorkbenchProviders.map((provider, index) =>
@@ -291,9 +300,19 @@ export function createAgentGuiWorkbenchContribution(
         window: {
           closable: true,
           defaultOpen: false,
-          minimizedDock: {
-            kind: "snapshot"
-          },
+          minimizedDock: renderMinimizedPreview
+            ? {
+                kind: "component",
+                providePreview: (item) =>
+                  createAgentGuiWorkbenchPreviewContent({
+                    item,
+                    renderPreview: renderMinimizedPreview,
+                    resolveDockPopupTitle: input.resolveDockPopupTitle
+                  })
+              }
+            : {
+                kind: "snapshot"
+              },
           minimizable: true
         }
       }
@@ -431,30 +450,16 @@ function createAgentGuiWorkbenchDockEntry(input: {
       agentGuiWorkbenchProviderFromIdentifier(node.data.instanceId) ===
         input.provider,
     order: input.order,
-    providePopupItemPreview: (item) => {
-      if (!input.renderPreview) {
-        return null;
-      }
-      const { externalNodeState, node } = item;
-      const state = normalizeAgentGuiWorkbenchState(externalNodeState);
-      const title = input.resolveDockPopupTitle?.(state) ?? node.title;
-      const lines = [input.label, state.lastActiveAgentSessionId].filter(
-        (line): line is string => Boolean(line?.trim())
-      );
-      const revision = `${input.provider}\n${title}\n${lines.join("\n")}`;
-      return {
-        element: input.renderPreview(
-          createAgentGuiWorkbenchPreviewBodyContext(item),
-          {
-            nodeTypeId: agentGuiWorkbenchTypeId,
-            onStateChange: () => undefined,
-            provider: input.provider
-          }
-        ),
-        kind: "component",
-        revision
-      };
-    },
+    providePopupItemPreview: (item) =>
+      input.renderPreview
+        ? createAgentGuiWorkbenchPreviewContent({
+            item,
+            label: input.label,
+            provider: input.provider,
+            renderPreview: input.renderPreview,
+            resolveDockPopupTitle: input.resolveDockPopupTitle
+          })
+        : null,
     resolvePopupItem: ({ externalNodeState }) => {
       const title =
         input.resolveDockPopupTitle?.(
@@ -468,6 +473,40 @@ function createAgentGuiWorkbenchDockEntry(input: {
     sectionId: input.sectionId,
     typeId: agentGuiWorkbenchTypeId,
     visibility: input.visibility
+  };
+}
+
+function createAgentGuiWorkbenchPreviewContent(input: {
+  item: WorkbenchHostDockPopupItemInput;
+  label?: string;
+  provider?: AgentGuiWorkbenchProvider;
+  renderPreview: NonNullable<
+    CreateAgentGuiWorkbenchContributionInput["renderPreview"]
+  >;
+  resolveDockPopupTitle?: CreateAgentGuiWorkbenchContributionInput["resolveDockPopupTitle"];
+}): WorkbenchDockPreviewContent {
+  const { externalNodeState, node } = input.item;
+  const state = normalizeAgentGuiWorkbenchState(externalNodeState);
+  const title = input.resolveDockPopupTitle?.(state) ?? node.title;
+  const provider =
+    input.provider ??
+    agentGuiWorkbenchProviderFromIdentifier(node.data.instanceId) ??
+    agentGuiWorkbenchProviderFromInstanceId(node.data.instanceId);
+  const label = input.label ?? resolveAgentGuiWorkbenchProviderLabel(provider);
+  const lines = [label, state.lastActiveAgentSessionId].filter(
+    (line): line is string => Boolean(line?.trim())
+  );
+  return {
+    element: input.renderPreview(
+      createAgentGuiWorkbenchPreviewBodyContext(input.item),
+      {
+        nodeTypeId: agentGuiWorkbenchTypeId,
+        onStateChange: () => undefined,
+        provider
+      }
+    ),
+    kind: "component",
+    revision: `${provider}\n${title}\n${lines.join("\n")}`
   };
 }
 

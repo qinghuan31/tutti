@@ -48,9 +48,13 @@ func (api DaemonAPI) ListWorkspaceAppMentionCandidates(ctx context.Context, requ
 		if app.Installation == nil || !app.Installation.Enabled {
 			continue
 		}
+		cliApp, hasCLIApp := cliAppsByID[appID]
+		if !hasCLIApp || cliApp.metadata.CommandCount == 0 {
+			continue
+		}
 		candidates = append(
 			candidates,
-			workspaceAppMentionCandidateFromApp(app, cliAppsByID[appID]),
+			workspaceAppMentionCandidateFromApp(app, cliApp),
 		)
 	}
 	for appID, cliApp := range cliAppsByID {

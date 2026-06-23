@@ -23,6 +23,7 @@ import type {
 import type { WorkbenchSurfaceWallpaper } from "../react/WorkbenchSurface.tsx";
 import type {
   WorkbenchDockPlacement,
+  WorkbenchMinimizeAnimation,
   WorkbenchWindowHeaderDragHandleProps
 } from "../react/types.ts";
 import type { WorkbenchDockPreviewCache } from "../react/dockPreviewCache.ts";
@@ -296,10 +297,15 @@ export interface WorkbenchHostNodeWindowCapabilities {
   restoreOnLoad?: boolean;
 }
 
-export interface WorkbenchHostNodeMinimizedDockCapability {
-  capturePreview?: WorkbenchHostNodePreviewCapture;
-  kind: "snapshot";
-}
+export type WorkbenchHostNodeMinimizedDockCapability =
+  | {
+      capturePreview?: WorkbenchHostNodePreviewCapture;
+      kind: "snapshot";
+    }
+  | {
+      kind: "component";
+      providePreview: WorkbenchHostDockPopupPreviewProvider;
+    };
 
 export interface WorkbenchHostSingleInstanceStrategy {
   mode?: "single";
@@ -481,6 +487,7 @@ export interface WorkbenchHostHandle {
   isHydrating?(): boolean;
   launchNode(input: WorkbenchHostLaunchInput): Promise<string | null>;
   load(): Promise<void>;
+  minimizeNode(nodeId: string): void;
   requestNodeClose(nodeId: string): void;
   reconcileProjectedNodes(
     projectedNodes: readonly WorkbenchHostProjectedNode[]
@@ -555,6 +562,7 @@ export interface WorkbenchHostProps {
   i18n?: I18nRuntime<string>;
   layoutConstraints?: WorkbenchLayoutConstraintsInput;
   missionControl?: WorkbenchHostMissionControlProps;
+  minimizeAnimation?: WorkbenchMinimizeAnimation;
   nodes?: readonly WorkbenchHostNodeDefinition[];
   onDockEntryAction?: (input: {
     actionId: string;

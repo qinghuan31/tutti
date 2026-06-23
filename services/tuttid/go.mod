@@ -10,6 +10,7 @@ require (
 	github.com/google/uuid v1.6.0
 	github.com/oapi-codegen/runtime v1.4.1
 	github.com/tutti-os/tutti/packages/agentactivity/daemon v0.0.0
+	github.com/tutti-os/tutti/packages/appcli/core v0.0.0
 	github.com/tutti-os/tutti/packages/workbench/service v0.0.0
 	github.com/tutti-os/tutti/packages/workspace/files v0.0.0
 	github.com/tutti-os/tutti/packages/workspace/issues v0.0.0
@@ -86,3 +87,5 @@ require (
 )
 
 tool github.com/oapi-codegen/oapi-codegen/v2/cmd/oapi-codegen
+
+replace github.com/tutti-os/tutti/packages/appcli/core => ../../packages/appcli/core

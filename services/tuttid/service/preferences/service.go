@@ -29,6 +29,7 @@ type PutInput struct {
 	DockPlacement                               string
 	FileDefaultOpenersByExtension               map[string]string
 	Locale                                      string
+	MinimizeAnimation                           string
 	SleepPreventionMode                         string
 	ThemeSource                                 string
 	UpdateChannel                               string
@@ -59,6 +60,7 @@ func (s Service) Put(ctx context.Context, input PutInput) (preferencesbiz.Deskto
 		FileDefaultOpenersByExtension:               normalizeFileDefaultOpenersByExtension(input.FileDefaultOpenersByExtension),
 		Initialized:                                 true,
 		Locale:                                      strings.TrimSpace(input.Locale),
+		MinimizeAnimation:                           normalizeMinimizeAnimation(input.MinimizeAnimation),
 		SleepPreventionMode:                         strings.TrimSpace(input.SleepPreventionMode),
 		ThemeSource:                                 strings.TrimSpace(input.ThemeSource),
 		UpdateChannel:                               strings.TrimSpace(input.UpdateChannel),
@@ -106,6 +108,14 @@ func normalizeBrowserUseConnectionMode(value string) string {
 		return normalized
 	}
 	return preferencesbiz.DefaultDesktopBrowserUseConnectionMode
+}
+
+func normalizeMinimizeAnimation(value string) string {
+	normalized := strings.TrimSpace(value)
+	if preferencesbiz.IsDesktopMinimizeAnimation(normalized) {
+		return normalized
+	}
+	return preferencesbiz.DefaultDesktopMinimizeAnimation
 }
 
 func normalizeAgentGUIConversationRailCollapsedByProvider(input map[string]bool) map[string]bool {

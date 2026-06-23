@@ -29,7 +29,7 @@ test("left dock placement owns vertical frame and popup placement styles", () =>
   );
   assert.match(
     css,
-    /\.desktop-dock__hover-panel\[data-dock-placement="left"\]\s*{[^}]*left:\s*calc\(\s*var\(--desktop-dock-hover-panel-anchor-left\)\s*\+\s*var\(--desktop-dock-hover-panel-anchor-width\)\s*\+\s*var\(--desktop-dock-tooltip-gap, 32px\)\s*\);/s
+    /\.desktop-dock__hover-panel\[data-dock-placement="left"\]\s*{[^}]*left:\s*calc\(\s*var\(--desktop-dock-hover-panel-anchor-left\)\s*\+\s*var\(--desktop-dock-hover-panel-anchor-width\)\s*\+\s*var\(--desktop-dock-hover-panel-gap, 12px\)\s*\);/s
   );
   assert.match(
     css,
@@ -115,7 +115,11 @@ test("dock overflow keeps scroll controls viewport-bound", () => {
   );
   assert.match(
     css,
-    /\.desktop-dock__hover-panel\s*{[^}]*top:\s*var\(--desktop-dock-hover-panel-anchor-top\);[^}]*pointer-events:\s*auto;[^}]*var\(--desktop-dock-tooltip-gap, 32px\)/s
+    /\.desktop-dock\s*{[^}]*--desktop-dock-hover-panel-gap:\s*12px;/s
+  );
+  assert.match(
+    css,
+    /\.desktop-dock__hover-panel\s*{[^}]*top:\s*var\(--desktop-dock-hover-panel-anchor-top\);[^}]*pointer-events:\s*auto;[^}]*var\(--desktop-dock-hover-panel-gap, 12px\)/s
   );
   assert.match(
     css,
@@ -176,6 +180,22 @@ test("dock overflow keeps scroll controls viewport-bound", () => {
   assert.match(
     css,
     /\.desktop-dock\[data-dock-placement="left"\]\s+\.desktop-dock__minimized-preview\s*{[^}]*transform-origin:\s*left center;/s
+  );
+  assert.match(
+    css,
+    /\.desktop-dock__minimized-preview--component\s*{[^}]*padding:\s*0;[^}]*background:\s*var\(--background-panel\);/s
+  );
+  assert.match(
+    css,
+    /\.desktop-dock__minimized-preview--component > \*\s*{[^}]*width:\s*100%;[^}]*height:\s*100%;/s
+  );
+  assert.match(
+    css,
+    /\.desktop-dock__minimized-preview-freeze-source\s*{[^}]*visibility:\s*hidden;[^}]*pointer-events:\s*none;/s
+  );
+  assert.match(
+    css,
+    /\.desktop-dock__minimized-preview-frozen-content\s*{[^}]*display:\s*block;[^}]*overflow:\s*hidden;/s
   );
   assert.match(css, /\.desktop-dock__slot\s*{[^}]*flex:\s*0 0 auto;/s);
   assert.match(

@@ -40,6 +40,7 @@ func (p DesktopPreferencesPublisher) PublishDesktopPreferencesUpdated(ctx contex
 				preferences.FileDefaultOpenersByExtension,
 			),
 			Locale:              preferences.Locale,
+			MinimizeAnimation:   preferences.MinimizeAnimation,
 			SleepPreventionMode: preferences.SleepPreventionMode,
 			ThemeSource:         preferences.ThemeSource,
 			UpdateChannel:       preferences.UpdateChannel,
@@ -73,6 +74,7 @@ func NewPreferencesDesktopUpdateRequestedHandler(mutator PreferencesMutator) Int
 			DockPlacement:                               decoded.DockPlacement,
 			FileDefaultOpenersByExtension:               decoded.FileDefaultOpenersByExtension,
 			Locale:                                      decoded.Locale,
+			MinimizeAnimation:                           decoded.MinimizeAnimation,
 			SleepPreventionMode:                         decoded.SleepPreventionMode,
 			ThemeSource:                                 decoded.ThemeSource,
 			UpdateChannel:                               decoded.UpdateChannel,
@@ -95,6 +97,7 @@ type decodedDesktopPreferencesMutationPayload struct {
 	DockPlacement                               string
 	FileDefaultOpenersByExtension               map[string]string
 	Locale                                      string
+	MinimizeAnimation                           string
 	SleepPreventionMode                         string
 	ThemeSource                                 string
 	UpdateChannel                               string
@@ -122,6 +125,7 @@ func decodeDesktopPreferencesMutationPayload(payload []byte) (decodedDesktopPref
 			decoded.Preferences.FileDefaultOpenersByExtension,
 		),
 		Locale:              decoded.Preferences.Locale,
+		MinimizeAnimation:   decoded.Preferences.MinimizeAnimation,
 		SleepPreventionMode: decoded.Preferences.SleepPreventionMode,
 		ThemeSource:         decoded.Preferences.ThemeSource,
 		UpdateChannel:       decoded.Preferences.UpdateChannel,

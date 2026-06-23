@@ -192,6 +192,30 @@ func (api DaemonAPI) PutDesktopPreferences(ctx context.Context, request tuttigen
 		}, nil
 	}
 
+	minimizeAnimation := strings.TrimSpace(string(request.Body.Preferences.MinimizeAnimation))
+	if minimizeAnimation == "" {
+		return tuttigenerated.PutDesktopPreferences400JSONResponse{
+			InvalidRequestErrorJSONResponse: invalidRequestError(
+				apierrors.InvalidRequest(
+					apierrors.ReasonMissingDesktopMinimizeAnimation,
+					apierrors.WithDeveloperMessage("desktop minimize animation is required"),
+					apierrors.WithParams(map[string]any{"field": "preferences.minimizeAnimation"}),
+				),
+			),
+		}, nil
+	}
+	if !preferencesbiz.IsDesktopMinimizeAnimation(minimizeAnimation) {
+		return tuttigenerated.PutDesktopPreferences400JSONResponse{
+			InvalidRequestErrorJSONResponse: invalidRequestError(
+				apierrors.InvalidRequest(
+					apierrors.ReasonUnsupportedDesktopMinimizeAnimation,
+					apierrors.WithDeveloperMessage("desktop minimize animation is unsupported"),
+					apierrors.WithParams(map[string]any{"field": "preferences.minimizeAnimation"}),
+				),
+			),
+		}, nil
+	}
+
 	sleepPreventionMode := strings.TrimSpace(string(request.Body.Preferences.SleepPreventionMode))
 	if sleepPreventionMode == "" {
 		return tuttigenerated.PutDesktopPreferences400JSONResponse{
@@ -304,6 +328,7 @@ func (api DaemonAPI) PutDesktopPreferences(ctx context.Context, request tuttigen
 			request.Body.Preferences.FileDefaultOpenersByExtension,
 		),
 		Locale:              locale,
+		MinimizeAnimation:   minimizeAnimation,
 		SleepPreventionMode: sleepPreventionMode,
 		ThemeSource:         themeSource,
 		UpdateChannel:       updateChannel,

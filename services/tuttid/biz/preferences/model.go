@@ -13,6 +13,7 @@ const (
 	DefaultDesktopDockPlacement            = "bottom"
 	DefaultDesktopBrowserUseConnectionMode = "isolated"
 	DefaultDesktopLocale                   = "en"
+	DefaultDesktopMinimizeAnimation        = "scale"
 	DefaultDesktopSleepPreventionMode      = "never"
 	DefaultDesktopThemeSource              = "dark"
 	DefaultDesktopUpdateChannel            = "rc"
@@ -30,6 +31,7 @@ type DesktopPreferences struct {
 	FileDefaultOpenersByExtension               map[string]string
 	Initialized                                 bool
 	Locale                                      string
+	MinimizeAnimation                           string
 	SleepPreventionMode                         string
 	ThemeSource                                 string
 	UpdateChannel                               string
@@ -59,6 +61,7 @@ func DefaultDesktopPreferences() DesktopPreferences {
 		},
 		Initialized:         false,
 		Locale:              DefaultDesktopLocale,
+		MinimizeAnimation:   DefaultDesktopMinimizeAnimation,
 		SleepPreventionMode: DefaultDesktopSleepPreventionMode,
 		ThemeSource:         DefaultDesktopThemeSource,
 		UpdateChannel:       DefaultDesktopUpdateChannel,
@@ -114,6 +117,15 @@ func IsDesktopDockIconStyle(value string) bool {
 func IsDesktopDockPlacement(value string) bool {
 	switch value {
 	case "bottom", "left":
+		return true
+	default:
+		return false
+	}
+}
+
+func IsDesktopMinimizeAnimation(value string) bool {
+	switch value {
+	case "scale", "genie", "off":
 		return true
 	default:
 		return false

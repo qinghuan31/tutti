@@ -272,6 +272,16 @@ export const en = {
           "We couldn't update the dock layout right now.",
         dockIconStyleSaveFailed:
           "We couldn't update the Dock icon style right now.",
+        minimizeAnimationDescription:
+          "Controls the animation used when windows move into the dock",
+        minimizeAnimationLabel: "Minimize animation",
+        minimizeAnimationOptions: {
+          genie: "Genie",
+          off: "Off",
+          scale: "Scale"
+        },
+        minimizeAnimationSaveFailed:
+          "We couldn't update the minimize animation right now.",
         themeDescription:
           "Controls window appearance and the color mode for information",
         themeLabel: "Appearance",
@@ -552,6 +562,7 @@ export const en = {
         comingSoon: "Coming soon",
         install: "Connect",
         installFailed: "Installation failed",
+        installUnavailableInRegion: "Claude isn't available in this region.",
         installRequired: "Connect the local agent to continue",
         installing: "Installing...",
         login: "Sign in",

@@ -87,6 +87,7 @@ func TestSQLiteStorePutDesktopPreferencesPersistsValue(t *testing.T) {
 		},
 		Initialized:         true,
 		Locale:              "zh-CN",
+		MinimizeAnimation:   "scale",
 		SleepPreventionMode: "whileAgentRunning",
 		ThemeSource:         "dark",
 		UpdateChannel:       "rc",

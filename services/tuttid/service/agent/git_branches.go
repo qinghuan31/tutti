@@ -6,6 +6,8 @@ import (
 	"os/exec"
 	"strings"
 	"time"
+
+	"github.com/tutti-os/tutti/packages/agentactivity/daemon/runtimecmd"
 )
 
 // gitBranchListTimeout bounds the git subprocesses backing the review picker so
@@ -69,7 +71,10 @@ func runGit(ctx context.Context, cwd string, args ...string) (string, error) {
 	// Resolve the repository from cwd, never from an ambient GIT_DIR/GIT_WORK_TREE
 	// in the daemon's environment, so the picker always reflects the session's
 	// working directory.
-	cmd.Env = gitEnvScopedToDir()
+	// Inject the macOS system proxy for parity with the other agent subprocesses.
+	// Branch discovery is local, so this is a no-op today, but keeps the env
+	// consistent if git ever needs to reach a remote here.
+	cmd.Env = runtimecmd.InjectSystemProxyEnv(gitEnvScopedToDir())
 	out, err := cmd.Output()
 	if err != nil {
 		return "", err

@@ -51,9 +51,44 @@ test("orders minimized dock nodes by persisted minimize time and stacks overflow
   );
 });
 
+test("component minimized previews reuse minimized dock slot ordering", () => {
+  const slots = resolveWorkbenchMinimizedDockSlots({
+    nodeDefinitions: new Map([
+      [
+        "agentGui",
+        {
+          window: {
+            minimizedDock: {
+              kind: "component",
+              providePreview: () => ({
+                element: null,
+                kind: "component"
+              })
+            }
+          }
+        } as unknown as WorkbenchHostNodeDefinition
+      ]
+    ]),
+    nodes: [makeNode("a", 100, "agentGui"), makeNode("b", 200, "agentGui")]
+  });
+
+  assert.deepEqual(
+    slots.map((slot) => (slot.kind === "node" ? slot.node.id : "stack")),
+    ["b", "a"]
+  );
+  assert.equal(
+    resolveWorkbenchMinimizedDockAnchorKeyForNode({
+      nodeId: "b",
+      slots
+    }),
+    "minimized:b"
+  );
+});
+
 function makeNode(
   id: string,
-  minimizedAtUnixMs: number
+  minimizedAtUnixMs: number,
+  typeId = "textFile"
 ): WorkbenchNode<WorkbenchHostNodeData> {
   return {
     id,
@@ -66,7 +101,7 @@ function makeNode(
     minimizedAtUnixMs,
     data: {
       instanceId: id,
-      typeId: "textFile"
+      typeId
     }
   };
 }

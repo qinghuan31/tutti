@@ -33,7 +33,8 @@ Keep these semantics stable unless the app CLI manifest version changes:
 
 - `tutti.app.json` points to the app-owned CLI manifest path
 - `tutti.cli.json` uses `schemaVersion: "tutti.app.cli.v1"`
-- `appcli/manifest.go` reads and validates the manifest shape
+- `packages/appcli/core` reads and validates the manifest shape; daemon code
+  adapts that protocol core to Tutti workspace/app runtime state
 - `appcli.Registry` normalizes input according to the manifest input schema
 - `appcli.Registry` invokes the app handler with the
   `tutti.app.cli.invoke.v1` envelope

@@ -141,6 +141,7 @@ the following in the same change:
 Go linting uses `golangci-lint` across the repository's current Go modules.
 The current root entrypoint runs the linter from:
 
+- `packages/appcli/core`
 - `packages/workspace/files`
 - `packages/workbench/service`
 - `services/tuttid`

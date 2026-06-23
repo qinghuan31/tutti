@@ -13,6 +13,7 @@
     "dockPlacement",
     "fileDefaultOpenersByExtension",
     "locale",
+    "minimizeAnimation",
     "sleepPreventionMode",
     "themeSource",
     "updateChannel",
@@ -80,6 +81,10 @@
     "locale": {
       "type": "string",
       "enum": ["en", "zh-CN"]
+    },
+    "minimizeAnimation": {
+      "type": "string",
+      "enum": ["scale", "genie", "off"]
     },
     "sleepPreventionMode": {
       "type": "string",

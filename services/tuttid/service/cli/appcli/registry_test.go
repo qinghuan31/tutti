@@ -3,6 +3,7 @@ package appcli
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -193,6 +194,30 @@ func TestRegistryInvokePostsEnvelopeAndFillsTableColumns(t *testing.T) {
 	}
 }
 
+func TestRegistryInvokeRejectsUndeclaredOutput(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"kind":"table","rows":[{"id":"job-1"}]}`))
+	}))
+	defer server.Close()
+
+	registry := NewRegistry(fakeWorkspaceCatalog{workspaceID: "ws-1"}, fakeRuntime{baseURL: server.URL})
+	appPackage := writeTestPackage(t, "automation-app", "automation", testJSONCommand())
+	registry.Activate(context.Background(), Activation{WorkspaceID: "ws-1", AppPackage: appPackage, BaseURL: server.URL})
+
+	_, err := registry.Invoke(context.Background(), cliservice.InvokeRequest{
+		CommandID: "app.automation-app.automation.run",
+		Input:     map[string]any{"name": "daily"},
+		Context:   cliservice.InvokeContext{WorkspaceID: "ws-1"},
+	})
+	if !errors.Is(err, cliservice.ErrWorkspaceOperation) {
+		t.Fatalf("Invoke() error = %v, want ErrWorkspaceOperation", err)
+	}
+	if reason := cliservice.InvokeErrorReason(err); reason != "app_cli_handler_bad_response" {
+		t.Fatalf("InvokeErrorReason() = %q", reason)
+	}
+}
+
 func TestValidateManifestRejectsReservedHandlerPath(t *testing.T) {
 	err := ValidateManifest(Manifest{
 		SchemaVersion: ManifestSchemaVersion,
@@ -200,7 +225,7 @@ func TestValidateManifestRejectsReservedHandlerPath(t *testing.T) {
 		Commands: []ManifestCommand{{
 			Path:    []string{"run"},
 			Summary: "Run automation",
-			Output:  ManifestCommandOutput{DefaultMode: cliservice.OutputModeJSON, JSON: true},
+			Output:  ManifestCommandOutput{DefaultMode: OutputModeJSON, JSON: true},
 			Handler: ManifestCommandHandler{Kind: "http", Method: "POST", Path: "/run"},
 		}},
 	})

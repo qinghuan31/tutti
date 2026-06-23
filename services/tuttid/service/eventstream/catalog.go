@@ -267,6 +267,7 @@ type desktopPreferencesMutationPayload struct {
 		DockPlacement                               string                                                    `json:"dockPlacement"`
 		FileDefaultOpenersByExtension               desktopFileDefaultOpenersByExtensionPayload               `json:"fileDefaultOpenersByExtension"`
 		Locale                                      string                                                    `json:"locale"`
+		MinimizeAnimation                           string                                                    `json:"minimizeAnimation"`
 		SleepPreventionMode                         string                                                    `json:"sleepPreventionMode"`
 		ThemeSource                                 string                                                    `json:"themeSource"`
 		UpdateChannel                               string                                                    `json:"updateChannel"`
@@ -389,6 +390,7 @@ type desktopPreferencesSettingsPayload struct {
 	DockPlacement                               string                                                    `json:"dockPlacement"`
 	FileDefaultOpenersByExtension               desktopFileDefaultOpenersByExtensionPayload               `json:"fileDefaultOpenersByExtension"`
 	Locale                                      string                                                    `json:"locale"`
+	MinimizeAnimation                           string                                                    `json:"minimizeAnimation"`
 	SleepPreventionMode                         string                                                    `json:"sleepPreventionMode"`
 	ThemeSource                                 string                                                    `json:"themeSource"`
 	UpdateChannel                               string                                                    `json:"updateChannel"`
@@ -471,6 +473,12 @@ func validateDesktopPreferencesUpdateRequestedPayload(payload []byte) error {
 	if !preferencesbiz.IsDesktopLocale(decoded.Locale) {
 		return fmt.Errorf("preferences.locale is unsupported")
 	}
+	if decoded.MinimizeAnimation == "" {
+		return fmt.Errorf("preferences.minimizeAnimation is required")
+	}
+	if !preferencesbiz.IsDesktopMinimizeAnimation(decoded.MinimizeAnimation) {
+		return fmt.Errorf("preferences.minimizeAnimation is unsupported")
+	}
 	if decoded.SleepPreventionMode == "" {
 		return fmt.Errorf("preferences.sleepPreventionMode is required")
 	}
@@ -544,6 +552,12 @@ func validateDesktopPreferencesUpdatedPayload(payload []byte) error {
 	}
 	if !preferencesbiz.IsDesktopLocale(decoded.Preferences.Locale) {
 		return fmt.Errorf("preferences.locale is unsupported")
+	}
+	if decoded.Preferences.MinimizeAnimation == "" {
+		return fmt.Errorf("preferences.minimizeAnimation is required")
+	}
+	if !preferencesbiz.IsDesktopMinimizeAnimation(decoded.Preferences.MinimizeAnimation) {
+		return fmt.Errorf("preferences.minimizeAnimation is unsupported")
 	}
 	if decoded.Preferences.SleepPreventionMode == "" {
 		return fmt.Errorf("preferences.sleepPreventionMode is required")

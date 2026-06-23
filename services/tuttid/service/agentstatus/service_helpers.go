@@ -258,6 +258,11 @@ func runAuthStatusCommand(ctx context.Context, spec ProviderSpec, binaryPath str
 	commandCtx, cancel := context.WithTimeout(ctx, authStatusCommandTimeout)
 	defer cancel()
 	command := exec.CommandContext(commandCtx, binaryPath, spec.AuthStatusCommand...)
+	// Inject the macOS system proxy so the auth-status probe reaches the upstream
+	// API through the same proxy as spawned agents (mirroring agent install &
+	// login), instead of connecting directly and hitting `403 Request not allowed`
+	// from a restricted region.
+	command.Env = runtimecmd.InjectSystemProxyEnv(os.Environ())
 	output, err := command.Output()
 	if err != nil {
 		if exitErr, ok := err.(*exec.ExitError); ok {

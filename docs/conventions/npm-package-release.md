@@ -103,6 +103,7 @@ release and use the Go submodule tag shape:
 
 ```text
 packages/workbench/service/v0.0.1
+packages/appcli/core/v0.0.1
 packages/workspace/files/v0.0.1
 packages/workspace/issues/v0.0.1
 ```

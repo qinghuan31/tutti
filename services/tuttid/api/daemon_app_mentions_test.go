@@ -33,6 +33,7 @@ func TestDaemonAPIGeneratedRoutesListWorkspaceAppMentionCandidates(t *testing.T)
 					gotWorkspaceID = workspaceID
 					return []workspacebiz.WorkspaceApp{
 						workspaceAppMentionTestApp("installed-app", "Installed App", "Installed App description", true, true),
+						workspaceAppMentionTestApp("installed-no-cli", "Installed No CLI", "Installed without CLI description", true, true),
 						workspaceAppMentionTestApp("disabled-app", "Disabled App", "Disabled App description", true, false),
 						workspaceAppMentionTestApp("uninstalled-app", "Uninstalled App", "Uninstalled App description", false, false),
 					}, nil

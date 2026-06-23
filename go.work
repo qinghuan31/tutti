@@ -12,4 +12,7 @@ use ./packages/workspace/files
 
 use ./packages/workspace/issues
 
-use ./packages/agent/daemon
+use (
+	./packages/agent/daemon
+	./packages/appcli/core
+)
