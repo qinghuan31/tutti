@@ -224,6 +224,7 @@ test("pending minimized dock slots reuse minimized layout without preview captur
     source,
     /capturePreview=\{\s*isPendingMinimizedNode\s*\?\s*undefined\s*:\s*captureMinimizedNodePreview\s*\}/
   );
+  assert.match(source, /deferPreview=\{isPendingMinimizedNode\}/);
   assert.match(
     source,
     /dockPreviewCache=\{\s*isPendingMinimizedNode \? undefined : dockPreviewCache\s*\}/
@@ -242,9 +243,22 @@ test("component minimized dock previews freeze without snapshot capture", () => 
   );
   assert.match(
     source,
-    /const \[componentPreview\] = useState<WorkbenchDockPreviewContent \| null>\(\s*\(\) => providePreview\?\.\(node\) \?\? null\s*\);/
+    /const \[componentPreview, setComponentPreview\] = useState<\s*WorkbenchDockPreviewContent \| null \| undefined\s*>\(undefined\);/
   );
-  assert.match(source, /if \(providePreview\) \{\s*return undefined;\s*\}/);
+  assert.match(source, /deferPreview=\{isPendingMinimizedNode\}/);
+  assert.match(
+    source,
+    /if \(deferPreview \|\| !providePreview \|\| componentPreview !== undefined\) \{\s*return undefined;\s*\}/
+  );
+  assert.match(
+    source,
+    /setComponentPreview\(providePreview\(node\) \?\? null\);/
+  );
+  assert.match(source, /requestIdleCallback/);
+  assert.match(
+    source,
+    /if \(deferPreview \|\| providePreview\) \{\s*return undefined;\s*\}/
+  );
   assert.match(
     source,
     /minimizedDock\?\.kind === "snapshot" &&\s*Boolean\(minimizedDock\.capturePreview\)/
