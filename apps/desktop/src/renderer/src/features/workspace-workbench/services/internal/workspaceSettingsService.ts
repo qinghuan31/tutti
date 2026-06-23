@@ -6,6 +6,7 @@ import type {
   DesktopBrowserUseConnectionMode,
   DesktopDockIconStyle,
   DesktopDockPlacement,
+  DesktopMinimizeAnimation,
   DesktopSleepPreventionMode,
   DesktopUpdateChannel,
   DesktopUpdatePolicy
@@ -286,6 +287,27 @@ export class WorkspaceSettingsService implements IWorkspaceSettingsService {
       this.notifications.error({
         title: createActiveTranslator().t(
           "workspace.settings.appearance.dockIconStyleSaveFailed"
+        )
+      });
+    }
+  }
+
+  async changeMinimizeAnimation(
+    animation: DesktopMinimizeAnimation
+  ): Promise<void> {
+    if (
+      this.desktopPreferences.store.minimizeAnimation === animation ||
+      this.desktopPreferences.store.changingMinimizeAnimation === animation
+    ) {
+      return;
+    }
+
+    try {
+      await this.desktopPreferences.setMinimizeAnimation(animation);
+    } catch {
+      this.notifications.error({
+        title: createActiveTranslator().t(
+          "workspace.settings.appearance.minimizeAnimationSaveFailed"
         )
       });
     }
@@ -1013,6 +1035,7 @@ const noopDesktopPreferencesStore: DesktopPreferencesReadableStoreState = {
   changingDockIconStyle: null,
   changingDockPlacement: null,
   changingLocale: null,
+  changingMinimizeAnimation: null,
   changingSleepPreventionMode: null,
   changingThemeSource: null,
   changingUpdateChannel: null,
@@ -1022,6 +1045,7 @@ const noopDesktopPreferencesStore: DesktopPreferencesReadableStoreState = {
   dockPlacement: "bottom",
   fileDefaultOpenersByExtension: {},
   locale: "en",
+  minimizeAnimation: "scale",
   sleepPreventionMode: "never",
   theme: createNoopTheme("dark"),
   updateChannel: "rc",
@@ -1051,6 +1075,9 @@ const noopDesktopPreferences: DesktopPreferencesService = {
   },
   setLocale(locale) {
     return Promise.resolve(locale);
+  },
+  setMinimizeAnimation(animation) {
+    return Promise.resolve(animation);
   },
   setSleepPreventionMode(mode) {
     return Promise.resolve(mode);

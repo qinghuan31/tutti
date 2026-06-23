@@ -62,6 +62,7 @@ import {
   desktopBrowserUseConnectionModes,
   desktopDockPlacements,
   desktopFileDefaultOpeners,
+  desktopMinimizeAnimations,
   desktopSleepPreventionModes,
   normalizeDesktopFileExtension,
   type DesktopAppCatalogChannel,
@@ -69,6 +70,7 @@ import {
   type DesktopDockPlacement,
   type DesktopFileDefaultOpener,
   type DesktopFileDefaultOpenersByExtension,
+  type DesktopMinimizeAnimation,
   type DesktopSleepPreventionMode
 } from "../../../../../shared/preferences/index.ts";
 import { resolveWorkspaceAgentGuiLabel } from "../services/workspaceAgentProviderCatalog";
@@ -311,9 +313,16 @@ export function WorkspaceSettingsPanel({
                 changingThemeSource={
                   desktopPreferencesState.changingThemeSource
                 }
+                changingMinimizeAnimation={
+                  desktopPreferencesState.changingMinimizeAnimation
+                }
                 dockPlacement={desktopPreferencesState.dockPlacement}
+                minimizeAnimation={desktopPreferencesState.minimizeAnimation}
                 onDockPlacementChange={(placement) => {
                   void settingsService.changeDockPlacement(placement);
+                }}
+                onMinimizeAnimationChange={(animation) => {
+                  void settingsService.changeMinimizeAnimation(animation);
                 }}
                 onSelectWallpaper={onSelectWallpaper}
                 onSelectWallpaperDisplayMode={onSelectWallpaperDisplayMode}
@@ -1742,6 +1751,19 @@ function workspaceSettingsAppCatalogChannelOptionLabelKey(
   }
 }
 
+function workspaceSettingsMinimizeAnimationOptionLabelKey(
+  animation: DesktopMinimizeAnimation
+): DesktopI18nKey {
+  switch (animation) {
+    case "scale":
+      return "workspace.settings.appearance.minimizeAnimationOptions.scale";
+    case "genie":
+      return "workspace.settings.appearance.minimizeAnimationOptions.genie";
+    case "off":
+      return "workspace.settings.appearance.minimizeAnimationOptions.off";
+  }
+}
+
 function workspaceSettingsFileDefaultOpenerLabelKey(
   opener: DesktopFileDefaultOpener
 ): DesktopI18nKey {
@@ -2576,9 +2598,12 @@ function AboutActionButton({
 
 function WorkspaceAppearanceSettingsSection({
   changingDockPlacement,
+  changingMinimizeAnimation,
   changingThemeSource,
   dockPlacement,
+  minimizeAnimation,
   onDockPlacementChange,
+  onMinimizeAnimationChange,
   onSelectWallpaper,
   onSelectWallpaperDisplayMode,
   onThemeChange,
@@ -2588,9 +2613,12 @@ function WorkspaceAppearanceSettingsSection({
   themeSource
 }: {
   changingDockPlacement: DesktopDockPlacement | null;
+  changingMinimizeAnimation: DesktopMinimizeAnimation | null;
   changingThemeSource: DesktopThemeSource | null;
   dockPlacement: DesktopDockPlacement;
+  minimizeAnimation: DesktopMinimizeAnimation;
   onDockPlacementChange: (placement: DesktopDockPlacement) => void;
+  onMinimizeAnimationChange: (animation: DesktopMinimizeAnimation) => void;
   onSelectWallpaper: (id: WorkspaceWallpaperId) => void;
   onSelectWallpaperDisplayMode: (
     displayMode: WorkspaceWallpaperDisplayMode
@@ -2606,6 +2634,9 @@ function WorkspaceAppearanceSettingsSection({
   const pendingThemeSource = changingThemeSource ?? themeSource;
   const isUpdatingDockPlacement = changingDockPlacement !== null;
   const pendingDockPlacement = changingDockPlacement ?? dockPlacement;
+  const isUpdatingMinimizeAnimation = changingMinimizeAnimation !== null;
+  const pendingMinimizeAnimation =
+    changingMinimizeAnimation ?? minimizeAnimation;
 
   return (
     <div className="flex flex-col gap-8 pb-[22px] pt-5">
@@ -2686,6 +2717,47 @@ function WorkspaceAppearanceSettingsSection({
                     : t(
                         "workspace.settings.appearance.dockPlacementOptions.left"
                       )}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+      </div>
+
+      <div className="flex w-full items-center justify-between gap-4 max-[560px]:flex-col max-[560px]:items-stretch">
+        <div className="flex min-w-0 flex-1 flex-col gap-1 max-[560px]:w-full">
+          <strong className="text-[13px] font-semibold text-[var(--text-primary)]">
+            {t("workspace.settings.appearance.minimizeAnimationLabel")}
+          </strong>
+          <p className="m-0 text-[13px] leading-[1.3] text-[var(--text-secondary)]">
+            {t("workspace.settings.appearance.minimizeAnimationDescription")}
+          </p>
+        </div>
+        <div className="w-[220px] min-w-[220px] max-[560px]:w-full max-[560px]:min-w-0">
+          <Select
+            disabled={isUpdatingMinimizeAnimation}
+            value={pendingMinimizeAnimation}
+            onValueChange={(value) =>
+              onMinimizeAnimationChange(value as DesktopMinimizeAnimation)
+            }
+          >
+            <SelectTrigger
+              aria-label={t(
+                "workspace.settings.appearance.minimizeAnimationLabel"
+              )}
+              className={workspaceSettingsSelectTriggerClass}
+            >
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent
+              className={workspaceSettingsSelectContentClass}
+              style={{ zIndex: "var(--z-panel-popover)" }}
+            >
+              {desktopMinimizeAnimations.map((animation) => (
+                <SelectItem key={animation} value={animation}>
+                  {t(
+                    workspaceSettingsMinimizeAnimationOptionLabelKey(animation)
+                  )}
                 </SelectItem>
               ))}
             </SelectContent>

@@ -228,6 +228,7 @@ function createPreferencesKey(
     preferences.defaultAgentProvider,
     preferences.dockIconStyle,
     preferences.dockPlacement,
+    preferences.minimizeAnimation ?? "scale",
     stableFileDefaultOpenersByExtensionKey(
       preferences.fileDefaultOpenersByExtension
     ),
@@ -258,6 +259,8 @@ function preferencesEqual(
     left.defaultAgentProvider === right.defaultAgentProvider &&
     left.dockIconStyle === right.dockIconStyle &&
     left.dockPlacement === right.dockPlacement &&
+    (left.minimizeAnimation ?? "scale") ===
+      (right.minimizeAnimation ?? "scale") &&
     stableFileDefaultOpenersByExtensionKey(
       left.fileDefaultOpenersByExtension
     ) ===

@@ -112,7 +112,11 @@ export function useWorkbenchHostSurfaceRenderers(input: {
   const captureNodePreviewImage = useCallback(
     async (node: WorkbenchNode<WorkbenchHostNodeData>) => {
       const definition = input.nodeDefinitionByType.get(node.data.typeId);
-      const capturePreview = definition?.window?.minimizedDock?.capturePreview;
+      const minimizedDock = definition?.window?.minimizedDock;
+      const capturePreview =
+        minimizedDock?.kind === "snapshot"
+          ? minimizedDock.capturePreview
+          : undefined;
       const snapshot = input.hostSession.getSnapshot();
       const externalState = readWorkbenchHostExternalState({
         externalStateSource: input.externalStateSource,
@@ -286,6 +290,15 @@ export function useWorkbenchHostSurfaceRenderers(input: {
     [input.nodeDefinitionByType]
   );
 
+  const shouldCaptureNodePreviewImage = useCallback(
+    (node: WorkbenchNode<WorkbenchHostNodeData>) => {
+      const minimizedDock = input.nodeDefinitionByType.get(node.data.typeId)
+        ?.window?.minimizedDock;
+      return minimizedDock?.kind !== "component";
+    },
+    [input.nodeDefinitionByType]
+  );
+
   const resolveDockAnchorKey = useCallback(
     (node: WorkbenchNode<WorkbenchHostNodeData>) => {
       if (
@@ -295,12 +308,20 @@ export function useWorkbenchHostSurfaceRenderers(input: {
           nodeDefinitions: input.nodeDefinitionByType
         })
       ) {
+        const snapshotNodes = input.hostSession.getSnapshot().nodes;
+        const slotNodes = snapshotNodes.some(
+          (snapshotNode) => snapshotNode.id === node.id
+        )
+          ? snapshotNodes.map((snapshotNode) =>
+              snapshotNode.id === node.id ? node : snapshotNode
+            )
+          : [...snapshotNodes, node];
         const minimizedAnchorKey =
           resolveWorkbenchMinimizedDockAnchorKeyForNode({
             nodeId: node.id,
             slots: resolveWorkbenchMinimizedDockSlots({
               nodeDefinitions: input.nodeDefinitionByType,
-              nodes: input.hostSession.getSnapshot().nodes
+              nodes: slotNodes
             })
           });
         if (minimizedAnchorKey) {
@@ -358,6 +379,7 @@ export function useWorkbenchHostSurfaceRenderers(input: {
     renderTopChrome,
     renderWindowActions,
     renderWindowHeader,
+    shouldCaptureNodePreviewImage,
     shouldKeepMinimizedNodeMounted,
     resolveDockAnchorKey,
     resolveDockPreviewCacheKey,

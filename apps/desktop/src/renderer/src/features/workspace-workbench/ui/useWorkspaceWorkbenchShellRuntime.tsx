@@ -28,7 +28,10 @@ import { useDesktopPreferencesService } from "@renderer/features/desktop-prefere
 import { useWorkspaceFileManagerService } from "@renderer/features/workspace-file-manager/ui/useWorkspaceFileManagerService";
 import { useTranslation } from "@renderer/i18n";
 import { createWorkspaceWorkbenchDesktopI18nRuntime } from "@shared/i18n";
-import type { DesktopDockIconStyle } from "@shared/preferences";
+import type {
+  DesktopDockIconStyle,
+  DesktopMinimizeAnimation
+} from "@shared/preferences";
 import type { DesktopThemeAppearance } from "@shared/theme";
 import { createWorkspaceFilePreviewLaunchRequest } from "../services/workspaceFilePreviewLaunch";
 import { requestWorkspaceFilesLaunch } from "../services/workspaceFilesLaunchCoordinator";
@@ -58,6 +61,7 @@ export interface WorkspaceWorkbenchShellRuntime {
   };
   dockIconStyle: DesktopDockIconStyle;
   dockPlacement: WorkbenchDockPlacement;
+  minimizeAnimation: DesktopMinimizeAnimation;
   hostInput: ReturnType<
     WorkspaceWorkbenchShellRuntimeController["getSnapshot"]
   >["hostInput"];
@@ -394,6 +398,7 @@ export function useWorkspaceWorkbenchShellRuntime({
       open: shellRuntimeController.missionControl.open,
       visibleWindowCount: shellRuntimeSnapshot.missionControl.visibleWindowCount
     },
+    minimizeAnimation: desktopPreferencesState.minimizeAnimation,
     onMissionControlAdapterReady:
       shellRuntimeController.missionControl.setAdapter,
     onWorkbenchHostHandleReady: handleWorkbenchHostReady,

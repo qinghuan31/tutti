@@ -53,6 +53,7 @@ export function connectDesktopHostPreferencesEventStream(
         dockIconStyle: nextPreferences.dockIconStyle,
         dockPlacement: nextPreferences.dockPlacement,
         locale: nextPreferences.locale,
+        minimizeAnimation: nextPreferences.minimizeAnimation,
         sleepPreventionMode: nextPreferences.sleepPreventionMode,
         themeSource: nextPreferences.themeSource,
         updateChannel: nextPreferences.updateChannel,

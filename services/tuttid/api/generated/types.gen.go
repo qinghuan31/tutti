@@ -559,6 +559,27 @@ func (e DesktopLocale) Valid() bool {
 	}
 }
 
+// Defines values for DesktopMinimizeAnimation.
+const (
+	DesktopMinimizeAnimationGenie DesktopMinimizeAnimation = "genie"
+	DesktopMinimizeAnimationOff   DesktopMinimizeAnimation = "off"
+	DesktopMinimizeAnimationScale DesktopMinimizeAnimation = "scale"
+)
+
+// Valid indicates whether the value is a known member of the DesktopMinimizeAnimation enum.
+func (e DesktopMinimizeAnimation) Valid() bool {
+	switch e {
+	case DesktopMinimizeAnimationGenie:
+		return true
+	case DesktopMinimizeAnimationOff:
+		return true
+	case DesktopMinimizeAnimationScale:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for DesktopSleepPreventionMode.
 const (
 	Always            DesktopSleepPreventionMode = "always"
@@ -798,28 +819,28 @@ func (e IssueManagerTaskContextRefParentKind) Valid() bool {
 
 // Defines values for PermissionModeSemantic.
 const (
-	PermissionModeSemanticAcceptEdits    PermissionModeSemantic = "accept-edits"
-	PermissionModeSemanticAskBeforeWrite PermissionModeSemantic = "ask-before-write"
-	PermissionModeSemanticAuto           PermissionModeSemantic = "auto"
-	PermissionModeSemanticFullAccess     PermissionModeSemantic = "full-access"
-	PermissionModeSemanticLockedDown     PermissionModeSemantic = "locked-down"
-	PermissionModeSemanticUnconfigurable PermissionModeSemantic = "unconfigurable"
+	AcceptEdits    PermissionModeSemantic = "accept-edits"
+	AskBeforeWrite PermissionModeSemantic = "ask-before-write"
+	Auto           PermissionModeSemantic = "auto"
+	FullAccess     PermissionModeSemantic = "full-access"
+	LockedDown     PermissionModeSemantic = "locked-down"
+	Unconfigurable PermissionModeSemantic = "unconfigurable"
 )
 
 // Valid indicates whether the value is a known member of the PermissionModeSemantic enum.
 func (e PermissionModeSemantic) Valid() bool {
 	switch e {
-	case PermissionModeSemanticAcceptEdits:
+	case AcceptEdits:
 		return true
-	case PermissionModeSemanticAskBeforeWrite:
+	case AskBeforeWrite:
 		return true
-	case PermissionModeSemanticAuto:
+	case Auto:
 		return true
-	case PermissionModeSemanticFullAccess:
+	case FullAccess:
 		return true
-	case PermissionModeSemanticLockedDown:
+	case LockedDown:
 		return true
-	case PermissionModeSemanticUnconfigurable:
+	case Unconfigurable:
 		return true
 	default:
 		return false
@@ -2027,6 +2048,9 @@ type DesktopFileDefaultOpenersByExtension map[string]DesktopFileDefaultOpener
 // DesktopLocale defines model for DesktopLocale.
 type DesktopLocale string
 
+// DesktopMinimizeAnimation defines model for DesktopMinimizeAnimation.
+type DesktopMinimizeAnimation string
+
 // DesktopPreferences defines model for DesktopPreferences.
 type DesktopPreferences struct {
 	AgentComposerDefaultsByProvider             DesktopAgentComposerDefaultsByProvider             `json:"agentComposerDefaultsByProvider"`
@@ -2038,6 +2062,7 @@ type DesktopPreferences struct {
 	DockPlacement                               DesktopDockPlacement                               `json:"dockPlacement"`
 	FileDefaultOpenersByExtension               DesktopFileDefaultOpenersByExtension               `json:"fileDefaultOpenersByExtension"`
 	Locale                                      DesktopLocale                                      `json:"locale"`
+	MinimizeAnimation                           DesktopMinimizeAnimation                           `json:"minimizeAnimation"`
 	SleepPreventionMode                         DesktopSleepPreventionMode                         `json:"sleepPreventionMode"`
 	ThemeSource                                 DesktopThemeSource                                 `json:"themeSource"`
 	UpdateChannel                               DesktopUpdateChannel                               `json:"updateChannel"`

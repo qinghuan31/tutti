@@ -29,6 +29,7 @@ export function WorkbenchHost({
   i18n,
   layoutConstraints,
   missionControl,
+  minimizeAnimation,
   nodes,
   onDockEntryAction,
   onDockEntryClick,
@@ -135,6 +136,7 @@ export function WorkbenchHost({
       interactive={!isHydrating}
       layoutConstraints={layoutConstraints}
       missionControlPhase={missionControlPresence.phase}
+      minimizeAnimation={minimizeAnimation}
       presentation={missionControlState?.presentation ?? null}
       renderBackdrop={
         missionControlRenderedState
@@ -172,6 +174,9 @@ export function WorkbenchHost({
       resolveFullscreenHeaderMode={surfaceRenderers.resolveFullscreenHeaderMode}
       resolveDockAnchorKey={surfaceRenderers.resolveDockAnchorKey}
       shortcutsEnabled={shortcutsEnabled}
+      shouldCaptureNodePreviewImage={
+        surfaceRenderers.shouldCaptureNodePreviewImage
+      }
       wallpaper={wallpaper}
       windowChromeI18n={windowChromeI18n}
       windowChromeMode={surfaceRenderers.windowChromeMode}

@@ -107,6 +107,7 @@ func TestTuttidBlackBoxEventStreamWebSocketReadyAndValidation(t *testing.T) {
 				Preferences: eventprotocol.PreferencesDesktopPreferences{
 					DockPlacement:       "bottom",
 					Locale:              "fr",
+					MinimizeAnimation:   "scale",
 					SleepPreventionMode: "never",
 					ThemeSource:         "dark",
 				},
@@ -200,6 +201,7 @@ func TestTuttidBlackBoxEventStreamPreferenceIntentPublishesUpdatedEvent(t *testi
 					DockIconStyle:       "default",
 					DockPlacement:       "bottom",
 					Locale:              "zh-CN",
+					MinimizeAnimation:   "scale",
 					SleepPreventionMode: "whileAgentRunning",
 					ThemeSource:         "dark",
 					UpdateChannel:       "stable",

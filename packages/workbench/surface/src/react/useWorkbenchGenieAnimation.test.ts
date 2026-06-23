@@ -40,6 +40,13 @@ test("genie dock launch does not synchronously flush missing nodes", () => {
   );
 });
 
+test("genie dock launch skips animation setup when motion is reduced or disabled", () => {
+  assert.match(
+    source,
+    /const effectiveMinimizeAnimation = shouldReduceMotion\(\)\s*\? "off"\s*: minimizeAnimation;\s*if \(effectiveMinimizeAnimation === "off"\) \{\s*stopAnimation\(\);\s*flushSync\(\(\) => \{\s*showNodeForGenie\(nodeID\);\s*\}\);\s*void Promise\.resolve\(launch\(\)\)\.catch\(\(\) => \{\}\);\s*return;\s*\}\s*stopAnimation\(\);\s*const dockRectFallback = resolveDockAnchorRect\(anchorKey\);\s*hideNodeForGenie\(nodeID\);/
+  );
+});
+
 test("genie minimize foregrounds the target before preview capture", () => {
   assert.match(source, /function isFocusedWorkbenchNode/);
   assert.match(
@@ -49,5 +56,64 @@ test("genie minimize foregrounds the target before preview capture", () => {
   assert.match(
     source,
     /const previewImageUrlPromise = Promise\.resolve\(\s*captureNodePreviewImage\?\.\(target\) \?\? null\s*\)/
+  );
+});
+
+test("scale and off minimize skip focus and preview capture for component previews", () => {
+  assert.match(source, /shouldCaptureNodePreviewImage\?:/);
+  assert.match(
+    source,
+    /const shouldCapturePreview =\s*shouldCaptureNodePreviewImage\?\.\(target\) \?\? true;/
+  );
+  assert.match(
+    source,
+    /if \(shouldCapturePreview\) \{\s*void captureProvidedWorkbenchNodePreviewImageForNode\(target,/
+  );
+  assert.match(
+    source,
+    /const wasFocusedForCapture =\s*shouldCapturePreview && isFocusedWorkbenchNode\(controller, nodeID\);/
+  );
+  assert.match(source, /if \(shouldCapturePreview && !wasFocusedForCapture\)/);
+});
+
+test("scale minimize resolves its target from a pending minimized dock slot", () => {
+  assert.match(
+    source,
+    /const previousVisibility = nodeElement\.style\.visibility/
+  );
+  assert.match(source, /nodeElement\.style\.visibility = "visible"/);
+  assert.match(source, /pendingMinimizedNode: WorkbenchNode<TData> \| null/);
+  assert.match(source, /setPendingMinimizedNode\(pendingMinimizedNode\)/);
+  assert.match(source, /resolveAnchorKeyForNode\(pendingMinimizedNode\)/);
+  assert.match(
+    source,
+    /runScaleWindowAnimation\(\{[\s\S]*direction: "minimize"[\s\S]*skipStop: true/
+  );
+  assert.match(
+    source,
+    /onComplete: \(\) => \{[\s\S]*clearPendingMinimizedNode\(nodeID\);[\s\S]*commitMinimize\(\);/
+  );
+});
+
+test("off minimize gives immediate shell feedback and defers the state commit", () => {
+  assert.match(
+    source,
+    /flushSync\(\(\) => \{\s*hideNodeForGenie\(nodeID\);\s*setPendingMinimizedNode\(\{/
+  );
+  assert.doesNotMatch(source, /nodeElement\.style\.visibility = "hidden"/);
+  assert.match(
+    source,
+    /setPendingMinimizedNode\(\{[\s\S]*isMinimized: true,[\s\S]*minimizedAtUnixMs: Date\.now\(\)[\s\S]*\}\);/
+  );
+  assert.match(
+    source,
+    /frameID = window\.requestAnimationFrame\(\(\) => \{[\s\S]*timerID = setTimeout\(commitMinimize, 0\);/
+  );
+});
+
+test("genie minimize resolves its target from a pending minimized dock slot", () => {
+  assert.match(
+    source,
+    /const pendingMinimizedNode: WorkbenchNode<TData> = \{[\s\S]*isMinimized: true,[\s\S]*minimizedAtUnixMs: Date\.now\(\)[\s\S]*\};[\s\S]*setPendingMinimizedNode\(pendingMinimizedNode\);[\s\S]*hideNodeForGenie\(nodeID\);[\s\S]*const anchorKey = resolveAnchorKeyForNode\(pendingMinimizedNode\);[\s\S]*runGenieAnimation/
   );
 });

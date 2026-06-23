@@ -293,6 +293,9 @@ function createFakePreferences(
     getLocale() {
       return "en";
     },
+    getMinimizeAnimation() {
+      return "scale";
+    },
     getSleepPreventionMode() {
       return mode;
     },

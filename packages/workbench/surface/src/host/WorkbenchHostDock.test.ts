@@ -204,6 +204,66 @@ test("dock hover labels use local non-blocking tooltips", () => {
   );
 });
 
+test("pending minimized dock slots reuse minimized layout without preview capture", () => {
+  assert.match(source, /nodes: context\.minimizedNodes/);
+  assert.doesNotMatch(
+    source,
+    /resolveWorkbenchMinimizedDockSlots\(\{[\s\S]*nodes: context\.nodes/
+  );
+  assert.match(
+    source,
+    /context\.genie\.isPendingMinimizedDockNode\(node\.id\)/
+  );
+  assert.match(
+    source,
+    /if \(context\.genie\.isPendingMinimizedDockNode\(node\.id\)\) \{\s*return false;/
+  );
+  assert.match(source, /disabled=\{isPendingMinimizedNode\}/);
+  assert.match(source, /data-pending-minimize=/);
+  assert.match(
+    source,
+    /capturePreview=\{\s*isPendingMinimizedNode\s*\?\s*undefined\s*:\s*captureMinimizedNodePreview\s*\}/
+  );
+  assert.match(
+    source,
+    /dockPreviewCache=\{\s*isPendingMinimizedNode \? undefined : dockPreviewCache\s*\}/
+  );
+  assert.match(
+    source,
+    /providePreview=\{\s*isPendingMinimizedNode\s*\?\s*undefined\s*:\s*provideMinimizedNodePreview\s*\}/
+  );
+});
+
+test("component minimized dock previews freeze without snapshot capture", () => {
+  assert.match(source, /const provideMinimizedNodePreview = useCallback/);
+  assert.match(
+    source,
+    /if \(minimizedDock\?\.kind !== "component"\) \{\s*return null;\s*\}/
+  );
+  assert.match(
+    source,
+    /const \[componentPreview\] = useState<WorkbenchDockPreviewContent \| null>\(\s*\(\) => providePreview\?\.\(node\) \?\? null\s*\);/
+  );
+  assert.match(source, /if \(providePreview\) \{\s*return undefined;\s*\}/);
+  assert.match(
+    source,
+    /minimizedDock\?\.kind === "snapshot" &&\s*Boolean\(minimizedDock\.capturePreview\)/
+  );
+  assert.match(
+    source,
+    /capturePreview=\{\s*isPendingMinimizedNode\s*\?\s*undefined\s*:\s*captureMinimizedNodePreview\s*\}/
+  );
+  assert.match(source, /renderMinimizedDockPreviewContent/);
+  assert.match(source, /WorkbenchHostDockFrozenComponentPreview/);
+  assert.match(source, /sourceRef\.current\?\.innerHTML/);
+  assert.match(
+    source,
+    /dangerouslySetInnerHTML=\{\{ __html: frozenMarkup \}\}/
+  );
+  assert.match(source, /desktop-dock__minimized-preview--component/);
+  assert.match(source, /minimizedDockPreviewFreezeKey\(node\)/);
+});
+
 test("dock slot refs are stable across renders", () => {
   assert.match(source, /const dockSlotRefCallbacksRef = useRef/);
   assert.match(source, /dockSlotRefCallbacksRef\.current\.get\(anchorKey\)/);

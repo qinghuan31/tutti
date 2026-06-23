@@ -388,9 +388,9 @@ export function WorkbenchHostDock({
     () =>
       resolveWorkbenchMinimizedDockSlots({
         nodeDefinitions,
-        nodes: context.nodes
+        nodes: context.minimizedNodes
       }),
-    [context.nodes, nodeDefinitions]
+    [context.minimizedNodes, nodeDefinitions]
   );
   const { promotedNodeId, stackDispatching } =
     useMinimizedDockStackPromotion(minimizedDockSlots);
@@ -1058,10 +1058,17 @@ export function WorkbenchHostDock({
 
   const hasMinimizedPreviewCapture = minimizedDockSlots.some((slot) =>
     minimizedDockSlotNodes(slot).some((node) =>
-      Boolean(
-        nodeDefinitions.get(node.data.typeId)?.window?.minimizedDock
-          ?.capturePreview
-      )
+      (() => {
+        if (context.genie.isPendingMinimizedDockNode(node.id)) {
+          return false;
+        }
+        const minimizedDock = nodeDefinitions.get(node.data.typeId)?.window
+          ?.minimizedDock;
+        return (
+          minimizedDock?.kind === "snapshot" &&
+          Boolean(minimizedDock.capturePreview)
+        );
+      })()
     )
   );
 
@@ -1134,8 +1141,12 @@ export function WorkbenchHostDock({
 
   const captureMinimizedNodePreview = useCallback(
     async (node: WorkbenchMinimizedDockNode) => {
-      const capturePreview = nodeDefinitions.get(node.data.typeId)?.window
-        ?.minimizedDock?.capturePreview;
+      const minimizedDock = nodeDefinitions.get(node.data.typeId)?.window
+        ?.minimizedDock;
+      const capturePreview =
+        minimizedDock?.kind === "snapshot"
+          ? minimizedDock.capturePreview
+          : undefined;
       const externalState = readWorkbenchHostExternalState({
         externalStateSource,
         node,
@@ -1162,6 +1173,37 @@ export function WorkbenchHostDock({
       context.focusedNodeId,
       externalStateRevision,
       externalStateSource,
+      nodeDefinitions,
+      workspaceId
+    ]
+  );
+
+  const provideMinimizedNodePreview = useCallback(
+    (node: WorkbenchMinimizedDockNode): WorkbenchDockPreviewContent | null => {
+      const minimizedDock = nodeDefinitions.get(node.data.typeId)?.window
+        ?.minimizedDock;
+      if (minimizedDock?.kind !== "component") {
+        return null;
+      }
+
+      const externalState = readWorkbenchHostExternalState({
+        externalStateSource,
+        node,
+        workspaceId
+      });
+      return minimizedDock.providePreview({
+        externalNodeState: externalState.externalNodeState,
+        externalWorkspaceState: externalState.externalWorkspaceState,
+        host,
+        isFocused: context.focusedNodeId === node.id,
+        isMinimized: node.isMinimized,
+        node
+      });
+    },
+    [
+      context.focusedNodeId,
+      externalStateSource,
+      host,
       nodeDefinitions,
       workspaceId
     ]
@@ -1678,11 +1720,12 @@ export function WorkbenchHostDock({
                           if (index === 0 && node) {
                             return (
                               <WorkbenchHostDockMinimizedNodePreview
-                                key={node.id}
+                                key={minimizedDockPreviewFreezeKey(node)}
                                 capturePreview={captureMinimizedNodePreview}
                                 className={`desktop-dock__minimized-stack-layer desktop-dock__minimized-stack-layer--${index}`}
                                 dockPreviewCache={dockPreviewCache}
                                 node={node}
+                                providePreview={provideMinimizedNodePreview}
                                 workspaceId={workspaceId}
                               />
                             );
@@ -1758,6 +1801,8 @@ export function WorkbenchHostDock({
               }
 
               const node = slot.node;
+              const isPendingMinimizedNode =
+                context.genie.isPendingMinimizedDockNode(node.id);
               const labelTooltipTarget = dockLabelTooltipTarget(
                 `minimized-node:${node.id}`,
                 node.title
@@ -1767,8 +1812,12 @@ export function WorkbenchHostDock({
                   aria-label={i18n.t("launch", { title: node.title })}
                   className="desktop-dock__btn desktop-dock__minimized-btn"
                   data-interactive="true"
+                  disabled={isPendingMinimizedNode}
                   type="button"
                   onPointerDown={() => {
+                    if (isPendingMinimizedNode) {
+                      return;
+                    }
                     const restoreIntent =
                       resolveWorkbenchMinimizedDockRestoreIntent({
                         nodeId: node.id,
@@ -1785,6 +1834,9 @@ export function WorkbenchHostDock({
                     beginDockMinimizedInteraction();
                   }}
                   onClick={() => {
+                    if (isPendingMinimizedNode) {
+                      return;
+                    }
                     const restoreIntent =
                       resolveWorkbenchMinimizedDockRestoreIntent({
                         nodeId: node.id,
@@ -1814,9 +1866,21 @@ export function WorkbenchHostDock({
                   }}
                 >
                   <WorkbenchHostDockMinimizedNodePreview
-                    capturePreview={captureMinimizedNodePreview}
-                    dockPreviewCache={dockPreviewCache}
+                    key={minimizedDockPreviewFreezeKey(node)}
+                    capturePreview={
+                      isPendingMinimizedNode
+                        ? undefined
+                        : captureMinimizedNodePreview
+                    }
+                    dockPreviewCache={
+                      isPendingMinimizedNode ? undefined : dockPreviewCache
+                    }
                     node={node}
+                    providePreview={
+                      isPendingMinimizedNode
+                        ? undefined
+                        : provideMinimizedNodePreview
+                    }
                     workspaceId={workspaceId}
                   />
                 </button>
@@ -1837,6 +1901,9 @@ export function WorkbenchHostDock({
                   data-dock-label-tooltip-key={labelTooltipTarget.key}
                   data-dock-label-tooltip-label={labelTooltipTarget.label}
                   data-node-state="minimized"
+                  data-pending-minimize={
+                    isPendingMinimizedNode ? "true" : undefined
+                  }
                   data-presence={dockItem.presence}
                   data-promoted-from-stack={
                     promotedNodeId === node.id ? "true" : undefined
@@ -2095,6 +2162,8 @@ export function WorkbenchHostDock({
               node,
               workspaceId
             });
+            const minimizedDock = nodeDefinitions.get(node.data.typeId)?.window
+              ?.minimizedDock;
             return {
               externalNodeState: externalState.externalNodeState,
               externalWorkspaceState: externalState.externalWorkspaceState,
@@ -2102,17 +2171,19 @@ export function WorkbenchHostDock({
               isFocused: context.focusedNodeId === node.id,
               isMinimized: true,
               node,
-              preview: nodeDefinitions.get(node.data.typeId)?.window
-                ?.minimizedDock?.capturePreview
-                ? null
-                : (() => {
-                    const previewImageUrl = readCachedWorkbenchNodePreviewImage(
-                      node.id
-                    );
-                    return previewImageUrl
-                      ? ({ kind: "image", src: previewImageUrl } as const)
-                      : null;
-                  })(),
+              preview:
+                minimizedDock?.kind === "component"
+                  ? (provideMinimizedNodePreview(node) ?? null)
+                  : minimizedDock?.kind === "snapshot" &&
+                      minimizedDock.capturePreview
+                    ? null
+                    : (() => {
+                        const previewImageUrl =
+                          readCachedWorkbenchNodePreviewImage(node.id);
+                        return previewImageUrl
+                          ? ({ kind: "image", src: previewImageUrl } as const)
+                          : null;
+                      })(),
               previewRevision: null,
               subtitle: node.data.instanceKey ?? node.data.instanceId,
               title: node.title
@@ -2182,6 +2253,7 @@ function WorkbenchHostDockMinimizedNodePreview({
   className,
   dockPreviewCache,
   node,
+  providePreview,
   workspaceId
 }: {
   capturePreview?: (
@@ -2190,13 +2262,23 @@ function WorkbenchHostDockMinimizedNodePreview({
   className?: string;
   dockPreviewCache?: WorkbenchDockPreviewCache;
   node: WorkbenchMinimizedDockNode;
+  providePreview?: (
+    node: WorkbenchMinimizedDockNode
+  ) => WorkbenchDockPreviewContent | null;
   workspaceId: string;
 }) {
+  const [componentPreview] = useState<WorkbenchDockPreviewContent | null>(
+    () => providePreview?.(node) ?? null
+  );
   const [previewImageUrl, setPreviewImageUrl] = useState<string | null>(() =>
-    readCachedWorkbenchNodePreviewImage(node.id)
+    providePreview ? null : readCachedWorkbenchNodePreviewImage(node.id)
   );
 
   useEffect(() => {
+    if (providePreview) {
+      return undefined;
+    }
+
     let cancelled = false;
     const cachedPreviewImageUrl = readCachedWorkbenchNodePreviewImage(node.id);
     setPreviewImageUrl(cachedPreviewImageUrl);
@@ -2249,8 +2331,13 @@ function WorkbenchHostDockMinimizedNodePreview({
     node.data.typeId,
     node.id,
     node.minimizedAtUnixMs,
+    providePreview,
     workspaceId
   ]);
+
+  if (componentPreview) {
+    return renderMinimizedDockPreviewContent(componentPreview, className);
+  }
 
   if (previewImageUrl) {
     return (
@@ -2286,6 +2373,91 @@ function WorkbenchHostDockMinimizedNodePreview({
       <span className="desktop-dock__minimized-preview-line desktop-dock__minimized-preview-line--accent" />
     </span>
   );
+}
+
+function renderMinimizedDockPreviewContent(
+  preview: WorkbenchDockPreviewContent,
+  className?: string
+) {
+  if (preview.kind === "image") {
+    return (
+      <span
+        className={[
+          "desktop-dock__minimized-preview",
+          "desktop-dock__minimized-preview--snapshot",
+          className
+        ]
+          .filter(Boolean)
+          .join(" ")}
+        aria-hidden="true"
+      >
+        <img
+          alt=""
+          className="desktop-dock__minimized-preview-image"
+          draggable={false}
+          src={preview.src}
+        />
+      </span>
+    );
+  }
+
+  return (
+    <WorkbenchHostDockFrozenComponentPreview
+      className={className}
+      preview={preview}
+    />
+  );
+}
+
+function WorkbenchHostDockFrozenComponentPreview({
+  className,
+  preview
+}: {
+  className?: string;
+  preview: Extract<WorkbenchDockPreviewContent, { kind: "component" }>;
+}) {
+  const sourceRef = useRef<HTMLSpanElement | null>(null);
+  const [frozenMarkup, setFrozenMarkup] = useState<string | null>(null);
+
+  useLayoutEffect(() => {
+    if (frozenMarkup !== null) {
+      return;
+    }
+    setFrozenMarkup(sourceRef.current?.innerHTML ?? "");
+  }, [frozenMarkup]);
+
+  return (
+    <span
+      className={[
+        "desktop-dock__minimized-preview",
+        "desktop-dock__minimized-preview--component",
+        className
+      ]
+        .filter(Boolean)
+        .join(" ")}
+      aria-hidden="true"
+    >
+      {frozenMarkup === null ? (
+        <span
+          ref={sourceRef}
+          className="desktop-dock__minimized-preview-freeze-source"
+        >
+          {preview.element}
+        </span>
+      ) : (
+        <span
+          className="desktop-dock__minimized-preview-frozen-content"
+          dangerouslySetInnerHTML={{ __html: frozenMarkup }}
+        />
+      )}
+    </span>
+  );
+}
+
+function minimizedDockPreviewFreezeKey(
+  node: WorkbenchMinimizedDockNode
+): string {
+  return `${node.id}:${node.minimizedAtUnixMs ?? "pending"}`;
 }
 
 function dockEntryHasHoverPanel(entry: WorkbenchHostDockEntry): boolean {

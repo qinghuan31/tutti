@@ -11,6 +11,7 @@ import type {
   DesktopBrowserUseConnectionMode,
   DesktopDockIconStyle,
   DesktopDockPlacement,
+  DesktopMinimizeAnimation,
   DesktopSleepPreventionMode,
   DesktopUpdateChannel,
   DesktopUpdatePolicy
@@ -71,6 +72,7 @@ export interface IWorkspaceSettingsService {
   ): Promise<void>;
   changeDockIconStyle(style: DesktopDockIconStyle): Promise<void>;
   changeDockPlacement(placement: DesktopDockPlacement): Promise<void>;
+  changeMinimizeAnimation(animation: DesktopMinimizeAnimation): Promise<void>;
   changeLocale(nextLocale: DesktopLocale): Promise<void>;
   changeSleepPreventionMode(mode: DesktopSleepPreventionMode): Promise<void>;
   changeThemeSource(nextThemeSource: DesktopThemeSource): Promise<void>;

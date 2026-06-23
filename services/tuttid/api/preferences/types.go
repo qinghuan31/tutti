@@ -16,6 +16,7 @@ func GeneratedDesktopPreferencesFromBiz(value preferencesbiz.DesktopPreferences)
 		DockPlacement:                               tuttigenerated.DesktopDockPlacement(value.DockPlacement),
 		FileDefaultOpenersByExtension:               generatedFileDefaultOpenersByExtension(value.FileDefaultOpenersByExtension),
 		Locale:                                      tuttigenerated.DesktopLocale(value.Locale),
+		MinimizeAnimation:                           tuttigenerated.DesktopMinimizeAnimation(value.MinimizeAnimation),
 		SleepPreventionMode:                         tuttigenerated.DesktopSleepPreventionMode(value.SleepPreventionMode),
 		ThemeSource:                                 tuttigenerated.DesktopThemeSource(value.ThemeSource),
 		UpdateChannel:                               tuttigenerated.DesktopUpdateChannel(value.UpdateChannel),

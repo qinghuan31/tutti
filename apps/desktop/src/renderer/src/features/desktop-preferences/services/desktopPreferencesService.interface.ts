@@ -8,6 +8,7 @@ import type {
   DesktopDockIconStyle,
   DesktopDockPlacement,
   DesktopFileDefaultOpenersByExtension,
+  DesktopMinimizeAnimation,
   DesktopSleepPreventionMode,
   DesktopUpdateChannel,
   DesktopUpdatePolicy
@@ -36,6 +37,9 @@ export interface IDesktopPreferencesService {
     openersByExtension: DesktopFileDefaultOpenersByExtension
   ): Promise<DesktopFileDefaultOpenersByExtension>;
   setLocale(locale: DesktopLocale): Promise<DesktopLocale>;
+  setMinimizeAnimation(
+    animation: DesktopMinimizeAnimation
+  ): Promise<DesktopMinimizeAnimation>;
   setSleepPreventionMode(
     mode: DesktopSleepPreventionMode
   ): Promise<DesktopSleepPreventionMode>;
