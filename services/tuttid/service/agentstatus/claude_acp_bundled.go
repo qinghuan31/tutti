@@ -41,20 +41,36 @@ func (s Service) bundledClaudeACPEntryPath() string {
 }
 
 // resolveBundledClaudeACPSpec wires the provider spec to run the vendored,
-// pre-patched bridge directly with the managed Node runtime. It deliberately
-// leaves AdapterInstall empty: the bridge is already on disk, so
-// nextMissingInstaller treats the adapter as present and never triggers an
-// install. Returns ok=false when the managed Node runtime is unavailable, so the
-// caller falls back to the external registry path.
+// pre-patched bridge directly with the managed Node runtime.
+//
+// Once the bridge is shipped it is authoritative: this never returns a spec that
+// can fall back to the remote registry / npm install. It always clears
+// AdapterInstall (so the installer loop, seeing ExternalRegistryID set, treats
+// the adapter as not-installable and never runs npm) and always pins
+// AdapterPackage to the bundled version. If the managed Node runtime is not yet
+// available (e.g. node-static still materializing at startup), it leaves the run
+// command empty and marks the adapter transiently unavailable — the next resolve
+// fills it in. This avoids a race where an in-flight runtime made the short
+// circuit fall through to the registry, ran an npm install, and then mismatched
+// the registry's required version against the bundled one ("provider adapter is
+// still unavailable after install").
 func (s Service) resolveBundledClaudeACPSpec(
 	ctx context.Context,
 	spec ProviderSpec,
 	entry string,
 	requireManagedRuntime bool,
-) (ProviderSpec, bool) {
+) ProviderSpec {
+	spec.AdapterInstall = InstallerSpec{}
+	spec.AdapterPackage = AdapterPackageRequirement{
+		Name:    claudeACPPackageName,
+		Version: claudeACPPinnedVersion,
+	}
 	appRuntime, ok := s.resolveManagedRuntimeForProvider(ctx, requireManagedRuntime)
 	if !ok {
-		return spec, false
+		spec.AdapterCommand = nil
+		spec.AdapterEnv = nil
+		spec.AdapterUnavailableReasonCode = ReasonManagedRuntimeUnavailable
+		return spec
 	}
 	env := cloneStrings(appRuntime.EnvOverrides)
 	// The vendored bridge has the SDK's bundled Claude Code CLI pruned (see
@@ -66,13 +82,8 @@ func (s Service) resolveBundledClaudeACPSpec(
 	}
 	spec.AdapterCommand = []string{appRuntime.Node, entry}
 	spec.AdapterEnv = env
-	spec.AdapterPackage = AdapterPackageRequirement{
-		Name:    claudeACPPackageName,
-		Version: claudeACPPinnedVersion,
-	}
-	spec.AdapterInstall = InstallerSpec{}
 	spec.AdapterUnavailableReasonCode = ""
-	return spec, true
+	return spec
 }
 
 // getenv reads a single environment variable, honoring an injected Environ for

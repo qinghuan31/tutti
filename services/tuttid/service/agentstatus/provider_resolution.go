@@ -67,9 +67,9 @@ func (s Service) resolveProviderSpec(ctx context.Context, spec ProviderSpec, req
 	// bridge is not bundled or the managed Node runtime is unavailable.
 	if spec.ExternalRegistryID == claudeACPExternalRegistryID {
 		if entry := s.bundledClaudeACPEntryPath(); entry != "" {
-			if resolved, ok := s.resolveBundledClaudeACPSpec(ctx, spec, entry, requireManagedRuntime); ok {
-				return resolved, nil
-			}
+			// The bundled bridge is authoritative — never fall back to the remote
+			// registry / npm install once it is shipped.
+			return s.resolveBundledClaudeACPSpec(ctx, spec, entry, requireManagedRuntime), nil
 		}
 	}
 	agent, err := s.externalAgentRegistry().Agent(ctx, spec.ExternalRegistryID)
