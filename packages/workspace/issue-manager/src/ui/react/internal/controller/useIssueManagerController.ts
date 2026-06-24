@@ -16,7 +16,9 @@ import type {
   IssueManagerPriority,
   IssueManagerReferenceBundle,
   IssueManagerRun,
+  IssueManagerStatus,
   IssueManagerTaskDetail,
+  IssueManagerTaskStatusUpdate,
   IssueManagerTopic,
   IssueManagerCreateTopicInput,
   IssueManagerUpdateTopicInput
@@ -90,6 +92,12 @@ export interface IssueManagerController {
   openAgentSession: (run: IssueManagerRun) => Promise<void>;
   openMention: (mention: RichTextMentionAttrs) => Promise<void>;
   openReference: (reference: IssueManagerFileReference) => Promise<void>;
+  moveTask: (input: {
+    targetIndex: number;
+    targetStatus: IssueManagerStatus;
+    taskId: string;
+    visibleTaskIds?: readonly string[];
+  }) => Promise<void>;
   providerOptions: readonly IssueManagerAgentProviderOption[];
   executionDirectoryProjectService: WorkspaceUserProjectService | null;
   reportIssueSearchUsage: (query: string) => void;
@@ -101,9 +109,11 @@ export interface IssueManagerController {
   saveTask: () => Promise<void>;
   setTaskStatus: (
     taskId: string,
-    status: "completed" | "not_started"
+    status: IssueManagerTaskStatusUpdate
   ) => Promise<void>;
-  setSelectedTaskStatus: (status: "completed" | "not_started") => Promise<void>;
+  setSelectedTaskStatus: (
+    status: IssueManagerTaskStatusUpdate
+  ) => Promise<void>;
   resolveRichTextTriggerProviders: (
     surface: IssueManagerRichTextSurface
   ) => readonly RichTextTriggerProvider[];

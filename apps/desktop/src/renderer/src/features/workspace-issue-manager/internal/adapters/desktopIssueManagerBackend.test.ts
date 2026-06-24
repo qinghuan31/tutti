@@ -165,6 +165,7 @@ test("desktop issue-manager backend maps list, update, run, and status payloads"
     dueAtUnix: 123,
     issueId: "issue-1",
     priority: "urgent",
+    sortIndex: 4,
     status: "queued",
     taskId: "task-1",
     title: "Port UI",
@@ -233,6 +234,7 @@ test("desktop issue-manager backend maps list, update, run, and status payloads"
           content: "content",
           dueAtUnix: 123,
           priority: undefined,
+          sortIndex: 4,
           status: undefined,
           title: "Port UI"
         }

@@ -47,8 +47,7 @@ import { AGENT_PROVIDER_LABEL } from "../../../contexts/settings/domain/agentSet
 import type { AgentGUINodeData } from "../../../types";
 import {
   AGENT_GUI_RUNTIME_SESSION_ORIGIN,
-  buildAgentGUIConversationDetail,
-  buildAgentGUIConversationVM,
+  buildAgentGUIConversationModels,
   conversationSummaryFromAgentSession,
   applyAgentGUIConversationProjects,
   mergeAgentGUITimelineItems,
@@ -61,7 +60,10 @@ import {
   type AgentGUIInteractiveQuestion,
   type AgentGUIConversationSummary
 } from "../model/agentGuiConversationModel";
-import type { AgentHostUserProject } from "../../../host/agentHostApi";
+import type {
+  AgentHostUserProject,
+  AgentHostUserProjectsApi
+} from "../../../host/agentHostApi";
 import type {
   AgentComposerDraft,
   AgentGUIComposerSettingOption,
@@ -82,6 +84,8 @@ import {
 } from "../model/agentComposerDraft";
 import type { AgentApprovalItemVM } from "../../../shared/agentConversation/contracts/agentApprovalItemVM";
 import type { AgentConversationVM } from "../../../shared/agentConversation/contracts/agentConversationVM";
+import type { WorkspaceAgentActivityCard } from "../../../shared/workspaceAgentActivityListViewModel";
+import type { WorkspaceAgentSessionDetailViewModel } from "../../../shared/workspaceAgentSessionDetailViewModel";
 import { normalizeOptionalWorkspaceAgentStatus } from "../../../shared/workspaceAgentStatusNormalizer";
 import { projectCoreSessionStatus } from "../../../shared/agentActivitySnapshotProjection";
 import { isWorkspaceAgentUntitledTask } from "../../../shared/workspaceAgentLatestActivitySummary";
@@ -682,14 +686,200 @@ function stableConversationSummaryList(
   next: AgentGUIConversationSummary[]
 ): AgentGUIConversationSummary[] {
   if (previous?.length !== next.length) {
+    const previousById = new Map(
+      (previous ?? []).map((conversation) => [conversation.id, conversation])
+    );
+    return next.map((conversation) => {
+      const previousConversation = previousById.get(conversation.id);
+      return previousConversation &&
+        conversationSummariesRenderEqual(previousConversation, conversation)
+        ? previousConversation
+        : conversation;
+    });
+  }
+  let hasRenderChange = false;
+  const stable = next.map((conversation, index) => {
+    const previousConversation = previous[index];
+    if (
+      previousConversation &&
+      conversationSummariesRenderEqual(previousConversation, conversation)
+    ) {
+      return previousConversation;
+    }
+    hasRenderChange = true;
+    return conversation;
+  });
+  return hasRenderChange ? stable : (previous as AgentGUIConversationSummary[]);
+}
+
+function useStableConversationDetail(
+  detail: WorkspaceAgentSessionDetailViewModel | null
+): WorkspaceAgentSessionDetailViewModel | null {
+  const detailRef = useRef<WorkspaceAgentSessionDetailViewModel | null>(null);
+  detailRef.current = stabilizeConversationDetail(detailRef.current, detail);
+  return detailRef.current;
+}
+
+function stabilizeConversationDetail(
+  previous: WorkspaceAgentSessionDetailViewModel | null,
+  next: WorkspaceAgentSessionDetailViewModel | null
+): WorkspaceAgentSessionDetailViewModel | null {
+  if (!previous || !next) {
     return next;
   }
-  for (let index = 0; index < next.length; index += 1) {
-    if (previous[index] !== next[index]) {
-      return next;
-    }
+  const session = conversationDetailSessionsEqual(
+    previous.session,
+    next.session
+  )
+    ? previous.session
+    : next.session;
+  const activity = stabilizeConversationDetailActivity(
+    previous.activity,
+    next.activity
+  );
+  if (
+    previous.cwd === next.cwd &&
+    previous.workspaceRoot === next.workspaceRoot &&
+    previous.showProcessingIndicator === next.showProcessingIndicator &&
+    previous.turns === next.turns &&
+    previous.session === session &&
+    previous.activity === activity
+  ) {
+    return previous;
   }
-  return previous as AgentGUIConversationSummary[];
+  return {
+    ...next,
+    activity,
+    session
+  };
+}
+
+function stabilizeConversationDetailActivity(
+  previous: WorkspaceAgentActivityCard,
+  next: WorkspaceAgentActivityCard
+): WorkspaceAgentActivityCard {
+  const changedFiles = conversationDetailChangedFilesEqual(
+    previous.changedFiles,
+    next.changedFiles
+  )
+    ? previous.changedFiles
+    : next.changedFiles;
+  if (
+    previous.id === next.id &&
+    previous.sessionId === next.sessionId &&
+    previous.userId === next.userId &&
+    previous.userName === next.userName &&
+    previous.userAvatarUrl === next.userAvatarUrl &&
+    previous.agentProvider === next.agentProvider &&
+    previous.agentName === next.agentName &&
+    previous.title === next.title &&
+    previous.status === next.status &&
+    previous.latestActivitySummary === next.latestActivitySummary &&
+    previous.conversationPreview === next.conversationPreview &&
+    previous.latestActivityActorName === next.latestActivityActorName &&
+    previous.toolCalls === next.toolCalls &&
+    previous.changedFiles === changedFiles &&
+    previous.sortTimeUnixMs === next.sortTimeUnixMs &&
+    previous.readTimeUnixMs === next.readTimeUnixMs
+  ) {
+    return previous;
+  }
+  return {
+    ...next,
+    changedFiles
+  };
+}
+
+function conversationDetailChangedFilesEqual(
+  left: WorkspaceAgentActivityCard["changedFiles"],
+  right: WorkspaceAgentActivityCard["changedFiles"]
+): boolean {
+  return (
+    left.length === right.length &&
+    left.every(
+      (file, index) =>
+        file.path === right[index]?.path && file.label === right[index]?.label
+    )
+  );
+}
+
+function conversationDetailSessionsEqual(
+  left: WorkspaceAgentSessionDetailViewModel["session"],
+  right: WorkspaceAgentSessionDetailViewModel["session"]
+): boolean {
+  return (
+    left.id === right.id &&
+    left.workspaceId === right.workspaceId &&
+    left.agentSessionId === right.agentSessionId &&
+    left.presenceId === right.presenceId &&
+    left.userId === right.userId &&
+    left.provider === right.provider &&
+    left.providerSessionId === right.providerSessionId &&
+    left.resumable === right.resumable &&
+    left.sessionOrigin === right.sessionOrigin &&
+    left.lifecycleStatus === right.lifecycleStatus &&
+    left.turnPhase === right.turnPhase &&
+    left.endedAtUnixMs === right.endedAtUnixMs &&
+    left.effectiveStatus === right.effectiveStatus &&
+    left.status === right.status &&
+    left.title === right.title &&
+    left.pinnedAtUnixMs === right.pinnedAtUnixMs &&
+    left.createdAtUnixMs === right.createdAtUnixMs &&
+    left.updatedAtUnixMs === right.updatedAtUnixMs &&
+    left.cwd === right.cwd &&
+    conversationSyncStatesEqual(left.syncState, right.syncState)
+  );
+}
+
+function conversationSummariesRenderEqual(
+  left: AgentGUIConversationSummary,
+  right: AgentGUIConversationSummary
+): boolean {
+  return (
+    left.id === right.id &&
+    left.userId === right.userId &&
+    left.provider === right.provider &&
+    left.title === right.title &&
+    conversationTitleFallbacksRenderEqual(
+      left.titleFallback,
+      right.titleFallback
+    ) &&
+    left.status === right.status &&
+    left.cwd === right.cwd &&
+    left.pinnedAtUnixMs === right.pinnedAtUnixMs &&
+    left.sortTimeUnixMs === right.sortTimeUnixMs &&
+    left.updatedAtUnixMs === right.updatedAtUnixMs &&
+    left.hasUnreadCompletion === right.hasUnreadCompletion &&
+    conversationProjectsRenderEqual(left.project, right.project) &&
+    conversationSyncStatesEqual(left.syncState, right.syncState)
+  );
+}
+
+function conversationTitleFallbacksRenderEqual(
+  left: AgentGUIConversationSummary["titleFallback"],
+  right: AgentGUIConversationSummary["titleFallback"]
+): boolean {
+  return (
+    left === right ||
+    JSON.stringify(left ?? null) === JSON.stringify(right ?? null)
+  );
+}
+
+function conversationProjectsRenderEqual(
+  left: AgentGUIConversationSummary["project"],
+  right: AgentGUIConversationSummary["project"]
+): boolean {
+  return (
+    left === right ||
+    (!left || !right
+      ? !left && !right
+      : left.id === right.id &&
+        left.path === right.path &&
+        left.label === right.label &&
+        left.createdAtUnixMs === right.createdAtUnixMs &&
+        left.updatedAtUnixMs === right.updatedAtUnixMs &&
+        left.lastUsedAtUnixMs === right.lastUsedAtUnixMs)
+  );
 }
 
 function mergeConversationTitleUpdateFields(
@@ -1406,6 +1596,8 @@ function areComposerSettingsDraftsEqual(
     left.reasoningEffort === right.reasoningEffort &&
     left.speed === right.speed &&
     left.planMode === right.planMode &&
+    (left.browserUse ?? true) === (right.browserUse ?? true) &&
+    (left.computerUse ?? true) === (right.computerUse ?? true) &&
     (left.permissionModeId ?? null) === (right.permissionModeId ?? null)
   );
 }
@@ -1444,7 +1636,7 @@ function areComposerSettingsVMsEqual(
   right: AgentGUIComposerSettingsVM
 ): boolean {
   return (
-    left.sessionSettings === right.sessionSettings &&
+    sameComposerSettings(left.sessionSettings, right.sessionSettings) &&
     areComposerSettingsDraftsEqual(left.draftSettings, right.draftSettings) &&
     left.supportsModel === right.supportsModel &&
     left.supportsReasoningEffort === right.supportsReasoningEffort &&
@@ -1452,6 +1644,9 @@ function areComposerSettingsVMsEqual(
     (left.supportsPermissionMode ?? false) ===
       (right.supportsPermissionMode ?? false) &&
     left.supportsPlanMode === right.supportsPlanMode &&
+    (left.supportsBrowser ?? false) === (right.supportsBrowser ?? false) &&
+    (left.supportsComputerUse ?? false) ===
+      (right.supportsComputerUse ?? false) &&
     left.isSettingsLoading === right.isSettingsLoading &&
     left.modelUnavailable === right.modelUnavailable &&
     left.reasoningUnavailable === right.reasoningUnavailable &&
@@ -1493,13 +1688,77 @@ function useStableComposerSettingsVM(
   settings: AgentGUIComposerSettingsVM
 ): AgentGUIComposerSettingsVM {
   const settingsRef = useRef<AgentGUIComposerSettingsVM | null>(null);
-  if (
-    settingsRef.current === null ||
-    !areComposerSettingsVMsEqual(settingsRef.current, settings)
-  ) {
-    settingsRef.current = settings;
-  }
+  settingsRef.current = stabilizeComposerSettingsVM(
+    settingsRef.current,
+    settings
+  );
   return settingsRef.current;
+}
+
+function stabilizeComposerSettingsVM(
+  previous: AgentGUIComposerSettingsVM | null,
+  next: AgentGUIComposerSettingsVM
+): AgentGUIComposerSettingsVM {
+  if (!previous) {
+    return next;
+  }
+  if (areComposerSettingsVMsEqual(previous, next)) {
+    return previous;
+  }
+
+  const sessionSettings = sameComposerSettings(
+    previous.sessionSettings,
+    next.sessionSettings
+  )
+    ? previous.sessionSettings
+    : next.sessionSettings;
+  const draftSettings = areComposerSettingsDraftsEqual(
+    previous.draftSettings,
+    next.draftSettings
+  )
+    ? previous.draftSettings
+    : next.draftSettings;
+  const permissionConfig = arePermissionConfigsEqual(
+    previous.permissionConfig,
+    next.permissionConfig
+  )
+    ? previous.permissionConfig
+    : next.permissionConfig;
+  const availableModels = areComposerSettingOptionListsEqual(
+    previous.availableModels,
+    next.availableModels
+  )
+    ? previous.availableModels
+    : next.availableModels;
+  const availableReasoningEfforts = areComposerSettingOptionListsEqual(
+    previous.availableReasoningEfforts,
+    next.availableReasoningEfforts
+  )
+    ? previous.availableReasoningEfforts
+    : next.availableReasoningEfforts;
+  const availableSpeeds = areComposerSettingOptionListsEqual(
+    previous.availableSpeeds,
+    next.availableSpeeds
+  )
+    ? previous.availableSpeeds
+    : next.availableSpeeds;
+  const availablePermissionModes = areComposerSettingOptionListsEqual(
+    previous.availablePermissionModes ?? [],
+    next.availablePermissionModes ?? []
+  )
+    ? previous.availablePermissionModes
+    : next.availablePermissionModes;
+
+  return {
+    ...next,
+    sessionSettings,
+    draftSettings,
+    permissionConfig,
+    availableModels,
+    availableReasoningEfforts,
+    availableSpeeds,
+    availablePermissionModes
+  };
 }
 
 function useStableControllerEventCallback<Args extends unknown[], Result>(
@@ -2027,7 +2286,9 @@ export function useAgentGUINodeController({
   const [pendingCreateConversationId, setPendingCreateConversationId] =
     useState(resolvePendingCreateConversationId);
   const conversations = conversationListState?.conversations ?? [];
-  const [userProjects, setUserProjects] = useState<AgentHostUserProject[]>([]);
+  const [userProjects, setUserProjects] = useState<AgentHostUserProject[]>(() =>
+    readAgentGUIUserProjectSnapshot(agentHostApi.userProjects)
+  );
   const isNoProjectPath = agentHostApi.userProjects?.isNoProjectPath;
   const [activeConversationId, setActiveConversationId] = useState<
     string | null
@@ -2295,7 +2556,16 @@ export function useAgentGUINodeController({
     [agentActivitySnapshot.sessions]
   );
   const stableRuntimeSyncStateBySessionId = useMemo(() => {
-    const next = { ...stableRuntimeSyncStateBySessionIdRef.current };
+    const current = stableRuntimeSyncStateBySessionIdRef.current;
+    let next = current;
+    let changed = false;
+    const mutableNext = () => {
+      if (!changed) {
+        next = { ...current };
+        changed = true;
+      }
+      return next;
+    };
     const activeSessionIds = new Set<string>();
     for (const session of agentActivitySnapshot.sessions) {
       const agentSessionId = session.agentSessionId.trim();
@@ -2305,7 +2575,9 @@ export function useAgentGUINodeController({
       activeSessionIds.add(agentSessionId);
       const nextSyncState = runtimeSessionSyncState(session);
       if (!nextSyncState) {
-        delete next[agentSessionId];
+        if (current[agentSessionId] !== undefined) {
+          delete mutableNext()[agentSessionId];
+        }
         delete latestRuntimeSyncStateBySessionIdRef.current[agentSessionId];
         continue;
       }
@@ -2326,16 +2598,18 @@ export function useAgentGUINodeController({
         !currentSyncState ||
         !syncStateRenderFieldsEqual(currentSyncState, nextSyncState)
       ) {
-        next[agentSessionId] = nextSyncState;
+        mutableNext()[agentSessionId] = nextSyncState;
       }
     }
     for (const agentSessionId of Object.keys(next)) {
       if (!activeSessionIds.has(agentSessionId)) {
-        delete next[agentSessionId];
+        delete mutableNext()[agentSessionId];
         delete latestRuntimeSyncStateBySessionIdRef.current[agentSessionId];
       }
     }
-    stableRuntimeSyncStateBySessionIdRef.current = next;
+    if (changed) {
+      stableRuntimeSyncStateBySessionIdRef.current = next;
+    }
     return next;
   }, [agentActivitySnapshot.sessions]);
   const markSessionSettingsRequestState = useCallback(
@@ -2587,11 +2861,9 @@ export function useAgentGUINodeController({
   );
 
   useEffect(() => {
-    if (previewMode) {
-      return undefined;
-    }
     const api = agentHostApi.userProjects;
     let disposed = false;
+    setUserProjectsSnapshot(readAgentGUIUserProjectSnapshot(api));
     const loadUserProjects = async () => {
       const requestSeq = ++userProjectsLoadSeqRef.current;
       if (!api) {
@@ -2612,9 +2884,11 @@ export function useAgentGUINodeController({
       }
     };
     void loadUserProjects();
-    const unsubscribe = api?.subscribe?.(() => {
-      void loadUserProjects();
-    });
+    const unsubscribe = previewMode
+      ? undefined
+      : api?.subscribe?.(() => {
+          void loadUserProjects();
+        });
     return () => {
       disposed = true;
       unsubscribe?.();
@@ -4129,11 +4403,19 @@ export function useAgentGUINodeController({
         sessionViewRef(agentSessionId),
         overlayMessages
       );
+      if (conversationListQuery) {
+        scheduleAgentGUIConversationListProjection(
+          conversationListQuery,
+          "session-overlay-update",
+          { dirtySessionIds: [agentSessionId] }
+        );
+      }
       applyTimelineProjectionUpdate(agentSessionId, nextItems, mergedItems);
     },
     [
       agentActivitySnapshot.sessionMessagesById,
       applyTimelineProjectionUpdate,
+      conversationListQuery,
       sessionViewRef
     ]
   );
@@ -4277,40 +4559,53 @@ export function useAgentGUINodeController({
       workspaceId
     ]
   );
-  const handleActivityStreamEvent = useCallback(
-    (event: AgentActivityStreamEvent) => {
-      if (event.eventType === "available_commands_update") {
-        return;
-      }
-      if (event.eventType === "message_update") {
-        const message = messageFromMessageUpdate(event.data);
-        const agentSessionId = message.agentSessionId.trim();
-        if (agentSessionId) {
+  const handleActivityStreamEvents = useCallback(
+    (events: readonly AgentActivityStreamEvent[]) => {
+      const pendingMessagesBySessionId = new Map<
+        string,
+        WorkspaceAgentActivityMessage[]
+      >();
+      const flushPendingMessages = () => {
+        for (const [agentSessionId, messages] of pendingMessagesBySessionId) {
           applyBackgroundTimelineStatusUpdate(
             agentSessionId,
-            projectAgentGUIMessagesToTimelineItems([message])
+            projectAgentGUIMessagesToTimelineItems(messages)
           );
         }
-        return;
+        pendingMessagesBySessionId.clear();
+      };
+      for (const event of events) {
+        if (event.eventType === "available_commands_update") {
+          continue;
+        }
+        if (event.eventType === "message_update") {
+          const message = messageFromMessageUpdate(event.data);
+          const agentSessionId = message.agentSessionId.trim();
+          if (!agentSessionId) {
+            continue;
+          }
+          const messages = pendingMessagesBySessionId.get(agentSessionId);
+          if (messages) {
+            messages.push(message);
+          } else {
+            pendingMessagesBySessionId.set(agentSessionId, [message]);
+          }
+          continue;
+        }
+        flushPendingMessages();
+        if (event.eventType === "state_patch") {
+          applyStatePatch(event.data);
+        }
       }
-      if (event.eventType === "state_patch") {
-        applyStatePatch(event.data);
-      }
+      flushPendingMessages();
     },
     [applyStatePatch, applyBackgroundTimelineStatusUpdate]
   );
-
-  const handleBackgroundActivityStreamEvent = useCallback(
-    (event: AgentActivityStreamEvent) => {
-      if (event.eventType === "message_update") {
-        handleActivityStreamEvent(event);
-        return;
-      }
-      if (event.eventType === "state_patch") {
-        applyStatePatch(event.data);
-      }
+  const handleBackgroundActivityStreamEvents = useCallback(
+    (events: readonly AgentActivityStreamEvent[]) => {
+      handleActivityStreamEvents(events);
     },
-    [applyStatePatch, handleActivityStreamEvent]
+    [handleActivityStreamEvents]
   );
 
   useEffect(() => {
@@ -4356,20 +4651,26 @@ export function useAgentGUINodeController({
         return;
       }
     },
-    onEvent: (event) => {
+    onEvents: (events) => {
       if (!activeConversationId) {
         return;
       }
-      handleActivityStreamEvent(event);
-      const eventSessionId =
-        event.data.agentSessionId?.trim() || activeConversationId;
-      if (
-        activeConversationIdRef.current !== activeConversationId ||
-        activeConversationIdRef.current !== eventSessionId
-      ) {
-        return;
-      }
-      if (event.eventType !== "message_update") {
+      handleActivityStreamEvents(events);
+      for (const event of events) {
+        const eventSessionId =
+          event.data.agentSessionId?.trim() || activeConversationId;
+        if (
+          activeConversationIdRef.current !== activeConversationId ||
+          activeConversationIdRef.current !== eventSessionId
+        ) {
+          continue;
+        }
+        if (
+          event.eventType === "message_update" ||
+          event.eventType === "available_commands_update"
+        ) {
+          continue;
+        }
         scheduleActivityStreamStateReload(activeConversationId, {
           source: "activity-stream",
           eventType: event.eventType
@@ -4387,8 +4688,8 @@ export function useAgentGUINodeController({
     workspaceId,
     agentSessionIds: backgroundWatchedConversationIds,
     enabled: backgroundWatchedConversationIds.length > 0,
-    onEvent: (event) => {
-      handleBackgroundActivityStreamEvent(event);
+    onEvents: (events) => {
+      handleBackgroundActivityStreamEvents(events);
     }
   });
 
@@ -7004,27 +7305,16 @@ export function useAgentGUINodeController({
       [providerComposerOptions]
     )
   );
-  const conversationDetail = useMemo(
+  const conversationModels = useMemo(
     () =>
       projectionConversation
-        ? buildAgentGUIConversationDetail({
-            timelineItems: activeTimelineItems,
-            conversation: projectionConversation,
-            workspaceRoot: workspacePath
-          })
-        : null,
-    [activeTimelineItems, projectionConversation, workspacePath]
-  );
-  const conversation = useMemo(
-    () =>
-      projectionConversation
-        ? buildAgentGUIConversationVM({
+        ? buildAgentGUIConversationModels({
             timelineItems: activeTimelineItems,
             conversation: projectionConversation,
             workspaceRoot: workspacePath,
             avoidGroupingEdits
           })
-        : null,
+        : { conversation: null, detail: null },
     [
       activeTimelineItems,
       avoidGroupingEdits,
@@ -7032,6 +7322,27 @@ export function useAgentGUINodeController({
       workspacePath
     ]
   );
+  const conversationDetail = useStableConversationDetail(
+    conversationModels.detail
+  );
+  const conversation = useMemo<AgentConversationVM | null>(() => {
+    if (!conversationModels.conversation) {
+      return null;
+    }
+    if (
+      conversationDetail &&
+      (conversationModels.conversation.sourceDetail !== conversationDetail ||
+        conversationModels.conversation.activity !==
+          conversationDetail.activity)
+    ) {
+      return {
+        ...conversationModels.conversation,
+        activity: conversationDetail.activity,
+        sourceDetail: conversationDetail
+      };
+    }
+    return conversationModels.conversation;
+  }, [conversationDetail, conversationModels.conversation]);
   const activeLiveState = activeConversationLiveState;
   const activationError = activation.errorFor(activeConversationId);
   const activationErrorCode = activation.codeFor(activeConversationId);
@@ -7871,6 +8182,27 @@ function areAgentGUIUserProjectsEqual(
       );
     })
   );
+}
+
+function readAgentGUIUserProjectSnapshot(
+  api: AgentHostUserProjectsApi | undefined
+): AgentHostUserProject[] {
+  const projects = api?.service?.getSnapshot?.().projects ?? [];
+  return projects.map((project) => ({
+    ...(project.createdAtUnixMs === undefined
+      ? {}
+      : { createdAtUnixMs: project.createdAtUnixMs }),
+    id: project.id,
+    ...(project.lastUsedAtUnixMs === undefined ||
+    project.lastUsedAtUnixMs === null
+      ? {}
+      : { lastUsedAtUnixMs: project.lastUsedAtUnixMs }),
+    label: project.label,
+    path: project.path,
+    ...(project.updatedAtUnixMs === undefined
+      ? {}
+      : { updatedAtUnixMs: project.updatedAtUnixMs })
+  }));
 }
 
 function normalizeInteractiveQuestions(

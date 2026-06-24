@@ -71,16 +71,18 @@ type CreateIssueManagerTaskInput struct {
 }
 
 type UpdateIssueManagerTaskInput struct {
-	Title       string
-	HasTitle    bool
-	Content     string
-	HasContent  bool
-	Status      string
-	HasStatus   bool
-	Priority    string
-	HasPriority bool
-	DueAtUnixMS int64
-	HasDueAt    bool
+	Title        string
+	HasTitle     bool
+	Content      string
+	HasContent   bool
+	Status       string
+	HasStatus    bool
+	Priority     string
+	HasPriority  bool
+	DueAtUnixMS  int64
+	HasDueAt     bool
+	SortIndex    int
+	HasSortIndex bool
 }
 
 type AddIssueManagerContextRefsInput struct {
@@ -306,20 +308,22 @@ func (s IssueManagerService) GetTaskDetail(ctx context.Context, workspaceID stri
 
 func (s IssueManagerService) UpdateTask(ctx context.Context, workspaceID string, issueID string, taskID string, input UpdateIssueManagerTaskInput) (workspaceissues.Task, error) {
 	task, err := s.domainService().UpdateTask(ctx, workspaceissues.UpdateTaskInput{
-		TaskID:      taskID,
-		IssueID:     issueID,
-		WorkspaceID: workspaceID,
-		ActorUserID: issueManagerLocalActorUserID,
-		Title:       input.Title,
-		HasTitle:    input.HasTitle,
-		Content:     input.Content,
-		HasContent:  input.HasContent,
-		Status:      input.Status,
-		HasStatus:   input.HasStatus,
-		Priority:    input.Priority,
-		HasPriority: input.HasPriority,
-		DueAtUnixMS: input.DueAtUnixMS,
-		HasDueAt:    input.HasDueAt,
+		TaskID:       taskID,
+		IssueID:      issueID,
+		WorkspaceID:  workspaceID,
+		ActorUserID:  issueManagerLocalActorUserID,
+		Title:        input.Title,
+		HasTitle:     input.HasTitle,
+		Content:      input.Content,
+		HasContent:   input.HasContent,
+		Status:       input.Status,
+		HasStatus:    input.HasStatus,
+		Priority:     input.Priority,
+		HasPriority:  input.HasPriority,
+		DueAtUnixMS:  input.DueAtUnixMS,
+		HasDueAt:     input.HasDueAt,
+		SortIndex:    input.SortIndex,
+		HasSortIndex: input.HasSortIndex,
 	})
 	if err != nil {
 		return workspaceissues.Task{}, err

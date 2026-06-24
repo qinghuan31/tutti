@@ -83,20 +83,22 @@ type CreateTaskInput struct {
 }
 
 type UpdateTaskInput struct {
-	TaskID      string
-	IssueID     string
-	WorkspaceID string
-	ActorUserID string
-	Title       string
-	HasTitle    bool
-	Content     string
-	HasContent  bool
-	Status      string
-	HasStatus   bool
-	Priority    string
-	HasPriority bool
-	DueAtUnixMS int64
-	HasDueAt    bool
+	TaskID       string
+	IssueID      string
+	WorkspaceID  string
+	ActorUserID  string
+	Title        string
+	HasTitle     bool
+	Content      string
+	HasContent   bool
+	Status       string
+	HasStatus    bool
+	Priority     string
+	HasPriority  bool
+	DueAtUnixMS  int64
+	HasDueAt     bool
+	SortIndex    int
+	HasSortIndex bool
 }
 
 type CreateRunInput struct {
@@ -275,6 +277,12 @@ func (s Service) UpdateTask(ctx context.Context, input UpdateTaskInput) (Task, e
 	}
 	if input.HasDueAt {
 		task.DueAtUnixMS = input.DueAtUnixMS
+	}
+	if input.HasSortIndex {
+		if input.SortIndex < 0 {
+			return Task{}, ErrInvalidArgument
+		}
+		task.SortIndex = input.SortIndex
 	}
 	task.UpdatedAtUnixMS = s.nowUnixMS()
 	updated, err := store.UpdateTask(ctx, task)

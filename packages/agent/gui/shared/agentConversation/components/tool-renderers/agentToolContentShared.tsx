@@ -1,4 +1,10 @@
-import { useState, type JSX, type ReactNode } from "react";
+import {
+  createContext,
+  useContext,
+  useState,
+  type JSX,
+  type ReactNode
+} from "react";
 import { ChevronDown, ChevronRight } from "lucide-react";
 import { translate } from "../../../../i18n/index";
 import { AgentMessageMarkdown } from "../../../AgentMessageMarkdown";
@@ -17,6 +23,24 @@ import { fileRange } from "./AgentReadContent";
 export interface AgentToolRendererProps {
   call: AgentToolCallVM;
   onLinkClick?: (href: string) => void;
+  previewMode?: boolean;
+}
+
+const AgentToolPreviewModeContext = createContext(false);
+
+export function AgentToolPreviewModeProvider({
+  children,
+  previewMode
+}: {
+  children: ReactNode;
+  previewMode: boolean;
+}): JSX.Element {
+  "use memo";
+  return (
+    <AgentToolPreviewModeContext.Provider value={previewMode}>
+      {children}
+    </AgentToolPreviewModeContext.Provider>
+  );
 }
 
 export interface TaskStepView {
@@ -52,13 +76,17 @@ export function ToolSection({
 export function ToolMarkdownBlock({
   content,
   onLinkClick,
-  collapsible = false
+  collapsible = false,
+  previewMode
 }: {
   content: string;
   onLinkClick?: (href: string) => void;
   collapsible?: boolean;
+  previewMode?: boolean;
 }): JSX.Element | null {
   "use memo";
+  const contextPreviewMode = useContext(AgentToolPreviewModeContext);
+  const effectivePreviewMode = previewMode ?? contextPreviewMode;
   const normalized = content.trim();
   if (!normalized) {
     return null;
@@ -69,6 +97,7 @@ export function ToolMarkdownBlock({
       onLinkClick={onLinkClick}
       collapsible={collapsible}
       enableImageZoom
+      previewMode={effectivePreviewMode}
       className="workspace-agents-status-panel__detail-tool-markdown [&_ol]:text-[var(--text-secondary)] [&_ul]:text-[var(--text-secondary)]"
     />
   );
@@ -80,9 +109,13 @@ export function AgentDefaultToolContent({
 }: AgentToolRendererProps): JSX.Element | null {
   "use memo";
   const fallbackText = getToolFallbackText(call);
-  const inputText = fallbackText.input;
-  const outputText = fallbackText.output;
-  const errorText = fallbackText.error;
+  const inputText = dedupeToolSectionContent(fallbackText.input);
+  const outputText = dedupeToolSectionContent(fallbackText.output, inputText);
+  const errorText = dedupeToolSectionContent(
+    fallbackText.error,
+    inputText,
+    outputText
+  );
   const detail = dedupeToolSummary(
     call.summary.trim(),
     inputText,
@@ -521,18 +554,27 @@ function dedupeToolSummary(
   summary: string,
   ...otherValues: Array<string | null>
 ): string {
-  const normalizedSummary = summary.trim();
-  if (!normalizedSummary) {
-    return "";
-  }
-  const duplicate = otherValues.some(
-    (value) =>
-      normalizeWhitespace(value) === normalizeWhitespace(normalizedSummary)
-  );
-  return duplicate ? "" : normalizedSummary;
+  return dedupeToolSectionContent(summary, ...otherValues);
 }
 
-function normalizeWhitespace(value: string | null | undefined): string {
+export function dedupeToolSectionContent(
+  content: string | null | undefined,
+  ...previousValues: Array<string | null | undefined>
+): string {
+  const normalizedContent = content?.trim() ?? "";
+  if (!normalizedContent) {
+    return "";
+  }
+  const contentKey = normalizeToolSectionContent(normalizedContent);
+  const duplicate = previousValues.some(
+    (value) => normalizeToolSectionContent(value) === contentKey
+  );
+  return duplicate ? "" : normalizedContent;
+}
+
+export function normalizeToolSectionContent(
+  value: string | null | undefined
+): string {
   return (value ?? "").trim().replace(/\s+/g, " ");
 }
 

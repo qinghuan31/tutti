@@ -8,6 +8,7 @@ import {
   type CSSProperties,
   type Dispatch,
   type FocusEvent as ReactFocusEvent,
+  type KeyboardEvent as ReactKeyboardEvent,
   type PointerEvent as ReactPointerEvent,
   type RefObject,
   type SetStateAction
@@ -84,12 +85,29 @@ type WorkbenchMinimizedDockStackPopupCardRestoreIntent = Extract<
 
 type WorkbenchDockWallpaperTone = "dark" | "light";
 
+const minimizedDockPreviewViewport = {
+  height: 34.2,
+  width: 46.8
+};
+
 function stripDockDescriptionTerminalPunctuation(value: string): string {
   const trimmed = value.trim();
   if (!trimmed || trimmed.endsWith("...") || trimmed.endsWith("…")) {
     return trimmed;
   }
   return trimmed.replace(/[。．.]+$/u, "");
+}
+
+function activateDockButtonFromKeyboard(
+  event: ReactKeyboardEvent<HTMLElement>,
+  disabled = false
+) {
+  if (disabled || (event.key !== "Enter" && event.key !== " ")) {
+    return;
+  }
+
+  event.preventDefault();
+  event.currentTarget.click();
 }
 
 function isDockVisualMutationActive(element: HTMLElement | null): boolean {
@@ -1199,7 +1217,8 @@ export function WorkbenchHostDock({
         host,
         isFocused: context.focusedNodeId === node.id,
         isMinimized: node.isMinimized,
-        node
+        node,
+        previewViewport: minimizedDockPreviewViewport
       });
     },
     [
@@ -1787,13 +1806,15 @@ export function WorkbenchHostDock({
                   stackLabel
                 );
                 const stackButton = (
-                  <button
+                  <span
                     aria-expanded={stackPopupActive}
                     aria-haspopup="dialog"
                     aria-label={stackLabel}
                     className="desktop-dock__btn desktop-dock__minimized-btn"
                     data-interactive="true"
-                    type="button"
+                    role="button"
+                    tabIndex={0}
+                    onKeyDown={activateDockButtonFromKeyboard}
                     onPointerDown={(event) => {
                       if (event.button !== 0) {
                         return;
@@ -1866,7 +1887,7 @@ export function WorkbenchHostDock({
                         {slot.nodes.length}
                       </span>
                     </span>
-                  </button>
+                  </span>
                 );
 
                 return (
@@ -1931,12 +1952,19 @@ export function WorkbenchHostDock({
                 node.title
               );
               const dockButton = (
-                <button
+                <span
                   aria-label={i18n.t("launch", { title: node.title })}
+                  aria-disabled={isPendingMinimizedNode ? true : undefined}
                   className="desktop-dock__btn desktop-dock__minimized-btn"
-                  data-interactive="true"
-                  disabled={isPendingMinimizedNode}
-                  type="button"
+                  data-interactive={isPendingMinimizedNode ? "false" : "true"}
+                  role="button"
+                  tabIndex={isPendingMinimizedNode ? -1 : 0}
+                  onKeyDown={(event) =>
+                    activateDockButtonFromKeyboard(
+                      event,
+                      isPendingMinimizedNode
+                    )
+                  }
                   onPointerDown={(event) => {
                     if (event.button !== 0 || isPendingMinimizedNode) {
                       return;
@@ -2007,7 +2035,7 @@ export function WorkbenchHostDock({
                     }
                     workspaceId={workspaceId}
                   />
-                </button>
+                </span>
               );
 
               return (
@@ -2674,7 +2702,7 @@ function renderMinimizedDockPreviewPlaceholder(className?: string) {
   );
 }
 
-function renderMinimizedDockPreviewContent(
+export function renderMinimizedDockPreviewContent(
   preview: WorkbenchDockPreviewContent,
   className?: string
 ) {
@@ -3181,6 +3209,100 @@ function resolveNextDockItemPresence(
   return previousPresence ?? "entering";
 }
 
+function resolveDockPresenceItems(input: {
+  current: readonly WorkbenchHostPresentDockItem[];
+  initialized: boolean;
+  nextSourceItems: readonly WorkbenchHostDockItem[];
+  shouldAnimateMinimizedDockEnter: (nodeId: string) => boolean;
+}): WorkbenchHostPresentDockItem[] {
+  const currentByKey = new Map(input.current.map((item) => [item.key, item]));
+  const currentIndexByKey = new Map(
+    input.current.map((item, index) => [item.key, index])
+  );
+  const nextByKey = new Map(
+    input.nextSourceItems.map((item) => [item.key, item])
+  );
+  const nextKeys = new Set(input.nextSourceItems.map((item) => item.key));
+  const currentVisibleItemCount = input.current.filter(
+    (item) => item.presence !== "exiting"
+  ).length;
+  const shouldRetainExitingItems =
+    input.nextSourceItems.length < currentVisibleItemCount;
+  const emittedKeys = new Set<string>();
+  const nextItems: WorkbenchHostPresentDockItem[] = [];
+  let currentIndex = 0;
+
+  const emitExitingUntil = (nextCurrentIndex: number) => {
+    while (currentIndex < nextCurrentIndex) {
+      const currentItem = input.current[currentIndex];
+      currentIndex += 1;
+      if (
+        shouldRetainExitingItems &&
+        currentItem &&
+        !nextKeys.has(currentItem.key) &&
+        !emittedKeys.has(currentItem.key)
+      ) {
+        emittedKeys.add(currentItem.key);
+        nextItems.push({
+          ...currentItem,
+          presence: "exiting"
+        });
+      }
+    }
+  };
+
+  for (const item of input.nextSourceItems) {
+    const previousIndex = currentIndexByKey.get(item.key);
+    if (previousIndex !== undefined) {
+      emitExitingUntil(previousIndex);
+      currentIndex = Math.max(currentIndex, previousIndex + 1);
+    }
+    emittedKeys.add(item.key);
+    nextItems.push({
+      item,
+      key: item.key,
+      presence: resolveNextDockItemPresence(
+        item,
+        input.initialized,
+        currentByKey.get(item.key)?.presence,
+        input.shouldAnimateMinimizedDockEnter
+      )
+    });
+  }
+
+  for (const currentItem of input.current) {
+    if (shouldRetainExitingItems && !nextKeys.has(currentItem.key)) {
+      if (emittedKeys.has(currentItem.key)) {
+        continue;
+      }
+      emittedKeys.add(currentItem.key);
+      nextItems.push({
+        ...currentItem,
+        presence: "exiting"
+      });
+    }
+  }
+
+  return nextItems.filter(
+    (item) => nextByKey.has(item.key) || item.presence === "exiting"
+  );
+}
+
+function resolveDockPresenceSettleMs(
+  items: readonly WorkbenchHostPresentDockItem[]
+): number {
+  if (
+    items.some(
+      (item) =>
+        item.item.kind === "minimized" &&
+        (item.presence === "entering" || item.presence === "exiting")
+    )
+  ) {
+    return minimizedDockSlotLayoutAnimationMs;
+  }
+  return dockPresenceAnimationMs;
+}
+
 function useDockPresenceItems(
   items: readonly WorkbenchHostDockItem[],
   shouldAnimateMinimizedDockEnter: (nodeId: string) => boolean
@@ -3207,87 +3329,14 @@ function useDockPresenceItems(
     let nextSettleMs = dockPresenceAnimationMs;
 
     setPresentItems((current) => {
-      const nextSourceItems = [...latestItemsByKey.current.values()];
-      const currentByKey = new Map(current.map((item) => [item.key, item]));
-      const currentIndexByKey = new Map(
-        current.map((item, index) => [item.key, index])
-      );
-      const nextByKey = new Map(
-        nextSourceItems.map((item) => [item.key, item])
-      );
-      const nextKeys = new Set(nextSourceItems.map((item) => item.key));
-      const currentVisibleItemCount = current.filter(
-        (item) => item.presence !== "exiting"
-      ).length;
-      const shouldRetainExitingItems =
-        nextSourceItems.length < currentVisibleItemCount;
-      const emittedKeys = new Set<string>();
-      const nextItems: WorkbenchHostPresentDockItem[] = [];
-      let currentIndex = 0;
-
-      const emitExitingUntil = (nextCurrentIndex: number) => {
-        while (currentIndex < nextCurrentIndex) {
-          const currentItem = current[currentIndex];
-          currentIndex += 1;
-          if (
-            shouldRetainExitingItems &&
-            currentItem &&
-            !nextKeys.has(currentItem.key) &&
-            !emittedKeys.has(currentItem.key)
-          ) {
-            emittedKeys.add(currentItem.key);
-            nextItems.push({
-              ...currentItem,
-              presence: "exiting"
-            });
-          }
-        }
-      };
-
-      for (const item of nextSourceItems) {
-        const previousIndex = currentIndexByKey.get(item.key);
-        if (previousIndex !== undefined) {
-          emitExitingUntil(previousIndex);
-          currentIndex = Math.max(currentIndex, previousIndex + 1);
-        }
-        emittedKeys.add(item.key);
-        nextItems.push({
-          item,
-          key: item.key,
-          presence: resolveNextDockItemPresence(
-            item,
-            initialized.current,
-            currentByKey.get(item.key)?.presence,
-            shouldAnimateMinimizedDockEnterRef.current
-          )
-        });
-      }
-
-      for (const currentItem of current) {
-        if (shouldRetainExitingItems && !nextKeys.has(currentItem.key)) {
-          if (emittedKeys.has(currentItem.key)) {
-            continue;
-          }
-          emittedKeys.add(currentItem.key);
-          nextItems.push({
-            ...currentItem,
-            presence: "exiting"
-          });
-        }
-      }
-
-      const filteredItems = nextItems.filter(
-        (item) => nextByKey.has(item.key) || item.presence === "exiting"
-      );
-      if (
-        filteredItems.some(
-          (item) =>
-            item.item.kind === "minimized" &&
-            (item.presence === "entering" || item.presence === "exiting")
-        )
-      ) {
-        nextSettleMs = minimizedDockSlotLayoutAnimationMs;
-      }
+      const filteredItems = resolveDockPresenceItems({
+        current,
+        initialized: initialized.current,
+        nextSourceItems: [...latestItemsByKey.current.values()],
+        shouldAnimateMinimizedDockEnter:
+          shouldAnimateMinimizedDockEnterRef.current
+      });
+      nextSettleMs = resolveDockPresenceSettleMs(filteredItems);
       return filteredItems;
     });
     initialized.current = true;
@@ -3307,7 +3356,14 @@ function useDockPresenceItems(
     return () => globalThis.clearTimeout(timeout);
   }, [itemKeys]);
 
-  return presentItems.map((presentItem) => {
+  const renderedPresentItems = resolveDockPresenceItems({
+    current: presentItems,
+    initialized: initialized.current,
+    nextSourceItems: [...latestItemsByKey.current.values()],
+    shouldAnimateMinimizedDockEnter
+  });
+
+  return renderedPresentItems.map((presentItem) => {
     const latestItem = latestItemsByKey.current.get(presentItem.key);
     return latestItem ? { ...presentItem, item: latestItem } : presentItem;
   });

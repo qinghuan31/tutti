@@ -233,6 +233,7 @@ export function createDesktopIssueManagerBackend(
           content: input.content,
           dueAtUnix: input.dueAtUnix,
           priority: toClientPriority(input.priority),
+          sortIndex: input.sortIndex,
           status: toClientStatus(input.status),
           title: input.title
         }

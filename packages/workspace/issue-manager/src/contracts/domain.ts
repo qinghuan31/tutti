@@ -8,6 +8,11 @@ export type IssueManagerStatus =
   | "canceled"
   | (string & {});
 
+export type IssueManagerTaskStatusUpdate =
+  | "completed"
+  | "not_started"
+  | "pending_acceptance";
+
 export type IssueManagerPriority = "high" | "medium" | "low" | (string & {});
 
 export type IssueManagerContextRefParentKind = "issue" | "task";
@@ -225,6 +230,7 @@ export interface IssueManagerUpdateTaskInput extends IssueManagerScope {
   dueAtUnix?: number;
   issueId: string;
   priority?: IssueManagerPriority;
+  sortIndex?: number;
   status?: IssueManagerStatus;
   taskId: string;
   title?: string;

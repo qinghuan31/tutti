@@ -1,6 +1,7 @@
 import {
   useCallback,
   useEffect,
+  useLayoutEffect,
   memo,
   useMemo,
   useRef,
@@ -131,6 +132,8 @@ const DESKTOP_AGENT_GUI_AGENT_SETTINGS = {
   avoidGroupingEdits: false
 } satisfies NonNullable<AgentGUIProps["agentSettings"]>;
 const DESKTOP_AGENT_GUI_NOOP = (): void => {};
+const DESKTOP_AGENT_GUI_EMPTY_CONTEXT_MENTION_PROVIDERS =
+  [] satisfies NonNullable<AgentGUIProps["contextMentionProviders"]>;
 const DESKTOP_AGENT_GUI_POSITION = { x: 0, y: 0 };
 type DesktopAgentProbeState = NonNullable<
   AgentGUIProps["workspaceAgentProbes"]
@@ -244,13 +247,26 @@ function DesktopAgentGUIWorkbenchBodyImpl({
       }),
     [appCenterState.apps, workspaceId]
   );
-  const workspaceAppMentionProvider = useMemo(
-    () =>
+  const workspaceAppMentionProvider = useMemo(() => {
+    if (previewMode) {
+      return null;
+    }
+    return (
       contextMentionProviders.find(
         (provider) =>
           provider.id === AGENT_CONTEXT_MENTION_PROVIDER_IDS.workspaceApp
-      ) ?? null,
-    [contextMentionProviders]
+      ) ?? null
+    );
+  }, [contextMentionProviders, previewMode]);
+  const agentGeneratedFileMentionProvider = useMemo(
+    () =>
+      previewMode
+        ? null
+        : createDesktopAgentGeneratedFileMentionProvider({
+            agentActivityRuntime,
+            workspaceId
+          }),
+    [agentActivityRuntime, previewMode, workspaceId]
   );
   const resolveDockFiles = useCallback(
     () =>
@@ -260,36 +276,31 @@ function DesktopAgentGUIWorkbenchBodyImpl({
       }),
     [context.host, workspaceId]
   );
-  const agentGeneratedFileMentionProvider = useMemo(
-    () =>
-      createDesktopAgentGeneratedFileMentionProvider({
-        agentActivityRuntime,
-        workspaceId
-      }),
-    [agentActivityRuntime, workspaceId]
-  );
-  const effectiveContextMentionProviders = useMemo(
-    () =>
-      composeDesktopAgentGuiContextMentionProviders({
-        baseProviders: contextMentionProviders,
-        agentGeneratedFileMentionProvider,
-        workspaceAppMentionProvider,
-        wrapBaseProvider: (provider) =>
-          wrapDesktopFileMentionProviderWithDockFiles(provider, {
-            readDockPreview: dockPreviewCache.read.bind(dockPreviewCache),
-            resolveDockFiles
-          })
-      }),
-    [
+  const effectiveContextMentionProviders = useMemo(() => {
+    if (previewMode || !agentGeneratedFileMentionProvider) {
+      return DESKTOP_AGENT_GUI_EMPTY_CONTEXT_MENTION_PROVIDERS;
+    }
+    return composeDesktopAgentGuiContextMentionProviders({
+      baseProviders: contextMentionProviders,
       agentGeneratedFileMentionProvider,
-      dockPreviewCache,
-      resolveDockFiles,
-      contextMentionProviders,
-      workspaceAppMentionProvider
-    ]
-  );
+      workspaceAppMentionProvider,
+      wrapBaseProvider: (provider) =>
+        wrapDesktopFileMentionProviderWithDockFiles(provider, {
+          readDockPreview: dockPreviewCache.read.bind(dockPreviewCache),
+          resolveDockFiles
+        })
+    });
+  }, [
+    agentGeneratedFileMentionProvider,
+    dockPreviewCache,
+    previewMode,
+    resolveDockFiles,
+    contextMentionProviders,
+    workspaceAppMentionProvider
+  ]);
   const managedAgentsState = useDesktopManagedAgentsState(
-    previewMode ? undefined : agentProviderStatusService
+    agentProviderStatusService,
+    { ensureLoaded: !previewMode }
   );
   const provider = desktopAgentGUIProviderFromInstanceId(context.instanceId);
   useEffect(() => {
@@ -639,6 +650,9 @@ function DesktopAgentGUIWorkbenchBodyImpl({
   }, [context.activation, context.host, context.node.id, previewMode]);
 
   useEffect(() => {
+    if (previewMode) {
+      return;
+    }
     const handleOptimisticConversationRailToggle = (event: Event) => {
       const detail = (event as CustomEvent<unknown>).detail;
       if (
@@ -674,7 +688,7 @@ function DesktopAgentGUIWorkbenchBodyImpl({
         handleOptimisticConversationRailToggle
       );
     };
-  }, [context.instanceId, handleUpdateNode]);
+  }, [context.instanceId, handleUpdateNode, previewMode]);
 
   useEffect(() => {
     if (previewMode) {
@@ -706,23 +720,42 @@ function DesktopAgentGUIWorkbenchBodyImpl({
     };
   }, [context.instanceId, previewMode]);
 
-  const handleOpenConversationWindow = useCallback(
-    (agentSessionId: string) => {
-      if (previewMode || !onOpenAgentConversationWindow) {
+  const openConversationWindowRef = useRef({
+    onOpenAgentConversationWindow,
+    previewMode,
+    provider,
+    workspaceId
+  });
+  useLayoutEffect(() => {
+    openConversationWindowRef.current = {
+      onOpenAgentConversationWindow,
+      previewMode,
+      provider,
+      workspaceId
+    };
+  }, [onOpenAgentConversationWindow, previewMode, provider, workspaceId]);
+  const canOpenConversationWindow =
+    !previewMode && Boolean(onOpenAgentConversationWindow);
+  const handleOpenConversationWindow = useMemo(() => {
+    if (!canOpenConversationWindow) {
+      return undefined;
+    }
+    return (agentSessionId: string) => {
+      const current = openConversationWindowRef.current;
+      if (current.previewMode || !current.onOpenAgentConversationWindow) {
         return;
       }
       const trimmedAgentSessionId = agentSessionId.trim();
       if (!trimmedAgentSessionId) {
         return;
       }
-      void onOpenAgentConversationWindow({
+      void current.onOpenAgentConversationWindow({
         agentSessionId: trimmedAgentSessionId,
-        provider,
-        workspaceId
+        provider: current.provider,
+        workspaceId: current.workspaceId
       });
-    },
-    [onOpenAgentConversationWindow, previewMode, provider, workspaceId]
-  );
+    };
+  }, [canOpenConversationWindow]);
 
   useEffect(() => {
     if (
@@ -879,7 +912,7 @@ function DesktopAgentGUIWorkbenchBodyImpl({
         previewMode ? undefined : onCapabilitySettingsRequest
       }
       onClose={DESKTOP_AGENT_GUI_NOOP}
-      onLinkAction={onLinkAction}
+      onLinkAction={previewMode ? undefined : onLinkAction}
       onResize={DESKTOP_AGENT_GUI_NOOP}
       onShowMessage={DESKTOP_AGENT_GUI_NOOP}
       onUpdateNode={handleUpdateNode}
@@ -888,17 +921,25 @@ function DesktopAgentGUIWorkbenchBodyImpl({
           ? undefined
           : handleOpenConversationWindow
       }
-      onWorkspaceFileReferencesAdded={trackWorkspaceFileReferences}
+      onWorkspaceFileReferencesAdded={
+        previewMode ? undefined : trackWorkspaceFileReferences
+      }
       position={DESKTOP_AGENT_GUI_POSITION}
       previewMode={previewMode}
-      contextMentionProviders={effectiveContextMentionProviders}
+      contextMentionProviders={
+        previewMode ? [] : effectiveContextMentionProviders
+      }
       state={nodeState}
       title={context.node.title}
       width={frame.width}
-      workspaceFileReferenceAdapter={workspaceFileReferenceAdapter}
-      onRequestGitBranches={onRequestGitBranches}
-      referenceSourceAggregator={referenceSourceAggregator}
-      resolveMentionReferenceTarget={resolveMentionReferenceTarget}
+      workspaceFileReferenceAdapter={
+        previewMode ? null : workspaceFileReferenceAdapter
+      }
+      onRequestGitBranches={previewMode ? null : onRequestGitBranches}
+      referenceSourceAggregator={previewMode ? null : referenceSourceAggregator}
+      resolveMentionReferenceTarget={
+        previewMode ? undefined : resolveMentionReferenceTarget
+      }
       workspaceAppIcons={workspaceAppIcons}
       workspaceId={workspaceId}
       workspacePath="/"

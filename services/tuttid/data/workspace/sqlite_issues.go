@@ -486,10 +486,10 @@ func (s *SQLiteStore) UpdateTask(ctx context.Context, task workspaceissues.Task)
 	result, err := s.db.ExecContext(ctx, `
 UPDATE workspace_issue_tasks
 SET title = ?, content = ?, search_text = ?, status = ?, priority = ?,
-    due_at_unix_ms = ?, latest_run_id = ?, updated_at_unix_ms = ?
+    sort_index = ?, due_at_unix_ms = ?, latest_run_id = ?, updated_at_unix_ms = ?
 WHERE workspace_id = ? AND issue_id = ? AND task_id = ?
 `, task.Title, task.Content, task.SearchText, string(task.Status), string(task.Priority),
-		task.DueAtUnixMS, task.LatestRunID, task.UpdatedAtUnixMS, task.WorkspaceID, task.IssueID, task.TaskID)
+		task.SortIndex, task.DueAtUnixMS, task.LatestRunID, task.UpdatedAtUnixMS, task.WorkspaceID, task.IssueID, task.TaskID)
 	if err != nil {
 		return workspaceissues.Task{}, fmt.Errorf("update workspace issue task: %w", err)
 	}

@@ -5,7 +5,7 @@ on:
     tags:
       - "v*"
   schedule:
-    - cron: "23 1 * * *"
+    - cron: "15 0 * * *"
   workflow_dispatch:
     inputs:
       release_mode:
@@ -129,6 +129,7 @@ jobs:
         id: release
         shell: bash
         env:
+          RELEASE_DRY_RUN: ${{ steps.mode.outputs.dry_run }}
           RELEASE_STRATEGY: ${{ steps.mode.outputs.strategy }}
           INPUT_VERSION: ${{ inputs.version }}
         run: |
@@ -140,8 +141,12 @@ jobs:
               version="${INPUT_VERSION:-0.1.0}"
               args+=(--version "${version}")
             fi
-            args+=(--target "${{ steps.target.outputs.release_target }}")
-            args=(node apps/desktop/scripts/reserve-release-tag.mjs "${args[@]}")
+            if [[ "${RELEASE_DRY_RUN}" == "true" ]]; then
+              args=(node apps/desktop/scripts/resolve-release-tag.mjs "${args[@]}")
+            else
+              args+=(--target "${{ steps.target.outputs.release_target }}")
+              args=(node apps/desktop/scripts/reserve-release-tag.mjs "${args[@]}")
+            fi
           fi
 
           if [[ "${{ github.event_name }}" == "push" ]]; then

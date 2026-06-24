@@ -529,6 +529,10 @@ describe("AgentTranscriptItemView render stability", () => {
     expect(
       getByText("agentHost.agentGui.systemNoticeTransportRetry")
     ).toBeTruthy();
+    const notice = getByText(
+      "agentHost.agentGui.systemNoticeTransportRetry"
+    ).closest("section");
+    expect(notice?.firstElementChild?.firstElementChild?.tagName).toBe("DIV");
     expect(getByText("agentHost.agentGui.visibleErrorDetails")).toBeTruthy();
     expect(
       queryByText("Codex connection interrupted. Reconnecting...")

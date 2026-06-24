@@ -32,9 +32,6 @@ import {
 export { shouldAutoCollapseIssueManagerSidebar } from "./useIssueManagerShellView.ts";
 
 const issueManagerTaskDrawerExitDurationMs = 180;
-const issueManagerTaskDrawerCloseBlockerMs = 500;
-
-let issueManagerTaskDrawerCloseBlockerUntilMs = 0;
 
 export interface IssueManagerShellProps {
   controller: IssueManagerController;
@@ -62,8 +59,6 @@ export function IssueManagerShell({
   });
   const [renderedTaskDrawerTask, setRenderedTaskDrawerTask] =
     useState<IssueManagerTaskSummary | null>(selectedTask);
-  const [taskDrawerCloseBlockerUntilMs, setTaskDrawerCloseBlockerUntilMs] =
-    useState(issueManagerTaskDrawerCloseBlockerUntilMs);
   const lastContentPointerDownRef = useRef<IssueManagerPointerSnapshot | null>(
     null
   );
@@ -71,7 +66,6 @@ export function IssueManagerShell({
     null
   );
   const pendingTaskDrawerCloseRef = useRef(false);
-  const taskDrawerCloseBlockerTimeoutRef = useRef<number | null>(null);
   const previousTaskDrawerOpenRef = useRef<{
     isOpen: boolean;
     taskId: string | null;
@@ -79,49 +73,6 @@ export function IssueManagerShell({
     isOpen: shellView.content.isTaskDrawerOpen,
     taskId: selectedTask?.taskId ?? null
   });
-
-  const clearTaskDrawerCloseBlocker = () => {
-    if (taskDrawerCloseBlockerTimeoutRef.current !== null) {
-      window.clearTimeout(taskDrawerCloseBlockerTimeoutRef.current);
-      taskDrawerCloseBlockerTimeoutRef.current = null;
-    }
-    issueManagerTaskDrawerCloseBlockerUntilMs = 0;
-    setTaskDrawerCloseBlockerUntilMs(0);
-  };
-
-  const startTaskDrawerCloseBlocker = () => {
-    issueManagerTaskDrawerCloseBlockerUntilMs =
-      performance.now() + issueManagerTaskDrawerCloseBlockerMs;
-    setTaskDrawerCloseBlockerUntilMs(issueManagerTaskDrawerCloseBlockerUntilMs);
-  };
-
-  useEffect(() => {
-    if (taskDrawerCloseBlockerTimeoutRef.current !== null) {
-      window.clearTimeout(taskDrawerCloseBlockerTimeoutRef.current);
-      taskDrawerCloseBlockerTimeoutRef.current = null;
-    }
-
-    if (taskDrawerCloseBlockerUntilMs <= performance.now()) {
-      return undefined;
-    }
-
-    taskDrawerCloseBlockerTimeoutRef.current = window.setTimeout(() => {
-      if (issueManagerTaskDrawerCloseBlockerUntilMs <= performance.now()) {
-        issueManagerTaskDrawerCloseBlockerUntilMs = 0;
-      }
-      taskDrawerCloseBlockerTimeoutRef.current = null;
-      setTaskDrawerCloseBlockerUntilMs(
-        issueManagerTaskDrawerCloseBlockerUntilMs
-      );
-    }, taskDrawerCloseBlockerUntilMs - performance.now());
-
-    return () => {
-      if (taskDrawerCloseBlockerTimeoutRef.current !== null) {
-        window.clearTimeout(taskDrawerCloseBlockerTimeoutRef.current);
-        taskDrawerCloseBlockerTimeoutRef.current = null;
-      }
-    };
-  }, [taskDrawerCloseBlockerUntilMs]);
 
   const handleCloseTaskDrawer = (source: IssueManagerTaskDrawerCloseSource) => {
     logIssueManagerDiagnostic(
@@ -137,11 +88,6 @@ export function IssueManagerShell({
     );
     pendingTaskDrawerCloseRef.current = true;
     setRenderedTaskDrawerTask(null);
-    if (source === "backdrop") {
-      startTaskDrawerCloseBlocker();
-    } else {
-      clearTaskDrawerCloseBlocker();
-    }
     onCloseTaskDrawer();
   };
 
@@ -277,8 +223,6 @@ export function IssueManagerShell({
     : renderedTaskDrawerTask;
   const isTaskDrawerClosing =
     !isTaskDrawerOpenForRender && renderedTaskDrawerTask !== null;
-  const isTaskDrawerCloseBlockerVisible =
-    !taskDrawerTask && taskDrawerCloseBlockerUntilMs > performance.now();
 
   return (
     <div
@@ -380,29 +324,6 @@ export function IssueManagerShell({
             selectedTask={taskDrawerTask}
             onClose={handleCloseTaskDrawer}
             shouldIgnoreBackdropClick={shouldIgnoreTaskDrawerBackdropClick}
-          />
-        ) : null}
-
-        {isTaskDrawerCloseBlockerVisible ? (
-          <div
-            aria-hidden="true"
-            className="absolute inset-0 z-20 bg-transparent"
-            onClick={(event) => {
-              event.preventDefault();
-              event.stopPropagation();
-            }}
-            onDoubleClick={(event) => {
-              event.preventDefault();
-              event.stopPropagation();
-            }}
-            onPointerDown={(event) => {
-              event.preventDefault();
-              event.stopPropagation();
-            }}
-            onPointerUp={(event) => {
-              event.preventDefault();
-              event.stopPropagation();
-            }}
           />
         ) : null}
       </div>

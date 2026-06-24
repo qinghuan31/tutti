@@ -191,7 +191,17 @@ export function toRelativeTime(iso: string | null): string {
     );
   }
 
+  const deltaDays = Math.floor(deltaSeconds / 86400);
+  if (deltaDays < 30) {
+    return addSpacesAroundDigits(formatter.format(-deltaDays, "day"));
+  }
+
+  const deltaMonths = Math.floor(deltaDays / 30);
+  if (deltaMonths < 12) {
+    return addSpacesAroundDigits(formatter.format(-deltaMonths, "month"));
+  }
+
   return addSpacesAroundDigits(
-    formatter.format(-Math.floor(deltaSeconds / 86400), "day")
+    formatter.format(-Math.floor(deltaDays / 365), "year")
   );
 }

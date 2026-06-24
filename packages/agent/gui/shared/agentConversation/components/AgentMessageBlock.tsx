@@ -7,7 +7,7 @@ import {
   type JSX,
   type ReactNode
 } from "react";
-import { AlertTriangle, ChevronRight, Info } from "lucide-react";
+import { ChevronRight } from "lucide-react";
 import { CheckIcon, CopyIcon } from "@tutti-os/ui-system/icons";
 import { Button } from "../../../app/renderer/components/ui/button";
 import { AgentPlanCard } from "./AgentPlanCard";
@@ -46,6 +46,7 @@ interface AgentMessageBlockProps {
   onAuthLogin?: (provider?: string | null) => void;
   availableSkills?: readonly AgentGUIProviderSkillOption[];
   workspaceAppIcons?: readonly AgentMessageMarkdownWorkspaceAppIcon[];
+  previewMode?: boolean;
   showRawTimelineJson?: boolean;
   rawTimelineJsonLabel?: string;
 }
@@ -59,6 +60,7 @@ export function AgentMessageBlock({
   onAuthLogin,
   availableSkills,
   workspaceAppIcons,
+  previewMode = false,
   showRawTimelineJson = false,
   rawTimelineJsonLabel = ""
 }: AgentMessageBlockProps): JSX.Element {
@@ -112,6 +114,7 @@ export function AgentMessageBlock({
           thinking={thinking}
           label={thinkingLabel}
           onLinkClick={handleLinkClick}
+          previewMode={previewMode}
           showRawTimelineJson={showRawTimelineJson}
           rawTimelineJsonLabel={rawTimelineJsonLabel}
         />
@@ -159,6 +162,7 @@ export function AgentMessageBlock({
               basePath={basePath}
               onLinkAction={onLinkAction}
               workspaceAppIcons={workspaceAppIcons}
+              previewMode={previewMode}
             />
           ) : (
             <AgentMessageMarkdown
@@ -173,6 +177,7 @@ export function AgentMessageBlock({
               workspaceAppIcons={workspaceAppIcons}
               deferLongContentRender
               enableImageZoom
+              previewMode={previewMode}
               streaming={message.statusKind === "working"}
             />
           );
@@ -407,27 +412,18 @@ function AgentSystemNoticeMessage({
   const detail = notice?.detail?.trim() ?? "";
   const isWarning =
     notice?.severity === "warning" || notice?.severity === "error";
-  const Icon = isWarning ? AlertTriangle : Info;
   return (
     <section
       role={isWarning ? "status" : undefined}
       className="box-border w-full min-w-0 rounded-[8px] border border-[color-mix(in_srgb,var(--state-warning)_14%,transparent)] bg-[color-mix(in_srgb,var(--background-fronted)_100%,var(--state-warning)_6%)] p-3 text-[13px] leading-5 text-[var(--text-primary)]"
     >
-      <div className="flex min-w-0 items-start gap-2">
-        <Icon
-          size={15}
-          strokeWidth={2.1}
-          aria-hidden="true"
-          className="mt-0.5 shrink-0 text-[var(--state-warning)]"
-        />
-        <div className="min-w-0 flex-1">
-          <div className="font-medium text-[var(--text-primary)]">
-            {systemNoticeTitle(message)}
-          </div>
-          {detail ? (
-            <AgentMessageDetailsDisclosure detail={detail} className="mt-1" />
-          ) : null}
+      <div className="min-w-0">
+        <div className="font-medium text-[var(--text-primary)]">
+          {systemNoticeTitle(message)}
         </div>
+        {detail ? (
+          <AgentMessageDetailsDisclosure detail={detail} className="mt-1" />
+        ) : null}
       </div>
     </section>
   );
@@ -440,13 +436,15 @@ function AgentPlanCardMessage({
   workspaceRoot,
   basePath,
   onLinkAction,
-  workspaceAppIcons
+  workspaceAppIcons,
+  previewMode = false
 }: {
   message: AgentMessageContentVM;
   workspaceRoot: string | null;
   basePath: string;
   onLinkAction?: (action: WorkspaceLinkAction) => void;
   workspaceAppIcons?: readonly AgentMessageMarkdownWorkspaceAppIcon[];
+  previewMode?: boolean;
 }): JSX.Element {
   "use memo";
   return (
@@ -463,6 +461,7 @@ function AgentPlanCardMessage({
         workspaceAppIcons={workspaceAppIcons}
         deferLongContentRender
         enableImageZoom
+        previewMode={previewMode}
       />
     </AgentPlanCard>
   );

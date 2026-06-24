@@ -1,6 +1,12 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import test from "node:test";
 import { shouldIgnoreIssueManagerTaskDrawerBackdropEcho } from "./IssueManagerTaskDrawerEcho.ts";
+
+const issueManagerShellSource = readFileSync(
+  new URL("./IssueManagerShell.tsx", import.meta.url),
+  "utf8"
+);
 
 test("task drawer backdrop echo guard ignores near repeated clicks after opening", () => {
   assert.deepEqual(
@@ -15,6 +21,18 @@ test("task drawer backdrop echo guard ignores near repeated clicks after opening
       }
     }).ignore,
     true
+  );
+});
+
+test("task drawer close does not leave a transparent interaction blocker", () => {
+  assert.doesNotMatch(issueManagerShellSource, /TaskDrawerCloseBlocker/);
+  assert.doesNotMatch(
+    issueManagerShellSource,
+    /issueManagerTaskDrawerCloseBlocker/
+  );
+  assert.doesNotMatch(
+    issueManagerShellSource,
+    /bg-transparent"[\s\S]*onPointerDown/
   );
 });
 

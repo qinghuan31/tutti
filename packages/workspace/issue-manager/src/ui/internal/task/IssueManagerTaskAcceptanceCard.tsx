@@ -19,7 +19,7 @@ export function IssueManagerTaskAcceptanceCard({
   };
 
   return (
-    <div className="grid gap-2 rounded-md bg-[var(--transparency-block)] px-3 py-2">
+    <div className="grid gap-2 rounded-md border border-[var(--tutti-purple-border)] bg-[var(--tutti-purple-bg)] px-3 py-2">
       <div className="min-w-0 text-[11px] font-normal leading-[1.45] text-[var(--text-secondary)] [overflow-wrap:anywhere]">
         <span className="font-semibold text-[var(--text-primary)]">
           {copy.t("labels.taskAcceptance")}

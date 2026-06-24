@@ -311,16 +311,18 @@ func (api DaemonAPI) UpdateWorkspaceIssueTask(ctx context.Context, request tutti
 	}
 
 	task, err := api.IssueService.UpdateTask(ctx, string(request.WorkspaceID), string(request.IssueID), string(request.TaskID), workspaceservice.UpdateIssueManagerTaskInput{
-		Title:       optionalString(request.Body.Title),
-		HasTitle:    request.Body.Title != nil,
-		Content:     optionalString(request.Body.Content),
-		HasContent:  request.Body.Content != nil,
-		Status:      optionalIssueManagerStatus(request.Body.Status),
-		HasStatus:   request.Body.Status != nil,
-		Priority:    optionalIssueManagerPriority(request.Body.Priority),
-		HasPriority: request.Body.Priority != nil,
-		DueAtUnixMS: optionalUnixMillis(request.Body.DueAtUnix),
-		HasDueAt:    request.Body.DueAtUnix != nil,
+		Title:        optionalString(request.Body.Title),
+		HasTitle:     request.Body.Title != nil,
+		Content:      optionalString(request.Body.Content),
+		HasContent:   request.Body.Content != nil,
+		Status:       optionalIssueManagerStatus(request.Body.Status),
+		HasStatus:    request.Body.Status != nil,
+		Priority:     optionalIssueManagerPriority(request.Body.Priority),
+		HasPriority:  request.Body.Priority != nil,
+		DueAtUnixMS:  optionalUnixMillis(request.Body.DueAtUnix),
+		HasDueAt:     request.Body.DueAtUnix != nil,
+		SortIndex:    optionalInt(request.Body.SortIndex),
+		HasSortIndex: request.Body.SortIndex != nil,
 	})
 	if err != nil {
 		return writeUpdateWorkspaceIssueTaskError(err), nil

@@ -43,7 +43,7 @@ The release workflow file is `.github/workflows/desktop-release.yml`.
 Supported triggers:
 
 - pushing a tag matching `tutti-desktop-v*`
-- scheduled run at `01:30 UTC` every day
+- scheduled run at `00:15 UTC` every day (`08:15` Beijing time)
 - manual `workflow_dispatch`
 
 Supported manual modes:

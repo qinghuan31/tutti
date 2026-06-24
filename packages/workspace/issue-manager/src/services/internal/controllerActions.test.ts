@@ -864,6 +864,7 @@ test("controller actions update an issue-level execution task status without sel
   });
 
   await harness.actions.setTaskStatus("task-acceptance", "completed");
+  await harness.actions.setTaskStatus("task-acceptance", "pending_acceptance");
 
   assert.deepEqual(updateTaskCalls, [
     {
@@ -871,9 +872,158 @@ test("controller actions update an issue-level execution task status without sel
       status: "completed",
       taskId: "task-acceptance",
       workspaceId: "workspace-1"
+    },
+    {
+      issueId: "issue-1",
+      status: "pending_acceptance",
+      taskId: "task-acceptance",
+      workspaceId: "workspace-1"
     }
   ]);
   assert.equal(harness.nodeState.current.selectedTaskId, null);
+});
+
+test("controller actions move tasks within one status column and persist sort order", async () => {
+  const updateTaskCalls: IssueManagerUpdateTaskInput[] = [];
+  const harness = createControllerActionsHarness({
+    backend: {
+      async updateTask(input) {
+        updateTaskCalls.push(input);
+        return createTaskSummary({
+          issueId: input.issueId,
+          sortIndex: input.sortIndex,
+          status: input.status,
+          taskId: input.taskId,
+          title: input.taskId
+        });
+      }
+    },
+    issueDetail: {
+      ...createIssueDetail(),
+      tasks: [
+        createTaskSummary({
+          issueId: "issue-1",
+          sortIndex: 1,
+          status: "completed",
+          taskId: "task-1",
+          title: "First"
+        }),
+        createTaskSummary({
+          issueId: "issue-1",
+          sortIndex: 2,
+          status: "completed",
+          taskId: "task-2",
+          title: "Second"
+        }),
+        createTaskSummary({
+          issueId: "issue-1",
+          sortIndex: 3,
+          status: "completed",
+          taskId: "task-3",
+          title: "Third"
+        })
+      ]
+    },
+    nodeState: {
+      issueSearchQuery: "",
+      issueStatusFilter: "all",
+      selectedAgentProvider: "codex",
+      selectedIssueId: "issue-1",
+      selectedTaskId: null
+    }
+  });
+
+  await harness.actions.moveTask({
+    targetIndex: 0,
+    targetStatus: "completed",
+    taskId: "task-3"
+  });
+
+  assert.deepEqual(updateTaskCalls, [
+    {
+      issueId: "issue-1",
+      sortIndex: 1,
+      status: "completed",
+      taskId: "task-3",
+      workspaceId: "workspace-1"
+    },
+    {
+      issueId: "issue-1",
+      sortIndex: 2,
+      status: "completed",
+      taskId: "task-1",
+      workspaceId: "workspace-1"
+    },
+    {
+      issueId: "issue-1",
+      sortIndex: 3,
+      status: "completed",
+      taskId: "task-2",
+      workspaceId: "workspace-1"
+    }
+  ]);
+  assert.equal(harness.refreshAllCount, 1);
+});
+
+test("controller actions move done tasks back into review", async () => {
+  const updateTaskCalls: IssueManagerUpdateTaskInput[] = [];
+  const harness = createControllerActionsHarness({
+    backend: {
+      async updateTask(input) {
+        updateTaskCalls.push(input);
+        return createTaskSummary({
+          issueId: input.issueId,
+          sortIndex: input.sortIndex,
+          status: input.status,
+          taskId: input.taskId,
+          title: input.taskId
+        });
+      }
+    },
+    issueDetail: {
+      ...createIssueDetail(),
+      tasks: [
+        createTaskSummary({
+          issueId: "issue-1",
+          sortIndex: 1,
+          status: "completed",
+          taskId: "task-done",
+          title: "Done"
+        }),
+        createTaskSummary({
+          issueId: "issue-1",
+          sortIndex: 2,
+          status: "pending_acceptance",
+          taskId: "task-review",
+          title: "Review"
+        })
+      ]
+    },
+    nodeState: {
+      issueSearchQuery: "",
+      issueStatusFilter: "all",
+      selectedAgentProvider: "codex",
+      selectedIssueId: "issue-1",
+      selectedTaskId: null
+    }
+  });
+
+  await harness.actions.moveTask({
+    targetIndex: 0,
+    targetStatus: "pending_acceptance",
+    taskId: "task-done"
+  });
+
+  assert.deepEqual(updateTaskCalls, [
+    {
+      issueId: "issue-1",
+      sortIndex: 1,
+      status: "pending_acceptance",
+      taskId: "task-done",
+      workspaceId: "workspace-1"
+    }
+  ]);
+  assert.equal(harness.refreshAllCount, 1);
 });
 
 test("controller actions run selected task through task-scoped handoff", async () => {
