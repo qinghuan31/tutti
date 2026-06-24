@@ -3135,6 +3135,31 @@ func TestAppCenterServiceLaunchReturnsActiveRuntimeWithoutRestart(t *testing.T) 
 	}
 }
 
+func TestAppCenterServiceLaunchMarksRunningOldPackagePendingRestart(t *testing.T) {
+	ctx := context.Background()
+	service, runner := newLaunchTestAppCenterService(t)
+	runner.setState(appRuntimeKey("ws-1", "local-app"), workspacebiz.AppRuntimeState{
+		Status:     workspacebiz.AppRuntimeStatusRunning,
+		LaunchURL:  stringPtr("http://127.0.0.1:43210"),
+		Port:       intPtr(43210),
+		PackageDir: filepath.Join(t.TempDir(), "local-app", "0.0.9"),
+	})
+
+	app, err := service.Launch(ctx, "ws-1", "local-app")
+	if err != nil {
+		t.Fatalf("Launch() error = %v", err)
+	}
+	if app.Runtime.Status != workspacebiz.AppRuntimeStatusInstalledPendingRestart {
+		t.Fatalf("Launch() status = %q, want %q", app.Runtime.Status, workspacebiz.AppRuntimeStatusInstalledPendingRestart)
+	}
+	if app.Runtime.Port == nil || *app.Runtime.Port != 43210 {
+		t.Fatalf("Launch() port = %v, want 43210", app.Runtime.Port)
+	}
+	if app.Runtime.LaunchURL == nil || *app.Runtime.LaunchURL != "http://127.0.0.1:43210" {
+		t.Fatalf("Launch() launch URL = %v, want old running URL", app.Runtime.LaunchURL)
+	}
+}
+
 func TestAppCenterServiceLaunchRejectsFailedAndStoppingApps(t *testing.T) {
 	for _, status := range []workspacebiz.AppRuntimeStatus{
 		workspacebiz.AppRuntimeStatusFailed,
