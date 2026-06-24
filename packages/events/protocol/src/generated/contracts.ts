@@ -138,7 +138,14 @@ export interface WorkspaceWorkspaceAppV1 {
   iconUrl: string | null;
   installed: boolean;
   enabled: boolean;
-  status: "idle" | "preparing" | "starting" | "running" | "failed" | "stopping";
+  status:
+    | "idle"
+    | "preparing"
+    | "starting"
+    | "running"
+    | "installed_pending_restart"
+    | "failed"
+    | "stopping";
   stateRevision: number;
   launchUrl: string | null;
   port: number | null;

@@ -1033,6 +1033,58 @@ test("Workspace App Center service closes uninstalled app views", async () => {
   assert.deepEqual(closedApps, ["ready"]);
 });
 
+test("Workspace App Center service closes stale app view before restart and open", async () => {
+  let app = createWorkspaceApp({
+    launchUrl: "http://127.0.0.1:23456",
+    stateRevision: 1,
+    status: "installed_pending_restart" as WorkspaceApp["status"],
+    version: "0.1.12"
+  });
+  const calls: string[] = [];
+  const service = new WorkspaceAppCenterService({
+    appOpenLaunchWaitTimeoutMs: 1,
+    eventStreamClient: createFakeEventStreamClient(),
+    gateway: {
+      ...createFakeWorkspaceAppCenterGateway(() => app),
+      async installWorkspaceApp(_workspaceId, _appId, input) {
+        calls.push(`install:${String(input?.restartRunning)}`);
+        app = createWorkspaceApp({
+          launchUrl: "http://127.0.0.1:23456",
+          stateRevision: 2,
+          status: "running",
+          version: "0.1.12"
+        });
+        return normalizeWorkspaceAppCenterSnapshot(
+          createWorkspaceAppListResponse({
+            apps: [app],
+            workspaceId: "workspace-1"
+          })
+        );
+      }
+    },
+    hostFilesApi: createFakeHostFilesApi(),
+    hostWorkspaceApi: {
+      async openWorkspaceAppFolder() {}
+    }
+  });
+  service.setWorkspaceAppViewCloser(({ appId }) => {
+    calls.push(`close:${appId}`);
+  });
+  service.setWorkspaceAppLauncher(async ({ appId, prepared }) => {
+    calls.push(`launch:${appId}:${String(prepared)}`);
+    return true;
+  });
+
+  await service.refresh("workspace-1");
+  const opened = await service.restartAndOpenApp({
+    appId: "ready",
+    workspaceId: "workspace-1"
+  });
+
+  assert.equal(opened, true);
+  assert.deepEqual(calls, ["close:ready", "install:true", "launch:ready:true"]);
+});
+
 test("Workspace App Center service launches already-running apps without restarting them", async () => {
   let app = createWorkspaceApp({
     launchUrl: "http://127.0.0.1:23456",

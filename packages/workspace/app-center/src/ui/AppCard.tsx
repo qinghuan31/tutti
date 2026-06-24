@@ -110,6 +110,7 @@ export interface AppCenterHostActions {
   readonly reloadLocalApp?: (appId: string) => Promise<void> | void;
   readonly retryFactoryValidation?: (jobId: string) => Promise<void> | void;
   readonly retryApp?: (appId: string) => Promise<void> | void;
+  readonly restartAndOpenApp?: (appId: string) => Promise<void> | void;
   readonly updateApp?: (
     appId: string,
     trigger: "badge_button" | "primary_action"
@@ -151,7 +152,9 @@ export const AppCard = memo(function AppCard({
                 version: app.availableVersion
               })
             : copy.t("actions.updateApp")
-          : copy.t("actions.openApp");
+          : app.primaryAction === "restartAndOpen"
+            ? copy.t("actions.restartAndOpenApp")
+            : copy.t("actions.openApp");
   const canExecutePrimaryAction = app.primaryAction !== "none";
   const canOpenFromCard = app.canOpen;
   const canPublishFactoryUpdate =
@@ -185,6 +188,10 @@ export const AppCard = memo(function AppCard({
     }
     if (app.primaryAction === "update") {
       void actions.updateApp?.(app.id, "primary_action");
+      return;
+    }
+    if (app.primaryAction === "restartAndOpen") {
+      void actions.restartAndOpenApp?.(app.id);
       return;
     }
     if (app.primaryAction === "open") {

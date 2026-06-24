@@ -327,6 +327,7 @@ export type WorkspaceAppRuntimeStatus =
   | "preparing"
   | "starting"
   | "running"
+  | "installed_pending_restart"
   | "failed"
   | "stopping";
 

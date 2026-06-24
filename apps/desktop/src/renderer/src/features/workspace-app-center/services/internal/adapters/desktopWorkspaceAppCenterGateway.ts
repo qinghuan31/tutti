@@ -72,7 +72,7 @@ export interface WorkspaceAppLike {
   readonly source: WorkspaceApp["source"];
   readonly startedAtUnixMs?: number | null;
   readonly stateRevision: number;
-  readonly status: WorkspaceAppRuntimeStatus;
+  readonly status: WorkspaceAppRuntimeStatus | string;
   readonly runtimeId?: string | null;
   readonly tags?: readonly string[];
   readonly updatedAtUnixMs?: number | null;
@@ -460,7 +460,7 @@ function normalizeWorkspaceAppCenterSource(
 }
 
 function normalizeRuntimeStatus(
-  status: WorkspaceAppRuntimeStatus
+  status: unknown
 ): WorkspaceAppCenterRuntimeStatus {
   return mapWorkspaceAppRuntimeStatus(status);
 }

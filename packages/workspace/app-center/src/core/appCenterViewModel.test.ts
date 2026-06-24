@@ -68,6 +68,42 @@ describe("createAppCenterViewModel", () => {
     assert.equal(viewModel.apps[1]?.errorMessage, "Launch failed");
   });
 
+  it("shows restart and open when an installed app is pending restart", () => {
+    const viewModel = createAppCenterViewModel({
+      apps: [
+        {
+          install: { appId: "onboarding", version: "0.1.12" },
+          manifest: {
+            appId: "onboarding",
+            description: "Get started with Tutti.",
+            runtime: {
+              bootstrap: "bootstrap.sh",
+              healthcheckPath: "/"
+            },
+            schemaVersion: workspaceAppManifestSchemaVersion,
+            name: "Get Started",
+            version: "0.1.12"
+          }
+        }
+      ],
+      runtimeStates: [
+        {
+          appId: "onboarding",
+          launchUrl: "http://127.0.0.1:57805",
+          status: "installed_pending_restart"
+        }
+      ]
+    });
+
+    assert.equal(viewModel.apps[0]?.status, "installed_pending_restart");
+    assert.equal(viewModel.apps[0]?.primaryAction, "restartAndOpen");
+    assert.equal(
+      viewModel.apps[0]?.statusLabelKey,
+      "status.installedPendingRestart"
+    );
+    assert.equal(viewModel.apps[0]?.canOpen, false);
+  });
+
   it("uses localized catalog metadata when the locale matches", () => {
     const viewModel = createAppCenterViewModel({
       apps: [

@@ -233,12 +233,13 @@ type AppInstallation struct {
 type AppRuntimeStatus string
 
 const (
-	AppRuntimeStatusIdle      AppRuntimeStatus = "idle"
-	AppRuntimeStatusPreparing AppRuntimeStatus = "preparing"
-	AppRuntimeStatusStarting  AppRuntimeStatus = "starting"
-	AppRuntimeStatusRunning   AppRuntimeStatus = "running"
-	AppRuntimeStatusFailed    AppRuntimeStatus = "failed"
-	AppRuntimeStatusStopping  AppRuntimeStatus = "stopping"
+	AppRuntimeStatusIdle                    AppRuntimeStatus = "idle"
+	AppRuntimeStatusPreparing               AppRuntimeStatus = "preparing"
+	AppRuntimeStatusStarting                AppRuntimeStatus = "starting"
+	AppRuntimeStatusRunning                 AppRuntimeStatus = "running"
+	AppRuntimeStatusInstalledPendingRestart AppRuntimeStatus = "installed_pending_restart"
+	AppRuntimeStatusFailed                  AppRuntimeStatus = "failed"
+	AppRuntimeStatusStopping                AppRuntimeStatus = "stopping"
 )
 
 type AppRuntimeState struct {
@@ -249,6 +250,7 @@ type AppRuntimeState struct {
 	LastError       *string
 	StartedAtUnixMs *int64
 	UpdatedAtUnixMs *int64
+	PackageDir      string
 }
 
 type AppInstallUserPhase string

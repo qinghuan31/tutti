@@ -133,6 +133,70 @@ test("workspace onboarding auto-open exhausts retries without marking when the a
   assert.equal(markCalls, 0);
 });
 
+test("workspace onboarding auto-open waits for async install before opening", async () => {
+  let installCalls = 0;
+  let openCalls = 0;
+  let refreshCalls = 0;
+  const app = {
+    appId: "tutti-onboarding",
+    installed: false
+  };
+  const diagnostics: WorkspaceOnboardingDiagnostic[] = [];
+  const result = await openWorkspaceOnboardingIfNeeded({
+    appCenterService: {
+      store: {
+        apps: [app]
+      },
+      async refresh() {
+        refreshCalls += 1;
+        if (refreshCalls === 5) {
+          app.installed = true;
+        }
+      },
+      async refreshCatalog() {},
+      async installApp() {
+        installCalls += 1;
+      },
+      async openApp() {
+        openCalls += 1;
+        return true;
+      }
+    },
+    maxAttempts: 2,
+    maxInstallAttempts: 6,
+    wait: async () => {},
+    workbenchHostService: createWorkbenchHostService({
+      logWorkspaceOnboardingAutoOpenDiagnostic: (diagnostic) => {
+        diagnostics.push(diagnostic);
+      }
+    }),
+    workspaceId: "workspace-1"
+  });
+
+  assert.equal(result, "opened");
+  assert.equal(installCalls, 1);
+  assert.equal(openCalls, 1);
+  assert.equal(refreshCalls, 6);
+  assert.deepEqual(
+    diagnostics
+      .filter((diagnostic) =>
+        [
+          "workspace-onboarding.auto-open.install-requested",
+          "workspace-onboarding.auto-open.install-request-accepted",
+          "workspace-onboarding.auto-open.installed-detected",
+          "workspace-onboarding.auto-open.opened"
+        ].includes(diagnostic.event)
+      )
+      .map((diagnostic) => diagnostic.event),
+    [
+      "workspace-onboarding.auto-open.install-requested",
+      "workspace-onboarding.auto-open.install-request-accepted",
+      "workspace-onboarding.auto-open.installed-detected",
+      "workspace-onboarding.auto-open.opened"
+    ]
+  );
+});
+
 test("workspace onboarding auto-open records launch retry diagnostics", async () => {
   let openCalls = 0;
   const diagnostics: WorkspaceOnboardingDiagnostic[] = [];

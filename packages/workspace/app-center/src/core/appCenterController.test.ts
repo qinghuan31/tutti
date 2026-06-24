@@ -712,6 +712,52 @@ test("WorkspaceAppCenterController only marks idle enabled apps as starting", as
   assert.deepEqual(optimisticStatuses, ["preparing", "failed", "stopping"]);
 });
 
+test("WorkspaceAppCenterController restarts pending-restart apps before opening", async () => {
+  const installInputs: Array<{ restartRunning?: boolean } | undefined> = [];
+  const controller = createWorkspaceAppCenterController({
+    appOpenLaunchWaitTimeoutMs: 1,
+    formatError: formatError,
+    gateway: createGateway({
+      async installWorkspaceApp(_workspaceId, _appId, input) {
+        installInputs.push(input);
+        return createSnapshot({
+          apps: [
+            createApp({
+              appId: "app-1",
+              launchUrl: "http://127.0.0.1:3000",
+              runtimeStatus: "running",
+              stateRevision: 2,
+              version: "1.1.0"
+            })
+          ]
+        });
+      }
+    })
+  });
+  controller.applySnapshot(
+    "workspace-1",
+    createSnapshot({
+      apps: [
+        createApp({
+          appId: "app-1",
+          launchUrl: "http://127.0.0.1:3000",
+          runtimeStatus: "installed_pending_restart",
+          version: "1.1.0"
+        })
+      ]
+    })
+  );
+
+  const app = await controller.restartAndOpenApp({
+    appId: "app-1",
+    workspaceId: "workspace-1"
+  });
+
+  assert.deepEqual(installInputs, [{ restartRunning: true }]);
+  assert.equal(app?.runtimeStatus, "running");
+  assert.equal(app?.launchUrl, "http://127.0.0.1:3000");
+});
+
 test("WorkspaceAppCenterController refreshes non-pending active install state", async () => {
   let listCalls = 0;
   const controller = createWorkspaceAppCenterController({

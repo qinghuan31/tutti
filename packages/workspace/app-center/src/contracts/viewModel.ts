@@ -12,6 +12,7 @@ export type WorkspaceAppStatusTone =
 export type WorkspaceAppPrimaryAction =
   | "install"
   | "open"
+  | "restartAndOpen"
   | "retry"
   | "update"
   | "none";

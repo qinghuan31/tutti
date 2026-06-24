@@ -112,7 +112,8 @@ func (r *AppRunner) Start(ctx context.Context, input AppStartInput) (workspacebi
 	r.mu.Unlock()
 
 	state := r.setState(key, workspacebiz.AppRuntimeState{
-		Status: workspacebiz.AppRuntimeStatusPreparing,
+		Status:     workspacebiz.AppRuntimeStatusPreparing,
+		PackageDir: input.PackageDir,
 	})
 	go r.startQueued(startCtx, key, input, start)
 	return state, nil
@@ -236,6 +237,7 @@ func (r *AppRunner) startProcess(ctx context.Context, key string, input AppStart
 		LaunchURL:       &launchURL,
 		Port:            &port,
 		StartedAtUnixMs: &startedAt,
+		PackageDir:      input.PackageDir,
 	})
 
 	if err := ctx.Err(); err != nil {
@@ -273,6 +275,7 @@ func (r *AppRunner) startProcess(ctx context.Context, key string, input AppStart
 		LaunchURL:       &launchURL,
 		Port:            &port,
 		StartedAtUnixMs: &startedAt,
+		PackageDir:      input.PackageDir,
 	})
 }
 

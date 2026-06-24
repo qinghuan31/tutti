@@ -243,6 +243,9 @@ export function WorkspaceAppCenterPane({
         service.retryFactoryValidation({ jobId, workspaceId }),
       retryApp: (appId) => service.retryApp({ appId, workspaceId }),
       replaceAppIcon: (appId) => service.replaceAppIcon({ appId, workspaceId }),
+      restartAndOpenApp: (appId) => {
+        void service.restartAndOpenApp({ appId, workspaceId });
+      },
       updateApp: (appId, trigger) =>
         service.updateApp({ appId, trigger, workspaceId }),
       uninstallApp: (appId) => service.uninstallApp({ appId, workspaceId })

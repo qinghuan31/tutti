@@ -601,6 +601,28 @@ export class WorkspaceAppCenterService implements IWorkspaceAppCenterService {
     await this.controller.retryApp(input);
   }
 
+  async restartAndOpenApp(input: {
+    appId: string;
+    workspaceId: string;
+  }): Promise<boolean> {
+    const previousApp = this.store.apps.find(
+      (candidate) => candidate.appId === input.appId
+    );
+    this.closeWorkspaceAppViews(input.workspaceId, [input.appId]);
+    const launchableApp = await this.controller.restartAndOpenApp(input);
+    if (!launchableApp) {
+      return false;
+    }
+    return (
+      (await this.workspaceAppLauncher?.({
+        appId: launchableApp.appId,
+        prepared: true,
+        prevStatus: previousApp?.runtimeStatus ?? launchableApp.runtimeStatus,
+        workspaceId: input.workspaceId
+      })) === true
+    );
+  }
+
   setWorkspaceAppLauncher(launcher: WorkspaceAppLauncher | null): void {
     this.workspaceAppLauncher = launcher;
   }

@@ -118,6 +118,35 @@ export class WorkspaceAppCenterController extends WorkspaceAppCenterControllerSt
     return await this.waitForLaunchableApp(input);
   }
 
+  async restartAndOpenApp(input: {
+    appId: string;
+    workspaceId: string;
+  }): Promise<WorkspaceAppCenterApp | null> {
+    const previousApps = this.store.apps;
+    this.markAppStarting(input.appId);
+    try {
+      const snapshot = await this.dependencies.gateway.installWorkspaceApp(
+        input.workspaceId,
+        input.appId,
+        { restartRunning: true }
+      );
+      this.applySnapshot(input.workspaceId, snapshot);
+    } catch (error) {
+      if (this.store.workspaceId === input.workspaceId) {
+        this.store.apps = previousApps;
+      }
+      this.setOperationError(error, {
+        appId: input.appId,
+        operation: "workspace_app.restart_and_open",
+        uiAction: "restart_and_open_app",
+        workspaceId: input.workspaceId
+      });
+      return null;
+    }
+
+    return await this.waitForLaunchableApp(input);
+  }
+
   async createFactoryJob(input: {
     displayName: string;
     model?: string;

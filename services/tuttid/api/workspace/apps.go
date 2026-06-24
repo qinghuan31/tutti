@@ -266,6 +266,8 @@ func generatedAppRuntimeStatus(status workspacebiz.AppRuntimeStatus) tuttigenera
 	switch status {
 	case workspacebiz.AppRuntimeStatusRunning:
 		return tuttigenerated.WorkspaceAppRuntimeStatusRunning
+	case workspacebiz.AppRuntimeStatusInstalledPendingRestart:
+		return tuttigenerated.WorkspaceAppRuntimeStatusInstalledPendingRestart
 	case workspacebiz.AppRuntimeStatusPreparing:
 		return tuttigenerated.WorkspaceAppRuntimeStatusPreparing
 	case workspacebiz.AppRuntimeStatusStarting:

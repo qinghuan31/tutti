@@ -99,10 +99,13 @@ export function createAppCenterViewModel({
         installed &&
         (app.updateAvailable ?? false);
       const canOpen = !comingSoon && installed && canOpenInstalledApp(status);
+      const canRestartAndOpen =
+        !comingSoon && installed && status === "installed_pending_restart";
       const canRetry = installed && status === "failed";
       const primaryAction = resolvePrimaryAction({
         canOpen,
         canRetry,
+        canRestartAndOpen,
         canUpdate,
         comingSoon,
         installed,
@@ -350,6 +353,7 @@ function isResolvedIconUrl(value: string): boolean {
 function resolvePrimaryAction(input: {
   readonly canOpen: boolean;
   readonly canRetry: boolean;
+  readonly canRestartAndOpen: boolean;
   readonly canUpdate: boolean;
   readonly comingSoon: boolean;
   readonly installed: boolean;
@@ -369,6 +373,9 @@ function resolvePrimaryAction(input: {
   }
   if (input.canUpdate) {
     return "update";
+  }
+  if (input.canRestartAndOpen) {
+    return "restartAndOpen";
   }
   if (input.canRetry) {
     return "retry";
@@ -409,6 +416,8 @@ function resolvePrimaryActionLabelKey(
       return "actions.installApp";
     case "open":
       return "actions.openApp";
+    case "restartAndOpen":
+      return "status.installedPendingRestart";
     case "retry":
       return "actions.retryApp";
     case "update":

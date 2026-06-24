@@ -239,6 +239,7 @@ func (s *AppCenterService) installPackage(ctx context.Context, workspaceID strin
 	if err := s.Store.SetActiveAppPackageVersion(ctx, appPackage.AppID, appPackage.Version); err != nil {
 		return workspacebiz.WorkspaceApp{}, err
 	}
+	runtimeState = runtimeStateForActivePackage(runtimeState, appPackage)
 	if err := s.pruneInactiveAppPackageVersions(ctx, appPackage); err != nil {
 		slog.Warn(
 			"workspace app inactive package version prune failed",
@@ -561,7 +562,7 @@ func (s *AppCenterService) handleRunnerStateChanged(workspaceID string, appID st
 	app := workspacebiz.WorkspaceApp{
 		Package:      appPackage,
 		Installation: installationPtr,
-		Runtime:      state,
+		Runtime:      runtimeStateForActivePackage(state, appPackage),
 	}
 	if state.Status == workspacebiz.AppRuntimeStatusRunning && state.LaunchURL != nil && installationPtr != nil && installationPtr.Enabled {
 		app.CLI = s.activateAppCLI(ctx, workspaceID, appPackage, *state.LaunchURL)
@@ -745,9 +746,24 @@ func (s *AppCenterService) workspaceAppFromPackage(appPackage workspacebiz.AppPa
 		installationCopy := installation
 		app.Installation = &installationCopy
 		app.Runtime = s.runner().State(workspaceID, appPackage.AppID)
+		app.Runtime = runtimeStateForActivePackage(app.Runtime, appPackage)
 	}
 	app.CLI = s.appCLIState(workspaceID, app)
 	return s.withCurrentRevision(app, workspaceID, appPackage.AppID)
+}
+
+func runtimeStateForActivePackage(state workspacebiz.AppRuntimeState, appPackage workspacebiz.AppPackage) workspacebiz.AppRuntimeState {
+	if state.Status != workspacebiz.AppRuntimeStatusRunning {
+		return state
+	}
+	if strings.TrimSpace(state.PackageDir) == "" || strings.TrimSpace(appPackage.PackageDir) == "" {
+		return state
+	}
+	if filepath.Clean(state.PackageDir) == filepath.Clean(appPackage.PackageDir) {
+		return state
+	}
+	state.Status = workspacebiz.AppRuntimeStatusInstalledPendingRestart
+	return state
 }
 
 func shouldDisplayRemoteBuiltinCatalog(appPackage workspacebiz.AppPackage, builtin builtinapps.App, installed bool) bool {

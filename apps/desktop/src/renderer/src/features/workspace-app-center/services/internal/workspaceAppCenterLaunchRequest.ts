@@ -183,6 +183,7 @@ function isWorkspaceAppOpenPrevStatus(
   return (
     value === "failed" ||
     value === "idle" ||
+    value === "installed_pending_restart" ||
     value === "installing" ||
     value === "preparing" ||
     value === "running" ||

@@ -18,6 +18,7 @@ const statusAliases = new Map<string, WorkspaceAppRuntimeStatus>([
   ["failed", "failed"],
   ["idle", "idle"],
   ["installed", "idle"],
+  ["installed_pending_restart", "installed_pending_restart"],
   ["installing", "installing"],
   ["downloading_runtime", "preparing"],
   ["launching", "starting"],
@@ -87,6 +88,12 @@ export function resolveWorkspaceAppStatusPresentation(
         labelKey: "status.running",
         pulse: false,
         tone: "green"
+      };
+    case "installed_pending_restart":
+      return {
+        labelKey: "status.installedPendingRestart",
+        pulse: false,
+        tone: "amber"
       };
     case "failed":
       return {

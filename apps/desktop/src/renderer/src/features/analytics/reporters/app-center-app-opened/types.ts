@@ -6,6 +6,7 @@ export interface AppCenterAppOpenedParams extends AnalyticsReporterParams {
   readonly prevStatus:
     | "failed"
     | "idle"
+    | "installed_pending_restart"
     | "installing"
     | "preparing"
     | "running"

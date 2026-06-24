@@ -3729,6 +3729,46 @@ func TestAppCenterServiceDeletePackageRejectsBuiltinApp(t *testing.T) {
 	}
 }
 
+func TestWorkspaceAppFromPackageMarksRunningOldPackagePendingRestart(t *testing.T) {
+	packageDir := createWorkspaceAppPackageForTest(t, t.TempDir(), workspacebiz.AppManifest{
+		AppID:         "local-app",
+		Name:          "Local App",
+		Version:       "1.1.0",
+		SchemaVersion: workspacebiz.AppManifestSchemaVersionV1,
+		Runtime: workspacebiz.AppManifestRuntime{
+			Bootstrap:       "bootstrap.sh",
+			HealthcheckPath: "/",
+		},
+	})
+	runner := &AppRunner{}
+	runner.setState(appRuntimeKey("ws-1", "local-app"), workspacebiz.AppRuntimeState{
+		Status:     workspacebiz.AppRuntimeStatusRunning,
+		LaunchURL:  stringPointer("http://127.0.0.1:3000"),
+		PackageDir: filepath.Join(t.TempDir(), "local-app", "1.0.0"),
+	})
+	service := AppCenterService{
+		Runner: runner,
+	}
+
+	app := service.workspaceAppFromPackage(workspacebiz.AppPackage{
+		AppID:      "local-app",
+		Manifest:   workspacebiz.AppManifest{AppID: "local-app", Version: "1.1.0"},
+		PackageDir: packageDir,
+		Version:    "1.1.0",
+	}, workspacebiz.AppInstallation{
+		AppID:       "local-app",
+		Enabled:     true,
+		WorkspaceID: "ws-1",
+	}, true, "ws-1")
+
+	if app.Runtime.Status != workspacebiz.AppRuntimeStatusInstalledPendingRestart {
+		t.Fatalf("runtime status = %q, want %q", app.Runtime.Status, workspacebiz.AppRuntimeStatusInstalledPendingRestart)
+	}
+	if app.Runtime.LaunchURL == nil || *app.Runtime.LaunchURL != "http://127.0.0.1:3000" {
+		t.Fatalf("runtime launch URL = %v, want old running launch URL", app.Runtime.LaunchURL)
+	}
+}
+
 func createWorkspaceAppPackageForTest(t *testing.T, packageDir string, manifest workspacebiz.AppManifest) string {
 	t.Helper()
 	data := []byte(`{
