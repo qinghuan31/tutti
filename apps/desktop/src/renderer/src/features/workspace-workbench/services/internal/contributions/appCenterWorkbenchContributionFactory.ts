@@ -3,8 +3,7 @@ import type { BrowserNodeFeature } from "@tutti-os/browser-node";
 import type { I18nRuntime } from "@tutti-os/ui-i18n-runtime";
 import {
   createWorkspaceAppCenterContribution,
-  workspaceAppWebviewInstanceId,
-  workspaceAppWebviewTypeID
+  readWorkspaceAppIdFromNodeId
 } from "@renderer/features/workspace-app-center";
 import type { IWorkspaceAppCenterService } from "@renderer/features/workspace-app-center";
 import type { DesktopBrowserApi, DesktopRuntimeApi } from "@preload/types";
@@ -86,11 +85,12 @@ function resolveWorkspaceAppLaunchUrlForNodeId(
   appCenterService: IWorkspaceAppCenterService,
   nodeId: string
 ): string | null {
+  const appId = readWorkspaceAppIdFromNodeId(nodeId);
+  if (!appId) {
+    return null;
+  }
   for (const app of appCenterService.store.apps) {
-    if (
-      nodeId ===
-      `${workspaceAppWebviewTypeID}:${workspaceAppWebviewInstanceId(app.appId)}`
-    ) {
+    if (app.appId === appId) {
       return app.launchUrl ?? null;
     }
   }

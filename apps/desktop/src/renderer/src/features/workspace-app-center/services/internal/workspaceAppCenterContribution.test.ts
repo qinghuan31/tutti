@@ -10,11 +10,27 @@ import type {
 import { createWorkspaceAppWebviewBrowserLease } from "./workspaceAppWebviewBrowserAnalytics.ts";
 import { resolveWorkspaceAppWebviewUrl } from "./workspaceAppCenterWebviewUrl.ts";
 import {
+  readWorkspaceAppIdFromNodeId,
   reportWorkspaceAppOpenedFromDockEntry,
   resolveWorkspaceAppCenterLaunchRequest,
   workspaceAppDockEntryId,
+  workspaceAppWebviewInstanceId,
   workspaceAppWebviewTypeID
 } from "./workspaceAppCenterLaunchRequest.ts";
+
+test("workspace app node ids resolve app ids from dock and webview node formats", () => {
+  assert.equal(
+    readWorkspaceAppIdFromNodeId(workspaceAppDockEntryId("group-chat")),
+    "group-chat"
+  );
+  assert.equal(
+    readWorkspaceAppIdFromNodeId(
+      `${workspaceAppWebviewTypeID}:${workspaceAppWebviewInstanceId("group-chat")}`
+    ),
+    "group-chat"
+  );
+  assert.equal(readWorkspaceAppIdFromNodeId("browser:browser-1"), null);
+});
 
 test("workspace app contribution reports app open from dock launch requests", async () => {
   const reporterCalls: ReporterEventInput[][] = [];

@@ -44,9 +44,10 @@ export async function queryTuttiExternalAtRichTextTriggerItems(
   const bridge = input.bridge?.at;
   if (!bridge) return [];
 
-  const providerIds = input.providerIds?.length
-    ? input.providerIds
-    : tuttiExternalAtProviderIds;
+  const providerIds =
+    input.providerIds === undefined
+      ? tuttiExternalAtProviderIds
+      : input.providerIds;
   const results = await bridge.query({
     keyword: input.keyword,
     ...(input.maxResults !== undefined ? { maxResults: input.maxResults } : {}),
@@ -87,9 +88,10 @@ export function createTuttiExternalAtRichTextTriggerProvider(
 export function createTuttiExternalAtRichTextTriggerProviders(
   input: CreateTuttiExternalAtRichTextTriggerProvidersInput
 ): readonly RichTextTriggerProvider<TuttiExternalAtQueryResult>[] {
-  const providerIds = input.providerIds?.length
-    ? input.providerIds
-    : tuttiExternalAtProviderIds;
+  const providerIds =
+    input.providerIds === undefined
+      ? tuttiExternalAtProviderIds
+      : input.providerIds;
   return providerIds.map((providerId) =>
     createTuttiExternalAtRichTextTriggerProvider({
       bridge: input.bridge,

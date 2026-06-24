@@ -84,9 +84,10 @@ test("sanitizes rich text mention scope for agent context", () => {
     sanitizeRichTextMentionScopeForAgentContext({
       workspaceId: " ws_1 ",
       topicId: "topic_1",
-      iconUrl: "data:image/png;base64,weather",
+      iconUrl: "DATA:image/png;base64,weather",
       thumbnailUrl: "https://example.test/thumb.png",
       link: "/apps/weather",
+      sourceUrl: "Blob:https://example.test/source",
       "meta.source": "presentation",
       large: "x".repeat(2049),
       empty: "",

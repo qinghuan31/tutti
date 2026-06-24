@@ -166,6 +166,45 @@ test("workspace app browser feature keeps current app runtime URLs inside the ap
   ]);
 });
 
+test("workspace app browser feature keeps dock entry runtime URLs inside the app webview", async () => {
+  const requests: WorkspaceBrowserLaunchRequest[] = [];
+  let emitBrowserEvent = (_event: BrowserNodeEvent): void => undefined;
+  const browserApi = createBrowserApi({
+    onEvent(listener) {
+      emitBrowserEvent = listener;
+      return () => {
+        emitBrowserEvent = () => undefined;
+      };
+    }
+  });
+  createWorkspaceAppBrowserFeature({
+    browserApi,
+    browserService: createWorkspaceBrowserService({ browserApi }),
+    getAppLaunchUrlForNodeId: (nodeId) =>
+      nodeId === "workspace-app:group-chat" ? "http://127.0.0.1:4173/" : null,
+    runtimeApi: createRuntimeApi(),
+    workspaceId: "workspace-app-dock-entry-open-url"
+  });
+  const disposeLaunchHandler = registerWorkspaceBrowserLaunchHandler(
+    "workspace-app-dock-entry-open-url",
+    (request) => {
+      requests.push(request);
+      return true;
+    }
+  );
+
+  emitBrowserEvent({
+    reuseIfOpen: true,
+    sourceNodeId: "workspace-app:group-chat",
+    type: "open-url",
+    url: "http://127.0.0.1:4173/rooms/123"
+  });
+  await Promise.resolve();
+
+  disposeLaunchHandler();
+  assert.deepEqual(requests, []);
+});
+
 test("workspace app browser feature ignores workspace browser open-url events", async () => {
   const requests: WorkspaceBrowserLaunchRequest[] = [];
   let emitBrowserEvent = (_event: BrowserNodeEvent): void => undefined;

@@ -185,10 +185,11 @@ function isPresentationMentionContextKey(key: string): boolean {
 }
 
 function isUnsafeMentionContextValue(value: string, maxValueLength: number) {
+  const normalizedValue = value.toLowerCase();
   return (
     value.length > maxValueLength ||
-    value.startsWith("data:") ||
-    value.startsWith("blob:")
+    normalizedValue.startsWith("data:") ||
+    normalizedValue.startsWith("blob:")
   );
 }
 

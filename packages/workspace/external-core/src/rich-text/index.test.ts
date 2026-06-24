@@ -96,6 +96,37 @@ test("queries multiple external at providers with one bridge call", async () => 
   );
 });
 
+test("preserves an explicit empty external at provider filter", async () => {
+  const calls: TuttiExternalAtQueryInput[] = [];
+  const results = await queryTuttiExternalAtRichTextTriggerItems({
+    keyword: "a",
+    providerIds: [],
+    bridge: {
+      at: {
+        query(input) {
+          calls.push(input);
+          return [createQueryResult("workspace-app", "apps", "Apps")];
+        }
+      }
+    }
+  });
+
+  assert.deepEqual(calls, [
+    {
+      keyword: "a",
+      providers: []
+    }
+  ]);
+  assert.deepEqual(results, []);
+  assert.deepEqual(
+    createTuttiExternalAtRichTextTriggerProviders({
+      bridge: null,
+      providerIds: []
+    }),
+    []
+  );
+});
+
 test("maps query results to the rich text trigger provider shape", () => {
   const provider = createTuttiExternalAtRichTextTriggerProvider({
     providerId: "agent-session",

@@ -39,6 +39,7 @@ import { workspaceAppWebviewFrame } from "./workspaceAppWebviewFrame.ts";
 import {
   findWorkspaceApp,
   readWorkspaceAppIdFromInstanceId,
+  readWorkspaceAppIdFromNodeId,
   resolveWorkspaceAppCenterLaunchRequest,
   resolveWorkspaceAppDisplayName,
   workspaceAppCenterNodeID,
@@ -50,6 +51,9 @@ import { shouldShowWorkspaceApp } from "../workspaceAppVisibility.ts";
 export const workspaceAppBrowserPartitionPrefix = "persist:tutti-app:";
 
 export {
+  readWorkspaceAppIdFromDockEntryId,
+  readWorkspaceAppIdFromInstanceId,
+  readWorkspaceAppIdFromNodeId,
   reportWorkspaceAppOpenedFromDockEntry,
   resolveWorkspaceAppDisplayName,
   workspaceAppCenterNodeID,
@@ -491,11 +495,4 @@ function workspaceAppBrowserSessionPartition(input: {
   return `${workspaceAppBrowserPartitionPrefix}${encodeURIComponent(
     input.workspaceId
   )}:${encodeURIComponent(input.appId)}`;
-}
-
-function readWorkspaceAppIdFromNodeId(value: string): string | null {
-  const prefix = `${workspaceAppWebviewTypeID}:`;
-  return value.startsWith(prefix)
-    ? readWorkspaceAppIdFromInstanceId(value.slice(prefix.length))
-    : null;
 }
