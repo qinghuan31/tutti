@@ -206,6 +206,24 @@ test("selectedMentionPaletteItem resolves by flattened entry key", () => {
     }),
     critic
   );
+
+  assert.equal(
+    selectedMentionPaletteItem({
+      state,
+      key: "members",
+      getItemKey
+    }),
+    null
+  );
+
+  assert.equal(
+    selectedMentionPaletteItem({
+      state,
+      key: null,
+      getItemKey
+    }),
+    null
+  );
 });
 
 test("nextMentionPaletteCategory wraps categories", () => {

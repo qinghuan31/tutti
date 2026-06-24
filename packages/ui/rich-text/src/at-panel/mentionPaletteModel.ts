@@ -244,15 +244,15 @@ export function selectedMentionPaletteItem<TItem>(input: {
   getItemKey: (item: TItem, groupId: string) => string;
 }): TItem | null {
   for (const group of input.state.groups) {
-    const item = group.items.find(
+    const index = group.items.findIndex(
       (candidate) =>
         `${group.id}:${input.getItemKey(candidate, group.id)}` === input.key
     );
-    if (item) {
-      return item;
+    if (index >= 0) {
+      return group.items[index] ?? null;
     }
   }
-  return input.state.groups[0]?.items[0] ?? null;
+  return null;
 }
 
 export function nextMentionPaletteCategory<TCategoryId extends string>(

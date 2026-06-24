@@ -159,3 +159,21 @@ Current runtime behavior:
 - query results are flattened into a shared result shape
 - mention hydration uses `resolveMention` when the owning trigger provider is
   available and keeps the label-only fallback when it is not
+
+## At-Panel Migration
+
+The `@tutti-os/ui-rich-text/at-panel` subpath now exposes the shared mention
+palette shell through:
+
+- `MentionPaletteFromState`
+- `createMentionPaletteStateAdapter`
+- `buildMentionPaletteModel`
+- `buildMentionPaletteModelFromTriggerMatches`
+- `richTextTriggerQueryMatchToMentionRowItem`
+
+Older helpers such as `buildMentionPaletteState`, `searchHelpers`, and
+`RichTextAt*` grouping aliases were removed with the legacy flat grouping model.
+Consumers should build category/section config with
+`MentionPaletteCategoryConfig`, derive state with
+`buildMentionPaletteModelFromTriggerMatches`, and keep app-specific copy,
+i18n, provider selection, and insertion behavior in the host application.
