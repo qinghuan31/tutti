@@ -95,6 +95,7 @@ exec "$TUTTI_APP_PYTHON" "$TUTTI_APP_PACKAGE_DIR/server.py"
 		"runtimeDir":    runtimeDir,
 		"dataDir":       dataDir,
 		"logDir":        logDir,
+		"toolchainRoot": filepath.Join(stateRoot, "app-toolchains"),
 		"workspaceRoot": root,
 	} {
 		if probeValues[key] != want {
@@ -730,6 +731,7 @@ func pythonAppReadyServerScript(healthcheckPath string, writeProbe bool) string 
                 "runtimeDir": os.environ["TUTTI_APP_RUNTIME_DIR"],
                 "dataDir": os.environ["TUTTI_APP_DATA_DIR"],
                 "logDir": os.environ["TUTTI_APP_LOG_DIR"],
+                "toolchainRoot": os.environ["TUTTI_APP_TOOLCHAIN_ROOT"],
                 "tuttiCli": os.environ["TUTTI_CLI"],
                 "path": os.environ["PATH"],
             }, f)

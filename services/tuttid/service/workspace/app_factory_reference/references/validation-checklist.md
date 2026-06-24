@@ -21,6 +21,7 @@ Before finishing:
 - Durable app data is written only under `TUTTI_APP_DATA_DIR`.
 - Runtime scratch data is written only under `TUTTI_APP_RUNTIME_DIR`.
 - Logs are written only under `TUTTI_APP_LOG_DIR`.
+- Reusable app-managed binaries are written only under `TUTTI_APP_TOOLCHAIN_ROOT`.
 - In-app localization reads optional app context or browser locale APIs, not launch URL query params.
 - Theme rendering uses `prefers-color-scheme`, not launch URL query params.
 - `AGENTS.md` describes package layout, runtime command, endpoints, data storage, and modification guidance.

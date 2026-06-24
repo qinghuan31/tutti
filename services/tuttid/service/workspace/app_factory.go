@@ -434,6 +434,7 @@ func prepareAppFactoryJob(ctx context.Context, job workspacebiz.AppFactoryJob) e
 		"TUTTI_APP_RUNTIME_DIR=" + job.RuntimeDir,
 		"TUTTI_APP_DATA_DIR=" + job.DataDir,
 		"TUTTI_APP_LOG_DIR=" + job.LogDir,
+		"TUTTI_APP_TOOLCHAIN_ROOT=" + tuttiAppToolchainRoot(),
 	}
 	envOverrides = append(envOverrides, appRuntime.EnvOverrides...)
 	command.Env = workspaceAppProcessEnv(envOverrides...)

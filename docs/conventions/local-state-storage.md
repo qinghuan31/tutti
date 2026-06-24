@@ -127,6 +127,7 @@ Migrated agent runtime state should derive from the same root:
           runtime/
           data/
           logs/
+  app-toolchains/
 ```
 
 `agent/sessions` stores daemon-created working directories for agent sessions
@@ -169,6 +170,8 @@ Tutti provider startup.
 - local development scripts install or repair `<state-dir>/bin/tutti-dev` as the development CLI command and default it to `TUTTI_ENV=development`
 - workspace app package cache, per-installation runtime/data/log state, and
   app factory job working directories live under `<state-dir>/apps`
+- workspace apps receive `<state-dir>/app-toolchains` as the shared cache root
+  for reusable app-managed binaries
 
 ## Validation
 

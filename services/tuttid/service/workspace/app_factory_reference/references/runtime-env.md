@@ -11,6 +11,7 @@ Use these environment variables:
 - `TUTTI_APP_RUNTIME_DIR`: scratch/runtime files.
 - `TUTTI_APP_DATA_DIR`: durable app data.
 - `TUTTI_APP_LOG_DIR`: app logs.
+- `TUTTI_APP_TOOLCHAIN_ROOT`: shared daemon-owned toolchain cache for app-managed binaries that are safe to reuse across workspace app installations.
 - `TUTTI_APP_PYTHON`: managed Python interpreter path for generated apps.
 - `TUTTI_APP_NODE`: managed Node.js executable path for generated apps.
 - `TUTTI_APP_NPM`: managed npm executable path for generated apps.

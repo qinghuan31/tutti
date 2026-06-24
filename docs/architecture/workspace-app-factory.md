@@ -121,6 +121,7 @@ Rules:
 - App data belongs under `TUTTI_APP_DATA_DIR`.
 - Runtime scratch files belong under `TUTTI_APP_RUNTIME_DIR`.
 - Logs belong under `TUTTI_APP_LOG_DIR`.
+- Shared app-managed toolchains belong under `TUTTI_APP_TOOLCHAIN_ROOT`.
 - Package content should treat `TUTTI_APP_PACKAGE_DIR` as read-only at runtime.
 - Workspace root access is allowed, but generated app instructions should avoid
   writing workspace files unless the user request explicitly requires it.

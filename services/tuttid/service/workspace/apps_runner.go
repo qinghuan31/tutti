@@ -203,6 +203,7 @@ func (r *AppRunner) startProcess(ctx context.Context, key string, input AppStart
 	command.Stderr = logFile
 	tuttiCLIShim := tuttiCLIShimPath()
 	tuttiAPIBaseURL := tuttiAPIBaseURLFromEnv()
+	appToolchainRoot := tuttiAppToolchainRoot()
 	envOverrides := []string{
 		"TUTTI_APP_ID=" + input.AppID,
 		"TUTTI_WORKSPACE_ID=" + input.WorkspaceID,
@@ -213,6 +214,7 @@ func (r *AppRunner) startProcess(ctx context.Context, key string, input AppStart
 		"TUTTI_APP_RUNTIME_DIR=" + input.RuntimeDir,
 		"TUTTI_APP_DATA_DIR=" + input.DataDir,
 		"TUTTI_APP_LOG_DIR=" + input.LogDir,
+		"TUTTI_APP_TOOLCHAIN_ROOT=" + appToolchainRoot,
 		"TUTTI_APP_PORT=" + strconv.Itoa(port),
 		"TUTTI_APP_BASE_URL=http://127.0.0.1:" + strconv.Itoa(port),
 		"TUTTI_API_BASE_URL=" + tuttiAPIBaseURL,
@@ -473,6 +475,7 @@ func writeAppStartupDiagnostic(logFile *os.File, input AppStartInput, bootstrapP
 	_, _ = fmt.Fprintf(logFile, "  packageDir=%s\n", input.PackageDir)
 	_, _ = fmt.Fprintf(logFile, "  dataDir=%s\n", input.DataDir)
 	_, _ = fmt.Fprintf(logFile, "  logDir=%s\n", input.LogDir)
+	_, _ = fmt.Fprintf(logFile, "  toolchainRoot=%s\n", appRuntimeEnvValue(env, "TUTTI_APP_TOOLCHAIN_ROOT"))
 	_, _ = fmt.Fprintf(logFile, "  host=127.0.0.1\n")
 	_, _ = fmt.Fprintf(logFile, "  port=%d\n", port)
 	_, _ = fmt.Fprintf(logFile, "  path=%s\n", appRuntimeEnvValue(env, "PATH"))
@@ -689,6 +692,10 @@ func allocateLoopbackPort() (int, error) {
 
 func tuttiCLIShimPath() string {
 	return tuttiCLIShimPathForPlatform(runtime.GOOS)
+}
+
+func tuttiAppToolchainRoot() string {
+	return filepath.Join(tuttitypes.DefaultStateDir(), "app-toolchains")
 }
 
 func appRuntimePathWithCLIShim(appRuntime ResolvedAppRuntime, cliShimPath string) string {
