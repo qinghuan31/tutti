@@ -371,7 +371,7 @@ function isInsideOrEqual(path: string, root: string): boolean {
   );
 }
 
-function isDirectAgentGeneratedMediaPath(path: string): boolean {
+export function isDirectAgentGeneratedMediaPath(path: string): boolean {
   if (!isAbsoluteLocalPath(path)) {
     return false;
   }

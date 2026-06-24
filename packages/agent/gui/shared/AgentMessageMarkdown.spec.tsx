@@ -496,6 +496,32 @@ describe("AgentMessageMarkdown", () => {
     expect(screen.queryByText("Loading preview...")).toBeNull();
   });
 
+  it("does not render arbitrary local absolute markdown video paths when workspace file access is unavailable", () => {
+    const workspace = { ...(window.agentHostApi?.workspace ?? {}) } as Partial<
+      NonNullable<typeof window.agentHostApi>["workspace"]
+    >;
+    delete workspace.readFile;
+
+    window.agentHostApi = {
+      ...(window.agentHostApi ?? {}),
+      workspace: workspace as NonNullable<
+        typeof window.agentHostApi
+      >["workspace"]
+    } as unknown as typeof window.agentHostApi;
+
+    render(
+      <AgentMessageMarkdown
+        content={"![private video](/Users/example/Movies/private.mp4)"}
+      />
+    );
+
+    expect(screen.queryByLabelText("private video")).toBeNull();
+    expect(
+      screen.queryByText("Preview is not available for this file.")
+    ).toBeTruthy();
+    expect(screen.queryByText("Loading preview...")).toBeNull();
+  });
+
   it("keeps image zoom disabled by default outside AgentGui callers", async () => {
     const readFile = vi.fn().mockResolvedValue({
       bytes: new Uint8Array([137, 80, 78, 71])

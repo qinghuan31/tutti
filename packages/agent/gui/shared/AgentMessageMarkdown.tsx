@@ -47,6 +47,7 @@ import {
   useOptionalAgentHostApi
 } from "../agentActivityHost";
 import {
+  isDirectAgentGeneratedMediaPath,
   resolveWorkspaceFilePathCandidate,
   resolveWorkspaceLinkAction,
   type WorkspaceLinkAction,
@@ -1110,6 +1111,9 @@ function MarkdownMedia({
 
   if (!workspacePath || !readWorkspaceImage) {
     if (fallbackMediaKind === "video") {
+      if (!canRenderMarkdownVideoFallback(src)) {
+        return <UnsupportedMarkdownMediaPreview />;
+      }
       return (
         <video
           src={resolvedSrc}
@@ -1211,6 +1215,15 @@ function MarkdownMedia({
   );
 }
 
+function UnsupportedMarkdownMediaPreview(): JSX.Element {
+  const { t } = useTranslation();
+  return (
+    <span className="flex min-h-[160px] w-full items-center justify-center rounded-[8px] border border-[var(--line-2)] bg-[var(--background-panel)] px-5 py-5 text-center text-[13px] leading-5 text-[var(--text-tertiary)]">
+      {t("agentHost.workspaceFileManager.previewUnsupported")}
+    </span>
+  );
+}
+
 const MARKDOWN_ORDERED_LIST_STYLE: CSSProperties = {
   listStylePosition: "outside",
   margin: "12px 0 8px",
@@ -1307,6 +1320,17 @@ function resolveRenderableMarkdownMediaSrc(src: string): string {
     return src;
   }
   return new URL(trimmed, "file://").toString();
+}
+
+function canRenderMarkdownVideoFallback(src: unknown): boolean {
+  if (typeof src !== "string") {
+    return false;
+  }
+  const trimmed = src.trim();
+  if (!isLocalAbsolutePath(trimmed) || trimmed.startsWith("/workspace/")) {
+    return true;
+  }
+  return isDirectAgentGeneratedMediaPath(trimmed);
 }
 
 function resolveMarkdownMediaKind(
