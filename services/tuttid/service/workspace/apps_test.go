@@ -1990,7 +1990,7 @@ func TestAppCenterServiceStartEnabledDoesNotBlockOtherAppsWhenRemoteBuiltinPacka
 		}
 	}
 	fetcher := newBlockingArtifactFetcher()
-	resolver := &preloadThenFailRuntimeResolver{called: make(chan struct{}), startErr: errors.New("skip runtime")}
+	resolver := &appRuntimeResolverStub{called: make(chan struct{}), err: errors.New("skip runtime")}
 	runner := &AppRunner{RuntimeResolver: resolver}
 	service := AppCenterService{
 		Store:           store,
