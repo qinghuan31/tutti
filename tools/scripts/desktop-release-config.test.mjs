@@ -80,10 +80,10 @@ test("desktop release workflow publishes rc tags as prereleases and keeps stable
   );
 });
 
-test("desktop release workflow schedules a daily Beijing 8:15am rc release", async () => {
+test("desktop release workflow schedules a daily Beijing 4:16am rc release", async () => {
   const workflow = await readFile(workflowPath, "utf8");
 
-  assert.match(workflow, /schedule:\s*\n\s*-\s*cron:\s*"15 0 \* \* \*"/);
+  assert.match(workflow, /schedule:\s*\n\s*-\s*cron:\s*"16 20 \* \* \*"/);
   assert.doesNotMatch(workflow, /timezone:\s*"Asia\/Shanghai"/);
   assert.match(
     workflow,
