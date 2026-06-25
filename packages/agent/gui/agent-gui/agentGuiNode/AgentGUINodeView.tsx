@@ -852,10 +852,17 @@ export function AgentGUINodeView({
       displayName: hostLocalFileLabel,
       hasChildren: true
     };
+    let hostProvidedLocalFileSource = false;
     return {
       ...referenceSourceAggregator,
       async listSources(scope) {
         const sources = await referenceSourceAggregator.listSources(scope);
+        hostProvidedLocalFileSource = sources.some(
+          (source) => source.sourceId === sourceId
+        );
+        if (hostProvidedLocalFileSource) {
+          return sources;
+        }
         return [
           ...sources,
           {
@@ -874,16 +881,19 @@ export function AgentGUINodeView({
       },
       async listRoot(scope) {
         const root = await referenceSourceAggregator.listRoot(scope);
+        if (hostProvidedLocalFileSource) {
+          return root;
+        }
         return [...root, rootNode];
       },
       async listChildren(scope, node: NodeRef, input) {
-        if (node.sourceId === sourceId) {
+        if (node.sourceId === sourceId && !hostProvidedLocalFileSource) {
           return { entries: [actionNode], nextCursor: null };
         }
         return await referenceSourceAggregator.listChildren(scope, node, input);
       },
       async search(scope, currentSourceId, input) {
-        if (currentSourceId === sourceId) {
+        if (currentSourceId === sourceId && !hostProvidedLocalFileSource) {
           return { entries: [], nextCursor: null };
         }
         return await referenceSourceAggregator.search(
@@ -893,19 +903,19 @@ export function AgentGUINodeView({
         );
       },
       async open(scope, node) {
-        if (node.ref.sourceId === sourceId) {
+        if (node.ref.sourceId === sourceId && !hostProvidedLocalFileSource) {
           return;
         }
         await referenceSourceAggregator.open(scope, node);
       },
       async readPreview(scope, node) {
-        if (node.ref.sourceId === sourceId) {
+        if (node.ref.sourceId === sourceId && !hostProvidedLocalFileSource) {
           return null;
         }
         return await referenceSourceAggregator.readPreview(scope, node);
       },
       resolveSelection(node) {
-        if (node.ref.sourceId === sourceId) {
+        if (node.ref.sourceId === sourceId && !hostProvidedLocalFileSource) {
           return {
             path: hostLocalFileActionPath,
             kind: "file",
@@ -915,7 +925,7 @@ export function AgentGUINodeView({
         return referenceSourceAggregator.resolveSelection(node);
       },
       async locateTarget(scope, currentSourceId, params) {
-        if (currentSourceId === sourceId) {
+        if (currentSourceId === sourceId && !hostProvidedLocalFileSource) {
           return null;
         }
         return await referenceSourceAggregator.locateTarget(
@@ -925,7 +935,7 @@ export function AgentGUINodeView({
         );
       },
       getLoadedSource(currentSourceId) {
-        if (currentSourceId === sourceId) {
+        if (currentSourceId === sourceId && !hostProvidedLocalFileSource) {
           return undefined;
         }
         return referenceSourceAggregator.getLoadedSource(currentSourceId);
