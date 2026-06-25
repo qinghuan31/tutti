@@ -140,10 +140,7 @@ import {
   USAGE_CRITICAL_PERCENT,
   USAGE_WARN_PERCENT
 } from "./model/agentUsageThresholds";
-import {
-  useOptionalAgentActivityRuntime,
-  type AgentActivityRuntime
-} from "../../agentActivityRuntime";
+import { useOptionalAgentActivityRuntime } from "../../agentActivityRuntime";
 
 export { formatSlashStatusTokenCount };
 
@@ -161,45 +158,6 @@ export interface AgentComposerHostAttachment {
   hostPath: string;
   name: string;
   mimeType?: string | null;
-}
-
-const AGENT_COMPOSER_REFERENCE_PICK_LOG_PREFIX =
-  "agent_composer.reference_pick";
-
-function logAgentComposerReferencePick(
-  runtime: AgentActivityRuntime | null,
-  event: string,
-  details: Record<string, unknown>
-): void {
-  const payload = { event, ...details };
-  try {
-    console.info(
-      AGENT_COMPOSER_REFERENCE_PICK_LOG_PREFIX,
-      JSON.stringify(payload)
-    );
-  } catch {
-    // Diagnostic logging must never affect composer interactions.
-  }
-  const reportDiagnostic = runtime?.reportDiagnostic;
-  if (!reportDiagnostic) {
-    return;
-  }
-  try {
-    void Promise.resolve(
-      reportDiagnostic.call(runtime, {
-        details: payload,
-        event: AGENT_COMPOSER_REFERENCE_PICK_LOG_PREFIX,
-        level: "info",
-        source: "agent-gui",
-        workspaceId:
-          typeof details.workspaceId === "string"
-            ? details.workspaceId
-            : undefined
-      })
-    ).catch(() => {});
-  } catch {
-    // Diagnostic logging must never affect composer interactions.
-  }
 }
 
 export interface AgentComposerProps {
@@ -1975,22 +1933,6 @@ export function AgentComposer({
 
   const applyReferencePickResult = useCallback(
     async (result: WorkspaceReferencePickResult) => {
-      logAgentComposerReferencePick(agentActivityRuntime, "result", {
-        fileCount: result.files.length,
-        files: result.files.map((file) => ({
-          displayName: file.displayName ?? null,
-          hostPath: file.hostPath ?? null,
-          kind: file.kind,
-          path: file.path,
-          sourceId: file.sourceId ?? null
-        })),
-        hasAgentActivityRuntime: Boolean(agentActivityRuntime),
-        hasUploadPromptContent:
-          typeof agentActivityRuntime?.uploadPromptContent === "function",
-        hostAttachmentCount: result.hostAttachments?.length ?? 0,
-        mentionItemCount: result.mentionItems.length,
-        workspaceId
-      });
       if (result.files.length > 0) {
         const uploadPromptContent = agentActivityRuntime?.uploadPromptContent;
         const uploadedFiles = await Promise.all(
@@ -2000,30 +1942,10 @@ export function AgentComposer({
               return file;
             }
             if (!uploadPromptContent) {
-              logAgentComposerReferencePick(
-                agentActivityRuntime,
-                "upload_unavailable",
-                {
-                  displayName: file.displayName ?? null,
-                  hostPath,
-                  path: file.path,
-                  workspaceId
-                }
-              );
               throw new Error(
                 "Prompt file uploads are not supported by this agent runtime."
               );
             }
-            logAgentComposerReferencePick(
-              agentActivityRuntime,
-              "upload_start",
-              {
-                displayName: file.displayName ?? null,
-                hostPath,
-                path: file.path,
-                workspaceId
-              }
-            );
             const uploaded = await uploadPromptContent({
               workspaceId,
               content: [
@@ -2040,25 +1962,8 @@ export function AgentComposer({
             );
             const uploadedPath = uploadedFile?.path?.trim() ?? "";
             if (!uploadedPath) {
-              logAgentComposerReferencePick(
-                agentActivityRuntime,
-                "upload_missing_path",
-                {
-                  displayName: file.displayName ?? null,
-                  hostPath,
-                  path: file.path,
-                  result: uploaded.content
-                }
-              );
               throw new Error("Prompt file upload completed without path.");
             }
-            logAgentComposerReferencePick(agentActivityRuntime, "upload_done", {
-              displayName: uploadedFile?.name ?? file.displayName ?? null,
-              hostPath,
-              inputPath: file.path,
-              uploadedPath,
-              workspaceId
-            });
             return {
               ...file,
               path: uploadedPath,
@@ -2089,13 +1994,7 @@ export function AgentComposer({
     if (!onRequestWorkspaceReferences) {
       return;
     }
-    try {
-      await applyReferencePickResult(await onRequestWorkspaceReferences());
-    } catch (error) {
-      logAgentComposerReferencePick(agentActivityRuntime, "apply_error", {
-        error: error instanceof Error ? error.message : String(error)
-      });
-    }
+    await applyReferencePickResult(await onRequestWorkspaceReferences());
   }, [applyReferencePickResult, onRequestWorkspaceReferences]);
 
   // @ 面板里点任务/应用行的「查看产物文件」图标:关掉面板,打开引用 picker 并定位到该实体;
@@ -2106,13 +2005,9 @@ export function AgentComposer({
       if (!onRequestWorkspaceReferences) {
         return;
       }
-      void onRequestWorkspaceReferences(entity)
-        .then((result) => applyReferencePickResult(result))
-        .catch((error: unknown) => {
-          logAgentComposerReferencePick(agentActivityRuntime, "apply_error", {
-            error: error instanceof Error ? error.message : String(error)
-          });
-        });
+      void onRequestWorkspaceReferences(entity).then((result) =>
+        applyReferencePickResult(result)
+      );
     },
     [
       closeFileMentionPalette,
