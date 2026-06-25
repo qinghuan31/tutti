@@ -1,4 +1,11 @@
-import { useCallback, useEffect, useMemo, useState, type JSX } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type JSX
+} from "react";
 import { useSyncExternalStore } from "react";
 import type {
   AgentProviderStatus,
@@ -24,8 +31,12 @@ import {
   readCodexSetupActiveAction,
   useAgentEnvPanelRequest,
   closeAgentEnvPanel,
+  deriveAgentSetupStages,
+  resolveWizardAutoStartAction,
   type AgentEnvPanelFocus,
-  type CodexSetupStep,
+  type AgentSetupStage,
+  type AgentSetupStageId,
+  type CodexSetupPhase,
   type CodexSetupStepStatus
 } from "@tutti-os/agent-gui/agent-env";
 import { useTranslation } from "@renderer/i18n";
@@ -184,6 +195,51 @@ export function AgentEnvPanel({
     }
   }, []);
 
+  const autoStartedSeqRef = useRef<number | null>(null);
+
+  // Auto-start the focused remediation once detection settles, at most once per
+  // open. The dock link / error card opened us with a focus; we run that action
+  // for the user (decision A — the wizard takes over).
+  useEffect(() => {
+    if (!open) {
+      autoStartedSeqRef.current = null;
+      return;
+    }
+    const seq = request.requestSequence;
+    if (autoStartedSeqRef.current === seq) {
+      return;
+    }
+    const liveStatus =
+      snapshot.statuses.find((entry) => entry.provider === provider) ?? null;
+    const action = resolveWizardAutoStartAction({
+      focus: request.focus,
+      detected: !snapshot.isLoading && liveStatus !== null,
+      ready: liveStatus?.availability.status === "ready",
+      installPending: agentProviderStatusService.isActionPending(
+        provider,
+        "install"
+      ),
+      loginPending: agentProviderStatusService.isActionPending(
+        provider,
+        "login"
+      )
+    });
+    if (!action) {
+      return;
+    }
+    autoStartedSeqRef.current = seq;
+    runAction(action);
+  }, [
+    open,
+    request.requestSequence,
+    request.focus,
+    snapshot.isLoading,
+    snapshot.statuses,
+    provider,
+    agentProviderStatusService,
+    runAction
+  ]);
+
   if (!open) {
     return null;
   }
@@ -205,9 +261,27 @@ export function AgentEnvPanel({
     activeAction?.phase === "verify";
   const primaryActionId = focusToActionId(request.focus);
 
-  const steps: CodexSetupStep[] = activeAction?.steps.length
-    ? activeAction.steps
-    : synthesizeSteps(status, providerLabel, t);
+  const versionTooOld = (status?.availability.reasonCode ?? "")
+    .toLowerCase()
+    .includes("version");
+  const stages: AgentSetupStage[] = deriveAgentSetupStages({
+    detected: status !== null,
+    cliInstalled: status?.cli.installed ?? false,
+    versionTooOld,
+    authenticated: status?.auth.status === "authenticated",
+    authRequired: status?.auth.status === "required",
+    ready,
+    activePhase: activeAction?.phase ?? null,
+    loginPending,
+    cliVersionDetail: status?.cli.version ?? null,
+    accountDetail: status?.auth.accountLabel ?? null,
+    labels: {
+      detect: t("workspace.agentEnv.stageDetect"),
+      install: t("workspace.agentEnv.stageInstall"),
+      login: t("workspace.agentEnv.stageLogin"),
+      ready: t("workspace.agentEnv.stageReady")
+    }
+  });
 
   const manualCommand = MANUAL_INSTALL_COMMANDS[provider] ?? null;
   const registry = activeAction?.registry ?? null;
@@ -245,7 +319,8 @@ export function AgentEnvPanel({
             <WizardBody
               busy={Boolean(busy)}
               providerLabel={providerLabel}
-              steps={steps}
+              stages={stages}
+              activePhase={activeAction?.phase ?? null}
               log={activeAction?.log ?? []}
               registry={registry}
               logExpanded={logExpanded}
@@ -254,6 +329,9 @@ export function AgentEnvPanel({
               copied={copied}
               onCopyManualCommand={(command) =>
                 void handleCopyManualCommand(command)
+              }
+              onRetryStage={(stageId) =>
+                runAction(stageId === "login" ? "login" : "install")
               }
               error={activeAction?.error ?? null}
               t={t}
@@ -316,54 +394,11 @@ export function AgentEnvPanel({
   );
 }
 
-function synthesizeSteps(
-  status: AgentProviderStatus | null,
-  providerLabel: string,
-  t: ReturnType<typeof useTranslation>["t"]
-): CodexSetupStep[] {
-  const cliInstalled = status?.cli.installed ?? false;
-  const ready = status?.availability.status === "ready";
-  const versionTooOld = (status?.availability.reasonCode ?? "")
-    .toLowerCase()
-    .includes("version");
-  const authStatus = status?.auth.status ?? "unknown";
-  return [
-    {
-      id: "cli",
-      label: t("workspace.agentEnv.stepCli", { provider: providerLabel }),
-      status: cliInstalled ? "ok" : "pending",
-      detail: status?.cli.binaryPath ?? null
-    },
-    {
-      id: "version",
-      label: t("workspace.agentEnv.stepVersion"),
-      status: versionTooOld
-        ? "error"
-        : ready
-          ? "ok"
-          : cliInstalled
-            ? "running"
-            : "pending",
-      detail: status?.cli.version ?? null
-    },
-    {
-      id: "auth",
-      label: t("workspace.agentEnv.stepAuth"),
-      status:
-        authStatus === "authenticated"
-          ? "ok"
-          : authStatus === "required"
-            ? "error"
-            : "pending",
-      detail: status?.auth.accountLabel ?? null
-    }
-  ];
-}
-
 function WizardBody({
   busy,
   providerLabel,
-  steps,
+  stages,
+  activePhase,
   log,
   registry,
   logExpanded,
@@ -371,12 +406,14 @@ function WizardBody({
   manualCommand,
   copied,
   onCopyManualCommand,
+  onRetryStage,
   error,
   t
 }: {
   busy: boolean;
   providerLabel: string;
-  steps: CodexSetupStep[];
+  stages: AgentSetupStage[];
+  activePhase: CodexSetupPhase | null;
   log: string[];
   registry: string | null;
   logExpanded: boolean;
@@ -384,6 +421,7 @@ function WizardBody({
   manualCommand: string | null;
   copied: boolean;
   onCopyManualCommand: (command: string) => void;
+  onRetryStage: (stageId: AgentSetupStageId) => void;
   error: { code: string | null; message: string | null } | null;
   t: ReturnType<typeof useTranslation>["t"];
 }): JSX.Element {
@@ -395,28 +433,60 @@ function WizardBody({
           : t("workspace.agentEnv.detecting", { provider: providerLabel })}
       </p>
 
-      <ul className="m-0 flex list-none flex-col gap-2 p-0">
-        {steps.map((step) => (
-          <li
-            key={step.id}
-            className="flex items-start gap-2.5 rounded-[8px] bg-[var(--transparency-block)] p-3"
-          >
-            <span className="mt-0.5 shrink-0">
-              <StepStatusIcon status={step.status} />
-            </span>
-            <span className="min-w-0 flex-1">
-              <span className="block text-[13px] font-medium text-[var(--text-primary)]">
-                {step.label ?? step.id}
+      <ol className="m-0 flex list-none flex-col gap-2 p-0">
+        {stages.map((stage) => {
+          const isActive = stage.status === "running";
+          const isError = stage.status === "error";
+          const dimmed = stage.status === "pending";
+          return (
+            <li
+              key={stage.id}
+              data-stage={stage.id}
+              data-status={stage.status}
+              className={`flex items-start gap-2.5 rounded-[8px] bg-[var(--transparency-block)] p-3 ${
+                dimmed ? "opacity-50" : ""
+              }`}
+            >
+              <span className="mt-0.5 shrink-0">
+                <StepStatusIcon status={stage.status} />
               </span>
-              {step.detail ? (
-                <span className="mt-0.5 block truncate text-[12px] text-[var(--text-secondary)]">
-                  {step.detail}
+              <span className="min-w-0 flex-1">
+                <span
+                  className={`block text-[13px] font-medium ${
+                    isError
+                      ? "text-[var(--state-danger)]"
+                      : "text-[var(--text-primary)]"
+                  }`}
+                >
+                  {stage.label}
                 </span>
-              ) : null}
-            </span>
-          </li>
-        ))}
-      </ul>
+                {stage.detail ? (
+                  <span className="mt-0.5 block truncate text-[12px] text-[var(--text-secondary)]">
+                    {stage.detail}
+                  </span>
+                ) : null}
+                {isActive && log.length > 0 ? (
+                  <pre className="mt-2 max-h-[160px] overflow-auto whitespace-pre-wrap break-words rounded-[6px] bg-[var(--background-fronted)] px-2 py-1.5 text-[11px] leading-5 text-[var(--text-secondary)]">
+                    {log.join("\n")}
+                  </pre>
+                ) : null}
+                {isError ? (
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    className="mt-2"
+                    onClick={() => onRetryStage(stage.id)}
+                  >
+                    <RefreshIcon className="size-4" />
+                    {t("workspace.agentEnv.stageRetry")}
+                  </Button>
+                ) : null}
+              </span>
+            </li>
+          );
+        })}
+      </ol>
 
       {error?.message ? (
         <p className="m-0 text-[12px] text-[var(--state-danger)]">
@@ -424,7 +494,7 @@ function WizardBody({
         </p>
       ) : null}
 
-      {(log.length > 0 || registry) && (
+      {(activePhase !== null || registry) && log.length > 0 ? (
         <div className="rounded-[8px] border border-[var(--border-1)]">
           <button
             type="button"
@@ -445,7 +515,7 @@ function WizardBody({
             </pre>
           ) : null}
         </div>
-      )}
+      ) : null}
 
       {manualCommand ? (
         <div className="rounded-[8px] border border-[var(--border-1)] bg-[var(--transparency-block)] p-3">

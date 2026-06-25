@@ -172,7 +172,12 @@ export const zhCN = {
       registryPreferenceOfficial: "官方源 (npm)",
       registryPreferenceMirror: "镜像源",
       actionFailed: "该步骤失败。请查看日志后重试。",
-      providerUnsupported: "该智能体暂不支持托管环境设置。"
+      providerUnsupported: "该智能体暂不支持托管环境设置。",
+      stageDetect: "检测环境",
+      stageInstall: "安装 CLI",
+      stageLogin: "登录账号",
+      stageReady: "就绪",
+      stageRetry: "重试"
     },
     referenceSources: {
       appSourceLabel: "应用",

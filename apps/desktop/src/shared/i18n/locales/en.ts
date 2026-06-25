@@ -176,7 +176,12 @@ export const en = {
       registryPreferenceOfficial: "Official (npm)",
       registryPreferenceMirror: "Mirror",
       actionFailed: "That step failed. Check the log and try again.",
-      providerUnsupported: "This agent has no managed environment setup yet."
+      providerUnsupported: "This agent has no managed environment setup yet.",
+      stageDetect: "Detecting environment",
+      stageInstall: "Install CLI",
+      stageLogin: "Sign in",
+      stageReady: "Ready",
+      stageRetry: "Retry"
     },
     referenceSources: {
       appSourceLabel: "Apps",
