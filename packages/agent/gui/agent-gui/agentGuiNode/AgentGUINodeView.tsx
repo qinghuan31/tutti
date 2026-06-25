@@ -837,7 +837,7 @@ export function AgentGUINodeView({
     ((result: WorkspaceReferencePickResult) => void) | null
   >(null);
   const emptyReferencePickResult: WorkspaceReferencePickResult = useMemo(
-    () => ({ files: [], mentionItems: [], hostAttachments: [] }),
+    () => ({ files: [], mentionItems: [] }),
     []
   );
   const hostLocalFileSourceId = "host-local-file";
@@ -913,10 +913,7 @@ export function AgentGUINodeView({
   );
   const confirmWorkspaceReferencePicker = useCallback(
     (refs: WorkspaceFileReference[]) => {
-      settleReferencePicker(
-        { files: refs, mentionItems: [], hostAttachments: [] },
-        refs
-      );
+      settleReferencePicker({ files: refs, mentionItems: [] }, refs);
     },
     [settleReferencePicker]
   );
@@ -925,17 +922,9 @@ export function AgentGUINodeView({
   // mention 插入。agent 收到 `mention://workspace-reference/...` 后经 skill+CLI 按需解析。
   const confirmWorkspaceReferenceBundles = useCallback(
     (result: ReferenceGroupedSelection) => {
-      const hostSourceRefs = result.files.filter(
-        (ref) => ref.sourceId === hostLocalFileSourceId && ref.kind === "file"
-      );
       const workspaceRefs = result.files.filter(
         (ref) => ref.sourceId !== hostLocalFileSourceId
       );
-      const hostAttachments = hostSourceRefs.map((file) => ({
-        hostPath: file.path,
-        name: file.displayName || file.path.split("/").pop() || file.path,
-        mimeType: null
-      }));
       const mentionItems: AgentMentionWorkspaceReferenceItem[] = result.bundles
         .filter((bundle) => bundle.handle != null)
         .map((bundle) => {
@@ -970,7 +959,7 @@ export function AgentGUINodeView({
         });
       // bundle 不再展开文件,仅松散文件计入「最近引用」跟踪。
       settleReferencePicker(
-        { files: workspaceRefs, mentionItems, hostAttachments },
+        { files: result.files, mentionItems },
         workspaceRefs
       );
     },

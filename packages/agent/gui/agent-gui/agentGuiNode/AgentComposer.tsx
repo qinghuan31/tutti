@@ -151,13 +151,6 @@ export { formatSlashStatusTokenCount };
 export interface WorkspaceReferencePickResult {
   files: readonly WorkspaceFileReference[];
   mentionItems: readonly AgentContextMentionItem[];
-  hostAttachments?: readonly AgentComposerHostAttachment[];
-}
-
-export interface AgentComposerHostAttachment {
-  hostPath: string;
-  name: string;
-  mimeType?: string | null;
 }
 
 export interface AgentComposerProps {
@@ -613,8 +606,6 @@ const MENTION_PALETTE_MIN_HEIGHT_PX = 280;
 const MENTION_PALETTE_MAX_HEIGHT_PX = 320;
 const MENTION_PALETTE_GAP_PX = 8;
 const MENTION_PALETTE_VIEWPORT_PADDING_PX = 8;
-const promptFileUploadUnsupportedError =
-  "Prompt file uploads are not supported by this agent runtime.";
 const EMPTY_CONTEXT_MENTION_PROVIDERS: readonly AgentContextMentionProvider[] =
   [];
 const EMPTY_PROMPT_TIPS: readonly AgentComposerPromptTip[] = [];
@@ -1825,97 +1816,6 @@ export function AgentComposer({
     [onDraftContentChange]
   );
 
-  const addDraftFiles = useCallback(
-    (attachments: readonly AgentComposerHostAttachment[]): void => {
-      if (attachments.length === 0) {
-        return;
-      }
-      const uploadPromptContent = agentActivityRuntime?.uploadPromptContent;
-      const nextFiles = attachments.map((attachment) => ({
-        id: `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`,
-        name: attachment.name,
-        mimeType: attachment.mimeType?.trim() || "application/octet-stream",
-        hostPath: attachment.hostPath,
-        uploading: Boolean(uploadPromptContent),
-        ...(uploadPromptContent
-          ? {}
-          : { uploadError: promptFileUploadUnsupportedError })
-      }));
-      const nextDraftFiles = [...draftFilesRef.current, ...nextFiles];
-      draftFilesRef.current = nextDraftFiles;
-      onDraftContentChange({
-        prompt: draftPromptRef.current,
-        images: draftImagesRef.current,
-        files: nextDraftFiles
-      });
-      if (!uploadPromptContent) {
-        return;
-      }
-      for (const draftFile of nextFiles) {
-        void uploadPromptContent({
-          workspaceId,
-          content: [
-            {
-              type: "file",
-              mimeType: draftFile.mimeType,
-              hostPath: draftFile.hostPath,
-              name: draftFile.name,
-              kind: "file"
-            }
-          ]
-        })
-          .then((result) => {
-            const uploadedFile = result.content.find(
-              (block) => block.type === "file"
-            );
-            const uploadedPath = uploadedFile?.path?.trim() ?? "";
-            if (!uploadedPath) {
-              throw new Error("Prompt file upload completed without path.");
-            }
-            const uploadedDraftFiles = draftFilesRef.current.map((file) =>
-              file.id === draftFile.id
-                ? {
-                    id: file.id,
-                    name: uploadedFile?.name ?? file.name,
-                    mimeType: uploadedFile?.mimeType ?? file.mimeType,
-                    path: uploadedPath,
-                    assetId: uploadedFile?.assetId,
-                    sizeBytes: uploadedFile?.sizeBytes,
-                    uploading: false
-                  }
-                : file
-            );
-            draftFilesRef.current = uploadedDraftFiles;
-            onDraftContentChange({
-              prompt: draftPromptRef.current,
-              images: draftImagesRef.current,
-              files: uploadedDraftFiles
-            });
-          })
-          .catch((error: unknown) => {
-            const message =
-              error instanceof Error ? error.message : String(error);
-            const failedDraftFiles = draftFilesRef.current.map((file) =>
-              file.id === draftFile.id
-                ? {
-                    ...file,
-                    uploading: false,
-                    uploadError: message
-                  }
-                : file
-            );
-            draftFilesRef.current = failedDraftFiles;
-            onDraftContentChange({
-              prompt: draftPromptRef.current,
-              images: draftImagesRef.current,
-              files: failedDraftFiles
-            });
-          });
-      }
-    },
-    [agentActivityRuntime, onDraftContentChange, workspaceId]
-  );
-
   const removeDraftFile = useCallback(
     (id: string): void => {
       const nextDraftFiles = draftFilesRef.current.filter(
@@ -1983,11 +1883,8 @@ export function AgentComposer({
       if (result.mentionItems.length > 0) {
         editorHandleRef.current?.insertMentionItems(result.mentionItems);
       }
-      if (result.hostAttachments && result.hostAttachments.length > 0) {
-        addDraftFiles(result.hostAttachments);
-      }
     },
-    [addDraftFiles, agentActivityRuntime, workspaceId]
+    [agentActivityRuntime, workspaceId]
   );
 
   const handleWorkspaceReferencePicker = useCallback(async () => {

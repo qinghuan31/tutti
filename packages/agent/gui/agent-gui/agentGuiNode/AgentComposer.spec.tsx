@@ -2582,106 +2582,6 @@ describe("AgentComposer", () => {
     ]);
   });
 
-  it("does not submit host file references before their upload state is reflected in props", async () => {
-    type UploadResult = AgentActivityRuntimeUploadPromptContentResult;
-    let resolveUpload: (result: UploadResult) => void = () => undefined;
-    const uploadPromptContent = vi.fn(
-      () =>
-        new Promise<UploadResult>((resolve) => {
-          resolveUpload = resolve;
-        })
-    );
-    setAgentActivityRuntimeForTests({
-      uploadPromptContent
-    } as unknown as AgentActivityRuntime);
-
-    let draftContent = createDraft("这是个啥图");
-    const onDraftContentChange = vi.fn((nextDraft: AgentComposerDraft) => {
-      draftContent = nextDraft;
-    });
-    const onSubmit = vi.fn();
-    const renderComposer = () => (
-      <AgentComposer
-        workspaceId="workspace-1"
-        currentUserId="user-1"
-        provider="codex"
-        draftContent={draftContent}
-        availableCommands={[] satisfies readonly AgentHostAgentSessionCommand[]}
-        disabled={false}
-        submitDisabled={false}
-        placeholder="placeholder"
-        composerSettings={createComposerSettings()}
-        queuedPrompts={[]}
-        drainingQueuedPromptId={null}
-        canQueueWhileBusy={false}
-        showStopButton={false}
-        activePrompt={null}
-        isInterrupting={false}
-        isSendingTurn={false}
-        isSubmittingPrompt={false}
-        labels={createLabels()}
-        workspaceUserProjectI18n={workspaceUserProjectI18n}
-        onDraftContentChange={onDraftContentChange}
-        onSettingsChange={vi.fn()}
-        onSubmit={onSubmit}
-        onSendQueuedPromptNext={vi.fn()}
-        onRemoveQueuedPrompt={vi.fn()}
-        onEditQueuedPrompt={vi.fn()}
-        onInterruptCurrentTurn={vi.fn()}
-        onSubmitInteractivePrompt={vi.fn()}
-        onRequestWorkspaceReferences={async () => ({
-          files: [],
-          mentionItems: [],
-          hostAttachments: [
-            {
-              hostPath: "/Users/vector/Downloads/1.webp",
-              name: "1.webp",
-              mimeType: "image/webp"
-            }
-          ]
-        })}
-      />
-    );
-    const { container, rerender } = render(renderComposer());
-
-    fireEvent.click(screen.getByRole("combobox", { name: "引用空间文件" }));
-    await waitFor(() => expect(uploadPromptContent).toHaveBeenCalled());
-
-    fireEvent.submit(container.querySelector("form")!);
-    expect(onSubmit).not.toHaveBeenCalled();
-
-    resolveUpload({
-      content: [
-        {
-          type: "file",
-          mimeType: "image/webp",
-          path: "/var/cache/tsh/local-assets/workspace-1/user-1/1.webp",
-          name: "1.webp",
-          kind: "file"
-        }
-      ]
-    });
-    await waitFor(() =>
-      expect(draftContent.files?.[0]).toMatchObject({
-        path: "/var/cache/tsh/local-assets/workspace-1/user-1/1.webp",
-        uploading: false
-      })
-    );
-    rerender(renderComposer());
-
-    fireEvent.submit(container.querySelector("form")!);
-    expect(onSubmit).toHaveBeenCalledWith([
-      { type: "text", text: "这是个啥图" },
-      {
-        type: "file",
-        mimeType: "image/webp",
-        path: "/var/cache/tsh/local-assets/workspace-1/user-1/1.webp",
-        name: "1.webp",
-        kind: "file"
-      }
-    ]);
-  });
-
   it("uploads host-local references before inserting file mention anchors", async () => {
     type UploadResult = AgentActivityRuntimeUploadPromptContentResult;
     let resolveUpload: (result: UploadResult) => void = () => undefined;
@@ -2739,8 +2639,7 @@ describe("AgentComposer", () => {
               sourceId: "host-local-file"
             }
           ],
-          mentionItems: [],
-          hostAttachments: []
+          mentionItems: []
         })}
       />
     );
@@ -2787,74 +2686,6 @@ describe("AgentComposer", () => {
         text: "看下这张图[@首页 (1).jpg](/var/cache/tsh/local-assets/workspace-1/user-1/home.jpg)"
       }
     ]);
-  });
-
-  it("blocks host file drafts when the runtime cannot upload prompt content", async () => {
-    let draftContent = createDraft("");
-    const onDraftContentChange = vi.fn((nextDraft: AgentComposerDraft) => {
-      draftContent = nextDraft;
-    });
-    const onSubmit = vi.fn();
-    const renderComposer = () => (
-      <AgentComposer
-        workspaceId="workspace-1"
-        currentUserId="user-1"
-        provider="codex"
-        draftContent={draftContent}
-        availableCommands={[] satisfies readonly AgentHostAgentSessionCommand[]}
-        disabled={false}
-        submitDisabled={false}
-        placeholder="placeholder"
-        composerSettings={createComposerSettings()}
-        queuedPrompts={[]}
-        drainingQueuedPromptId={null}
-        canQueueWhileBusy={false}
-        showStopButton={false}
-        activePrompt={null}
-        isInterrupting={false}
-        isSendingTurn={false}
-        isSubmittingPrompt={false}
-        labels={createLabels()}
-        workspaceUserProjectI18n={workspaceUserProjectI18n}
-        onDraftContentChange={onDraftContentChange}
-        onSettingsChange={vi.fn()}
-        onSubmit={onSubmit}
-        onSendQueuedPromptNext={vi.fn()}
-        onRemoveQueuedPrompt={vi.fn()}
-        onEditQueuedPrompt={vi.fn()}
-        onInterruptCurrentTurn={vi.fn()}
-        onSubmitInteractivePrompt={vi.fn()}
-        onRequestWorkspaceReferences={async () => ({
-          files: [],
-          mentionItems: [],
-          hostAttachments: [
-            {
-              hostPath: "/Users/vector/Desktop/notes.txt",
-              name: "notes.txt",
-              mimeType: "text/plain"
-            }
-          ]
-        })}
-      />
-    );
-    const { container, rerender } = render(renderComposer());
-
-    fireEvent.click(screen.getByRole("combobox", { name: "引用空间文件" }));
-    await waitFor(() => expect(draftContent.files ?? []).toHaveLength(1));
-    expect(draftContent.files?.[0]).toMatchObject({
-      name: "notes.txt",
-      hostPath: "/Users/vector/Desktop/notes.txt",
-      uploadError:
-        "Prompt file uploads are not supported by this agent runtime."
-    });
-    rerender(renderComposer());
-
-    expect(
-      screen.getByTestId("agent-gui-composer-file-drafts").firstElementChild
-    ).toHaveAttribute("data-upload-error", "true");
-    expect(screen.getByRole("button", { name: "发送" })).toBeDisabled();
-    fireEvent.submit(container.querySelector("form")!);
-    expect(onSubmit).not.toHaveBeenCalled();
   });
 
   it("renders controlled text and image draft content", () => {

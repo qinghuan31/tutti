@@ -12,8 +12,15 @@ import { resolve } from "node:path";
 import type { WorkspaceAgentSessionDetailViewModel } from "../../shared/workspaceAgentSessionDetailViewModel";
 import type { AgentHostManagedAgentsState } from "../../shared/contracts/dto";
 import type { WorkspaceFileReferenceAdapter } from "@tutti-os/workspace-file-reference/contracts";
+import type {
+  ReferenceNode,
+  SelectedReference
+} from "@tutti-os/workspace-file-reference/contracts";
+import type { ReferenceSourceAggregator } from "@tutti-os/workspace-file-reference/core";
 import type { WorkspaceLinkAction } from "../../actions/workspaceLinkActions";
 import { MANAGED_AGENT_ICON_URLS } from "../../shared/managedAgentIcons";
+import { AgentActivityHostProvider } from "../../agentActivityHost";
+import type { AgentActivityRuntime } from "../../agentActivityRuntime";
 import { AgentGUINode } from "./AgentGUINode";
 import { resolveAgentGUIHeroIconUrl } from "./AgentGUINodeView";
 import type { AgentContextMentionProvider } from "./agentContextMentionProvider";
@@ -72,6 +79,56 @@ let mockViewModel: AgentGUINodeViewModel;
 
 function createDraft(prompt: string): AgentComposerDraft {
   return { prompt, images: [], files: [] };
+}
+
+function createHostLocalReferenceAggregator(
+  entry: ReferenceNode
+): ReferenceSourceAggregator {
+  return {
+    async listSources() {
+      return [
+        {
+          sourceId: "host-local-file",
+          label: "本地文件",
+          capabilities: {
+            filterable: true,
+            navigable: false,
+            paginated: false,
+            previewable: false,
+            searchable: true
+          }
+        }
+      ];
+    },
+    async listRoot() {
+      return [];
+    },
+    async listChildren() {
+      return { entries: [entry], nextCursor: null };
+    },
+    async search() {
+      return { entries: [], nextCursor: null };
+    },
+    async open() {},
+    async readPreview() {
+      return null;
+    },
+    resolveSelection(node): SelectedReference {
+      return {
+        path: node.ref.nodeId,
+        hostPath: node.ref.nodeId,
+        kind: node.kind,
+        displayName: node.displayName,
+        sourceId: node.ref.sourceId
+      };
+    },
+    async locateTarget() {
+      return null;
+    },
+    getLoadedSource() {
+      return undefined;
+    }
+  };
 }
 
 function textQueuedPrompt(
@@ -4402,6 +4459,81 @@ describe("AgentGUINode", () => {
     );
   });
 
+  it("inserts host-local shared picker selections as uploaded file mention anchors", async () => {
+    const uploadPromptContent = vi.fn(async () => ({
+      content: [
+        {
+          type: "file" as const,
+          path: "/var/cache/tsh/local-assets/room-1/user-1/home.jpg",
+          name: "首页.jpg",
+          kind: "file" as const
+        }
+      ]
+    }));
+    const hostFile: ReferenceNode = {
+      ref: {
+        sourceId: "host-local-file",
+        nodeId: "host-file-handle-1"
+      },
+      kind: "file",
+      displayName: "首页.jpg"
+    };
+    mockViewModel = createViewModel({
+      activeConversationId: "session-1",
+      draftPrompt: "看下 "
+    });
+
+    renderAgentGUINode({
+      workspaceFileReferenceAdapter: null,
+      referenceSourceAggregator: createHostLocalReferenceAggregator(hostFile),
+      agentActivityRuntime: {
+        uploadPromptContent
+      } as unknown as AgentActivityRuntime
+    });
+
+    fireEvent.click(
+      screen.getByRole("combobox", {
+        name: "agentHost.issue.referenceWorkspaceFiles"
+      })
+    );
+    await screen.findByRole("dialog", {
+      name: "agentHost.agentGui.referencePicker.title"
+    });
+    const selectReferenceButton = await screen.findByRole("button", {
+      name: "首页.jpg"
+    });
+    fireEvent.click(selectReferenceButton);
+    fireEvent.click(
+      screen.getByRole("button", {
+        name: "agentHost.agentGui.referencePicker.confirm"
+      })
+    );
+
+    await waitFor(() =>
+      expect(uploadPromptContent).toHaveBeenCalledWith({
+        workspaceId: "room-1",
+        content: [
+          {
+            type: "file",
+            hostPath: "host-file-handle-1",
+            name: "首页.jpg",
+            kind: "file"
+          }
+        ]
+      })
+    );
+    await waitFor(() =>
+      expect(mockUpdateDraftContent).toHaveBeenCalledWith(
+        createDraft(
+          "看下 [@首页.jpg](/var/cache/tsh/local-assets/room-1/user-1/home.jpg) "
+        )
+      )
+    );
+    expect(
+      screen.queryByTestId("agent-gui-composer-file-drafts")
+    ).not.toBeInTheDocument();
+  });
+
   it("opens the shared workspace reference picker with the selected project path revealed", async () => {
     const baseViewModel = createViewModel();
     const loadReferenceTree = vi.fn(
@@ -6887,6 +7019,8 @@ function renderAgentGUINode({
   >(),
   onResize = vi.fn(),
   workspaceFileReferenceAdapter = createWorkspaceFileReferenceAdapter(),
+  referenceSourceAggregator,
+  agentActivityRuntime,
   onShowMessage = vi.fn(),
   onMinimize,
   onToggleMaximize,
@@ -6919,6 +7053,8 @@ function renderAgentGUINode({
   ) => void;
   onResize?: React.ComponentProps<typeof AgentGUINode>["onResize"];
   workspaceFileReferenceAdapter?: WorkspaceFileReferenceAdapter | null;
+  referenceSourceAggregator?: ReferenceSourceAggregator | null;
+  agentActivityRuntime?: AgentActivityRuntime | null;
   onShowMessage?: React.ComponentProps<typeof AgentGUINode>["onShowMessage"];
   onMinimize?: () => void;
   onToggleMaximize?: () => void;
@@ -6950,6 +7086,7 @@ function renderAgentGUINode({
       currentUserId="user-1"
       workspacePath="/workspace"
       workspaceFileReferenceAdapter={workspaceFileReferenceAdapter}
+      referenceSourceAggregator={referenceSourceAggregator}
       agentSettings={{ avoidGroupingEdits: false }}
       title={title}
       state={state}
@@ -6989,8 +7126,20 @@ function renderAgentGUINode({
         {node}
       </section>
     );
+  const nodeWithProviders =
+    agentActivityRuntime === undefined ? (
+      wrappedNode
+    ) : (
+      <AgentActivityHostProvider agentActivityRuntime={agentActivityRuntime}>
+        {wrappedNode}
+      </AgentActivityHostProvider>
+    );
   return render(
-    strictMode ? <StrictMode>{wrappedNode}</StrictMode> : wrappedNode
+    strictMode ? (
+      <StrictMode>{nodeWithProviders}</StrictMode>
+    ) : (
+      nodeWithProviders
+    )
   );
 }
 
