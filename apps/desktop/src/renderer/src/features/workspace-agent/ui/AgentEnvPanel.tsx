@@ -247,9 +247,13 @@ export function AgentEnvPanel({
     runAction
   ]);
 
-  if (!open) {
-    return null;
-  }
+  // Do NOT early-return null when closed. This <Dialog> is a controlled Radix
+  // dialog with disableOutsidePointerEvents; it must observe the open→false
+  // transition to restore document.body pointer-events and the scroll lock.
+  // Unmounting it while it still believes it is open strands the whole app
+  // with `pointer-events: none` — clicks register nowhere and the wizard can
+  // never be reopened until reload. Let the `open` prop drive visibility; the
+  // DialogContent wrapper unmounts its own subtree after the close animation.
 
   const ready = status?.availability.status === "ready";
   const activeAction = readCodexSetupActiveAction(status);
