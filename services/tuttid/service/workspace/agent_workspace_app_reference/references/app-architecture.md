@@ -101,7 +101,8 @@ export interface TuttiWorkspaceAppBridge {
         | "issue-manager"
         | "message-center"
         | "agent-connect"
-        | "agent-chat";
+        | "agent-chat"
+        | "agent-manage";
       provider?: string;
     }): Promise<void>;
   };
