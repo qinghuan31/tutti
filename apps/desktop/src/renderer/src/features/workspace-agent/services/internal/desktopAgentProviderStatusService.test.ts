@@ -346,7 +346,61 @@ test("runAction reports daemon install action failures and skips refresh", async
     {
       description: "adapter boom",
       tone: "error",
-      title: "Installation failed"
+      title: "Connection failed"
+    }
+  ]);
+});
+
+test("runAction summarizes technical install probe failures for toast copy", async () => {
+  const notifications = createNotificationRecorder();
+  const service = new DesktopAgentProviderStatusService(
+    {
+      tuttidClient: createTuttidClient({
+        actionRuns: [
+          {
+            actionID: "install",
+            completedAt: "2026-06-02T08:00:00.000Z",
+            message:
+              "Error: spawn /Users/example/.nvm/versions/node/v22.22.0/lib/node_modules/@openai/codex/vendor/codex ENOENT\n    at ChildProcess._handle.onexit (node:internal/child_process:285:19)",
+            provider: "codex",
+            reasonCode: "post_install_probe_failed",
+            status: "failed"
+          }
+        ],
+        snapshots: [
+          createStatusResponse([
+            createProviderStatus({
+              actions: [
+                {
+                  command: {
+                    cwd: "/workspace",
+                    input: "npm install -g @openai/codex\n"
+                  },
+                  id: "install",
+                  kind: "terminal_command"
+                }
+              ],
+              availability: "not_installed"
+            })
+          ])
+        ]
+      }),
+      terminalCommandRunner: {
+        async runTerminalCommand() {}
+      }
+    },
+    notifications.service
+  );
+
+  await service.refresh();
+  await assert.rejects(() => service.runAction("codex", "install"));
+
+  assert.deepEqual(notifications.items, [
+    {
+      description:
+        "The local agent executable could not be found. Check that it is installed correctly.",
+      tone: "error",
+      title: "Connection failed"
     }
   ]);
 });
@@ -399,7 +453,7 @@ test("runAction reports install failures and clears pending state", async () => 
     {
       description: "network unavailable",
       tone: "error",
-      title: "Installation failed"
+      title: "Connection failed"
     }
   ]);
 });
@@ -453,7 +507,7 @@ test("runAction summarizes Claude regional availability install failures", async
     {
       description: "Claude isn't available in this region.",
       tone: "error",
-      title: "Installation failed"
+      title: "Connection failed"
     }
   ]);
 });

@@ -348,6 +348,10 @@ export interface DesktopSelectAppArchiveExportPathInput {
   defaultPath: string;
 }
 
+export interface DesktopSelectUploadFilesInput {
+  allowDirectories?: boolean;
+}
+
 export interface DesktopHostPreferencesSyncPayload {
   agentComposerDefaultsByProvider?: DesktopAgentComposerDefaultsByProvider;
   agentGuiConversationRailCollapsedByProvider?: DesktopAgentGuiConversationRailCollapsedByProvider;
@@ -745,7 +749,9 @@ export interface DesktopInvokePayloadByChannel {
     .selectAppArchiveExportPath]: DesktopSelectAppArchiveExportPathInput;
   [desktopIpcChannels.host.files.selectAppIconImage]: undefined;
   [desktopIpcChannels.host.files.selectDirectory]: undefined;
-  [desktopIpcChannels.host.files.selectUploadFiles]: undefined;
+  [desktopIpcChannels.host.files.selectUploadFiles]:
+    | DesktopSelectUploadFilesInput
+    | undefined;
   [desktopIpcChannels.host.files.copyFilesToClipboard]: string[];
   [desktopIpcChannels.host.window.approveClose]: undefined;
   [desktopIpcChannels.host.window

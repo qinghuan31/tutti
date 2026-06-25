@@ -33,6 +33,13 @@ test("projectWorkspaceAppCenterDockState maps runtime status to dock state", () 
     }
   );
   assert.deepEqual(
+    projectWorkspaceAppCenterDockState("installed_pending_restart", null),
+    {
+      launchEnabled: true,
+      state: { kind: "enabled" }
+    }
+  );
+  assert.deepEqual(
     projectWorkspaceAppCenterDockState("starting", "https://app.local"),
     {
       launchEnabled: false,
@@ -41,6 +48,13 @@ test("projectWorkspaceAppCenterDockState maps runtime status to dock state", () 
   );
   assert.deepEqual(
     projectWorkspaceAppCenterDockState("preparing", "https://app.local"),
+    {
+      launchEnabled: false,
+      state: { kind: "loading" }
+    }
+  );
+  assert.deepEqual(
+    projectWorkspaceAppCenterDockState("installing", "https://app.local"),
     {
       launchEnabled: false,
       state: { kind: "loading" }
@@ -66,6 +80,13 @@ test("projectWorkspaceAppCenterDockState maps runtime status to dock state", () 
   );
   assert.deepEqual(
     projectWorkspaceAppCenterDockState("idle", "https://app.local"),
+    {
+      launchEnabled: true,
+      state: { kind: "enabled" }
+    }
+  );
+  assert.deepEqual(
+    projectWorkspaceAppCenterDockState("idle", "https://app.local", false),
     {
       launchEnabled: false,
       state: { kind: "disabled" }
@@ -109,10 +130,27 @@ test("projectWorkspaceAppCenterDockApps includes only enabled apps", () => {
       source: "builtin",
       stateRevision: 1,
       launchUrl: "https://disabled.local"
+    },
+    {
+      appId: "not-installed",
+      createdAtUnixMs: 1,
+      enabled: true,
+      exportable: false,
+      installed: false,
+      minimizeBehavior: "keep-mounted",
+      name: "Not installed",
+      references: { listSupported: false },
+      runtimeStatus: "idle",
+      source: "builtin",
+      stateRevision: 1,
+      launchUrl: "https://not-installed.local"
     }
   ]);
 
-  assert.equal(projections.length, 1);
+  assert.equal(projections.length, 2);
   assert.equal(projections[0]?.app.appId, "notes");
   assert.equal(projections[0]?.launchEnabled, true);
+  assert.equal(projections[1]?.app.appId, "not-installed");
+  assert.equal(projections[1]?.launchEnabled, false);
+  assert.deepEqual(projections[1]?.state, { kind: "disabled" });
 });

@@ -12,6 +12,7 @@ import type {
   DesktopHostNotificationNavigationPayload,
   DesktopHostNotificationPayload,
   DesktopHostNotificationResult,
+  DesktopSelectUploadFilesInput,
   DesktopOpenWithApplication,
   AppUpdateState,
   ClearDeveloperLogsResult,
@@ -174,7 +175,7 @@ export interface DesktopHostFilesApi {
       path: string;
     }
   ): Promise<string | null>;
-  selectUploadFiles(): Promise<string[]>;
+  selectUploadFiles(input?: DesktopSelectUploadFilesInput): Promise<string[]>;
   copyFilesToClipboard(paths: string[]): Promise<void>;
 }
 

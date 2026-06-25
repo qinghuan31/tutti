@@ -228,7 +228,9 @@ interface DesktopAgentHostApiUnderTest {
       path: string;
     }): Promise<{ content: string; path: string }>;
     selectDirectory(): Promise<{ path: string } | null>;
-    selectFiles(): Promise<Array<{ path: string }>>;
+    selectFiles(input?: {
+      allowDirectories?: boolean;
+    }): Promise<Array<{ path: string }>>;
     writeFileText(input: { content: string; path: string }): Promise<void>;
   };
 }
@@ -2453,6 +2455,7 @@ test("desktop agent host api reuses desktop host file operations", async () => {
     path: string;
     workspaceId: string;
   }> = [];
+  const selectedUploadFileInputs: unknown[] = [];
   const api = createAgentHostApi({
     hostFilesApi: createHostFilesApi({
       async createUserDocumentsProjectDirectory(input) {
@@ -2475,7 +2478,8 @@ test("desktop agent host api reuses desktop host file operations", async () => {
       async selectDirectory() {
         return "/workspace";
       },
-      async selectUploadFiles() {
+      async selectUploadFiles(input) {
+        selectedUploadFileInputs.push(input);
         return ["/tmp/a.txt", "/tmp/b.txt"];
       }
     }),
@@ -2546,10 +2550,11 @@ test("desktop agent host api reuses desktop host file operations", async () => {
   assert.deepEqual(usedProjectPaths, [
     "/Users/local/Documents/tutti/Demo project"
   ]);
-  assert.deepEqual(await api.workspace.selectFiles(), [
-    { path: "/tmp/a.txt" },
-    { path: "/tmp/b.txt" }
-  ]);
+  assert.deepEqual(
+    await api.workspace.selectFiles({ allowDirectories: false }),
+    [{ path: "/tmp/a.txt" }, { path: "/tmp/b.txt" }]
+  );
+  assert.deepEqual(selectedUploadFileInputs, [{ allowDirectories: false }]);
   const readFileResult = await api.workspace.readFile({
     path: "/workspace/file.txt"
   });

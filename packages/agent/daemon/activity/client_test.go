@@ -1028,7 +1028,6 @@ func TestListAgentsWithFilterDoesNotRetryTransientEOFAgainstLoopback(t *testing.
 func TestClientProxiesWorkspaceAgentEndpoints(t *testing.T) {
 	t.Parallel()
 
-	var timelineRequests atomic.Int32
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		switch {
@@ -1037,9 +1036,6 @@ func TestClientProxiesWorkspaceAgentEndpoints(t *testing.T) {
 				"presences":[{"id":1,"roomId":"ws-1","userId":"user-1","provider":"codex","status":"working"}],
 				"sessions":[{"id":2,"agentId":"agent-session-1","presenceId":1,"providerSessionId":"raw-session","cwd":"/workspace/ws-1","effectiveStatus":"working"}]
 			}`))
-		case r.Method == http.MethodGet && r.URL.Path == "/v1/rooms/ws-1/agents/timeline":
-			timelineRequests.Add(1)
-			http.Error(w, "legacy timeline endpoint should not be read", http.StatusInternalServerError)
 		default:
 			http.NotFound(w, r)
 		}
@@ -1061,22 +1057,6 @@ func TestClientProxiesWorkspaceAgentEndpoints(t *testing.T) {
 	if agents.Sessions[0].EffectiveStatus != "working" {
 		t.Fatalf("session effective status = %q", agents.Sessions[0].EffectiveStatus)
 	}
-
-	timeline, err := client.GetSessionTimeline(context.Background(), SessionTimelineInput{
-		WorkspaceID:    "ws-1",
-		AgentSessionID: "agent-session-1",
-		AfterID:        3,
-		Limit:          20,
-	})
-	if err != nil {
-		t.Fatalf("GetSessionTimeline() error = %v", err)
-	}
-	if len(timeline.TimelineItems) != 0 {
-		t.Fatalf("timeline items = %#v, want empty legacy timeline", timeline.TimelineItems)
-	}
-	if timelineRequests.Load() != 0 {
-		t.Fatalf("timeline requests = %d, want 0", timelineRequests.Load())
-	}
 }
 
 type roundTripFunc func(*http.Request) (*http.Response, error)
@@ -1096,8 +1076,6 @@ func TestClientProxiesRuntimeOriginWorkspaceAgentEndpoints(t *testing.T) {
 				t.Fatalf("session_origin = %q", r.URL.Query().Get("session_origin"))
 			}
 			_, _ = w.Write([]byte(`{"presences":[],"sessions":[]}`))
-		case "/v1/rooms/ws-1/agents/timeline":
-			http.Error(w, "legacy timeline endpoint should not be read", http.StatusInternalServerError)
 		default:
 			http.NotFound(w, r)
 		}
@@ -1107,14 +1085,6 @@ func TestClientProxiesRuntimeOriginWorkspaceAgentEndpoints(t *testing.T) {
 	client := NewClient(Config{BaseURL: server.URL, UserID: "user-1"})
 	if _, err := client.ListAgentsWithOrigin(context.Background(), "ws-1", WorkspaceAgentSessionOriginRuntime); err != nil {
 		t.Fatalf("ListAgentsWithOrigin() error = %v", err)
-	}
-	if _, err := client.GetSessionTimeline(context.Background(), SessionTimelineInput{
-		WorkspaceID:    "ws-1",
-		AgentSessionID: "agent-session-1",
-		AfterID:        3,
-		SessionOrigin:  WorkspaceAgentSessionOriginRuntime,
-	}); err != nil {
-		t.Fatalf("GetSessionTimeline() error = %v", err)
 	}
 }
 
@@ -1178,8 +1148,6 @@ func TestClientDecodesProtoJSONIntegerStrings(t *testing.T) {
 				"presences":[{"id":"1","roomId":"ws-1","userId":"user-1","provider":"codex","status":"working","lastHeartbeatUnixMs":"1710000000100","leaseExpiresUnixMs":"1710000060100","createdAtUnixMs":"1710000000000","updatedAtUnixMs":"1710000000200"}],
 				"sessions":[{"id":"2","agentSessionId":"agent-session-1","presenceId":"1","providerSessionId":"raw-session","cwd":"/workspace/ws-1","effectiveStatus":"working","createdAtUnixMs":"1710000001000","updatedAtUnixMs":"1710000002000"}]
 			}`))
-		case "/v1/rooms/ws-1/agents/timeline":
-			http.Error(w, "legacy timeline endpoint should not be read", http.StatusInternalServerError)
 		default:
 			http.NotFound(w, r)
 		}
@@ -1202,16 +1170,6 @@ func TestClientDecodesProtoJSONIntegerStrings(t *testing.T) {
 	}
 	if agents.Sessions[0].EffectiveStatus != "working" {
 		t.Fatalf("decoded session effective status = %q", agents.Sessions[0].EffectiveStatus)
-	}
-	timeline, err := client.GetSessionTimeline(context.Background(), SessionTimelineInput{
-		WorkspaceID:    "ws-1",
-		AgentSessionID: "agent-session-1",
-	})
-	if err != nil {
-		t.Fatalf("GetSessionTimeline() error = %v", err)
-	}
-	if len(timeline.TimelineItems) != 0 {
-		t.Fatalf("timeline items = %#v, want empty legacy timeline", timeline.TimelineItems)
 	}
 }
 

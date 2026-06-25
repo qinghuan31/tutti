@@ -1,6 +1,7 @@
 import type { TuttidClient } from "@tutti-os/client-tuttid-ts";
 import type {
   AgentHostInputApi,
+  AgentHostSelectFilesInput,
   AgentProviderProbeListInput
 } from "@tutti-os/agent-gui";
 import type {
@@ -224,8 +225,10 @@ export function createDesktopAgentHostApi({
         const path = await hostFilesApi.selectDirectory();
         return path ? { path } : null;
       },
-      selectFiles: async () =>
-        (await hostFilesApi.selectUploadFiles()).map((path) => ({ path })),
+      selectFiles: async (input?: AgentHostSelectFilesInput) =>
+        (await hostFilesApi.selectUploadFiles(input)).map((path) => ({
+          path
+        })),
       writeFile: async (payload: { content?: string; path: string }) => {
         await tuttidClient.writeWorkspaceFileText(workspaceId, {
           content: payload.content ?? "",

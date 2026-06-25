@@ -2339,19 +2339,14 @@ func TestStoreInterruptWorkspaceAgentSessionsReportsRuntimeTargetFromProviderCon
 }
 
 type fakeInterruptReporter struct {
-	inputs        []ReportActivityInput
-	workspaceID   string
-	timelineItems []WorkspaceAgentTimelineItem
-	statePatches  []WorkspaceAgentStatePatch
-	reportInputs  []ReportActivityInput
+	inputs       []ReportActivityInput
+	workspaceID  string
+	statePatches []WorkspaceAgentStatePatch
+	reportInputs []ReportActivityInput
 }
 
 func (*fakeInterruptReporter) ListAgents(context.Context, string) (*WorkspaceAgentSnapshot, error) {
 	return &WorkspaceAgentSnapshot{}, nil
-}
-
-func (*fakeInterruptReporter) GetSessionTimeline(context.Context, SessionTimelineInput) (*SessionTimeline, error) {
-	return &SessionTimeline{}, nil
 }
 
 func (*fakeInterruptReporter) ListSessionMessages(context.Context, ListSessionMessagesInput) (*ListSessionMessagesReply, error) {

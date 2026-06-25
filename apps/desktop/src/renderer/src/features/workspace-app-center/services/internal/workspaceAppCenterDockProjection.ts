@@ -17,14 +17,43 @@ export function projectWorkspaceAppCenterDockApps(
     .filter((app) => app.enabled)
     .map((app) => ({
       app,
-      ...projectWorkspaceAppCenterDockState(app.runtimeStatus, app.launchUrl)
+      ...projectWorkspaceAppCenterDockState(
+        app.runtimeStatus,
+        app.launchUrl,
+        app.installed
+      )
     }));
 }
 
 export function projectWorkspaceAppCenterDockState(
   status: WorkspaceAppCenterRuntimeStatus,
-  launchUrl: string | null | undefined
+  launchUrl: string | null | undefined,
+  installed = true
 ): Pick<WorkspaceAppCenterDockProjection, "launchEnabled" | "state"> {
+  if (status === "installing") {
+    return {
+      launchEnabled: false,
+      state: { kind: "loading" }
+    };
+  }
+  if (!installed) {
+    return {
+      launchEnabled: false,
+      state: { kind: "disabled" }
+    };
+  }
+  if (status === "idle") {
+    return {
+      launchEnabled: true,
+      state: { kind: "enabled" }
+    };
+  }
+  if (status === "installed_pending_restart") {
+    return {
+      launchEnabled: true,
+      state: { kind: "enabled" }
+    };
+  }
   if (status === "running") {
     if (!launchUrl) {
       return {

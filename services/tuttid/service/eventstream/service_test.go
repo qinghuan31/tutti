@@ -499,6 +499,27 @@ func TestWorkspaceAppUpdatedValidationRequiresReferencesState(t *testing.T) {
 	}
 }
 
+func TestWorkspaceAppUpdatedValidationAcceptsInstalledPendingRestart(t *testing.T) {
+	t.Parallel()
+
+	err := DefaultCatalog().ValidatePublish(
+		TopicWorkspaceAppUpdated,
+		DirectionServerToClient,
+		[]byte(`{"app":{
+			"appId":"docs",
+			"displayName":"Docs",
+			"version":"1.0.0",
+			"status":"installed_pending_restart",
+			"stateRevision":1,
+			"minimizeBehavior":"keep-mounted",
+			"references":{"listSupported":false}
+		}}`),
+	)
+	if err != nil {
+		t.Fatalf("ValidatePublish() error = %v, want nil", err)
+	}
+}
+
 func TestWorkspaceIssuePublisherPublishesScopedUpdate(t *testing.T) {
 	t.Parallel()
 

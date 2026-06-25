@@ -354,6 +354,9 @@ describe("useAgentGuiBatchRunner", () => {
     await act(async () => {
       await result.current.selectPromptFile();
     });
+    expect(agentHostApi.workspace.selectFiles).toHaveBeenCalledWith({
+      allowDirectories: false
+    });
     expect(result.current.cases).toHaveLength(2);
 
     let runPromise: Promise<void> = Promise.resolve();

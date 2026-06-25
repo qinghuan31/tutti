@@ -20,6 +20,7 @@
       "@tutti-os/browser-node",
       "@tutti-os/workspace-file-preview",
       "@tutti-os/workbench-snapshot",
+      "@tutti-os/workbench-launchpad",
       "@tutti-os/workbench-surface",
       "@tutti-os/app-release-tools",
       "@tutti-os/ui-i18n-runtime",

@@ -42,6 +42,17 @@ export async function resolveWorkspaceAppCenterLaunchRequest(input: {
   const appBeforeLaunch = appId
     ? findWorkspaceApp(input.appCenterService, appId)
     : null;
+  if (
+    !payload?.prepared &&
+    appId &&
+    appBeforeLaunch?.runtimeStatus === "installed_pending_restart"
+  ) {
+    await input.appCenterService.restartAndOpenApp({
+      appId,
+      workspaceId: input.request.workspaceId
+    });
+    return null;
+  }
   const app = payload?.prepared
     ? appBeforeLaunch
     : appId

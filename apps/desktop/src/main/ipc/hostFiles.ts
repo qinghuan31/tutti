@@ -134,8 +134,11 @@ export function registerHostFilesIpc(deps: HostFilesIpcDependencies): void {
   );
   registerDesktopIpcHandler(
     desktopIpcChannels.host.files.selectUploadFiles,
-    (event) =>
-      deps.fileDialogs.selectUploadFiles(resolveOwnerWindowFromEvent(event))
+    (event, input) =>
+      deps.fileDialogs.selectUploadFiles(
+        resolveOwnerWindowFromEvent(event),
+        input
+      )
   );
   registerDesktopIpcHandler(
     desktopIpcChannels.host.files.copyFilesToClipboard,

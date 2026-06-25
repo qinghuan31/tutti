@@ -198,7 +198,7 @@ func (s *AppCenterService) publishInstalledAppRuntime(ctx context.Context, works
 	app := workspacebiz.WorkspaceApp{
 		Package:      appPackage,
 		Installation: &installation,
-		Runtime:      runtimeState,
+		Runtime:      runtimeStateForActivePackage(runtimeState, appPackage),
 	}
 	app.CLI = s.appCLIState(workspaceID, app)
 	return s.publishAppIfChanged(ctx, workspaceID, appPackage.AppID, app)

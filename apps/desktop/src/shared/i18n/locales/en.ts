@@ -583,7 +583,12 @@ export const en = {
         checking: "Checking local CLI status...",
         comingSoon: "Coming soon",
         install: "Connect",
-        installFailed: "Installation failed",
+        installFailed: "Connection failed",
+        installFailedDescription:
+          "Unable to connect the local agent right now. Try again in a moment.",
+        installFailedMissingRuntime:
+          "The local agent executable could not be found. Check that it is installed correctly.",
+        installFailedTimedOut: "Connection timed out. Try again in a moment.",
         installUnavailableInRegion: "Claude isn't available in this region.",
         installRequired: "Connect the local agent to continue",
         installing: "Installing...",

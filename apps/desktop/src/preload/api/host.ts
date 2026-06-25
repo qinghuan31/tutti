@@ -158,9 +158,10 @@ export function createHostDesktopApi(): DesktopHostApi {
           }
         );
       },
-      selectUploadFiles(): Promise<string[]> {
+      selectUploadFiles(input): Promise<string[]> {
         return invokeDesktopApi(
-          desktopIpcChannels.host.files.selectUploadFiles
+          desktopIpcChannels.host.files.selectUploadFiles,
+          input
         );
       },
       copyFilesToClipboard(paths: string[]): Promise<void> {

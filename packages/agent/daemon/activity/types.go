@@ -499,18 +499,6 @@ type WorkspaceAgentSyncState struct {
 	UpdatedAtUnixMS           int64  `json:"updatedAtUnixMs,omitempty"`
 }
 
-type SessionTimelineInput struct {
-	WorkspaceID    string
-	AgentSessionID string
-	AfterID        uint64
-	Limit          int
-	SessionOrigin  string
-}
-
-type SessionTimeline struct {
-	TimelineItems []WorkspaceAgentTimelineItem `json:"timelineItems"`
-}
-
 type WorkspaceAgentTimelineItem struct {
 	ID               uint64         `json:"id"`
 	RoomID           string         `json:"roomId"`

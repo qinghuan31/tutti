@@ -119,3 +119,29 @@ test("desktop file dialog access returns selected upload paths", async () => {
     properties: ["openFile", "openDirectory", "multiSelections"]
   });
 });
+
+test("desktop file dialog access can disable directory upload selection", async () => {
+  const calls: Parameters<
+    NonNullable<DesktopFileDialogAccessDependencies["showOpenDialog"]>
+  >[] = [];
+  const dialogAccess = createDesktopFileDialogAccess({
+    getLocale: () => "zh-CN",
+    showOpenDialog: async (...args) => {
+      calls.push(args);
+      return {
+        canceled: false,
+        filePaths: ["/tmp/a.txt"]
+      };
+    }
+  });
+
+  const selectedPaths = await dialogAccess.selectUploadFiles(undefined, {
+    allowDirectories: false
+  });
+
+  assert.deepEqual(selectedPaths, ["/tmp/a.txt"]);
+  assert.equal(calls.length, 1);
+  assert.deepEqual(calls[0]?.[1], {
+    properties: ["openFile", "multiSelections"]
+  });
+});

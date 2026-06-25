@@ -20,7 +20,14 @@ export interface DesktopFileDialogAccess {
     ownerWindow?: BrowserWindow | null
   ): Promise<string | null>;
   selectDirectory(ownerWindow?: BrowserWindow | null): Promise<string | null>;
-  selectUploadFiles(ownerWindow?: BrowserWindow | null): Promise<string[]>;
+  selectUploadFiles(
+    ownerWindow?: BrowserWindow | null,
+    input?: DesktopSelectUploadFilesInput
+  ): Promise<string[]>;
+}
+
+export interface DesktopSelectUploadFilesInput {
+  allowDirectories?: boolean;
 }
 
 export interface DesktopFileDialogAccessDependencies {
@@ -103,9 +110,16 @@ export function createDesktopFileDialogAccess(
       return selection.filePaths[0] ?? null;
     },
 
-    async selectUploadFiles(ownerWindow) {
+    async selectUploadFiles(ownerWindow, input) {
+      const properties: OpenDialogOptions["properties"] = [
+        "openFile",
+        "multiSelections"
+      ];
+      if (input?.allowDirectories !== false) {
+        properties.splice(1, 0, "openDirectory");
+      }
       const selection = await showOpenDialog(ownerWindow, {
-        properties: ["openFile", "openDirectory", "multiSelections"]
+        properties
       });
 
       if (selection.canceled || selection.filePaths.length === 0) {

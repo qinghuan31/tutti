@@ -516,7 +516,9 @@ export function useAgentGuiBatchRunner({
   const selectPromptFile = useCallback(async (): Promise<void> => {
     setError(null);
     setExportResult(null);
-    const selection = await agentHostApi.workspace.selectFiles();
+    const selection = await agentHostApi.workspace.selectFiles({
+      allowDirectories: false
+    });
     const file = selection[0] ?? null;
     if (!file) {
       logAgentGuiBatchRunner("select-file-canceled", { workspaceId });

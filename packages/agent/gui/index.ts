@@ -50,6 +50,7 @@ export type {
 export type {
   AgentHostApi,
   AgentHostInputApi,
+  AgentHostSelectFilesInput,
   AgentHostRuntimeApi,
   AgentProviderProbeListInput,
   AgentProviderProbeListResult

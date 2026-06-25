@@ -76,6 +76,10 @@ export interface AgentHostSelectedFile {
   path: string;
 }
 
+export interface AgentHostSelectFilesInput {
+  allowDirectories?: boolean;
+}
+
 export type AgentHostWorkspaceApi = AgentHostRecord & {
   copyPath?: (input: { path: string }) => AgentHostAsyncResult<void>;
   ensureDirectory: (input: { path: string }) => AgentHostAsyncResult<void>;
@@ -85,7 +89,9 @@ export type AgentHostWorkspaceApi = AgentHostRecord & {
   }) => AgentHostAsyncResult<AgentHostReadWorkspaceFileResult>;
   selectContextEntries?: () => AgentHostAsyncResult<{ entries: unknown[] }>;
   selectDirectory: () => AgentHostAsyncResult<{ path: string } | null>;
-  selectFiles: () => AgentHostAsyncResult<AgentHostSelectedFile[]>;
+  selectFiles: (
+    input?: AgentHostSelectFilesInput
+  ) => AgentHostAsyncResult<AgentHostSelectedFile[]>;
   writeFileText: (input: {
     content: string;
     path: string;

@@ -205,18 +205,6 @@ func (c *Client) DeleteAgentSession(ctx context.Context, input DeleteAgentSessio
 	return c.doJSON(ctx, http.MethodDelete, endpoint, nil, nil)
 }
 
-func (*Client) GetSessionTimeline(_ context.Context, input SessionTimelineInput) (*SessionTimeline, error) {
-	workspaceID := strings.TrimSpace(input.WorkspaceID)
-	if workspaceID == "" {
-		return nil, errors.New("workspace id is required")
-	}
-	agentSessionID := strings.TrimSpace(input.AgentSessionID)
-	if agentSessionID == "" {
-		return nil, errors.New("agent session id is required")
-	}
-	return &SessionTimeline{}, nil
-}
-
 func (c *Client) ListSessionMessages(ctx context.Context, input ListSessionMessagesInput) (*ListSessionMessagesReply, error) {
 	workspaceID := strings.TrimSpace(input.WorkspaceID)
 	if workspaceID == "" {

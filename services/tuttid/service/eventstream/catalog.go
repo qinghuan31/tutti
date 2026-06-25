@@ -757,7 +757,7 @@ func validateWorkspaceAppUpdatedPayload(payload []byte) error {
 		return fmt.Errorf("app.stateRevision must not be negative")
 	}
 	switch app.Status {
-	case "idle", "preparing", "starting", "running", "failed", "stopping":
+	case "idle", "preparing", "starting", "running", "installed_pending_restart", "failed", "stopping":
 	default:
 		return fmt.Errorf("app.status is unsupported")
 	}

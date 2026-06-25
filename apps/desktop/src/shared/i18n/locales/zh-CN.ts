@@ -556,7 +556,11 @@ export const zhCN = {
         checking: "正在检测本地 CLI 状态...",
         comingSoon: "敬请期待",
         install: "连接",
-        installFailed: "安装失败",
+        installFailed: "连接失败",
+        installFailedDescription: "暂时无法连接本地 Agent，请稍后重试",
+        installFailedMissingRuntime:
+          "找不到本地 Agent 可执行文件，请检查是否已正确安装",
+        installFailedTimedOut: "连接超时，请稍后重试",
         installUnavailableInRegion: "该地区不支持 Claude 服务。",
         installRequired: "需要先连接本地 Agent 才能继续",
         installing: "安装中...",

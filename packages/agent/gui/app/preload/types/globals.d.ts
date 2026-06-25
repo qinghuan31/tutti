@@ -235,7 +235,9 @@ export interface AgentHostPreloadApi {
   };
   workspace: {
     selectDirectory: () => Promise<WorkspaceDirectory | null>;
-    selectFiles: () => Promise<WorkspaceFileSelection[]>;
+    selectFiles: (input?: {
+      allowDirectories?: boolean;
+    }) => Promise<WorkspaceFileSelection[]>;
     selectContextEntries: () => Promise<WorkspaceContextSelection>;
     ensureDirectory: (payload: EnsureDirectoryInput) => Promise<void>;
     getPathForFile: (file: File) => string;

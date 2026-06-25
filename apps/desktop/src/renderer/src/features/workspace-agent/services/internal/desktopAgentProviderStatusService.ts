@@ -626,7 +626,7 @@ function resolveAgentProviderInstallErrorMessage(
         "workspace.workbenchDesktop.agentProviders.installUnavailableInRegion"
       );
     }
-    return error.reason;
+    return summarizeAgentProviderInstallFailureReason(error.reason);
   }
   const message = resolveDesktopErrorMessage(error, getActiveLocale());
   if (isClaudeUnavailableInRegionInstallError(provider, message)) {
@@ -634,7 +634,60 @@ function resolveAgentProviderInstallErrorMessage(
       "workspace.workbenchDesktop.agentProviders.installUnavailableInRegion"
     );
   }
+  if (isTechnicalInstallFailureMessage(message)) {
+    return summarizeAgentProviderInstallFailureReason(message);
+  }
   return message;
+}
+
+function summarizeAgentProviderInstallFailureReason(reason: string): string {
+  const trimmed = reason.trim();
+  if (!trimmed) {
+    return translate(
+      "workspace.workbenchDesktop.agentProviders.installFailedDescription"
+    );
+  }
+
+  const normalized = trimmed.toLowerCase();
+  if (
+    normalized.includes("timed out") ||
+    normalized.includes("install_timed_out")
+  ) {
+    return translate(
+      "workspace.workbenchDesktop.agentProviders.installFailedTimedOut"
+    );
+  }
+
+  if (
+    normalized.includes("enoent") ||
+    normalized.includes("error: spawn") ||
+    normalized.includes("spawn ") ||
+    normalized.includes("post_install_probe_failed") ||
+    isTechnicalInstallFailureMessage(trimmed)
+  ) {
+    return translate(
+      "workspace.workbenchDesktop.agentProviders.installFailedMissingRuntime"
+    );
+  }
+
+  if (trimmed.length <= 120 && !trimmed.includes("\n")) {
+    return trimmed;
+  }
+
+  return translate(
+    "workspace.workbenchDesktop.agentProviders.installFailedDescription"
+  );
+}
+
+function isTechnicalInstallFailureMessage(message: string): boolean {
+  return (
+    message.includes("\n") ||
+    message.includes(" at ") ||
+    message.includes("errno:") ||
+    message.includes("syscall:") ||
+    message.includes("spawnargs:") ||
+    message.includes("ChildProcess")
+  );
 }
 
 function isClaudeUnavailableInRegionInstallError(
