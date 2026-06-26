@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 )
 
@@ -62,17 +63,21 @@ func referenceSkill(input PrepareInput) string {
 	)
 }
 
-func browserUseSkill(_ PrepareInput) string {
+func browserUseSkill(input PrepareInput) string {
 	return renderProviderSkillTemplate(
 		"skill_templates/browser-use.md",
-		map[string]string{},
+		map[string]string{
+			"{{CLI_COMMAND}}": normalizeCLICommandName(input.CLICommand),
+		},
 	)
 }
 
-func computerUseSkill(_ PrepareInput) string {
+func computerUseSkill(input PrepareInput) string {
 	return renderProviderSkillTemplate(
 		"skill_templates/computer-use.md",
-		map[string]string{},
+		map[string]string{
+			"{{CLI_COMMAND}}": normalizeCLICommandName(input.CLICommand),
+		},
 	)
 }
 
@@ -138,6 +143,58 @@ func providerSkills(input PrepareInput) []providerSkillSpec {
 
 func installProviderNativeSkills(root string, input PrepareInput) ([]string, error) {
 	return installProviderNativeSkillSpecs(root, providerSkills(input))
+}
+
+func renderProviderSkillBundle(input PrepareInput) SkillBundle {
+	skills := providerSkills(input)
+	records := make([]SkillMaterializationRecord, 0, len(skills))
+	for _, skill := range skills {
+		records = append(records, providerSkillSpecRecord(skill))
+	}
+	return SkillBundle{
+		SchemaVersion:           1,
+		Provider:                strings.TrimSpace(input.Provider),
+		AgentSessionID:          strings.TrimSpace(input.AgentSessionID),
+		CLICommand:              normalizeCLICommandName(input.CLICommand),
+		RecommendedSystemPrompt: recommendedSystemPrompt(input),
+		Skills:                  records,
+	}
+}
+
+func recommendedSystemPrompt(input PrepareInput) *RecommendedSystemPrompt {
+	content := strings.TrimSpace(tuttiSkillBundleRecommendedPolicy(input))
+	if content == "" {
+		return nil
+	}
+	return &RecommendedSystemPrompt{
+		Format:  "text/markdown",
+		Content: content,
+	}
+}
+
+func providerSkillSpecRecord(spec providerSkillSpec) SkillMaterializationRecord {
+	files := make([]SkillMaterializationFile, 0, len(spec.files))
+	paths := make([]string, 0, len(spec.files))
+	for path := range spec.files {
+		if path == "SKILL.md" {
+			continue
+		}
+		paths = append(paths, path)
+	}
+	sort.Strings(paths)
+	for _, path := range paths {
+		files = append(files, SkillMaterializationFile{
+			Content: spec.files[path],
+			Path:    path,
+		})
+	}
+	return SkillMaterializationRecord{
+		Content:      spec.files["SKILL.md"],
+		Files:        files,
+		SkillID:      "tutti/" + spec.baseName,
+		Slug:         spec.baseName,
+		DeliveryMode: "materialized-files",
+	}
 }
 
 func installProviderNativeSkillSpecs(root string, skills []providerSkillSpec) ([]string, error) {

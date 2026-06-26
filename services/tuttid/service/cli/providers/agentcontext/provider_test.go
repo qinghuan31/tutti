@@ -48,6 +48,7 @@ type fakeAgentSessions struct {
 	createCallCount int
 	createInput     agentservice.CreateSessionInput
 	composerInput   agentservice.ComposerOptionsInput
+	skillBundleIn   agentservice.SkillBundleInput
 	sendInput       agentservice.SendInput
 	getSession      agentservice.Session
 	getErr          error
@@ -157,6 +158,29 @@ func (f *fakeAgentSessions) GetComposerOptions(_ context.Context, input agentser
 					"value": "gpt-5",
 				}},
 			}},
+		},
+	}, nil
+}
+
+func (f *fakeAgentSessions) GetSkillBundle(_ context.Context, workspaceID string, input agentservice.SkillBundleInput) (agentservice.SkillBundle, error) {
+	f.workspaceID = workspaceID
+	f.skillBundleIn = input
+	return agentservice.SkillBundle{
+		SchemaVersion:  1,
+		Provider:       input.Provider,
+		AgentSessionID: input.AgentSessionID,
+		CLICommand:     "tutti-dev",
+		RecommendedSystemPrompt: &agentservice.RecommendedSystemPrompt{
+			Format:  "text/markdown",
+			Content: "Use Tutti skills for mention routing.",
+		},
+		Skills: []agentservice.SkillMaterializationRecord{
+			{
+				Content:      "---\nname: tutti-cli\n---\nUse tutti.\n",
+				SkillID:      "tutti/tutti-cli",
+				Slug:         "tutti-cli",
+				DeliveryMode: "materialized-files",
+			},
 		},
 	}, nil
 }
@@ -585,6 +609,84 @@ func TestComposerOptionsCommandUsesComposerDefaultsFromPreferences(t *testing.T)
 		sessions.composerInput.Settings.PermissionModeID != "full-access" ||
 		sessions.composerInput.Settings.ReasoningEffort != "high" {
 		t.Fatalf("composer input = %#v", sessions.composerInput)
+	}
+}
+
+func TestSkillBundleCommandReturnsAgentACPKitShape(t *testing.T) {
+	sessions := &fakeAgentSessions{}
+	command := NewProvider(fakeWorkspaceCatalog{startup: workspacebiz.Summary{ID: "workspace-1"}}, sessions).newSkillBundleCommand()
+	if command.Capability.ID != appID+".agent.tutti-cli-skill-bundle" ||
+		strings.Join(command.Capability.Path, " ") != "agent tutti-cli-skill-bundle" {
+		t.Fatalf("command capability = %#v", command.Capability)
+	}
+	if command.Capability.Visibility != cliservice.CapabilityVisibilityIntegration {
+		t.Fatalf("visibility = %q, want integration", command.Capability.Visibility)
+	}
+
+	output, err := command.Handler(context.Background(), cliservice.InvokeRequest{
+		Input: map[string]any{
+			"agent-session-id": "run-1",
+			"browser-use":      "true",
+			"provider":         "codex",
+		},
+	})
+	if err != nil {
+		t.Fatalf("Handler: %v", err)
+	}
+	if sessions.workspaceID != "workspace-1" {
+		t.Fatalf("workspaceID = %q, want workspace-1", sessions.workspaceID)
+	}
+	if sessions.skillBundleIn.Provider != "codex" ||
+		sessions.skillBundleIn.AgentSessionID != "run-1" ||
+		!sessions.skillBundleIn.BrowserUse ||
+		sessions.skillBundleIn.ComputerUse {
+		t.Fatalf("skill bundle input = %#v", sessions.skillBundleIn)
+	}
+	if output.Kind != cliservice.OutputModeJSON {
+		t.Fatalf("output kind = %q, want json", output.Kind)
+	}
+	skills, ok := output.Value["skills"].([]any)
+	if !ok || len(skills) != 1 {
+		t.Fatalf("skills output = %#v", output.Value["skills"])
+	}
+	first, ok := skills[0].(map[string]any)
+	if !ok {
+		t.Fatalf("first skill = %#v", skills[0])
+	}
+	recommended, ok := output.Value["recommendedSystemPrompt"].(map[string]any)
+	if !ok {
+		t.Fatalf("recommendedSystemPrompt = %#v", output.Value["recommendedSystemPrompt"])
+	}
+	if output.Value["schemaVersion"] != 1 ||
+		output.Value["provider"] != "codex" ||
+		output.Value["agentSessionId"] != "run-1" ||
+		output.Value["cliCommand"] != "tutti-dev" ||
+		recommended["format"] != "text/markdown" ||
+		recommended["content"] != "Use Tutti skills for mention routing." ||
+		first["skillId"] != "tutti/tutti-cli" ||
+		first["slug"] != "tutti-cli" ||
+		first["deliveryMode"] != "materialized-files" ||
+		first["materializedPath"] != nil {
+		t.Fatalf("skill bundle output = %#v", output.Value)
+	}
+}
+
+func TestSkillBundleSkillsValuePreservesMaterializedPathWhenPresent(t *testing.T) {
+	values := skillBundleSkillsValue([]agentservice.SkillMaterializationRecord{
+		{
+			SkillID:          "app/custom",
+			Slug:             "custom",
+			DeliveryMode:     "materialized-files",
+			MaterializedPath: "/workspace/.local-agent/runs/run-1/skills/custom",
+		},
+	})
+
+	first, ok := values[0].(map[string]any)
+	if !ok {
+		t.Fatalf("first skill = %#v", values[0])
+	}
+	if first["materializedPath"] != "/workspace/.local-agent/runs/run-1/skills/custom" {
+		t.Fatalf("skill value = %#v", first)
 	}
 }
 

@@ -7,14 +7,14 @@ description: Use to operate a web browser — open URLs, read page content, clic
 
 Use this skill for browser tasks: open URLs, read pages, click, fill forms, run page JS, or capture screenshots.
 
-Drive the browser only through `tutti browser`. The Tutti daemon owns the browser session. Do not launch `open`, `xdg-open`, `start`, `google-chrome`, `chromium`, or direct browser automation; those are outside the managed session.
+Drive the browser only through `{{CLI_COMMAND}} browser`. The Tutti daemon owns the browser session. Do not launch `open`, `xdg-open`, `start`, `google-chrome`, `chromium`, or direct browser automation; those are outside the managed session.
 
 ## Protocol
 
-1. Navigate when needed: `tutti browser navigate --url <url>`.
-2. Read the current page with `tutti browser snapshot`; use returned `uid` values for interactions.
-3. Act with `tutti browser click --uid <uid>` or `tutti browser fill --uid <uid> --value <text>`.
-4. Use `tutti browser eval --script '() => document.title'` for page JS, `tutti browser screenshot` for a PNG path, and `tutti browser list-pages` to inspect open pages.
+1. Navigate when needed: `{{CLI_COMMAND}} browser navigate --url <url>`.
+2. Read the current page with `{{CLI_COMMAND}} browser snapshot`; use returned `uid` values for interactions.
+3. Act with `{{CLI_COMMAND}} browser click --uid <uid>` or `{{CLI_COMMAND}} browser fill --uid <uid> --value <text>`.
+4. Use `{{CLI_COMMAND}} browser eval --script '() => document.title'` for page JS, `{{CLI_COMMAND}} browser screenshot` for a PNG path, and `{{CLI_COMMAND}} browser list-pages` to inspect open pages.
 5. Re-run `snapshot` after navigation or UI-changing actions because `uid` values can change.
 
 ## Guardrails

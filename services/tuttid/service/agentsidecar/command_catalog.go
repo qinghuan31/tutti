@@ -68,6 +68,9 @@ func relevantRuntimeCommands(cliName string, capabilities []cliservice.Capabilit
 
 func runtimeCommandFromCapability(cliName string, capability cliservice.Capability) (runtimeCommand, bool) {
 	id := strings.TrimSpace(capability.ID)
+	if id == "agent-context.agent.skill-bundle" || id == "agent-context.agent.tutti-cli-skill-bundle" {
+		return runtimeCommand{}, false
+	}
 	if capability.Source.Kind != cliservice.CapabilitySourceApp && !strings.HasPrefix(id, "issue-manager.") && !strings.HasPrefix(id, "agent-context.") && !strings.HasPrefix(id, "browser.") {
 		return runtimeCommand{}, false
 	}

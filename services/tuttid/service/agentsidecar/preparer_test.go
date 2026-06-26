@@ -950,6 +950,7 @@ func TestDefaultPreparerGeminiUsesSessionScopedHome(t *testing.T) {
 func TestCodexPreparerSkipsUserBrowserSkillWhenBrowserUseEnabled(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
+	t.Setenv(browserUseSwitchEnv, "")
 	userCodexHome := filepath.Join(home, ".codex")
 	if err := os.MkdirAll(userCodexHome, 0o700); err != nil {
 		t.Fatal(err)

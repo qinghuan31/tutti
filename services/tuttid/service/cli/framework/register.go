@@ -18,6 +18,7 @@ func Register[T any](spec CommandSpec[T]) cliservice.Command {
 			Path:        spec.Path,
 			Summary:     strings.TrimSpace(spec.Summary),
 			Description: strings.TrimSpace(spec.Description),
+			Visibility:  spec.Visibility,
 			InputSchema: Schema(spec.Inputs),
 			Output: cliservice.CapabilityOutput{
 				DefaultMode: spec.Output.DefaultMode,

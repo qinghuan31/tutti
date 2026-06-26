@@ -5,6 +5,10 @@ import (
 )
 
 func tuttiCLIPolicy(input PrepareInput) string {
+	return tuttiRuntimePolicy(input) + "\n\n" + strings.TrimSpace(renderProviderSkillTemplate("policy_templates/host-app-context.md", nil))
+}
+
+func tuttiRuntimePolicy(input PrepareInput) string {
 	return strings.TrimSpace(renderProviderSkillTemplate(
 		"policy_templates/tutti-runtime.md",
 		map[string]string{
@@ -18,40 +22,57 @@ func tuttiCLIPolicy(input PrepareInput) string {
 			"{{COMPUTER_USE_SKILL_LINES}}":          computerUseSkillPolicyLines(input),
 			"{{COMPUTER_USE_HANDOFF_LINES}}":        computerUseHandoffPolicyLines(input),
 		},
-	)) + "\n\n" + strings.TrimSpace(renderProviderSkillTemplate("policy_templates/host-app-context.md", nil))
+	))
+}
+
+func tuttiSkillBundleRecommendedPolicy(input PrepareInput) string {
+	return strings.TrimSpace(renderProviderSkillTemplate(
+		"policy_templates/skill-bundle-routing.md",
+		map[string]string{
+			"{{COMMAND_GUIDE}}":                     commandGuide(input),
+			"{{CLI_COMMAND}}":                       normalizeCLICommandName(input.CLICommand),
+			"{{AGENT_SESSION_ID}}":                  strings.TrimSpace(input.AgentSessionID),
+			"{{PROVIDER}}":                          strings.TrimSpace(input.Provider),
+			"{{PROVIDER_SPECIFIC_MENTION_ROUTING}}": providerSpecificMentionRouting(input.Provider),
+			"{{BROWSER_USE_SKILL_LINES}}":           browserUseSkillPolicyLines(input),
+			"{{BROWSER_USE_HANDOFF_LINES}}":         browserUseHandoffPolicyLines(input),
+			"{{COMPUTER_USE_SKILL_LINES}}":          computerUseSkillPolicyLines(input),
+			"{{COMPUTER_USE_HANDOFF_LINES}}":        computerUseHandoffPolicyLines(input),
+		},
+	))
 }
 
 func browserUseSkillPolicyLines(input PrepareInput) string {
 	if !input.BrowserUse || !BrowserUseDefaultEnabled() {
 		return ""
 	}
-	return "- `browser-use`: browser automation through the daemon-owned `tutti browser` CLI. Prefer this over any generic `browser` skill or direct CDP scripts.\n"
+	return "- `browser-use`: browser automation through the daemon-owned `" + normalizeCLICommandName(input.CLICommand) + " browser` CLI. Prefer this over any generic `browser` skill or direct CDP scripts.\n"
 }
 
 func browserUseHandoffPolicyLines(input PrepareInput) string {
 	if !input.BrowserUse || !BrowserUseDefaultEnabled() {
 		return ""
 	}
-	return "- For browser tasks — visiting URLs, reading pages, clicking, filling forms, or screenshots — use `browser-use` and `tutti browser` only; do not use provider-native `browser` skills or direct CDP automation.\n"
+	return "- For browser tasks — visiting URLs, reading pages, clicking, filling forms, or screenshots — use `browser-use` and `" + normalizeCLICommandName(input.CLICommand) + " browser` only; do not use provider-native `browser` skills or direct CDP automation.\n"
 }
 
 func computerUseSkillPolicyLines(input PrepareInput) string {
 	if !input.ComputerUse || !ComputerUseDefaultEnabled() {
 		return ""
 	}
-	return "- `computer-use`: macOS desktop automation through the daemon-owned `tutti computer` CLI. Prefer this over any generic computer-use or accessibility scripts.\n"
+	return "- `computer-use`: macOS desktop automation through the daemon-owned `" + normalizeCLICommandName(input.CLICommand) + " computer` CLI. Prefer this over any generic computer-use or accessibility scripts.\n"
 }
 
 func computerUseHandoffPolicyLines(input PrepareInput) string {
 	if !input.ComputerUse || !ComputerUseDefaultEnabled() {
 		return ""
 	}
-	return "- For desktop tasks — taking screenshots, clicking UI elements, typing, pressing keys, or scrolling on the macOS desktop — use `computer-use` and `tutti computer` only; do not use provider-native computer-use tools or accessibility scripts.\n"
+	return "- For desktop tasks — taking screenshots, clicking UI elements, typing, pressing keys, or scrolling on the macOS desktop — use `computer-use` and `" + normalizeCLICommandName(input.CLICommand) + " computer` only; do not use provider-native computer-use tools or accessibility scripts.\n"
 }
 
 func providerSpecificMentionRouting(provider string) string {
 	switch strings.TrimSpace(provider) {
-	case "claude-code":
+	case "claude", "claude-code":
 		return strings.TrimSpace(`
 Claude Code mention routing:
 

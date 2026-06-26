@@ -40,6 +40,7 @@ type CommandSpec[T any] struct {
 	Summary     string
 	Description string
 	Kind        CommandKind
+	Visibility  cliservice.CapabilityVisibility
 	Workspace   WorkspacePolicy
 	Workspaces  cliservice.WorkspaceCatalog
 	Inputs      InputSpec

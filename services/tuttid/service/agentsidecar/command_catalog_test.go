@@ -77,6 +77,12 @@ func TestCommandGuideFromCapabilitiesUsesRelevantRegistryCommands(t *testing.T) 
 			Summary:     "List agent sessions",
 			Description: "List agent sessions.",
 		},
+		{
+			ID:          "agent-context.agent.tutti-cli-skill-bundle",
+			Path:        []string{"agent", "tutti-cli-skill-bundle"},
+			Summary:     "Get Tutti CLI skill bundle",
+			Description: "Get a host integration skill bundle.",
+		},
 	})
 
 	if !strings.Contains(guide, "tutti issue get --issue-id <issue-id>") {
@@ -106,6 +112,9 @@ func TestCommandGuideFromCapabilitiesUsesRelevantRegistryCommands(t *testing.T) 
 	}
 	if !strings.Contains(guide, "tutti agent sessions") {
 		t.Fatalf("guide missing agent sessions: %q", guide)
+	}
+	if strings.Contains(guide, "skill-bundle") {
+		t.Fatalf("guide included host integration command: %q", guide)
 	}
 	if strings.Contains(guide, "diagnostics") {
 		t.Fatalf("guide included irrelevant command: %q", guide)

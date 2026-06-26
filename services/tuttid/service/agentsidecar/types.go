@@ -11,6 +11,10 @@ type Preparer interface {
 	Cleanup(context.Context, CleanupInput) error
 }
 
+type SkillBundleRenderer interface {
+	RenderSkillBundle(context.Context, PrepareInput) (SkillBundle, error)
+}
+
 type PrepareInput struct {
 	WorkspaceID      string
 	AgentSessionID   string
@@ -37,6 +41,34 @@ type PreparedRuntime struct {
 type ProviderSkillBundle struct {
 	Name  string
 	Files map[string]string
+}
+
+type SkillBundle struct {
+	SchemaVersion           int                          `json:"schemaVersion"`
+	Provider                string                       `json:"provider"`
+	AgentSessionID          string                       `json:"agentSessionId"`
+	CLICommand              string                       `json:"cliCommand"`
+	RecommendedSystemPrompt *RecommendedSystemPrompt     `json:"recommendedSystemPrompt,omitempty"`
+	Skills                  []SkillMaterializationRecord `json:"skills"`
+}
+
+type RecommendedSystemPrompt struct {
+	Format  string `json:"format"`
+	Content string `json:"content"`
+}
+
+type SkillMaterializationRecord struct {
+	Content          string                     `json:"content,omitempty"`
+	Files            []SkillMaterializationFile `json:"files,omitempty"`
+	SkillID          string                     `json:"skillId"`
+	Slug             string                     `json:"slug"`
+	DeliveryMode     string                     `json:"deliveryMode"`
+	MaterializedPath string                     `json:"materializedPath,omitempty"`
+}
+
+type SkillMaterializationFile struct {
+	Content string `json:"content"`
+	Path    string `json:"path"`
 }
 
 type CleanupInput struct {

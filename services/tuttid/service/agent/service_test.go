@@ -1100,6 +1100,60 @@ func TestServiceCreatePassesExtraSkillsToRuntimePreparer(t *testing.T) {
 	}
 }
 
+func TestServiceGetSkillBundleUsesRuntimeRenderer(t *testing.T) {
+	runtime := newFakeRuntime()
+	var renderInput agentsidecarservice.PrepareInput
+	service := NewService(runtime)
+	service.RuntimePreparer = fakeSkillBundleRenderer{
+		input: &renderInput,
+		bundle: agentsidecarservice.SkillBundle{
+			SchemaVersion:  1,
+			Provider:       "codex",
+			AgentSessionID: "run-1",
+			CLICommand:     "tutti-dev",
+			Skills: []agentsidecarservice.SkillMaterializationRecord{
+				{SkillID: "tutti/tutti-cli", Slug: "tutti-cli", DeliveryMode: "materialized-files"},
+			},
+		},
+	}
+
+	bundle, err := service.GetSkillBundle(context.Background(), "ws-1", SkillBundleInput{
+		AgentSessionID: "run-1",
+		BrowserUse:     true,
+		Provider:       " codex ",
+	})
+	if err != nil {
+		t.Fatalf("GetSkillBundle returned error: %v", err)
+	}
+	if renderInput.WorkspaceID != "ws-1" ||
+		renderInput.AgentSessionID != "run-1" ||
+		renderInput.Provider != "codex" ||
+		!renderInput.BrowserUse ||
+		renderInput.ComputerUse {
+		t.Fatalf("render input = %#v", renderInput)
+	}
+	if bundle.CLICommand != "tutti-dev" || len(bundle.Skills) != 1 || bundle.Skills[0].SkillID != "tutti/tutti-cli" {
+		t.Fatalf("bundle = %#v", bundle)
+	}
+	if len(runtime.startCalls) != 0 {
+		t.Fatalf("runtime start calls = %d, want 0", len(runtime.startCalls))
+	}
+}
+
+func TestServiceGetSkillBundleRequiresRenderer(t *testing.T) {
+	runtime := newFakeRuntime()
+	service := NewService(runtime)
+	service.RuntimePreparer = fakeRuntimePreparer{}
+
+	_, err := service.GetSkillBundle(context.Background(), "ws-1", SkillBundleInput{Provider: "codex"})
+	if !errors.Is(err, ErrSkillBundleUnavailable) {
+		t.Fatalf("GetSkillBundle error = %v, want ErrSkillBundleUnavailable", err)
+	}
+	if len(runtime.startCalls) != 0 {
+		t.Fatalf("runtime start calls = %d, want 0", len(runtime.startCalls))
+	}
+}
+
 func TestServiceDeleteCleansPreparedRuntime(t *testing.T) {
 	runtime := newFakeRuntime()
 	service := NewService(runtime)
@@ -3020,6 +3074,20 @@ func (f fakeRuntimePreparer) Cleanup(_ context.Context, input agentsidecarservic
 		*f.cleanupCalls = append(*f.cleanupCalls, input)
 	}
 	return nil
+}
+
+type fakeSkillBundleRenderer struct {
+	fakeRuntimePreparer
+	bundle agentsidecarservice.SkillBundle
+	err    error
+	input  *agentsidecarservice.PrepareInput
+}
+
+func (f fakeSkillBundleRenderer) RenderSkillBundle(_ context.Context, input agentsidecarservice.PrepareInput) (agentsidecarservice.SkillBundle, error) {
+	if f.input != nil {
+		*f.input = input
+	}
+	return f.bundle, f.err
 }
 
 type fakeModelCatalog struct {

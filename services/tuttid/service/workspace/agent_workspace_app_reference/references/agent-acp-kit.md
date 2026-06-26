@@ -46,13 +46,37 @@ Map detected provider models to app model IDs with a provider prefix, such as `c
 For each agent run:
 
 1. Create a temporary run directory.
-2. Materialize any app or workspace skills under that directory using relative paths.
+2. Materialize any app-owned skills under that directory using relative paths.
 3. Build a prompt envelope with conversation identity, current user turn, attachments, current app state, collaboration rules, and tool gateway guidance.
-4. Create a run-scoped tool gateway session and MCP config.
-5. Call `localAgentRuntime.run(...)`.
-6. Normalize ACP events into app stream events.
-7. Persist provider session/resume metadata when the kit returns it.
-8. Always revoke the gateway token and remove the temporary run directory in `finally`.
+4. Load Tutti dynamic skill context through `@tutti-os/agent-acp-kit/tutti` when the app runs inside Tutti and needs platform CLI skills.
+5. Create a run-scoped tool gateway session and MCP config.
+6. Call `localAgentRuntime.run(...)`.
+7. Normalize ACP events into app stream events.
+8. Persist provider session/resume metadata when the kit returns it.
+9. Always revoke the gateway token and remove the temporary run directory in `finally`.
+
+Tutti dynamic CLI skills should use the kit helper, not per-app subprocess and JSON parsing code:
+
+```ts
+import { loadTuttiAgentSkillContext } from "@tutti-os/agent-acp-kit/tutti";
+
+const tuttiContext = await loadTuttiAgentSkillContext({
+  provider,
+  agentSessionId: runId,
+  cwd: workspaceCwd
+});
+
+const systemPrompt = [
+  appSystemPrompt,
+  tuttiContext.recommendedSystemPrompt?.content
+]
+  .filter(Boolean)
+  .join("\n\n");
+
+const skillManifest = [...appSkillManifest, ...tuttiContext.skillManifest];
+```
+
+The app still owns policy. `tuttiContext.recommendedSystemPrompt?.content` is raw advisory prompt content: merge it, edit it, place it elsewhere, or ignore it according to the app's prompt strategy. Do not silently append the recommended prompt, and do not hand-roll `$TUTTI_CLI agent tutti-cli-skill-bundle --json` parsing unless the installed `@tutti-os/agent-acp-kit` version lacks the helper.
 
 Skeleton:
 

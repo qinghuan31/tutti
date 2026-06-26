@@ -131,6 +131,21 @@ func (p *DefaultPreparer) Prepare(ctx context.Context, input PrepareInput) (Prep
 	return PreparedRuntime(result), nil
 }
 
+func (p *DefaultPreparer) RenderSkillBundle(ctx context.Context, input PrepareInput) (SkillBundle, error) {
+	workspaceID := strings.TrimSpace(input.WorkspaceID)
+	providerID := strings.TrimSpace(input.Provider)
+	if workspaceID == "" || providerID == "" {
+		return SkillBundle{}, errors.New("agent skill bundle render requires workspace and provider")
+	}
+
+	input.WorkspaceID = workspaceID
+	input.AgentSessionID = strings.TrimSpace(input.AgentSessionID)
+	input.Provider = providerID
+	input.CLICommand = firstNonEmptyText(input.CLICommand, p.CLICommand, resolveCLICommand(p.StateDir))
+	input.CommandGuide = commandGuideFromCatalog(ctx, p.CommandCatalog, workspaceID, input.CLICommand)
+	return renderProviderSkillBundle(input), nil
+}
+
 func (p *DefaultPreparer) Cleanup(_ context.Context, input CleanupInput) error {
 	workspaceID := strings.TrimSpace(input.WorkspaceID)
 	agentSessionID := strings.TrimSpace(input.AgentSessionID)
