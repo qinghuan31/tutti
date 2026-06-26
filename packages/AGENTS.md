@@ -6,6 +6,9 @@ This file applies to `packages/*`.
 
 `packages/` is for real shared boundaries, not as a default home for reusable-looking code.
 
+If you are editing `packages/agent/gui/*`, also read
+[packages/agent/gui/AGENTS.md](agent/gui/AGENTS.md).
+
 If you are editing `packages/ui/*`, also read [packages/ui/AGENTS.md](ui/AGENTS.md).
 
 ## Package groups

@@ -18,6 +18,7 @@ Read the closest `AGENTS.md` before editing:
 
 - `apps/desktop/*` -> `apps/desktop/AGENTS.md`
 - `services/tuttid/*` -> `services/tuttid/AGENTS.md`
+- `packages/agent/gui/*` -> `packages/agent/gui/AGENTS.md`
 - `packages/ui/*` -> `packages/ui/AGENTS.md`
 - `packages/*` -> `packages/AGENTS.md`
 
