@@ -313,6 +313,17 @@ describe("AgentGUINodeView layout persistence", () => {
     expect(source).not.toMatch(/toast\.warning\(/);
   });
 
+  it("places conversation section create action tooltips above the icon button first", () => {
+    const source = readFileSync(
+      resolve("agent-gui/agentGuiNode/AgentGUINodeView.tsx"),
+      "utf8"
+    );
+
+    expect(source).toMatch(
+      /<TooltipContent\s+side="top"\s+sideOffset=\{6\}\s+className=\{styles\.conversationSectionActionTooltip\}\s*>\s*\{createConversationLabel\}/
+    );
+  });
+
   it("opens a new conversation draft for the selected project section", () => {
     const actions = createActions();
     renderAgentGUINodeView({

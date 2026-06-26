@@ -645,7 +645,7 @@ export const zhCN = {
         installFailedTimedOut: "连接超时，请稍后重试",
         installUnavailableInRegion: "该地区不支持 Claude 服务。",
         installRequired: "需要先连接本地 Agent 才能继续",
-        installing: "安装中...",
+        installing: "连接中",
         login: "登录",
         loginFailed: "登录失败",
         loginRequired: "需要先登录本地 CLI 才能使用这个 Agent",

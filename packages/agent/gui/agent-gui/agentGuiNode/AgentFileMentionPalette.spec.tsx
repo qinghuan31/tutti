@@ -1823,7 +1823,7 @@ describe("AgentFileMentionPalette", () => {
     const css = readFileSync(resolve("app/renderer/agentactivity.css"), "utf8");
 
     expect(css).toMatch(
-      /\.agent-gui-node__empty-hero-title\s*{[^}]*font-weight:\s*500/s
+      /\.agent-gui-node__empty-hero-title\s*{[^}]*font-size:\s*28px[^}]*font-weight:\s*600/s
     );
   });
 

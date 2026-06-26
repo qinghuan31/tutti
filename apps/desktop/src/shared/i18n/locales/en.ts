@@ -674,7 +674,7 @@ export const en = {
         installFailedTimedOut: "Connection timed out. Try again in a moment.",
         installUnavailableInRegion: "Claude isn't available in this region.",
         installRequired: "Connect the local agent to continue",
-        installing: "Installing...",
+        installing: "Connecting",
         login: "Sign in",
         loginFailed: "Sign-in failed",
         loginRequired: "Sign in to the local CLI to use this agent",

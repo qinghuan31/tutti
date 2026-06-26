@@ -169,6 +169,10 @@ export function resolveAgentGUIHeroIconUrl(
   );
 }
 
+export function shouldEmphasizeEmptyHeroProvider(label: string): boolean {
+  return !/[\u3400-\u9fff]/u.test(label);
+}
+
 const fallbackWorkspaceFileReferenceCopy: WorkspaceFileReferenceCopy = {
   t(key, values) {
     return values ? `${key}:${JSON.stringify(values)}` : key;
@@ -2688,7 +2692,7 @@ function EmptyHeroTitle({
 }): React.JSX.Element {
   const providerStart = providerLabel ? label.indexOf(providerLabel) : -1;
 
-  if (providerStart < 0) {
+  if (!shouldEmphasizeEmptyHeroProvider(label) || providerStart < 0) {
     return <>{label}</>;
   }
 
@@ -3630,7 +3634,7 @@ const AgentGUIConversationRailSection = memo(
                     </span>
                   </TooltipTrigger>
                   <TooltipContent
-                    side="right"
+                    side="top"
                     sideOffset={6}
                     className={styles.conversationSectionActionTooltip}
                   >

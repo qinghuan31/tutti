@@ -131,17 +131,21 @@
 
 .workspace-launchpad-search__icon {
   position: absolute;
-  inset-block: 0;
+  top: 50%;
   left: 11px;
+  display: grid;
+  place-items: center;
   width: 16px;
   height: 16px;
-  margin-block: auto;
   color: var(--text-secondary);
   pointer-events: none;
+  transform: translateY(-50%);
 }
 
 .workspace-launchpad-search__icon svg {
   display: block;
+  width: 16px;
+  height: 16px;
 }
 
 .workspace-launchpad-search__input {
@@ -171,7 +175,7 @@
 
 .workspace-launchpad-search__input:focus,
 .workspace-launchpad-search__input:focus-visible {
-  border-color: var(--border-focus);
+  border-color: var(--border-1);
   box-shadow: none;
 }
 

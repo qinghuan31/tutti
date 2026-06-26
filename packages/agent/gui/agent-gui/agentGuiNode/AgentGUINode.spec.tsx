@@ -22,7 +22,10 @@ import { MANAGED_AGENT_ICON_URLS } from "../../shared/managedAgentIcons";
 import { AgentActivityHostProvider } from "../../agentActivityHost";
 import type { AgentActivityRuntime } from "../../agentActivityRuntime";
 import { AgentGUINode } from "./AgentGUINode";
-import { resolveAgentGUIHeroIconUrl } from "./AgentGUINodeView";
+import {
+  resolveAgentGUIHeroIconUrl,
+  shouldEmphasizeEmptyHeroProvider
+} from "./AgentGUINodeView";
 import type { AgentContextMentionProvider } from "./agentContextMentionProvider";
 import { AGENT_CONTEXT_MENTION_PROVIDER_IDS } from "./agentContextMentionProvider";
 import type {
@@ -1643,6 +1646,15 @@ describe("AgentGUINode", () => {
     );
   });
 
+  it("emphasizes the empty hero provider name only for English copy", () => {
+    expect(
+      shouldEmphasizeEmptyHeroProvider("What can Codex help you with?")
+    ).toBe(true);
+    expect(shouldEmphasizeEmptyHeroProvider("需要 Codex 帮你做些什么？")).toBe(
+      false
+    );
+  });
+
   it("renders prompt tips in the new-session hero composer", () => {
     renderAgentGUINode();
 
@@ -2161,6 +2173,17 @@ describe("AgentGUINode", () => {
     expect(
       screen.getByTestId("agent-gui-conversation-meta-session-1")
     ).toHaveAttribute("data-kind", "unread-complete");
+
+    const css = readFileSync(
+      resolve(process.cwd(), "app/renderer/agentactivity.css"),
+      "utf8"
+    );
+    expect(css).toMatch(
+      /\.agent-gui-node__conversation-unread-lamp\s*{[^}]*width:\s*6px[^}]*height:\s*6px/s
+    );
+    expect(css).toMatch(
+      /\.agent-gui-node__conversation-meta\[data-kind="unread-complete"\]\s*{[^}]*width:\s*10px;[^}]*min-width:\s*10px;/s
+    );
   });
 
   it("shows a spinner for working conversations, a warning glyph for waiting ones, and relative time for settled ones", () => {

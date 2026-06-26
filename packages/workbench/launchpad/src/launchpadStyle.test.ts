@@ -57,3 +57,25 @@ test("launchpad top bar remains draggable without stealing controls", () => {
     /\.workspace-launchpad-pages\s*{[^}]*-webkit-app-region:\s*no-drag;/s
   );
 });
+
+test("launchpad search focus stays neutral", () => {
+  assert.match(
+    css,
+    /\.workspace-launchpad-search__input:focus,\s*\.workspace-launchpad-search__input:focus-visible\s*{[^}]*border-color:\s*var\(--border-1\);[^}]*box-shadow:\s*none;/s
+  );
+  assert.doesNotMatch(
+    css,
+    /\.workspace-launchpad-search__input:focus,\s*\.workspace-launchpad-search__input:focus-visible\s*{[^}]*border-color:\s*var\(--border-focus\);/s
+  );
+});
+
+test("launchpad search icon is vertically centered", () => {
+  assert.match(
+    css,
+    /\.workspace-launchpad-search__icon\s*{[^}]*top:\s*50%;[^}]*display:\s*grid;[^}]*place-items:\s*center;[^}]*transform:\s*translateY\(-50%\);/s
+  );
+  assert.match(
+    css,
+    /\.workspace-launchpad-search__icon svg\s*{[^}]*width:\s*16px;[^}]*height:\s*16px;/s
+  );
+});
