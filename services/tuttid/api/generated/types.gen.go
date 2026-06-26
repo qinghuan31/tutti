@@ -1593,6 +1593,9 @@ type AgentProviderCapabilityOptionStatus string
 type AgentProviderCliStatus struct {
 	BinaryPath *string `json:"binaryPath,omitempty"`
 	Installed  bool    `json:"installed"`
+
+	// MinVersion The lowest CLI version this provider supports, when it enforces a floor (currently codex). Lets the UI show "current X, requires Y" without duplicating the backend's version gate.
+	MinVersion *string `json:"minVersion,omitempty"`
 	Version    *string `json:"version,omitempty"`
 }
 

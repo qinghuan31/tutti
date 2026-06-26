@@ -288,9 +288,9 @@ describe("stageRemediation", () => {
     });
   });
 
-  it("maps an errored install to install-outdated → install", () => {
+  it("maps an errored install to install-outdated → redetect (manual upgrade, not auto-install)", () => {
     expect(stageRemediation(mk("install", "error"))).toEqual({
-      actionId: "install",
+      actionId: "redetect",
       problem: "install-outdated"
     });
   });
@@ -322,16 +322,19 @@ describe("resolveWizardAutoStartAction", () => {
     loginPending: false
   };
 
-  it("returns install for install/repair/upgrade focus", () => {
+  it("returns install for install/repair focus", () => {
     expect(resolveWizardAutoStartAction({ ...base, focus: "install" })).toBe(
       "install"
     );
     expect(resolveWizardAutoStartAction({ ...base, focus: "repair" })).toBe(
       "install"
     );
-    expect(resolveWizardAutoStartAction({ ...base, focus: "upgrade" })).toBe(
-      "install"
-    );
+  });
+
+  it("does NOT auto-start install for upgrade focus (CLI upgrades are user-driven)", () => {
+    expect(
+      resolveWizardAutoStartAction({ ...base, focus: "upgrade" })
+    ).toBeNull();
   });
 
   it("returns login for auth focus", () => {

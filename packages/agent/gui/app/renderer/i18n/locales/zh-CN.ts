@@ -326,8 +326,7 @@ export const zhCN = {
     agentGui: {
       initialPlaceholder: "输入 @ 引用会话、文件、任务和应用",
       followupPlaceholder: "要求 {{provider}} 继续后续变更",
-      installRequiredPlaceholder:
-        "请先从 Dock 安装 {{provider}}，然后再发送消息",
+      installRequiredPlaceholder: "请先完成 {{provider}} 配置，然后再发送消息",
       installRequiredAction: "设置",
       collaboratorSessionReadOnlyPlaceholder: "非当前用户会话，不可直接对话",
       send: "发送",

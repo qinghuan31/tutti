@@ -354,7 +354,7 @@ export const en = {
         "Type @ to reference sessions, files, tasks, and apps",
       followupPlaceholder: "Request follow-up changes from {{provider}}",
       installRequiredPlaceholder:
-        "Install {{provider}} from the dock to send messages",
+        "Finish setting up {{provider}} to send messages",
       installRequiredAction: "Set up",
       collaboratorSessionReadOnlyPlaceholder:
         "This session belongs to another user and cannot be replied to directly",

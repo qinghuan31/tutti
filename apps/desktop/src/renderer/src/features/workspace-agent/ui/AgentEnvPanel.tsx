@@ -139,11 +139,14 @@ function describeStageProblem(
         isError: false
       };
     case "install-outdated":
+      // We don't auto-upgrade a present CLI: the headline states it's outdated,
+      // the manual upgrade command is shown below, and the action re-checks
+      // once the user has upgraded it themselves.
       return {
         headline: t("workspace.agentEnv.stageProblemInstallOutdated", {
           provider: providerLabel
         }),
-        actionLabel: t("workspace.agentEnv.stageDoUpgrade"),
+        actionLabel: t("workspace.agentEnv.stageDoRedetect"),
         isError: true
       };
     case "adapter-missing":
@@ -406,6 +409,22 @@ export function AgentEnvPanel({
 
   const reasonCode = (status?.availability.reasonCode ?? "").toLowerCase();
   const versionTooOld = reasonCode.includes("version");
+  // The CLI sits below the supported floor specifically (not an adapter version
+  // mismatch). In that state we show "current X · requires ≥ Y" so the user
+  // knows exactly what to upgrade to — the floor comes from the backend
+  // (status.cli.minVersion), the same constant the version gate uses.
+  const cliBelowFloor = reasonCode.includes("codex_version_too_old");
+  const installDetail =
+    cliBelowFloor && status?.cli.version && status.cli.minVersion
+      ? t("workspace.agentEnv.stageInstallVersionRequirement", {
+          current: status.cli.version,
+          required: status.cli.minVersion
+        })
+      : status?.cli.installed
+        ? [status?.cli.version, status?.cli.binaryPath]
+            .filter((part): part is string => Boolean(part))
+            .join(" · ") || null
+        : (status?.cli.version ?? null);
 
   // Both connectivity checks are shown separately under the network step.
   const networkChecks: NetworkCheck[] = status?.network
@@ -463,11 +482,7 @@ export function AgentEnvPanel({
     // Each completed step carries its own info inline (decision: unified track,
     // detail lines only). Install shows version + CLI path; login shows the
     // account, falling back to "signed in" when the provider exposes no label.
-    cliVersionDetail: status?.cli.installed
-      ? [status.cli.version, status.cli.binaryPath]
-          .filter((part): part is string => Boolean(part))
-          .join(" · ") || null
-      : (status?.cli.version ?? null),
+    cliVersionDetail: installDetail,
     adapterDetail:
       status?.adapter.binaryPath ??
       (status?.adapter.command?.length
@@ -786,7 +801,10 @@ function SetupTrack({
                         ? doneStageLabel(stage.id, t)
                         : stage.label}
                   </span>
-                  {!problem && stage.detail ? (
+                  {stage.detail ? (
+                    // Shown for a healthy step (version · path) AND for a version
+                    // problem (current · requires ≥ floor) — a blocked CLI must
+                    // still reveal which version it has and what it needs.
                     <span className="min-w-0 truncate text-[12px] text-[var(--text-secondary)]">
                       {stage.detail}
                     </span>

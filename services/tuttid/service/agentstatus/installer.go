@@ -20,6 +20,7 @@ import (
 	"strings"
 
 	"github.com/tutti-os/tutti/packages/agentactivity/daemon/runtimecmd"
+	"github.com/tutti-os/tutti/services/tuttid/biz/agentprovider"
 	managedruntime "github.com/tutti-os/tutti/services/tuttid/service/managedruntime"
 )
 
@@ -173,7 +174,7 @@ func (s Service) installMissingProviderRuntime(
 	attemptedCLI := false
 	attemptedAdapter := false
 	for {
-		installer, missing, installTarget := nextMissingInstaller(spec, current)
+		installer, missing, installTarget := s.nextMissingInstaller(spec, current)
 		if !missing {
 			return summary, current, nil
 		}
@@ -264,8 +265,14 @@ func (s Service) installMissingProviderRuntime(
 	}
 }
 
-func nextMissingInstaller(spec ProviderSpec, runtime providerRuntimeResolution) (InstallerSpec, bool, string) {
+func (s Service) nextMissingInstaller(spec ProviderSpec, runtime providerRuntimeResolution) (InstallerSpec, bool, string) {
 	if strings.TrimSpace(runtime.CLIPath) == "" {
+		if spec.Install.Kind == "" {
+			return InstallerSpec{}, false, ""
+		}
+		return spec.Install, true, "cli"
+	}
+	if s.providerCLIRequiresInstall(spec, runtime) {
 		if spec.Install.Kind == "" {
 			return InstallerSpec{}, false, ""
 		}
@@ -294,6 +301,16 @@ func nextMissingInstaller(spec ProviderSpec, runtime providerRuntimeResolution) 
 		}
 	}
 	return InstallerSpec{}, false, ""
+}
+
+func (s Service) providerCLIRequiresInstall(spec ProviderSpec, runtime providerRuntimeResolution) bool {
+	if spec.Provider != agentprovider.Codex {
+		return false
+	}
+	if !s.codexPlatformBinaryOK(runtime.CLIPath) {
+		return true
+	}
+	return !codexVersionMeetsMinimum(s.cliVersion(context.Background(), runtime.CLIPath))
 }
 
 func adapterPackageRequirementSatisfied(requirement AdapterPackageRequirement, version string) bool {

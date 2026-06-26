@@ -941,6 +941,10 @@ export type AgentProviderCliStatus = {
   installed: boolean;
   binaryPath?: string | null;
   version?: string | null;
+  /**
+   * The lowest CLI version this provider supports, when it enforces a floor (currently codex). Lets the UI show "current X, requires Y" without duplicating the backend's version gate.
+   */
+  minVersion?: string | null;
 };
 
 export type AgentProviderAdapterStatus = {

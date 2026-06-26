@@ -1,6 +1,9 @@
 package agentstatus
 
-import "sync"
+import (
+	"sync"
+	"time"
+)
 
 // RunOutcomeStore remembers, per provider, whether a recent agent RUN failed
 // authentication. The stateless status probe judges login by a local marker file
@@ -9,26 +12,32 @@ import "sync"
 // runtime records that here so the next status probe can override the stale
 // "authenticated" verdict and surface "needs login" in the dock and wizard.
 //
+// The recorded value is the failure timestamp (not just a bool) so the probe can
+// self-heal: once the provider's credential file is rewritten by a fresh login
+// (its mtime moves past the failure time), the stale "needs login" verdict is
+// dropped without waiting for the next successful run.
+//
 // It is a pointer so it survives the value-copies of Service: the runtime and the
 // status probe share one store.
 type RunOutcomeStore struct {
 	mu         sync.RWMutex
-	authFailed map[string]bool
+	authFailed map[string]time.Time
 }
 
 func NewRunOutcomeStore() *RunOutcomeStore {
-	return &RunOutcomeStore{authFailed: map[string]bool{}}
+	return &RunOutcomeStore{authFailed: map[string]time.Time{}}
 }
 
 // RecordAuthFailure marks a provider's login as invalidated by a runtime
-// authentication failure (e.g. a 401 when sending a message or on a trial run).
+// authentication failure (e.g. a 401 when sending a message or on a trial run),
+// stamping the moment it was observed.
 func (s *RunOutcomeStore) RecordAuthFailure(provider string) {
 	if s == nil {
 		return
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	s.authFailed[provider] = true
+	s.authFailed[provider] = time.Now()
 }
 
 // RecordSuccess clears the invalidation once a request goes through, so a fixed
@@ -55,10 +64,20 @@ func (s *RunOutcomeStore) clear(provider string) {
 // AuthInvalidated reports whether a recent run authentication failure means the
 // provider should be treated as needing login.
 func (s *RunOutcomeStore) AuthInvalidated(provider string) bool {
+	_, ok := s.AuthInvalidatedSince(provider)
+	return ok
+}
+
+// AuthInvalidatedSince returns the time a provider's last runtime auth failure was
+// recorded, and whether one is currently outstanding. The caller compares it
+// against the credential file's mtime to decide whether a fresh login has since
+// healed the failure.
+func (s *RunOutcomeStore) AuthInvalidatedSince(provider string) (time.Time, bool) {
 	if s == nil {
-		return false
+		return time.Time{}, false
 	}
 	s.mu.RLock()
 	defer s.mu.RUnlock()
-	return s.authFailed[provider]
+	at, ok := s.authFailed[provider]
+	return at, ok
 }

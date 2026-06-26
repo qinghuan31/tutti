@@ -1468,11 +1468,13 @@ describe("AgentGUINodeView provider setup notice", () => {
 
     expect(setupNoticeRule).toContain("position: absolute;");
     expect(setupNoticeRule).toContain("top: 8px;");
-    expect(setupNoticeRule).toContain(
-      "left: var(--agent-gui-detail-padding-x);"
-    );
+    // Horizontally centered above the detail content.
+    expect(setupNoticeRule).toContain("left: 50%;");
+    expect(setupNoticeRule).toContain("transform: translateX(-50%);");
     expect(setupNoticeRule).toContain("z-index: 2;");
     expect(setupNoticeRule).toContain("width: max-content;");
+    // Message text and the "Set up" action must not butt together.
+    expect(setupNoticeRule).toContain("column-gap: 6px;");
     expect(setupNoticeRule).toMatch(
       /max-width:\s*min\(\s*calc\(100% - \(var\(--agent-gui-detail-padding-x\) \* 2\)\),\s*420px\s*\);/s
     );

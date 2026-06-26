@@ -201,6 +201,7 @@ export const en = {
       stageProblemNetworkUnreachable: "Can't reach the network",
       stageProblemInstallMissing: "{{provider}} CLI not installed",
       stageProblemInstallOutdated: "{{provider}} CLI version unsupported",
+      stageInstallVersionRequirement: "{{current}} · requires ≥ {{required}}",
       stageProblemAdapterMissing: "Adapter not installed",
       stageProblemAdapterMismatch: "Adapter version unsupported",
       stageProblemLoginMissing: "Not signed in",

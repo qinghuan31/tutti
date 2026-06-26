@@ -4,6 +4,7 @@ import (
 	"context"
 	"log/slog"
 	"net/url"
+	"path/filepath"
 	"runtime"
 	"slices"
 	"strings"
@@ -34,11 +35,22 @@ func (s Service) runCodexCLILatestInstaller(
 	resolver := s.commandResolver()
 	npmPath := firstNonBlank(resolveBinaryWithResolver(resolver, []string{npmBinaryName()}, nil), npmBinaryName())
 	nodeTarget := firstNonBlank(resolveBinaryWithResolver(resolver, []string{nodeBinaryName()}, nil), nodeBinaryName())
-	command := joinShellCommand([]string{npmPath, "install", "-g", "@openai/codex", "--include=optional"})
+	// A bare `npm install -g` lands the launcher in whichever npm's global prefix
+	// runs the install. In the desktop app that npm can be the bundled app-runtime
+	// node, whose prefix (~/.tutti/app-runtimes/.../node) is NOT on the binary
+	// resolver's search path — so the install succeeds but `codex` is never found
+	// and the wizard reports "provider CLI is still unavailable after install".
+	// Pin the global prefix to the same stable, always-searched dir the
+	// release-binary installer uses (selectInstallDir -> ~/.local/bin) so the
+	// launcher stays discoverable regardless of which npm executes the install.
+	installBinDir, err := s.selectInstallDir()
+	if err != nil {
+		return InstallCommandResult{ExitCode: 1, Stderr: err.Error()}, nil
+	}
+	command := joinShellCommand([]string{npmPath, "install", "-g", "--prefix", filepath.Dir(installBinDir), "@openai/codex", "--include=optional"})
 	baseEnv := s.commandResolver().Env(nil)
 	registries := s.agentNPMRegistries()
 	var result InstallCommandResult
-	var err error
 	for i, registry := range registries {
 		registryDisplay := displayNPMRegistry(registry)
 		setActiveAction("codex", ActiveAction{

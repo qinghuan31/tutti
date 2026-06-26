@@ -285,6 +285,7 @@ func generatedAgentProviderCLIStatus(status agentstatusservice.CLIStatus) tuttig
 		BinaryPath: stringPointerIfNotBlank(status.BinaryPath),
 		Installed:  status.Installed,
 		Version:    stringPointerIfNotBlank(status.Version),
+		MinVersion: stringPointerIfNotBlank(status.MinVersion),
 	}
 }
 

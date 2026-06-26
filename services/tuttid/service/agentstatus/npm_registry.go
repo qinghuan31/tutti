@@ -26,10 +26,13 @@ const (
 	tencentNPMRegistry = "https://mirrors.cloud.tencent.com/npm/"       // Tencent Cloud
 
 	// perRegistryInstallTimeout bounds each registry attempt so a blocked
-	// registry fails over to the next one quickly instead of consuming the whole
-	// install budget. Comfortably above observed install times (~6-44s), below the
-	// overall install timeout.
-	perRegistryInstallTimeout = 90 * time.Second
+	// registry fails over to the next one instead of consuming the whole install
+	// budget. It must clear a working-but-slow registry: a direct install of the
+	// codex package is ~6-44s, but the same large platform binary pulled through a
+	// (throttled) system proxy is ~76-100s+. 90s sat right on that edge and killed
+	// otherwise-succeeding installs, so it is set comfortably above the proxied
+	// case while staying below the overall install timeout.
+	perRegistryInstallTimeout = 150 * time.Second
 )
 
 // agentNPMRegistries returns the ordered list of npm registries to try for

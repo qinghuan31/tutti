@@ -150,6 +150,10 @@ type CLIStatus struct {
 	Installed  bool
 	BinaryPath string
 	Version    string
+	// MinVersion is the lowest CLI version this provider supports, when it
+	// enforces a floor (codex). Empty for providers with no version gate. Lets
+	// the UI surface "current X, requires Y" from the same constant the gate uses.
+	MinVersion string
 }
 
 type AdapterStatus struct {
@@ -190,6 +194,7 @@ type InstallCommandResult struct {
 type Service struct {
 	Environ                     func() []string
 	FileExists                  func(string) bool
+	FileModTime                 func(string) (time.Time, bool)
 	HomeDir                     func() (string, error)
 	HTTPClient                  *http.Client
 	ResolveProxy                func(*http.Request) (*url.URL, error)
@@ -213,7 +218,12 @@ type Service struct {
 const authStatusCommandTimeout = 5 * time.Second
 const authStatusCommandAttempts = 2
 const defaultAuthStatusCommandRetryDelay = 150 * time.Millisecond
-const defaultInstallTimeout = 5 * time.Minute
+
+// defaultInstallTimeout caps a whole install action. It must leave room for the
+// npm registry chain to fail over a few times at perRegistryInstallTimeout each
+// (e.g. a slow npmjs before a fast CN mirror) without prematurely killing a
+// registry that would have succeeded.
+const defaultInstallTimeout = 8 * time.Minute
 const defaultProbeReadyAfter = 600 * time.Millisecond
 const defaultProbeTimeout = 3 * time.Second
 const defaultProbeWaitDelay = 500 * time.Millisecond
@@ -517,6 +527,7 @@ func (s Service) statusForSpec(ctx context.Context, spec ProviderSpec, now time.
 		Actions: actions,
 	}
 	if spec.Provider == agentprovider.Codex {
+		status.CLI.MinVersion = MinSupportedCodexVersion
 		status.Checks = codexProviderChecks(status, codexPlatformOK)
 		status.LastError = codexProviderLastError(status)
 		status.ActiveAction = activeActionForProvider(spec.Provider)
