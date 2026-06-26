@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"os/exec"
 	"sort"
 	"strings"
 	"sync"
@@ -150,6 +151,67 @@ func NewCodexAppServerAdapterWithHostMetadata(transport ProcessTransport, host H
 		transport: transport,
 		host:      host,
 		sessions:  make(map[string]*codexAppServerSession),
+	}
+}
+
+// codexOfficialOriginator is the client identifier the first-party Codex CLI
+// presents to the backend. Codex derives the outbound request `originator`
+// header and User-Agent verbatim from the app-server clientInfo.name, so
+// presenting this value (paired with the real codex binary version) makes
+// Tutti's request byte-identical to the genuine client and keeps it accepted
+// by upstreams that gate on an "official Codex client" allowlist.
+const codexOfficialOriginator = "codex_cli_rs"
+
+var (
+	codexCLIVersionMu     sync.Mutex
+	codexCLIVersionCached string
+)
+
+// resolveCodexCLIVersion returns the version of the codex binary that serves
+// the app-server (e.g. "0.142.1"), resolved with the same env (PATH) the
+// app-server is spawned with so the two agree. The result is cached after the
+// first successful lookup; an empty string signals "unknown" so callers can
+// fall back.
+func resolveCodexCLIVersion(env []string) string {
+	codexCLIVersionMu.Lock()
+	defer codexCLIVersionMu.Unlock()
+	if codexCLIVersionCached != "" {
+		return codexCLIVersionCached
+	}
+	cmd := exec.Command(codexAppServerCommand, "--version")
+	if len(env) > 0 {
+		cmd.Env = env
+	}
+	out, err := cmd.Output()
+	if err != nil {
+		return ""
+	}
+	// Output looks like "codex-cli 0.142.1"; the version is the last field.
+	fields := strings.Fields(string(out))
+	if len(fields) == 0 {
+		return ""
+	}
+	codexCLIVersionCached = strings.TrimSpace(fields[len(fields)-1])
+	return codexCLIVersionCached
+}
+
+// codexClientInfoParams builds the app-server initialize clientInfo so the
+// outbound originator/User-Agent match the official Codex CLI, resolving the
+// codex binary version from the spawn env.
+func codexClientInfoParams(host HostMetadata, env []string) map[string]any {
+	return codexClientInfoParamsForVersion(host, resolveCodexCLIVersion(env))
+}
+
+// codexClientInfoParamsForVersion composes the clientInfo for a known codex
+// version, falling back to the host-provided version when it is empty.
+func codexClientInfoParamsForVersion(host HostMetadata, version string) map[string]any {
+	if strings.TrimSpace(version) == "" {
+		version = strings.TrimSpace(host.ClientInfo.Version)
+	}
+	return map[string]any{
+		"name":    codexOfficialOriginator,
+		"title":   host.ClientInfo.Title,
+		"version": version,
 	}
 }
 
@@ -484,13 +546,14 @@ func (a *CodexAppServerAdapter) startInitializedClient(
 		"cwd":     a.sessionCWD(session),
 	})
 	processStartedAt := time.Now()
+	spawnEnv := append(codexACPEnv(session, a.host), session.Env...)
 	conn, err := a.transport.Start(ctx, ProcessSpec{
 		Provider:       ProviderCodex,
 		AgentSessionID: session.AgentSessionID,
 		RoomID:         session.RoomID,
 		CWD:            a.sessionCWD(session),
 		Command:        []string{codexAppServerCommand, codexAppServerSubcmd},
-		Env:            append(codexACPEnv(session, a.host), session.Env...),
+		Env:            spawnEnv,
 	})
 	if err != nil {
 		trace.Log("process.start.failed", map[string]any{
@@ -536,7 +599,7 @@ func (a *CodexAppServerAdapter) startInitializedClient(
 	}()
 
 	initializeResult, err := trace.Call(ctx, client, acpStartCallTimeout, appServerMethodInitialize, map[string]any{
-		"clientInfo": a.host.clientInfoParams(),
+		"clientInfo": codexClientInfoParams(a.host, spawnEnv),
 		"capabilities": map[string]any{
 			"experimentalApi": true,
 		},

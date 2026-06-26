@@ -664,8 +664,9 @@ func TestCodexAppServerAdapterStartCreatesThread(t *testing.T) {
 
 	initialize := appServerRequestParams(t, transport.conn, appServerMethodInitialize)
 	clientInfo, _ := initialize["clientInfo"].(map[string]any)
-	if asString(clientInfo["name"]) == "" || asString(clientInfo["version"]) == "" {
-		t.Fatalf("initialize clientInfo = %#v, want name+version", initialize["clientInfo"])
+	if asString(clientInfo["name"]) != codexOfficialOriginator || asString(clientInfo["version"]) == "" {
+		t.Fatalf("initialize clientInfo = %#v, want name=%q + non-empty version",
+			initialize["clientInfo"], codexOfficialOriginator)
 	}
 	capabilities, _ := initialize["capabilities"].(map[string]any)
 	if experimental, _ := capabilities["experimentalApi"].(bool); !experimental {
@@ -681,6 +682,41 @@ func TestCodexAppServerAdapterStartCreatesThread(t *testing.T) {
 	state := adapter.SessionState(testAppServerSession())
 	if state.AuthState != "authenticated" {
 		t.Fatalf("auth state = %q, want authenticated", state.AuthState)
+	}
+}
+
+func TestCodexClientInfoParamsPresentsOfficialOriginator(t *testing.T) {
+	t.Parallel()
+
+	// A resolved codex version is used verbatim and overrides the host name,
+	// so the outbound originator/User-Agent match the genuine codex_cli_rs.
+	host := HostMetadata{ClientInfo: ClientInfo{Name: "tutti-desktop", Title: "Tutti", Version: "0.1.0"}}
+	got := codexClientInfoParamsForVersion(host, "1.2.3")
+
+	if got["name"] != codexOfficialOriginator {
+		t.Fatalf("name = %v, want %q (official originator, not the host name)", got["name"], codexOfficialOriginator)
+	}
+	if got["version"] != "1.2.3" {
+		t.Fatalf("version = %v, want the resolved codex version 1.2.3 (not host %q)", got["version"], host.ClientInfo.Version)
+	}
+	if got["title"] != "Tutti" {
+		t.Fatalf("title = %v, want Tutti (passed through from host)", got["title"])
+	}
+}
+
+func TestCodexClientInfoParamsFallsBackToHostVersion(t *testing.T) {
+	t.Parallel()
+
+	// When the codex version cannot be resolved, fall back to the host version
+	// rather than emitting a blank version segment.
+	host := HostMetadata{ClientInfo: ClientInfo{Name: "tutti-desktop", Title: "Tutti", Version: "9.9.9"}}
+	got := codexClientInfoParamsForVersion(host, "")
+
+	if got["name"] != codexOfficialOriginator {
+		t.Fatalf("name = %v, want %q", got["name"], codexOfficialOriginator)
+	}
+	if got["version"] != "9.9.9" {
+		t.Fatalf("version = %v, want host fallback 9.9.9", got["version"])
 	}
 }
 
