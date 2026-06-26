@@ -380,14 +380,17 @@ delimited by ---`, and the composer skill picker may show partial or
   Conversation project grouping is a view-model join of `cwd x userProjects`.
   If a generated no-project cwd is not recognized before prefix/parent project
   matching, the longest-parent project match can assign the session to a broad
-  project such as `$HOME`. Do not rely only on a host callback for this guard;
-  the Agent GUI resolver itself needs to exclude the generated
-  `Documents/tutti/session-<uuid>` cwd before project lookup.
+  project such as `$HOME`. Keep generated-path recognition in the host
+  `isNoProjectPath` callback because it has the user home-directory context;
+  a package-level suffix check would misclassify real projects that contain a
+  `Documents/tutti/session-<uuid>` subdirectory.
 - Fix:
-  Treat exact user-project path matches as explicit user intent, then treat
-  generated `Documents/tutti/session-<uuid>` cwd values as no-project before
-  parent project matching. Keep the project field derived in the Agent GUI
-  view-model rather than writing it back into the conversation store.
+  Treat exact user-project path matches as explicit user intent, then call the
+  host no-project resolver before parent project matching. The desktop resolver
+  should recognize generated `$HOME/Documents/tutti/session-<uuid>` cwd values
+  while allowing explicit registered projects to override them. Keep the project
+  field derived in the Agent GUI view-model rather than writing it back into the
+  conversation store.
 - Validation:
   Run
   `pnpm --filter @tutti-os/agent-gui test -- agent-gui/agentGuiNode/model/agentGuiConversationModel.spec.ts`,

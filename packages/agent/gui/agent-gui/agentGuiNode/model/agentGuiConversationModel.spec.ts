@@ -105,13 +105,17 @@ describe("agentGuiConversationModel", () => {
     ).toBeNull();
   });
 
-  it("does not assign generated no-project cwd to a home parent project", () => {
+  it("keeps generated-looking cwd values grouped under real parent projects without host no-project context", () => {
     expect(
       resolveAgentGUIConversationProject(
-        "/Users/local/Documents/tutti/session-44444444-4444-4444-8444-444444444444",
-        [userProject("home", "/Users/local", "Home")]
+        "/repo/Documents/tutti/session-44444444-4444-4444-8444-444444444444",
+        [userProject("repo", "/repo", "Repo")]
       )
-    ).toBeNull();
+    ).toEqual({
+      id: "repo",
+      path: "/repo",
+      label: "Repo"
+    });
   });
 
   it("keeps an explicit project whose path looks like a generated no-project cwd", () => {
