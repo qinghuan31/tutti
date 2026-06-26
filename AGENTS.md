@@ -24,6 +24,12 @@ Read the closest `AGENTS.md` before editing:
 
 Use this root file for repository-wide defaults only. Area-specific files win.
 
+Also route by module name, not only by path. If a request mentions AgentGUI,
+AgentGuiNode, Agent GUI, the agent conversation module, agent composer,
+workspace agent timeline, agent approvals, or interactive agent prompts, read
+`packages/agent/gui/AGENTS.md` before planning or editing, even when no file
+path is supplied.
+
 ## Contribution Workflow
 
 Before preparing commits or pull requests, read `CONTRIBUTING.md` and follow it
@@ -39,6 +45,27 @@ DCO sign-off, PR workflow, review gates, and multilingual documentation updates.
 - Business-code files should stay at or below `800` lines. Prefer decomposition before adding more logic.
 - When changing repository-managed checks, hooks, or static analysis, update `docs/conventions/local-git-hooks.md` or `docs/conventions/static-analysis.md`.
 - When a fix captures a recurring debugging trap, add the durable note to `docs/conventions/troubleshooting.md`.
+
+## Self-Evolution Notes
+
+After any code change, run a documentation impact check. If the change affects
+module ownership, data flow, user-visible interaction, public API/CLI behavior,
+runtime/config/env overrides, validation commands, troubleshooting paths, or
+directory responsibility, update the corresponding durable documentation in the
+same change.
+
+When proposing a durable lesson from a completed fix or implementation, use the
+AutoSkill-style decision set: `discard`, `improve`, `merge`, or `create`.
+Record only reusable patterns backed by real implementation/debugging evidence.
+Prefer improving or merging an existing note over creating duplicates, and
+remove secrets, personal data, local paths, customer names, tokens, and one-off
+issue details before writing any prompt, architecture, or troubleshooting
+update. For `improve`, `merge`, or `create`, update the matching durable doc:
+architecture docs for ownership/data-flow/interaction rules, convention docs
+for repository-wide practices, README/package docs for usage or public
+contracts, or troubleshooting docs for recurring symptom playbooks. Final
+responses should mention which durable docs were updated, or state that no
+documentation impact was found.
 
 ## Toolchain
 

@@ -311,8 +311,16 @@ ensure_node_runtime() {
 ensure_pnpm() {
   local required_pnpm_version
   local current_pnpm_version=""
+  local corepack_bin_dir
+  local resolved_pnpm_version
 
   required_pnpm_version="$(resolve_required_pnpm_version)"
+
+  if command_exists corepack; then
+    corepack_bin_dir="$(dirname "$(command -v corepack)")"
+    export PATH="${corepack_bin_dir}:${PATH}"
+    hash -r
+  fi
 
   if command_exists pnpm; then
     current_pnpm_version="$(pnpm --version)"
@@ -330,13 +338,16 @@ ensure_pnpm() {
   log "installing pnpm ${required_pnpm_version} with corepack"
   corepack enable
   corepack prepare "pnpm@${required_pnpm_version}" --activate
+  corepack_bin_dir="$(dirname "$(command -v corepack)")"
+  export PATH="${corepack_bin_dir}:${PATH}"
   hash -r
 
-  if [[ "$(pnpm --version)" != "${required_pnpm_version}" ]]; then
-    fail "pnpm ${required_pnpm_version} installation did not succeed."
+  resolved_pnpm_version="$(pnpm --version)"
+  if [[ "${resolved_pnpm_version}" != "${required_pnpm_version}" ]]; then
+    fail "pnpm ${required_pnpm_version} installation did not succeed; found ${resolved_pnpm_version:-unknown version}."
   fi
 
-  log "pnpm $(pnpm --version)"
+  log "pnpm ${resolved_pnpm_version}"
 }
 
 ensure_go_runtime() {

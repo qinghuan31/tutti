@@ -32,8 +32,21 @@ reference architecture:
   or layout.
 - Prefer pure model/projection helpers and focused controller helpers over
   adding orchestration to React components.
-- When a fix captures a recurring AgentGuiNode debugging trap, ask the user
-  whether to record the lesson in
+- After any AgentGUI or AgentGuiNode fix, feature, module extraction, or flow
+  refactor, run the documentation impact and self-evolution prompt in
+  [docs/architecture/agent-gui-node.md](../../../docs/architecture/agent-gui-node.md):
+  decide `discard`, `improve`, `merge`, or `create`; prefer improving existing
+  lessons over adding duplicates; remove instance-specific or sensitive details
+  before proposing any durable note. For any decision except `discard`, update
+  the corresponding durable document in the same change. Data-flow,
+  interaction-state, loading, resume, send, approval, timeline, or ownership
+  changes usually update
+  [docs/architecture/agent-gui-node.md](../../../docs/architecture/agent-gui-node.md);
+  recurring symptoms usually update
+  [docs/conventions/troubleshooting.md](../../../docs/conventions/troubleshooting.md).
+- When a fix captures a recurring AgentGuiNode debugging trap, record the
+  lesson in the matching durable doc when it is in scope, or ask the user first
+  if adding the note would broaden the requested change:
   [docs/architecture/agent-gui-node.md](../../../docs/architecture/agent-gui-node.md)
   or [docs/conventions/troubleshooting.md](../../../docs/conventions/troubleshooting.md).
 
