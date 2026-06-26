@@ -755,12 +755,7 @@ function normalizedFilePath(
 
 function isIgnoredFilePath(path: string): boolean {
   const normalizedPath = path.replace(/\\/g, "/").replace(/\/+$/, "");
-  return (
-    normalizedPath === "/dev/null" ||
-    normalizedPath === "NUL" ||
-    normalizedPath === "/private/tmp" ||
-    normalizedPath.startsWith("/private/tmp/")
-  );
+  return normalizedPath === "/dev/null" || normalizedPath === "NUL";
 }
 
 function isStructuredPayloadPath(path: string): boolean {
