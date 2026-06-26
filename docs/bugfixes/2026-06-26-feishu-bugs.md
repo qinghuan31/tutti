@@ -76,8 +76,8 @@
   - `corepack pnpm --filter @tutti-os/agent-gui typecheck`
   - `corepack pnpm check:agent-activity-runtime-boundaries`
 - Status: fixed locally
-- Commit: pending; final hash recorded in batch summary.
-- Feishu status update: pending verified commit.
+- Fix commit: `5a64b5a3`
+- Feishu status update: confirmed `已修复待打包`.
 
 ## GB7lrt1N0eQmyxcxbvZcVQgEnxc - new session message lands in previous session
 
@@ -92,5 +92,5 @@
   - `corepack pnpm --filter @tutti-os/agent-gui typecheck`
   - `corepack pnpm check:agent-activity-runtime-boundaries`
 - Status: fixed locally
-- Commit: pending; final hash recorded in batch summary.
-- Feishu status update: pending verified commit.
+- Fix commit: `5a64b5a3`
+- Feishu status update: confirmed `已修复待打包`.
