@@ -22,10 +22,23 @@ import type {
 const APP_REFERENCE_PAGE_LIMIT = 200;
 const APP_MARKER = "app:";
 const GROUP_MARKER = "|grp:";
+const REFERENCE_SUPPORTING_APPS_CACHE_TTL_MS = 2_000;
 
 type AppReferenceListItem = Awaited<
   ReturnType<TuttidClient["listWorkspaceAppReferences"]>
 >["items"][number];
+type ReferenceSupportingApp = Awaited<
+  ReturnType<TuttidClient["listWorkspaceApps"]>
+>["apps"][number];
+type ReferenceSupportingAppsCacheEntry = {
+  expiresAt: number;
+  promise: Promise<ReferenceSupportingApp[]>;
+};
+
+const referenceSupportingAppsCache = new WeakMap<
+  TuttidClient,
+  Map<string, ReferenceSupportingAppsCacheEntry>
+>();
 
 export function createAppReferenceListBackend(
   tuttidClient: TuttidClient
@@ -203,10 +216,35 @@ export async function listReferenceSupportingApps(
   tuttidClient: TuttidClient,
   scope: ReferenceScope
 ) {
-  const response = await tuttidClient.listWorkspaceApps(scope.workspaceId);
-  return response.apps.filter(
-    (app) => app.references.listSupported && app.installed && app.enabled
-  );
+  const workspaceID = scope.workspaceId;
+  let clientCache = referenceSupportingAppsCache.get(tuttidClient);
+  if (!clientCache) {
+    clientCache = new Map();
+    referenceSupportingAppsCache.set(tuttidClient, clientCache);
+  }
+  const now = Date.now();
+  const cached = clientCache.get(workspaceID);
+  if (cached && cached.expiresAt > now) {
+    return cached.promise;
+  }
+
+  const promise = tuttidClient
+    .listWorkspaceApps(workspaceID)
+    .then((response) =>
+      response.apps.filter(
+        (app) => app.references.listSupported && app.installed && app.enabled
+      )
+    );
+  clientCache.set(workspaceID, {
+    expiresAt: now + REFERENCE_SUPPORTING_APPS_CACHE_TTL_MS,
+    promise
+  });
+  void promise.catch(() => {
+    if (clientCache.get(workspaceID)?.promise === promise) {
+      clientCache.delete(workspaceID);
+    }
+  });
+  return promise;
 }
 
 function appItemToProtocol(

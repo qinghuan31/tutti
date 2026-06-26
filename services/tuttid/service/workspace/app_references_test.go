@@ -7,6 +7,7 @@ import (
 	"net/http/httptest"
 	"path/filepath"
 	"testing"
+	"time"
 
 	workspacebiz "github.com/tutti-os/tutti/services/tuttid/biz/workspace"
 )
@@ -492,9 +493,11 @@ func assertRuntimeResolverNotCalled(t *testing.T, resolver *appRuntimeResolverSt
 	if resolver == nil {
 		return
 	}
+	timer := time.NewTimer(50 * time.Millisecond)
+	defer timer.Stop()
 	select {
 	case <-resolver.called:
 		t.Fatal("runtime resolver was called")
-	default:
+	case <-timer.C:
 	}
 }

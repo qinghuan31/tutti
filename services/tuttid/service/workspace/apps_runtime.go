@@ -103,7 +103,6 @@ func (s *AppCenterService) StartEnabled(ctx context.Context, workspaceID string)
 	}
 	remoteBuiltins := remoteBuiltinByAppID(builtins)
 
-	remoteBuiltinInstallStarted := false
 	for _, installation := range installations {
 		if !installation.Enabled {
 			continue
@@ -118,13 +117,11 @@ func (s *AppCenterService) StartEnabled(ctx context.Context, workspaceID string)
 				return nil, err
 			}
 			s.startRemoteBuiltinInstallJob(workspaceID, remoteBuiltin)
-			remoteBuiltinInstallStarted = true
 			slog.Warn("workspace app start enabled deferred app; package unavailable locally", "workspaceId", workspaceID, "appId", installation.AppID)
 			continue
 		}
 		if remoteBuiltin, ok := remoteBuiltins[installation.AppID]; ok && shouldMaterializeRemoteBuiltin(appPackage, remoteBuiltin) {
 			s.startRemoteBuiltinInstallJob(workspaceID, remoteBuiltin)
-			remoteBuiltinInstallStarted = true
 			slog.Info(
 				"workspace app start enabled deferred app; remote builtin update available",
 				"workspaceId", workspaceID,
@@ -161,9 +158,6 @@ func (s *AppCenterService) StartEnabled(ctx context.Context, workspaceID string)
 		}
 	}
 	slog.Info("workspace app start enabled completed", "workspaceId", workspaceID, "enabledAppCount", len(enabledAppIDs), "duration", time.Since(startedAt), "durationMs", time.Since(startedAt).Milliseconds())
-	if !remoteBuiltinInstallStarted {
-		s.startRuntimePreload()
-	}
 
 	if len(enabledAppIDs) > 0 {
 		return s.listWithBuiltins(ctx, workspaceID, builtins)

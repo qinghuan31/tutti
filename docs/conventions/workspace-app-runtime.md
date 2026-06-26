@@ -114,12 +114,14 @@ The runtime catalog consumed by tuttid has this shape:
 ```
 
 tuttid resolves the `baseline` profile by default when launching apps, and may
-preload smaller profiles such as `node-static` in the background before first
-launch. App manifests must not declare a runtime kind. Apps that only need Node
-may declare `runtime.profile: "node-static"` so launch does not require the
-Python component. If runtime requirements need to become more selective later,
-add a capability list such as runtime component requirements rather than
-restoring a single-kind manifest field.
+preload smaller profiles such as `node-static` during daemon startup or an
+explicit runtime-preparation workflow before first launch. Listing App Center
+apps must not preload runtimes as a side effect. App manifests must not declare
+a runtime kind. Apps that only need Node may declare
+`runtime.profile: "node-static"` so launch does not require the Python
+component. If runtime requirements need to become more selective later, add a
+capability list such as runtime component requirements rather than restoring a
+single-kind manifest field.
 
 ## Runtime Overrides
 

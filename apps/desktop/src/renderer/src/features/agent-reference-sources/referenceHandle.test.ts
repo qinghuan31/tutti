@@ -4,7 +4,10 @@ import type { TuttidClient } from "@tutti-os/client-tuttid-ts";
 import type { ReferenceScope } from "@tutti-os/workspace-file-reference/contracts";
 import type { ReferenceListItem } from "@tutti-os/workspace-file-reference/core";
 import { createIssueReferenceListBackend } from "./issueReferenceListBackend.ts";
-import { createAppReferenceListBackend } from "./appReferenceListBackend.ts";
+import {
+  createAppReferenceListBackend,
+  listReferenceSupportingApps
+} from "./appReferenceListBackend.ts";
 
 const scope: ReferenceScope = { workspaceId: "workspace-1" };
 
@@ -113,6 +116,46 @@ test("app backend labels child groups with app and project names", async () => {
       ? childGroup.parentLabel
       : undefined,
     "Prototype Design / 23232"
+  );
+});
+
+test("app reference app discovery caches repeated workspace app listing", async () => {
+  let listCalls = 0;
+  const tuttidClient = {
+    listWorkspaceApps: async () => {
+      listCalls += 1;
+      return {
+        apps: [
+          {
+            appId: "ready-app",
+            displayName: "Ready",
+            installed: true,
+            enabled: true,
+            references: { listSupported: true, searchSupported: false }
+          },
+          {
+            appId: "disabled-app",
+            displayName: "Disabled",
+            installed: true,
+            enabled: false,
+            references: { listSupported: true, searchSupported: false }
+          }
+        ]
+      };
+    }
+  } as unknown as TuttidClient;
+
+  const first = await listReferenceSupportingApps(tuttidClient, scope);
+  const second = await listReferenceSupportingApps(tuttidClient, scope);
+
+  assert.equal(listCalls, 1);
+  assert.deepEqual(
+    first.map((app) => app.appId),
+    ["ready-app"]
+  );
+  assert.deepEqual(
+    second.map((app) => app.appId),
+    ["ready-app"]
   );
 });
 

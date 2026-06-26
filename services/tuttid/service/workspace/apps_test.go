@@ -409,7 +409,7 @@ func (s *appStoreStub) ListWorkspaceAppInstallationsByApp(_ context.Context, app
 	return result, nil
 }
 
-func TestAppCenterServiceListPreloadsRuntimeForUninstalledApps(t *testing.T) {
+func TestAppCenterServiceListDoesNotPreloadRuntimeForUninstalledApps(t *testing.T) {
 	t.Parallel()
 
 	store := newAppStoreStub()
@@ -449,11 +449,50 @@ func TestAppCenterServiceListPreloadsRuntimeForUninstalledApps(t *testing.T) {
 	if len(apps) != 1 || apps[0].Installation != nil {
 		t.Fatalf("List() apps = %#v", apps)
 	}
-	select {
-	case <-resolver.called:
-	case <-time.After(time.Second):
-		t.Fatalf("List() did not preload runtime for uninstalled app")
+	assertRuntimeResolverNotCalled(t, resolver)
+}
+
+func TestAppCenterServiceRefreshCatalogDoesNotPreloadRuntimeForUninstalledApps(t *testing.T) {
+	t.Parallel()
+
+	store := newAppStoreStub()
+	appPackage := workspacebiz.AppPackage{
+		AppID:   "local-app",
+		Version: "1.0.0",
+		Manifest: workspacebiz.AppManifest{
+			SchemaVersion: workspacebiz.AppManifestSchemaVersionV1,
+			AppID:         "local-app",
+			Version:       "1.0.0",
+			Name:          "Local App",
+			Runtime: workspacebiz.AppManifestRuntime{
+				Bootstrap:       "bootstrap.sh",
+				HealthcheckPath: "/",
+			},
+		},
+		Source: workspacebiz.AppPackageSourceGenerated,
 	}
+	if err := store.PutAppPackage(context.Background(), appPackage); err != nil {
+		t.Fatalf("PutAppPackage() error = %v", err)
+	}
+	resolver := &appRuntimeResolverStub{called: make(chan struct{})}
+	service := AppCenterService{
+		Store:          store,
+		WorkspaceStore: &catalogStoreStub{getWorkspace: workspacebiz.Summary{ID: "ws-1", Name: "Workspace"}},
+		Runner:         &AppRunner{RuntimeResolver: resolver},
+		StateDir:       t.TempDir(),
+		BuiltinCatalog: func() ([]builtinapps.App, error) {
+			return nil, nil
+		},
+	}
+
+	apps, err := service.RefreshCatalog(context.Background(), "ws-1")
+	if err != nil {
+		t.Fatalf("RefreshCatalog() error = %v", err)
+	}
+	if len(apps) != 1 || apps[0].Installation != nil {
+		t.Fatalf("RefreshCatalog() apps = %#v", apps)
+	}
+	assertRuntimeResolverNotCalled(t, resolver)
 }
 
 func TestAppCenterServiceListSkipsRuntimePreloadForUninstalledStandaloneApp(t *testing.T) {
@@ -497,11 +536,7 @@ func TestAppCenterServiceListSkipsRuntimePreloadForUninstalledStandaloneApp(t *t
 	if len(apps) != 1 || apps[0].Installation != nil {
 		t.Fatalf("List() apps = %#v", apps)
 	}
-	select {
-	case <-resolver.called:
-		t.Fatalf("List() preloaded runtime for uninstalled standalone app")
-	default:
-	}
+	assertRuntimeResolverNotCalled(t, resolver)
 }
 
 func TestAppCenterServiceListSkipsRuntimePreloadWhenAllAppsInstalled(t *testing.T) {
@@ -551,11 +586,7 @@ func TestAppCenterServiceListSkipsRuntimePreloadWhenAllAppsInstalled(t *testing.
 	if len(apps) != 1 || apps[0].Installation == nil {
 		t.Fatalf("List() apps = %#v", apps)
 	}
-	select {
-	case <-resolver.called:
-		t.Fatalf("List() preloaded runtime when all apps are installed")
-	default:
-	}
+	assertRuntimeResolverNotCalled(t, resolver)
 }
 
 func TestAppCenterServiceInstallNodeStaticPackageSkipsBaselineRuntimePreload(t *testing.T) {
@@ -1653,11 +1684,7 @@ func TestAppCenterServiceStartEnabledDoesNotWaitForRemoteCatalogWhenNoAppsAreEna
 	case <-time.After(time.Second):
 		t.Fatal("StartEnabled() did not return after catalog refresh completed")
 	}
-	select {
-	case <-resolver.called:
-	case <-time.After(time.Second):
-		t.Fatal("runtime preload did not start")
-	}
+	assertRuntimeResolverNotCalled(t, resolver)
 
 	select {
 	case <-catalogRequested:
@@ -1667,8 +1694,8 @@ func TestAppCenterServiceStartEnabledDoesNotWaitForRemoteCatalogWhenNoAppsAreEna
 	resolver.mu.Lock()
 	preloadedProfile := resolver.profile
 	resolver.mu.Unlock()
-	if preloadedProfile != workspaceAppNodeRuntimePreloadProfile {
-		t.Fatalf("runtime preload profile = %q, want %q", preloadedProfile, workspaceAppNodeRuntimePreloadProfile)
+	if preloadedProfile != "" {
+		t.Fatalf("runtime preload profile = %q, want empty", preloadedProfile)
 	}
 }
 

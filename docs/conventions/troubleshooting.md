@@ -43,6 +43,32 @@ Use this shape for new entries:
 
 ## Current Entries
 
+### App Center list requests repeatedly log runtime preload
+
+- Symptom:
+  `tuttid` logs repeated `workspace app runtime preload started` and
+  `workspace app runtime preload completed` lines while App Center is merely
+  open or refreshing, even when the user is not installing an app.
+- Quick checks:
+  Trace the call path from `ListWorkspaceApps` to
+  `AppCenterService.List`. A list or catalog refresh request should not call
+  `AppRunner.PreloadRuntimeForProfile` or the managed runtime resolver.
+- Root cause:
+  Treating App Center list/read requests as an opportunity to prepare runtimes
+  gives a pure read operation hidden background side effects. Frequent renderer
+  refreshes then turn a fast idempotent runtime check into noisy repeated logs.
+- Fix:
+  Keep passive runtime preloading in daemon startup or another explicit
+  runtime-preparation workflow. Install, launch, retry, and enabled-app start
+  paths may still resolve runtimes because they actually need executable app
+  runtimes.
+- Validation:
+  Add or run service coverage that `AppCenterService.List` returns visible
+  uninstalled apps without invoking the runtime resolver.
+- References:
+  [apps.go](../../services/tuttid/service/workspace/apps.go)
+  [apps_test.go](../../services/tuttid/service/workspace/apps_test.go)
+
 ### Load unpacked project roots with source manifests
 
 - Symptom:

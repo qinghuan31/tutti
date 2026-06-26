@@ -32,10 +32,9 @@ type AppCenterService struct {
 	ArtifactFetcher        AppArtifactFetcher
 	RemoteCatalogRefresher func(context.Context, string) (builtinapps.CatalogSnapshot, error)
 
-	mu                     sync.Mutex
-	stateRevisions         map[string]int64
-	appProjectionKeys      map[string]workspaceAppProjectionKey
-	runtimePreloadInFlight bool
+	mu                sync.Mutex
+	stateRevisions    map[string]int64
+	appProjectionKeys map[string]workspaceAppProjectionKey
 
 	installMu             sync.Mutex
 	installJobs           map[string]workspaceAppInstallJob
@@ -169,7 +168,6 @@ func (s *AppCenterService) listWithBuiltins(ctx context.Context, workspaceID str
 	if err != nil {
 		return nil, err
 	}
-	s.maybePreloadRuntimeForUninstalledApps(apps)
 	apps = s.withInstallJobProjections(apps, workspaceID)
 	return apps, nil
 }
@@ -499,43 +497,6 @@ func (s *AppCenterService) runner() *AppRunner {
 		s.Runner.OnStateChanged = s.handleRunnerStateChanged
 	}
 	return s.Runner
-}
-
-func (s *AppCenterService) maybePreloadRuntimeForUninstalledApps(apps []workspacebiz.WorkspaceApp) {
-	for _, app := range apps {
-		if app.Installation == nil && !appRuntimeProfileIsStandalone(appRuntimeProfileForPackage(app.Package)) {
-			s.startRuntimePreload()
-			return
-		}
-	}
-}
-
-func (s *AppCenterService) startRuntimePreload() {
-	s.mu.Lock()
-	if s.runtimePreloadInFlight {
-		s.mu.Unlock()
-		return
-	}
-	s.runtimePreloadInFlight = true
-	runner := s.runner()
-	s.mu.Unlock()
-
-	go func() {
-		startedAt := time.Now()
-		slog.Info("workspace app runtime preload started", "profile", workspaceAppNodeRuntimePreloadProfile)
-		defer func() {
-			s.mu.Lock()
-			s.runtimePreloadInFlight = false
-			s.mu.Unlock()
-		}()
-		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
-		defer cancel()
-		if err := runner.PreloadRuntimeForProfile(ctx, workspaceAppNodeRuntimePreloadProfile); err != nil {
-			slog.Warn("workspace app runtime preload failed", "profile", workspaceAppNodeRuntimePreloadProfile, "durationMs", time.Since(startedAt).Milliseconds(), "error", err)
-			return
-		}
-		slog.Info("workspace app runtime preload completed", "profile", workspaceAppNodeRuntimePreloadProfile, "durationMs", time.Since(startedAt).Milliseconds())
-	}()
 }
 
 func (s *AppCenterService) handleRunnerStateChanged(workspaceID string, appID string, state workspacebiz.AppRuntimeState) {
