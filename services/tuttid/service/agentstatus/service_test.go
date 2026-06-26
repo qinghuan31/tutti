@@ -1007,8 +1007,8 @@ func TestServiceRunCodexCLILatestInstallerUsesGlobalNPM(t *testing.T) {
 		!strings.Contains(command.Command, "-g") ||
 		!strings.Contains(command.Command, "@openai/codex") ||
 		!strings.Contains(command.Command, "--include=optional") ||
-		strings.Contains(command.Command, "--prefix") {
-		t.Fatalf("Command = %q, want global npm install with optional deps", command.Command)
+		!strings.Contains(command.Command, "--prefix") {
+		t.Fatalf("Command = %q, want global npm install with optional deps pinned to a searched --prefix", command.Command)
 	}
 	if !slices.Contains(command.Env, "npm_config_registry=https://registry.example.test") {
 		t.Fatalf("Env = %#v, want selected npm registry", command.Env)
@@ -1054,8 +1054,8 @@ func TestServiceRunCodexInstallerReportsGlobalNPMActiveAction(t *testing.T) {
 			!strings.Contains(input.Command, "-g") ||
 			!strings.Contains(input.Command, "@openai/codex") ||
 			!strings.Contains(input.Command, "--include=optional") ||
-			strings.Contains(input.Command, "--prefix") {
-			t.Errorf("Command = %q, want global npm install with optional deps", input.Command)
+			!strings.Contains(input.Command, "--prefix") {
+			t.Errorf("Command = %q, want global npm install with optional deps pinned to a searched --prefix", input.Command)
 		}
 		if !slices.Contains(input.Env, "npm_config_registry=https://registry.example.test") {
 			t.Errorf("Env = %#v, want selected npm registry", input.Env)
