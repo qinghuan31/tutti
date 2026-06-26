@@ -178,6 +178,7 @@ const EMPTY_AGENT_GUI_MESSAGES: readonly WorkspaceAgentActivityMessage[] = [];
 const EMPTY_AGENT_GUI_AVAILABLE_COMMANDS: AgentSessionCommand[] = [];
 const ACTIVITY_STREAM_STATE_RELOAD_DEBOUNCE_MS = 150;
 const AGENT_GUI_DETAIL_MESSAGES_PAGE_SIZE = 100;
+const AGENT_GUI_SUBMIT_RETARGET_EARLY_MESSAGE_TOLERANCE_MS = 5_000;
 
 function mergeAgentModelCatalogInvalidationEvents(
   events: AgentModelCatalogInvalidatedEvent[]
@@ -1187,8 +1188,21 @@ function filterMessagesForDetailWindowOverlay(input: {
     });
   }
 
-  const oldestDetailVersion = minFiniteMessageVersion(input.detailMessages);
-  const newestDetailVersion = maxFiniteMessageVersion(input.detailMessages);
+  const boundedDetailMessages = input.detailMessages.filter(
+    (message) => !isWorkspaceAgentActivityOptimisticMessage(message)
+  );
+  const oldestDetailVersion = minFiniteMessageVersion(boundedDetailMessages);
+  const newestDetailVersion = maxFiniteMessageVersion(boundedDetailMessages);
+  if (oldestDetailVersion === null && newestDetailVersion === null) {
+    const optimisticWindowMessages = filterMessagesForOptimisticDetailWindow({
+      detailMessages: input.detailMessages,
+      localMessages: input.localMessages
+    });
+    return optimisticWindowMessages.length > 0 ||
+      input.detailMessages.some(isWorkspaceAgentActivityOptimisticMessage)
+      ? optimisticWindowMessages
+      : [...input.localMessages];
+  }
   return input.localMessages.filter((message) => {
     if (isWorkspaceAgentActivityOptimisticMessage(message)) {
       return true;
@@ -1203,6 +1217,99 @@ function filterMessagesForDetailWindowOverlay(input: {
       oldestDetailVersion !== null && message.version >= oldestDetailVersion
     );
   });
+}
+
+function filterMessagesForOptimisticDetailWindow(input: {
+  detailMessages: readonly WorkspaceAgentActivityMessage[];
+  localMessages: readonly WorkspaceAgentActivityMessage[];
+}): WorkspaceAgentActivityMessage[] {
+  const optimisticTurnIds = new Set(
+    input.detailMessages
+      .filter(isWorkspaceAgentActivityOptimisticMessage)
+      .map((message) => message.turnId?.trim() ?? "")
+      .filter(Boolean)
+  );
+  if (optimisticTurnIds.size === 0) {
+    return [];
+  }
+  return input.localMessages.filter((message) => {
+    if (isWorkspaceAgentActivityOptimisticMessage(message)) {
+      return true;
+    }
+    const turnId = message.turnId?.trim() ?? "";
+    return turnId !== "" && optimisticTurnIds.has(turnId);
+  });
+}
+
+function retargetOptimisticPromptMessages(
+  messages: readonly WorkspaceAgentActivityMessage[],
+  input: { clientSubmitId: string; turnId: string }
+): { changed: boolean; messages: WorkspaceAgentActivityMessage[] } {
+  const clientSubmitId = input.clientSubmitId.trim();
+  const turnId = input.turnId.trim();
+  if (!clientSubmitId || !turnId || messages.length === 0) {
+    return { changed: false, messages: [...messages] };
+  }
+  const pendingTurnId = createPendingOptimisticTurnId(clientSubmitId);
+  let changed = false;
+  const retargeted = messages.map((message) => {
+    if (
+      !isWorkspaceAgentActivityOptimisticMessage(message) ||
+      message.turnId?.trim() !== pendingTurnId
+    ) {
+      return message;
+    }
+    const messageClientSubmitId = message.payload?.clientSubmitId;
+    if (
+      typeof messageClientSubmitId === "string" &&
+      messageClientSubmitId.trim() &&
+      messageClientSubmitId.trim() !== clientSubmitId
+    ) {
+      return message;
+    }
+    changed = true;
+    return { ...message, turnId };
+  });
+  return { changed, messages: retargeted };
+}
+
+function shouldRetargetOptimisticPromptFromMessage(
+  message: WorkspaceAgentActivityMessage,
+  trace: AgentSubmitTraceState
+): boolean {
+  const turnId = message.turnId?.trim() ?? "";
+  if (!turnId || trace.turnId) {
+    return false;
+  }
+  const clientSubmitId = stringPayloadValue(message.payload, "clientSubmitId");
+  if (clientSubmitId?.trim()) {
+    return clientSubmitId.trim() === trace.clientSubmitId;
+  }
+  if (message.role.trim().toLowerCase() === "user") {
+    return false;
+  }
+  const messageTimeUnixMs = messageActivityTimeUnixMs(message);
+  return (
+    messageTimeUnixMs === null ||
+    messageTimeUnixMs >=
+      trace.startedAtUnixMs -
+        AGENT_GUI_SUBMIT_RETARGET_EARLY_MESSAGE_TOLERANCE_MS
+  );
+}
+
+function messageActivityTimeUnixMs(
+  message: WorkspaceAgentActivityMessage
+): number | null {
+  for (const value of [
+    message.occurredAtUnixMs,
+    message.startedAtUnixMs,
+    message.completedAtUnixMs
+  ]) {
+    if (typeof value === "number" && Number.isFinite(value) && value > 0) {
+      return value;
+    }
+  }
+  return null;
 }
 
 function minFiniteMessageVersion(
@@ -5048,6 +5155,47 @@ export function useAgentGUINodeController({
     ]
   );
 
+  const retargetOptimisticPromptTurn = useCallback(
+    (agentSessionId: string, clientSubmitId: string, turnId: string) => {
+      const normalizedAgentSessionId = agentSessionId.trim();
+      const normalizedTurnId = turnId.trim();
+      if (
+        !normalizedAgentSessionId ||
+        !clientSubmitId.trim() ||
+        !normalizedTurnId
+      ) {
+        return;
+      }
+      const sessionView = getAgentSessionView(
+        sessionViewRef(normalizedAgentSessionId)
+      );
+      if (!sessionView) {
+        return;
+      }
+      const detail = retargetOptimisticPromptMessages(
+        sessionView.detailMessages,
+        { clientSubmitId, turnId: normalizedTurnId }
+      );
+      if (detail.changed) {
+        setAgentSessionViewDetailMessages(
+          sessionViewRef(normalizedAgentSessionId),
+          detail.messages
+        );
+      }
+      const overlay = retargetOptimisticPromptMessages(
+        sessionView.overlayMessages,
+        { clientSubmitId, turnId: normalizedTurnId }
+      );
+      if (overlay.changed) {
+        setAgentSessionViewOverlayMessages(
+          sessionViewRef(normalizedAgentSessionId),
+          overlay.messages
+        );
+      }
+    },
+    [sessionViewRef]
+  );
+
   const applyStatePatch = useCallback(
     (patch: WorkspaceAgentActivityStatePatch) => {
       const agentSessionId = patch.agentSessionId.trim();
@@ -5072,7 +5220,13 @@ export function useAgentGUINodeController({
           patchActiveTurnId === submitTrace.turnId;
         if (matchesTraceTurn) {
           if (!submitTrace.turnId && (patchTurnId || patchActiveTurnId)) {
-            submitTrace.turnId = patchTurnId || patchActiveTurnId;
+            const resolvedTurnId = patchTurnId || patchActiveTurnId;
+            submitTrace.turnId = resolvedTurnId;
+            retargetOptimisticPromptTurn(
+              agentSessionId,
+              submitTrace.clientSubmitId,
+              resolvedTurnId
+            );
           }
           reportAgentSubmitTraceDiagnostic({
             event: `lifecycle.${structuredTurnPhase}`,
@@ -5227,6 +5381,7 @@ export function useAgentGUINodeController({
     [
       patchConversation,
       resolveSessionMessages,
+      retargetOptimisticPromptTurn,
       sessionViewRef,
       setTransientConversation,
       statePatchErrorBySessionId,
@@ -5273,6 +5428,20 @@ export function useAgentGUINodeController({
           if (!agentSessionId) {
             continue;
           }
+          const submitTrace = submitTraceBySessionIdRef.current[agentSessionId];
+          const messageTurnId = message.turnId?.trim() ?? "";
+          if (
+            submitTrace &&
+            messageTurnId &&
+            shouldRetargetOptimisticPromptFromMessage(message, submitTrace)
+          ) {
+            submitTrace.turnId = messageTurnId;
+            retargetOptimisticPromptTurn(
+              agentSessionId,
+              submitTrace.clientSubmitId,
+              messageTurnId
+            );
+          }
           const completionKey = completionKeyFromMessage(message);
           if (completionKey) {
             pendingCompletionKeysBySessionId.set(agentSessionId, completionKey);
@@ -5296,7 +5465,8 @@ export function useAgentGUINodeController({
       applyStatePatch,
       applyBackgroundTimelineStatusUpdate,
       conversationListQuery,
-      recordLocalMessages
+      recordLocalMessages,
+      retargetOptimisticPromptTurn
     ]
   );
   const handleBackgroundActivityStreamEvents = useCallback(

@@ -92,6 +92,28 @@ function conversationBodies(viewModel: {
   ).filter(Boolean);
 }
 
+function conversationMessageRows(viewModel: {
+  conversation?: {
+    rows: readonly {
+      kind: string;
+      speaker?: string;
+      messages?: readonly { body?: string }[];
+    }[];
+  } | null;
+}): Array<{ speaker: string; body: string }> {
+  return (
+    viewModel.conversation?.rows.flatMap((row) => {
+      if (row.kind !== "message" || !row.speaker || !row.messages) {
+        return [];
+      }
+      return row.messages
+        .map((message) => message.body?.trim() ?? "")
+        .filter(Boolean)
+        .map((body) => ({ speaker: row.speaker!, body }));
+    }) ?? []
+  );
+}
+
 function promptContent(text: string): { content: AgentPromptContentBlock[] } {
   return { content: promptBlocks(text) };
 }
@@ -2742,6 +2764,129 @@ describe("useAgentGUINodeController", () => {
       expect(result.current.viewModel.activeConversation?.id).toBe(createdId);
     });
     expect(exec).not.toHaveBeenCalled();
+  });
+
+  it("renders live assistant messages for a newly created session with only an optimistic prompt in detail", async () => {
+    let resolveActivation:
+      | ((value: AgentHostActivateAgentSessionResult) => void)
+      | undefined;
+    const activate = vi.fn((input: AgentHostActivateAgentSessionInput) => {
+      if (input.mode === "existing") {
+        return Promise.resolve({
+          session: agentSession(input.agentSessionId),
+          activation: { mode: input.mode, status: "attached" as const }
+        });
+      }
+      return new Promise<AgentHostActivateAgentSessionResult>((resolve) => {
+        resolveActivation = resolve;
+      });
+    });
+    const subscribeEvents = vi.fn(() => vi.fn());
+    installAgentHostApi({
+      list: vi.fn(async () => ({ presences: [], sessions: [] })),
+      listSessionTimeline: vi.fn(async () => ({ timelineItems: [] })),
+      subscribeEvents,
+      activate
+    });
+
+    const { result } = renderHook(() =>
+      useAgentGUINodeController({
+        workspaceId: "room-1",
+        currentUserId: "user-1",
+        workspacePath: "/workspace",
+        avoidGroupingEdits: false,
+        data: agentGuiData(null),
+        onDataChange: vi.fn()
+      })
+    );
+
+    await waitFor(() => {
+      expect(result.current.viewModel.activeConversationId).toBeNull();
+    });
+
+    act(() => {
+      result.current.actions.submitPrompt(promptBlocks("Start a fresh chat"));
+    });
+
+    await waitFor(() => {
+      expect(activate).toHaveBeenCalledWith(
+        expect.objectContaining({
+          mode: "new",
+          ...initialPromptContent("Start a fresh chat")
+        })
+      );
+    });
+    const createdId = activate.mock.calls[0]![0].agentSessionId;
+
+    act(() => {
+      resolveActivation?.({
+        session: agentSession(createdId, { status: "working" }),
+        activation: { mode: "new", status: "attached" }
+      });
+    });
+
+    await waitFor(() => {
+      expect(result.current.viewModel.activeConversationId).toBe(createdId);
+      expect(conversationBodies(result.current.viewModel)).toContain(
+        "Start a fresh chat"
+      );
+    });
+    await waitFor(() => {
+      expect(subscribeEvents).toHaveBeenCalledWith(
+        expect.objectContaining({
+          agentSessionId: createdId,
+          workspaceId: "room-1"
+        }),
+        expect.any(Function)
+      );
+    });
+
+    act(() => {
+      emitRuntimeSessionEventForTests?.(
+        streamMessage({
+          agentSessionId: createdId,
+          eventId: "assistant-old-history",
+          id: 1,
+          role: "assistant",
+          content: "Old retained answer",
+          turnId: "turn-old",
+          occurredAtUnixMs: 1
+        })
+      );
+    });
+
+    await waitFor(() => {
+      expect(conversationMessageRows(result.current.viewModel)).toEqual([
+        { speaker: "user", body: "Start a fresh chat" }
+      ]);
+      expect(conversationBodies(result.current.viewModel)).not.toContain(
+        "Old retained answer"
+      );
+    });
+
+    act(() => {
+      emitRuntimeSessionEventForTests?.(
+        streamMessage({
+          agentSessionId: createdId,
+          eventId: "assistant-first",
+          id: 2,
+          role: "assistant",
+          content: "First answer",
+          turnId: "turn-1",
+          occurredAtUnixMs: Date.now() + 1_000
+        })
+      );
+    });
+
+    await waitFor(() => {
+      expect(conversationBodies(result.current.viewModel)).toEqual(
+        expect.arrayContaining(["Start a fresh chat", "First answer"])
+      );
+      expect(conversationMessageRows(result.current.viewModel)).toEqual([
+        { speaker: "user", body: "Start a fresh chat" },
+        { speaker: "assistant", body: "First answer" }
+      ]);
+    });
   });
 
   it("inherits the current same-provider model when creating a new conversation without a draft model", async () => {
@@ -14287,7 +14432,8 @@ function timelineMessage({
   eventId,
   role,
   content,
-  turnId
+  turnId,
+  occurredAtUnixMs
 }: {
   agentSessionId: string;
   id: number;
@@ -14295,7 +14441,9 @@ function timelineMessage({
   role: "user" | "assistant";
   content: string;
   turnId?: string;
+  occurredAtUnixMs?: number;
 }): AgentHostWorkspaceAgentTimelineItem {
+  const messageTimeUnixMs = occurredAtUnixMs ?? id;
   return {
     id,
     workspaceId: "room-1",
@@ -14307,8 +14455,8 @@ function timelineMessage({
     itemType: "message",
     role,
     content,
-    occurredAtUnixMs: id,
-    createdAtUnixMs: id
+    occurredAtUnixMs: messageTimeUnixMs,
+    createdAtUnixMs: messageTimeUnixMs
   };
 }
 

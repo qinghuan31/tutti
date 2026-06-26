@@ -788,6 +788,16 @@ Quick checks:
 - Confirm pending overlay messages are inserted and later reconciled.
 - Confirm live events or message page reload contains a newer version.
 - Inspect timeline item merge and dedupe keys.
+- When the selected detail window only contains optimistic prompt messages,
+  do not use their local timestamp-derived versions as durable message-window
+  bounds; live runtime messages can have lower authoritative sequence versions
+  and must still enter the transcript before a refresh.
+- When a live message or lifecycle patch reveals the real turn ID for a
+  first-prompt create, retarget the optimistic prompt from its pending
+  client-submit turn ID only after the event is known to belong to the current
+  submit; retained history must not retarget that optimistic prompt. Do this
+  before projecting rows so the user prompt stays grouped above the agent
+  response.
 
 Likely fix area:
 
