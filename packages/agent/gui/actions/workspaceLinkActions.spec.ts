@@ -222,6 +222,15 @@ describe("resolveWorkspaceFileLinkAction", () => {
     });
   });
 
+  it("rejects staged local asset paths from workspace file candidates", () => {
+    expect(
+      resolveWorkspaceFilePathCandidate({
+        path: "/var/cache/tsh/local-assets/room-1/user-1/photo.png",
+        workspaceRoot: "/workspace/project-a"
+      })
+    ).toBeNull();
+  });
+
   it("resolves relative paths through the same workspace file candidate contract", () => {
     expect(
       resolveWorkspaceFilePathCandidate({

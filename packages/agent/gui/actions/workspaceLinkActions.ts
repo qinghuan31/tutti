@@ -141,6 +141,9 @@ export function resolveWorkspaceFilePathCandidate({
   if (isUnsupportedSpecialWorkspaceFilePath(normalizedPath)) {
     return null;
   }
+  if (isStagedLocalAssetPath(normalizedPath)) {
+    return null;
+  }
   if (
     isAbsoluteLocalPath(normalizedPath) &&
     (isDirectAgentGeneratedMediaPath(normalizedPath) ||
@@ -336,14 +339,14 @@ export function resolveWorkspaceLinkAction({
 }: ResolveWorkspaceLinkActionInput): WorkspaceLinkAction | null {
   return (
     resolveWorkspaceMentionLinkAction({ href, source }) ??
+    resolveLocalAssetPreviewLinkAction({
+      path: href,
+      source
+    }) ??
     resolveWorkspaceFileLinkAction({
       path: href,
       workspaceRoot,
       basePath,
-      source
-    }) ??
-    resolveLocalAssetPreviewLinkAction({
-      path: href,
       source
     }) ??
     resolveWorkspaceUrlLinkAction({ url: href, source })
@@ -464,6 +467,10 @@ function isInsideOrEqual(path: string, root: string): boolean {
     comparison.path === comparison.root ||
     comparison.path.startsWith(`${comparison.root}/`)
   );
+}
+
+function isStagedLocalAssetPath(path: string): boolean {
+  return path !== LOCAL_ASSET_ROOT && isInsideOrEqual(path, LOCAL_ASSET_ROOT);
 }
 
 export function isDirectAgentGeneratedMediaPath(path: string): boolean {
