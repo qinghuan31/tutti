@@ -710,6 +710,37 @@ composer document
 Never fix send bugs only in the composer UI. Also inspect the pending overlay,
 runtime command input, and timeline merge path.
 
+### Composer Mention References
+
+```text
+@ trigger range
+  -> AgentRichTextEditor suggestion state
+  -> AgentFileMentionPalette row action
+  -> mention command OR reference picker launch
+  -> composer document update
+  -> prompt mention serialization
+```
+
+The `@` trigger range is the source of truth for replacing typed mention text.
+Normal row selection replaces that range through the suggestion command. Any
+side action inside a mention row that opens another picker and later inserts
+files or `workspace-reference` mentions must clear the active trigger text
+before launching the picker, otherwise the raw `@` query remains in the
+composer before the inserted mention.
+
+`workspace-reference` hrefs are the passive reference contract, not a visual
+metadata store. Do not serialize app icons into the href just to render a chip.
+For `source=app` references, readonly and markdown renderers should hydrate the
+icon from the same `workspaceAppIcons` appId/workspaceId table used by ordinary
+`workspace-app` mentions.
+
+Quick check:
+
+```sh
+corepack pnpm --filter @tutti-os/agent-gui exec vitest run agent-gui/agentGuiNode/AgentComposer.spec.tsx -t "removes the active @ trigger"
+corepack pnpm --filter @tutti-os/agent-gui exec vitest run shared/AgentRichTextReadonly.spec.tsx shared/AgentMessageMarkdown.spec.tsx
+```
+
 ### Approval Or Ask-User Prompt
 
 ```text

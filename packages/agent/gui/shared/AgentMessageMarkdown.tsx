@@ -1694,10 +1694,20 @@ function parseMentionLink(
     };
   }
   if (kind === "workspace-reference") {
+    const source = mention.scope?.source?.trim() ?? "";
+    const workspaceId = mention.scope?.workspaceId?.trim() || "";
+    const appIconUrl =
+      source === "app"
+        ? resolveWorkspaceAppMentionIconUrl({
+            appId: entityId,
+            workspaceAppIcons,
+            workspaceId
+          })
+        : undefined;
     return {
       kind,
       label,
-      iconUrl: mention.scope?.icon?.trim() || undefined,
+      iconUrl: mention.scope?.icon?.trim() || appIconUrl,
       fileCount: referenceFileCountFromParam(mention.scope?.count ?? null),
       participant: label,
       summary: ""
