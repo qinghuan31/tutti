@@ -21,6 +21,10 @@ import type { IAgentProviderStatusService } from "./agentProviderStatusService.i
 import { getActiveLocale } from "../../../i18n/runtime.ts";
 import { wrapLocalizedTuttidErrorIfSpecific } from "../../../lib/desktopErrors.ts";
 import { shouldRefreshProviderStatusAfterSessionError } from "./internal/desktopAgentProviderStatusSync.ts";
+import {
+  normalizedTuttidMessageOccurredAtUnixMs,
+  normalizedTuttidMessageTurnId
+} from "./desktopAgentActivityMessageNormalization.ts";
 
 export interface CreateDesktopAgentActivityAdapterInput {
   agentProviderStatusService?: Pick<IAgentProviderStatusService, "refresh">;
@@ -665,13 +669,13 @@ export function agentActivityMessageFromTuttidMessage(
     id: message.id,
     kind: message.kind,
     messageId: message.messageId,
-    occurredAtUnixMs: message.occurredAtUnixMs ?? undefined,
+    occurredAtUnixMs: normalizedTuttidMessageOccurredAtUnixMs(message),
     payload: recordValue(message.payload),
     role: message.role,
     ...(message.semantics != null ? { semantics: message.semantics } : {}),
     startedAtUnixMs: message.startedAtUnixMs ?? undefined,
     status: message.status ?? undefined,
-    turnId: message.turnId ?? undefined,
+    turnId: normalizedTuttidMessageTurnId(message),
     version: message.version
   };
 }

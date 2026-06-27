@@ -780,28 +780,34 @@ function firstUserMessageTitleFromMessages(
 function workspaceAgentMessagesFromTimelineItems(
   timelineItems: readonly WorkspaceAgentActivityTimelineItem[]
 ): WorkspaceAgentActivityMessage[] {
-  return timelineItems.map((item, index) => ({
-    id: item.id,
-    workspaceId: item.workspaceId,
-    agentSessionId: item.agentSessionId,
-    messageId: item.eventId || `${item.agentSessionId}:${item.id}:${index}`,
-    version: item.seq ?? item.id,
-    ...(item.turnId ? { turnId: item.turnId } : {}),
-    role: item.role ?? timelineItemRole(item) ?? item.actorType,
-    kind: item.itemType === "call" ? "tool_call" : item.itemType,
-    ...(item.status ? { status: item.status } : {}),
-    payload: {
-      ...item.payload,
-      content: item.payload?.content ?? item.content,
-      text: item.payload?.text ?? item.content,
-      callType: item.callType,
-      callId: item.callId,
-      name: item.name
-    },
-    occurredAtUnixMs: item.occurredAtUnixMs ?? item.createdAtUnixMs,
-    startedAtUnixMs: item.createdAtUnixMs,
-    completedAtUnixMs: item.occurredAtUnixMs
-  }));
+  return timelineItems.map((item, index) => {
+    const messageId =
+      item.eventId || `${item.agentSessionId}:${item.id}:${index}`;
+    const version = item.seq ?? item.id;
+    return {
+      id: item.id,
+      workspaceId: item.workspaceId,
+      agentSessionId: item.agentSessionId,
+      messageId,
+      version,
+      turnId: item.turnId || `timeline:${messageId}`,
+      role: item.role ?? timelineItemRole(item) ?? item.actorType,
+      kind: item.itemType === "call" ? "tool_call" : item.itemType,
+      ...(item.status ? { status: item.status } : {}),
+      payload: {
+        ...item.payload,
+        content: item.payload?.content ?? item.content,
+        text: item.payload?.text ?? item.content,
+        callType: item.callType,
+        callId: item.callId,
+        name: item.name
+      },
+      occurredAtUnixMs:
+        item.occurredAtUnixMs ?? item.createdAtUnixMs ?? version,
+      startedAtUnixMs: item.createdAtUnixMs,
+      completedAtUnixMs: item.occurredAtUnixMs
+    };
+  });
 }
 
 function messageRole(

@@ -273,6 +273,7 @@ describe("agentGuiConversationModel", () => {
             id: 1,
             agentSessionId: "older-start",
             eventId: "late-message",
+            role: "assistant",
             occurredAtUnixMs: 8_000
           })
         ]
@@ -1775,7 +1776,7 @@ function workspaceAgentMessage(
     messageId:
       overrides.messageId ?? overrides.eventId ?? `message-${overrides.id}`,
     version: overrides.version ?? overrides.id,
-    ...(overrides.turnId ? { turnId: overrides.turnId } : {}),
+    turnId: overrides.turnId ?? `turn-${overrides.id}`,
     role: overrides.role ?? "user",
     kind: overrides.kind ?? "message",
     ...(overrides.status ? { status: overrides.status } : {}),
@@ -1784,7 +1785,7 @@ function workspaceAgentMessage(
       content: payload.content ?? overrides.content,
       text: payload.text ?? overrides.content
     },
-    occurredAtUnixMs: overrides.occurredAtUnixMs,
+    occurredAtUnixMs: overrides.occurredAtUnixMs ?? overrides.id,
     startedAtUnixMs: overrides.startedAtUnixMs,
     completedAtUnixMs: overrides.completedAtUnixMs
   };

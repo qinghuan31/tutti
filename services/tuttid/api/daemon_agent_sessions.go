@@ -2,6 +2,7 @@ package api
 
 import (
 	"context"
+	"strconv"
 	"strings"
 
 	tuttigenerated "github.com/tutti-os/tutti/services/tuttid/api/generated"
@@ -576,17 +577,52 @@ func generatedAgentSessionMessages(messages []agentservice.SessionMessage) []tut
 			Id:                int64(message.ID),
 			Kind:              strings.TrimSpace(message.Kind),
 			MessageId:         strings.TrimSpace(message.MessageID),
-			OccurredAtUnixMs:  int64Pointer(message.OccurredAtUnixMS),
+			OccurredAtUnixMs:  normalizedGeneratedMessageOccurredAtUnixMS(message),
 			Payload:           clonePayloadPointer(message.Payload),
 			Role:              strings.TrimSpace(message.Role),
 			StartedAtUnixMs:   int64Pointer(message.StartedAtUnixMS),
 			Status:            stringPointer(strings.TrimSpace(message.Status)),
-			TurnId:            stringPointer(strings.TrimSpace(message.TurnID)),
+			TurnId:            normalizedGeneratedMessageTurnID(message),
 			UpdatedAtUnixMs:   int64Pointer(message.UpdatedAtUnixMS),
 			Version:           int64(message.Version),
 		})
 	}
 	return result
+}
+
+func normalizedGeneratedMessageTurnID(message agentservice.SessionMessage) string {
+	if turnID := strings.TrimSpace(message.TurnID); turnID != "" {
+		return turnID
+	}
+	if messageID := strings.TrimSpace(message.MessageID); messageID != "" {
+		return "message:" + messageID
+	}
+	if message.Version > 0 {
+		return "version:" + strconv.FormatUint(message.Version, 10)
+	}
+	return "id:" + strconv.FormatUint(message.ID, 10)
+}
+
+func normalizedGeneratedMessageOccurredAtUnixMS(message agentservice.SessionMessage) int64 {
+	return firstPositiveInt64(
+		message.OccurredAtUnixMS,
+		message.StartedAtUnixMS,
+		message.CompletedAtUnixMS,
+		message.CreatedAtUnixMS,
+		message.UpdatedAtUnixMS,
+		int64(message.Version),
+		int64(message.ID),
+		1,
+	)
+}
+
+func firstPositiveInt64(values ...int64) int64 {
+	for _, value := range values {
+		if value > 0 {
+			return value
+		}
+	}
+	return 0
 }
 
 func generatedAgentGeneratedFiles(files []agentservice.GeneratedFile) []tuttigenerated.WorkspaceAgentGeneratedFileEntry {

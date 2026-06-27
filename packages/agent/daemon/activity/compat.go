@@ -164,7 +164,7 @@ func SessionMessageUpdateFromActivityUpdate(update WorkspaceAgentMessageUpdate) 
 		Status:            strings.TrimSpace(update.Status),
 		Semantics:         cloneMessageSemantics(update.Semantics),
 		Payload:           payload,
-		OccurredAtUnixMS:  update.OccurredAtUnixMS,
+		OccurredAtUnixMS:  firstNonZeroInt64(update.OccurredAtUnixMS, update.StartedAtUnixMS, update.CompletedAtUnixMS),
 		StartedAtUnixMS:   update.StartedAtUnixMS,
 		CompletedAtUnixMS: update.CompletedAtUnixMS,
 	}

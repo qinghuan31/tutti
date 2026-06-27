@@ -183,6 +183,39 @@ test("desktop agent activity adapter returns cancel result metadata", async () =
   assert.equal(result.session.status, "created");
 });
 
+test("desktop agent activity adapter normalizes legacy message pages before core", async () => {
+  const adapter = createDesktopAgentActivityAdapter({
+    tuttidClient: createTuttidClient({
+      async listWorkspaceAgentSessionMessages(_workspaceId, agentSessionId) {
+        const legacyMessage = createMessage({
+          agentSessionId,
+          createdAtUnixMs: 1717200001000,
+          messageId: "message-without-turn",
+          version: 5
+        });
+        delete (legacyMessage as { occurredAtUnixMs?: unknown })
+          .occurredAtUnixMs;
+        delete (legacyMessage as { turnId?: unknown }).turnId;
+        return {
+          agentSessionId,
+          hasMore: false,
+          latestVersion: 5,
+          messages: [legacyMessage]
+        };
+      }
+    }),
+    runtimeApi: createRuntimeApi()
+  });
+
+  const page = await adapter.listSessionMessages({
+    agentSessionId: "agent-session-1",
+    workspaceId
+  });
+
+  assert.equal(page.messages[0]?.turnId, "message:message-without-turn");
+  assert.equal(page.messages[0]?.occurredAtUnixMs, 1717200001000);
+});
+
 test("desktop agent activity adapter forwards submit diagnostic metadata", async () => {
   const calls: unknown[] = [];
   const adapter = createDesktopAgentActivityAdapter({
@@ -1067,8 +1100,10 @@ function createMessage(
     id: 1,
     kind: "text",
     messageId: "message-1",
+    occurredAtUnixMs: 1717200001000,
     payload: {},
     role: "assistant",
+    turnId: "turn-1",
     version: 1,
     ...overrides
   };

@@ -1441,9 +1441,10 @@ function hostMessageEventFromCore(message: AgentActivityMessage): unknown {
       payload: message.payload,
       role: message.role,
       seq: message.version,
+      version: message.version,
       startedAtUnixMs: message.startedAtUnixMs,
       status: message.status ?? undefined,
-      turnId: message.turnId ?? undefined,
+      turnId: message.turnId,
       workspaceId: message.workspaceId
     },
     eventType: "message_update"

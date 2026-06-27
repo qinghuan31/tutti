@@ -360,6 +360,15 @@ should render projected rows and fire actions. They should not own provider
 message semantics, merge keys, prompt status resolution, or durable message
 dedupe.
 
+Transcript `message_update` events that reach `AgentActivityRuntime` are a
+normalized runtime contract. Each transcript message must already carry a
+stable `messageId`, positive `version`/`seq`, stable `turnId`, and positive
+`occurredAtUnixMs`. Provider, adapter, desktop, or daemon ingestion layers must
+derive missing turn/time data from the active turn, submit context, stable
+sequence source, or a stable fallback before AgentGUI sees the event. AgentGUI
+must not retarget optimistic prompts from turnless or untimestamped live
+messages.
+
 ### Layer Ownership Summary
 
 | Layer                                   | Owns                                                                                                  | Must not own                                   |
@@ -788,6 +797,9 @@ Quick checks:
 - Confirm pending overlay messages are inserted and later reconciled.
 - Confirm live events or message page reload contains a newer version.
 - Inspect timeline item merge and dedupe keys.
+- Confirm `message_update` payloads already include `turnId`,
+  `occurredAtUnixMs`, and a positive `version` or `seq`; missing fields belong
+  in runtime/adapter/daemon normalization, not AgentGUI prompt retargeting.
 - When the selected detail window only contains optimistic prompt messages,
   do not use their local timestamp-derived versions as durable message-window
   bounds; live runtime messages can have lower authoritative sequence versions

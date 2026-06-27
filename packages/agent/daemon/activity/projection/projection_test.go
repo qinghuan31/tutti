@@ -252,6 +252,53 @@ func TestProjectMessageUpdateMergesPayloadAndProtectsTerminalStatus(t *testing.T
 	}
 }
 
+func TestProjectMessageUpdateNormalizesMissingTurnAndOccurredAt(t *testing.T) {
+	message, ok := ProjectMessageUpdate(MessageSnapshot{}, false, MessageUpdate{
+		MessageID: "message-1",
+		Role:      "assistant",
+		Kind:      "text",
+		Payload:   map[string]any{"text": "hello"},
+	}, 1, 150)
+	if !ok {
+		t.Fatal("ok = false, want true")
+	}
+	if message.TurnID != "message:message-1" {
+		t.Fatalf("TurnID = %q, want stable message fallback", message.TurnID)
+	}
+	if message.OccurredAtUnixMS != 150 {
+		t.Fatalf("OccurredAtUnixMS = %d, want now fallback 150", message.OccurredAtUnixMS)
+	}
+}
+
+func TestProjectMessageUpdatePreservesExistingTurnWhenUpdateOmitsIt(t *testing.T) {
+	existing := MessageSnapshot{
+		ID:               7,
+		AgentSessionID:   "session-1",
+		MessageID:        "message-1",
+		Version:          1,
+		TurnID:           "turn-1",
+		Role:             "assistant",
+		Kind:             "text",
+		Payload:          map[string]any{"text": "hel"},
+		OccurredAtUnixMS: 120,
+		CreatedAtUnixMS:  100,
+		UpdatedAtUnixMS:  100,
+	}
+	message, ok := ProjectMessageUpdate(existing, true, MessageUpdate{
+		MessageID:    "message-1",
+		ContentDelta: "lo",
+	}, 2, 160)
+	if !ok {
+		t.Fatal("ok = false, want true")
+	}
+	if message.TurnID != "turn-1" {
+		t.Fatalf("TurnID = %q, want existing turn", message.TurnID)
+	}
+	if message.OccurredAtUnixMS != 120 {
+		t.Fatalf("OccurredAtUnixMS = %d, want existing occurred time", message.OccurredAtUnixMS)
+	}
+}
+
 func TestCanonicalSessionStatus(t *testing.T) {
 	tests := []struct {
 		name      string

@@ -1218,13 +1218,14 @@ func TestDaemonAPIGeneratedRoutesListAgentSessionMessages(t *testing.T) {
 					AgentSessionID: agentSessionID,
 					Messages: []agentservice.SessionMessage{
 						{
-							ID:             8,
-							AgentSessionID: agentSessionID,
-							MessageID:      "msg-1",
-							Role:           "assistant",
-							Kind:           "text",
-							Payload:        map[string]any{"content": "Done."},
-							Version:        8,
+							ID:              8,
+							AgentSessionID:  agentSessionID,
+							MessageID:       "msg-1",
+							Role:            "assistant",
+							Kind:            "text",
+							Payload:         map[string]any{"content": "Done."},
+							StartedAtUnixMS: 1717200001000,
+							Version:         8,
 						},
 					},
 					LatestVersion: 8,
@@ -1263,6 +1264,12 @@ func TestDaemonAPIGeneratedRoutesListAgentSessionMessages(t *testing.T) {
 	}
 	if response.Messages[0].MessageId != "msg-1" {
 		t.Fatalf("messageId = %q, want msg-1", response.Messages[0].MessageId)
+	}
+	if response.Messages[0].TurnId != "message:msg-1" {
+		t.Fatalf("turnId = %q, want message:msg-1", response.Messages[0].TurnId)
+	}
+	if response.Messages[0].OccurredAtUnixMs != 1717200001000 {
+		t.Fatalf("occurredAtUnixMs = %d, want startedAt fallback", response.Messages[0].OccurredAtUnixMs)
 	}
 }
 

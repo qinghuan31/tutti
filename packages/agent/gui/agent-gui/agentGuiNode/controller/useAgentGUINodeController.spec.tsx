@@ -2842,6 +2842,22 @@ describe("useAgentGUINodeController", () => {
     });
 
     act(() => {
+      emitRuntimeSessionEventForTests?.({
+        eventType: "state_patch",
+        data: {
+          agentSessionId: createdId,
+          lifecycleStatus: "active",
+          currentPhase: "working",
+          turn: {
+            turnId: "turn-old",
+            phase: "running"
+          },
+          occurredAtUnixMs: 1
+        }
+      });
+    });
+
+    act(() => {
       emitRuntimeSessionEventForTests?.(
         streamMessage({
           agentSessionId: createdId,
@@ -14108,12 +14124,16 @@ function agentActivityMessageFromHostMessage(
     messageId: message.messageId,
     id: message.id,
     version: message.version,
-    turnId: message.turnId ?? null,
+    turnId: message.turnId?.trim() || `message:${message.messageId}`,
     role: message.role,
     kind: message.kind,
     status: message.status ?? null,
     payload: { ...message.payload },
-    occurredAtUnixMs: message.occurredAtUnixMs,
+    occurredAtUnixMs:
+      message.occurredAtUnixMs ??
+      message.startedAtUnixMs ??
+      message.completedAtUnixMs ??
+      message.version,
     startedAtUnixMs: message.startedAtUnixMs,
     completedAtUnixMs: message.completedAtUnixMs
   };
@@ -14263,18 +14283,19 @@ function agentActivityMessageFromStreamEvent(
   if (!agentSessionId || !messageId || !role || !kind) {
     return null;
   }
+  const version =
+    typeof data.seq === "number"
+      ? data.seq
+      : typeof data.version === "number"
+        ? data.version
+        : 0;
   return {
     workspaceId,
     agentSessionId,
     messageId,
     id: typeof data.id === "number" ? data.id : undefined,
-    version:
-      typeof data.seq === "number"
-        ? data.seq
-        : typeof data.version === "number"
-          ? data.version
-          : 0,
-    turnId: normalizeConfigOptionValue(data.turnId),
+    version,
+    turnId: normalizeConfigOptionValue(data.turnId) ?? `message:${messageId}`,
     role,
     kind: kind === "message" ? "text" : kind,
     status: normalizeConfigOptionValue(data.status),
@@ -14290,7 +14311,9 @@ function agentActivityMessageFromStreamEvent(
     occurredAtUnixMs:
       typeof data.occurredAtUnixMs === "number"
         ? data.occurredAtUnixMs
-        : undefined,
+        : typeof data.startedAtUnixMs === "number"
+          ? data.startedAtUnixMs
+          : version,
     startedAtUnixMs:
       typeof data.startedAtUnixMs === "number"
         ? data.startedAtUnixMs
@@ -14358,14 +14381,12 @@ function timelineItemToMessage(
     agentSessionId: item.agentSessionId,
     messageId: item.eventId || `message:${item.id}`,
     version: item.seq ?? item.id,
-    ...(item.turnId ? { turnId: item.turnId } : {}),
+    turnId: item.turnId ?? `timeline:${item.eventId || item.id}`,
     role,
     kind,
     status: item.status,
     payload,
-    ...(item.occurredAtUnixMs !== undefined
-      ? { occurredAtUnixMs: item.occurredAtUnixMs }
-      : {}),
+    occurredAtUnixMs: item.occurredAtUnixMs ?? item.createdAtUnixMs ?? item.id,
     ...(item.createdAtUnixMs !== undefined
       ? { startedAtUnixMs: item.createdAtUnixMs }
       : {})
@@ -14506,15 +14527,16 @@ function streamMessage(
     data: {
       agentSessionId: item.agentSessionId,
       messageId: item.eventId,
-      seq: item.id,
-      turnId: item.turnId,
+      seq: item.seq ?? item.id,
+      turnId: item.turnId ?? `turn:${item.eventId}`,
       role: item.role ?? "assistant",
       kind: "message",
       payload: {
         content: item.content,
         text: item.content
       },
-      occurredAtUnixMs: item.occurredAtUnixMs,
+      occurredAtUnixMs:
+        item.occurredAtUnixMs ?? item.createdAtUnixMs ?? item.id,
       startedAtUnixMs: item.createdAtUnixMs
     }
   };
@@ -14529,8 +14551,8 @@ function streamToolCall(
     data: {
       agentSessionId: item.agentSessionId,
       messageId: item.eventId,
-      seq: item.seq,
-      turnId: item.turnId,
+      seq: item.seq ?? item.id,
+      turnId: item.turnId ?? `turn:${item.eventId}`,
       role: item.role ?? "assistant",
       kind: "tool_call",
       status: item.status,
@@ -14541,7 +14563,8 @@ function streamToolCall(
         callType: item.callType,
         status: item.status
       },
-      occurredAtUnixMs: item.occurredAtUnixMs,
+      occurredAtUnixMs:
+        item.occurredAtUnixMs ?? item.createdAtUnixMs ?? item.id,
       startedAtUnixMs: item.createdAtUnixMs
     }
   };
