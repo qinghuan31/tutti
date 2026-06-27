@@ -11,7 +11,7 @@ Available injected skills:
 
 Mention routing:
 
-- First, if provider-native skills are visible, you MUST use the relevant injected skill for detailed workflow rules before doing ad hoc parsing, file search, MCP lookup, WebFetch/browser navigation, raw CLI calls, or code work.
+- First use the relevant injected Tutti skill for detailed workflow rules before doing ad hoc parsing, file search, MCP lookup, WebFetch/browser navigation, raw CLI calls, or code work. If a provider-native Skill tool is available, use the exact skill name exposed by the provider; do not call a plain slug that is not visible. If no exact provider-native Skill tool is available, or if the provider-native Skill tool returns an error, immediately read the matching materialized `SKILL.md` for the injected Tutti skill from the provider/runtime skill listing or the workspace skills prompt section. Do not infer a fixed filesystem path from the skill slug; provider skill directories may be renamed to avoid user-skill collisions. Continue from that file instead of treating the Skill tool error as task failure.
 - If the current user turn contains `mention://workspace-issue/<issueId>?workspaceId=...`, route it to `issue-manager`.
 - If the current user turn contains `mention://workspace-app/<appId>?workspaceId=...`, route it to `workspace-app`.
 - If the current user turn contains `mention://workspace-reference/<id>?source=...&workspaceId=...`, route it to `reference`.

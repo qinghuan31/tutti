@@ -24,11 +24,20 @@ func TestWorkspaceAppSkillUsesPreparedCLICommandForAgentLaunchers(t *testing.T) 
 		"Prefer command scopes that match the mentioned app",
 		"Do not assume they are equal",
 		"App id: <appId>",
-		"read the materialized sibling `tutti-cli/SKILL.md`",
+		"use the injected `tutti-cli` command reference",
+		"call the exact visible skill name with no arguments",
+		"`tutti-cli:tutti-cli`",
+		"Do not derive filesystem paths from the plugin directory, plugin name, or skill slug",
 	} {
 		if !strings.Contains(skill, want) {
 			t.Fatalf("workspace app skill missing %q: %q", want, skill)
 		}
+	}
+	if strings.Contains(skill, "read the materialized sibling `tutti-cli/SKILL.md`") {
+		t.Fatalf("workspace app skill should not ask agents to guess sibling skill paths: %q", skill)
+	}
+	if strings.Contains(skill, "plugin root `tutti-cli/SKILL.md`") {
+		t.Fatalf("workspace app skill should not anchor agents to plugin-root paths: %q", skill)
 	}
 	if strings.Contains(skill, "{{") || strings.Contains(skill, "tutti codex start") {
 		t.Fatalf("workspace app skill used unresolved or production CLI command: %q", skill)
@@ -131,12 +140,20 @@ func TestDefaultPreparerRenderSkillBundleUsesDynamicGuide(t *testing.T) {
 		"tutti-dev issue list --topic-id <topic-id>",
 		"`mention://workspace-app/<appId>?workspaceId=...` -> use `workspace-app`.",
 		"`group-chat`; do not look for a `group-chat` skill",
+		"If provider-native Skill tools are available",
+		"using the exact skill name exposed by the provider",
+		"If no exact provider-native Skill tool is available",
 		"first read the materialized `SKILL.md` for the matching skill slug",
+		"Do not infer a fixed filesystem path from the skill slug",
 		"Do not read app `AGENTS.md`, `COMMANDS.md`, source files, or run shell commands before following the matching Tutti skill.",
 	} {
 		if !strings.Contains(bundle.RecommendedSystemPrompt.Content, want) {
 			t.Fatalf("recommended system prompt missing %q: %q", want, bundle.RecommendedSystemPrompt.Content)
 		}
+	}
+	if strings.Contains(bundle.RecommendedSystemPrompt.Content, "CODEX_HOME/skills/<skill>/SKILL.md") ||
+		strings.Contains(bundle.RecommendedSystemPrompt.Content, "`workspace-app/SKILL.md`") {
+		t.Fatalf("recommended system prompt should not guess materialized skill paths: %q", bundle.RecommendedSystemPrompt.Content)
 	}
 	if strings.Contains(bundle.RecommendedSystemPrompt.Content, "# Host App Context") ||
 		strings.Contains(bundle.RecommendedSystemPrompt.Content, "The app displays images and videos using standard Markdown syntax") {
@@ -218,8 +235,19 @@ func TestRenderProviderSkillBundleIncludesClaudeRoutingForAlias(t *testing.T) {
 	}
 	if bundle.RecommendedSystemPrompt == nil ||
 		!strings.Contains(bundle.RecommendedSystemPrompt.Content, "Claude Code mention routing") ||
-		!strings.Contains(bundle.RecommendedSystemPrompt.Content, `Skill(skill="workspace-app", args="<full mention URI>")`) {
+		!strings.Contains(bundle.RecommendedSystemPrompt.Content, `Skill(skill="tutti-cli:workspace-app")`) ||
+		!strings.Contains(bundle.RecommendedSystemPrompt.Content, "Do not call a plain skill name that is not visible") ||
+		!strings.Contains(bundle.RecommendedSystemPrompt.Content, "Do not pass arguments to Skill") ||
+		!strings.Contains(bundle.RecommendedSystemPrompt.Content, "the skill reads the mention URI from the current user turn") ||
+		!strings.Contains(bundle.RecommendedSystemPrompt.Content, "Call the exact visible Skill tool for `workspace-app`") ||
+		!strings.Contains(bundle.RecommendedSystemPrompt.Content, "fall back to that materialized skill file") ||
+		!strings.Contains(bundle.RecommendedSystemPrompt.Content, "Do not guess a directory from the plain skill slug") {
 		t.Fatalf("recommended system prompt = %#v", bundle.RecommendedSystemPrompt)
+	}
+	if strings.Contains(bundle.RecommendedSystemPrompt.Content, "`workspace-app/SKILL.md`") ||
+		strings.Contains(bundle.RecommendedSystemPrompt.Content, `args="<full mention URI>"`) ||
+		strings.Contains(bundle.RecommendedSystemPrompt.Content, "with the full mention URI") {
+		t.Fatalf("recommended system prompt should not guess materialized skill paths: %#v", bundle.RecommendedSystemPrompt)
 	}
 }
 

@@ -21,8 +21,10 @@ Available Tutti skills:
 
 How to use the matching skill:
 
-- If provider-native Skill tools are available, call the matching skill first.
-- If skills are materialized as files, first read the materialized `SKILL.md` for the matching skill slug from the workspace skills prompt section, then follow that skill's instructions.
+- If provider-native Skill tools are available, call the matching skill first using the exact skill name exposed by the provider. Do not guess a provider-native tool name from the routing slug.
+- If no exact provider-native Skill tool is available, or if the provider-native Skill tool returns an error, read the materialized `SKILL.md` for the matching skill slug from the workspace skills prompt section, then follow that skill's instructions instead of treating the Skill tool error as task failure.
+- If skills are materialized as files and no provider-native Skill tool is available, first read the materialized `SKILL.md` for the matching skill slug from the workspace skills prompt section, then follow that skill's instructions.
+- Do not infer a fixed filesystem path from the skill slug; materialized skill directories may be renamed to avoid user-skill collisions.
 - Do not read app `AGENTS.md`, `COMMANDS.md`, source files, or run shell commands before following the matching Tutti skill.
 - A matching skill means the routing-table skill slug (`issue-manager`, `workspace-app`, `reference`, or `tutti-cli`), not the issue id, app id, reference id, or session id inside the URI.
 

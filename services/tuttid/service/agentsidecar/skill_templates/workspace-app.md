@@ -7,7 +7,7 @@ description: Use for `mention://workspace-app/<appId>?workspaceId=...` links to 
 
 Use this skill when the current user turn contains one or more `mention://workspace-app/<appId>?workspaceId=...` links.
 
-Before choosing an app command, read the materialized sibling `tutti-cli/SKILL.md` file and use its `## Commands` section as the command reference for CLI syntax and available commands. This skill owns workspace app mention interpretation and command selection.
+Before choosing an app command, use the injected `tutti-cli` command reference for CLI syntax and available commands. Prefer the `## Commands` section already present in the session policy or the loaded/visible `tutti-cli` skill. If you need to load `tutti-cli` through a provider-native Skill tool, call the exact visible skill name with no arguments, such as `tutti-cli:tutti-cli` when that namespaced name is visible. Do not derive filesystem paths from the plugin directory, plugin name, or skill slug; materialized skill paths must come from the provider/runtime skill listing.
 
 ## Mention Contract
 
@@ -15,7 +15,7 @@ Treat a `mention://workspace-app/<appId>?workspaceId=...` link as the machine-re
 
 - URL path: target workspace app id.
 - `workspaceId`: workspace context for command discovery and invocation.
-- The app id and CLI scope are separate. Do not assume they are equal. In the sibling `tutti-cli/SKILL.md` command guide, match command entries by `App id: <appId>`, then use the exact listed command path; the first path segment is the CLI scope.
+- The app id and CLI scope are separate. Do not assume they are equal. In the injected `tutti-cli` command guide, match command entries by `App id: <appId>`, then use the exact listed command path; the first path segment is the CLI scope.
 
 Do not infer app behavior from the mention label alone.
 
@@ -30,12 +30,12 @@ After reading the mention query, recover the smallest useful app context through
 5. If `appId` is `issue-manager` and the user asks issue/task work, read and follow the injected `issue-manager` skill for issue/task context and workflows before using generic workspace app command matching.
 6. When `--cwd` is not specified, tuttid inherits the caller agent session working directory.
 7. For agent launcher mentions, ask for a missing task prompt before invoking. Do not ask for a missing model; when `--model` is omitted, tuttid uses the target provider's configured/default model. If the user provided a model and the command rejects it, use the error's available model list to ask for or select a valid value.
-8. For other app ids, read the materialized sibling `tutti-cli/SKILL.md`, find command entries whose metadata says `App id: <appId>` in its `## Commands` section, then use the listed command path and scope from those entries.
+8. For other app ids, use the injected `tutti-cli` command guide, find command entries whose metadata says `App id: <appId>` in its `## Commands` section, then use the listed command path and scope from those entries.
 9. If several apps have similar names, match by `appId` from the mention, not only by the visible label.
 10. Use the listed `{{CLI_COMMAND}} <scope> <command>` examples to inspect or invoke the app.
 11. Prefer `--json` when the command output is used as context for reasoning.
 
-If the mentioned app has no visible CLI commands in the sibling `tutti-cli/SKILL.md` command guide, explain that the app is not currently exposing usable CLI capabilities instead of guessing an app-specific command.
+If the mentioned app has no visible CLI commands in the injected `tutti-cli` command guide, explain that the app is not currently exposing usable CLI capabilities instead of guessing an app-specific command.
 
 ## Invocation Rules
 
