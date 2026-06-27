@@ -2997,13 +2997,13 @@ type WorkspaceAgentSessionMessage struct {
 	Id                int64                          `json:"id"`
 	Kind              string                         `json:"kind"`
 	MessageId         string                         `json:"messageId"`
-	OccurredAtUnixMs  *int64                         `json:"occurredAtUnixMs,omitempty"`
+	OccurredAtUnixMs  int64                          `json:"occurredAtUnixMs"`
 	Payload           *map[string]interface{}        `json:"payload,omitempty"`
 	Role              string                         `json:"role"`
 	Semantics         *AgentActivityMessageSemantics `json:"semantics,omitempty"`
 	StartedAtUnixMs   *int64                         `json:"startedAtUnixMs,omitempty"`
 	Status            *string                        `json:"status,omitempty"`
-	TurnId            *string                        `json:"turnId,omitempty"`
+	TurnId            string                         `json:"turnId"`
 	UpdatedAtUnixMs   *int64                         `json:"updatedAtUnixMs,omitempty"`
 	Version           int64                          `json:"version"`
 }

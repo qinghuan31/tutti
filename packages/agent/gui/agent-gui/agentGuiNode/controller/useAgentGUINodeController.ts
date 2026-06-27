@@ -2800,7 +2800,7 @@ function messageFromMessageUpdate(
     agentSessionId: update.agentSessionId,
     messageId: update.messageId.trim() || `message:${id}`,
     version: id,
-    ...(update.turnId?.trim() ? { turnId: update.turnId.trim() } : {}),
+    turnId: update.turnId.trim(),
     role,
     kind,
     status: update.status,
@@ -2813,9 +2813,7 @@ function messageFromMessageUpdate(
         ? { title: update.title.trim() }
         : {})
     },
-    ...(update.occurredAtUnixMs !== undefined
-      ? { occurredAtUnixMs: update.occurredAtUnixMs }
-      : {}),
+    occurredAtUnixMs: update.occurredAtUnixMs,
     ...(update.startedAtUnixMs !== undefined
       ? { startedAtUnixMs: update.startedAtUnixMs }
       : {}),
@@ -5373,19 +5371,10 @@ export function useAgentGUINodeController({
       const submitTrace = submitTraceBySessionIdRef.current[agentSessionId];
       if (submitTrace && structuredTurnPhase) {
         const matchesTraceTurn =
-          !submitTrace.turnId ||
-          patchTurnId === submitTrace.turnId ||
-          patchActiveTurnId === submitTrace.turnId;
+          Boolean(submitTrace.turnId) &&
+          (patchTurnId === submitTrace.turnId ||
+            patchActiveTurnId === submitTrace.turnId);
         if (matchesTraceTurn) {
-          if (!submitTrace.turnId && (patchTurnId || patchActiveTurnId)) {
-            const resolvedTurnId = patchTurnId || patchActiveTurnId;
-            submitTrace.turnId = resolvedTurnId;
-            retargetOptimisticPromptTurn(
-              agentSessionId,
-              submitTrace.clientSubmitId,
-              resolvedTurnId
-            );
-          }
           reportAgentSubmitTraceDiagnostic({
             event: `lifecycle.${structuredTurnPhase}`,
             runtime: agentActivityRuntime,

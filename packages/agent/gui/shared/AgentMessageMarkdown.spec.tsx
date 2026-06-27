@@ -33,6 +33,33 @@ describe("AgentMessageMarkdown", () => {
     expect(chip).not.toHaveTextContent("3");
   });
 
+  it("renders app workspace-reference mentions with app icons", () => {
+    const iconUrl = "data:image/png;base64,canvas";
+    const { container } = render(
+      <AgentMessageMarkdown
+        content="使用 [@AI Canvas](mention://workspace-reference/ai-canvas?source=app&workspaceId=room-1)"
+        workspaceAppIcons={[
+          {
+            appId: "ai-canvas",
+            iconUrl,
+            workspaceId: "room-1"
+          }
+        ]}
+      />
+    );
+
+    const mention = container.querySelector('[data-agent-file-mention="true"]');
+    expect(mention).toHaveAttribute(
+      "data-agent-mention-kind",
+      "workspace-reference"
+    );
+    expect(mention).toHaveAttribute("data-agent-mention-icon-url", iconUrl);
+    expect(
+      mention?.querySelector('[data-agent-mention-app-icon="true"] img')
+    ).toHaveAttribute("src", iconUrl);
+    expect(mention).toHaveTextContent("AI Canvas");
+  });
+
   it("renders markdown links, inline code, and lists", () => {
     const { container } = render(
       <AgentMessageMarkdown

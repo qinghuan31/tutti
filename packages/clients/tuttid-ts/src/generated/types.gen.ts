@@ -1080,7 +1080,7 @@ export type WorkspaceAgentSessionMessage = {
   id: number;
   agentSessionId: string;
   messageId: string;
-  turnId?: string;
+  turnId: string;
   role: string;
   kind: string;
   status?: string;
@@ -1088,7 +1088,7 @@ export type WorkspaceAgentSessionMessage = {
   payload?: {
     [key: string]: unknown;
   };
-  occurredAtUnixMs?: number;
+  occurredAtUnixMs: number;
   startedAtUnixMs?: number;
   completedAtUnixMs?: number;
   createdAtUnixMs?: number;
@@ -4592,7 +4592,7 @@ export type GetAgentProviderComposerOptionsError =
 
 export type GetAgentProviderComposerOptionsResponses = {
   /**
-   * Agent provider composer options with short-lived Claude Code discovery when needed
+   * Agent provider composer options with Claude Code live discovery when needed
    */
   200: AgentProviderComposerOptionsResponse;
 };
