@@ -160,7 +160,7 @@ func TestRunExternalAgentRegistryNPMInstallerPinsDedicatedCache(t *testing.T) {
 		return InstallCommandResult{ExitCode: 0}, nil
 	}
 
-	if _, err := service.runExternalAgentRegistryNPMInstaller(context.Background(), spec); err != nil {
+	if _, err := service.runExternalAgentRegistryNPMInstaller(context.Background(), "claude-code", spec); err != nil {
 		t.Fatalf("runExternalAgentRegistryNPMInstaller() error = %v", err)
 	}
 	want := filepath.Join(prefixDir, agentNPMCacheDirName)
