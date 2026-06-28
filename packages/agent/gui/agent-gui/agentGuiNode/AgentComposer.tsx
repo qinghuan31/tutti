@@ -2980,6 +2980,7 @@ function AgentComposerDraftImagePreview({
           src={image.previewUrl}
           alt={image.name}
           className="size-full object-contain"
+          downloadName={image.name || "image.png"}
           draggable={false}
           onLoad={(event) => {
             const element = event.currentTarget;

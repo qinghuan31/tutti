@@ -545,6 +545,10 @@ export const en = {
       composerTextMenu: "Composer text actions",
       copyMessage: "Copy message",
       copyImage: "Copy image",
+      imageCopying: "Copying image...",
+      imageCopied: "Image copied",
+      imageCopyFailed: "Unable to copy image",
+      imageDownloadStarted: "Image download started",
       messageCopied: "Copied",
       promptTipsPrefix: "Tips: ",
       reviewPicker: {

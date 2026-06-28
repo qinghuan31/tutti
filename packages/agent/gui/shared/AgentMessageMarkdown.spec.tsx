@@ -772,19 +772,42 @@ describe("AgentMessageMarkdown", () => {
 
     const image = await screen.findByRole("img", { name: "generated image" });
     fireEvent.contextMenu(image, { clientX: 12, clientY: 34 });
-    expect(screen.getByRole("menu")).toHaveStyle({ left: "12px", top: "34px" });
+    expect(screen.getByRole("menu")).toHaveStyle({ zIndex: "100302" });
 
-    fireEvent.click(screen.getByRole("menuitem", { name: "Copy image" }));
+    const copyMenuItem = screen.getByRole("menuitem", { name: "Copy image" });
+    fireEvent.pointerDown(copyMenuItem);
+    expect(screen.getByRole("menu")).toBeInTheDocument();
+    expect(screen.queryByRole("dialog")).toBeNull();
+    fireEvent.click(image);
+    expect(screen.queryByRole("dialog")).toBeNull();
+    fireEvent.pointerUp(copyMenuItem);
+    fireEvent.click(copyMenuItem);
     await waitFor(() => {
       expect(write).toHaveBeenCalledTimes(1);
+      expect(screen.getByRole("status")).toHaveTextContent("Image copied");
     });
+    expect(screen.queryByRole("dialog")).toBeNull();
     expect(fetchImage).toHaveBeenCalledWith("blob:tsh-markdown-image");
     expect(clipboardItems).toHaveLength(1);
 
     fireEvent.click(screen.getByRole("button", { name: /Zoom image/ }));
-    await screen.findByRole("dialog");
-    fireEvent.click(screen.getByRole("button", { name: "Download image" }));
+    const dialog = await screen.findByRole("dialog");
+    const modalImage = dialog.querySelector("img");
+    expect(modalImage).toBeInstanceOf(HTMLElement);
+    fireEvent.contextMenu(modalImage as HTMLElement, {
+      clientX: 18,
+      clientY: 40
+    });
+    expect(screen.getByRole("menu").closest(".tsh-zoom-dialog")).toBe(dialog);
+    const downloadMenuItem = screen.getByRole("menuitem", {
+      name: "Download image"
+    });
+    fireEvent.pointerDown(downloadMenuItem);
+    expect(screen.getByRole("menu").closest(".tsh-zoom-dialog")).toBe(dialog);
+    fireEvent.pointerUp(downloadMenuItem);
+    fireEvent.click(downloadMenuItem);
     expect(clickDownload).toHaveBeenCalledTimes(1);
+    expect(screen.getByRole("dialog")).toBeInTheDocument();
 
     clickDownload.mockRestore();
   });
@@ -820,10 +843,10 @@ describe("AgentMessageMarkdown", () => {
 
     const dialog = await screen.findByRole("dialog");
     expect(dialog).toBeInTheDocument();
+    const modalImage = dialog.querySelector("img");
+    expect(modalImage).toBeInstanceOf(HTMLElement);
 
     fireEvent.click(screen.getByRole("button", { name: /Minimize image/ }));
-    const modalImage = dialog.querySelector("[data-rmiz-modal-img]");
-    expect(modalImage).toBeInstanceOf(HTMLElement);
     fireEvent.transitionEnd(modalImage as HTMLElement);
 
     await waitFor(() => {

@@ -4,22 +4,31 @@ import {
   type ComponentPropsWithoutRef,
   type JSX,
   type MouseEvent,
+  type PointerEvent,
   type ReactElement,
+  type SyntheticEvent,
   useCallback,
   useEffect,
   useMemo,
+  useRef,
   useState
 } from "react";
 import { CopyIcon, DownloadIcon } from "lucide-react";
 import Zoom from "react-medium-image-zoom";
+import { ViewportMenuSurface, menuItemClassName } from "@tutti-os/ui-system";
 import { useTranslation } from "../../../i18n/index";
 import { cn } from "../lib/utils";
-import { ConversationImageContextMenu } from "../../../shared/agentConversation/components/ConversationImageContextMenu";
+import { useOptionalAgentHostApi } from "../../../agentActivityHost";
 import { copyImageToClipboard } from "../../../shared/agentConversation/lib/copyImageToClipboard";
 
 interface ZoomableImageProps extends ComponentPropsWithoutRef<"img"> {
   downloadName?: string;
   wrapElement?: "div" | "span";
+}
+
+interface ImageContextMenuState {
+  point: { x: number; y: number };
+  portalTarget: Element | null;
 }
 
 export function ZoomableImage({
@@ -31,6 +40,7 @@ export function ZoomableImage({
   ...props
 }: ZoomableImageProps): JSX.Element {
   const { t } = useTranslation();
+  const agentHostApi = useOptionalAgentHostApi();
   const actionSource =
     typeof src === "string" && src.trim() ? src.trim() : null;
   const hasImageActions = Boolean(actionSource && downloadName !== undefined);
@@ -38,47 +48,37 @@ export function ZoomableImage({
     () => resolveImageDownloadName(downloadName, actionSource),
     [actionSource, downloadName]
   );
-  const [contextMenuPosition, setContextMenuPosition] = useState<{
-    x: number;
-    y: number;
-  } | null>(null);
-
-  const closeContextMenu = useCallback(() => {
-    setContextMenuPosition(null);
-  }, []);
+  const [copyStatusMessage, setCopyStatusMessage] = useState<string | null>(
+    null
+  );
+  const [imageContextMenu, setImageContextMenu] =
+    useState<ImageContextMenuState | null>(null);
 
   useEffect(() => {
-    if (!contextMenuPosition) {
+    if (!copyStatusMessage) {
       return;
     }
-
-    document.addEventListener("click", closeContextMenu);
-    document.addEventListener("scroll", closeContextMenu, true);
-    return () => {
-      document.removeEventListener("click", closeContextMenu);
-      document.removeEventListener("scroll", closeContextMenu, true);
-    };
-  }, [closeContextMenu, contextMenuPosition]);
-
-  const handleContextMenu = useCallback(
-    (event: MouseEvent<HTMLImageElement>): void => {
-      onContextMenu?.(event);
-      if (event.defaultPrevented || !actionSource || !hasImageActions) {
-        return;
-      }
-      event.preventDefault();
-      setContextMenuPosition({ x: event.clientX, y: event.clientY });
-    },
-    [actionSource, hasImageActions, onContextMenu]
-  );
+    const timer = setTimeout(() => setCopyStatusMessage(null), 1600);
+    return () => clearTimeout(timer);
+  }, [copyStatusMessage]);
 
   const handleCopyImage = useCallback(async (): Promise<void> => {
     if (!actionSource) {
       return;
     }
-    closeContextMenu();
-    await copyImageToClipboard(actionSource);
-  }, [actionSource, closeContextMenu]);
+    setCopyStatusMessage(t("agentHost.agentGui.imageCopying"));
+    const copied = await copyImageToClipboard(
+      actionSource,
+      agentHostApi?.clipboard
+    );
+    setCopyStatusMessage(
+      t(
+        copied
+          ? "agentHost.agentGui.imageCopied"
+          : "agentHost.agentGui.imageCopyFailed"
+      )
+    );
+  }, [actionSource, agentHostApi?.clipboard, t]);
 
   const handleCopyImageAction = useCallback((): void => {
     void handleCopyImage().catch(() => undefined);
@@ -88,9 +88,38 @@ export function ZoomableImage({
     if (!actionSource) {
       return;
     }
-    closeContextMenu();
     downloadImage(actionSource, resolvedDownloadName);
-  }, [actionSource, closeContextMenu, resolvedDownloadName]);
+    setCopyStatusMessage(t("agentHost.agentGui.imageDownloadStarted"));
+  }, [actionSource, resolvedDownloadName, t]);
+
+  const closeImageContextMenu = useCallback((): void => {
+    setImageContextMenu(null);
+  }, []);
+
+  const handleImageContextMenu = useCallback(
+    (event: MouseEvent<HTMLImageElement>): void => {
+      onContextMenu?.(event);
+      if (!hasImageActions || event.defaultPrevented) {
+        return;
+      }
+
+      event.preventDefault();
+      event.stopPropagation();
+      setImageContextMenu({
+        point: { x: event.clientX, y: event.clientY },
+        portalTarget: event.currentTarget.closest(".tsh-zoom-dialog")
+      });
+    },
+    [hasImageActions, onContextMenu]
+  );
+
+  const handleContextMenuCopy = useCallback((): void => {
+    handleCopyImageAction();
+  }, [handleCopyImageAction]);
+
+  const handleContextMenuDownload = useCallback((): void => {
+    handleDownloadImage();
+  }, [handleDownloadImage]);
 
   const actionButtons = hasImageActions ? (
     <ImageActionButtons
@@ -113,19 +142,17 @@ export function ZoomableImage({
       typeof (img.props as { src?: unknown }).src === "string"
         ? (img.props as { src: string }).src
         : null;
+    const modalDownloadName = actionButtons ? resolvedDownloadName : undefined;
     return (
       <>
-        {!actionButtons && img && zoomSrc ? (
-          <ConversationImageContextMenu
-            src={zoomSrc}
-            asChild
-            contentStyle={{ zIndex: "var(--z-dialog-popover)" }}
-          >
-            {img}
-          </ConversationImageContextMenu>
-        ) : (
-          img
-        )}
+        {img && zoomSrc
+          ? cloneElement(img as ReactElement<ComponentPropsWithoutRef<"img">>, {
+              onContextMenu:
+                modalDownloadName !== undefined
+                  ? handleImageContextMenu
+                  : onContextMenu
+            })
+          : img}
         {actionButtons ? (
           <div className="tsh-zoom-dialog__image-actions nodrag tsh-desktop-no-drag">
             {actionButtons}
@@ -147,6 +174,7 @@ export function ZoomableImage({
         a11yNameButtonZoom={t("common.expandImage")}
         a11yNameButtonUnzoom={t("common.minimizeImage")}
         classDialog="tsh-zoom-dialog nodrag tsh-desktop-no-drag"
+        isDisabled={imageContextMenu !== null}
         wrapElement={wrapElement}
         zoomMargin={24}
         ZoomContent={renderZoomContent}
@@ -154,30 +182,128 @@ export function ZoomableImage({
         <img
           {...props}
           src={src}
-          onContextMenu={hasImageActions ? handleContextMenu : onContextMenu}
+          onContextMenu={
+            hasImageActions ? handleImageContextMenu : onContextMenu
+          }
           className={cn("nodrag tsh-desktop-no-drag cursor-zoom-in", className)}
         />
       </Zoom>
-      {contextMenuPosition && actionButtons ? (
-        <div
-          className="tsh-image-context-menu nodrag tsh-desktop-no-drag"
-          style={{
-            left: contextMenuPosition.x,
-            top: contextMenuPosition.y
-          }}
-          role="menu"
-          onClick={(event) => event.stopPropagation()}
-        >
-          <ImageActionButtons
-            copyLabel={t("common.copyImage")}
-            downloadLabel={t("common.downloadImage")}
-            itemRole="menuitem"
-            onCopy={handleCopyImageAction}
-            onDownload={handleDownloadImage}
-          />
+      {hasImageActions && imageContextMenu ? (
+        <ImageContextMenuSurface
+          copyLabel={t("common.copyImage")}
+          downloadLabel={t("common.downloadImage")}
+          onCopy={handleContextMenuCopy}
+          onDismiss={closeImageContextMenu}
+          onDownload={handleContextMenuDownload}
+          point={imageContextMenu.point}
+          portalTarget={imageContextMenu.portalTarget}
+        />
+      ) : null}
+      {copyStatusMessage ? (
+        <div className="tsh-image-copy-status" role="status">
+          {copyStatusMessage}
         </div>
       ) : null}
     </>
+  );
+}
+
+function ImageContextMenuSurface({
+  copyLabel,
+  downloadLabel,
+  onCopy,
+  onDismiss,
+  onDownload,
+  point,
+  portalTarget
+}: {
+  copyLabel: string;
+  downloadLabel: string;
+  onCopy: () => void;
+  onDismiss: () => void;
+  onDownload: () => void;
+  point: { x: number; y: number };
+  portalTarget: Element | null;
+}): JSX.Element {
+  const actionPendingRef = useRef(false);
+  const runAction = useCallback((action: () => void): void => {
+    if (actionPendingRef.current) {
+      return;
+    }
+    actionPendingRef.current = true;
+    action();
+  }, []);
+  const runPointerAction = useCallback(
+    (event: PointerEvent<HTMLButtonElement>, action: () => void): void => {
+      event.stopPropagation();
+      runAction(action);
+    },
+    [runAction]
+  );
+  const runClickAction = useCallback(
+    (event: SyntheticEvent<HTMLButtonElement>, action: () => void): void => {
+      event.preventDefault();
+      event.stopPropagation();
+      runAction(action);
+      onDismiss();
+    },
+    [onDismiss, runAction]
+  );
+  const stopMenuButtonEvent = useCallback(
+    (event: SyntheticEvent<HTMLButtonElement>): void => {
+      event.preventDefault();
+      event.stopPropagation();
+    },
+    []
+  );
+
+  return (
+    <ViewportMenuSurface
+      open
+      className="min-w-[148px]"
+      dismissOnEscape
+      dismissOnPointerDownOutside
+      dismissOnScroll
+      onDismiss={onDismiss}
+      placement={{
+        type: "point",
+        point,
+        estimatedSize: { width: 148, height: 67 },
+        padding: 8
+      }}
+      portalTarget={portalTarget}
+      role="menu"
+      style={{ zIndex: 100302 }}
+    >
+      <button
+        className={cn(
+          menuItemClassName,
+          "w-full border-0 bg-transparent text-left"
+        )}
+        onClick={(event) => runClickAction(event, onCopy)}
+        onMouseDown={stopMenuButtonEvent}
+        onPointerDown={(event) => runPointerAction(event, onCopy)}
+        onPointerUp={stopMenuButtonEvent}
+        role="menuitem"
+        type="button"
+      >
+        <span>{copyLabel}</span>
+      </button>
+      <button
+        className={cn(
+          menuItemClassName,
+          "w-full border-0 bg-transparent text-left"
+        )}
+        onClick={(event) => runClickAction(event, onDownload)}
+        onMouseDown={stopMenuButtonEvent}
+        onPointerDown={(event) => runPointerAction(event, onDownload)}
+        onPointerUp={stopMenuButtonEvent}
+        role="menuitem"
+        type="button"
+      >
+        <span>{downloadLabel}</span>
+      </button>
+    </ViewportMenuSurface>
   );
 }
 

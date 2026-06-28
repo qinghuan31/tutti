@@ -117,22 +117,25 @@
   gap: 8px;
 }
 
-.tsh-image-context-menu {
+.tsh-image-copy-status {
   position: fixed;
-  z-index: 100302;
-  min-width: 148px;
-  overflow: hidden;
+  left: 50%;
+  top: max(20px, calc(var(--cove-titlebar-reserve, 0px) + 10px));
+  z-index: 100303;
+  transform: translateX(-50%);
   border: 1px solid var(--line-2);
   border-radius: 8px;
   background: var(--background-panel);
   box-shadow: 0 18px 40px color-mix(in srgb, black 26%, transparent);
   color: var(--text-primary);
-  padding: 4px;
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 20px;
+  padding: 8px 12px;
   -webkit-app-region: no-drag;
 }
 
-.tsh-zoom-dialog__image-actions button,
-.tsh-image-context-menu button {
+.tsh-zoom-dialog__image-actions button {
   display: flex;
   align-items: center;
   gap: 8px;
@@ -144,12 +147,9 @@
   font: inherit;
   font-size: 13px;
   line-height: 20px;
-}
-
-.tsh-zoom-dialog__image-actions button {
-  justify-content: center;
   width: 40px;
   height: 40px;
+  justify-content: center;
   background: color-mix(in srgb, var(--background-panel) 78%, black 22%);
   box-shadow:
     0 18px 40px color-mix(in srgb, black 26%, transparent),
@@ -165,13 +165,7 @@
   white-space: nowrap;
 }
 
-.tsh-image-context-menu button {
-  width: 100%;
-  padding: 7px 10px;
-}
-
-.tsh-zoom-dialog__image-actions button:hover,
-.tsh-image-context-menu button:hover {
+.tsh-zoom-dialog__image-actions button:hover {
   background: color-mix(in srgb, var(--background-panel) 82%, white 12%);
 }
 

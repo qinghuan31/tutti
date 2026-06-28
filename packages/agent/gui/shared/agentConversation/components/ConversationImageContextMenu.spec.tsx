@@ -48,7 +48,7 @@ describe("ConversationImageContextMenu", () => {
     );
   });
 
-  it("copies and closes the menu on pointer down", async () => {
+  it("shows feedback after copying from the context menu", async () => {
     copyImageToClipboardMock.mockResolvedValue(true);
 
     render(
@@ -58,16 +58,33 @@ describe("ConversationImageContextMenu", () => {
     );
 
     fireEvent.contextMenu(screen.getByTestId("image"));
-
-    const copyItem = await screen.findByText("Copy image");
-    fireEvent.pointerDown(copyItem, { button: 0 });
+    const copyItem = await screen.findByRole("menuitem", {
+      name: "Copy image"
+    });
+    fireEvent.pointerDown(copyItem);
+    expect(screen.getByRole("menuitem", { name: "Copy image" })).toBeVisible();
+    fireEvent.pointerUp(copyItem);
+    fireEvent.click(copyItem);
 
     expect(copyImageToClipboardMock).toHaveBeenCalledWith(
       "blob:preview",
       expect.anything()
     );
     await waitFor(() => {
-      expect(screen.queryByText("Copy image")).toBeNull();
+      expect(screen.getByRole("status")).toHaveTextContent("Image copied");
+      expect(screen.queryByRole("menuitem", { name: "Copy image" })).toBeNull();
     });
+  });
+
+  it("keeps the context menu above zoom previews", async () => {
+    render(
+      <ConversationImageContextMenu src="blob:preview">
+        <img data-testid="image" alt="" />
+      </ConversationImageContextMenu>
+    );
+
+    fireEvent.contextMenu(screen.getByTestId("image"));
+
+    expect(await screen.findByRole("menu")).toHaveStyle({ zIndex: "100302" });
   });
 });

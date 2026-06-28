@@ -500,6 +500,10 @@ export const zhCN = {
       composerTextMenu: "输入框文本操作",
       copyMessage: "复制消息",
       copyImage: "复制图片",
+      imageCopying: "正在复制图片...",
+      imageCopied: "图片已复制",
+      imageCopyFailed: "图片复制失败",
+      imageDownloadStarted: "图片下载已开始",
       messageCopied: "已复制",
       promptTipsPrefix: "Tips：",
       reviewPicker: {

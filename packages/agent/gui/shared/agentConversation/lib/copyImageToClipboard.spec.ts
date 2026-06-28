@@ -3,6 +3,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { copyImageToClipboard } from "./copyImageToClipboard";
 
 afterEach(() => {
+  vi.useRealTimers();
   vi.restoreAllMocks();
   vi.unstubAllGlobals();
 });
@@ -89,5 +90,28 @@ describe("copyImageToClipboard", () => {
       vi.fn().mockResolvedValue({ blob: () => Promise.resolve(pngBlob) })
     );
     expect(await copyImageToClipboard("blob:abc")).toBe(false);
+  });
+
+  it("returns false when clipboard write does not resolve", async () => {
+    vi.useFakeTimers();
+    const write = vi.fn().mockReturnValue(new Promise(() => {}));
+    const pngBlob = new Blob(["png"], { type: "image/png" });
+    vi.stubGlobal("navigator", { clipboard: { write } });
+    vi.stubGlobal(
+      "ClipboardItem",
+      class {
+        constructor(_: unknown) {}
+      }
+    );
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue({ blob: () => Promise.resolve(pngBlob) })
+    );
+
+    const result = copyImageToClipboard("blob:abc");
+    await vi.runAllTimersAsync();
+
+    expect(await result).toBe(false);
+    expect(write).toHaveBeenCalledTimes(1);
   });
 });

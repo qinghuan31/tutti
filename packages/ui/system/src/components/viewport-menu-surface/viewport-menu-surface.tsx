@@ -49,6 +49,7 @@ export interface ViewportMenuSurfaceProps extends Omit<
   dismissOnEscape?: boolean;
   dismissOnScroll?: boolean;
   dismissIgnoreRefs?: Array<React.RefObject<HTMLElement | null>>;
+  portalTarget?: Element | null;
   stopEventPropagation?: boolean;
 }
 
@@ -239,6 +240,7 @@ const ViewportMenuSurface = React.forwardRef<
     dismissOnEscape = false,
     dismissOnScroll = false,
     dismissIgnoreRefs = [],
+    portalTarget: explicitPortalTarget,
     stopEventPropagation = true,
     style,
     onMouseDown,
@@ -421,7 +423,8 @@ const ViewportMenuSurface = React.forwardRef<
     return null;
   }
 
-  const portalTarget = resolvedPlacement.portalTarget ?? document.body;
+  const portalTarget =
+    explicitPortalTarget ?? resolvedPlacement.portalTarget ?? document.body;
 
   return createPortal(
     <MenuSurface

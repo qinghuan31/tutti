@@ -1,3 +1,5 @@
+const COPY_IMAGE_TIMEOUT_MS = 1500;
+
 // ClipboardItem reliably supports only image/png, so non-png sources are
 // rasterised to png via an offscreen canvas before writing.
 export interface CopyImageClipboardHost {
@@ -39,6 +41,25 @@ async function blobToBase64(blob: Blob): Promise<string> {
   });
 }
 
+function withTimeout<T>(promise: Promise<T>, fallback: T): Promise<T> {
+  return new Promise((resolve) => {
+    const timer = globalThis.setTimeout(
+      () => resolve(fallback),
+      COPY_IMAGE_TIMEOUT_MS
+    );
+    promise.then(
+      (value) => {
+        globalThis.clearTimeout(timer);
+        resolve(value);
+      },
+      () => {
+        globalThis.clearTimeout(timer);
+        resolve(fallback);
+      }
+    );
+  });
+}
+
 async function copyImageWithWebClipboard(blob: Blob): Promise<boolean> {
   if (
     typeof navigator === "undefined" ||
@@ -55,7 +76,7 @@ async function copyImageWithWebClipboard(blob: Blob): Promise<boolean> {
   }
 }
 
-export async function copyImageToClipboard(
+async function copyImageToClipboardUnchecked(
   src: string,
   hostClipboard?: CopyImageClipboardHost | null
 ): Promise<boolean> {
@@ -82,4 +103,11 @@ export async function copyImageToClipboard(
   } catch {
     return false;
   }
+}
+
+export function copyImageToClipboard(
+  src: string,
+  hostClipboard?: CopyImageClipboardHost | null
+): Promise<boolean> {
+  return withTimeout(copyImageToClipboardUnchecked(src, hostClipboard), false);
 }
