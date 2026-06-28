@@ -140,9 +140,13 @@ func codexNPMPrefixFromPackageDir(pkgDir string) string {
 	if filepath.Base(parent) == "lib" {
 		parent = filepath.Dir(parent)
 	}
-	// Reject a degenerate/empty prefix (e.g. pkgDir was "/node_modules/...") so
-	// we never hand npm a `--prefix /` and clobber the filesystem root.
-	if parent == "" || parent == "." || parent == string(filepath.Separator) {
+	// Reject a degenerate/root prefix (e.g. pkgDir was "/node_modules/..." or
+	// "C:\node_modules\..." or "\\server\share\node_modules\...") so we never
+	// hand npm a `--prefix /` (or a drive/UNC root) and clobber the filesystem
+	// root. A path is a root when its own parent is itself; this is cross-platform
+	// (catches "/", "C:\", "\\server\share") and also covers "." / empty.
+	cleaned := filepath.Clean(parent)
+	if cleaned == "." || filepath.Dir(cleaned) == cleaned {
 		return ""
 	}
 	return parent
