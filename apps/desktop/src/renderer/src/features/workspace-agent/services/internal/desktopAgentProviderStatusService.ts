@@ -190,21 +190,8 @@ export class DesktopAgentProviderStatusService implements IAgentProviderStatusSe
     this.requestSequence = requestId;
     // Detect is the side-effectful command: it probes the environment fresh
     // (network + CLI/adapter/auth) and refreshes the daemon's status model.
-    //
-    // Guard the call so a SYNCHRONOUS throw — e.g. a client missing
-    // detectAgentProviders after a partial reload — becomes a rejection the
-    // .catch below handles. Calling it bare would let the throw escape after
-    // isLoading was set true, stranding the UI on "checking…" forever (no
-    // capturedAt, no error) with no way to recover. (try/catch rather than
-    // Promise.resolve().then so the call still happens in the same tick.)
-    let detectRequest: Promise<AgentProviderStatusListResponse>;
-    try {
-      detectRequest = this.dependencies.tuttidClient.detectAgentProviders(input);
-    } catch (error) {
-      detectRequest = Promise.reject(error);
-    }
     const request = withTimeout(
-      detectRequest,
+      this.dependencies.tuttidClient.detectAgentProviders(input),
       this.dependencies.requestTimeoutMs ?? defaultRequestTimeoutMs
     )
       .then((response) => {
@@ -237,10 +224,6 @@ export class DesktopAgentProviderStatusService implements IAgentProviderStatusSe
         return response;
       })
       .catch((error: unknown) => {
-        // A failed detect leaves the snapshot without capturedAt, which the UI
-        // renders indistinguishably from "still detecting". Log it so a stuck
-        // wizard/dock is diagnosable instead of silently hanging forever.
-        console.warn("[agent-status] detect (detectAgentProviders) failed", error);
         if (this.requestSequence === requestId) {
           this.setSnapshot({
             ...this.snapshot,

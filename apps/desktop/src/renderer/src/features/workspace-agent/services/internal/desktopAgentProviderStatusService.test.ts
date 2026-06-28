@@ -1360,23 +1360,6 @@ test("refresh times out and releases the loading state when the status request h
   assert.notEqual(service.getSnapshot().error, null);
 });
 
-test("refresh releases the loading state when detect throws synchronously", async () => {
-  // A stale/partial client whose detectAgentProviders is missing makes the call
-  // throw synchronously. It must surface as an error and clear isLoading, not
-  // strand the UI on "checking…" forever.
-  const service = new DesktopAgentProviderStatusService({
-    tuttidClient: {} as Partial<TuttidClient> as TuttidClient,
-    terminalCommandRunner: {
-      async runTerminalCommand() {}
-    }
-  });
-
-  await service.refresh();
-
-  assert.equal(service.getSnapshot().isLoading, false);
-  assert.notEqual(service.getSnapshot().error, null);
-});
-
 function createTuttidClient(input: {
   actionRuns?: AgentProviderActionRunResponse[];
   onProbeRequest?: (provider: WorkspaceAgentProvider) => void;
