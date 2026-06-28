@@ -999,6 +999,10 @@ export type AgentProviderAdapterStatus = {
 export type AgentProviderAuthInfo = {
   status: AgentProviderAuthStatus;
   accountLabel?: string | null;
+  /**
+   * The authentication method reported by the provider CLI (e.g. oauth, apiKey).
+   */
+  authMethod?: string | null;
 };
 
 export type AgentProviderStatus = {

@@ -177,6 +177,7 @@ type AdapterStatus struct {
 type AuthInfo struct {
 	Status       AuthStatus
 	AccountLabel string
+	AuthMethod   string
 }
 
 type Action struct {
@@ -558,6 +559,7 @@ func (s Service) statusForSpec(ctx context.Context, spec ProviderSpec, now time.
 			if spec.Provider == agentprovider.ClaudeCode && s.claudeCodeUsesAPIBilling() {
 				auth.Status = AuthAuthenticated
 				auth.AccountLabel = firstNonBlank(auth.AccountLabel, "API Usage Billing")
+				auth.AuthMethod = "apiKey"
 			} else {
 				availability.Status = AvailabilityAuthRequired
 				if auth.Status == AuthRequired {

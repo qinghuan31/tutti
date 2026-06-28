@@ -5517,6 +5517,10 @@ components:
         accountLabel:
           type: string
           nullable: true
+        authMethod:
+          type: string
+          nullable: true
+          description: The authentication method reported by the provider CLI (e.g. oauth, apiKey).
     AgentProviderStatus:
       type: object
       additionalProperties: false

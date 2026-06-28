@@ -2331,10 +2331,26 @@ func TestParseClaudeAuthStatusOutputReportsAuthenticated(t *testing.T) {
 	if auth.AccountLabel != "oauth" {
 		t.Fatalf("AccountLabel = %q, want oauth", auth.AccountLabel)
 	}
+	if auth.AuthMethod != "oauth" {
+		t.Fatalf("AuthMethod = %q, want oauth", auth.AuthMethod)
+	}
+}
+
+func TestParseClaudeAuthStatusOutputReportsAuthMethodWhenNotLoggedIn(t *testing.T) {
+	auth, ok := parseClaudeAuthStatusOutput([]byte(`{"loggedIn":false,"authMethod":"apiKey"}`))
+	if !ok {
+		t.Fatal("parseClaudeAuthStatusOutput ok = false, want true")
+	}
+	if auth.Status != AuthRequired {
+		t.Fatalf("Status = %q, want %q", auth.Status, AuthRequired)
+	}
+	if auth.AuthMethod != "apiKey" {
+		t.Fatalf("AuthMethod = %q, want apiKey", auth.AuthMethod)
+	}
 }
 
 func TestParseClaudeAuthMarkerContentReportsAuthenticated(t *testing.T) {
-	auth, ok := parseClaudeAuthMarkerContent([]byte(`{"loggedIn":true,"email":"dev@example.com"}`))
+	auth, ok := parseClaudeAuthMarkerContent([]byte(`{"loggedIn":true,"email":"dev@example.com","authMethod":"oauth"}`))
 	if !ok {
 		t.Fatal("parseClaudeAuthMarkerContent ok = false, want true")
 	}
@@ -2343,6 +2359,9 @@ func TestParseClaudeAuthMarkerContentReportsAuthenticated(t *testing.T) {
 	}
 	if auth.AccountLabel != "dev@example.com" {
 		t.Fatalf("AccountLabel = %q, want dev@example.com", auth.AccountLabel)
+	}
+	if auth.AuthMethod != "oauth" {
+		t.Fatalf("AuthMethod = %q, want oauth", auth.AuthMethod)
 	}
 }
 
