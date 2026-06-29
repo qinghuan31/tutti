@@ -2461,7 +2461,10 @@ const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
           </span>
           <button
             type="button"
-            className={styles.providerSetupNoticeAction}
+            className={cn(
+              styles.providerSetupNoticeAction,
+              "nodrag tsh-desktop-no-drag [-webkit-app-region:no-drag]"
+            )}
             data-testid="agent-gui-provider-setup-notice-action"
             onClick={() =>
               openAgentEnvPanel({
