@@ -766,7 +766,7 @@ describe("AgentMessageMarkdown", () => {
       value: vi.fn()
     });
 
-    render(
+    const { container } = render(
       <AgentMessageMarkdown
         content={"![generated image](/workspace/output/imagegen/dance.png)"}
         enableImageZoom
@@ -794,9 +794,12 @@ describe("AgentMessageMarkdown", () => {
     });
     expect(screen.getByRole("menu").closest(".tsh-zoom-dialog")).toBe(dialog);
     fireEvent.click(screen.getByRole("menuitem", { name: "Copy image" }));
+    const copyStatus = await screen.findByRole("status");
     await waitFor(() => {
-      expect(screen.getByRole("status")).toHaveTextContent("Copied");
+      expect(copyStatus).toHaveTextContent("Copied");
     });
+    expect(container).not.toContainElement(copyStatus);
+    expect(document.body).toContainElement(copyStatus);
     fireEvent.click(screen.getByRole("button", { name: "Download image" }));
     expect(clickDownload).toHaveBeenCalledTimes(1);
     expect(downloadedName).toMatch(/^dance-\d{8}-\d{6}-[a-z0-9]{4}\.png$/);

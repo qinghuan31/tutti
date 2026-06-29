@@ -9,6 +9,7 @@ import {
   useEffect,
   useState
 } from "react";
+import { createPortal } from "react-dom";
 import {
   ToastProvider,
   ToastRoot,
@@ -282,7 +283,7 @@ function ImageCopyStatusToast({
   onOpenChange: (open: boolean) => void;
   variant: ImageCopyStatus["variant"];
 }): JSX.Element {
-  return (
+  return createPortal(
     <ToastProvider duration={1600} swipeDirection="right">
       <ToastRoot
         open
@@ -297,10 +298,11 @@ function ImageCopyStatusToast({
         className="nodrag tsh-desktop-no-drag"
         style={{
           top: "max(20px, calc(var(--cove-titlebar-reserve, 0px) + 10px))",
-          zIndex: 100303
+          zIndex: "var(--z-dialog-popover)"
         }}
       />
-    </ToastProvider>
+    </ToastProvider>,
+    document.body
   );
 }
 

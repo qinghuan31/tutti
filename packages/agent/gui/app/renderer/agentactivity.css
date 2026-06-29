@@ -80,7 +80,7 @@
 }
 
 .tsh-zoom-dialog[data-rmiz-modal] {
-  z-index: 100300;
+  z-index: var(--z-dialog-overlay);
   -webkit-app-region: no-drag;
 }
 
@@ -112,14 +112,14 @@
   position: fixed;
   top: max(20px, calc(var(--cove-titlebar-reserve, 0px) + 10px));
   right: 72px;
-  z-index: 100301;
+  z-index: var(--z-dialog-popover);
   display: flex;
   gap: 8px;
 }
 
 .tsh-image-context-menu {
   position: fixed;
-  z-index: 100302;
+  z-index: var(--z-dialog-popover);
   min-width: 148px;
   overflow: hidden;
   border: 1px solid var(--line-2);
