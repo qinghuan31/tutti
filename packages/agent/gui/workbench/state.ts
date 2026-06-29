@@ -4,8 +4,10 @@ import type {
 } from "@tutti-os/workbench-surface";
 import {
   agentGuiWorkbenchProviders,
+  isAgentGuiWorkbenchProvider,
   normalizeAgentGuiWorkbenchProvider
 } from "./providerCatalog.ts";
+import { agentGUIProviderTargetRefsEqual } from "../providerTargets.ts";
 import type {
   AgentGuiWorkbenchComposerOverrides,
   AgentGuiWorkbenchComposerOverridesByProvider,
@@ -14,6 +16,7 @@ import type {
   AgentGuiWorkbenchState,
   AgentGuiWorkbenchWorkspaceState
 } from "./types.ts";
+import type { AgentGUIProviderTargetRef } from "../types.ts";
 
 type AgentGuiWorkbenchStateLookupRequest = Pick<
   WorkbenchHostExternalStateLookupInput,
@@ -32,7 +35,9 @@ export function createDefaultAgentGuiWorkbenchNodeState(
     conversationRailWidthPx: null,
     lastActiveAgentSessionId: null,
     lastActiveConversationTitle: null,
-    provider
+    provider,
+    providerTargetId: null,
+    providerTargetRef: null
   };
 }
 
@@ -42,6 +47,12 @@ export function normalizeAgentGuiWorkbenchState(
   if (!isRecord(state)) {
     return createDefaultAgentGuiWorkbenchState();
   }
+  const providerTargetId = normalizeOptionalNonEmptyString(
+    state.providerTargetId
+  );
+  const providerTargetRef = normalizeAgentGuiProviderTargetRef(
+    state.providerTargetRef
+  );
   return {
     composerOverrides: normalizeAgentGuiWorkbenchComposerOverrides(
       state.composerOverrides
@@ -57,13 +68,22 @@ export function normalizeAgentGuiWorkbenchState(
     lastActiveAgentSessionId:
       typeof state.lastActiveAgentSessionId === "string"
         ? state.lastActiveAgentSessionId
-        : null
+        : null,
+    ...(providerTargetId ? { providerTargetId } : {}),
+    ...(providerTargetRef ? { providerTargetRef } : {})
   };
 }
 
 export function projectAgentGuiWorkbenchState(
   state: AgentGuiWorkbenchNodeState
 ): AgentGuiWorkbenchState {
+  const providerTargetId = normalizeOptionalNonEmptyString(
+    state.providerTargetId
+  );
+  const providerTargetRef = normalizeAgentGuiProviderTargetRef(
+    state.providerTargetRef,
+    state.provider
+  );
   return {
     composerOverrides: normalizeAgentGuiWorkbenchComposerOverrides(
       state.composerOverrides
@@ -76,7 +96,9 @@ export function projectAgentGuiWorkbenchState(
     conversationRailWidthPx: normalizeOptionalPositiveNumber(
       state.conversationRailWidthPx
     ),
-    lastActiveAgentSessionId: state.lastActiveAgentSessionId ?? null
+    lastActiveAgentSessionId: state.lastActiveAgentSessionId ?? null,
+    ...(providerTargetId ? { providerTargetId } : {}),
+    ...(providerTargetRef ? { providerTargetRef } : {})
   };
 }
 
@@ -92,7 +114,12 @@ export function areAgentGuiWorkbenchStatesEqual(
     ) &&
     left.conversationRailCollapsed === right.conversationRailCollapsed &&
     left.conversationRailWidthPx === right.conversationRailWidthPx &&
-    left.lastActiveAgentSessionId === right.lastActiveAgentSessionId
+    left.lastActiveAgentSessionId === right.lastActiveAgentSessionId &&
+    (left.providerTargetId ?? null) === (right.providerTargetId ?? null) &&
+    agentGUIProviderTargetRefsEqual(
+      left.providerTargetRef,
+      right.providerTargetRef
+    )
   );
 }
 
@@ -128,7 +155,12 @@ export function normalizeAgentGuiWorkbenchNodeState(
       typeof state?.lastActiveConversationTitle === "string"
         ? state.lastActiveConversationTitle
         : null,
-    provider
+    provider,
+    providerTargetId: normalizeOptionalNonEmptyString(state?.providerTargetId),
+    providerTargetRef: normalizeAgentGuiProviderTargetRef(
+      state?.providerTargetRef,
+      provider
+    )
   };
 }
 
@@ -147,7 +179,12 @@ export function areAgentGuiWorkbenchNodeStatesEqual(
     left.conversationRailWidthPx === right.conversationRailWidthPx &&
     left.lastActiveAgentSessionId === right.lastActiveAgentSessionId &&
     left.lastActiveConversationTitle === right.lastActiveConversationTitle &&
-    left.provider === right.provider
+    left.provider === right.provider &&
+    (left.providerTargetId ?? null) === (right.providerTargetId ?? null) &&
+    agentGUIProviderTargetRefsEqual(
+      left.providerTargetRef,
+      right.providerTargetRef
+    )
   );
 }
 
@@ -321,6 +358,32 @@ function createDefaultAgentGuiWorkbenchState(): AgentGuiWorkbenchState {
     conversationRailCollapsed: false,
     conversationRailWidthPx: null,
     lastActiveAgentSessionId: null
+  };
+}
+
+function normalizeOptionalNonEmptyString(value: unknown): string | null {
+  return typeof value === "string" && value.trim() ? value.trim() : null;
+}
+
+function normalizeAgentGuiProviderTargetRef(
+  value: unknown,
+  expectedProvider?: AgentGuiWorkbenchProvider
+): AgentGUIProviderTargetRef | null {
+  if (!isRecord(value)) {
+    return null;
+  }
+  const kind = normalizeOptionalNonEmptyString(value.kind);
+  const provider = value.provider;
+  if (!kind || !isAgentGuiWorkbenchProvider(provider)) {
+    return null;
+  }
+  if (expectedProvider && provider !== expectedProvider) {
+    return null;
+  }
+  return {
+    ...value,
+    kind,
+    provider
   };
 }
 

@@ -43,9 +43,10 @@ export interface IWorkspaceAppCenterService {
     workspaceId: string,
     restoredState?: WorkspaceAppCenterViewState | null
   ): WorkspaceAppCenterViewState;
-  getFactoryProviderConfiguration(
-    provider: string
-  ): Promise<WorkspaceAppFactoryProviderConfiguration>;
+  getFactoryProviderConfiguration(input: {
+    provider: string;
+    workspaceId: string;
+  }): Promise<WorkspaceAppFactoryProviderConfiguration>;
   prepareAppLaunch(input: {
     appId: string;
     workspaceId: string;

@@ -170,9 +170,12 @@ export function WorkspaceAppCenterPane({
       async (
         provider: string
       ): Promise<AppCenterFactoryProviderConfiguration> => {
-        return service.getFactoryProviderConfiguration(provider);
+        return service.getFactoryProviderConfiguration({
+          provider,
+          workspaceId
+        });
       },
-    [service]
+    [service, workspaceId]
   );
   const appCenterActions = useMemo<AppCenterHostActions>(
     () => ({

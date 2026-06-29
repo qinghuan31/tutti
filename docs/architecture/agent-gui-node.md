@@ -172,6 +172,10 @@ Local overlays are allowed only to bridge UI latency:
 - optimistic pin or working status while a command is in flight
 
 Every overlay must have a reconciliation path back to the runtime snapshot.
+Optimistic prompt messages must stay overlay-owned even when they are used to
+scope the selected detail window. Do not promote them into durable/detail
+message bases: their local timestamp-derived versions can outrank lower
+authoritative daemon versions and suppress the durable user prompt during merge.
 
 ## User-Facing Data Flows
 
@@ -199,6 +203,17 @@ The session list is not owned by AgentGuiNode. AgentGuiNode may keep query,
 selection, pending create/delete/submit overlays, and read-state UI metadata.
 The session rows themselves come from the runtime snapshot and are refreshed
 through `load`, event reconciliation, or explicit session fetches.
+Conversation-list read-state metadata is notification-style UI state. Historical
+imports that carry `runtimeContext.imported === true` should remain visible in
+the rail, but they must not seed unread completion lamps as though they just
+finished locally. Preserve the imported marker through conversation summaries
+and summary-stabilization equality before deriving unread completion state.
+If the conversation-list query cannot be constructed because workspace,
+current-user, or provider identity is missing, clear the active conversation
+selection and persisted active hint. Do not treat that state as a runtime
+refresh gap. Temporary runtime/list catch-up should instead be represented by
+an explicit pending create, transient conversation, or detail overlay that can
+reconcile back to `AgentActivityRuntime`.
 
 ### Existing Session Detail Loading
 
@@ -219,6 +234,12 @@ activeConversationId changes
 Detail loading is separate from list loading. A conversation can appear in the
 rail before its messages are loaded. The detail panel should show message
 loading from the session view store, not infer it from the send button state.
+Older-history prefetch is opportunistic UI behavior. If a page load for a
+specific `(agentSessionId, beforeVersion)` cursor fails, AgentGuiNode should
+record that failed cursor and suppress automatic retries until the detail page
+is reloaded or a different oldest durable version is reached. Do not let scroll
+position and `isLoadingOlderMessages=false` form an immediate retry loop against
+the same failing backend page.
 
 ### First Prompt In A New Conversation
 
@@ -282,6 +303,13 @@ The local working patch is a latency bridge only. If the runtime returns a
 ready-looking session while the turn is still being processed, the desktop
 service can preserve optimistic `working` until a later authoritative event
 settles the session.
+
+The submit target is not just a render detail. A detail-page composer must not
+fall back to `startConversation` because a UI-local active conversation ref is
+temporarily empty. If the view is not on the home composer, resolve the existing
+session from the durable active-session hint and route through the existing
+send path, or block/recover explicitly with diagnostics. Only an intentional
+home-composer submit should create a new agent session.
 
 ### Resume Or Re-Attach Existing Session
 
@@ -462,6 +490,10 @@ User-visible rules:
 - Home composer submit with no active conversation starts activation. Detail
   composer submit with an active conversation sends input. First-message
   activation keeps the user on the home composer until activation succeeds.
+- Treat active-session refs as controller caches, not the source of truth for
+  whether a submit is new or existing. React effect cleanup, projection reloads,
+  and conversation-list refreshes may temporarily disturb UI-local refs; they
+  must not retarget the user's prompt to a newly created session.
 - The send button spinner is local submit/approval response state. For
   first-message activation, this same busy state is the only normal pending
   indicator. The "connecting conversation" state belongs to existing-session
@@ -469,6 +501,14 @@ User-visible rules:
 - Model, permission, plan mode, reasoning, speed, project, branch, prompt image,
   file mention, and skill/capability controls must read from composer settings
   and provider options. They should not be reconstructed from transcript rows.
+- User composer defaults are owned by desktop preferences. AgentGUI may request
+  a defaults write only from the home/new composer path, through an explicit host
+  callback.
+- Active session settings are session state. Opening, restoring, or editing an
+  active session must not promote that session's model, permission mode, or
+  reasoning setting into user defaults.
+- Workbench node `composerOverrides` are UI-local home/new composer draft state,
+  not an authoritative source for desktop preferences.
 - Draft clearing happens only after the submitted content still matches the
   current draft. Do not clear a draft that the user edited while a send was in
   flight.
@@ -645,6 +685,33 @@ activity data source:
 - runtime metadata and diagnostics outside the activity runtime
 - account or user-project lookup
 - local file picking, local file reading, and batch export helpers
+
+### Provider Targets
+
+AgentGUI distinguishes real provider identity from launch targets. `provider`
+continues to mean the concrete provider family (`codex`, `claude-code`,
+`nexight`, and so on) and remains the key for composer options, settings,
+icons, probes, provider status, and adapter policy.
+
+`providerTargets` lets a host expose multiple targets under that same provider.
+AgentGUI owns only target display and passthrough:
+
+- show `target.label` for new-session surfaces
+- keep provider behavior keyed by `target.provider`
+- persist `providerTargetId` / `providerTargetRef` in workbench node state
+- pass `providerTargetRef` through `AgentActivityRuntime.activateSession`
+
+`providerTargetRef` is an opaque host reference, not authority. AgentGUI must
+not interpret `ref.kind`, mint invocation-control tokens, resolve invocation
+plans, contact command gateways, or handle raw credentials. Host/trusted code
+must re-authenticate the current user and workspace and resolve any invocation
+plan before launching. A target may identify shared, local, remote, or other
+host-owned launch mechanisms, but those meanings stay outside AgentGUI.
+
+When `providerTargets` is omitted or empty, AgentGUI may synthesize local
+targets from the static provider catalog for picker/display compatibility. Those
+fallback targets do not change the legacy activation contract: AgentGUI does not
+persist or send their `providerTargetRef`.
 
 ### Conversation Projection
 
@@ -876,6 +943,11 @@ Quick checks:
   do not use their local timestamp-derived versions as durable message-window
   bounds; live runtime messages can have lower authoritative sequence versions
   and must still enter the transcript before a refresh.
+- If user prompts appear below assistant replies until the conversation is
+  reopened, inspect whether optimistic prompt messages were merged into
+  `detailMessages` or another durable/base set. Reconciliation should split
+  durable messages from optimistic overlays, then drop overlays that match a
+  durable `messageId`, `clientSubmitId`, or prompt signature.
 - When a live message or lifecycle patch reveals the real turn ID for a
   first-prompt create, retarget the optimistic prompt from its pending
   client-submit turn ID only after the event is known to belong to the current

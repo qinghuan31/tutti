@@ -14,11 +14,13 @@ import type {
   CliCapabilitiesResponse,
   AgentSessionComposerSettings,
   GetAgentProviderComposerOptionsRequest,
+  GetWorkspaceAppFactoryProviderComposerOptionsRequest,
   CompleteIssueManagerRunRequest,
   CheckUserProjectPathRequest,
   CreateIssueManagerIssueRequest,
   CreateIssueManagerRunRequest,
   CreateIssueManagerTaskRequest,
+  CreateIssueManagerTasksRequest,
   CreateIssueManagerTopicRequest,
   CreateWorkspaceAgentSessionRequest,
   CreateWorkspaceAppFactoryJobRequest,
@@ -168,6 +170,11 @@ export interface TuttidClient {
     issueID: string,
     request: CreateIssueManagerTaskRequest
   ): Promise<IssueManagerTask>;
+  createWorkspaceIssueTasks(
+    workspaceID: string,
+    issueID: string,
+    request: CreateIssueManagerTasksRequest
+  ): Promise<IssueManagerTask[]>;
   createWorkspaceIssueTaskRun(
     workspaceID: string,
     issueID: string,
@@ -387,6 +394,11 @@ export interface TuttidClient {
     workspaceID: string,
     jobID: string
   ): Promise<WorkspaceAppFactoryJob>;
+  getWorkspaceAppFactoryProviderComposerOptions(
+    workspaceID: string,
+    provider: WorkspaceAgentProvider,
+    request?: GetWorkspaceAppFactoryProviderComposerOptionsRequest
+  ): Promise<AgentProviderComposerOptionsResponse>;
   deleteWorkspaceAppFactoryJob(
     workspaceID: string,
     jobID: string

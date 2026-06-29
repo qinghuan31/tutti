@@ -1283,6 +1283,49 @@ paths:
           $ref: "#/components/responses/WorkspaceOperationError"
         "503":
           $ref: "#/components/responses/ServiceUnavailableError"
+  /v1/workspaces/{workspaceID}/app-factory/providers/{provider}/composer-options:
+    parameters:
+      - $ref: "#/components/parameters/WorkspaceID"
+      - name: provider
+        in: path
+        required: true
+        schema:
+          $ref: "#/components/schemas/WorkspaceAgentProvider"
+    post:
+      operationId: getWorkspaceAppFactoryProviderComposerOptions
+      tags:
+        - app-factory
+      summary: Get App Factory provider composer options
+      description: >
+        Resolves provider composer options for App Factory using daemon-owned
+        workspace and factory draft context. Clients provide workspace and
+        provider selection, while tuttid owns the working directory used for
+        provider discovery.
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/GetWorkspaceAppFactoryProviderComposerOptionsRequest"
+      responses:
+        "200":
+          description: App Factory provider composer options
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AgentProviderComposerOptionsResponse"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "400":
+          $ref: "#/components/responses/InvalidRequestError"
+        "404":
+          $ref: "#/components/responses/WorkspaceNotFoundError"
+        "405":
+          $ref: "#/components/responses/MethodNotAllowedError"
+        "502":
+          $ref: "#/components/responses/WorkspaceOperationError"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailableError"
   /v1/workspaces/{workspaceID}/app-factory/jobs/{jobID}:
     parameters:
       - $ref: "#/components/parameters/WorkspaceID"
@@ -3472,6 +3515,21 @@ components:
         text:
           type: string
           nullable: true
+        warnings:
+          type: array
+          items:
+            $ref: "#/components/schemas/CliCommandWarning"
+    CliCommandWarning:
+      type: object
+      additionalProperties: false
+      required:
+        - code
+        - message
+      properties:
+        code:
+          type: string
+        message:
+          type: string
     CliInvokeResponse:
       type: object
       additionalProperties: false
@@ -5151,6 +5209,14 @@ components:
           $ref: "#/components/schemas/DesktopLocale"
         settings:
           $ref: "#/components/schemas/AgentSessionComposerSettings"
+    GetWorkspaceAppFactoryProviderComposerOptionsRequest:
+      type: object
+      additionalProperties: false
+      properties:
+        locale:
+          $ref: "#/components/schemas/DesktopLocale"
+        settings:
+          $ref: "#/components/schemas/AgentSessionComposerSettings"
     AgentProviderComposerOptionsResponse:
       type: object
       additionalProperties: false
@@ -6222,6 +6288,11 @@ components:
           type: object
           additionalProperties: true
           description: Optional client-provided diagnostic metadata for the first turn, such as submit trace ids. This metadata is not provider prompt content.
+        providerTargetRef:
+          type: object
+          nullable: true
+          additionalProperties: true
+          description: Opaque host-owned provider target reference. It is not authority; trusted launchers must re-authenticate and resolve it before invoking a provider.
         title:
           type: string
           nullable: true

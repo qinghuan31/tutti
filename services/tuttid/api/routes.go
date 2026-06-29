@@ -140,6 +140,14 @@ func RegisterRoutes(mux *http.ServeMux, routes Routes) {
 		wrapper.GetAgentProviderStatuses(w, r)
 	})
 
+	mux.HandleFunc("/v1/workspaces/{workspaceID}/app-factory/providers/{provider}/composer-options", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			tuttitypes.WriteMethodNotAllowed(w)
+			return
+		}
+		wrapper.GetWorkspaceAppFactoryProviderComposerOptions(w, r)
+	})
+
 	mux.HandleFunc("/v1/workspaces", func(w http.ResponseWriter, r *http.Request) {
 		switch r.Method {
 		case http.MethodGet:
@@ -519,6 +527,15 @@ func RegisterRoutes(mux *http.ServeMux, routes Routes) {
 			wrapper.ListWorkspaceIssueTasks(w, r)
 		case http.MethodPost:
 			wrapper.CreateWorkspaceIssueTask(w, r)
+		default:
+			tuttitypes.WriteMethodNotAllowed(w)
+		}
+	})
+
+	mux.HandleFunc("/v1/workspaces/{workspaceID}/issues/{issueID}/tasks/batch-create", func(w http.ResponseWriter, r *http.Request) {
+		switch r.Method {
+		case http.MethodPost:
+			wrapper.CreateWorkspaceIssueTasks(w, r)
 		default:
 			tuttitypes.WriteMethodNotAllowed(w)
 		}

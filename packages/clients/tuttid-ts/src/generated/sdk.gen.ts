@@ -72,6 +72,9 @@ import type {
   CreateWorkspaceIssueTaskRunData,
   CreateWorkspaceIssueTaskRunErrors,
   CreateWorkspaceIssueTaskRunResponses,
+  CreateWorkspaceIssueTasksData,
+  CreateWorkspaceIssueTasksErrors,
+  CreateWorkspaceIssueTasksResponses,
   CreateWorkspaceIssueTopicData,
   CreateWorkspaceIssueTopicErrors,
   CreateWorkspaceIssueTopicResponses,
@@ -133,6 +136,9 @@ import type {
   GetWorkspaceAppFactoryJobData,
   GetWorkspaceAppFactoryJobErrors,
   GetWorkspaceAppFactoryJobResponses,
+  GetWorkspaceAppFactoryProviderComposerOptionsData,
+  GetWorkspaceAppFactoryProviderComposerOptionsErrors,
+  GetWorkspaceAppFactoryProviderComposerOptionsResponses,
   GetWorkspaceData,
   GetWorkspaceErrors,
   GetWorkspaceFileTreeSnapshotData,
@@ -1193,6 +1199,34 @@ export const createWorkspaceAppFactoryJob = <
   >({
     security: [{ scheme: "bearer", type: "http" }],
     url: "/v1/workspaces/{workspaceID}/app-factory/jobs",
+    ...options,
+    headers: {
+      "Content-Type": "application/json",
+      ...options.headers
+    }
+  });
+
+/**
+ * Get App Factory provider composer options
+ *
+ * Resolves provider composer options for App Factory using daemon-owned workspace and factory draft context. Clients provide workspace and provider selection, while tuttid owns the working directory used for provider discovery.
+ *
+ */
+export const getWorkspaceAppFactoryProviderComposerOptions = <
+  ThrowOnError extends boolean = false
+>(
+  options: Options<
+    GetWorkspaceAppFactoryProviderComposerOptionsData,
+    ThrowOnError
+  >
+) =>
+  (options.client ?? client).post<
+    GetWorkspaceAppFactoryProviderComposerOptionsResponses,
+    GetWorkspaceAppFactoryProviderComposerOptionsErrors,
+    ThrowOnError
+  >({
+    security: [{ scheme: "bearer", type: "http" }],
+    url: "/v1/workspaces/{workspaceID}/app-factory/providers/{provider}/composer-options",
     ...options,
     headers: {
       "Content-Type": "application/json",
@@ -2484,6 +2518,26 @@ export const createWorkspaceIssueTask = <ThrowOnError extends boolean = false>(
   >({
     security: [{ scheme: "bearer", type: "http" }],
     url: "/v1/workspaces/{workspaceID}/issues/{issueID}/tasks",
+    ...options,
+    headers: {
+      "Content-Type": "application/json",
+      ...options.headers
+    }
+  });
+
+/**
+ * Create ordered tasks for an issue-manager issue
+ */
+export const createWorkspaceIssueTasks = <ThrowOnError extends boolean = false>(
+  options: Options<CreateWorkspaceIssueTasksData, ThrowOnError>
+) =>
+  (options.client ?? client).post<
+    CreateWorkspaceIssueTasksResponses,
+    CreateWorkspaceIssueTasksErrors,
+    ThrowOnError
+  >({
+    security: [{ scheme: "bearer", type: "http" }],
+    url: "/v1/workspaces/{workspaceID}/issues/{issueID}/tasks/batch-create",
     ...options,
     headers: {
       "Content-Type": "application/json",

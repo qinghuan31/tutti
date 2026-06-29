@@ -1,4 +1,5 @@
 import { createElement, type CSSProperties, type ReactNode } from "react";
+import type { AgentGUIProviderTarget } from "@tutti-os/agent-gui";
 import { createAgentGuiWorkbenchContribution } from "@tutti-os/agent-gui/workbench/contribution";
 import {
   normalizeAgentGuiWorkbenchProvider,
@@ -60,6 +61,8 @@ export function createWorkspaceAgentGuiContribution(input: {
   onCapabilitySettingsRequest?: Parameters<
     typeof DesktopAgentGUIWorkbenchBody
   >[0]["onCapabilitySettingsRequest"];
+  providerTargets?: readonly AgentGUIProviderTarget[];
+  defaultProviderTargetId?: string | null;
   tuttidClient: TuttidClient;
   platformApi: Pick<
     DesktopPlatformApi,
@@ -134,6 +137,8 @@ export function createWorkspaceAgentGuiContribution(input: {
       },
       onStateChange: (...args) => helpers.onStateChange(...args),
       previewMode: options?.previewMode,
+      providerTargets: input.providerTargets,
+      defaultProviderTargetId: input.defaultProviderTargetId,
       contextMentionProviders:
         agentGUIWorkbenchHostInput.contextMentionProviders,
       runtimeApi: input.runtimeApi,

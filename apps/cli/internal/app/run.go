@@ -14,6 +14,8 @@ import (
 	"github.com/tutti-os/tutti/apps/cli/internal/defaults"
 )
 
+const prefixHelpGroupPreviewLimit = 5
+
 type options struct {
 	json bool
 }
@@ -120,6 +122,9 @@ func runDynamic(ctx context.Context, commandName string, opts options, args []st
 			if printCommandPrefixHelp(stdout, commandName, prefix, capabilities.Commands) {
 				return 0
 			}
+		}
+		if printCommandPrefixHelp(stdout, commandName, args, capabilities.Commands) {
+			return 2
 		}
 		fmt.Fprintf(stderr, "unknown command: %s\n", strings.Join(args, " "))
 		return 2
@@ -324,9 +329,11 @@ func commandHelpPrefix(args []string) ([]string, bool) {
 func writeCommandOutput(stdout io.Writer, stderr io.Writer, output daemon.CommandOutput) int {
 	switch output.Kind {
 	case "plain", "markdown":
+		writeCommandWarnings(stderr, output.Warnings)
 		fmt.Fprintln(stdout, output.Text)
 		return 0
 	case "table":
+		writeCommandWarnings(stderr, output.Warnings)
 		writeTable(stdout, output.Columns, output.Rows)
 		return 0
 	case "json":
@@ -337,6 +344,19 @@ func writeCommandOutput(stdout io.Writer, stderr io.Writer, output daemon.Comman
 }
 
 func writeDynamicJSON(stdout io.Writer, stderr io.Writer, output daemon.CommandOutput) int {
+	if len(output.Warnings) > 0 {
+		envelope := map[string]any{
+			"warnings": output.Warnings,
+		}
+		if len(output.Value) > 0 {
+			envelope["value"] = output.Value
+		} else if output.Rows != nil {
+			envelope["rows"] = output.Rows
+		} else {
+			envelope["output"] = output
+		}
+		return writeJSON(stdout, stderr, envelope)
+	}
 	if len(output.Value) > 0 {
 		return writeJSON(stdout, stderr, output.Value)
 	}
@@ -344,6 +364,18 @@ func writeDynamicJSON(stdout io.Writer, stderr io.Writer, output daemon.CommandO
 		return writeJSON(stdout, stderr, output.Rows)
 	}
 	return writeJSON(stdout, stderr, output)
+}
+
+func writeCommandWarnings(stderr io.Writer, warnings []daemon.CommandWarning) {
+	for _, warning := range warnings {
+		message := strings.TrimSpace(warning.Message)
+		if message == "" {
+			message = strings.TrimSpace(warning.Code)
+		}
+		if message != "" {
+			fmt.Fprintf(stderr, "warning: %s\n", message)
+		}
+	}
 }
 
 func writeJSON(stdout io.Writer, stderr io.Writer, value any) int {
@@ -468,6 +500,12 @@ func printDynamicCommandHelp(stdout io.Writer, commandName string, command daemo
 			description = "  " + flag.Description
 		}
 		fmt.Fprintf(stdout, "  --%-*s  %s%s%s\n", width, flag.Name, flag.Type, required, description)
+		if len(flag.Values) > 0 {
+			fmt.Fprintf(stdout, "      Values: %s\n", strings.Join(flag.Values, ", "))
+		}
+		if flag.HasDefault {
+			fmt.Fprintf(stdout, "      Default: %s\n", flag.Default)
+		}
 	}
 	printDocumentationHints(stdout, []daemon.Capability{command})
 }
@@ -477,6 +515,8 @@ type helpCommandRow struct {
 	Summary                 string
 	IntegrationOnly         bool
 	IncludesIntegrationOnly bool
+	Children                []helpCommandRow
+	RemainingChildren       int
 }
 
 func rootHelpRows(commands []daemon.Capability) []helpCommandRow {
@@ -599,14 +639,111 @@ func prefixHelpRows(prefix []string, commands []daemon.Capability) []helpCommand
 		if summary == "" {
 			summary = fmt.Sprintf("%d commands", item.count)
 		}
+		if item.count == 1 {
+			if required := requiredFlagSummaryForPrefixCommand(prefix, name, commands); required != "" {
+				summary = summary + "  required: " + required
+			}
+		}
 		rows = append(rows, helpCommandRow{
 			Name:                    name,
 			Summary:                 summary,
 			IntegrationOnly:         item.count > 0 && item.integrationCount == item.count,
 			IncludesIntegrationOnly: item.integrationCount > 0 && item.integrationCount < item.count,
+			Children:                prefixHelpChildRows(prefix, name, commands, prefixHelpGroupPreviewLimit),
+			RemainingChildren:       prefixHelpRemainingChildCount(prefix, name, commands, prefixHelpGroupPreviewLimit),
 		})
 	}
 	return rows
+}
+
+func prefixHelpChildRows(prefix []string, name string, commands []daemon.Capability, limit int) []helpCommandRow {
+	if limit <= 0 {
+		return nil
+	}
+	childPrefix := append(append([]string(nil), prefix...), name)
+	leaves := make([]daemon.Capability, 0)
+	for _, command := range commands {
+		if len(command.Path) != len(childPrefix)+1 {
+			continue
+		}
+		if !pathHasPrefix(command.Path, childPrefix) {
+			continue
+		}
+		leaves = append(leaves, command)
+	}
+	sort.SliceStable(leaves, func(left, right int) bool {
+		return strings.Join(leaves[left].Path, " ") < strings.Join(leaves[right].Path, " ")
+	})
+	if len(leaves) > limit {
+		leaves = leaves[:limit]
+	}
+	rows := make([]helpCommandRow, 0, len(leaves))
+	for _, command := range leaves {
+		childName := command.Path[len(childPrefix)]
+		summary := strings.TrimSpace(command.Summary)
+		if required := requiredFlagSummary(command); required != "" {
+			summary = summary + "  required: " + required
+		}
+		rows = append(rows, helpCommandRow{
+			Name:            childName,
+			Summary:         summary,
+			IntegrationOnly: isIntegrationCapability(command),
+		})
+	}
+	return rows
+}
+
+func prefixHelpRemainingChildCount(prefix []string, name string, commands []daemon.Capability, limit int) int {
+	if limit <= 0 {
+		return 0
+	}
+	childPrefix := append(append([]string(nil), prefix...), name)
+	count := 0
+	for _, command := range commands {
+		if len(command.Path) == len(childPrefix)+1 && pathHasPrefix(command.Path, childPrefix) {
+			count++
+		}
+	}
+	if count <= limit {
+		return 0
+	}
+	return count - limit
+}
+
+func pathHasPrefix(path []string, prefix []string) bool {
+	if len(path) < len(prefix) {
+		return false
+	}
+	for index, segment := range prefix {
+		if path[index] != segment {
+			return false
+		}
+	}
+	return true
+}
+
+func requiredFlagSummaryForPrefixCommand(prefix []string, name string, commands []daemon.Capability) string {
+	for _, command := range commands {
+		if len(command.Path) != len(prefix)+1 {
+			continue
+		}
+		if command.Path[len(prefix)] != name {
+			continue
+		}
+		return requiredFlagSummary(command)
+	}
+	return ""
+}
+
+func requiredFlagSummary(command daemon.Capability) string {
+	flags := commandFlags(command.InputSchema)
+	required := make([]string, 0)
+	for _, flag := range flags {
+		if flag.Required {
+			required = append(required, "--"+flag.Name+" <value>")
+		}
+	}
+	return strings.Join(required, " ")
 }
 
 func printHelpRows(stdout io.Writer, rows []helpCommandRow) {
@@ -625,6 +762,29 @@ func printHelpRows(stdout io.Writer, rows []helpCommandRow) {
 			summary += " [includes integration-only]"
 		}
 		fmt.Fprintf(stdout, "  %-*s  %s\n", width, row.Name, summary)
+		printHelpChildRows(stdout, row)
+	}
+}
+
+func printHelpChildRows(stdout io.Writer, row helpCommandRow) {
+	if len(row.Children) == 0 && row.RemainingChildren == 0 {
+		return
+	}
+	childWidth := 0
+	for _, child := range row.Children {
+		if len(child.Name) > childWidth {
+			childWidth = len(child.Name)
+		}
+	}
+	for _, child := range row.Children {
+		summary := child.Summary
+		if child.IntegrationOnly {
+			summary += " [integration-only]"
+		}
+		fmt.Fprintf(stdout, "    %-*s  %s\n", childWidth, child.Name, summary)
+	}
+	if row.RemainingChildren > 0 {
+		fmt.Fprintf(stdout, "    ...   %d more commands\n", row.RemainingChildren)
 	}
 }
 
@@ -693,6 +853,9 @@ type commandFlag struct {
 	Type        string
 	Description string
 	Required    bool
+	Values      []string
+	Default     string
+	HasDefault  bool
 }
 
 func commandFlags(schema map[string]any) []commandFlag {
@@ -717,6 +880,9 @@ func commandFlags(schema map[string]any) []commandFlag {
 			Type:        schemaPropertyType(property),
 			Description: schemaPropertyDescription(property),
 			Required:    true,
+			Values:      schemaPropertyEnumValues(property),
+			Default:     schemaPropertyDefault(property),
+			HasDefault:  schemaPropertyHasDefault(property),
 		})
 	}
 
@@ -732,6 +898,9 @@ func commandFlags(schema map[string]any) []commandFlag {
 			Name:        name,
 			Type:        schemaPropertyType(properties[name]),
 			Description: schemaPropertyDescription(properties[name]),
+			Values:      schemaPropertyEnumValues(properties[name]),
+			Default:     schemaPropertyDefault(properties[name]),
+			HasDefault:  schemaPropertyHasDefault(properties[name]),
 		})
 	}
 	return flags
@@ -781,4 +950,55 @@ func schemaPropertyDescription(property any) string {
 		return ""
 	}
 	return strings.TrimSpace(description)
+}
+
+func schemaPropertyEnumValues(property any) []string {
+	propertyMap, ok := property.(map[string]any)
+	if !ok {
+		return nil
+	}
+	value, ok := propertyMap["enum"].([]any)
+	if !ok {
+		return nil
+	}
+	values := make([]string, 0, len(value))
+	for _, item := range value {
+		values = append(values, formatSchemaValue(item))
+	}
+	return values
+}
+
+func schemaPropertyDefault(property any) string {
+	propertyMap, ok := property.(map[string]any)
+	if !ok {
+		return ""
+	}
+	value, ok := propertyMap["default"]
+	if !ok {
+		return ""
+	}
+	return formatSchemaValue(value)
+}
+
+func schemaPropertyHasDefault(property any) bool {
+	propertyMap, ok := property.(map[string]any)
+	if !ok {
+		return false
+	}
+	_, ok = propertyMap["default"]
+	return ok
+}
+
+func formatSchemaValue(value any) string {
+	switch typed := value.(type) {
+	case json.Number:
+		return typed.String()
+	case float64:
+		if typed == float64(int64(typed)) {
+			return fmt.Sprintf("%.0f", typed)
+		}
+		return fmt.Sprint(typed)
+	default:
+		return fmt.Sprint(value)
+	}
 }

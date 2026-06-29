@@ -433,7 +433,10 @@ interface AgentGUINodeViewProps {
   previewMode?: boolean;
   onAgentProviderLogin?: (provider?: string | null) => void;
   actions: {
-    createConversation: (options?: { projectPath?: string | null }) => void;
+    createConversation: (options?: {
+      projectPath?: string | null;
+      source?: string;
+    }) => void;
     selectConversation: (agentSessionId: string) => void;
     submitPrompt: (
       content: AgentPromptContentBlock[],
@@ -1024,18 +1027,20 @@ export function AgentGUINodeView({
       ? composerFocusRequestSequence
       : (composerFocusRequestSequence ?? 0) + localComposerFocusRequestSequence;
   const requestCreateConversation = useCallback(
-    (options?: { projectPath?: string | null }) => {
+    (options?: { projectPath?: string | null; source?: string }) => {
       if (previewMode) {
         return;
       }
-      if (options) {
+      const source = options?.source;
+      if (options && "projectPath" in options) {
         createConversationAction(options);
       } else if (viewModel.composerSettings.selectedProjectPath) {
         createConversationAction({
-          projectPath: viewModel.composerSettings.selectedProjectPath
+          projectPath: viewModel.composerSettings.selectedProjectPath,
+          source: source ?? "selected_project"
         });
       } else {
-        createConversationAction();
+        createConversationAction({ source: source ?? "rail_toolbar" });
       }
       setLocalComposerFocusRequestSequence((current) => current + 1);
     },
@@ -1057,7 +1062,7 @@ export function AgentGUINodeView({
     handledNewConversationRequestSequenceRef.current =
       newConversationRequestSequence;
     if (!createConversationDisabled) {
-      requestCreateConversation();
+      requestCreateConversation({ source: "external_request" });
     }
   }, [
     createConversationDisabled,
@@ -2890,7 +2895,10 @@ interface AgentGUIConversationRailPaneProps {
   openclawGateway: OpenclawGatewayViewModel | null;
   isCollapsed: boolean;
   slashStatusLimits: readonly AgentComposerSlashStatusLimit[];
-  onCreateConversation: (options?: { projectPath?: string | null }) => void;
+  onCreateConversation: (options?: {
+    projectPath?: string | null;
+    source?: string;
+  }) => void;
   onOpenAgentEnvSetup: () => void;
   onRetryOpenclawGateway: () => void;
   onSelectConversation: (agentSessionId: string) => void;
@@ -3116,6 +3124,7 @@ function conversationSummariesRenderEqual(
     left.pinnedAtUnixMs === right.pinnedAtUnixMs &&
     left.sortTimeUnixMs === right.sortTimeUnixMs &&
     left.updatedAtUnixMs === right.updatedAtUnixMs &&
+    left.isImported === right.isImported &&
     left.hasUnreadCompletion === right.hasUnreadCompletion &&
     left.unreadCompletionKey === right.unreadCompletionKey &&
     conversationProjectsRenderEqual(left.project, right.project) &&
@@ -3563,7 +3572,10 @@ interface AgentGUIConversationRailSectionProps {
   labels: AgentGUIViewLabels;
   uiLanguage: UiLanguage;
   registerItemElement: (itemId: string, element: HTMLDivElement | null) => void;
-  onCreateConversation: (options?: { projectPath?: string | null }) => void;
+  onCreateConversation: (options?: {
+    projectPath?: string | null;
+    source?: string;
+  }) => void;
   onToggleProjectSectionCollapsed: (sectionId: string) => void;
   setPendingProjectAction: (action: AgentGUIProjectActionDialog | null) => void;
   onSelectConversation: (agentSessionId: string) => void;
@@ -3637,10 +3649,13 @@ const AgentGUIConversationRailSection = memo(
       : labels.newConversation;
     const handleCreateConversation = useCallback(() => {
       if (projectPath) {
-        onCreateConversation({ projectPath });
+        onCreateConversation({ projectPath, source: "project_section" });
         return;
       }
-      onCreateConversation({ projectPath: null });
+      onCreateConversation({
+        projectPath: null,
+        source: "unscoped_section"
+      });
     }, [onCreateConversation, projectPath]);
 
     return (

@@ -2011,11 +2011,18 @@ type CliCapabilityVisibility string
 
 // CliCommandOutput defines model for CliCommandOutput.
 type CliCommandOutput struct {
-	Columns *[]CliTableColumn         `json:"columns,omitempty"`
-	Kind    CliOutputMode             `json:"kind"`
-	Rows    *[]map[string]interface{} `json:"rows,omitempty"`
-	Text    *string                   `json:"text,omitempty"`
-	Value   *map[string]interface{}   `json:"value,omitempty"`
+	Columns  *[]CliTableColumn         `json:"columns,omitempty"`
+	Kind     CliOutputMode             `json:"kind"`
+	Rows     *[]map[string]interface{} `json:"rows,omitempty"`
+	Text     *string                   `json:"text,omitempty"`
+	Value    *map[string]interface{}   `json:"value,omitempty"`
+	Warnings *[]CliCommandWarning      `json:"warnings,omitempty"`
+}
+
+// CliCommandWarning defines model for CliCommandWarning.
+type CliCommandWarning struct {
+	Code    string `json:"code"`
+	Message string `json:"message"`
 }
 
 // CliInvokeContext Client-supplied invocation context. These fields are hints for routing and audit only; authorization and workspace validation remain daemon-owned.
@@ -2111,6 +2118,11 @@ type CreateIssueManagerTaskRequest struct {
 	Title     string                `json:"title"`
 }
 
+// CreateIssueManagerTasksRequest defines model for CreateIssueManagerTasksRequest.
+type CreateIssueManagerTasksRequest struct {
+	Tasks []CreateIssueManagerTaskRequest `json:"tasks"`
+}
+
 // CreateIssueManagerTopicRequest defines model for CreateIssueManagerTopicRequest.
 type CreateIssueManagerTopicRequest struct {
 	Summary *string `json:"summary,omitempty"`
@@ -2134,10 +2146,13 @@ type CreateWorkspaceAgentSessionRequest struct {
 	PermissionModeId *string                 `json:"permissionModeId,omitempty"`
 	PlanMode         *bool                   `json:"planMode,omitempty"`
 	Provider         WorkspaceAgentProvider  `json:"provider"`
-	ReasoningEffort  *string                 `json:"reasoningEffort,omitempty"`
-	Speed            *string                 `json:"speed,omitempty"`
-	Title            *string                 `json:"title,omitempty"`
-	Visible          *bool                   `json:"visible,omitempty"`
+
+	// ProviderTargetRef Opaque host-owned provider target reference. It is not authority; trusted launchers must re-authenticate and resolve it before invoking a provider.
+	ProviderTargetRef *map[string]interface{} `json:"providerTargetRef,omitempty"`
+	ReasoningEffort   *string                 `json:"reasoningEffort,omitempty"`
+	Speed             *string                 `json:"speed,omitempty"`
+	Title             *string                 `json:"title,omitempty"`
+	Visible           *bool                   `json:"visible,omitempty"`
 }
 
 // CreateWorkspaceAppFactoryJobRequest defines model for CreateWorkspaceAppFactoryJobRequest.
@@ -2428,6 +2443,12 @@ type GetAgentProviderComposerOptionsRequest struct {
 	WorkspaceId *string `json:"workspaceId,omitempty"`
 }
 
+// GetWorkspaceAppFactoryProviderComposerOptionsRequest defines model for GetWorkspaceAppFactoryProviderComposerOptionsRequest.
+type GetWorkspaceAppFactoryProviderComposerOptionsRequest struct {
+	Locale   *DesktopLocale                `json:"locale,omitempty"`
+	Settings *AgentSessionComposerSettings `json:"settings,omitempty"`
+}
+
 // HealthStatusResponse defines model for HealthStatusResponse.
 type HealthStatusResponse struct {
 	Service string                     `json:"service"`
@@ -2682,6 +2703,11 @@ type IssueManagerTaskListResponse struct {
 // IssueManagerTaskResponse defines model for IssueManagerTaskResponse.
 type IssueManagerTaskResponse struct {
 	Task IssueManagerTask `json:"task"`
+}
+
+// IssueManagerTasksResponse defines model for IssueManagerTasksResponse.
+type IssueManagerTasksResponse struct {
+	Tasks []IssueManagerTask `json:"tasks"`
 }
 
 // IssueManagerTopic defines model for IssueManagerTopic.
@@ -3818,6 +3844,9 @@ type CreateWorkspaceAppFactoryJobJSONRequestBody = CreateWorkspaceAppFactoryJobR
 // FixWorkspaceAppFactoryJobJSONRequestBody defines body for FixWorkspaceAppFactoryJob for application/json ContentType.
 type FixWorkspaceAppFactoryJobJSONRequestBody = FixWorkspaceAppFactoryJobRequest
 
+// GetWorkspaceAppFactoryProviderComposerOptionsJSONRequestBody defines body for GetWorkspaceAppFactoryProviderComposerOptions for application/json ContentType.
+type GetWorkspaceAppFactoryProviderComposerOptionsJSONRequestBody = GetWorkspaceAppFactoryProviderComposerOptionsRequest
+
 // ImportWorkspaceAppJSONRequestBody defines body for ImportWorkspaceApp for application/json ContentType.
 type ImportWorkspaceAppJSONRequestBody = ImportWorkspaceAppRequest
 
@@ -3901,6 +3930,9 @@ type CompleteWorkspaceIssueRunJSONRequestBody = CompleteIssueManagerRunRequest
 
 // CreateWorkspaceIssueTaskJSONRequestBody defines body for CreateWorkspaceIssueTask for application/json ContentType.
 type CreateWorkspaceIssueTaskJSONRequestBody = CreateIssueManagerTaskRequest
+
+// CreateWorkspaceIssueTasksJSONRequestBody defines body for CreateWorkspaceIssueTasks for application/json ContentType.
+type CreateWorkspaceIssueTasksJSONRequestBody = CreateIssueManagerTasksRequest
 
 // UpdateWorkspaceIssueTaskJSONRequestBody defines body for UpdateWorkspaceIssueTask for application/json ContentType.
 type UpdateWorkspaceIssueTaskJSONRequestBody = UpdateIssueManagerTaskRequest

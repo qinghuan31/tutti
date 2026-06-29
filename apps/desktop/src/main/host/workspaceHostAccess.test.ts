@@ -92,6 +92,9 @@ function createTransportClient(
     async createWorkspaceIssueTask() {
       throw new Error("not used");
     },
+    async createWorkspaceIssueTasks() {
+      throw new Error("not used");
+    },
     async createWorkspaceIssueTaskRun() {
       throw new Error("not used");
     },
@@ -171,6 +174,9 @@ function createTransportClient(
       throw new Error("not used");
     },
     async getWorkspaceAppFactoryJob() {
+      throw new Error("not used");
+    },
+    async getWorkspaceAppFactoryProviderComposerOptions() {
       throw new Error("not used");
     },
     async getAgentProviderComposerOptions() {

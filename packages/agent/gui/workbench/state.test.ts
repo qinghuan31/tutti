@@ -64,6 +64,52 @@ describe("agent gui workbench state", () => {
     });
   });
 
+  it("persists provider target references as opaque state", () => {
+    const providerTargetRef = {
+      kind: "shared-agent",
+      provider: "codex" as const,
+      sharedAgentId: "agent-1"
+    };
+
+    expect(
+      projectAgentGuiWorkbenchState({
+        ...createDefaultAgentGuiWorkbenchNodeState("codex"),
+        providerTargetId: "shared-agent:agent-1",
+        providerTargetRef
+      })
+    ).toMatchObject({
+      providerTargetId: "shared-agent:agent-1",
+      providerTargetRef
+    });
+
+    expect(
+      normalizeAgentGuiWorkbenchNodeState({
+        provider: "codex",
+        providerTargetId: "shared-agent:agent-1",
+        providerTargetRef
+      })
+    ).toMatchObject({
+      provider: "codex",
+      providerTargetId: "shared-agent:agent-1",
+      providerTargetRef
+    });
+
+    expect(
+      normalizeAgentGuiWorkbenchNodeState({
+        provider: "codex",
+        providerTargetId: "shared-agent:agent-1",
+        providerTargetRef: {
+          ...providerTargetRef,
+          provider: "claude-code"
+        }
+      })
+    ).toMatchObject({
+      provider: "codex",
+      providerTargetId: "shared-agent:agent-1",
+      providerTargetRef: null
+    });
+  });
+
   it("compares persisted workbench state", () => {
     expect(
       areAgentGuiWorkbenchStatesEqual(
