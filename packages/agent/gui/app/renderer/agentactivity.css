@@ -7509,7 +7509,6 @@ html[data-theme="light"] [data-message-center-item-id].agent-gui-edge-glow {
   width: 48px;
   height: 48px;
   object-fit: contain;
-  border-radius: 14px;
   animation: agent-gui-empty-hero-enter 260ms cubic-bezier(0.16, 1, 0.3, 1) 40ms
     both;
 }

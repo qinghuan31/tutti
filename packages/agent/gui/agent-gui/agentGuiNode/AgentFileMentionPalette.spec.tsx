@@ -1844,9 +1844,14 @@ describe("AgentFileMentionPalette", () => {
   it("keeps the new-session hero icon aligned with the new-task empty icon size", () => {
     const css = readFileSync(resolve("app/renderer/agentactivity.css"), "utf8");
 
+    const heroIconRule = css.match(
+      /\.agent-gui-node__empty-hero-icon-effect\s*{[^}]*}/s
+    )?.[0];
+
     expect(css).toMatch(
       /\.agent-gui-node__empty-hero-icon-effect\s*{[^}]*width:\s*48px[^}]*height:\s*48px/s
     );
+    expect(heroIconRule).not.toContain("border-radius");
   });
 
   it("sets the empty hero provider name in Merriweather bold italic", () => {
