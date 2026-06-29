@@ -6277,15 +6277,7 @@ html[data-theme="light"] [data-message-center-item-id].agent-gui-edge-glow {
   background: var(--agent-gui-surface-muted);
 }
 
-.agent-gui-node__composer-queued-prompt-label {
-  font-size: 13px;
-  font-weight: 600;
-  color: var(--agent-gui-accent-strong);
-  line-height: 20px;
-}
-
 .agent-gui-node__composer-queued-prompt-count {
-  margin-left: 4px;
   color: var(--agent-gui-accent-strong);
   font-size: 13px;
   font-weight: 600;

@@ -3120,7 +3120,12 @@ describe("AgentGUINode", () => {
       "agent-gui-composer-queued-prompts"
     );
     expect(
-      within(queuedPromptList).getByText("agentHost.agentGui.queuedLabel")
+      within(queuedPromptList).queryByText("agentHost.agentGui.queuedLabel")
+    ).toBeNull();
+    expect(
+      within(queuedPromptList).getByLabelText(
+        "agentHost.agentGui.queuedLabel 2"
+      )
     ).toBeTruthy();
     expect(within(queuedPromptList).getByText("2")).toBeTruthy();
     expect(

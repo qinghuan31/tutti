@@ -20,6 +20,26 @@ function textQueuedPrompt(id: string, text: string, createdAtUnixMs = 1) {
 }
 
 describe("AgentQueuedPromptPanel", () => {
+  it("omits the visible queued label while keeping the count", () => {
+    render(
+      <AgentQueuedPromptPanel
+        queuedPrompts={[
+          textQueuedPrompt("queued-1", "first prompt"),
+          textQueuedPrompt("queued-2", "second prompt", 2)
+        ]}
+        drainingQueuedPromptId={null}
+        labels={labels}
+        onSendQueuedPromptNext={vi.fn()}
+        onRemoveQueuedPrompt={vi.fn()}
+        onEditQueuedPrompt={vi.fn()}
+      />
+    );
+
+    expect(screen.queryByText("Queued")).toBeNull();
+    expect(screen.getByLabelText("Queued 2")).toBeInTheDocument();
+    expect(screen.getByText("2")).toBeInTheDocument();
+  });
+
   it("shows an expand cue only when queued content can expand", () => {
     const { rerender } = render(
       <AgentQueuedPromptPanel
@@ -107,7 +127,7 @@ describe("AgentQueuedPromptPanel", () => {
       />
     );
 
-    expect(screen.getByText("Queued")).toBeInTheDocument();
+    expect(screen.queryByText("Queued")).toBeNull();
     const mention = container.querySelector('[data-agent-file-mention="true"]');
     expect(mention).toHaveAttribute("data-agent-mention-kind", "session");
     expect(mention).toHaveClass("tsh-agent-object-token");

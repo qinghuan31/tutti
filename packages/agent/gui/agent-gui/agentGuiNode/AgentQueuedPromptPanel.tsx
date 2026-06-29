@@ -217,10 +217,10 @@ export function AgentQueuedPromptPanel({
       onClick={toggleExpanded}
       onKeyDown={handleKeyDown}
     >
-      <div className={styles.composerQueuedPromptHeader}>
-        <span className={styles.composerQueuedPromptLabel}>
-          {labels.queuedLabel}
-        </span>
+      <div
+        aria-label={`${labels.queuedLabel} ${queuedPrompts.length}`}
+        className={styles.composerQueuedPromptHeader}
+      >
         <span className={styles.composerQueuedPromptCount}>
           {queuedPrompts.length}
         </span>
