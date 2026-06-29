@@ -429,7 +429,7 @@ describe("AgentComposer", () => {
     ).not.toBeInTheDocument();
   });
 
-  it("wraps composer draft images in a right-click copy menu", () => {
+  it("renders composer draft images with image actions", () => {
     render(
       <AgentComposer
         workspaceId="workspace-1"
@@ -473,9 +473,7 @@ describe("AgentComposer", () => {
     const drafts = screen.getByTestId("agent-gui-composer-image-drafts");
     expect(drafts).toHaveClass("w-full");
     expect(drafts.className).not.toContain("max-w-[320px]");
-    expect(
-      drafts.querySelector('[data-slot="context-menu-trigger"]')
-    ).not.toBeNull();
+    expect(screen.getByRole("img", { name: "earth.png" })).toBeInTheDocument();
   });
 
   it("hides the permission dropdown and the plan badge when only plan mode is supported and inactive", () => {

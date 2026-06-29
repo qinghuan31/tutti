@@ -33,7 +33,6 @@ import {
 } from "../../app/renderer/components/ui/tooltip";
 import { ZoomableImage } from "../../app/renderer/components/ZoomableImage";
 import type { AgentConversationPromptVM } from "../../shared/agentConversation/contracts/agentConversationVM";
-import { ConversationImageContextMenu } from "../../shared/agentConversation/components/ConversationImageContextMenu";
 import { AgentUsageMeter, agentUsageBarColor } from "./AgentUsageMeter";
 import { cn } from "../../app/renderer/lib/utils";
 import { AddIcon, Select, SelectTrigger } from "@tutti-os/ui-system";
@@ -2975,27 +2974,26 @@ function AgentComposerDraftImagePreview({
       data-upload-error={image.uploadError ? "true" : undefined}
       style={previewStyle}
     >
-      <ConversationImageContextMenu src={image.previewUrl}>
-        <ZoomableImage
-          src={image.previewUrl}
-          alt={image.name}
-          className="size-full object-contain"
-          draggable={false}
-          onLoad={(event) => {
-            const element = event.currentTarget;
-            const width = element.naturalWidth;
-            const height = element.naturalHeight;
-            if (width <= 0 || height <= 0) {
-              return;
-            }
-            const nextRatio = Math.min(
-              DRAFT_IMAGE_PREVIEW_MAX_RATIO,
-              Math.max(DRAFT_IMAGE_PREVIEW_MIN_RATIO, width / height)
-            );
-            setAspectRatio(nextRatio);
-          }}
-        />
-      </ConversationImageContextMenu>
+      <ZoomableImage
+        src={image.previewUrl}
+        alt={image.name}
+        className="size-full object-contain"
+        draggable={false}
+        downloadName={image.name || "image.png"}
+        onLoad={(event) => {
+          const element = event.currentTarget;
+          const width = element.naturalWidth;
+          const height = element.naturalHeight;
+          if (width <= 0 || height <= 0) {
+            return;
+          }
+          const nextRatio = Math.min(
+            DRAFT_IMAGE_PREVIEW_MAX_RATIO,
+            Math.max(DRAFT_IMAGE_PREVIEW_MIN_RATIO, width / height)
+          );
+          setAspectRatio(nextRatio);
+        }}
+      />
       {image.uploading ? (
         <div
           className="absolute inset-0 grid place-items-center bg-[color-mix(in_srgb,var(--background-fronted)_62%,transparent)]"
