@@ -85,7 +85,7 @@ If a user mentions a workspace app or asks for app-specific work and the expecte
 
 `computer ...` drives the daemon-owned macOS desktop session. Prefer it over generic desktop automation when Tutti computer context is requested.
 
-Workspace app scopes are discovered from command guide or capability metadata that preserves `App id:`. Use `workspace-app` for app mention interpretation and command selection; use CLI help only after the scope is known.
+Workspace app scopes are discovered from command guide or capability metadata that preserves `App id:`. Use `workspace-app` for app mention interpretation and command selection; `workspace-app` is a skill and mention kind, not a CLI scope. Use CLI help only after the scope is known.
 
 ## Issue Guardrails
 
