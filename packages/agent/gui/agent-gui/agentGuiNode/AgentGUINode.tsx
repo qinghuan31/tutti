@@ -31,7 +31,8 @@ import { CanvasNodePanelLinedIcon } from "../shared/canvasNodeChromeIcons";
 import { useAgentGUINodeController } from "./controller/useAgentGUINodeController";
 import type {
   AgentGUIOpenSessionRequest,
-  AgentGUIPrefillPromptRequest
+  AgentGUIPrefillPromptRequest,
+  AgentGUIRememberComposerDefaultsInput
 } from "./controller/useAgentGUINodeController";
 import {
   AgentGUINodeView,
@@ -181,6 +182,9 @@ export interface AgentGUINodeProps {
   onUpdateNode: (
     updater: (current: AgentGUINodeData) => AgentGUINodeData
   ) => void;
+  onRememberComposerDefaults?: (
+    input: AgentGUIRememberComposerDefaultsInput
+  ) => void | Promise<void>;
   isMaximized?: boolean;
   isActive: boolean;
   composerFocusRequestSequence?: number | null;
@@ -482,6 +486,7 @@ function areAgentGUINodePropsEqual(
     previous.onClose === next.onClose &&
     previous.onResize === next.onResize &&
     previous.onUpdateNode === next.onUpdateNode &&
+    previous.onRememberComposerDefaults === next.onRememberComposerDefaults &&
     previous.onOpenConversationWindow === next.onOpenConversationWindow &&
     previous.isMaximized === next.isMaximized &&
     previous.isMuted === next.isMuted &&
@@ -536,6 +541,7 @@ export const AgentGUINode = memo(function AgentGUINode({
   onClose,
   onResize,
   onUpdateNode,
+  onRememberComposerDefaults,
   isMaximized = false,
   isActive,
   composerFocusRequestSequence = null,
@@ -699,6 +705,7 @@ export const AgentGUINode = memo(function AgentGUINode({
     prefillPromptRequest,
     previewMode,
     onDataChange: handleDataChange,
+    onRememberComposerDefaults,
     onShowMessage
   });
 
