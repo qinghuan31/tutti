@@ -267,4 +267,28 @@ describe("agent gui workbench state", () => {
       lastActiveConversationTitle: "Second title"
     });
   });
+
+  it("locates a node launch instanceId by the session it is showing", () => {
+    const source = createAgentGuiWorkbenchNodeStateSource({
+      workspaceId: "workspace-1"
+    });
+
+    // A conversation started fresh: its launch instanceId is panel-scoped (not
+    // session-keyed), and its live state is written under a node-scoped key.
+    source.writeNodeState({
+      instanceId: "agent-gui:codex:panel:abc123",
+      nodeId: "node-1",
+      state: { lastActiveAgentSessionId: "session-xyz" },
+      typeId: "agent-gui"
+    });
+
+    expect(source.findInstanceIdByAgentSessionId("session-xyz")).toBe(
+      "agent-gui:codex:panel:abc123"
+    );
+    expect(source.findInstanceIdByAgentSessionId("  session-xyz  ")).toBe(
+      "agent-gui:codex:panel:abc123"
+    );
+    expect(source.findInstanceIdByAgentSessionId("other-session")).toBeNull();
+    expect(source.findInstanceIdByAgentSessionId("")).toBeNull();
+  });
 });

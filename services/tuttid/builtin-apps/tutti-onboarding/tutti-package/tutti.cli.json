@@ -1,6 +1,6 @@
 {
   "schemaVersion": "tutti.app.cli.v1",
-  "scope": "guide",
+  "scope": "onboarding",
   "description": "Read the Tutti product onboarding guide.",
   "commands": [
     {

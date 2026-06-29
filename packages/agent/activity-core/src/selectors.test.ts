@@ -99,6 +99,38 @@ test("session display status uses current phase when lifecycle status is active"
   assert.equal(statuses.get("session-failed"), "failed");
 });
 
+test("session display status treats settled turn lifecycle as terminal", () => {
+  const snapshot = snapshotWithSessionMessages(
+    [
+      session({
+        agentSessionId: "session-completed",
+        status: "working",
+        currentPhase: "working",
+        turnLifecycle: {
+          activeTurnId: null,
+          phase: "settled",
+          outcome: "completed"
+        }
+      }),
+      session({
+        agentSessionId: "session-failed",
+        status: "working",
+        currentPhase: "working",
+        turnLifecycle: {
+          activeTurnId: null,
+          phase: "settled",
+          outcome: "failed"
+        }
+      })
+    ],
+    {}
+  );
+  const statuses = selectSessionDisplayStatuses(snapshot);
+
+  assert.equal(statuses.get("session-completed"), "completed");
+  assert.equal(statuses.get("session-failed"), "failed");
+});
+
 test("agent activity display status normalizes raw status aliases", () => {
   assert.equal(normalizeAgentActivityDisplayStatus("running"), "working");
   assert.equal(
@@ -316,20 +348,24 @@ test("needs-attention selectors use summary and timestamp fallbacks", () => {
       }),
       message({
         messageId: "title",
+        occurredAtUnixMs: undefined as unknown as number,
         payload: { title: "Title wins", content: "Content loses" },
         startedAtUnixMs: 40
       }),
       message({
         messageId: "content",
+        occurredAtUnixMs: undefined as unknown as number,
         payload: { content: "Content loses", text: "Text wins" },
         completedAtUnixMs: 30
       }),
       message({
         messageId: "text",
+        occurredAtUnixMs: undefined as unknown as number,
         payload: { text: "Text wins" }
       }),
       message({
         messageId: "kind",
+        occurredAtUnixMs: undefined as unknown as number,
         payload: {}
       })
     ])
@@ -453,10 +489,12 @@ function message(
     agentSessionId: "session-1",
     messageId: "message-1",
     version: 1,
+    turnId: "turn-1",
     role: "assistant",
     kind: "message.assistant",
     status: "waiting",
     payload: {},
+    occurredAtUnixMs: 1,
     ...overrides
   };
 }

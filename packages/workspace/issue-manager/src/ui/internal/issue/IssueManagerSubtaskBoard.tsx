@@ -79,9 +79,7 @@ const issueManagerBoardStatusSet: Record<IssueManagerSubtaskBoardStatus, true> =
 function resolveIssueManagerSubtaskBoardStatus(
   status: IssueManagerStatus
 ): IssueManagerSubtaskBoardStatus {
-  return status === "in_progress"
-    ? "running"
-    : status in issueManagerBoardStatusSet
+  return status in issueManagerBoardStatusSet
       ? (status as IssueManagerSubtaskBoardStatus)
       : "not_started";
 }

@@ -95,6 +95,9 @@ export class WorkspaceAppCenterService implements IWorkspaceAppCenterService {
   private workspaceAppViewCloser:
     | ((input: { appId: string; workspaceId: string }) => void)
     | null = null;
+  private workspaceAppViewOpenChecker:
+    | ((input: { appId: string; workspaceId: string }) => boolean)
+    | null = null;
   private updates: WorkspaceAppCenterUpdateState | null = null;
 
   constructor(dependencies: WorkspaceAppCenterServiceDependencies) {
@@ -682,6 +685,19 @@ export class WorkspaceAppCenterService implements IWorkspaceAppCenterService {
     closer: ((input: { appId: string; workspaceId: string }) => void) | null
   ): void {
     this.workspaceAppViewCloser = closer;
+  }
+
+  setWorkspaceAppViewOpenChecker(
+    checker: ((input: { appId: string; workspaceId: string }) => boolean) | null
+  ): void {
+    this.workspaceAppViewOpenChecker = checker;
+  }
+
+  isWorkspaceAppViewOpen(input: {
+    appId: string;
+    workspaceId: string;
+  }): boolean {
+    return this.workspaceAppViewOpenChecker?.(input) === true;
   }
 
   private async startWorkspaceUpdates(

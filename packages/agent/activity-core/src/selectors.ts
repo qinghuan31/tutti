@@ -34,6 +34,7 @@ export function selectSessionDisplayStatuses(
       normalizeAgentActivityDisplayStatus(session.status, {
         currentPhase: session.currentPhase,
         needsAttention: needsAttentionSessionIds.has(session.agentSessionId),
+        turnLifecycleOutcome: session.turnLifecycle?.outcome,
         turnLifecyclePhase: session.turnLifecycle?.phase
       })
     ])
@@ -45,16 +46,52 @@ export function normalizeAgentActivityDisplayStatus(
   options: {
     currentPhase?: string | null;
     needsAttention?: boolean;
+    turnLifecycleOutcome?: string | null;
     turnLifecyclePhase?: string | null;
   } = {}
 ): AgentActivityDisplayStatus {
-  if (options.needsAttention) {
-    return "waiting";
-  }
+  const normalizedStatus = normalizeStatus(status);
+  const normalizedCurrentPhase = normalizeStatus(options.currentPhase);
+  const normalizedTurnLifecycleOutcome = normalizeStatus(
+    options.turnLifecycleOutcome
+  );
   switch (normalizeStatus(options.turnLifecyclePhase)) {
     case "settled":
-      break;
+      switch (normalizedTurnLifecycleOutcome) {
+        case "failed":
+        case "error":
+          return "failed";
+        case "canceled":
+        case "cancelled":
+        case "interrupted":
+          return "canceled";
+        case "completed":
+        case "done":
+        case "success":
+        case "succeeded":
+          return "completed";
+        default:
+          break;
+      }
+      if (
+        [normalizedStatus, normalizedCurrentPhase].some(
+          (value) => value === "failed" || value === "error"
+        )
+      ) {
+        return "failed";
+      }
+      if (
+        [normalizedStatus, normalizedCurrentPhase].some(
+          (value) => value === "canceled" || value === "cancelled"
+        )
+      ) {
+        return "canceled";
+      }
+      return "completed";
     case "waiting":
+    case "waiting_approval":
+    case "waiting_input":
+    case "awaiting_approval":
       return "waiting";
     case "running":
     case "submitted":
@@ -62,8 +99,9 @@ export function normalizeAgentActivityDisplayStatus(
     default:
       break;
   }
-  const normalizedStatus = normalizeStatus(status);
-  const normalizedCurrentPhase = normalizeStatus(options.currentPhase);
+  if (options.needsAttention) {
+    return "waiting";
+  }
   switch (normalizedStatus) {
     case "completed":
     case "done":

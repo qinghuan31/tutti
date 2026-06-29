@@ -176,6 +176,41 @@ export function createReferenceListSource(
       await adapter.openReference?.(fileReferenceOf(node));
     },
 
+    async listOpenWithApplications(
+      _scope: ReferenceScope,
+      node: ReferenceNode
+    ) {
+      return (
+        (await adapter.listOpenWithApplications?.(fileReferenceOf(node))) ?? []
+      );
+    },
+
+    async openWithApplication(
+      _scope: ReferenceScope,
+      node: ReferenceNode,
+      applicationPath: string
+    ): Promise<void> {
+      await adapter.openReferenceWithApplication?.(
+        fileReferenceOf(node),
+        applicationPath
+      );
+    },
+
+    async openWithOtherApplication(
+      _scope: ReferenceScope,
+      node: ReferenceNode,
+      applicationPickerPrompt?: string
+    ): Promise<void> {
+      await adapter.openReferenceWithOtherApplication?.(
+        fileReferenceOf(node),
+        applicationPickerPrompt
+      );
+    },
+
+    async reveal(_scope: ReferenceScope, node: ReferenceNode): Promise<void> {
+      await adapter.revealReference?.(fileReferenceOf(node));
+    },
+
     async readPreview(
       scope: ReferenceScope,
       node: ReferenceNode

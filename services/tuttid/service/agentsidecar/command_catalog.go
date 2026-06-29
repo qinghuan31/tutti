@@ -83,7 +83,7 @@ func runtimeCommandFromCapability(cliName string, capability cliservice.Capabili
 		return runtimeCommand{}, false
 	}
 	description := strings.TrimSpace(capability.Description)
-	if id == "workspace-apps.app.open" {
+	if id == "workspace-apps.app.open" || appCapabilityIsOpenCommand(capability) {
 		if description != "" {
 			description += " "
 		}
@@ -114,6 +114,13 @@ func runtimeCommandFromCapability(cliName string, capability cliservice.Capabili
 		Example:     normalizeCLICommandName(cliName) + " " + path + requiredInputHintForCommand(id, capability.InputSchema) + commandExampleSuffix(id),
 		Rank:        commandRank(id),
 	}, true
+}
+
+func appCapabilityIsOpenCommand(capability cliservice.Capability) bool {
+	path := capability.Path
+	return capability.Source.Kind == cliservice.CapabilitySourceApp &&
+		len(path) > 0 &&
+		strings.TrimSpace(path[len(path)-1]) == "open"
 }
 
 func commandPath(path []string) string {

@@ -21,6 +21,19 @@ test("mission control hidden presentation windows are invisible and inert", () =
   );
 });
 
+test("dialog popover node layer sits above dialog overlays and remains clickable", () => {
+  const css = readFileSync(resolve("src/styles/workbench.css"), "utf8");
+
+  assert.match(
+    css,
+    /\.workbench-node-layer--dialog-popover\s*{[^}]*position:\s*fixed;[^}]*z-index:\s*var\(--z-dialog-popover\);[^}]*pointer-events:\s*none;/s
+  );
+  assert.match(
+    css,
+    /\.workbench-node-layer--dialog-popover\[data-workbench-interactive="true"\]\s+\.workbench-window-shell\[data-minimized-mount="visible"\]\[data-genie-state="visible"\]\s*{[^}]*pointer-events:\s*auto;/s
+  );
+});
+
 test("dock retained entry removal animates width and icon exit", () => {
   const css = readFileSync(resolve("src/styles/workbench.css"), "utf8");
 

@@ -136,6 +136,81 @@ test("desktop workspace file reference adapter passes search abort signals to tu
   assert.equal(observedSignal, abortController.signal);
 });
 
+test("desktop workspace file reference adapter opens previewable files with the canvas preview first", async () => {
+  const calls: string[] = [];
+  const adapter = createDesktopWorkspaceFileReferenceAdapter({
+    hostFilesApi: {
+      async openFile() {
+        calls.push("open-file");
+      }
+    } as unknown as DesktopHostFilesApi,
+    openCanvasFilePreview(target, workspaceId) {
+      calls.push(`preview:${workspaceId}:${target.path}:${target.fileKind}`);
+      return true;
+    },
+    tuttidClient: {} as TuttidClient,
+    workspaceId: "workspace-1"
+  });
+
+  await adapter.openReference?.({
+    kind: "file",
+    path: "/workspace/image.png"
+  });
+
+  assert.deepEqual(calls, ["preview:workspace-1:/workspace/image.png:image"]);
+});
+
+test("desktop workspace file reference adapter falls back to system open when canvas preview cannot handle the file", async () => {
+  const calls: string[] = [];
+  const adapter = createDesktopWorkspaceFileReferenceAdapter({
+    hostFilesApi: {
+      async openFile(workspaceId: string, path: string) {
+        calls.push(`open-file:${workspaceId}:${path}`);
+      }
+    } as unknown as DesktopHostFilesApi,
+    openCanvasFilePreview(target, workspaceId) {
+      calls.push(`preview:${workspaceId}:${target.path}:${target.fileKind}`);
+      return false;
+    },
+    tuttidClient: {} as TuttidClient,
+    workspaceId: "workspace-1"
+  });
+
+  await adapter.openReference?.({
+    kind: "file",
+    path: "/workspace/image.png"
+  });
+
+  assert.deepEqual(calls, [
+    "preview:workspace-1:/workspace/image.png:image",
+    "open-file:workspace-1:/workspace/image.png"
+  ]);
+});
+
+test("desktop workspace file reference adapter opens unsupported preview formats with the system default", async () => {
+  const calls: string[] = [];
+  const adapter = createDesktopWorkspaceFileReferenceAdapter({
+    hostFilesApi: {
+      async openFile(workspaceId: string, path: string) {
+        calls.push(`open-file:${workspaceId}:${path}`);
+      }
+    } as unknown as DesktopHostFilesApi,
+    openCanvasFilePreview() {
+      calls.push("preview");
+      return true;
+    },
+    tuttidClient: {} as TuttidClient,
+    workspaceId: "workspace-1"
+  });
+
+  await adapter.openReference?.({
+    kind: "file",
+    path: "/workspace/deck.pptx"
+  });
+
+  assert.deepEqual(calls, ["open-file:workspace-1:/workspace/deck.pptx"]);
+});
+
 test("desktop workspace file reference adapter forwards within scope to tuttid", async () => {
   let observedRequest:
     | Parameters<TuttidClient["searchWorkspaceFiles"]>[1]

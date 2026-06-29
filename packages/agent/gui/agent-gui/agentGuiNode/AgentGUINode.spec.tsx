@@ -6,7 +6,7 @@ import {
   within
 } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { StrictMode, act, type ReactNode } from "react";
+import { StrictMode, act } from "react";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import type { WorkspaceAgentSessionDetailViewModel } from "../../shared/workspaceAgentSessionDetailViewModel";
@@ -19,6 +19,7 @@ import type {
 import type { ReferenceSourceAggregator } from "@tutti-os/workspace-file-reference/core";
 import type { WorkspaceLinkAction } from "../../actions/workspaceLinkActions";
 import { MANAGED_AGENT_ICON_URLS } from "../../shared/managedAgentIcons";
+import { agentGuiDockIconUrls } from "../../dockIcons";
 import { AgentActivityHostProvider } from "../../agentActivityHost";
 import type { AgentActivityRuntime } from "../../agentActivityRuntime";
 import { AgentGUINode } from "./AgentGUINode";
@@ -111,6 +112,12 @@ function createHostLocalReferenceAggregator(
       return { entries: [], nextCursor: null };
     },
     async open() {},
+    async listOpenWithApplications() {
+      return [];
+    },
+    async openWithApplication() {},
+    async openWithOtherApplication() {},
+    async reveal() {},
     async readPreview() {
       return null;
     },
@@ -490,7 +497,7 @@ vi.mock("../../i18n/index", () => ({
       return "错误";
     }
     const mentionLabels: Record<string, string> = {
-      "agentHost.roomIssueNode.issueStatusNotStarted": "未启动",
+      "agentHost.roomIssueNode.issueStatusNotStarted": "待开始",
       "agentHost.roomIssueNode.issueStatusRunning": "执行中",
       "agentHost.roomIssueNode.issueStatusPendingAcceptance": "待验收",
       "agentHost.roomIssueNode.issueStatusCompleted": "已完成",
@@ -662,25 +669,6 @@ vi.mock("../../i18n/index", () => ({
     }
   }),
   translateInUiLanguage: (_language: string, key: string) => key
-}));
-
-vi.mock("../../app/renderer/components/WarningDialog", () => ({
-  WarningDialog: ({
-    dataTestId,
-    title,
-    lead,
-    actions
-  }: {
-    dataTestId: string;
-    title: string;
-    lead?: string;
-    actions: ReactNode;
-  }) => (
-    <section role="dialog" aria-label={title} data-testid={dataTestId}>
-      {lead ? <p>{lead}</p> : null}
-      {actions}
-    </section>
-  )
 }));
 
 vi.mock("./controller/useAgentGUINodeController", () => ({
@@ -1100,6 +1088,40 @@ describe("AgentGUINode", () => {
     );
 
     expect(windowTitle).toHaveTextContent("Codex");
+  });
+
+  it("shows the provider dock icon before the Agent GUI window title", () => {
+    const codex = renderAgentGUINode({
+      title: "Agent",
+      state: {
+        provider: "codex",
+        lastActiveAgentSessionId: null,
+        conversationRailWidthPx: null
+      }
+    });
+
+    const codexIcon = codex.container.querySelector<HTMLImageElement>(
+      '[data-agent-gui-window-provider-icon="true"]'
+    );
+    expect(codexIcon).toHaveAttribute("src", agentGuiDockIconUrls.codex);
+    codex.unmount();
+
+    const claude = renderAgentGUINode({
+      title: "Agent",
+      state: {
+        provider: "claude-code",
+        lastActiveAgentSessionId: null,
+        conversationRailWidthPx: null
+      }
+    });
+
+    const claudeIcon = claude.container.querySelector<HTMLImageElement>(
+      '[data-agent-gui-window-provider-icon="true"]'
+    );
+    expect(claudeIcon).toHaveAttribute(
+      "src",
+      agentGuiDockIconUrls["claude-code"]
+    );
   });
 
   it("uses the active conversation as the window title when the rail is collapsed", () => {
@@ -5322,7 +5344,7 @@ describe("AgentGUINode", () => {
       within(firstTaskOption as HTMLButtonElement).getByText("执行中")
     ).toBeTruthy();
     expect(
-      within(secondTaskOption as HTMLButtonElement).getByText("未启动")
+      within(secondTaskOption as HTMLButtonElement).getByText("待开始")
     ).toBeTruthy();
     expect(within(palette).queryByText("已退出")).toBeNull();
     expect(firstTaskOption).toHaveAttribute("aria-selected", "true");

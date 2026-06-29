@@ -3,6 +3,7 @@ package agentstatus
 import (
 	"context"
 	"testing"
+	"time"
 
 	"github.com/tutti-os/tutti/services/tuttid/biz/agentprovider"
 )
@@ -51,6 +52,51 @@ func TestResolveAuthOverriddenByRuntimeAuthFailure(t *testing.T) {
 	store.ClearAuthInvalidated(agentprovider.ClaudeCode)
 	if got := svc.resolveAuth(context.Background(), spec, true, ""); got.Status != AuthUnknown {
 		t.Fatalf("after re-auth clear = %q, want unknown", got.Status)
+	}
+}
+
+// A re-login rewrites the credential file after the failure was recorded; the
+// probe must self-heal (clear the stale flag and detect normally) instead of
+// sticking on "needs login" until the next successful run.
+func TestResolveAuthSelfHealsAfterCredentialRefresh(t *testing.T) {
+	store := NewRunOutcomeStore()
+	store.RecordAuthFailure(agentprovider.Codex)
+	refreshed := time.Now().Add(time.Hour) // marker newer than the recorded failure
+	svc := Service{
+		RunOutcomes: store,
+		HomeDir:     func() (string, error) { return t.TempDir(), nil },
+		FileExists:  func(string) bool { return true },
+		FileModTime: func(string) (time.Time, bool) { return refreshed, true },
+	}
+	spec := ProviderSpec{Provider: agentprovider.Codex, AuthMarkerPaths: []string{"~/.codex/auth.json"}}
+
+	if got := svc.resolveAuth(context.Background(), spec, true, ""); got.Status != AuthAuthenticated {
+		t.Fatalf("after re-login refresh = %q, want authenticated (self-healed)", got.Status)
+	}
+	if store.AuthInvalidated(agentprovider.Codex) {
+		t.Fatal("the stale flag should be cleared once credentials are refreshed")
+	}
+}
+
+// A failure with no newer credential file (token genuinely still broken) must
+// keep reporting "needs login".
+func TestResolveAuthKeepsFailureWhenCredentialStale(t *testing.T) {
+	store := NewRunOutcomeStore()
+	store.RecordAuthFailure(agentprovider.Codex)
+	stale := time.Now().Add(-time.Hour) // marker older than the recorded failure
+	svc := Service{
+		RunOutcomes: store,
+		HomeDir:     func() (string, error) { return t.TempDir(), nil },
+		FileExists:  func(string) bool { return true },
+		FileModTime: func(string) (time.Time, bool) { return stale, true },
+	}
+	spec := ProviderSpec{Provider: agentprovider.Codex, AuthMarkerPaths: []string{"~/.codex/auth.json"}}
+
+	if got := svc.resolveAuth(context.Background(), spec, true, ""); got.Status != AuthRequired {
+		t.Fatalf("stale credential after failure = %q, want required", got.Status)
+	}
+	if !store.AuthInvalidated(agentprovider.Codex) {
+		t.Fatal("the flag must persist while credentials remain unrefreshed")
 	}
 }
 

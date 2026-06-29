@@ -55,9 +55,13 @@ type standardACPSession struct {
 	promptImage       bool
 	acpLiveState
 	pendingApprovals map[string]*pendingACPApproval
+	recentTurnID     string
+	recentTurnExpiry time.Time
 }
 
 type pendingACPApproval = pendingACPRequest
+
+const standardACPRecentTurnTTL = 10 * time.Minute
 
 const acpMethodSetConfigOption = "session/set_config_option"
 const claudeSystemPromptFileEnv = "TUTTI_CLAUDE_SYSTEM_PROMPT_FILE"
@@ -222,6 +226,7 @@ func (a *standardACPAdapter) applyProviderSessionMeta(params map[string]any, ses
 		}
 		claudeOptions := map[string]any{
 			"planModeInstructions": claudePlanModeInstructions,
+			"disallowedTools":      []string{"Monitor"},
 		}
 		extraArgs := map[string]string{}
 		if pluginDir != "" {
@@ -715,7 +720,12 @@ func (a *standardACPAdapter) startInitializedClient(
 	})
 	client := newACPClientWithStderrMessageMapper(conn, standardACPStderrMessageMapper(a.config.provider))
 	client.SetMessageHandler(func(ctx context.Context, message acpMessage) error {
-		_, err := a.handleACPMessage(ctx, client, session, "", message, nil, nil, nil)
+		turnSession := session
+		turnID := a.sessionRecentTurnID(session.AgentSessionID)
+		if acpSession := a.getSession(session.AgentSessionID); acpSession != nil {
+			turnSession.ProviderSessionID = firstNonEmptyString(acpSession.providerSessionID, turnSession.ProviderSessionID)
+		}
+		_, err := a.handleACPMessage(ctx, client, turnSession, turnID, message, nil, nil, nil)
 		return err
 	})
 	started := false
@@ -799,9 +809,10 @@ func (a *standardACPAdapter) Exec(
 		return nil, ErrSessionDisconnected
 	}
 	session.ProviderSessionID = acpSession.providerSessionID
+	a.rememberSessionTurn(session.AgentSessionID, turnID)
 	explicitDisplayPrompt, visibleText := explicitAndVisiblePromptText(content, displayPrompt)
-	routedContent, mentionRoutingApplied, mentionRoutingSkills := claudeCodePromptContentWithMentionRouting(a.config.provider, content, visibleText)
-	acpPromptContent := promptContentForACP(routedContent)
+	mentionRoutingApplied, mentionRoutingSkills := claudeCodeMentionRoutingSkills(a.config.provider, visibleText)
+	acpPromptContent := promptContentForACP(content)
 	normalizer := newACPTurnNormalizer()
 	var events []activityshared.Event
 	emitEvents := func(next []activityshared.Event) {
@@ -1013,37 +1024,13 @@ func claudeGoalSlashPromptUpdate(prompt string) (map[string]any, string, bool) {
 	}
 }
 
-func claudeCodePromptContentWithMentionRouting(provider string, content []PromptContentBlock, visibleText string) ([]PromptContentBlock, bool, []string) {
+func claudeCodeMentionRoutingSkills(provider string, visibleText string) (bool, []string) {
 	if strings.TrimSpace(provider) != ProviderClaudeCode {
-		return content, false, nil
-	}
-	directive, skills := claudeCodeMentionRoutingDirective(visibleText)
-	if directive == "" {
-		return content, false, nil
-	}
-	out := append([]PromptContentBlock(nil), content...)
-	for index, block := range out {
-		if block.Type != "text" || strings.TrimSpace(block.Text) == "" {
-			continue
-		}
-		out[index].Text = directive + "\n\nUser prompt:\n" + block.Text
-		return out, true, skills
-	}
-	return append([]PromptContentBlock{{Type: "text", Text: directive}}, out...), true, skills
-}
-
-func claudeCodeMentionRoutingDirective(text string) (string, []string) {
-	mentions := extractMentionURIs(text)
-	if len(mentions) == 0 {
-		return "", nil
-	}
-	lines := []string{
-		"Claude Code mention handoff routing for this user turn:",
-		"- Treat `mention://...` links as internal Tutti references. Do not infer the source platform from the display label, and do not answer from the label alone.",
+		return false, nil
 	}
 	var skills []string
 	seenSkills := map[string]struct{}{}
-	for _, mention := range mentions {
+	for _, mention := range extractMentionURIs(visibleText) {
 		skill := skillForMentionURI(mention)
 		if skill == "" {
 			continue
@@ -1052,18 +1039,8 @@ func claudeCodeMentionRoutingDirective(text string) (string, []string) {
 			skills = append(skills, skill)
 			seenSkills[skill] = struct{}{}
 		}
-		lines = append(lines, fmt.Sprintf(
-			"- The prompt contains `%s`. Before answering, your first tool call MUST be `Skill(skill=\"%s\", args=\"%s\")`.",
-			mention,
-			skill,
-			mention,
-		))
 	}
-	if len(lines) == 2 {
-		return "", nil
-	}
-	lines = append(lines, "- Do not say you cannot read the mention until that Skill call fails or no matching skill exists.")
-	return strings.Join(lines, "\n"), skills
+	return len(skills) > 0, skills
 }
 
 func skillForMentionURI(uri string) string {
@@ -1072,6 +1049,8 @@ func skillForMentionURI(uri string) string {
 		return "issue-manager"
 	case strings.HasPrefix(uri, "mention://workspace-app/"):
 		return "workspace-app"
+	case strings.HasPrefix(uri, "mention://workspace-reference/"):
+		return "reference"
 	case strings.HasPrefix(uri, "mention://agent-session/"):
 		return "tutti-cli"
 	default:
@@ -2218,6 +2197,39 @@ func (a *standardACPAdapter) getSession(agentSessionID string) *standardACPSessi
 	return a.sessions[agentSessionID]
 }
 
+func (a *standardACPAdapter) rememberSessionTurn(agentSessionID string, turnID string) {
+	turnID = strings.TrimSpace(turnID)
+	if a == nil || turnID == "" {
+		return
+	}
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	acpSession := a.sessions[strings.TrimSpace(agentSessionID)]
+	if acpSession == nil {
+		return
+	}
+	acpSession.recentTurnID = turnID
+	acpSession.recentTurnExpiry = time.Now().Add(standardACPRecentTurnTTL)
+}
+
+func (a *standardACPAdapter) sessionRecentTurnID(agentSessionID string) string {
+	if a == nil {
+		return ""
+	}
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	acpSession := a.sessions[strings.TrimSpace(agentSessionID)]
+	if acpSession == nil || strings.TrimSpace(acpSession.recentTurnID) == "" {
+		return ""
+	}
+	if !acpSession.recentTurnExpiry.IsZero() && time.Now().After(acpSession.recentTurnExpiry) {
+		acpSession.recentTurnID = ""
+		acpSession.recentTurnExpiry = time.Time{}
+		return ""
+	}
+	return strings.TrimSpace(acpSession.recentTurnID)
+}
+
 func (a *standardACPAdapter) sessionConfigOptionMatches(agentSessionID string, configID string, value string) bool {
 	if a == nil {
 		return false
@@ -2509,12 +2521,8 @@ func claudeACPInitializeParams(host HostMetadata) map[string]any {
 }
 
 func fallbackStandardSessionTitle(config standardACPConfig, currentTitle string, prompt string) string {
-	normalizedTitle := strings.ToLower(strings.TrimSpace(currentTitle))
-	placeholderTitles := append([]string{"", config.defaultTitle}, config.defaultTitleAliases...)
-	for _, placeholderTitle := range placeholderTitles {
-		if normalizedTitle == strings.ToLower(strings.TrimSpace(placeholderTitle)) {
-			return promptTitleSnippet(prompt)
-		}
+	if isStandardACPPlaceholderTitle(config, currentTitle) {
+		return promptTitleSnippet(prompt)
 	}
 	return ""
 }
@@ -2553,7 +2561,7 @@ func standardACPUpdateEvents(config standardACPConfig, session Session, turnID s
 		return normalizer.AppendThinkingChunk(session, turnID, content)
 	case "session_info_update":
 		if event, ok := acpSessionTitleEvent(session, params.Update); ok {
-			if shouldIgnoreStandardACPTitle(config, event.Payload.Title) {
+			if shouldIgnoreStandardACPTitle(config, session.Title, event.Payload.Title) {
 				return nil
 			}
 			return []activityshared.Event{event}
@@ -2953,11 +2961,29 @@ func isTerminalACPToolStatus(status string) bool {
 	}
 }
 
-func shouldIgnoreStandardACPTitle(config standardACPConfig, title string) bool {
+func shouldIgnoreStandardACPTitle(config standardACPConfig, currentTitle string, title string) bool {
 	if strings.TrimSpace(config.provider) != ProviderClaudeCode {
 		return false
 	}
-	return isClaudeACPInterruptMarker(title)
+	if isClaudeACPInterruptMarker(title) || isClaudeCodeMentionHandoffTitle(title) {
+		return true
+	}
+	return !isStandardACPPlaceholderTitle(config, currentTitle)
+}
+
+func isStandardACPPlaceholderTitle(config standardACPConfig, title string) bool {
+	normalizedTitle := strings.ToLower(strings.TrimSpace(title))
+	placeholderTitles := append([]string{"", config.defaultTitle}, config.defaultTitleAliases...)
+	for _, placeholderTitle := range placeholderTitles {
+		if normalizedTitle == strings.ToLower(strings.TrimSpace(placeholderTitle)) {
+			return true
+		}
+	}
+	return false
+}
+
+func isClaudeCodeMentionHandoffTitle(title string) bool {
+	return strings.HasPrefix(strings.TrimSpace(title), "Claude Code mention handoff routing for this user turn:")
 }
 
 func isClaudeACPInterruptMarker(text string) bool {

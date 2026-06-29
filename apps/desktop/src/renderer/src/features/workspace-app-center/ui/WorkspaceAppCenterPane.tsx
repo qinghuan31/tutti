@@ -246,6 +246,8 @@ export function WorkspaceAppCenterPane({
       restartAndOpenApp: (appId) => {
         void service.restartAndOpenApp({ appId, workspaceId });
       },
+      shouldConfirmAppUpdate: (appId) =>
+        service.isWorkspaceAppViewOpen({ appId, workspaceId }),
       updateApp: (appId, trigger) =>
         service.updateApp({ appId, trigger, workspaceId }),
       uninstallApp: (appId) => service.uninstallApp({ appId, workspaceId })

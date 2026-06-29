@@ -443,7 +443,11 @@ export function AppCenterPanel({
         if (!app) {
           return;
         }
-        if (app.installed && app.status === "running") {
+        const shouldConfirmUpdate =
+          app.installed &&
+          app.status === "running" &&
+          (actions.shouldConfirmAppUpdate?.(app.id) ?? true);
+        if (shouldConfirmUpdate) {
           setPendingUpdateApp({
             id: app.id,
             name: app.name,

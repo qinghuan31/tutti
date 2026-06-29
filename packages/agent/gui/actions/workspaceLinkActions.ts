@@ -144,6 +144,15 @@ export function resolveWorkspaceFilePathCandidate({
   if (isStagedLocalAssetPath(normalizedPath)) {
     return null;
   }
+  if (isHomeRelativeWorkspaceFilePath(normalizedPath)) {
+    const directoryPath = dirnameForHomeRelativePath(normalizedPath);
+    return {
+      path: normalizedPath,
+      directoryPath,
+      workspaceRoot:
+        normalizeWorkspaceFilePath(workspaceRoot?.trim() ?? "") || directoryPath
+    };
+  }
   if (
     isAbsoluteLocalPath(normalizedPath) &&
     (isDirectAgentGeneratedMediaPath(normalizedPath) ||
@@ -394,6 +403,14 @@ function isUrlLikeWorkspaceFilePath(path: string): boolean {
 
 function isAbsoluteLocalPath(path: string): boolean {
   return path.startsWith("/") || isWindowsAbsolutePath(path);
+}
+
+function isHomeRelativeWorkspaceFilePath(path: string): boolean {
+  return path === "~" || path.startsWith("~/");
+}
+
+function dirnameForHomeRelativePath(path: string): string {
+  return path === "~" ? "~" : dirname(path);
 }
 
 function isWindowsAbsolutePath(path: string): boolean {

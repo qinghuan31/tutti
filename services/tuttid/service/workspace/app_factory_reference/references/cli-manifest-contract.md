@@ -51,7 +51,7 @@ Shape:
 
 Rules:
 
-- `scope` is required and may differ from `appId`.
+- `scope` is required and may differ from `appId`. Agent and app-mention integrations must match commands by app id metadata, then invoke the listed CLI scope; they must not assume `scope == appId`.
 - If the user asks to connect the app to the Tutti ecosystem, `tutti.cli.json` is required and must expose at least one useful command.
 - `scope` and every command path segment must use lowercase letters, numbers, and hyphen only.
 - `description` is optional. When present, it describes the CLI scope as a whole for app-level discovery surfaces such as `tutti --help` and `@app` mentions.

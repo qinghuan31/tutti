@@ -92,6 +92,28 @@ function conversationBodies(viewModel: {
   ).filter(Boolean);
 }
 
+function conversationMessageRows(viewModel: {
+  conversation?: {
+    rows: readonly {
+      kind: string;
+      speaker?: string;
+      messages?: readonly { body?: string }[];
+    }[];
+  } | null;
+}): Array<{ speaker: string; body: string }> {
+  return (
+    viewModel.conversation?.rows.flatMap((row) => {
+      if (row.kind !== "message" || !row.speaker || !row.messages) {
+        return [];
+      }
+      return row.messages
+        .map((message) => message.body?.trim() ?? "")
+        .filter(Boolean)
+        .map((body) => ({ speaker: row.speaker!, body }));
+    }) ?? []
+  );
+}
+
 function promptContent(text: string): { content: AgentPromptContentBlock[] } {
   return { content: promptBlocks(text) };
 }
@@ -872,12 +894,17 @@ describe("useAgentGUINodeController", () => {
       sessionStatus: "working",
       status: "started"
     }));
+    const listUserProjects = vi.fn(async () => ({ projects: [] }));
     installAgentHostApi({
       list: vi.fn(async () => ({ presences: [], sessions: [] })),
       listSessionTimeline: vi.fn(async () => ({ timelineItems: [] })),
       subscribeEvents: vi.fn(() => vi.fn()),
       activate,
-      exec
+      exec,
+      userProjects: {
+        list: listUserProjects,
+        use: vi.fn()
+      }
     });
 
     const { result } = renderHook(() =>
@@ -891,8 +918,19 @@ describe("useAgentGUINodeController", () => {
       })
     );
 
+    await waitFor(() => {
+      expect(listUserProjects).toHaveBeenCalled();
+    });
+
     act(() => {
-      result.current.actions.updateSelectedProjectPath("/workspace/app");
+      result.current.actions.updateSelectedProjectPath("/workspace/app", {
+        action: "select_existing",
+        project: {
+          id: "app",
+          path: "/workspace/app",
+          label: "App"
+        }
+      });
       result.current.actions.createConversation();
       result.current.actions.submitPrompt(promptBlocks("start in app"));
     });
@@ -905,6 +943,13 @@ describe("useAgentGUINodeController", () => {
           mode: "new"
         })
       );
+    });
+    await waitFor(() => {
+      expect(result.current.viewModel.conversations[0]?.project).toEqual({
+        id: "app",
+        path: "/workspace/app",
+        label: "App"
+      });
     });
   });
 
@@ -1832,6 +1877,129 @@ describe("useAgentGUINodeController", () => {
     });
   });
 
+  it("backfills older selected conversation messages when the latest page has no user prompt", async () => {
+    const timelineRequests: Array<{
+      beforeVersion?: number;
+      cache?: boolean;
+      limit?: number;
+      order?: string;
+    }> = [];
+    const listSessionTimeline = vi.fn(
+      async ({
+        beforeVersion,
+        cache,
+        agentSessionId,
+        limit,
+        order
+      }: {
+        beforeVersion?: number;
+        cache?: boolean;
+        agentSessionId: string;
+        limit?: number;
+        order?: string;
+      }) => {
+        if (agentSessionId !== "session-2") {
+          return { timelineItems: [], hasMore: false };
+        }
+        timelineRequests.push({ beforeVersion, cache, limit, order });
+        if (order === "desc" && beforeVersion === undefined) {
+          return {
+            timelineItems: Array.from({ length: 100 }, (_, index) => {
+              const id = 102 - index;
+              return timelineMessage({
+                agentSessionId: "session-2",
+                id,
+                eventId: `assistant-${id}`,
+                role: "assistant",
+                content: id === 102 ? "latest answer" : `assistant ${id}`,
+                turnId: "turn-1"
+              });
+            }),
+            latestVersion: 102,
+            hasMore: true
+          };
+        }
+        if (order === "desc" && beforeVersion === 3) {
+          return {
+            timelineItems: [
+              timelineMessage({
+                agentSessionId: "session-2",
+                id: 2,
+                eventId: "assistant-2",
+                role: "assistant",
+                content: "early answer",
+                turnId: "turn-1"
+              }),
+              timelineMessage({
+                agentSessionId: "session-2",
+                id: 1,
+                eventId: "user-1",
+                role: "user",
+                content: "initial ask",
+                turnId: "turn-1"
+              })
+            ],
+            latestVersion: 102,
+            hasMore: false
+          };
+        }
+        return { timelineItems: [], latestVersion: 102, hasMore: false };
+      }
+    );
+    installAgentHostApi({
+      list: vi.fn(async () => ({
+        presences: [],
+        sessions: [
+          workspaceAgentSession("session-1"),
+          workspaceAgentSession("session-2")
+        ]
+      })),
+      listSessionTimeline,
+      subscribeEvents: vi.fn(() => vi.fn())
+    });
+
+    const { result } = renderHook(() =>
+      useAgentGUINodeController({
+        workspaceId: "room-1",
+        currentUserId: "user-1",
+        workspacePath: "/workspace",
+        avoidGroupingEdits: false,
+        data: agentGuiData("session-1"),
+        onDataChange: vi.fn()
+      })
+    );
+
+    await waitFor(() => {
+      expect(result.current.viewModel.activeConversationId).toBe("session-1");
+    });
+    act(() => {
+      result.current.actions.selectConversation("session-2");
+    });
+
+    await waitFor(() => {
+      const bodies = conversationBodies(result.current.viewModel);
+      expect(bodies).toContain("initial ask");
+      expect(bodies).toContain("latest answer");
+      expect(result.current.viewModel.hasOlderMessages).toBe(false);
+    });
+    expect(timelineRequests).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          beforeVersion: undefined,
+          cache: false,
+          limit: 100,
+          order: "desc"
+        }),
+        expect.objectContaining({
+          beforeVersion: 3,
+          cache: false,
+          limit: 100,
+          order: "desc"
+        })
+      ])
+    );
+  });
+
   it("keeps streamed detail messages that arrive while the initial page is loading", async () => {
     let activityListener:
       | ((event: AgentHostAgentActivityStreamEvent) => void)
@@ -2744,6 +2912,218 @@ describe("useAgentGUINodeController", () => {
     expect(exec).not.toHaveBeenCalled();
   });
 
+  it("renders live assistant messages for a newly created session with only an optimistic prompt in detail", async () => {
+    let resolveActivation:
+      | ((value: AgentHostActivateAgentSessionResult) => void)
+      | undefined;
+    const activate = vi.fn((input: AgentHostActivateAgentSessionInput) => {
+      if (input.mode === "existing") {
+        return Promise.resolve({
+          session: agentSession(input.agentSessionId),
+          activation: { mode: input.mode, status: "attached" as const }
+        });
+      }
+      return new Promise<AgentHostActivateAgentSessionResult>((resolve) => {
+        resolveActivation = resolve;
+      });
+    });
+    const subscribeEvents = vi.fn(() => vi.fn());
+    installAgentHostApi({
+      list: vi.fn(async () => ({ presences: [], sessions: [] })),
+      listSessionTimeline: vi.fn(async () => ({ timelineItems: [] })),
+      subscribeEvents,
+      activate
+    });
+
+    const { result } = renderHook(() =>
+      useAgentGUINodeController({
+        workspaceId: "room-1",
+        currentUserId: "user-1",
+        workspacePath: "/workspace",
+        avoidGroupingEdits: false,
+        data: agentGuiData(null),
+        onDataChange: vi.fn()
+      })
+    );
+
+    await waitFor(() => {
+      expect(result.current.viewModel.activeConversationId).toBeNull();
+    });
+
+    act(() => {
+      result.current.actions.submitPrompt(promptBlocks("Start a fresh chat"));
+    });
+
+    await waitFor(() => {
+      expect(activate).toHaveBeenCalledWith(
+        expect.objectContaining({
+          mode: "new",
+          ...initialPromptContent("Start a fresh chat")
+        })
+      );
+    });
+    const createdId = activate.mock.calls[0]![0].agentSessionId;
+
+    act(() => {
+      resolveActivation?.({
+        session: agentSession(createdId, { status: "working" }),
+        activation: { mode: "new", status: "attached" }
+      });
+    });
+
+    await waitFor(() => {
+      expect(result.current.viewModel.activeConversationId).toBe(createdId);
+      expect(conversationBodies(result.current.viewModel)).toContain(
+        "Start a fresh chat"
+      );
+    });
+    await waitFor(() => {
+      expect(subscribeEvents).toHaveBeenCalledWith(
+        expect.objectContaining({
+          agentSessionId: createdId,
+          workspaceId: "room-1"
+        }),
+        expect.any(Function)
+      );
+    });
+
+    act(() => {
+      emitRuntimeSessionEventForTests?.({
+        eventType: "state_patch",
+        data: {
+          agentSessionId: createdId,
+          lifecycleStatus: "active",
+          currentPhase: "working",
+          turn: {
+            turnId: "turn-old",
+            phase: "running"
+          },
+          occurredAtUnixMs: 1
+        }
+      });
+    });
+
+    act(() => {
+      emitRuntimeSessionEventForTests?.(
+        streamMessage({
+          agentSessionId: createdId,
+          eventId: "assistant-old-history",
+          id: 1,
+          role: "assistant",
+          content: "Old retained answer",
+          turnId: "turn-old",
+          occurredAtUnixMs: 1
+        })
+      );
+    });
+
+    await waitFor(() => {
+      expect(conversationMessageRows(result.current.viewModel)).toEqual([
+        { speaker: "user", body: "Start a fresh chat" }
+      ]);
+      expect(conversationBodies(result.current.viewModel)).not.toContain(
+        "Old retained answer"
+      );
+    });
+
+    act(() => {
+      emitRuntimeSessionEventForTests?.(
+        streamMessage({
+          agentSessionId: createdId,
+          eventId: "assistant-first",
+          id: 2,
+          role: "assistant",
+          content: "First answer",
+          turnId: "turn-1",
+          occurredAtUnixMs: Date.now() + 1_000
+        })
+      );
+    });
+
+    await waitFor(() => {
+      expect(conversationBodies(result.current.viewModel)).toEqual(
+        expect.arrayContaining(["Start a fresh chat", "First answer"])
+      );
+      expect(conversationMessageRows(result.current.viewModel)).toEqual([
+        { speaker: "user", body: "Start a fresh chat" },
+        { speaker: "assistant", body: "First answer" }
+      ]);
+    });
+  });
+
+  it("starts a new session after external data clears the active session", async () => {
+    const activate = vi.fn(
+      async (input: AgentHostActivateAgentSessionInput) => ({
+        session: agentSession(input.agentSessionId),
+        activation: { mode: input.mode, status: "attached" as const }
+      })
+    );
+    const exec = vi.fn(async () => ({ turnId: "turn-1" }));
+    installAgentHostApi({
+      list: vi.fn(async () => snapshotWithSession("session-1")),
+      listSessionTimeline: vi.fn(async () => ({ timelineItems: [] })),
+      subscribeEvents: vi.fn(() => vi.fn()),
+      activate,
+      exec
+    });
+
+    const baseProps = {
+      workspaceId: "room-1",
+      currentUserId: "user-1",
+      workspacePath: "/workspace",
+      avoidGroupingEdits: false,
+      onDataChange: vi.fn()
+    };
+    const { result, rerender } = renderHook(
+      (props: {
+        data: AgentGUINodeData;
+        onDataChange: (
+          updater: (current: AgentGUINodeData) => AgentGUINodeData
+        ) => void;
+      }) =>
+        useAgentGUINodeController({
+          ...baseProps,
+          data: props.data,
+          onDataChange: props.onDataChange
+        }),
+      {
+        initialProps: {
+          data: agentGuiData("session-1"),
+          onDataChange: baseProps.onDataChange
+        }
+      }
+    );
+
+    await waitFor(() => {
+      expect(result.current.viewModel.activeConversationId).toBe("session-1");
+    });
+
+    rerender({
+      data: agentGuiData(null),
+      onDataChange: baseProps.onDataChange
+    });
+
+    await waitFor(() => {
+      expect(result.current.viewModel.activeConversationId).toBeNull();
+    });
+
+    act(() => {
+      result.current.actions.submitPrompt(
+        promptBlocks("start outside old chat")
+      );
+    });
+
+    await waitFor(() => {
+      expect(activate).toHaveBeenCalledWith(
+        expect.objectContaining({
+          mode: "new",
+          ...initialPromptContent("start outside old chat")
+        })
+      );
+    });
+    expect(exec).not.toHaveBeenCalled();
+  });
+
   it("inherits the current same-provider model when creating a new conversation without a draft model", async () => {
     const activate = vi.fn(
       async (input: AgentHostActivateAgentSessionInput) => ({
@@ -3123,6 +3503,18 @@ describe("useAgentGUINodeController", () => {
     expect(result.current.viewModel.activeConversationId).toBeNull();
     expect(result.current.viewModel.isCreatingConversation).toBe(true);
     expect(result.current.viewModel.draftPrompt).toBe("first prompt");
+    expect(
+      getAgentSessionView({
+        workspaceId: "room-1",
+        agentSessionId: createdId
+      })?.overlayMessages
+    ).toEqual([
+      expect.objectContaining({
+        agentSessionId: createdId,
+        payload: expect.objectContaining({ text: "first prompt" }),
+        role: "user"
+      })
+    ]);
     expect(
       result.current.viewModel.conversationDetail?.turns[0]?.userMessages
     ).toBeUndefined();
@@ -6550,6 +6942,18 @@ describe("useAgentGUINodeController", () => {
     // The failure is surfaced and the global loading flag is cleared today.
     expect(result.current.viewModel.detailError).toBe("runtime not connected");
     expect(result.current.viewModel.isLoadingMessages).toBe(false);
+    expect(
+      getAgentSessionView({
+        workspaceId: "room-1",
+        agentSessionId: failedId as string
+      })?.overlayMessages
+    ).toEqual([]);
+    expect(
+      getAgentSessionView({
+        workspaceId: "room-1",
+        agentSessionId: failedId as string
+      })?.detailMessages
+    ).toEqual([]);
     // First-create failure should not leave a per-session messages-loading flag
     // behind; otherwise a later detail view for the id can spin forever.
     await waitFor(() => {
@@ -13963,12 +14367,16 @@ function agentActivityMessageFromHostMessage(
     messageId: message.messageId,
     id: message.id,
     version: message.version,
-    turnId: message.turnId ?? null,
+    turnId: message.turnId?.trim() || `message:${message.messageId}`,
     role: message.role,
     kind: message.kind,
     status: message.status ?? null,
     payload: { ...message.payload },
-    occurredAtUnixMs: message.occurredAtUnixMs,
+    occurredAtUnixMs:
+      message.occurredAtUnixMs ??
+      message.startedAtUnixMs ??
+      message.completedAtUnixMs ??
+      message.version,
     startedAtUnixMs: message.startedAtUnixMs,
     completedAtUnixMs: message.completedAtUnixMs
   };
@@ -14118,18 +14526,19 @@ function agentActivityMessageFromStreamEvent(
   if (!agentSessionId || !messageId || !role || !kind) {
     return null;
   }
+  const version =
+    typeof data.seq === "number"
+      ? data.seq
+      : typeof data.version === "number"
+        ? data.version
+        : 0;
   return {
     workspaceId,
     agentSessionId,
     messageId,
     id: typeof data.id === "number" ? data.id : undefined,
-    version:
-      typeof data.seq === "number"
-        ? data.seq
-        : typeof data.version === "number"
-          ? data.version
-          : 0,
-    turnId: normalizeConfigOptionValue(data.turnId),
+    version,
+    turnId: normalizeConfigOptionValue(data.turnId) ?? `message:${messageId}`,
     role,
     kind: kind === "message" ? "text" : kind,
     status: normalizeConfigOptionValue(data.status),
@@ -14145,7 +14554,9 @@ function agentActivityMessageFromStreamEvent(
     occurredAtUnixMs:
       typeof data.occurredAtUnixMs === "number"
         ? data.occurredAtUnixMs
-        : undefined,
+        : typeof data.startedAtUnixMs === "number"
+          ? data.startedAtUnixMs
+          : version,
     startedAtUnixMs:
       typeof data.startedAtUnixMs === "number"
         ? data.startedAtUnixMs
@@ -14213,14 +14624,12 @@ function timelineItemToMessage(
     agentSessionId: item.agentSessionId,
     messageId: item.eventId || `message:${item.id}`,
     version: item.seq ?? item.id,
-    ...(item.turnId ? { turnId: item.turnId } : {}),
+    turnId: item.turnId ?? `timeline:${item.eventId || item.id}`,
     role,
     kind,
     status: item.status,
     payload,
-    ...(item.occurredAtUnixMs !== undefined
-      ? { occurredAtUnixMs: item.occurredAtUnixMs }
-      : {}),
+    occurredAtUnixMs: item.occurredAtUnixMs ?? item.createdAtUnixMs ?? item.id,
     ...(item.createdAtUnixMs !== undefined
       ? { startedAtUnixMs: item.createdAtUnixMs }
       : {})
@@ -14287,7 +14696,8 @@ function timelineMessage({
   eventId,
   role,
   content,
-  turnId
+  turnId,
+  occurredAtUnixMs
 }: {
   agentSessionId: string;
   id: number;
@@ -14295,7 +14705,9 @@ function timelineMessage({
   role: "user" | "assistant";
   content: string;
   turnId?: string;
+  occurredAtUnixMs?: number;
 }): AgentHostWorkspaceAgentTimelineItem {
+  const messageTimeUnixMs = occurredAtUnixMs ?? id;
   return {
     id,
     workspaceId: "room-1",
@@ -14307,8 +14719,8 @@ function timelineMessage({
     itemType: "message",
     role,
     content,
-    occurredAtUnixMs: id,
-    createdAtUnixMs: id
+    occurredAtUnixMs: messageTimeUnixMs,
+    createdAtUnixMs: messageTimeUnixMs
   };
 }
 
@@ -14358,15 +14770,16 @@ function streamMessage(
     data: {
       agentSessionId: item.agentSessionId,
       messageId: item.eventId,
-      seq: item.id,
-      turnId: item.turnId,
+      seq: item.seq ?? item.id,
+      turnId: item.turnId ?? `turn:${item.eventId}`,
       role: item.role ?? "assistant",
       kind: "message",
       payload: {
         content: item.content,
         text: item.content
       },
-      occurredAtUnixMs: item.occurredAtUnixMs,
+      occurredAtUnixMs:
+        item.occurredAtUnixMs ?? item.createdAtUnixMs ?? item.id,
       startedAtUnixMs: item.createdAtUnixMs
     }
   };
@@ -14381,8 +14794,8 @@ function streamToolCall(
     data: {
       agentSessionId: item.agentSessionId,
       messageId: item.eventId,
-      seq: item.seq,
-      turnId: item.turnId,
+      seq: item.seq ?? item.id,
+      turnId: item.turnId ?? `turn:${item.eventId}`,
       role: item.role ?? "assistant",
       kind: "tool_call",
       status: item.status,
@@ -14393,7 +14806,8 @@ function streamToolCall(
         callType: item.callType,
         status: item.status
       },
-      occurredAtUnixMs: item.occurredAtUnixMs,
+      occurredAtUnixMs:
+        item.occurredAtUnixMs ?? item.createdAtUnixMs ?? item.id,
       startedAtUnixMs: item.createdAtUnixMs
     }
   };

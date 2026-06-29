@@ -25,7 +25,7 @@ type ServerInterface interface {
 	// Run a local agent provider action owned by tuttid
 	// (POST /v1/agent-providers/{provider}/actions/{actionID}/run)
 	RunAgentProviderAction(w http.ResponseWriter, r *http.Request, provider WorkspaceAgentProvider, actionID AgentProviderActionID)
-	// Get provider composer options with short-lived Claude Code discovery
+	// Get provider composer options with Claude Code live discovery
 	// (POST /v1/agent-providers/{provider}/composer-options)
 	GetAgentProviderComposerOptions(w http.ResponseWriter, r *http.Request, provider WorkspaceAgentProvider)
 	// Probe whether tuttid can start a local agent provider runtime command
@@ -420,6 +420,19 @@ func (siw *ServerInterfaceWrapper) GetAgentProviderStatuses(w http.ResponseWrite
 			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "providers"})
 		} else {
 			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "providers", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "includeNetwork" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "includeNetwork", r.URL.Query(), &params.IncludeNetwork, runtime.BindQueryParameterOptions{Type: "boolean", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "includeNetwork"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "includeNetwork", Err: err})
 		}
 		return
 	}
@@ -19618,7 +19631,7 @@ type StrictServerInterface interface {
 	// Run a local agent provider action owned by tuttid
 	// (POST /v1/agent-providers/{provider}/actions/{actionID}/run)
 	RunAgentProviderAction(ctx context.Context, request RunAgentProviderActionRequestObject) (RunAgentProviderActionResponseObject, error)
-	// Get provider composer options with short-lived Claude Code discovery
+	// Get provider composer options with Claude Code live discovery
 	// (POST /v1/agent-providers/{provider}/composer-options)
 	GetAgentProviderComposerOptions(ctx context.Context, request GetAgentProviderComposerOptionsRequestObject) (GetAgentProviderComposerOptionsResponseObject, error)
 	// Probe whether tuttid can start a local agent provider runtime command

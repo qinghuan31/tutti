@@ -168,10 +168,10 @@ async function assertCliManifest() {
   );
   if (
     cliManifest.schemaVersion !== "tutti.app.cli.v1" ||
-    cliManifest.scope !== "guide" ||
+    cliManifest.scope !== "onboarding" ||
     cliManifest.commands?.[0]?.path?.join(" ") !== "read"
   ) {
-    throw new Error("tutti.cli.json must expose guide read.");
+    throw new Error("tutti.cli.json must expose onboarding read.");
   }
   const guide = await readFile(
     path.join(appRoot, "tutti-package/tutti-guide.md"),

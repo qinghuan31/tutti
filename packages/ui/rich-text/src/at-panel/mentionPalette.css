@@ -765,6 +765,15 @@
   color: var(--rich-text-at-mention-success-fg);
 }
 
+.rich-text-at-mention-status[data-tone="purple"] {
+  background: color-mix(
+    in srgb,
+    var(--rich-text-at-mention-accent) 12%,
+    transparent
+  );
+  color: var(--rich-text-at-mention-accent);
+}
+
 .rich-text-at-mention-status[data-tone="red"] {
   background: var(--rich-text-at-mention-danger-bg);
   color: var(--rich-text-at-mention-danger-fg);

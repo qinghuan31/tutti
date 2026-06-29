@@ -16,11 +16,19 @@ export interface RawWorkspaceAgentStatusLike {
   effectiveStatus?: string | null;
   status?: string | null;
   turnPhase?: string | null;
+  turnLifecycle?: {
+    phase?: string | null;
+    outcome?: string | null;
+  } | null;
   currentPhase?: string | null;
 }
 
 const FAILED_STATUS_TOKENS = new Set(["failed", "error"]);
-const CANCELED_STATUS_TOKENS = new Set(["canceled"]);
+const CANCELED_STATUS_TOKENS = new Set([
+  "canceled",
+  "cancelled",
+  "interrupted"
+]);
 const COMPLETED_STATUS_TOKENS = new Set(["completed", "ended", "end"]);
 const WAITING_APPROVAL_TOKENS = new Set([
   "waiting_approval",
@@ -48,7 +56,12 @@ export function normalizeOptionalWorkspaceAgentStatus(
   const lifecycleStatus = normalizeStatusToken(input.lifecycleStatus);
   const effectiveStatus = normalizeStatusToken(input.effectiveStatus);
   const sessionStatus = normalizeStatusToken(input.status);
-  const turnPhase = normalizeStatusToken(input.turnPhase);
+  const turnLifecycleOutcome = normalizeStatusToken(
+    input.turnLifecycle?.outcome
+  );
+  const turnPhase = normalizeStatusToken(
+    input.turnLifecycle?.phase ?? input.turnPhase
+  );
   const currentPhase = normalizeStatusToken(input.currentPhase);
   const tokens = [
     lifecycleStatus,
@@ -61,6 +74,30 @@ export function normalizeOptionalWorkspaceAgentStatus(
     return null;
   }
 
+  if (turnPhase === "settled") {
+    if (FAILED_STATUS_TOKENS.has(turnLifecycleOutcome)) {
+      return { kind: "failed" };
+    }
+    if (CANCELED_STATUS_TOKENS.has(turnLifecycleOutcome)) {
+      return { kind: "canceled" };
+    }
+    if (COMPLETED_STATUS_TOKENS.has(turnLifecycleOutcome)) {
+      return { kind: "completed" };
+    }
+    if (
+      FAILED_STATUS_TOKENS.has(sessionStatus) ||
+      FAILED_STATUS_TOKENS.has(currentPhase)
+    ) {
+      return { kind: "failed" };
+    }
+    if (
+      CANCELED_STATUS_TOKENS.has(sessionStatus) ||
+      CANCELED_STATUS_TOKENS.has(currentPhase)
+    ) {
+      return { kind: "canceled" };
+    }
+    return { kind: "completed" };
+  }
   if (
     [lifecycleStatus, effectiveStatus, sessionStatus, currentPhase].some(
       (token) => FAILED_STATUS_TOKENS.has(token)

@@ -197,6 +197,41 @@ export function createWorkspaceFileReferenceSource(input: {
       await adapter.openReference?.(nodeToReference(node));
     },
 
+    async listOpenWithApplications(
+      _scope: ReferenceScope,
+      node: ReferenceNode
+    ) {
+      return (
+        (await adapter.listOpenWithApplications?.(nodeToReference(node))) ?? []
+      );
+    },
+
+    async openWithApplication(
+      _scope: ReferenceScope,
+      node: ReferenceNode,
+      applicationPath: string
+    ): Promise<void> {
+      await adapter.openReferenceWithApplication?.(
+        nodeToReference(node),
+        applicationPath
+      );
+    },
+
+    async openWithOtherApplication(
+      _scope: ReferenceScope,
+      node: ReferenceNode,
+      applicationPickerPrompt?: string
+    ): Promise<void> {
+      await adapter.openReferenceWithOtherApplication?.(
+        nodeToReference(node),
+        applicationPickerPrompt
+      );
+    },
+
+    async reveal(_scope: ReferenceScope, node: ReferenceNode): Promise<void> {
+      await adapter.revealReference?.(nodeToReference(node));
+    },
+
     async readPreview(
       scope: ReferenceScope,
       node: ReferenceNode

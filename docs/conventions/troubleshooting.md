@@ -102,6 +102,36 @@ Use this shape for new entries:
   [apps.go](../../services/tuttid/service/workspace/apps.go)
   [apps_test.go](../../services/tuttid/service/workspace/apps_test.go)
 
+### Workspace app update reopens the old dock window
+
+- Symptom:
+  After updating a running workspace app, clicking the app from the dock still
+  shows the old UI or old port until Tutti itself is restarted.
+- Quick checks:
+  Inspect the App Center snapshot for `installed_pending_restart` while a
+  matching `workspace-app-webview` node still exists. Dock debug logs showing
+  `clickResolution.kind = "focus-node"` for that app mean the launch resolver
+  is being bypassed.
+- Root cause:
+  Workbench dock single-instance entries focus a matching node before launching.
+  If a workspace app is waiting for restart and the dock entry still uses the
+  default click behavior, clicking the dock can restore the stale webview
+  instead of entering `resolveWorkspaceAppCenterLaunchRequest` and
+  `restartAndOpenApp`.
+- Fix:
+  Route `installed_pending_restart` workspace app dock clicks through the
+  launch request path even when a stale webview node still matches the dock
+  entry. Keep normal `running` apps on the default focus path so existing app
+  state is preserved.
+- Validation:
+  Run the workspace app-center contribution tests and the workspace workbench
+  surface dock click-resolution tests that cover pending-restart launch
+  routing.
+- References:
+  [workspaceAppCenterContribution.tsx](../../apps/desktop/src/renderer/src/features/workspace-app-center/services/internal/workspaceAppCenterContribution.tsx)
+  [workspaceAppCenterLaunchRequest.ts](../../apps/desktop/src/renderer/src/features/workspace-app-center/services/internal/workspaceAppCenterLaunchRequest.ts)
+  [dockEntries.ts](../../packages/workbench/surface/src/host/dockEntries.ts)
+
 ### Load unpacked project roots with source manifests
 
 - Symptom:
@@ -371,11 +401,15 @@ delimited by ---`, and the composer skill picker may show partial or
 - Symptom:
   A conversation started with the "No project" selection appears in the Agent
   GUI rail under a parent user-project group such as the user's home directory.
+  Imported Codex or Claude Code conversations with `cwd` equal to `$HOME` can
+  show the same symptom even though the user never selected a project.
 - Quick checks:
   Inspect the session `cwd` from the activity snapshot. Generated no-project
   sessions should resolve as no-project before `cwd` is matched against parent
-  user-project paths. Check both the in-memory `rememberNoProjectPath` path and
-  the restart fallback that recognizes `Documents/tutti/session-<uuid>`.
+  user-project paths. For imported sessions, inspect `runtimeContext` for the
+  daemon-owned `externalImportNoProject` marker. Check both the in-memory
+  `rememberNoProjectPath` path and the restart fallback that recognizes
+  `Documents/tutti/session-<uuid>`.
 - Root cause:
   Conversation project grouping is a view-model join of `cwd x userProjects`.
   If a generated no-project cwd is not recognized before prefix/parent project
@@ -383,20 +417,29 @@ delimited by ---`, and the composer skill picker may show partial or
   project such as `$HOME`. Keep generated-path recognition in the host
   `isNoProjectPath` callback because it has the user home-directory context;
   a package-level suffix check would misclassify real projects that contain a
-  `Documents/tutti/session-<uuid>` subdirectory.
+  `Documents/tutti/session-<uuid>` subdirectory. External import has a similar
+  trap because provider transcripts may record `$HOME` as the cwd when no
+  project was selected; that intent must be persisted as session metadata rather
+  than inferred later from user-project prefix matching.
 - Fix:
   Treat exact user-project path matches as explicit user intent, then call the
   host no-project resolver before parent project matching. The desktop resolver
   should recognize generated `$HOME/Documents/tutti/session-<uuid>` cwd values
-  while allowing explicit registered projects to override them. Keep the project
-  field derived in the Agent GUI view-model rather than writing it back into the
-  conversation store.
+  while allowing explicit registered projects to override them. External import
+  should mark home-cwd sessions as no-project in `runtimeContext`, skip them
+  when registering user-project paths, and let Agent GUI preserve that no-project
+  mode during later project re-resolution. Keep the project field derived in the
+  Agent GUI view-model rather than writing it back into the conversation store.
 - Validation:
   Run
   `pnpm --filter @tutti-os/agent-gui test -- agent-gui/agentGuiNode/model/agentGuiConversationModel.spec.ts`,
+  `cd services/tuttid && go test ./service/agent ./api -run 'ExternalImport|ParseCodex|ParseClaude'`,
   `node --import ./test/register-asset-stub.mjs --test --experimental-strip-types ./src/renderer/src/features/workspace-user-project/services/internal/desktopWorkspaceUserProjectService.test.ts`
   from `apps/desktop`, then run `pnpm check:changed`.
 - References:
+  [external_import_parse.go](../../services/tuttid/service/agent/external_import_parse.go)
+  [external_import_projects.go](../../services/tuttid/service/agent/external_import_projects.go)
+  [agentGuiConversationModel.ts](../../packages/agent/gui/agent-gui/agentGuiNode/model/agentGuiConversationModel.ts)
   [desktopWorkspaceUserProjectService.ts](../../apps/desktop/src/renderer/src/features/workspace-user-project/services/internal/desktopWorkspaceUserProjectService.ts)
   [agentGuiConversationProjectResolver.ts](../../packages/agent/gui/agent-gui/agentGuiNode/model/agentGuiConversationProjectResolver.ts)
   [agentGuiConversationListStore.ts](../../packages/agent/gui/contexts/workspace/presentation/renderer/agentGuiConversationList/agentGuiConversationListStore.ts)
@@ -599,34 +642,80 @@ delimited by ---`, and the composer skill picker may show partial or
   Then trigger two install actions in quick succession and confirm the second
   waits for the first instead of starting another global npm mutation.
 
+### Agent provider install looks idle while a non-Codex installer is running
+
+- Symptom:
+  Provider setup appears stuck or idle even though `tuttid.log` has an
+  `agent provider install step started` entry and no matching completed/failed
+  line yet. This is most visible for Claude Code CLI or ACP adapter installs.
+- Quick checks:
+  Compare the install start timestamp with the log export timestamp before
+  calling it hung. Also check for a later completed install log line and the
+  provider binary path in the rechecked runtime log. If `tuttid.log` shows
+  `active_action.output_appended` but desktop diagnostics keep reporting
+  `logLines=0`, check whether the status request copied `activeAction` before
+  installer output arrived, or whether the renderer stopped refreshing while
+  the install action was still pending.
+- Root cause:
+  The provider installer is daemon-owned and can legitimately run for minutes,
+  but renderer progress must come from the generic provider `activeAction`
+  status field. Do not special-case long-running install progress to Codex.
+- Fix:
+  Set, stream stdout into, expose, and clear `ActiveAction` for every provider
+  install action. Keep provider-specific installer details inside
+  `services/tuttid/service/agentstatus` and project only the transport-safe
+  active action shape through the API seam. Refresh the provider's active action
+  snapshot at the end of `List`, and short-poll provider status while a daemon
+  install action is pending so live installer output can reach the wizard.
+- Validation:
+  Run `cd services/tuttid && go test ./service/agentstatus ./api` and
+  `pnpm check:api-generated`. Trigger a Claude Code install and confirm status
+  responses include `activeAction` while the CLI or adapter step is in flight.
+
 ### ACP adapter appears stale after external registry migration
 
 - Symptom:
   Claude Agent provider status is not ready, or live ACP options do not match
-  the package version advertised by the ACP External Agent Registry.
+  the package version advertised by the ACP External Agent Registry. Another
+  form is Claude Code context usage briefly showing `0%` during a running
+  session or around compaction, then returning to the prior nonzero value on
+  the next usage update.
 - Quick checks:
   Inspect `<state-dir>/agent-providers/external-agent-registry/cache/registry.json`
   and the package manifest under
   `<state-dir>/agent-providers/external-agent-registry/packages/claude-acp/node_modules/@agentclientprotocol/claude-agent-acp/package.json`.
   `which claude-agent-acp` only describes a user/global shim and is no longer
-  the Tutti-owned Claude adapter source.
+  the Tutti-owned Claude adapter source. For usage flicker, inspect that
+  package's `dist/acp-agent.js` for `sessionUpdate: "usage_update"` near
+  `compact_boundary`; it must not publish `used: 0` when the SDK
+  `getContextUsage()` probe fails.
 - Root cause:
   Tutti resolves Claude ACP from the external agent registry and installs the
   npm adapter into a daemon-owned prefix with managed npm. A stale or missing
   prefix package, stale registry cache, or unavailable managed Node runtime can
   make the adapter unavailable even when a global `claude-agent-acp` exists.
+  Usage flicker can also come from the managed bridge bundle itself publishing
+  an invalid zero context usage after a failed compact-boundary usage probe;
+  AgentGUI only displays the normalized runtime context it receives.
 - Fix:
   Run the provider install action so tuttid refreshes the registry, resolves the
   managed Node runtime, and installs the npm package into the per-agent prefix.
   Do not compensate by changing static model catalogs for behavior that should
-  come from the live ACP package.
+  come from the live ACP package. Keep the Tutti claude-agent-acp patch script
+  authoritative for bridge behavior and apply it to the managed package; do not
+  mask invalid usage in AgentGUI.
 - Validation:
   Run `go test ./services/tuttid/service/agentstatus`, then confirm a stale
   global adapter is ignored and the install action uses managed npm with
   `--prefix <state-dir>/agent-providers/external-agent-registry/packages/claude-acp`.
+  For usage flicker, run
+  `node services/tuttid/service/agentstatus/assets/patch-claude-agent-acp.mjs --dist <managed-acp-dist>`
+  twice and confirm the second run reports no changes, then inspect the bundle
+  and confirm `lastAssistantTotalUsage = usedTokens ?? 0` is absent.
 - References:
   [service.go](../../services/tuttid/service/agentstatus/service.go)
   [store.go](../../services/tuttid/service/externalagentregistry/store.go)
+  [patch-claude-agent-acp.mjs](../../services/tuttid/service/agentstatus/assets/patch-claude-agent-acp.mjs)
 
 ### Published package runtime asset 404 because the consumer bundler never saw the file
 
@@ -994,18 +1083,79 @@ information is not available yet`, but `ps` or `lsof` still shows an older
 
 - Symptom:
   Agent GUI shows a generated or changed file under a path such as
-  `/var/folders/.../T/codex-presentations/...`, but clicking the file does not
-  reveal it in FileManager.
+  `/var/folders/.../T/codex-presentations/...`, but clicking the file from
+  Agent GUI or Message Center does not reveal it in FileManager.
 - Quick checks:
   Confirm the desktop workspace files launch coordinator accepts the path, then
   confirm `tuttid` resolves the workspace file root for the requested absolute
-  path instead of forcing the user home root.
+  path instead of forcing the user home root. For Message Center clicks, confirm
+  `open-local-asset-preview` link actions route into the same workspace files
+  launch path as `open-file-manager`.
 - Root cause:
   Some agent tools write durable-looking outputs to system temporary
   directories. FileManager can reveal a precise local path, but both the
   renderer launch filter and daemon workspace root resolution must allow that
-  external absolute path.
+  external absolute path. Message Center shares Agent GUI link actions, so a
+  preview-only action that returns `false` can block the file panel even when
+  the lower-level FileManager support is correct.
 - Fix:
   Treat explicitly launched local absolute paths like direct hidden-file reveal:
   do not add them as projects or default locations, but allow FileManager to
-  load the parent directory and apply normal local-file operations.
+  load the parent directory and apply normal local-file operations. Route
+  `open-local-asset-preview` through `launchWorkspaceFiles` until a dedicated
+  preview surface exists.
+- Validation:
+  Run the desktop Agent GUI link action test, the workspace files launch
+  coordinator test, and `pnpm check:changed` for mixed desktop/Agent GUI
+  changes.
+- References:
+  [desktopAgentGUILinkActions.ts](../../apps/desktop/src/renderer/src/features/workspace-agent/services/desktopAgentGUILinkActions.ts)
+
+### Imported sessions inflate recently completed message-center groups
+
+- Symptom:
+  After importing Codex or Claude Code history, Message Center's priority view
+  briefly shows many items under the recently-completed group even though those
+  sessions are historical imports, not newly finished local runs.
+- Quick checks:
+  Inspect the session `runtimeContext`. Imported sessions should carry
+  `imported: true`, and Message Center items derived from them should preserve
+  that marker before priority grouping.
+- Root cause:
+  Message Center uses the recently-completed group as a notification-style
+  surface. Imported history is persisted as completed agent activity, so if the
+  grouping model treats imported sessions the same as live runtime completions,
+  a bulk import can look like a burst of fresh completed work.
+- Fix:
+  Keep imported sessions visible in Message Center and in the completed filter,
+  but exclude `runtimeContext.imported` items from the recently-completed group.
+- Validation:
+  Run
+  `pnpm --filter @tutti-os/agent-gui test -- agent-message-center/workspaceAgentMessageCenterModel.spec.ts agent-message-center/workspaceAgentMessageCenterViewModel.spec.ts`.
+- References:
+  [workspaceAgentMessageCenterModel.ts](../../packages/agent/gui/agent-message-center/workspaceAgentMessageCenterModel.ts)
+  [workspaceAgentMessageCenterViewModel.ts](../../packages/agent/gui/agent-message-center/workspaceAgentMessageCenterViewModel.ts)
+
+### FileManager home-relative paths break only the list pane
+
+- Symptom:
+  Launching FileManager for a path such as `~/docs/spec.md` leaves the left
+  file list, selection, or reveal state wrong while a separate file preview can
+  still open the file.
+- Quick checks:
+  Trace whether the path reaches `requestWorkspaceFilesLaunch` as `~/...` or
+  was already rewritten by AgentGUI link resolution. Then compare the
+  FileManager list request with the preview-node read path.
+- Root cause:
+  FileManager list/reveal goes through workspace logical path normalization and
+  `tuttid` directory listing. Those layers treat `~/...` as a relative segment,
+  not as the user home. Preview nodes can bypass that chain by reading an
+  already absolute local file path directly.
+- Fix:
+  Expand `~` and `~/...` at the desktop launch boundary using the platform
+  home directory, and keep AgentGUI link actions from resolving home-relative
+  paths against the project root before desktop launch.
+- Validation:
+  Run the workspace files launch coordinator test and the AgentGUI workspace
+  link action test, then `pnpm check:changed` for mixed desktop and AgentGUI
+  changes.

@@ -16,6 +16,7 @@ export interface IWorkspaceFileManagerService {
   readonly _serviceBrand: undefined;
   readonly hostOs: NodeJS.Platform;
 
+  entryExists(input: { path: string; workspaceID: string }): Promise<boolean>;
   getSession(
     workspaceID: string,
     i18n: WorkspaceFileManagerI18nRuntime,
@@ -24,6 +25,10 @@ export interface IWorkspaceFileManagerService {
   getSnapshotState(
     workspaceID: string
   ): WorkspaceFileManagerPersistedState | null;
+  openCanvasFilePreview(
+    workspaceID: string,
+    target: WorkspaceFileActivationTarget
+  ): Promise<boolean>;
   resolveEntryIconUrl(
     workspaceID: string,
     entry: WorkspaceFileEntry

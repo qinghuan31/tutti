@@ -178,9 +178,18 @@ export function createAgentGuiWorkbenchNodeStateSource(input: {
       state: AgentGuiWorkbenchState;
     }
   ) => void;
+  /**
+   * Returns the launch instanceId of an open node currently showing the given
+   * agent session, or null when none is found. Used to focus an existing
+   * conversation instead of launching a duplicate node.
+   */
+  findInstanceIdByAgentSessionId: (agentSessionId: string) => string | null;
 } {
   const typeId = input.typeId ?? "agent-gui";
   const nodeStateByKey = new Map<string, AgentGuiWorkbenchState>();
+  // Tracks the launch instanceId behind each state key so a node can be located
+  // by the session it is currently showing, even when its key is node-scoped.
+  const instanceIdByKey = new Map<string, string>();
   const listeners = new Set<() => void>();
 
   const lookupState = (request: AgentGuiWorkbenchStateLookupRequest) => {
@@ -231,15 +240,31 @@ export function createAgentGuiWorkbenchNodeStateSource(input: {
       }
       return lookupState(request);
     },
+    findInstanceIdByAgentSessionId(agentSessionId) {
+      const target = agentSessionId.trim();
+      if (!target) {
+        return null;
+      }
+      for (const [key, state] of nodeStateByKey) {
+        if (state.lastActiveAgentSessionId?.trim() === target) {
+          return instanceIdByKey.get(key) ?? null;
+        }
+      }
+      return null;
+    },
     writeNodeState(request) {
       if (request.typeId !== typeId) {
         return;
       }
       const key = agentGuiWorkbenchNodeStateKey(request);
+      instanceIdByKey.set(key, request.instanceId);
       const previous = nodeStateByKey.get(key);
-      const clearedInstanceSeed = request.nodeId
-        ? nodeStateByKey.delete(agentGuiWorkbenchInstanceStateKey(request))
-        : false;
+      let clearedInstanceSeed = false;
+      if (request.nodeId) {
+        const instanceKey = agentGuiWorkbenchInstanceStateKey(request);
+        instanceIdByKey.delete(instanceKey);
+        clearedInstanceSeed = nodeStateByKey.delete(instanceKey);
+      }
       const next = {
         ...normalizeAgentGuiWorkbenchState(request.state)
       };

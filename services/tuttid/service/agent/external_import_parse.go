@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
+	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 
@@ -34,7 +36,20 @@ func parseCodexJSONL(path string, reader io.Reader) (externalImportedSession, bo
 		case "event_msg":
 			payload := mapField(raw, "payload")
 			if stringField(payload, "type") == "user_message" {
-				session.Title = firstNonEmptyString(session.Title, externalContentText(payload["message"]))
+				messageText := externalContentText(payload["message"])
+				session.Title = firstNonEmptyString(session.Title, messageText)
+				if text, ok := externalImportDisplayTextCandidate(session.Provider, messageText); ok {
+					session.EventUserMessage = externalImportedMessage{
+						RawID:             "event:" + strconv.Itoa(index),
+						Role:              "user",
+						Kind:              "text",
+						Status:            "completed",
+						Text:              text,
+						OccurredAtUnixMS:  timestamp,
+						StartedAtUnixMS:   timestamp,
+						CompletedAtUnixMS: timestamp,
+					}
+				}
 			}
 		}
 	})
@@ -209,12 +224,20 @@ func normalizeExternalParsedSession(session externalImportedSession) (externalIm
 		return externalImportedSession{}, false, nil
 	}
 	session.Cwd = cwd
+	session.NoProject = isExternalImportNoProjectCwd(cwd)
 	messages := make([]externalImportedMessage, 0, len(session.Messages))
 	for i, message := range session.Messages {
 		message.Role = normalizeExternalMessageRole(message.Role)
 		message.Kind = normalizeExternalMessageKind(message.Kind)
 		message.Status = normalizeExternalMessageStatus(message.Status)
 		message.Text = strings.TrimSpace(message.Text)
+		if message.Role == "user" && message.Kind == "text" {
+			cleanedText, ok := externalImportDisplayTextCandidate(session.Provider, message.Text)
+			if !ok {
+				continue
+			}
+			message.Text = cleanedText
+		}
 		if message.Role == "" || !externalImportedMessageHasContent(message) {
 			continue
 		}
@@ -233,13 +256,30 @@ func normalizeExternalParsedSession(session externalImportedSession) (externalIm
 		messages = append(messages, message)
 	}
 	if len(messages) == 0 {
-		return externalImportedSession{}, false, nil
+		if externalImportedMessageHasContent(session.EventUserMessage) {
+			messages = append(messages, session.EventUserMessage)
+		}
+		if len(messages) == 0 {
+			return externalImportedSession{}, false, nil
+		}
 	}
 	session.Messages = messages
 	session.StartedAtUnixMS = firstExternalMessageUnixMS(messages)
 	session.UpdatedAtUnixMS = lastExternalMessageUnixMS(messages)
 	session.Title = resolveExternalSessionTitle(session.Provider, session.SummaryTitle, session.Title, messages)
 	return session, true, nil
+}
+
+func isExternalImportNoProjectCwd(cwd string) bool {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return false
+	}
+	home, ok := canonicalExistingDir(home)
+	if !ok {
+		return false
+	}
+	return filepath.Clean(cwd) == filepath.Clean(home)
 }
 
 func externalImportedMessageHasContent(message externalImportedMessage) bool {
@@ -253,7 +293,7 @@ func externalImportedMessageHasContent(message externalImportedMessage) bool {
 // priority: provider-supplied summary title -> first real user message (with
 // system preambles skipped) -> raw first message text.
 func resolveExternalSessionTitle(provider string, summaryTitle string, hint string, messages []externalImportedMessage) string {
-	if title := strings.TrimSpace(summaryTitle); title != "" {
+	if title, ok := externalImportTitleCandidate(provider, summaryTitle); ok {
 		return truncateExternalTitle(title)
 	}
 	if title, ok := externalImportTitleCandidate(provider, hint); ok {
@@ -273,8 +313,10 @@ func resolveExternalSessionTitle(provider string, summaryTitle string, hint stri
 // VS Code injects IDE context ahead of the real Codex prompt; the actual
 // request lives under the final "## My request for Codex:" heading.
 const (
-	codexIDEContextPrefix = "# Context from my IDE setup:"
-	codexRequestMarker    = "my request for codex"
+	codexIDEContextPrefix              = "# Context from my IDE setup:"
+	codexRequestMarker                 = "my request for codex"
+	claudeMentionHandoffPrefix         = "Claude Code mention handoff routing for this user turn:"
+	claudeMentionHandoffPromptBoundary = "\n\nUser prompt:\n"
 )
 
 // externalImportTitleCandidate cleans a user message for use as a session title,
@@ -282,12 +324,26 @@ const (
 // surfaced. The Codex/Claude preamble rules are ported from cc-switch (MIT, see
 // NOTICE).
 func externalImportTitleCandidate(provider string, text string) (string, bool) {
+	return externalImportCleanUserText(provider, text)
+}
+
+func externalImportDisplayTextCandidate(provider string, text string) (string, bool) {
+	return externalImportCleanUserText(provider, text)
+}
+
+func externalImportCleanUserText(provider string, text string) (string, bool) {
 	trimmed := strings.TrimSpace(text)
 	if trimmed == "" {
 		return "", false
 	}
 	switch provider {
 	case agentproviderbiz.ClaudeCode:
+		if title, ok := extractClaudeMentionHandoffUserPrompt(trimmed); ok {
+			return title, true
+		}
+		if strings.HasPrefix(trimmed, claudeMentionHandoffPrefix) {
+			return "", false
+		}
 		if strings.Contains(trimmed, "<local-command-caveat>") || strings.HasPrefix(trimmed, "<command-name>") {
 			return "", false
 		}
@@ -301,6 +357,15 @@ func externalImportTitleCandidate(provider string, text string) (string, bool) {
 		}
 		return trimmed, true
 	}
+}
+
+func extractClaudeMentionHandoffUserPrompt(text string) (string, bool) {
+	if !strings.HasPrefix(text, claudeMentionHandoffPrefix) {
+		return "", false
+	}
+	_, prompt, ok := strings.Cut(text, claudeMentionHandoffPromptBoundary)
+	prompt = strings.TrimSpace(prompt)
+	return prompt, ok && prompt != ""
 }
 
 func extractCodexPromptFromIDEContext(text string) (string, bool) {

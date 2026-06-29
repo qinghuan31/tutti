@@ -366,6 +366,41 @@ export const workspaceWorkspaceAppSchema = {
     description: {
       type: "string"
     },
+    authors: {
+      type: "array",
+      items: {
+        type: "object",
+        additionalProperties: false,
+        required: ["name"],
+        properties: {
+          name: {
+            type: "string",
+            minLength: 1
+          },
+          url: {
+            type: ["string", "null"]
+          },
+          avatarUrl: {
+            type: ["string", "null"]
+          }
+        }
+      }
+    },
+    repository: {
+      type: ["object", "null"],
+      additionalProperties: false,
+      required: ["type", "url"],
+      properties: {
+        type: {
+          type: "string",
+          enum: ["github"]
+        },
+        url: {
+          type: "string",
+          minLength: 1
+        }
+      }
+    },
     iconUrl: {
       type: ["string", "null"]
     },
@@ -668,8 +703,10 @@ export const agentActivityUpdatedPayloadSchema = {
                   "id",
                   "kind",
                   "messageId",
+                  "occurredAtUnixMs",
                   "payload",
                   "role",
+                  "turnId",
                   "version"
                 ],
                 properties: {
@@ -701,14 +738,15 @@ export const agentActivityUpdatedPayloadSchema = {
                     minimum: 1
                   },
                   turnId: {
-                    type: "string"
+                    type: "string",
+                    minLength: 1
                   },
                   status: {
                     type: "string"
                   },
                   occurredAtUnixMs: {
                     type: "integer",
-                    minimum: 0
+                    minimum: 1
                   },
                   startedAtUnixMs: {
                     type: "integer",
@@ -1431,6 +1469,41 @@ export const workspaceAppUpdatedPayloadSchema = {
         },
         description: {
           type: "string"
+        },
+        authors: {
+          type: "array",
+          items: {
+            type: "object",
+            additionalProperties: false,
+            required: ["name"],
+            properties: {
+              name: {
+                type: "string",
+                minLength: 1
+              },
+              url: {
+                type: ["string", "null"]
+              },
+              avatarUrl: {
+                type: ["string", "null"]
+              }
+            }
+          }
+        },
+        repository: {
+          type: ["object", "null"],
+          additionalProperties: false,
+          required: ["type", "url"],
+          properties: {
+            type: {
+              type: "string",
+              enum: ["github"]
+            },
+            url: {
+              type: "string",
+              minLength: 1
+            }
+          }
         },
         iconUrl: {
           type: ["string", "null"]

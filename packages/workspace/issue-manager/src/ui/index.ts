@@ -7,3 +7,8 @@ export type {
   IssueManagerLatestRunStatusRenderInput,
   IssueManagerLatestRunStatusRenderer
 } from "./latestRunStatusRenderer.ts";
+export {
+  resolveIssueManagerStatusPresentation,
+  type IssueManagerStatusBadgeVariant,
+  type IssueManagerStatusPresentation
+} from "./internal/status/IssueManagerStatusPresentation.ts";

@@ -10,6 +10,7 @@ export type MentionRowStatusTone =
   | "blue"
   | "green"
   | "neutral"
+  | "purple"
   | "red";
 
 export type MentionRowStatusVariant = "activity" | "issue";
@@ -44,8 +45,14 @@ export function issueMentionStatusBadgeClassName(
   tone: MentionRowStatusTone
 ): string {
   switch (tone) {
+    case "blue":
+      return "bg-[color:color-mix(in_srgb,var(--status-running)_12%,transparent)] text-[var(--status-running)]";
+    case "amber":
+      return "bg-[color:color-mix(in_srgb,var(--state-warning)_12%,transparent)] text-[var(--state-warning)]";
     case "green":
       return "bg-[color:color-mix(in_srgb,var(--state-success)_12%,transparent)] text-[var(--state-success)]";
+    case "purple":
+      return "bg-[color-mix(in_srgb,var(--rich-text-mention-issue)_12%,transparent)] text-[var(--rich-text-mention-issue)]";
     case "red":
       return "bg-[var(--on-danger)] text-[var(--state-danger)]";
     default:

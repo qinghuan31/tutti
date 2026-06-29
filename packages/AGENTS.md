@@ -6,14 +6,16 @@ This file applies to `packages/*`.
 
 `packages/` is for real shared boundaries, not as a default home for reusable-looking code.
 
-If you are editing `packages/agent/gui/*`, also read
-[packages/agent/gui/AGENTS.md](agent/gui/AGENTS.md).
+If you are editing `packages/agent/gui/*`, read
+[docs/architecture/agent-gui-node.md](../docs/architecture/agent-gui-node.md)
+first, then [packages/agent/gui/AGENTS.md](agent/gui/AGENTS.md).
 
 If the task mentions AgentGUI, AgentGuiNode, Agent GUI, the agent conversation
 module, agent composer, workspace agent timeline, agent approvals, or
-interactive agent prompts, also read
-[packages/agent/gui/AGENTS.md](agent/gui/AGENTS.md) even before the target files
-are known.
+interactive agent prompts, read
+[docs/architecture/agent-gui-node.md](../docs/architecture/agent-gui-node.md)
+first, then [packages/agent/gui/AGENTS.md](agent/gui/AGENTS.md), before planning
+or editing even when the target files are not known.
 
 If you are editing `packages/ui/*`, also read [packages/ui/AGENTS.md](ui/AGENTS.md).
 

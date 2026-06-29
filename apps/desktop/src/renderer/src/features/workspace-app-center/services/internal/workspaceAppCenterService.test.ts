@@ -107,6 +107,54 @@ test("WorkspaceAppCenterService tracks app install and forwards app open status"
   ]);
 });
 
+test("WorkspaceAppCenterService delegates workspace app view open checks", () => {
+  const checkedInputs: Array<{ appId: string; workspaceId: string }> = [];
+  const service = new WorkspaceAppCenterService({
+    eventStreamClient: createEventStreamClient(),
+    gateway: createGateway(),
+    hostFilesApi: createHostFilesApi(),
+    hostWorkspaceApi: createHostWorkspaceApi()
+  });
+
+  assert.equal(
+    service.isWorkspaceAppViewOpen({
+      appId: "app-1",
+      workspaceId: "workspace-1"
+    }),
+    false
+  );
+
+  service.setWorkspaceAppViewOpenChecker((input) => {
+    checkedInputs.push(input);
+    return input.appId === "app-1" && input.workspaceId === "workspace-1";
+  });
+
+  assert.equal(
+    service.isWorkspaceAppViewOpen({
+      appId: "app-1",
+      workspaceId: "workspace-1"
+    }),
+    true
+  );
+  assert.equal(
+    service.isWorkspaceAppViewOpen({
+      appId: "app-2",
+      workspaceId: "workspace-1"
+    }),
+    false
+  );
+  assert.deepEqual(checkedInputs, [
+    {
+      appId: "app-1",
+      workspaceId: "workspace-1"
+    },
+    {
+      appId: "app-2",
+      workspaceId: "workspace-1"
+    }
+  ]);
+});
+
 test("WorkspaceAppCenterService refreshes failed runtime state after launch is rejected", async () => {
   let listCalls = 0;
   const service = new WorkspaceAppCenterService({

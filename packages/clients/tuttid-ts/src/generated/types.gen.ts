@@ -237,6 +237,7 @@ export type DesktopPreferences = {
   agentComposerDefaultsByProvider: DesktopAgentComposerDefaultsByProvider;
   agentGuiConversationRailCollapsedByProvider: DesktopAgentGuiConversationRailCollapsedByProvider;
   appCatalogChannel: DesktopAppCatalogChannel;
+  showAppDeveloperSources?: boolean;
   browserUseConnectionMode?: DesktopBrowserUseConnectionMode;
   defaultAgentProvider: WorkspaceAgentProvider;
   dockIconStyle: DesktopDockIconStyle;
@@ -501,6 +502,8 @@ export type WorkspaceApp = {
   displayName: string;
   version: string;
   description: string;
+  authors?: Array<WorkspaceAppAuthor>;
+  repository?: WorkspaceAppRepository;
   createdAtUnixMs: number;
   installProgress?: WorkspaceAppInstallProgress;
   iconUrl: string | null;
@@ -533,6 +536,17 @@ export type WorkspaceApp = {
 };
 
 export type WorkspaceAppMinimizeBehavior = "hibernate" | "keep-mounted";
+
+export type WorkspaceAppAuthor = {
+  name: string;
+  url?: string | null;
+  avatarUrl?: string | null;
+};
+
+export type WorkspaceAppRepository = {
+  type: "github";
+  url: string;
+};
 
 export type WorkspaceAppUploadPurpose = "app-asset";
 
@@ -896,6 +910,41 @@ export type AgentProviderProbeStatus = "ready" | "failed" | "skipped";
 
 export type AgentProviderActionRunStatus = "completed" | "failed";
 
+export type AgentProviderActiveActionPhase =
+  | "detect"
+  | "install"
+  | "repair"
+  | "verify"
+  | "done"
+  | "error";
+
+export type AgentProviderActiveActionStepStatus =
+  | "pending"
+  | "running"
+  | "ok"
+  | "error"
+  | "skipped";
+
+export type AgentProviderActiveActionStep = {
+  id: string;
+  label: string | null;
+  status: AgentProviderActiveActionStepStatus;
+  detail: string | null;
+};
+
+export type AgentProviderActiveActionError = {
+  code: string | null;
+  message: string | null;
+};
+
+export type AgentProviderActiveAction = {
+  phase: AgentProviderActiveActionPhase;
+  steps: Array<AgentProviderActiveActionStep>;
+  registry: string | null;
+  log: Array<string>;
+  error: AgentProviderActiveActionError | null;
+};
+
 export type AgentProviderProbeResponse = {
   provider: WorkspaceAgentProvider;
   status: AgentProviderProbeStatus;
@@ -941,17 +990,33 @@ export type AgentProviderCliStatus = {
   installed: boolean;
   binaryPath?: string | null;
   version?: string | null;
+  /**
+   * The lowest CLI version this provider supports, when it enforces a floor (currently codex). Lets the UI show "current X, requires Y" without duplicating the backend's version gate.
+   */
+  minVersion?: string | null;
 };
 
 export type AgentProviderAdapterStatus = {
   installed: boolean;
   binaryPath?: string | null;
   command: Array<string>;
+  /**
+   * The installed ACP adapter package version, when resolvable. Lets the UI and telemetry show the actual adapter version (not just a path).
+   */
+  version?: string | null;
+  /**
+   * The adapter package version this provider requires. With version, lets the UI show "current X, requires Y" for an adapter version mismatch and makes the drift visible in telemetry.
+   */
+  requiredVersion?: string | null;
 };
 
 export type AgentProviderAuthInfo = {
   status: AgentProviderAuthStatus;
   accountLabel?: string | null;
+  /**
+   * The authentication method reported by the provider CLI (e.g. oauth, apiKey).
+   */
+  authMethod?: string | null;
 };
 
 export type AgentProviderStatus = {
@@ -962,6 +1027,7 @@ export type AgentProviderStatus = {
   auth: AgentProviderAuthInfo;
   actions: Array<AgentProviderAction>;
   network?: AgentProviderNetworkStatus | null;
+  activeAction?: AgentProviderActiveAction | null;
 };
 
 export type AgentProviderNetworkStatus = {
@@ -1062,7 +1128,7 @@ export type WorkspaceAgentSessionMessage = {
   id: number;
   agentSessionId: string;
   messageId: string;
-  turnId?: string;
+  turnId: string;
   role: string;
   kind: string;
   status?: string;
@@ -1070,7 +1136,7 @@ export type WorkspaceAgentSessionMessage = {
   payload?: {
     [key: string]: unknown;
   };
-  occurredAtUnixMs?: number;
+  occurredAtUnixMs: number;
   startedAtUnixMs?: number;
   completedAtUnixMs?: number;
   createdAtUnixMs?: number;
@@ -1528,7 +1594,6 @@ export type UpdateWorkspaceRequest = {
 export type IssueManagerStatus =
   | "not_started"
   | "running"
-  | "in_progress"
   | "pending_acceptance"
   | "completed"
   | "failed"
@@ -1538,7 +1603,6 @@ export type IssueManagerStatusFilter =
   | "all"
   | "not_started"
   | "running"
-  | "in_progress"
   | "pending_acceptance"
   | "completed"
   | "failed"
@@ -1555,7 +1619,6 @@ export type IssueManagerStatusCounts = {
   all: number;
   notStarted: number;
   running: number;
-  inProgress: number;
   pendingAcceptance: number;
   completed: number;
   failed: number;
@@ -4574,7 +4637,7 @@ export type GetAgentProviderComposerOptionsError =
 
 export type GetAgentProviderComposerOptionsResponses = {
   /**
-   * Agent provider composer options with short-lived Claude Code discovery when needed
+   * Agent provider composer options with Claude Code live discovery when needed
    */
   200: AgentProviderComposerOptionsResponse;
 };
@@ -4678,6 +4741,10 @@ export type GetAgentProviderStatusesData = {
   path?: never;
   query?: {
     providers?: Array<WorkspaceAgentProvider>;
+    /**
+     * Opt into the network connectivity probe (registry / provider API / proxy reachability). Off by default so the common detection path stays local and never blocks on the network; only the agent-env wizard's network diagnostic sets this.
+     */
+    includeNetwork?: boolean;
   };
   url: "/v1/agent-providers/status";
 };

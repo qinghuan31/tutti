@@ -77,6 +77,40 @@ export class WorkspaceFileManagerService implements IWorkspaceFileManagerService
     return this.dependencies.platformApi.os;
   }
 
+  async entryExists(input: {
+    path: string;
+    workspaceID: string;
+  }): Promise<boolean> {
+    const targetPath = normalizeComparableWorkspaceFilePath(input.path);
+    if (!targetPath) {
+      return false;
+    }
+
+    try {
+      const listing =
+        await this.dependencies.tuttidClient.listWorkspaceFileDirectory(
+          input.workspaceID,
+          {
+            includeHidden: true,
+            path: dirnameForWorkspaceFilePath(targetPath)
+          }
+        );
+      if (
+        normalizeComparableWorkspaceFilePath(listing.directoryPath) ===
+          targetPath ||
+        normalizeComparableWorkspaceFilePath(listing.root) === targetPath
+      ) {
+        return true;
+      }
+      return listing.entries.some(
+        (entry) =>
+          normalizeComparableWorkspaceFilePath(entry.path) === targetPath
+      );
+    } catch {
+      return false;
+    }
+  }
+
   getSession(
     workspaceID: string,
     i18n: WorkspaceFileManagerI18nRuntime,
@@ -172,6 +206,16 @@ export class WorkspaceFileManagerService implements IWorkspaceFileManagerService
     });
   }
 
+  async openCanvasFilePreview(
+    workspaceID: string,
+    target: Parameters<WorkspaceFileManagerCanvasPreviewLauncher>[0]
+  ): Promise<boolean> {
+    return (
+      (await this.canvasFilePreviewLaunchers.get(workspaceID)?.(target)) ===
+      true
+    );
+  }
+
   setCanvasFilePreviewLauncher(
     workspaceID: string,
     launcher: WorkspaceFileManagerCanvasPreviewLauncher | null
@@ -244,10 +288,7 @@ export class WorkspaceFileManagerService implements IWorkspaceFileManagerService
     workspaceID: string,
     target: Parameters<WorkspaceFileManagerCanvasPreviewLauncher>[0]
   ): Promise<boolean> {
-    return (
-      (await this.canvasFilePreviewLaunchers.get(workspaceID)?.(target)) ===
-      true
-    );
+    return this.openCanvasFilePreview(workspaceID, target);
   }
 
   private notifyHandledMutationError(
@@ -307,6 +348,25 @@ function resolveDesktopFileDefaultOpener(
     desktopPreferencesService?.store.fileDefaultOpenersByExtension[extension] ??
     null
   );
+}
+
+function dirnameForWorkspaceFilePath(path: string): string {
+  const index = path.lastIndexOf("/");
+  if (index <= 0) {
+    return path.startsWith("/") ? "/" : path;
+  }
+  return path.slice(0, index);
+}
+
+function normalizeComparableWorkspaceFilePath(path: string): string {
+  const normalized = path.trim().replaceAll("\\", "/").replace(/\/+/g, "/");
+  if (!normalized) {
+    return "";
+  }
+  if (normalized === "/") {
+    return "/";
+  }
+  return normalized.replace(/\/+$/g, "");
 }
 
 function serializeWorkspaceFileLocationRefreshSnapshot(input: {

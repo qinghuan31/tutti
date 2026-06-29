@@ -24,6 +24,7 @@ const conversationMetaMock = vi.hoisted(() => ({
 const composerMock = vi.hoisted(() => ({
   calls: [] as Array<{
     composerFocusRequestSequence?: number | null;
+    compactSupported?: boolean | null;
     isSendingTurn?: boolean;
     showStopButton?: boolean;
     usage?: AgentGUINodeViewModel["usage"];
@@ -49,12 +50,14 @@ vi.mock("./AgentSessionChrome", () => ({
 vi.mock("./AgentComposer", () => ({
   AgentComposer: (props: {
     composerFocusRequestSequence?: number | null;
+    compactSupported?: boolean | null;
     isSendingTurn?: boolean;
     showStopButton?: boolean;
     usage?: AgentGUINodeViewModel["usage"];
   }) => {
     composerMock.calls.push({
       composerFocusRequestSequence: props.composerFocusRequestSequence,
+      compactSupported: props.compactSupported,
       isSendingTurn: props.isSendingTurn,
       showStopButton: props.showStopButton,
       usage: props.usage
@@ -601,31 +604,6 @@ describe("AgentGUINodeView layout persistence", () => {
     expect(css).toMatch(
       /\.agent-gui-node__conversation-section-action-tooltip\s*\{[^}]*max-width:\s*180px;[^}]*white-space:\s*nowrap;/s
     );
-  });
-
-  it("hides the project rail header when the project selector is disabled", () => {
-    const { container } = renderAgentGUINodeView({
-      showProjectSelector: false,
-      viewModel: {
-        ...createViewModel(),
-        conversations: [
-          {
-            ...createConversationSummary("session-1"),
-            cwd: "/workspace/app",
-            project: {
-              id: "project-app",
-              path: "/workspace/app",
-              label: "App"
-            }
-          }
-        ]
-      }
-    });
-
-    expect(
-      container.querySelector(".agent-gui-node__project-rail-header")
-    ).toBeNull();
-    expect(screen.getByText("App")).toBeInTheDocument();
   });
 
   it("shows empty project sections when projects have no conversations", () => {
@@ -1438,6 +1416,9 @@ describe("AgentGUINodeView detail header actions", () => {
     renderAgentGUINodeView({ viewModel: headerActionViewModel() });
 
     expect(composerMock.calls.at(-1)?.usage).toMatchObject(usageWithWindow);
+    // The bottom-dock composer (active conversation) must receive
+    // compactSupported so its usage popover can render the compact button.
+    expect(composerMock.calls.at(-1)?.compactSupported).toBe(true);
     expect(screen.queryByTestId("agent-gui-compact-button")).toBeNull();
     expect(statusDotMock.calls).not.toContainEqual(
       expect.objectContaining({
@@ -1468,11 +1449,13 @@ describe("AgentGUINodeView provider setup notice", () => {
 
     expect(setupNoticeRule).toContain("position: absolute;");
     expect(setupNoticeRule).toContain("top: 8px;");
-    expect(setupNoticeRule).toContain(
-      "left: var(--agent-gui-detail-padding-x);"
-    );
+    // Horizontally centered above the detail content.
+    expect(setupNoticeRule).toContain("left: 50%;");
+    expect(setupNoticeRule).toContain("transform: translateX(-50%);");
     expect(setupNoticeRule).toContain("z-index: 2;");
     expect(setupNoticeRule).toContain("width: max-content;");
+    // Message text and the "Set up" action must not butt together.
+    expect(setupNoticeRule).toContain("column-gap: 6px;");
     expect(setupNoticeRule).toMatch(
       /max-width:\s*min\(\s*calc\(100% - \(var\(--agent-gui-detail-padding-x\) \* 2\)\),\s*420px\s*\);/s
     );
@@ -1534,7 +1517,6 @@ interface RenderAgentGUINodeViewOptions {
   labels?: AgentGUIViewLabels;
   onOpenConversationWindow?: AgentGUINodeViewProps["onOpenConversationWindow"];
   slashStatusLimits?: AgentGUINodeViewProps["slashStatusLimits"];
-  showProjectSelector?: boolean;
 }
 
 function buildAgentGUINodeViewElement({
@@ -1548,8 +1530,7 @@ function buildAgentGUINodeViewElement({
   actions = createActions(),
   labels = createLabels(),
   onOpenConversationWindow,
-  slashStatusLimits = [],
-  showProjectSelector = true
+  slashStatusLimits = []
 }: RenderAgentGUINodeViewOptions = {}) {
   return (
     <AgentGUINodeView
@@ -1566,7 +1547,6 @@ function buildAgentGUINodeViewElement({
       conversationRailMaxWidthPx={420}
       detailMinWidthPx={220}
       uiLanguage="en"
-      showProjectSelector={showProjectSelector}
       onOpenConversationWindow={onOpenConversationWindow}
       onConversationRailWidthChanged={onConversationRailWidthChanged}
       labels={labels}
@@ -1760,6 +1740,7 @@ function createLabels(): AgentGUIViewLabels {
     modelContextWindowSuffix: "context window",
     modelTooltipVersionLabel: "Version",
     defaultModel: "defaultModel",
+    loadingOptions: "loadingOptions",
     inheritedUnavailable: "inheritedUnavailable",
     reasoningLabel: "reasoning",
     reasoningDegreeLabel: "reasoningDegreeLabel",
@@ -1826,6 +1807,7 @@ function createLabels(): AgentGUIViewLabels {
     empty: "empty",
     conversations: "conversations",
     newConversation: "newConversation",
+    agentConfig: "agentConfig",
     agentEnvSetup: "agentEnvSetup",
     noConversations: "noConversations",
     emptyProjectConversations: "emptyProjectConversations",

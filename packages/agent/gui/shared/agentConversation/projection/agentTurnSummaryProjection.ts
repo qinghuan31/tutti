@@ -755,12 +755,7 @@ function normalizedFilePath(
 
 function isIgnoredFilePath(path: string): boolean {
   const normalizedPath = path.replace(/\\/g, "/").replace(/\/+$/, "");
-  return (
-    normalizedPath === "/dev/null" ||
-    normalizedPath === "NUL" ||
-    normalizedPath === "/private/tmp" ||
-    normalizedPath.startsWith("/private/tmp/")
-  );
+  return normalizedPath === "/dev/null" || normalizedPath === "NUL";
 }
 
 function isStructuredPayloadPath(path: string): boolean {
@@ -785,6 +780,25 @@ function dedupeFiles(
   files.forEach((file) => {
     const existing = byPath.get(file.path);
     if (!existing) {
+      byPath.set(file.path, file);
+      return;
+    }
+    if (existing.changeType === "deleted" && file.changeType === "created") {
+      byPath.set(file.path, {
+        ...file,
+        changeType: "modified",
+        unifiedDiff: null,
+        oldString:
+          existing.oldString ??
+          existing.content ??
+          existing.unifiedDiff ??
+          null,
+        newString: file.newString ?? file.content ?? file.unifiedDiff ?? null,
+        content: null
+      });
+      return;
+    }
+    if (file.changeType === "deleted" || existing.changeType === "deleted") {
       byPath.set(file.path, file);
       return;
     }

@@ -156,6 +156,9 @@ func TestParseCodexJSONLExtractsPromptFromIDEContext(t *testing.T) {
 	if session.Title != "Refactor the parser" {
 		t.Fatalf("title = %q, want IDE request payload", session.Title)
 	}
+	if len(session.Messages) != 1 || session.Messages[0].Text != "Refactor the parser" {
+		t.Fatalf("messages = %#v, want IDE context replaced with request text", session.Messages)
+	}
 }
 
 func TestParseCodexJSONLSkipsAgentsAndEnvironmentPreamble(t *testing.T) {
@@ -194,6 +197,9 @@ func TestParseCodexJSONLSkipsAgentsAndEnvironmentPreamble(t *testing.T) {
 	if session.Title != "Real question here" {
 		t.Fatalf("title = %q, want first non-preamble user message", session.Title)
 	}
+	if len(session.Messages) != 1 || session.Messages[0].Text != "Real question here" {
+		t.Fatalf("messages = %#v, want only the real user message", session.Messages)
+	}
 }
 
 func TestParseClaudeCodeJSONLPrefersCustomTitle(t *testing.T) {
@@ -220,6 +226,32 @@ func TestParseClaudeCodeJSONLPrefersCustomTitle(t *testing.T) {
 	}
 	if session.Title != "Summarize user persona prompts" {
 		t.Fatalf("title = %q, want custom-title", session.Title)
+	}
+}
+
+func TestParseClaudeCodeJSONLUsesPromptInsideMentionHandoffTitle(t *testing.T) {
+	cwd := t.TempDir()
+	prompt := "[@AI Canvas](mention://workspace-app/ai-media-canvas?workspaceId=ws-1) 帮我生成图片"
+	session, ok, err := parseClaudeCodeJSONL(
+		filepath.Join(cwd, "claude.jsonl"),
+		strings.NewReader(testAgentJSONL(t,
+			map[string]any{
+				"timestamp": "2026-06-18T00:00:00Z",
+				"sessionId": "claude-handoff",
+				"cwd":       cwd,
+				"uuid":      "claude-1",
+				"message": map[string]any{
+					"role":    "user",
+					"content": []any{map[string]any{"type": "text", "text": "Claude Code mention handoff routing for this user turn:\n- Treat `mention://...` links as internal Tutti references.\n\nUser prompt:\n" + prompt}},
+				},
+			},
+		)),
+	)
+	if err != nil || !ok {
+		t.Fatalf("parseClaudeCodeJSONL ok=%v err=%v", ok, err)
+	}
+	if session.Title != prompt {
+		t.Fatalf("title = %q, want user prompt title", session.Title)
 	}
 }
 

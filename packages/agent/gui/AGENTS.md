@@ -9,9 +9,13 @@ adds AgentGUI-specific guardrails.
 
 ## Required Reading
 
-Before editing AgentGUI, AgentGuiNode, or the agent conversation module, read:
+Before planning or editing AgentGUI, AgentGuiNode, or the agent conversation
+module, read this architecture document first:
 
 - [docs/architecture/agent-gui-node.md](../../../docs/architecture/agent-gui-node.md)
+
+Then read the package/activity boundary document:
+
 - [docs/architecture/agent-activity-packages.md](../../../docs/architecture/agent-activity-packages.md)
 
 For composer file references or mention behavior, also read the relevant

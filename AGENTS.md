@@ -27,7 +27,8 @@ Use this root file for repository-wide defaults only. Area-specific files win.
 Also route by module name, not only by path. If a request mentions AgentGUI,
 AgentGuiNode, Agent GUI, the agent conversation module, agent composer,
 workspace agent timeline, agent approvals, or interactive agent prompts, read
-`packages/agent/gui/AGENTS.md` before planning or editing, even when no file
+`docs/architecture/agent-gui-node.md` first, then
+`packages/agent/gui/AGENTS.md`, before planning or editing, even when no file
 path is supplied.
 
 ## Contribution Workflow

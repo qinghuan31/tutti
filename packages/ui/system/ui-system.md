@@ -307,6 +307,8 @@ The current shared global `z-index` tokens are:
   Dialog backdrops that should dim or block panel surfaces beneath them.
 - `--z-dialog`
   Dialog content rendered above dialog backdrops.
+- `--z-dialog-popover`
+  Floating controls or host-owned preview windows that must stay above dialog content and backdrop while remaining below tooltips.
 - `--z-tooltip`
   Short hover/focus guidance that should stay above panels, drawers, and their popovers so clipped text can be inspected across overlay boundaries.
 

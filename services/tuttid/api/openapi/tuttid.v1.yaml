@@ -1657,7 +1657,7 @@ paths:
       operationId: getAgentProviderComposerOptions
       tags:
         - agent-session
-      summary: Get provider composer options with short-lived Claude Code discovery
+      summary: Get provider composer options with Claude Code live discovery
       requestBody:
         required: false
         content:
@@ -1666,7 +1666,7 @@ paths:
               $ref: "#/components/schemas/GetAgentProviderComposerOptionsRequest"
       responses:
         "200":
-          description: Agent provider composer options with short-lived Claude Code discovery when needed
+          description: Agent provider composer options with Claude Code live discovery when needed
           content:
             application/json:
               schema:
@@ -1760,6 +1760,16 @@ paths:
             type: array
             items:
               $ref: "#/components/schemas/WorkspaceAgentProvider"
+        - name: includeNetwork
+          in: query
+          required: false
+          description: >-
+            Opt into the network connectivity probe (registry / provider API /
+            proxy reachability). Off by default so the common detection path
+            stays local and never blocks on the network; only the agent-env
+            wizard's network diagnostic sets this.
+          schema:
+            type: boolean
       responses:
         "200":
           description: Agent provider status snapshot
@@ -3694,6 +3704,8 @@ components:
           $ref: "#/components/schemas/DesktopAgentGuiConversationRailCollapsedByProvider"
         appCatalogChannel:
           $ref: "#/components/schemas/DesktopAppCatalogChannel"
+        showAppDeveloperSources:
+          type: boolean
         browserUseConnectionMode:
           $ref: "#/components/schemas/DesktopBrowserUseConnectionMode"
         defaultAgentProvider:
@@ -4324,6 +4336,13 @@ components:
           minLength: 1
         description:
           type: string
+        authors:
+          type: array
+          items:
+            $ref: "#/components/schemas/WorkspaceAppAuthor"
+        repository:
+          $ref: "#/components/schemas/WorkspaceAppRepository"
+          nullable: true
         createdAtUnixMs:
           type: integer
           format: int64
@@ -4411,6 +4430,35 @@ components:
       enum:
         - hibernate
         - keep-mounted
+    WorkspaceAppAuthor:
+      type: object
+      additionalProperties: false
+      required:
+        - name
+      properties:
+        name:
+          type: string
+          minLength: 1
+        url:
+          type: string
+          nullable: true
+        avatarUrl:
+          type: string
+          nullable: true
+    WorkspaceAppRepository:
+      type: object
+      additionalProperties: false
+      required:
+        - type
+        - url
+      properties:
+        type:
+          type: string
+          enum:
+            - github
+        url:
+          type: string
+          minLength: 1
     WorkspaceAppUploadPurpose:
       type: string
       enum:
@@ -5259,6 +5307,82 @@ components:
       enum:
         - completed
         - failed
+    AgentProviderActiveActionPhase:
+      type: string
+      enum:
+        - detect
+        - install
+        - repair
+        - verify
+        - done
+        - error
+    AgentProviderActiveActionStepStatus:
+      type: string
+      enum:
+        - pending
+        - running
+        - ok
+        - error
+        - skipped
+    AgentProviderActiveActionStep:
+      type: object
+      additionalProperties: false
+      required:
+        - id
+        - label
+        - status
+        - detail
+      properties:
+        id:
+          type: string
+        label:
+          type: string
+          nullable: true
+        status:
+          $ref: "#/components/schemas/AgentProviderActiveActionStepStatus"
+        detail:
+          type: string
+          nullable: true
+    AgentProviderActiveActionError:
+      type: object
+      additionalProperties: false
+      required:
+        - code
+        - message
+      properties:
+        code:
+          type: string
+          nullable: true
+        message:
+          type: string
+          nullable: true
+    AgentProviderActiveAction:
+      type: object
+      additionalProperties: false
+      required:
+        - phase
+        - steps
+        - registry
+        - log
+        - error
+      properties:
+        phase:
+          $ref: "#/components/schemas/AgentProviderActiveActionPhase"
+        steps:
+          type: array
+          items:
+            $ref: "#/components/schemas/AgentProviderActiveActionStep"
+        registry:
+          type: string
+          nullable: true
+        log:
+          type: array
+          items:
+            type: string
+        error:
+          allOf:
+            - $ref: "#/components/schemas/AgentProviderActiveActionError"
+          nullable: true
     AgentProviderProbeResponse:
       type: object
       additionalProperties: false
@@ -5384,6 +5508,13 @@ components:
         version:
           type: string
           nullable: true
+        minVersion:
+          type: string
+          nullable: true
+          description: >-
+            The lowest CLI version this provider supports, when it enforces a
+            floor (currently codex). Lets the UI show "current X, requires Y"
+            without duplicating the backend's version gate.
     AgentProviderAdapterStatus:
       type: object
       additionalProperties: false
@@ -5400,6 +5531,19 @@ components:
           type: array
           items:
             type: string
+        version:
+          type: string
+          nullable: true
+          description: >-
+            The installed ACP adapter package version, when resolvable. Lets the
+            UI and telemetry show the actual adapter version (not just a path).
+        requiredVersion:
+          type: string
+          nullable: true
+          description: >-
+            The adapter package version this provider requires. With version,
+            lets the UI show "current X, requires Y" for an adapter version
+            mismatch and makes the drift visible in telemetry.
     AgentProviderAuthInfo:
       type: object
       additionalProperties: false
@@ -5411,6 +5555,10 @@ components:
         accountLabel:
           type: string
           nullable: true
+        authMethod:
+          type: string
+          nullable: true
+          description: The authentication method reported by the provider CLI (e.g. oauth, apiKey).
     AgentProviderStatus:
       type: object
       additionalProperties: false
@@ -5439,6 +5587,10 @@ components:
         network:
           allOf:
             - $ref: "#/components/schemas/AgentProviderNetworkStatus"
+          nullable: true
+        activeAction:
+          allOf:
+            - $ref: "#/components/schemas/AgentProviderActiveAction"
           nullable: true
     AgentProviderNetworkStatus:
       type: object
@@ -5682,8 +5834,10 @@ components:
         - id
         - agentSessionId
         - messageId
+        - turnId
         - role
         - kind
+        - occurredAtUnixMs
         - version
       properties:
         id:
@@ -5698,6 +5852,7 @@ components:
           minLength: 1
         turnId:
           type: string
+          minLength: 1
         role:
           type: string
           minLength: 1
@@ -5714,6 +5869,7 @@ components:
         occurredAtUnixMs:
           type: integer
           format: int64
+          minimum: 1
         startedAtUnixMs:
           type: integer
           format: int64

@@ -117,6 +117,96 @@ test("workspace files launch coordinator preserves open directory mode", async (
   ]);
 });
 
+test("workspace files launch coordinator preserves existence validation intent", async () => {
+  const requests: Array<{
+    path: string;
+    validateExists?: boolean;
+    workspaceId: string;
+  }> = [];
+  const dispose = registerWorkspaceFilesLaunchHandler(
+    "workspace-exists",
+    (request) => {
+      requests.push(request);
+      return true;
+    }
+  );
+
+  assert.equal(
+    await requestWorkspaceFilesLaunch({
+      homeDirectory: "/Users/example",
+      path: "~/demo/README.md",
+      validateExists: true,
+      workspaceId: "workspace-exists"
+    }),
+    true
+  );
+  dispose();
+  assert.deepEqual(requests, [
+    {
+      path: "/Users/example/demo/README.md",
+      validateExists: true,
+      workspaceId: "workspace-exists"
+    }
+  ]);
+});
+
+test("workspace files launch coordinator expands home-relative paths before dispatch", async () => {
+  const requests: Array<{
+    mode?: "reveal" | "open-directory";
+    path: string;
+    workspaceId: string;
+  }> = [];
+  const dispose = registerWorkspaceFilesLaunchHandler(
+    "workspace-home-relative",
+    (request) => {
+      requests.push(request);
+      return true;
+    }
+  );
+
+  assert.equal(
+    await requestWorkspaceFilesLaunch({
+      homeDirectory: "/Users/example",
+      path: "~/demo/README.md",
+      workspaceId: "workspace-home-relative"
+    }),
+    true
+  );
+  assert.equal(
+    await requestWorkspaceFilesLaunch({
+      homeDirectory: "/Users/example",
+      mode: "open-directory",
+      path: "~",
+      workspaceId: "workspace-home-relative"
+    }),
+    true
+  );
+  assert.equal(
+    await requestWorkspaceFilesLaunch({
+      homeDirectory: "C:\\Users\\example",
+      path: "~/Desktop/report.txt",
+      workspaceId: "workspace-home-relative"
+    }),
+    true
+  );
+  dispose();
+  assert.deepEqual(requests, [
+    {
+      path: "/Users/example/demo/README.md",
+      workspaceId: "workspace-home-relative"
+    },
+    {
+      mode: "open-directory",
+      path: "/Users/example",
+      workspaceId: "workspace-home-relative"
+    },
+    {
+      path: "C:/Users/example/Desktop/report.txt",
+      workspaceId: "workspace-home-relative"
+    }
+  ]);
+});
+
 test("workspace files launch coordinator preserves legacy absolute workspace paths", async () => {
   const requests: Array<{ path: string; workspaceId: string }> = [];
   const dispose = registerWorkspaceFilesLaunchHandler(

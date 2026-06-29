@@ -25,6 +25,7 @@ import type { IDesktopRichTextAtService } from "@renderer/features/rich-text-at"
 import type { IWorkspaceAppCenterService } from "@renderer/features/workspace-app-center";
 import type { IWorkspaceAgentActivityService } from "@renderer/features/workspace-agent";
 import type { IWorkspaceUserProjectService } from "@renderer/features/workspace-user-project";
+import type { IWorkspaceFileManagerService } from "@renderer/features/workspace-file-manager";
 import type { IReporterService } from "@renderer/features/analytics";
 import {
   createDesktopAgentGUIWorkbenchHostInput,
@@ -68,6 +69,7 @@ export function createWorkspaceAgentGuiContribution(input: {
   richTextAtService: IDesktopRichTextAtService;
   runtimeApi: DesktopRuntimeApi;
   workspaceAgentActivityService: IWorkspaceAgentActivityService;
+  workspaceFileManagerService: IWorkspaceFileManagerService;
   workspaceUserProjectService: IWorkspaceUserProjectService;
   workspaceId: string;
 }): WorkbenchContribution {
@@ -79,6 +81,7 @@ export function createWorkspaceAgentGuiContribution(input: {
     richTextAtService: input.richTextAtService,
     runtimeApi: input.runtimeApi,
     workspaceAgentActivityService: input.workspaceAgentActivityService,
+    workspaceFileManagerService: input.workspaceFileManagerService,
     workspaceUserProjectService: input.workspaceUserProjectService,
     workspaceId: input.workspaceId
   });

@@ -42,11 +42,97 @@ func TestVisibleFailureCodeClassifiesStreamDisconnected(t *testing.T) {
 }
 
 func TestVisibleFailureCodeDoesNotTreatPatchContextLoginTextAsAuth(t *testing.T) {
+	// Test-function text in the stderr tail ("...Login...") must never read as
+	// codex auth. The process exited cleanly (code 0) with that apply_patch error
+	// only as incidental tail output, so it classifies as an interrupted session —
+	// the one thing it must NOT be is auth_required.
 	detail := `acp process exited with code 0: process exited: ERROR codex_core::tools::router: error=apply_patch verification failed: Failed to find expected lines in /Users/wwcome/work/tutti-os/tutti/services/tuttid/service/agentstatus/service_test.go:
 func TestServiceLoginRunsProviderLoginCommand(t *testing.T) {
 	service := testService(func(name string) (string, error) {`
-	if got := visibleFailureCode(detail); got != "process_exited" {
-		t.Fatalf("visibleFailureCode() = %q, want process_exited", got)
+	if got := visibleFailureCode(detail); got == "auth_required" {
+		t.Fatalf("visibleFailureCode() = auth_required, but embedded test text must not read as codex auth")
+	}
+}
+
+func TestVisibleFailureCodeDoesNotTreatMcpServerAuthAsCodexAuth(t *testing.T) {
+	// A Notion/Figma MCP server's expired OAuth token crashes codex's MCP client
+	// (rmcp) and bubbles up here. It mentions "access token"/"AuthRequired", which
+	// trips the auth pattern, but codex itself is still signed in — so this must
+	// NOT surface as "Codex needs authentication". The exit is code 0 (a clean
+	// shutdown), so it reads as an interrupted session, never auth_required.
+	detail := `acp process exited with code 0: process exited: ERROR rmcp::transport::worker: ` +
+		`worker quit with fatal: Transport channel closed, when AuthRequired(AuthRequiredError { ` +
+		`www_authenticate_header: "Bearer realm=\"OAuth\", ` +
+		`resource_metadata=\"https://mcp.notion.com/.well-known/oauth-protected-resource/mcp\", ` +
+		`error=\"invalid_token\", error_description=\"Missing or invalid access token\"" })`
+	if got := visibleFailureCode(detail); got == "auth_required" {
+		t.Fatalf("visibleFailureCode() = auth_required, but MCP server auth must not read as codex auth")
+	}
+	if got := visibleFailureCode(detail); got != "session_interrupted" {
+		t.Fatalf("visibleFailureCode() = %q, want session_interrupted (clean exit-0 MCP failure)", got)
+	}
+}
+
+func TestVisibleFailureCodeClassifiesCleanExitAsInterrupted(t *testing.T) {
+	// A clean exit (code 0) reaching here means the app-server was stopped
+	// externally mid-turn (host quit, or an agent killed its own host) — the
+	// session was interrupted, not "Codex request failed".
+	for _, detail := range []string{
+		"acp process exited with code 0: ",
+		"acp process exited with code 0: shutting down",
+	} {
+		if got := visibleFailureCode(detail); got != "session_interrupted" {
+			t.Fatalf("visibleFailureCode(%q) = %q, want session_interrupted", detail, got)
+		}
+	}
+	if !visibleFailureRetryable("session_interrupted", "acp process exited with code 0: ") {
+		t.Fatal("session_interrupted should be retryable")
+	}
+}
+
+func TestVisibleFailureCodeClassifiesSignalKillAsInterrupted(t *testing.T) {
+	// Signal-terminations (128+N: 137 SIGKILL, 143 SIGTERM, 130 SIGINT) are the
+	// process being killed externally, not codex erroring out.
+	for _, detail := range []string{
+		"acp process exited with code 137: ",
+		"acp process exited with code 143: ",
+		"acp process exited with code 130: ",
+	} {
+		if got := visibleFailureCode(detail); got != "session_interrupted" {
+			t.Fatalf("visibleFailureCode(%q) = %q, want session_interrupted", detail, got)
+		}
+	}
+}
+
+func TestVisibleFailureCodeClassifiesUsageLimitAsQuota(t *testing.T) {
+	// The most common real codex failure in the field is the ChatGPT usage cap,
+	// delivered as plain text (no structured codexErrorInfo). It must read as a
+	// quota/rate-limit, not a generic "request failed".
+	detail := "You've hit your usage limit. Upgrade to Pro (https://chatgpt.com/explore/pro), " +
+		"visit https://chatgpt.com/codex/settings/usage to purchase more credits or try again later."
+	if got := visibleFailureCode(detail); got != "quota_or_rate_limit" {
+		t.Fatalf("visibleFailureCode() = %q, want quota_or_rate_limit", got)
+	}
+}
+
+func TestVisibleFailureContentDescribesInterruptedSession(t *testing.T) {
+	got := visibleFailureContent(ProviderCodex, "turn", "session_interrupted")
+	want := "Codex stopped unexpectedly before it finished responding. Try again."
+	if got != want {
+		t.Fatalf("visibleFailureContent() = %q, want %q", got, want)
+	}
+}
+
+func TestVisibleFailureCodeStillClassifiesCodexOwnAuth(t *testing.T) {
+	// Codex's own login failure must still be auth_required (guard against the MCP
+	// exclusion being too broad).
+	for _, detail := range []string{
+		"acp process exited with code 1: process exited: not logged in. Please run /login.",
+		"401 Unauthorized: invalid authentication credentials",
+	} {
+		if got := visibleFailureCode(detail); got != "auth_required" {
+			t.Fatalf("visibleFailureCode(%q) = %q, want auth_required", detail, got)
+		}
 	}
 }
 

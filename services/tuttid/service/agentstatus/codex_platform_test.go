@@ -31,12 +31,12 @@ func TestCodexNpmPlatformDir(t *testing.T) {
 func TestCodexPlatformBinaryPath(t *testing.T) {
 	pkg := "/home/u/.npm/lib/node_modules/@openai/codex"
 	got, ok := codexPlatformBinaryPath(pkg, "darwin", "arm64")
-	want := filepath.Join(pkg, "node_modules", "@openai", "codex-darwin-arm64", "codex")
+	want := filepath.Join(pkg, "node_modules", "@openai", "codex-darwin-arm64", "vendor", "aarch64-apple-darwin", "bin", "codex")
 	if !ok || got != want {
 		t.Fatalf("codexPlatformBinaryPath darwin/arm64 = (%q,%v), want (%q,true)", got, ok, want)
 	}
 	winGot, ok := codexPlatformBinaryPath(pkg, "windows", "amd64")
-	winWant := filepath.Join(pkg, "node_modules", "@openai", "codex-win32-x64", "codex.exe")
+	winWant := filepath.Join(pkg, "node_modules", "@openai", "codex-win32-x64", "vendor", "x86_64-pc-windows-msvc", "bin", "codex.exe")
 	if !ok || winGot != winWant {
 		t.Fatalf("codexPlatformBinaryPath windows = (%q,%v), want (%q,true)", winGot, ok, winWant)
 	}
@@ -47,7 +47,7 @@ func TestCodexPlatformBinaryPath(t *testing.T) {
 
 func TestServiceCodexPlatformBinaryComplete(t *testing.T) {
 	pkg := t.TempDir()
-	binPath := filepath.Join(pkg, "node_modules", "@openai", "codex-darwin-arm64", "codex")
+	binPath := filepath.Join(pkg, "node_modules", "@openai", "codex-darwin-arm64", "vendor", "aarch64-apple-darwin", "bin", "codex")
 
 	svc := Service{IsExecutableFile: func(p string) bool {
 		info, err := os.Stat(p)
@@ -77,5 +77,25 @@ func TestServiceCodexPlatformBinaryComplete(t *testing.T) {
 	path, complete := svc.codexPlatformBinaryComplete(pkg, "darwin", "arm64")
 	if !complete || path != binPath {
 		t.Fatalf("expected complete with path=%q, got (%q,%v)", binPath, path, complete)
+	}
+}
+
+func TestServiceCodexPlatformBinaryCompleteAcceptsLegacyBinaryPath(t *testing.T) {
+	pkg := t.TempDir()
+	legacyBinPath := filepath.Join(pkg, "node_modules", "@openai", "codex-darwin-arm64", "codex")
+	if err := os.MkdirAll(filepath.Dir(legacyBinPath), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(legacyBinPath, []byte("bin"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	svc := Service{IsExecutableFile: func(p string) bool {
+		info, err := os.Stat(p)
+		return err == nil && !info.IsDir() && info.Mode().Perm()&0o111 != 0
+	}}
+	path, complete := svc.codexPlatformBinaryComplete(pkg, "darwin", "arm64")
+	if !complete || path != legacyBinPath {
+		t.Fatalf("expected complete with legacy path=%q, got (%q,%v)", legacyBinPath, path, complete)
 	}
 }

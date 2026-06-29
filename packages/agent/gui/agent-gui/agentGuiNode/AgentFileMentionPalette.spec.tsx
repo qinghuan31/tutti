@@ -30,7 +30,7 @@ vi.mock("../../i18n/index", async () => {
     "agentHost.agentGui.mentionGroupAgentGeneratedFiles": "Agent 生成的文件",
     "agentHost.agentGui.mentionAgentGeneratedFolderBack": "返回",
     "agentHost.agentGui.mentionNoMatchingFiles": "没有匹配到文件",
-    "agentHost.roomIssueNode.issueStatusNotStarted": "未启动",
+    "agentHost.roomIssueNode.issueStatusNotStarted": "待开始",
     "agentHost.roomIssueNode.issueStatusRunning": "执行中",
     "agentHost.roomIssueNode.issueStatusInProgress": "执行中",
     "agentHost.roomIssueNode.issueStatusPendingAcceptance": "待验收",
@@ -166,15 +166,29 @@ describe("AgentFileMentionPalette", () => {
       />
     );
 
-    expect(screen.getByText("未启动")).toBeVisible();
+    expect(screen.getByText("待开始")).toBeVisible();
     expect(screen.getAllByText("执行中")).toHaveLength(2);
     expect(screen.getByText("待验收")).toBeVisible();
     expect(screen.getByText("已完成")).toBeVisible();
     expect(screen.getAllByText("失败")).toHaveLength(1);
     expect(screen.getByText("已取消")).toBeVisible();
-    for (const statusTag of document.querySelectorAll(
-      '[data-agent-mention-status-tag="true"]'
-    )) {
+    const statusTags = Array.from(
+      document.querySelectorAll('[data-agent-mention-status-tag="true"]')
+    );
+    expect(statusTags.map((tag) => tag.getAttribute("data-tone"))).toEqual([
+      "neutral",
+      "blue",
+      "blue",
+      "purple",
+      "green",
+      "red",
+      "neutral"
+    ]);
+    expect(statusTags[1]).toHaveClass("text-[var(--status-running)]");
+    expect(statusTags[3]).toHaveClass("text-[var(--rich-text-mention-issue)]");
+    expect(statusTags[4]).toHaveClass("text-[var(--state-success)]");
+    expect(statusTags[5]).toHaveClass("text-[var(--state-danger)]");
+    for (const statusTag of statusTags) {
       expect(statusTag.className).not.toContain("border-[");
     }
     expect(screen.queryByText("空闲")).toBeNull();
@@ -2171,6 +2185,14 @@ describe("AgentFileMentionPalette", () => {
       css.match(
         /\.workspace-agents-status-panel__detail-user-message\s+>\s+div,[\s\S]*?\.workspace-agents-status-panel__detail-user-message\s+\.ProseMirror\s*{[^}]*}/s
       )?.[0] ?? "";
+    const userParagraphRule =
+      css.match(
+        /\.workspace-agents-status-panel__detail-user-message\.agent-gui-conversation__user-message-bubble\s+p\s*{[^}]*}/s
+      )?.[0] ?? "";
+    const mentionOnlyUserEditorRule =
+      css.match(
+        /\.workspace-agents-status-panel__detail-user-message\[data-agent-mention-only="true"\]\.agent-gui-conversation__user-message-bubble\s*{[^}]*}/s
+      )?.[0] ?? "";
 
     expect(userBubbleRule).toMatch(/display:\s*inline-block/);
     expect(userBubbleRule).toMatch(/justify-self:\s*end/);
@@ -2193,8 +2215,15 @@ describe("AgentFileMentionPalette", () => {
     expect(userAppMessageTokenRule).toMatch(/vertical-align:\s*middle/);
     expect(userAppMessageTextRule).toMatch(/overflow:\s*visible/);
     expect(userEditorRule).toMatch(/width:\s*fit-content/);
+    expect(userEditorRule).toMatch(/display:\s*inline-block/);
+    expect(userEditorRule).toMatch(/vertical-align:\s*top/);
     expect(userEditorRule).toMatch(/max-width:\s*100%/);
     expect(userEditorRule).toMatch(/font-size:\s*inherit/);
     expect(userEditorRule).toMatch(/line-height:\s*inherit/);
+    expect(userParagraphRule).toMatch(/width:\s*fit-content/);
+    expect(userParagraphRule).toMatch(/max-width:\s*100%/);
+    expect(mentionOnlyUserEditorRule).toMatch(
+      /max-width:\s*min\(100%,\s*calc\(var\(--agent-mention-max-width,\s*16rem\)\s*\+\s*24px\)\)/
+    );
   });
 });

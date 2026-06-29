@@ -12,6 +12,7 @@ import type {
   DesktopRuntimeApi
 } from "@preload/types";
 import type {
+  DesktopClipboardImagePayload,
   DesktopTerminalDiagnosticPayload,
   DesktopTerminalStreamUrlRequest
 } from "@shared/contracts/ipc";
@@ -23,6 +24,10 @@ import type { IWorkspaceUserProjectService } from "../../workspace-user-project/
 const workspaceId = "workspace-1";
 
 interface DesktopAgentHostApiUnderTest {
+  clipboard: {
+    writeImage(input: DesktopClipboardImagePayload): Promise<void>;
+    writeText(text: string): Promise<void>;
+  };
   agentGuiBatch: {
     exportRun(input: unknown): Promise<unknown>;
   };
@@ -464,6 +469,24 @@ test("desktop agent host api routes session commands through injected tuttid cli
       method: "cancel"
     }
   ]);
+});
+
+test("desktop agent host api writes images through the host clipboard", async () => {
+  const copiedImages: DesktopClipboardImagePayload[] = [];
+  const api = createAgentHostApi({
+    hostFilesApi: createHostFilesApi({
+      async copyImageToClipboard(input) {
+        copiedImages.push(input);
+      }
+    })
+  });
+
+  await api.clipboard.writeImage({
+    data: "cG5n",
+    mimeType: "image/png"
+  });
+
+  assert.deepEqual(copiedImages, [{ data: "cG5n", mimeType: "image/png" }]);
 });
 
 test("desktop agent host api returns no-active-turn cancel metadata", async () => {
@@ -1584,6 +1607,7 @@ test("desktop agent host api reconciles event hub dirty signals into full sessio
             payload: { text: "from reconcile" },
             role: "assistant",
             status: "completed",
+            turnId: "turn-2",
             version: 2
           }
         ]
@@ -1637,6 +1661,7 @@ test("desktop agent host api reconciles event hub dirty signals into full sessio
           messageId: string;
           payload?: Record<string, unknown>;
           seq?: number;
+          version?: number;
           workspaceId?: string;
         };
         eventType: string;
@@ -1652,9 +1677,10 @@ test("desktop agent host api reconciles event hub dirty signals into full sessio
       payload: { text: "from reconcile" },
       role: "assistant",
       seq: 2,
+      version: 2,
       startedAtUnixMs: undefined,
       status: "completed",
-      turnId: undefined,
+      turnId: "turn-2",
       workspaceId
     },
     eventType: "message_update"
@@ -2093,6 +2119,7 @@ test("desktop agent host api prefers persisted tuttid session messages when avai
               occurredAtUnixMs: 1717200001000,
               payload: { text: "from tuttid" },
               role: "assistant",
+              turnId: "turn-8",
               version: 8
             }
           ]
@@ -2122,7 +2149,7 @@ test("desktop agent host api prefers persisted tuttid session messages when avai
         role: "assistant",
         startedAtUnixMs: undefined,
         status: undefined,
-        turnId: undefined,
+        turnId: "turn-8",
         version: 8,
         workspaceId: "workspace-1"
       }
@@ -2177,9 +2204,11 @@ test("desktop agent host api preserves frontend session UUIDs as canonical ids",
               id: 3,
               kind: "text",
               messageId: "message-1",
+              occurredAtUnixMs: 1717200003000,
               payload: { text: "ok" },
               role: "assistant",
               status: "completed",
+              turnId: "turn-3",
               version: 3
             }
           ]
@@ -2779,6 +2808,7 @@ function createHostFilesApi(
     async selectUploadFiles() {
       return [];
     },
+    async copyImageToClipboard() {},
     async copyFilesToClipboard() {},
     async listOpenWithApplications() {
       return [];
@@ -3049,6 +3079,7 @@ function inlineActivityMessage(input: {
     },
     role: "assistant",
     status: "streaming",
+    turnId: "turn-1",
     version: input.version,
     workspaceId
   };

@@ -198,7 +198,8 @@ export interface TuttidClient {
   createWorkspace(request: { name: string }): Promise<WorkspaceSummary>;
   createWorkspaceAgentSession(
     workspaceID: string,
-    request: CreateWorkspaceAgentSessionRequest
+    request: CreateWorkspaceAgentSessionRequest,
+    requestOptions?: TuttidRequestOptions
   ): Promise<WorkspaceAgentSession>;
   createWorkspaceTerminal(
     workspaceID: string,
@@ -251,10 +252,17 @@ export interface TuttidClient {
   ): Promise<WorkspaceAgentSession>;
   getAgentProviderComposerOptions(
     provider: WorkspaceAgentProvider,
-    request?: GetAgentProviderComposerOptionsRequest
+    request?: GetAgentProviderComposerOptionsRequest,
+    requestOptions?: TuttidRequestOptions
   ): Promise<AgentProviderComposerOptionsResponse>;
   getAgentProviderStatuses(request?: {
     providers?: WorkspaceAgentProvider[];
+    /**
+     * Opt into the network connectivity probe. Off by default so the dock /
+     * startup detection stays local and never blocks on the network; only the
+     * agent-env wizard's network diagnostic sets this.
+     */
+    includeNetwork?: boolean;
   }): Promise<AgentProviderStatusListResponse>;
   probeAgentProvider(
     provider: WorkspaceAgentProvider

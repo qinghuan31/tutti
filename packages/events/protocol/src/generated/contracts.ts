@@ -139,6 +139,12 @@ export interface WorkspaceWorkspaceAppV1 {
   displayName: string;
   version: string;
   description: string;
+  authors?: readonly {
+    name: string;
+    url?: string | null;
+    avatarUrl?: string | null;
+  }[];
+  repository?: Record<string, unknown> | null;
   iconUrl: string | null;
   installed: boolean;
   enabled: boolean;
@@ -217,9 +223,9 @@ export type AgentActivityUpdatedPayloadV1 =
           payload: Record<string, unknown>;
           role: string;
           version: number;
-          turnId?: string;
+          turnId: string;
           status?: string;
-          occurredAtUnixMs?: number;
+          occurredAtUnixMs: number;
           startedAtUnixMs?: number;
           completedAtUnixMs?: number;
           createdAtUnixMs?: number;

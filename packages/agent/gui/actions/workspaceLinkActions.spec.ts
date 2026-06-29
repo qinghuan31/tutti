@@ -244,6 +244,34 @@ describe("resolveWorkspaceFileLinkAction", () => {
     });
   });
 
+  it("preserves home-relative paths for the desktop launch layer", () => {
+    expect(
+      resolveWorkspaceFileLinkAction({
+        path: "~/docs/spec.md",
+        workspaceRoot: "/Users/test/project/tutti",
+        source: "agent-markdown"
+      })
+    ).toMatchObject({
+      type: "open-workspace-file",
+      path: "~/docs/spec.md",
+      directoryPath: "~/docs",
+      workspaceRoot: "/Users/test/project/tutti"
+    });
+
+    expect(
+      resolveWorkspaceFileLinkAction({
+        path: "~",
+        workspaceRoot: "/Users/test/project/tutti",
+        source: "agent-markdown"
+      })
+    ).toMatchObject({
+      type: "open-workspace-file",
+      path: "~",
+      directoryPath: "~",
+      workspaceRoot: "/Users/test/project/tutti"
+    });
+  });
+
   it("allows Windows local paths inside the workspace root", () => {
     expect(
       resolveWorkspaceFileLinkAction({

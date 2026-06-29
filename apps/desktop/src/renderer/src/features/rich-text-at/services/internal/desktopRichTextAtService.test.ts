@@ -842,6 +842,59 @@ test("desktop rich text @ service uses task icon fallback for issue manager app 
   });
 });
 
+test("desktop rich text @ service hides issue manager app mentions from issue manager", async () => {
+  const service = new DesktopRichTextAtService({
+    tuttidClient: {
+      async listWorkspaceAppMentionCandidates(workspaceId: string) {
+        return {
+          workspaceId,
+          apps: [
+            createWorkspaceAppMentionCandidate({
+              appId: "issue-manager",
+              commandCount: 1,
+              commandDescriptions: ["List workspace tasks."],
+              commandPaths: ["issue list"],
+              commandSummaries: ["List tasks"],
+              description: "Manage workspace tasks and runs.",
+              displayName: "Task Manager",
+              scopes: ["issue"]
+            }),
+            createWorkspaceAppMentionCandidate({
+              appId: "app-weather",
+              commandCount: 1,
+              commandDescriptions: ["Inspect weather forecasts."],
+              commandPaths: ["weather forecast"],
+              commandSummaries: ["Get a forecast"],
+              description: "Plan weather-sensitive work.",
+              displayName: "Weather Desk",
+              scopes: ["weather"]
+            })
+          ]
+        };
+      }
+    } as unknown as TuttidClient
+  });
+
+  const [provider] = service.getProviders({
+    capabilities: ["workspace-app"],
+    surface: "task",
+    target: "issue-manager",
+    workspaceId: "workspace-1"
+  });
+  assert.ok(provider);
+  const items = await provider.query({
+    context: {},
+    keyword: "",
+    maxResults: 5,
+    trigger: "@"
+  });
+
+  assert.deepEqual(
+    items.map((item) => provider.getItemKey(item)),
+    ["app-weather"]
+  );
+});
+
 function iconUrlFromProviderItem(item: unknown): string {
   if (!item || typeof item !== "object") {
     return "";

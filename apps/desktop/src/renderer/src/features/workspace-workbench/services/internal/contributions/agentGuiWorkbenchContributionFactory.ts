@@ -22,6 +22,7 @@ export const agentGuiWorkbenchContributionFactory: DesktopWorkbenchContributionF
         richTextAtService: context.richTextAtService,
         runtimeApi: context.runtimeApi,
         workspaceAgentActivityService: context.workspaceAgentActivityService,
+        workspaceFileManagerService: context.workspaceFileManagerService,
         workspaceUserProjectService: context.workspaceUserProjectService,
         workspaceId: context.workspaceId
       });

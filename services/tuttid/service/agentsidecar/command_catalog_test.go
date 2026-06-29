@@ -85,6 +85,28 @@ func TestCommandGuideFromCapabilitiesUsesRelevantRegistryCommands(t *testing.T) 
 			InputSchema: map[string]any{"required": []any{"app-id"}},
 		},
 		{
+			ID:          "ai-media-canvas.aimc.open",
+			Path:        []string{"aimc", "open"},
+			Summary:     "Open AI Canvas",
+			Description: "Open AI Canvas.",
+			Source: cliservice.CapabilitySource{
+				Kind:    cliservice.CapabilitySourceApp,
+				AppID:   "ai-media-canvas",
+				AppName: "AI Canvas",
+			},
+		},
+		{
+			ID:          "app.tutti-onboarding.onboarding.read",
+			Path:        []string{"onboarding", "read"},
+			Summary:     "Read onboarding",
+			Description: "Read onboarding guide.",
+			Source: cliservice.CapabilitySource{
+				Kind:    cliservice.CapabilitySourceApp,
+				AppID:   "tutti-onboarding",
+				AppName: "新手指引",
+			},
+		},
+		{
 			ID:          "agent-context.agent.tutti-cli-skill-bundle",
 			Path:        []string{"agent", "tutti-cli-skill-bundle"},
 			Summary:     "Get Tutti CLI skill bundle",
@@ -123,6 +145,14 @@ func TestCommandGuideFromCapabilitiesUsesRelevantRegistryCommands(t *testing.T) 
 	if !strings.Contains(guide, "tutti app open --app-id <app-id> --json") ||
 		!strings.Contains(guide, "Use only when the user explicitly asks to open or show an app window") {
 		t.Fatalf("guide missing guarded app open: %q", guide)
+	}
+	if !strings.Contains(guide, "tutti aimc open") ||
+		!strings.Contains(guide, "Open AI Canvas. Use only when the user explicitly asks to open or show an app window") {
+		t.Fatalf("guide missing guarded app-specific open: %q", guide)
+	}
+	if !strings.Contains(guide, "tutti onboarding read") ||
+		!strings.Contains(guide, "Provided by workspace app 新手指引. App id: tutti-onboarding.") {
+		t.Fatalf("guide missing app command metadata: %q", guide)
 	}
 	if strings.Contains(guide, "skill-bundle") {
 		t.Fatalf("guide included host integration command: %q", guide)

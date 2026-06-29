@@ -5,7 +5,6 @@ import {
 import {
   MentionPaletteFromState,
   flattenMentionPaletteEntries,
-  issueMentionStatusTone,
   renderMentionRow,
   type MentionPaletteEntry,
   type MentionPaletteState,
@@ -15,6 +14,7 @@ import {
   type MentionRowStatusTag,
   type MentionRowStatusTone
 } from "@tutti-os/ui-rich-text/at-panel";
+import { resolveIssueManagerStatusPresentation } from "@tutti-os/workspace-issue-manager/ui";
 import { Spinner } from "../../app/renderer/components/ui/spinner";
 import { userAvatarPlaceholderUrl } from "../../shared/userAvatarPlaceholder";
 import { translate } from "../../i18n/index";
@@ -551,11 +551,12 @@ function agentIssueStatusTag(
   if (!status) {
     return null;
   }
+  const presentation = resolveIssueManagerStatusPresentation(status);
   return {
     label: roomIssueStatusLabel(status),
-    tone: issueMentionStatusTone(status),
+    tone: presentation.mentionTone,
     variant: "issue",
-    dataStatus: status.trim().toLowerCase() || "not_started"
+    dataStatus: presentation.dataStatus
   };
 }
 

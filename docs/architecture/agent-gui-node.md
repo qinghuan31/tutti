@@ -344,6 +344,14 @@ require a fetch so the controller snapshot remains authoritative. UI code
 should debug both the event payload and the reconcile fetch before treating a
 missing transcript row as a rendering-only bug.
 
+When a session status bug mentions "still processing", "queued", or a disabled
+composer after a turn finishes, inspect the full runtime tuple:
+`status`, `currentPhase`, and `turnLifecycle.phase`. The Agent Activity snapshot
+may carry lifecycle status such as `active` while the visible state is derived
+from `currentPhase` or turn lifecycle. Projection layers that bridge into legacy
+Host DTOs must normalize the tuple together, or `active/idle` and
+`active/working` sessions will render as the wrong conversation state.
+
 ### Message Parsing And Rendering
 
 ```text
@@ -359,6 +367,17 @@ Message parsing belongs in shared projection/model helpers. React components
 should render projected rows and fire actions. They should not own provider
 message semantics, merge keys, prompt status resolution, or durable message
 dedupe.
+
+Transcript `message_update` events that reach `AgentActivityRuntime` are a
+normalized runtime contract. Each transcript message must already carry a
+stable `messageId`, positive `version`/`seq`, stable `turnId`, and positive
+`occurredAtUnixMs`. Provider, adapter, desktop, or daemon ingestion layers must
+derive missing turn/time data from real active-turn, submit-context, lifecycle,
+or storage timestamps before AgentGUI sees the event. If a transcript message
+has no reliable `turnId`, the boundary must reject it instead of synthesizing a
+`message:<messageId>`, `seq:<seq>`, or similar ownership fallback. AgentGUI
+must not retarget optimistic prompts from turnless or untimestamped live
+messages.
 
 ### Layer Ownership Summary
 
@@ -710,6 +729,53 @@ composer document
 Never fix send bugs only in the composer UI. Also inspect the pending overlay,
 runtime command input, and timeline merge path.
 
+### Composer Mention References
+
+```text
+@ trigger range
+  -> AgentRichTextEditor suggestion state
+  -> AgentFileMentionPalette row action
+  -> mention command OR reference picker launch
+  -> composer document update
+  -> prompt mention serialization
+```
+
+The `@` trigger range is the source of truth for replacing typed mention text.
+Normal row selection replaces that range through the suggestion command. Any
+side action inside a mention row that opens another picker and later inserts
+files or `workspace-reference` mentions must clear the active trigger text
+before launching the picker, otherwise the raw `@` query remains in the
+composer before the inserted mention.
+
+`workspace-reference` hrefs are the passive reference contract, not a visual
+metadata store. Do not serialize app icons into the href just to render a chip.
+For `source=app` references, readonly and markdown renderers should hydrate the
+icon from the same `workspaceAppIcons` appId/workspaceId table used by ordinary
+`workspace-app` mentions.
+
+Quick check:
+
+```sh
+corepack pnpm --filter @tutti-os/agent-gui exec vitest run agent-gui/agentGuiNode/AgentComposer.spec.tsx -t "removes the active @ trigger"
+corepack pnpm --filter @tutti-os/agent-gui exec vitest run shared/AgentRichTextReadonly.spec.tsx shared/AgentMessageMarkdown.spec.tsx
+```
+
+### Agent Generated File Mentions
+
+```text
+Agent activity messages
+  -> generated-file collector in tuttid or AgentGUI fallback
+  -> desktop mention provider
+  -> mention palette grouping/count presentation
+  -> composer file mention insertion
+```
+
+Generated-file counts must be computed from collector output, not from palette
+rendering state. The collector owns the semantic filter: only successful
+file-change tool messages should contribute paths, and failed, canceled,
+running, or read-only tool calls must be ignored even when their payloads carry
+`path`, `filePath`, `fileChanges`, or `changes` fields.
+
 ### Approval Or Ask-User Prompt
 
 ```text
@@ -753,6 +819,21 @@ rich text document
 IME behavior, search state, serialization, and transcript rendering are separate
 links. A local picker fix can break prompt serialization or rendered links.
 
+Rendered transcript markdown should only promote explicit file targets to
+workspace file actions: local absolute paths, home-relative paths, and Windows
+absolute paths. Relative markdown links remain display text unless another
+structured reference contract marks them as a workspace reference. Host adapters
+that open workspace file nodes should validate explicit agent-command file
+targets before launching the files surface, so a speculative or stale agent
+path does not open a misleading workbench node.
+
+Quick checks:
+
+```sh
+pnpm --filter @tutti-os/agent-gui test -- shared/AgentMessageMarkdown.spec.tsx
+pnpm --filter @tutti-os/desktop test -- src/renderer/src/features/workspace-file-manager/services/internal/workspaceFileManagerService.test.ts src/renderer/src/features/workspace-workbench/services/workspaceFilesRevealIntent.test.ts
+```
+
 ## Troubleshooting Playbook
 
 ### Blank Or Stale Conversation Detail
@@ -788,6 +869,19 @@ Quick checks:
 - Confirm pending overlay messages are inserted and later reconciled.
 - Confirm live events or message page reload contains a newer version.
 - Inspect timeline item merge and dedupe keys.
+- Confirm `message_update` payloads already include `turnId`,
+  `occurredAtUnixMs`, and a positive `version` or `seq`; missing fields belong
+  in runtime/adapter/daemon normalization, not AgentGUI prompt retargeting.
+- When the selected detail window only contains optimistic prompt messages,
+  do not use their local timestamp-derived versions as durable message-window
+  bounds; live runtime messages can have lower authoritative sequence versions
+  and must still enter the transcript before a refresh.
+- When a live message or lifecycle patch reveals the real turn ID for a
+  first-prompt create, retarget the optimistic prompt from its pending
+  client-submit turn ID only after the event is known to belong to the current
+  submit; retained history must not retarget that optimistic prompt. Do this
+  before projecting rows so the user prompt stays grouped above the agent
+  response.
 
 Likely fix area:
 

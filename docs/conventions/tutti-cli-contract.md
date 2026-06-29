@@ -24,6 +24,9 @@ They are not implemented through the builtin framework.
 Builtin summary/detail JSON view rules do not apply to workspace app commands.
 External app commands follow their own manifest-declared output and response
 contract.
+Workspace app `appId` and CLI `scope` are separate identifiers. Discovery and
+agent app mentions match commands by app id metadata, then invoke the listed
+CLI scope; callers must not assume `scope == appId`.
 
 ## Frozen App CLI Contract
 
@@ -115,6 +118,11 @@ return concise summaries, and get commands return detail with nearby context.
 Action commands should return the smallest useful confirmation payload. For
 agent session actions, this normally means session id, provider, status, and
 whether a launch/open request was published.
+
+Agent session compact/detail JSON may include additive runtime protocol fields
+such as `turnLifecycle` and `submitAvailability` when the daemon has them. Keep
+their field names aligned with the HTTP/OpenAPI session shape so CLI callers can
+reason about active turns without switching transports.
 
 ## Naming Rules
 

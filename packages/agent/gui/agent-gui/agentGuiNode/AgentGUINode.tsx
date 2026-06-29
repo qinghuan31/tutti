@@ -1,5 +1,6 @@
 import { memo, useCallback, useEffect, useMemo } from "react";
 import { createWorkspaceUserProjectI18nRuntime } from "@tutti-os/workspace-user-project/i18n";
+import { createWorkspaceFileManagerI18nRuntime } from "@tutti-os/workspace-file-manager";
 import { useTranslation, type TranslateFn } from "../../i18n/index";
 import { toLocalShortDateTime } from "../../app/renderer/shell/utils/format";
 import type {
@@ -74,6 +75,7 @@ import type {
   AgentComposerGitBranchLoader,
   AgentComposerSlashStatusLimit
 } from "./AgentComposer";
+import { agentGuiDockIconUrls } from "../../dockIcons";
 
 const workspaceFileReferenceLocaleKeyByPickerKey: Record<string, string> = {
   "actions.cancel": "common.cancel",
@@ -152,6 +154,7 @@ export interface AgentGUINodeProps {
   workspacePath: string;
   workspaceFileReferenceAdapter?: WorkspaceFileReferenceAdapter | null;
   onRequestGitBranches?: AgentComposerGitBranchLoader | null;
+  selectProjectDirectory?: () => Promise<{ path: string } | null>;
   referenceSourceAggregator?: ReferenceSourceAggregator | null;
   resolveMentionReferenceTarget?: AgentMentionReferenceTargetResolver | null;
   resolveWorkspaceReferenceInitialTarget?: AgentWorkspaceReferenceInitialTargetResolver | null;
@@ -183,7 +186,6 @@ export interface AgentGUINodeProps {
   composerFocusRequestSequence?: number | null;
   openSessionRequest?: AgentGUIOpenSessionRequest | null;
   prefillPromptRequest?: AgentGUIPrefillPromptRequest | null;
-  showProjectSelector?: boolean;
   isMuted?: boolean;
   newConversationRequestSequence?: number | null;
   onMinimize?: () => void;
@@ -456,6 +458,7 @@ function areAgentGUINodePropsEqual(
     previous.workspacePath === next.workspacePath &&
     previous.workspaceFileReferenceAdapter ===
       next.workspaceFileReferenceAdapter &&
+    previous.selectProjectDirectory === next.selectProjectDirectory &&
     previous.referenceSourceAggregator === next.referenceSourceAggregator &&
     previous.resolveMentionReferenceTarget ===
       next.resolveMentionReferenceTarget &&
@@ -497,7 +500,6 @@ function areAgentGUINodePropsEqual(
     previous.embedded === next.embedded &&
     previous.previewMode === next.previewMode &&
     previous.isActive === next.isActive &&
-    previous.showProjectSelector === next.showProjectSelector &&
     previous.composerFocusRequestSequence ===
       next.composerFocusRequestSequence &&
     previous.newConversationRequestSequence ===
@@ -514,6 +516,7 @@ export const AgentGUINode = memo(function AgentGUINode({
   workspacePath,
   workspaceFileReferenceAdapter = null,
   onRequestGitBranches = null,
+  selectProjectDirectory,
   referenceSourceAggregator = null,
   resolveMentionReferenceTarget = null,
   resolveWorkspaceReferenceInitialTarget = null,
@@ -539,7 +542,6 @@ export const AgentGUINode = memo(function AgentGUINode({
   newConversationRequestSequence = null,
   openSessionRequest = null,
   prefillPromptRequest = null,
-  showProjectSelector = true,
   isMuted = false,
   onMinimize,
   onToggleMaximize,
@@ -556,6 +558,13 @@ export const AgentGUINode = memo(function AgentGUINode({
   const { i18n, locale, t } = useTranslation();
   const workspaceUserProjectI18n = useMemo(
     () => createWorkspaceUserProjectI18nRuntime(i18n),
+    [i18n]
+  );
+  const workspaceFileManagerI18n = useMemo(
+    () =>
+      typeof i18n?.t === "function"
+        ? createWorkspaceFileManagerI18nRuntime(i18n)
+        : null,
     [i18n]
   );
   const handleLinkAction = useCallback(
@@ -743,6 +752,7 @@ export const AgentGUINode = memo(function AgentGUINode({
         "agentHost.agentGui.modelTooltipVersionLabel"
       ),
       defaultModel: t("agentHost.agentGui.defaultModel"),
+      loadingOptions: t("agentHost.agentGui.loadingOptions"),
       inheritedUnavailable: t("agentHost.agentGui.inheritedUnavailable"),
       reasoningLabel: t("agentHost.agentGui.reasoningLabel"),
       reasoningDegreeLabel: t("agentHost.agentGui.reasoningDegreeLabel"),
@@ -844,6 +854,7 @@ export const AgentGUINode = memo(function AgentGUINode({
       emptyProvider: displayProviderLabel,
       conversations: t("agentHost.agentGui.conversations"),
       newConversation: t("agentHost.agentGui.newConversation"),
+      agentConfig: t("agentHost.agentGui.agentConfig"),
       agentEnvSetup: t("agentHost.agentGui.agentEnvSetup"),
       noConversations: t("agentHost.agentGui.noConversations"),
       emptyProjectConversations: t(
@@ -1129,6 +1140,9 @@ export const AgentGUINode = memo(function AgentGUINode({
     (isConversationRailCollapsed ? activeConversationWindowTitle : null) ||
     windowAgentTitle ||
     title;
+  const windowTitleIconUrl =
+    agentGuiDockIconUrls[activeProvider as keyof typeof agentGuiDockIconUrls] ??
+    null;
   useEffect(() => {
     if (previewMode) {
       return;
@@ -1249,6 +1263,18 @@ export const AgentGUINode = memo(function AgentGUINode({
       nodeId={nodeId}
       kind="agentGui"
       title={windowTitle}
+      titleIcon={
+        windowTitleIconUrl ? (
+          <img
+            src={windowTitleIconUrl}
+            alt=""
+            draggable={false}
+            aria-hidden="true"
+            className="size-4 rounded-[4px]"
+            data-agent-gui-window-provider-icon="true"
+          />
+        ) : null
+      }
       position={position}
       width={width}
       height={height}
@@ -1323,7 +1349,6 @@ export const AgentGUINode = memo(function AgentGUINode({
               workspaceAgentProbes?.isLoadingUsage ?? false
             }
             previewMode={previewMode}
-            showProjectSelector={showProjectSelector}
             onLinkAction={handleLinkAction}
             capabilityMenuState={capabilityMenuState}
             onCapabilitySettingsRequest={onCapabilitySettingsRequest}
@@ -1351,9 +1376,11 @@ export const AgentGUINode = memo(function AgentGUINode({
             onConversationRailWidthChanged={handleConversationRailWidthChanged}
             labels={labels}
             workspaceUserProjectI18n={workspaceUserProjectI18n}
+            workspaceFileManagerCopy={workspaceFileManagerI18n}
             workspaceFileReferenceAdapter={workspaceFileReferenceAdapter}
             onOpenConversationWindow={onOpenConversationWindow}
             onRequestGitBranches={onRequestGitBranches}
+            selectProjectDirectory={selectProjectDirectory}
             referenceSourceAggregator={referenceSourceAggregator}
             resolveMentionReferenceTarget={resolveMentionReferenceTarget}
             resolveWorkspaceReferenceInitialTarget={

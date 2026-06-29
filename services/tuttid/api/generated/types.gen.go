@@ -121,6 +121,63 @@ func (e AgentProviderActionRunStatus) Valid() bool {
 	}
 }
 
+// Defines values for AgentProviderActiveActionPhase.
+const (
+	AgentProviderActiveActionPhaseDetect  AgentProviderActiveActionPhase = "detect"
+	AgentProviderActiveActionPhaseDone    AgentProviderActiveActionPhase = "done"
+	AgentProviderActiveActionPhaseError   AgentProviderActiveActionPhase = "error"
+	AgentProviderActiveActionPhaseInstall AgentProviderActiveActionPhase = "install"
+	AgentProviderActiveActionPhaseRepair  AgentProviderActiveActionPhase = "repair"
+	AgentProviderActiveActionPhaseVerify  AgentProviderActiveActionPhase = "verify"
+)
+
+// Valid indicates whether the value is a known member of the AgentProviderActiveActionPhase enum.
+func (e AgentProviderActiveActionPhase) Valid() bool {
+	switch e {
+	case AgentProviderActiveActionPhaseDetect:
+		return true
+	case AgentProviderActiveActionPhaseDone:
+		return true
+	case AgentProviderActiveActionPhaseError:
+		return true
+	case AgentProviderActiveActionPhaseInstall:
+		return true
+	case AgentProviderActiveActionPhaseRepair:
+		return true
+	case AgentProviderActiveActionPhaseVerify:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for AgentProviderActiveActionStepStatus.
+const (
+	AgentProviderActiveActionStepStatusError   AgentProviderActiveActionStepStatus = "error"
+	AgentProviderActiveActionStepStatusOk      AgentProviderActiveActionStepStatus = "ok"
+	AgentProviderActiveActionStepStatusPending AgentProviderActiveActionStepStatus = "pending"
+	AgentProviderActiveActionStepStatusRunning AgentProviderActiveActionStepStatus = "running"
+	AgentProviderActiveActionStepStatusSkipped AgentProviderActiveActionStepStatus = "skipped"
+)
+
+// Valid indicates whether the value is a known member of the AgentProviderActiveActionStepStatus enum.
+func (e AgentProviderActiveActionStepStatus) Valid() bool {
+	switch e {
+	case AgentProviderActiveActionStepStatusError:
+		return true
+	case AgentProviderActiveActionStepStatusOk:
+		return true
+	case AgentProviderActiveActionStepStatusPending:
+		return true
+	case AgentProviderActiveActionStepStatusRunning:
+		return true
+	case AgentProviderActiveActionStepStatusSkipped:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for AgentProviderAuthStatus.
 const (
 	AgentProviderAuthStatusAuthenticated AgentProviderAuthStatus = "authenticated"
@@ -774,7 +831,6 @@ const (
 	IssueManagerStatusCanceled          IssueManagerStatus = "canceled"
 	IssueManagerStatusCompleted         IssueManagerStatus = "completed"
 	IssueManagerStatusFailed            IssueManagerStatus = "failed"
-	IssueManagerStatusInProgress        IssueManagerStatus = "in_progress"
 	IssueManagerStatusNotStarted        IssueManagerStatus = "not_started"
 	IssueManagerStatusPendingAcceptance IssueManagerStatus = "pending_acceptance"
 	IssueManagerStatusRunning           IssueManagerStatus = "running"
@@ -788,8 +844,6 @@ func (e IssueManagerStatus) Valid() bool {
 	case IssueManagerStatusCompleted:
 		return true
 	case IssueManagerStatusFailed:
-		return true
-	case IssueManagerStatusInProgress:
 		return true
 	case IssueManagerStatusNotStarted:
 		return true
@@ -808,7 +862,6 @@ const (
 	IssueManagerStatusFilterCanceled          IssueManagerStatusFilter = "canceled"
 	IssueManagerStatusFilterCompleted         IssueManagerStatusFilter = "completed"
 	IssueManagerStatusFilterFailed            IssueManagerStatusFilter = "failed"
-	IssueManagerStatusFilterInProgress        IssueManagerStatusFilter = "in_progress"
 	IssueManagerStatusFilterNotStarted        IssueManagerStatusFilter = "not_started"
 	IssueManagerStatusFilterPendingAcceptance IssueManagerStatusFilter = "pending_acceptance"
 	IssueManagerStatusFilterRunning           IssueManagerStatusFilter = "running"
@@ -824,8 +877,6 @@ func (e IssueManagerStatusFilter) Valid() bool {
 	case IssueManagerStatusFilterCompleted:
 		return true
 	case IssueManagerStatusFilterFailed:
-		return true
-	case IssueManagerStatusFilterInProgress:
 		return true
 	case IssueManagerStatusFilterNotStarted:
 		return true
@@ -1156,6 +1207,21 @@ func (e WorkspaceAppMinimizeBehavior) Valid() bool {
 	case Hibernate:
 		return true
 	case KeepMounted:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for WorkspaceAppRepositoryType.
+const (
+	Github WorkspaceAppRepositoryType = "github"
+)
+
+// Valid indicates whether the value is a known member of the WorkspaceAppRepositoryType enum.
+func (e WorkspaceAppRepositoryType) Valid() bool {
+	switch e {
+	case Github:
 		return true
 	default:
 		return false
@@ -1537,17 +1603,55 @@ type AgentProviderActionRunResponse struct {
 // AgentProviderActionRunStatus defines model for AgentProviderActionRunStatus.
 type AgentProviderActionRunStatus string
 
+// AgentProviderActiveAction defines model for AgentProviderActiveAction.
+type AgentProviderActiveAction struct {
+	Error    *AgentProviderActiveActionError `json:"error"`
+	Log      []string                        `json:"log"`
+	Phase    AgentProviderActiveActionPhase  `json:"phase"`
+	Registry *string                         `json:"registry"`
+	Steps    []AgentProviderActiveActionStep `json:"steps"`
+}
+
+// AgentProviderActiveActionError defines model for AgentProviderActiveActionError.
+type AgentProviderActiveActionError struct {
+	Code    *string `json:"code"`
+	Message *string `json:"message"`
+}
+
+// AgentProviderActiveActionPhase defines model for AgentProviderActiveActionPhase.
+type AgentProviderActiveActionPhase string
+
+// AgentProviderActiveActionStep defines model for AgentProviderActiveActionStep.
+type AgentProviderActiveActionStep struct {
+	Detail *string                             `json:"detail"`
+	Id     string                              `json:"id"`
+	Label  *string                             `json:"label"`
+	Status AgentProviderActiveActionStepStatus `json:"status"`
+}
+
+// AgentProviderActiveActionStepStatus defines model for AgentProviderActiveActionStepStatus.
+type AgentProviderActiveActionStepStatus string
+
 // AgentProviderAdapterStatus defines model for AgentProviderAdapterStatus.
 type AgentProviderAdapterStatus struct {
 	BinaryPath *string  `json:"binaryPath,omitempty"`
 	Command    []string `json:"command"`
 	Installed  bool     `json:"installed"`
+
+	// RequiredVersion The adapter package version this provider requires. With version, lets the UI show "current X, requires Y" for an adapter version mismatch and makes the drift visible in telemetry.
+	RequiredVersion *string `json:"requiredVersion,omitempty"`
+
+	// Version The installed ACP adapter package version, when resolvable. Lets the UI and telemetry show the actual adapter version (not just a path).
+	Version *string `json:"version,omitempty"`
 }
 
 // AgentProviderAuthInfo defines model for AgentProviderAuthInfo.
 type AgentProviderAuthInfo struct {
-	AccountLabel *string                 `json:"accountLabel,omitempty"`
-	Status       AgentProviderAuthStatus `json:"status"`
+	AccountLabel *string `json:"accountLabel,omitempty"`
+
+	// AuthMethod The authentication method reported by the provider CLI (e.g. oauth, apiKey).
+	AuthMethod *string                 `json:"authMethod,omitempty"`
+	Status     AgentProviderAuthStatus `json:"status"`
 }
 
 // AgentProviderAuthStatus defines model for AgentProviderAuthStatus.
@@ -1593,6 +1697,9 @@ type AgentProviderCapabilityOptionStatus string
 type AgentProviderCliStatus struct {
 	BinaryPath *string `json:"binaryPath,omitempty"`
 	Installed  bool    `json:"installed"`
+
+	// MinVersion The lowest CLI version this provider supports, when it enforces a floor (currently codex). Lets the UI show "current X, requires Y" without duplicating the backend's version gate.
+	MinVersion *string `json:"minVersion,omitempty"`
 	Version    *string `json:"version,omitempty"`
 }
 
@@ -1677,6 +1784,7 @@ type AgentProviderSkillOptionSourceKind string
 // AgentProviderStatus defines model for AgentProviderStatus.
 type AgentProviderStatus struct {
 	Actions      []AgentProviderAction       `json:"actions"`
+	ActiveAction *AgentProviderActiveAction  `json:"activeAction,omitempty"`
 	Adapter      AgentProviderAdapterStatus  `json:"adapter"`
 	Auth         AgentProviderAuthInfo       `json:"auth"`
 	Availability AgentProviderAvailability   `json:"availability"`
@@ -2184,6 +2292,7 @@ type DesktopPreferences struct {
 	FileDefaultOpenersByExtension               DesktopFileDefaultOpenersByExtension               `json:"fileDefaultOpenersByExtension"`
 	Locale                                      DesktopLocale                                      `json:"locale"`
 	MinimizeAnimation                           DesktopMinimizeAnimation                           `json:"minimizeAnimation"`
+	ShowAppDeveloperSources                     *bool                                              `json:"showAppDeveloperSources,omitempty"`
 	SleepPreventionMode                         DesktopSleepPreventionMode                         `json:"sleepPreventionMode"`
 	ThemeSource                                 DesktopThemeSource                                 `json:"themeSource"`
 	UpdateChannel                               DesktopUpdateChannel                               `json:"updateChannel"`
@@ -2510,7 +2619,6 @@ type IssueManagerStatusCounts struct {
 	Canceled          int `json:"canceled"`
 	Completed         int `json:"completed"`
 	Failed            int `json:"failed"`
-	InProgress        int `json:"inProgress"`
 	NotStarted        int `json:"notStarted"`
 	PendingAcceptance int `json:"pendingAcceptance"`
 	Running           int `json:"running"`
@@ -2978,13 +3086,13 @@ type WorkspaceAgentSessionMessage struct {
 	Id                int64                          `json:"id"`
 	Kind              string                         `json:"kind"`
 	MessageId         string                         `json:"messageId"`
-	OccurredAtUnixMs  *int64                         `json:"occurredAtUnixMs,omitempty"`
+	OccurredAtUnixMs  int64                          `json:"occurredAtUnixMs"`
 	Payload           *map[string]interface{}        `json:"payload,omitempty"`
 	Role              string                         `json:"role"`
 	Semantics         *AgentActivityMessageSemantics `json:"semantics,omitempty"`
 	StartedAtUnixMs   *int64                         `json:"startedAtUnixMs,omitempty"`
 	Status            *string                        `json:"status,omitempty"`
-	TurnId            *string                        `json:"turnId,omitempty"`
+	TurnId            string                         `json:"turnId"`
 	UpdatedAtUnixMs   *int64                         `json:"updatedAtUnixMs,omitempty"`
 	Version           int64                          `json:"version"`
 }
@@ -3008,6 +3116,7 @@ type WorkspaceAgentSessionStatus string
 // WorkspaceApp defines model for WorkspaceApp.
 type WorkspaceApp struct {
 	AppId            string                       `json:"appId"`
+	Authors          *[]WorkspaceAppAuthor        `json:"authors,omitempty"`
 	AvailableIconUrl *string                      `json:"availableIconUrl"`
 	AvailableVersion *string                      `json:"availableVersion"`
 	Cli              WorkspaceAppCliState         `json:"cli"`
@@ -3029,6 +3138,7 @@ type WorkspaceApp struct {
 	MinimizeBehavior WorkspaceAppMinimizeBehavior `json:"minimizeBehavior"`
 	Port             *int                         `json:"port"`
 	References       WorkspaceAppReferencesState  `json:"references"`
+	Repository       *WorkspaceAppRepository      `json:"repository,omitempty"`
 	Source           WorkspaceAppSource           `json:"source"`
 	StartedAtUnixMs  *int64                       `json:"startedAtUnixMs"`
 	StateRevision    int64                        `json:"stateRevision"`
@@ -3039,6 +3149,13 @@ type WorkspaceApp struct {
 	Version          string                       `json:"version"`
 	WindowMinHeight  *int                         `json:"windowMinHeight"`
 	WindowMinWidth   *int                         `json:"windowMinWidth"`
+}
+
+// WorkspaceAppAuthor defines model for WorkspaceAppAuthor.
+type WorkspaceAppAuthor struct {
+	AvatarUrl *string `json:"avatarUrl,omitempty"`
+	Name      string  `json:"name"`
+	Url       *string `json:"url,omitempty"`
 }
 
 // WorkspaceAppCatalogLoadState defines model for WorkspaceAppCatalogLoadState.
@@ -3172,6 +3289,15 @@ type WorkspaceAppReferencesState struct {
 	ListSupported   bool `json:"listSupported"`
 	SearchSupported bool `json:"searchSupported"`
 }
+
+// WorkspaceAppRepository defines model for WorkspaceAppRepository.
+type WorkspaceAppRepository struct {
+	Type WorkspaceAppRepositoryType `json:"type"`
+	Url  string                     `json:"url"`
+}
+
+// WorkspaceAppRepositoryType defines model for WorkspaceAppRepository.Type.
+type WorkspaceAppRepositoryType string
 
 // WorkspaceAppResponse defines model for WorkspaceAppResponse.
 type WorkspaceAppResponse struct {
@@ -3525,6 +3651,9 @@ type bearerAuthContextKey string
 // GetAgentProviderStatusesParams defines parameters for GetAgentProviderStatuses.
 type GetAgentProviderStatusesParams struct {
 	Providers *[]WorkspaceAgentProvider `form:"providers,omitempty" json:"providers,omitempty"`
+
+	// IncludeNetwork Opt into the network connectivity probe (registry / provider API / proxy reachability). Off by default so the common detection path stays local and never blocks on the network; only the agent-env wizard's network diagnostic sets this.
+	IncludeNetwork *bool `form:"includeNetwork,omitempty" json:"includeNetwork,omitempty"`
 }
 
 // ListCliCapabilitiesParams defines parameters for ListCliCapabilities.

@@ -14,7 +14,6 @@ export function issueManagerStatusBadgeVariant(
 ): IssueManagerStatusBadgeVariant {
   switch (status) {
     case "running":
-    case "in_progress":
       return "accent";
     case "pending_acceptance":
       return "pending";

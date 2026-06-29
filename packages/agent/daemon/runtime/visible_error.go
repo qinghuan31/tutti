@@ -3,6 +3,7 @@ package agentruntime
 import (
 	"fmt"
 	"regexp"
+	"strconv"
 	"strings"
 
 	agentsessionstore "github.com/tutti-os/tutti/packages/agentactivity/daemon/activity"
@@ -184,7 +185,13 @@ func limitVisibleErrorDetail(value string) string {
 func visibleFailureCode(detail string) string {
 	normalized := strings.ToLower(detail)
 	switch {
-	case authFailurePattern.MatchString(detail):
+	// A tool MCP server's OAuth failure (Notion/Figma/...) crashes codex's MCP
+	// client and bubbles up here mentioning "access token"/"AuthRequired", which
+	// trips the auth pattern. That is the MCP SERVER needing re-auth, not codex's
+	// own login — codex itself is still signed in — so it must not be reported as
+	// "Codex needs authentication". Let it fall through to the real cause (the
+	// process exit) instead.
+	case authFailurePattern.MatchString(detail) && !detailIsMcpToolServerAuth(detail):
 		return "auth_required"
 	// A run that can't find its CLI binary surfaces as an exec/ENOENT error. This
 	// is the real "not installed / not on PATH" failure the env wizard can fix, so
@@ -215,6 +222,11 @@ func visibleFailureCode(detail string) string {
 	case strings.Contains(normalized, "quota") ||
 		strings.Contains(normalized, "rate limit") ||
 		strings.Contains(normalized, "limit exceeded") ||
+		// codex reports a depleted ChatGPT plan/credit cap as plain text — "You've
+		// hit your usage limit. Upgrade to Pro…" — with no structured codexErrorInfo
+		// and none of the other markers here, so it must be matched explicitly or it
+		// falls through to a generic "request failed".
+		strings.Contains(normalized, "usage limit") ||
 		strings.Contains(normalized, "resource_exhausted") ||
 		strings.Contains(normalized, "too many requests") ||
 		strings.Contains(normalized, " 429"):
@@ -222,6 +234,16 @@ func visibleFailureCode(detail string) string {
 	case strings.Contains(normalized, "process exited") ||
 		strings.Contains(normalized, "exited with code") ||
 		strings.Contains(normalized, "exit status"):
+		// A clean exit (code 0) or a signal-termination (128+N, e.g. 137 SIGKILL,
+		// 143 SIGTERM) means the app-server was stopped/killed externally — the host
+		// quit, the OS OOM-killed it, or (as seen in the field) an agent killed the
+		// very Tutti process tree hosting its own session. That is the session being
+		// interrupted, not Codex erroring out, so it reads calmer and is retryable.
+		// A non-zero, non-signal exit (1/2/101…) is a genuine crash and stays
+		// process_exited ("request failed").
+		if codexExitLooksInterrupted(normalized) {
+			return "session_interrupted"
+		}
 		return "process_exited"
 	case strings.Contains(normalized, "deadline exceeded") ||
 		strings.Contains(normalized, "timed out"):
@@ -236,6 +258,26 @@ func visibleFailureCode(detail string) string {
 	default:
 		return "unknown"
 	}
+}
+
+// detailIsMcpToolServerAuth reports whether the failure is an MCP tool server's
+// OAuth failure surfaced by codex's rust MCP client (rmcp) — e.g. a Notion or
+// Figma MCP server whose access token expired. These markers never appear in
+// codex's own login failures (which talk about chatgpt.com/openai, "not logged
+// in", or "/login"), so keying on them safely separates "a tool server needs
+// re-auth" from "codex needs to sign in".
+func detailIsMcpToolServerAuth(detail string) bool {
+	lower := strings.ToLower(detail)
+	for _, marker := range []string{
+		"rmcp::",
+		"authrequirederror",
+		"oauth-protected-resource",
+	} {
+		if strings.Contains(lower, marker) {
+			return true
+		}
+	}
+	return false
 }
 
 // codexErrorLooksLikeMissingBinary reports whether the detail describes a CLI
@@ -254,6 +296,45 @@ func codexErrorLooksLikeMissingBinary(lower string) bool {
 		}
 	}
 	return false
+}
+
+// codexExitCodeFromDetail extracts the numeric process exit code from a
+// "process exited" style detail (e.g. "...exited with code 137...",
+// "exit status 1"). It returns ok=false when no numeric code is present (a bare
+// "process exited"), in which case the caller must not assume anything about it.
+func codexExitCodeFromDetail(normalized string) (int, bool) {
+	for _, marker := range []string{"exited with code ", "exit status "} {
+		idx := strings.Index(normalized, marker)
+		if idx < 0 {
+			continue
+		}
+		rest := normalized[idx+len(marker):]
+		end := 0
+		for end < len(rest) && rest[end] >= '0' && rest[end] <= '9' {
+			end++
+		}
+		if end == 0 {
+			continue
+		}
+		if code, err := strconv.Atoi(rest[:end]); err == nil {
+			return code, true
+		}
+	}
+	return 0, false
+}
+
+// codexExitLooksInterrupted reports whether a process-exit detail describes a
+// clean shutdown (code 0) or a signal-termination (128+N, signals 1..31) rather
+// than Codex itself erroring out. Such exits mean the app-server was stopped or
+// killed externally, so the session was interrupted — not "Codex failed". When
+// no numeric code is present it returns false (stay with the generic
+// process_exited classification rather than guess).
+func codexExitLooksInterrupted(normalized string) bool {
+	code, ok := codexExitCodeFromDetail(normalized)
+	if !ok {
+		return false
+	}
+	return code == 0 || (code >= 129 && code <= 159)
 }
 
 // codexErrorLooksLikeNetwork reports whether the detail describes a DNS or
@@ -276,7 +357,8 @@ func codexErrorLooksLikeNetwork(lower string) bool {
 }
 
 func visibleFailureRetryable(code string, detail string) bool {
-	if code == "runtime_unavailable" || code == "request_timed_out" || code == "network_error" {
+	if code == "runtime_unavailable" || code == "request_timed_out" || code == "network_error" ||
+		code == "session_interrupted" {
 		return true
 	}
 	normalized := strings.ToLower(detail)
@@ -301,6 +383,8 @@ func visibleFailureContent(provider string, phase string, code string) string {
 			return fmt.Sprintf("%s could not apply session settings before startup timed out. Try again in a moment.", name)
 		case "provider_stream_disconnected":
 			return fmt.Sprintf("%s could not start because the response was interrupted. Try again in a moment.", name)
+		case "session_interrupted":
+			return fmt.Sprintf("%s stopped unexpectedly before it finished starting. Try again.", name)
 		case "request_timed_out":
 			return fmt.Sprintf("%s could not start before the request timed out.", name)
 		case "runtime_unavailable":
@@ -324,6 +408,8 @@ func visibleFailureContent(provider string, phase string, code string) string {
 		return fmt.Sprintf("%s could not apply session settings before the request timed out. Try again in a moment.", name)
 	case "provider_stream_disconnected":
 		return fmt.Sprintf("%s response was interrupted before it completed. Try again in a moment.", name)
+	case "session_interrupted":
+		return fmt.Sprintf("%s stopped unexpectedly before it finished responding. Try again.", name)
 	case "request_timed_out":
 		return fmt.Sprintf("%s request timed out.", name)
 	case "quota_or_rate_limit":

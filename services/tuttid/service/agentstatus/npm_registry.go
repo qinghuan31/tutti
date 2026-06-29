@@ -25,11 +25,19 @@ const (
 	huaweiNPMRegistry  = "https://repo.huaweicloud.com/repository/npm/" // Huawei Cloud
 	tencentNPMRegistry = "https://mirrors.cloud.tencent.com/npm/"       // Tencent Cloud
 
+	// agentNPMCacheDirName is the dedicated npm cache directory agent installs use
+	// instead of npm's global ~/.npm. It lives inside the install prefix so it is
+	// always tutti-owned and writable by the daemon's user. See withAgentNPMCache.
+	agentNPMCacheDirName = ".npm-cache"
+
 	// perRegistryInstallTimeout bounds each registry attempt so a blocked
-	// registry fails over to the next one quickly instead of consuming the whole
-	// install budget. Comfortably above observed install times (~6-44s), below the
-	// overall install timeout.
-	perRegistryInstallTimeout = 90 * time.Second
+	// registry fails over to the next one instead of consuming the whole install
+	// budget. It must clear a working-but-slow registry: a direct install of the
+	// codex package is ~6-44s, but the same large platform binary pulled through a
+	// (throttled) system proxy is ~76-100s+. 90s sat right on that edge and killed
+	// otherwise-succeeding installs, so it is set comfortably above the proxied
+	// case while staying below the overall install timeout.
+	perRegistryInstallTimeout = 150 * time.Second
 )
 
 // agentNPMRegistries returns the ordered list of npm registries to try for
@@ -67,6 +75,27 @@ func withAgentNPMRegistry(env []string, registry string) []string {
 		result = append(result, kv)
 	}
 	return append(result, prefix+registry)
+}
+
+// withAgentNPMCache returns env with npm_config_cache pinned to cacheDir,
+// dropping any inherited value.
+//
+// Agent installs must not rely on npm's global cache (~/.npm). On machines where
+// a prior `sudo npm install` left root-owned files there, every user-mode
+// `npm install` fails with "EACCES ... cache folder contains root-owned files"
+// before it ever reaches a registry — so the install can never succeed, and
+// retrying across mirrors is futile (the failure is local, not network). Pinning
+// a dedicated tutti-owned cache sidesteps the broken global cache entirely.
+func withAgentNPMCache(env []string, cacheDir string) []string {
+	const prefix = "npm_config_cache="
+	result := make([]string, 0, len(env)+1)
+	for _, kv := range env {
+		if strings.HasPrefix(strings.ToLower(kv), prefix) {
+			continue
+		}
+		result = append(result, kv)
+	}
+	return append(result, prefix+cacheDir)
 }
 
 // lookupEnv reads a single environment variable, honoring an injected Environ for

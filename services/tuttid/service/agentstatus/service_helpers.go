@@ -202,9 +202,15 @@ func (s Service) resolveAuth(ctx context.Context, spec ProviderSpec, installed b
 	}
 	// A runtime authentication failure (e.g. a 401 sending a message) invalidates
 	// the stale "logged in" marker/command result until the user re-authenticates
-	// or a request succeeds again.
-	if s.RunOutcomes.AuthInvalidated(spec.Provider) {
-		return AuthInfo{Status: AuthRequired}
+	// or a request succeeds again. We self-heal the moment the credential file is
+	// rewritten by a fresh login: re-login is a terminal action that never reports
+	// a "successful run", so without this the flag would stick until the user's
+	// next message succeeds, leaving the dock/wizard stuck on "needs login".
+	if failedAt, ok := s.RunOutcomes.AuthInvalidatedSince(spec.Provider); ok {
+		if !s.authCredentialsRefreshedAfter(spec, failedAt) {
+			return AuthInfo{Status: AuthRequired}
+		}
+		s.RunOutcomes.ClearAuthInvalidated(spec.Provider)
 	}
 	if len(spec.AuthStatusCommand) > 0 && strings.TrimSpace(binaryPath) != "" {
 		if auth, ok := s.resolveAuthFromCommand(ctx, spec, binaryPath); ok {
@@ -213,6 +219,26 @@ func (s Service) resolveAuth(ctx context.Context, spec ProviderSpec, installed b
 		return s.resolveAuthFromMarkers(spec)
 	}
 	return s.resolveAuthFromMarkers(spec)
+}
+
+// authCredentialsRefreshedAfter reports whether any of the provider's credential
+// marker files was modified after the given time — i.e. a login rewrote the
+// credentials since the recorded auth failure.
+func (s Service) authCredentialsRefreshedAfter(spec ProviderSpec, since time.Time) bool {
+	if len(spec.AuthMarkerPaths) == 0 {
+		return false
+	}
+	home, err := s.homeDir()
+	if err != nil || strings.TrimSpace(home) == "" {
+		return false
+	}
+	for _, marker := range spec.AuthMarkerPaths {
+		path := expandHomePath(marker, home)
+		if mod, ok := s.fileModTime(path); ok && mod.After(since) {
+			return true
+		}
+	}
+	return false
 }
 
 func (s Service) resolveAuthFromMarkers(spec ProviderSpec) AuthInfo {
@@ -500,10 +526,11 @@ func parseClaudeAuthStatusOutput(output []byte) (AuthInfo, bool) {
 		if *payload.LoggedIn {
 			return AuthInfo{
 				AccountLabel: firstNonBlank(payload.AccountLabel, payload.Email, payload.AuthMethod),
+				AuthMethod:   payload.AuthMethod,
 				Status:       AuthAuthenticated,
 			}, true
 		}
-		return AuthInfo{Status: AuthRequired}, true
+		return AuthInfo{Status: AuthRequired, AuthMethod: payload.AuthMethod}, true
 	}
 	normalized := strings.ToLower(string(output))
 	if strings.Contains(normalized, `"loggedin":false`) ||
@@ -545,10 +572,11 @@ func parseClaudeAuthMarkerContent(content []byte) (AuthInfo, bool) {
 		if *payload.LoggedIn {
 			return AuthInfo{
 				AccountLabel: firstNonBlank(payload.AccountLabel, payload.Email, payload.AuthMethod, payload.UserID),
+				AuthMethod:   payload.AuthMethod,
 				Status:       AuthAuthenticated,
 			}, true
 		}
-		return AuthInfo{Status: AuthRequired}, true
+		return AuthInfo{Status: AuthRequired, AuthMethod: payload.AuthMethod}, true
 	}
 	if strings.TrimSpace(payload.UserID) != "" {
 		return AuthInfo{
@@ -605,6 +633,17 @@ func (s Service) fileExists(path string) bool {
 	}
 	stat, err := os.Stat(path)
 	return err == nil && !stat.IsDir()
+}
+
+func (s Service) fileModTime(path string) (time.Time, bool) {
+	if s.FileModTime != nil {
+		return s.FileModTime(path)
+	}
+	stat, err := os.Stat(path)
+	if err != nil || stat.IsDir() {
+		return time.Time{}, false
+	}
+	return stat.ModTime(), true
 }
 
 func (s Service) executableFile(path string) bool {

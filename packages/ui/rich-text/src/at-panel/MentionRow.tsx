@@ -635,7 +635,7 @@ function MentionStatusBadge({
       title={statusTag.label}
     >
       <StatusDot
-        tone={statusTag.tone}
+        tone={statusTag.tone === "purple" ? "neutral" : statusTag.tone}
         pulse={statusTag.pulse ?? false}
         size="xs"
         title={statusTag.label}

@@ -39,6 +39,7 @@ function callItem(
     id,
     messageId: rest.messageId ?? rest.eventId ?? `call-${id}`,
     version: rest.version ?? id,
+    turnId: rest.turnId ?? `turn-${id}`,
     role: rest.role ?? "assistant",
     kind: rest.kind ?? "tool_call",
     status: "running",
@@ -50,7 +51,7 @@ function callItem(
       callId: rest.callId,
       name: rest.name ?? "exec_command"
     },
-    occurredAtUnixMs: rest.occurredAtUnixMs ?? rest.createdAtUnixMs,
+    occurredAtUnixMs: rest.occurredAtUnixMs ?? rest.createdAtUnixMs ?? id,
     startedAtUnixMs: rest.startedAtUnixMs ?? rest.createdAtUnixMs,
     completedAtUnixMs: rest.completedAtUnixMs ?? rest.occurredAtUnixMs,
     ...rest
@@ -67,6 +68,7 @@ function messageItem(
     id,
     messageId: rest.messageId ?? rest.eventId ?? `message-${id}`,
     version: rest.version ?? id,
+    turnId: rest.turnId ?? `turn-${id}`,
     role: "user",
     kind: rest.kind ?? rest.itemType ?? "message",
     payload: {
@@ -74,7 +76,7 @@ function messageItem(
       content: payload.content ?? rest.content,
       text: payload.text ?? rest.content
     },
-    occurredAtUnixMs: rest.occurredAtUnixMs ?? rest.createdAtUnixMs,
+    occurredAtUnixMs: rest.occurredAtUnixMs ?? rest.createdAtUnixMs ?? id,
     startedAtUnixMs: rest.startedAtUnixMs ?? rest.createdAtUnixMs,
     completedAtUnixMs: rest.completedAtUnixMs ?? rest.occurredAtUnixMs,
     ...rest
@@ -261,6 +263,7 @@ describe("buildWorkspaceAgentActivityListViewModel", () => {
             payload: { title: "Use staging?" },
             role: "assistant",
             status: "waiting",
+            turnId: "turn-7",
             version: 7,
             workspaceId: "workspace-1"
           }
@@ -1477,6 +1480,8 @@ describe("buildWorkspaceAgentActivityListViewModel", () => {
             },
             role: "assistant",
             status: "completed",
+            turnId: "turn-message-1",
+            occurredAtUnixMs: 1,
             version: 1
           }
         ],
@@ -1492,6 +1497,8 @@ describe("buildWorkspaceAgentActivityListViewModel", () => {
             },
             role: "assistant",
             status: "completed",
+            turnId: "turn-message-2",
+            occurredAtUnixMs: 1,
             version: 1
           }
         ]
@@ -1554,6 +1561,8 @@ describe("buildWorkspaceAgentActivityListViewModel", () => {
             },
             role: "assistant",
             status: "completed",
+            turnId: "turn-message-1",
+            occurredAtUnixMs: 1,
             version: 1
           }
         ]
@@ -1611,6 +1620,8 @@ describe("buildWorkspaceAgentActivityListViewModel", () => {
             },
             role: "assistant",
             status: "completed",
+            turnId: "turn-message-1",
+            occurredAtUnixMs: 1,
             version: 1
           }
         ]
@@ -1670,6 +1681,8 @@ describe("buildWorkspaceAgentActivityListViewModel", () => {
             },
             role: "assistant",
             status: "completed",
+            turnId: "turn-message-web",
+            occurredAtUnixMs: 1,
             version: 1
           }
         ],
@@ -1687,6 +1700,8 @@ describe("buildWorkspaceAgentActivityListViewModel", () => {
             },
             role: "assistant",
             status: "completed",
+            turnId: "turn-message-api",
+            occurredAtUnixMs: 1,
             version: 1
           }
         ]
@@ -1766,6 +1781,8 @@ describe("buildWorkspaceAgentActivityListViewModel", () => {
             },
             role: "assistant",
             status: "completed",
+            turnId: "turn-message-1",
+            occurredAtUnixMs: 1,
             version: 1
           },
           {
@@ -1778,6 +1795,8 @@ describe("buildWorkspaceAgentActivityListViewModel", () => {
             },
             role: "assistant",
             status: "completed",
+            turnId: "turn-message-2",
+            occurredAtUnixMs: 2,
             version: 2
           }
         ]
@@ -1818,9 +1837,17 @@ describe("buildWorkspaceAgentActivityListViewModel", () => {
             messageId: "message-1",
             payload: {
               callType: "tool",
+              fileChanges: {
+                files: [
+                  { path: "/Users/demo/project/apps/read-filechanges.md" }
+                ]
+              },
               input: {
                 command: "nl -ba 11.md",
                 cwd: "/Users/demo/project/apps",
+                changes: {
+                  "/Users/demo/project/apps/read-input-changes.md": "read"
+                },
                 file_path: "/Users/demo/project/apps/11.md"
               },
               locations: [{ path: "/Users/demo/project/apps/11.md" }],
@@ -1835,6 +1862,8 @@ describe("buildWorkspaceAgentActivityListViewModel", () => {
             },
             role: "assistant",
             status: "completed",
+            turnId: "turn-message-1",
+            occurredAtUnixMs: 1,
             version: 1
           }
         ]
@@ -1846,6 +1875,90 @@ describe("buildWorkspaceAgentActivityListViewModel", () => {
         workspaceRoot: "/Users/demo/project"
       })
     ).toEqual([]);
+  });
+
+  it("does not collect failed file change tool payloads as agent-generated files", () => {
+    const snapshot: AgentActivitySnapshot = {
+      workspaceId: "workspace-1",
+      presences: [],
+      sessions: [
+        {
+          agentSessionId: "session-25",
+          cwd: "/Users/demo/project",
+          provider: "codex",
+          status: "completed",
+          title: "Failed writes",
+          workspaceId: "workspace-1"
+        }
+      ],
+      sessionMessagesById: {
+        "session-25": [
+          {
+            agentSessionId: "session-25",
+            kind: "tool_call",
+            messageId: "message-failed-status",
+            payload: {
+              toolName: "Write",
+              fileChanges: {
+                files: [{ path: "failed-status.md" }]
+              }
+            },
+            role: "assistant",
+            status: "failed",
+            turnId: "turn-message-1",
+            occurredAtUnixMs: 1,
+            version: 1
+          },
+          {
+            agentSessionId: "session-25",
+            kind: "tool_call",
+            messageId: "message-failed-output",
+            payload: {
+              toolName: "Write",
+              output: {
+                filePath: "failed-output.md",
+                status: "failed",
+                success: false
+              }
+            },
+            role: "assistant",
+            status: "completed",
+            turnId: "turn-message-1",
+            occurredAtUnixMs: 2,
+            version: 2
+          },
+          {
+            agentSessionId: "session-25",
+            kind: "tool_call",
+            messageId: "message-success",
+            payload: {
+              toolName: "Write",
+              output: {
+                filePath: "ok.md",
+                status: "completed",
+                success: true
+              }
+            },
+            role: "assistant",
+            status: "completed",
+            turnId: "turn-message-1",
+            occurredAtUnixMs: 3,
+            version: 3
+          }
+        ]
+      }
+    };
+
+    expect(
+      collectWorkspaceAgentGeneratedFiles(snapshot, {
+        workspaceRoot: "/Users/demo/project"
+      })
+    ).toEqual([
+      {
+        path: "/Users/demo/project/ok.md",
+        label: "ok.md"
+      }
+    ]);
   });
 
   it("resolves relative agent-generated file paths against the session cwd", () => {
@@ -1877,6 +1990,8 @@ describe("buildWorkspaceAgentActivityListViewModel", () => {
             },
             role: "assistant",
             status: "completed",
+            turnId: "turn-message-1",
+            occurredAtUnixMs: 1,
             version: 1
           }
         ]

@@ -100,6 +100,9 @@ export interface WorkspaceWorkbenchShellRuntime {
     fit: WorkbenchSurfaceWallpaperFit;
     url: string;
   };
+  workspaceFileManagerService: ReturnType<
+    typeof useWorkspaceFileManagerService
+  >;
   workbenchWindowSnapping: DesktopWorkbenchWindowSnapping;
   workbenchHostService: ReturnType<typeof useWorkspaceWorkbenchHostService>;
 }
@@ -391,6 +394,13 @@ export function useWorkspaceWorkbenchShellRuntime({
       appCenterService.setWorkspaceAppViewCloser(
         host ? (input) => closeWorkspaceAppWebviews(host, input.appId) : null
       );
+      appCenterService.setWorkspaceAppViewOpenChecker(
+        host
+          ? (input) =>
+              input.workspaceId === state.workspace.id &&
+              isWorkspaceAppWebviewOpen(host, input.appId)
+          : null
+      );
     },
     [
       appCenterService,
@@ -441,6 +451,7 @@ export function useWorkspaceWorkbenchShellRuntime({
       fit: shellRuntimeSnapshot.wallpaperSelection.wallpaper.fit,
       url: shellRuntimeSnapshot.wallpaperSelection.wallpaper.url
     },
+    workspaceFileManagerService,
     workbenchWindowSnapping: desktopPreferencesState.workbenchWindowSnapping,
     workbenchHostService
   };
@@ -459,6 +470,20 @@ function closeWorkspaceAppWebviews(
       host.closeNode(node.id);
     }
   }
+}
+
+function isWorkspaceAppWebviewOpen(
+  host: WorkbenchHostHandle,
+  appId: string
+): boolean {
+  const instanceId = workspaceAppWebviewInstanceId(appId);
+  return host
+    .getSnapshot()
+    .nodes.some(
+      (node) =>
+        node.data.typeId === workspaceAppWebviewTypeID &&
+        node.data.instanceId === instanceId
+    );
 }
 
 function syncWorkspaceAppWebviewNodes(input: {

@@ -511,6 +511,62 @@ func TestClaudeCodeAdapterExecWaitsForPermissionAndStreamsUpdates(t *testing.T) 
 	}
 }
 
+func TestClaudeCodeAdapterSessionLevelMessageReusesRecentTurnID(t *testing.T) {
+	t.Parallel()
+
+	transport := newStandardACPTransport("Claude Agent", "claude-session-1")
+	adapter := NewClaudeCodeAdapter(transport)
+	session := standardTestSession(ProviderClaudeCode)
+	if _, err := adapter.Start(context.Background(), session); err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+	session.ProviderSessionID = "claude-session-1"
+
+	var mu sync.Mutex
+	var sinkEvents []activityshared.Event
+	adapter.SetSessionEventSink(func(agentSessionID string, events []activityshared.Event) {
+		if agentSessionID != session.AgentSessionID {
+			return
+		}
+		mu.Lock()
+		sinkEvents = append(sinkEvents, events...)
+		mu.Unlock()
+	})
+
+	if _, err := adapter.Exec(context.Background(), session, textPrompt("monitor a job"), "", "turn-monitor", nil, nil); err != nil {
+		t.Fatalf("Exec: %v", err)
+	}
+
+	transport.conn.sendJSON(map[string]any{
+		"jsonrpc": "2.0",
+		"method":  acpMethodUpdate,
+		"params": map[string]any{
+			"sessionId": "claude-session-1",
+			"update": map[string]any{
+				"sessionUpdate": "tool_call_update",
+				"toolCallId":    "monitor-result",
+				"title":         "Bash",
+				"kind":          "execute",
+				"status":        "completed",
+				"rawOutput": map[string]any{
+					"stdout": `{"job":{"status":"succeeded"}}`,
+				},
+			},
+		},
+	})
+
+	waitForCondition(t, func() bool {
+		mu.Lock()
+		defer mu.Unlock()
+		for _, event := range sinkEvents {
+			if event.Payload.CallID == "monitor-result" && event.Payload.TurnID == "turn-monitor" {
+				return true
+			}
+		}
+		return false
+	})
+}
+
 func TestClaudeCodeAdapterAllowsImagePromptWithoutInitializeCapability(t *testing.T) {
 	t.Parallel()
 
@@ -1341,6 +1397,7 @@ func TestClaudeCodeStandardACPUpdateDoesNotProjectSyntheticInterruptTitleAsSessi
 	for _, title := range []string{
 		"[Request interrupted by user]",
 		"[Request interrupted by user for tool use]",
+		"Claude Code mention handoff routing for this user turn: - Treat `mention://...` links as internal Tutti references.",
 	} {
 		events := standardACPUpdateEvents(standardACPClaudeCodeConfig(), session, "turn-1", json.RawMessage(`{
 			"update": {
@@ -1353,6 +1410,25 @@ func TestClaudeCodeStandardACPUpdateDoesNotProjectSyntheticInterruptTitleAsSessi
 				t.Fatalf("events = %#v, want synthetic interrupt title %q excluded from title updates", events, title)
 			}
 		}
+	}
+}
+
+func TestClaudeCodeStandardACPUpdateDoesNotOverwritePromptTitle(t *testing.T) {
+	t.Parallel()
+
+	session := standardTestSession(ProviderClaudeCode)
+	session.ProviderSessionID = "claude-session-1"
+	session.Title = "帮我做一个这周行业报告的ppt出来"
+
+	events := standardACPUpdateEvents(standardACPClaudeCodeConfig(), session, "turn-2", json.RawMessage(`{
+		"update": {
+			"sessionUpdate": "session_info_update",
+			"title": "继续多生成一些多个版本的ppt 看看"
+		}
+	}`), newACPTurnNormalizer())
+
+	if len(events) != 0 {
+		t.Fatalf("events = %#v, want no title overwrite", events)
 	}
 }
 
@@ -1683,6 +1759,14 @@ func TestClaudeCodeAdapterStartAppliesPlanMode(t *testing.T) {
 	if !ok || !strings.Contains(instructions, "do not edit files") || !strings.Contains(instructions, "implementation plan") {
 		t.Fatalf("planModeInstructions = %#v, want Tutti plan workflow instructions", options["planModeInstructions"])
 	}
+	disallowedTools, ok := options["disallowedTools"].([]any)
+	monitorDisallowed := false
+	for _, tool := range disallowedTools {
+		monitorDisallowed = monitorDisallowed || asString(tool) == "Monitor"
+	}
+	if !ok || !monitorDisallowed {
+		t.Fatalf("disallowedTools = %#v, want Monitor disabled", options["disallowedTools"])
+	}
 }
 
 func TestClaudeCodeAdapterApplySessionSettingsTogglesPlanMode(t *testing.T) {
@@ -1942,7 +2026,7 @@ func TestClaudeCodeAdapterStartAppendsSessionScopedSystemPrompt(t *testing.T) {
 	}
 }
 
-func TestClaudeCodeAdapterExecPrependsMentionRoutingDirective(t *testing.T) {
+func TestClaudeCodeAdapterExecKeepsMentionPromptUnmodified(t *testing.T) {
 	t.Parallel()
 
 	transport := newStandardACPTransport("Claude Agent", "claude-session-mention-routing")
@@ -1960,16 +2044,35 @@ func TestClaudeCodeAdapterExecPrependsMentionRoutingDirective(t *testing.T) {
 	}
 
 	text := firstPromptText(t, transport.conn.lastPromptParamsSnapshot)
-	if !strings.Contains(text, "Claude Code mention handoff routing for this user turn") ||
-		!strings.Contains(text, `Skill(skill="tutti-cli", args="mention://agent-session/session-1?workspaceId=workspace-1&provider=codex")`) ||
-		!strings.Contains(text, "Do not say you cannot read the mention") ||
-		!strings.Contains(text, "User prompt:\n"+prompt) {
-		t.Fatalf("prompt text = %q, want Claude mention routing directive and original prompt", text)
+	if text != prompt {
+		t.Fatalf("prompt text = %q, want unmodified prompt %q", text, prompt)
 	}
 	userContent := firstUserMessageContent(t, events)
 	if !strings.Contains(userContent, prompt) ||
 		strings.Contains(userContent, "Claude Code mention handoff routing") {
 		t.Fatalf("user activity event = %#v, want original user prompt only", events)
+	}
+}
+
+func TestClaudeCodeAdapterExecRoutesWorkspaceReferenceMention(t *testing.T) {
+	t.Parallel()
+
+	transport := newStandardACPTransport("Claude Agent", "claude-workspace-reference-routing")
+	adapter := NewClaudeCodeAdapter(transport)
+	session := standardTestSession(ProviderClaudeCode)
+	session.PermissionModeID = "default"
+	if _, err := adapter.Start(context.Background(), session); err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+	prompt := "请读取 [@设计稿](mention://workspace-reference/app-1?source=app&workspaceId=workspace-1&groupId=group-1)"
+
+	if _, err := adapter.Exec(context.Background(), session, textPrompt(prompt), "", "turn-reference", func([]activityshared.Event) {}, nil); err != nil {
+		t.Fatalf("Exec: %v", err)
+	}
+
+	text := firstPromptText(t, transport.conn.lastPromptParamsSnapshot)
+	if text != prompt {
+		t.Fatalf("prompt text = %q, want unmodified prompt %q", text, prompt)
 	}
 }
 

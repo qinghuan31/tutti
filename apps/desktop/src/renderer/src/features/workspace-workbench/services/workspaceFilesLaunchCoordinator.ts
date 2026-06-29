@@ -3,6 +3,7 @@ export interface WorkspaceFilesLaunchRequest {
   mode?: WorkspaceFilesLaunchMode;
   path: string;
   source?: "agent_command" | "issue_manager";
+  validateExists?: boolean;
   workspaceId: string;
 }
 
@@ -40,7 +41,10 @@ export async function requestWorkspaceFilesLaunch(
   request: WorkspaceFilesLaunchRequest
 ): Promise<boolean> {
   const normalizedWorkspaceId = request.workspaceId.trim();
-  const normalizedPath = normalizeWorkspaceFilesLaunchPath(request.path);
+  const normalizedPath = normalizeWorkspaceFilesLaunchPath(
+    request.path,
+    request.homeDirectory
+  );
   if (!normalizedWorkspaceId || !normalizedPath) {
     return false;
   }
@@ -54,16 +58,23 @@ export async function requestWorkspaceFilesLaunch(
     ...(request.mode ? { mode: request.mode } : {}),
     path: normalizedPath,
     ...(request.source ? { source: request.source } : {}),
+    ...(request.validateExists ? { validateExists: true } : {}),
     workspaceId: normalizedWorkspaceId
   });
 }
 
-function normalizeWorkspaceFilesLaunchPath(path: string): string | null {
+function normalizeWorkspaceFilesLaunchPath(
+  path: string,
+  homeDirectory?: string | null
+): string | null {
   const trimmed = path.trim();
   if (isUncLocalPath(trimmed)) {
     return null;
   }
-  const normalized = normalizeLocalPath(trimmed);
+  const normalized = normalizeHomeRelativePath(
+    normalizeLocalPath(trimmed),
+    homeDirectory
+  );
   if (
     !normalized ||
     isUrlLikeLocalPath(normalized) ||
@@ -112,6 +123,41 @@ function isWindowsAbsolutePath(path: string): boolean {
 
 function normalizeLocalPath(path: string): string {
   return path.trim().replaceAll("\\", "/").replace(/\/+$/, "");
+}
+
+function normalizeHomeRelativePath(
+  path: string,
+  homeDirectory?: string | null
+): string | null {
+  if (!isHomeRelativePath(path)) {
+    return path;
+  }
+
+  const home = normalizeHomeDirectory(homeDirectory);
+  if (!home) {
+    return null;
+  }
+
+  if (path === "~") {
+    return home;
+  }
+  const relativeHomePath = path.slice(2).replace(/^\/+/, "");
+  return home === "/" ? `/${relativeHomePath}` : `${home}/${relativeHomePath}`;
+}
+
+function normalizeHomeDirectory(path: string | null | undefined): string {
+  const raw = path?.trim().replaceAll("\\", "/") ?? "";
+  if (!raw) {
+    return "";
+  }
+  if (raw === "/") {
+    return "/";
+  }
+  return raw.replace(/\/+$/, "");
+}
+
+function isHomeRelativePath(path: string): boolean {
+  return path === "~" || path.startsWith("~/");
 }
 
 function cleanLocalPathForComparison(path: string): string {
