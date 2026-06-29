@@ -5800,9 +5800,10 @@ button.agent-gui-node__conversation-section-toggle:hover
 
 .agent-gui-node__composer-floating-prompt--queued {
   z-index: 1;
-  right: 24px;
+  right: auto;
   bottom: 100%;
   left: 24px;
+  width: min(720px, calc(100% - 48px));
 }
 
 .agent-gui-node__composer-input-shell {
@@ -6165,7 +6166,7 @@ html[data-theme="light"] [data-message-center-item-id].agent-gui-edge-glow {
 .agent-gui-node__composer-queued-prompt-list {
   display: grid;
   gap: 0;
-  max-height: 36px;
+  max-height: 32px;
   overflow: hidden;
   overscroll-behavior: contain;
   padding-right: 2px;
@@ -6178,7 +6179,7 @@ html[data-theme="light"] [data-message-center-item-id].agent-gui-edge-glow {
   position: relative;
   z-index: 1;
   margin-bottom: -1px;
-  padding: 10px 16px 12px;
+  padding: 6px 10px 7px;
   border: 1px solid var(--agent-gui-border-subtle, var(--line-2));
   border-bottom: 0;
   border-radius: 12px 12px 0 0;
@@ -6229,9 +6230,9 @@ html[data-theme="light"] [data-message-center-item-id].agent-gui-edge-glow {
 .agent-gui-node__composer-queued-prompt-row {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
-  gap: 8px;
+  gap: 6px;
   align-items: center;
-  padding: 2px 0;
+  padding: 0;
 }
 
 .agent-gui-node__composer-queued-prompt-row[data-draining="true"] {
@@ -6260,8 +6261,8 @@ html[data-theme="light"] [data-message-center-item-id].agent-gui-edge-glow {
 
 .agent-gui-node__composer-queued-prompt-image {
   display: block;
-  width: 28px;
-  height: 28px;
+  width: 24px;
+  height: 24px;
   flex: 0 0 auto;
   border: 1px solid var(--agent-gui-border-subtle, var(--line-2));
   border-radius: 4px;
@@ -6274,7 +6275,7 @@ html[data-theme="light"] [data-message-center-item-id].agent-gui-edge-glow {
   margin: 0;
   color: var(--agent-gui-text-secondary, var(--text-secondary));
   font-size: 13px;
-  line-height: 28px;
+  line-height: 24px;
   overflow: hidden;
   text-overflow: ellipsis;
   word-break: break-word;

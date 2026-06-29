@@ -2128,7 +2128,7 @@ describe("AgentFileMentionPalette", () => {
         /\.agent-gui-node__composer-queued-prompt-panel\[data-expanded="true"\]\s+\.agent-gui-node__composer-queued-prompt-text\s*{[^}]*}/s
       )?.[0] ?? "";
 
-    expect(queuedTextRule).toMatch(/line-height:\s*28px/);
+    expect(queuedTextRule).toMatch(/line-height:\s*24px/);
     expect(expandedQueuedTextRule).toMatch(/overflow:\s*hidden/);
     expect(expandedQueuedTextRule).toMatch(/text-overflow:\s*ellipsis/);
     expect(expandedQueuedTextRule).toMatch(/white-space:\s*nowrap/);
