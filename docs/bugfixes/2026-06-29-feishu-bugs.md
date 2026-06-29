@@ -16,5 +16,5 @@
   - `corepack pnpm --filter @tutti-os/agent-gui typecheck`
   - `corepack pnpm --filter @tutti-os/desktop typecheck`
 - Status: fixed locally
-- Commit: pending
-- Feishu status update: pending
+- Commit: `fab699c7d`
+- Feishu status update: confirmed `修复中`.
