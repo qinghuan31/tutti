@@ -329,9 +329,11 @@ func commandHelpPrefix(args []string) ([]string, bool) {
 func writeCommandOutput(stdout io.Writer, stderr io.Writer, output daemon.CommandOutput) int {
 	switch output.Kind {
 	case "plain", "markdown":
+		writeCommandWarnings(stderr, output.Warnings)
 		fmt.Fprintln(stdout, output.Text)
 		return 0
 	case "table":
+		writeCommandWarnings(stderr, output.Warnings)
 		writeTable(stdout, output.Columns, output.Rows)
 		return 0
 	case "json":
@@ -342,6 +344,19 @@ func writeCommandOutput(stdout io.Writer, stderr io.Writer, output daemon.Comman
 }
 
 func writeDynamicJSON(stdout io.Writer, stderr io.Writer, output daemon.CommandOutput) int {
+	if len(output.Warnings) > 0 {
+		envelope := map[string]any{
+			"warnings": output.Warnings,
+		}
+		if len(output.Value) > 0 {
+			envelope["value"] = output.Value
+		} else if output.Rows != nil {
+			envelope["rows"] = output.Rows
+		} else {
+			envelope["output"] = output
+		}
+		return writeJSON(stdout, stderr, envelope)
+	}
 	if len(output.Value) > 0 {
 		return writeJSON(stdout, stderr, output.Value)
 	}
@@ -349,6 +364,18 @@ func writeDynamicJSON(stdout io.Writer, stderr io.Writer, output daemon.CommandO
 		return writeJSON(stdout, stderr, output.Rows)
 	}
 	return writeJSON(stdout, stderr, output)
+}
+
+func writeCommandWarnings(stderr io.Writer, warnings []daemon.CommandWarning) {
+	for _, warning := range warnings {
+		message := strings.TrimSpace(warning.Message)
+		if message == "" {
+			message = strings.TrimSpace(warning.Code)
+		}
+		if message != "" {
+			fmt.Fprintf(stderr, "warning: %s\n", message)
+		}
+	}
 }
 
 func writeJSON(stdout io.Writer, stderr io.Writer, value any) int {

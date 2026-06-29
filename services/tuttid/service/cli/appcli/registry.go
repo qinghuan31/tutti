@@ -214,30 +214,13 @@ func (r *Registry) Invoke(ctx context.Context, request cliservice.InvokeRequest)
 	if err != nil {
 		return cliservice.CommandOutput{}, serviceInvokeError(err)
 	}
-	output = appendInputWarningsToOutput(output, warnings)
 	output, err = appclicore.ValidateCommandOutput(command.Capability.Output, output)
 	if err != nil {
 		return cliservice.CommandOutput{}, serviceInvokeError(err)
 	}
-	return serviceCommandOutput(output), nil
-}
-
-func appendInputWarningsToOutput(output appclicore.CommandOutput, warnings []appclicore.InputWarning) appclicore.CommandOutput {
-	if len(warnings) == 0 || output.Kind != appclicore.OutputModeJSON {
-		return output
-	}
-	if output.Value == nil {
-		output.Value = map[string]any{}
-	}
-	values := make([]map[string]any, 0, len(warnings))
-	for _, warning := range warnings {
-		values = append(values, map[string]any{
-			"code":    warning.Code,
-			"message": warning.Message,
-		})
-	}
-	output.Value["warnings"] = values
-	return output
+	result := serviceCommandOutput(output)
+	result.Warnings = serviceInputWarnings(warnings)
+	return result, nil
 }
 
 func (r *Registry) command(workspaceID string, commandID string) (appclicore.RegisteredApp, appclicore.Command, bool) {
@@ -460,6 +443,20 @@ func serviceCommandOutput(output appclicore.CommandOutput) cliservice.CommandOut
 		Value:   output.Value,
 		Text:    output.Text,
 	}
+}
+
+func serviceInputWarnings(warnings []appclicore.InputWarning) []cliservice.CommandWarning {
+	if len(warnings) == 0 {
+		return nil
+	}
+	result := make([]cliservice.CommandWarning, 0, len(warnings))
+	for _, warning := range warnings {
+		result = append(result, cliservice.CommandWarning{
+			Code:    warning.Code,
+			Message: warning.Message,
+		})
+	}
+	return result
 }
 
 func serviceTableColumns(columns []appclicore.TableColumn) []cliservice.TableColumn {
