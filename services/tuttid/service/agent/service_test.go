@@ -3445,6 +3445,39 @@ func TestServiceReconcilesStalePersistedTurnBeforeCanceling(t *testing.T) {
 	}
 }
 
+func TestServiceReconcilesPhaseOnlyStalePersistedTurnBeforeCanceling(t *testing.T) {
+	runtime := newFakeRuntime()
+	reconciled := make([]PersistedSession, 0)
+	service := NewService(runtime)
+	service.SessionReader = fakeSessionReader{
+		reconciled: &reconciled,
+		sessions: map[string]PersistedSession{
+			"ws-1:session-1": {
+				ID:                "session-1",
+				WorkspaceID:       "ws-1",
+				Provider:          "codex",
+				ProviderSessionID: "provider-session-1",
+				Status:            "created",
+				CurrentPhase:      "running",
+			},
+		},
+	}
+
+	result, err := service.Cancel(context.Background(), "ws-1", "session-1")
+	if err != nil {
+		t.Fatalf("Cancel returned error: %v", err)
+	}
+	if result.Canceled || result.Reason != CancelReasonStaleTurnReconciled {
+		t.Fatalf("cancel result = %#v, want phase-only stale turn reconciled without cancel", result)
+	}
+	if len(reconciled) != 1 || reconciled[0].CurrentPhase != "running" {
+		t.Fatalf("reconciled = %#v, want phase-only stale persisted session", reconciled)
+	}
+	if len(runtime.cancelCalls) != 0 {
+		t.Fatalf("cancel calls = %#v, want skipped stale runtime cancel", runtime.cancelCalls)
+	}
+}
+
 func TestServiceCancelReportsActiveTurnCanceled(t *testing.T) {
 	runtime := newFakeRuntime()
 	runtime.sessions["ws-1:session-1"] = RuntimeSession{
