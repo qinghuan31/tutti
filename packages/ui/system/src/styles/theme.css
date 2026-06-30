@@ -113,7 +113,7 @@
   --success-foreground: oklch(0.985 0.004 145);
   --warning: oklch(0.774 0.116 86);
   --warning-foreground: oklch(0.29 0.05 84);
-  --backdrop: rgb(255 255 255 / 60%);
+  --backdrop: rgb(0 0 0 / 60%);
 
   --shadow-soft: 0 10px 28px rgb(0 0 0 / 5%);
   --shadow-panel: 0 20px 44px rgb(0 0 0 / 8%);

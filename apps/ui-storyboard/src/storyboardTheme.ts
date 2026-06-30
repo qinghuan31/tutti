@@ -66,7 +66,7 @@ const storyboardLightThemeVars = {
   "--on-danger": "rgb(255, 238, 242)",
   "--on-danger-hover":
     "color-mix(in srgb, var(--on-danger) 92%, var(--state-danger))",
-  "--backdrop": "rgba(255, 255, 255, 0.60)",
+  "--backdrop": "rgba(0, 0, 0, 0.60)",
   "--backdrop-dark": "rgba(0, 0, 0, 0.60)",
   "--rich-text-mention-app": "rgb(191, 90, 242)",
   "--rich-text-mention-issue": "var(--tutti-purple)",

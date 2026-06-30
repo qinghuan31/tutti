@@ -204,7 +204,7 @@
         {
           "label": "--backdrop",
           "dark": "rgba(0, 0, 0, 0.60)",
-          "light": "rgba(255, 255, 255, 0.60)",
+          "light": "rgba(0, 0, 0, 0.60)",
           "usage": "弹窗遮罩"
         },
         {

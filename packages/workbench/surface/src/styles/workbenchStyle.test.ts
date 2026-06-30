@@ -87,6 +87,35 @@ test("mission control overlay lets layout controls sit above dialog overlays", (
   );
 });
 
+test("mission control backdrop uses the shared dark scrim value", () => {
+  const css = readFileSync(resolve("src/styles/workbench.css"), "utf8");
+
+  assert.match(
+    css,
+    /\.workbench-surface\s*{[^}]*--workbench-chrome-active-foreground:\s*var\(--foreground\);/s
+  );
+  assert.match(
+    css,
+    /\.workbench-surface\[data-mission-control-phase="entering"\],[\s\S]*?\.workbench-surface\[data-presentation-mode="mission-control"\]\s*{[^}]*--workbench-chrome-active-foreground:\s*var\(--white-stationary\);[^}]*--workbench-chrome-foreground:\s*var\(--white-stationary\);/s
+  );
+  assert.match(
+    css,
+    /\.workbench-mission-control-backdrop\s*{[^}]*background:\s*rgb\(0 0 0 \/ 60%\);[^}]*box-shadow:\s*none;/s
+  );
+  assert.match(
+    css,
+    /\.workbench-mission-control-backdrop::before\s*{[^}]*background:\s*none;[^}]*opacity:\s*0;/s
+  );
+  assert.match(
+    css,
+    /\.workbench-mission-control-backdrop::after\s*{[^}]*background:\s*none;[^}]*opacity:\s*0;/s
+  );
+  assert.doesNotMatch(
+    css,
+    /\.workbench-mission-control-backdrop\s*{[^}]*var\(--workbench-surface-background\)/s
+  );
+});
+
 test("dialog popover node layer sits above dialog overlays and remains clickable", () => {
   const css = readFileSync(resolve("src/styles/workbench.css"), "utf8");
 

@@ -695,6 +695,28 @@ describe("agent GUI workbench contribution copy", () => {
     );
   });
 
+  it("uses the dark scrim value for zoom image modal overlays", () => {
+    const css = readFileSync(resolve("app/renderer/agentactivity.css"), "utf8");
+
+    expect(css).toMatch(
+      /\.tsh-zoom-dialog\s+\[data-rmiz-modal-overlay="visible"\]\s*{[^}]*background:\s*rgb\(0 0 0 \/ 60%\);/s
+    );
+    expect(css).toMatch(
+      /\.tsh-zoom-dialog\s+\[data-rmiz-modal-overlay="hidden"\]\s*{[^}]*background:\s*rgb\(0 0 0 \/ 0%\);/s
+    );
+    expect(css).not.toMatch(
+      /\.tsh-zoom-dialog\s+\[data-rmiz-modal-overlay="visible"\]\s*{[^}]*background:\s*color-mix\(in srgb,\s*var\(--background-panel\)/s
+    );
+  });
+
+  it("renders zoom image modal action buttons as fully rounded controls", () => {
+    const css = readFileSync(resolve("app/renderer/agentactivity.css"), "utf8");
+
+    expect(css).toMatch(
+      /\.tsh-zoom-dialog__icon-button,\s*\.tsh-zoom-dialog__image-actions button\s*{[^}]*width:\s*32px;[^}]*height:\s*32px;[^}]*border-radius:\s*999px;/s
+    );
+  });
+
   it("keeps the traffic light group aligned with the agent identity", () => {
     const css = readFileSync(resolve("app/renderer/agentactivity.css"), "utf8");
 
