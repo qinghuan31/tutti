@@ -47,12 +47,11 @@ import {
   type AgentWorkspaceReferenceInitialTargetResolver
 } from "./AgentGUINodeView";
 import {
+  formatAgentGUIConversationPlainTitle,
   normalizeAgentGUIProviderIdentity,
-  resolveAgentGUIConversationDisplayTitle,
   resolveAgentGUIDockConversationTitle,
   resolveAgentGUIProviderDisplayLabel
 } from "./model/agentGuiProviderIdentity";
-import { formatAgentSessionMentionText } from "../../shared/utils/agentSessionMentionText";
 import {
   buildDockAgentProbeTooltipLines,
   findWorkspaceAgentProbeForDockProvider,
@@ -770,13 +769,10 @@ export const AgentGUINode = memo(function AgentGUINode({
     ? resolveAgentGUIDockConversationTitle(viewModel.activeConversation)
     : null;
   const activeConversationWindowTitle = viewModel.activeConversation
-    ? formatAgentSessionMentionText(
-        resolveAgentGUIConversationDisplayTitle(
-          viewModel.activeConversation,
-          fallbackAgentTitle
-        ),
-        { language: locale }
-      )
+    ? formatAgentGUIConversationPlainTitle(viewModel.activeConversation, {
+        fallbackAgentLabel: fallbackAgentTitle,
+        language: locale
+      })
     : null;
   const labels = useMemo<AgentGUIViewLabels>(
     () => ({
@@ -1140,8 +1136,12 @@ export const AgentGUINode = memo(function AgentGUINode({
         "agentHost.agentGui.slashPaletteConnectorsGroup"
       ),
       slashPaletteMcpGroup: t("agentHost.agentGui.slashPaletteMcpGroup"),
-      slashCommandCompactLabel: t("agentHost.agentGui.slashCommandCompactLabel"),
-      slashCommandContextLabel: t("agentHost.agentGui.slashCommandContextLabel"),
+      slashCommandCompactLabel: t(
+        "agentHost.agentGui.slashCommandCompactLabel"
+      ),
+      slashCommandContextLabel: t(
+        "agentHost.agentGui.slashCommandContextLabel"
+      ),
       slashCommandFastLabel: t("agentHost.agentGui.slashCommandFastLabel"),
       slashCommandGoalLabel: t("agentHost.agentGui.slashCommandGoalLabel"),
       slashCommandInitLabel: t("agentHost.agentGui.slashCommandInitLabel"),

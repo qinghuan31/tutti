@@ -460,6 +460,27 @@ User-visible rules:
   interactive/approval projection, or explicit local pending state. Do not infer
   them from row text.
 
+### Conversation Titles Across Surfaces
+
+```text
+runtime snapshot session + cached messages
+  -> Agent GUI title projection
+  -> rail row / detail header / workbench header / dock popup / toast title
+```
+
+User-visible rules:
+
+- AgentGUI conversation titles must use the shared title projection before they
+  reach desktop-owned chrome, dock previews, message center cards, or toast
+  notifications. Do not display raw `session.title.trim()` in those surfaces.
+- Live runtime snapshot data is the primary source for workbench and dock
+  titles. `lastActiveConversationTitle` is a hydration fallback only; it must not
+  override a current snapshot title and must be cleared when starting a new
+  conversation.
+- Title projection must normalize rich mention markdown, strip provider-only and
+  untitled placeholders from workbench chrome, and use cached first-user-message
+  content only when the session title is not displayable.
+
 ### Detail Pane And Transcript
 
 ```text

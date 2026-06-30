@@ -80,7 +80,6 @@ import {
 } from "../../shared/managedAgentIcons";
 import type { UiLanguage } from "../../contexts/settings/domain/agentSettings";
 import { normalizeManagedAgentProvider } from "../../shared/managedAgentProviders";
-import { formatAgentSessionMentionText } from "../../shared/utils/agentSessionMentionText";
 import { TaskSearchField } from "../RoomIssueNode/TaskSearchField";
 import type { WorkspaceLinkAction } from "../../actions/workspaceLinkActions";
 import type {
@@ -88,7 +87,7 @@ import type {
   AgentGUINodeViewModel,
   AgentGUISessionChrome
 } from "./model/agentGuiNodeTypes";
-import { resolveAgentGUIConversationDisplayTitle } from "./model/agentGuiProviderIdentity";
+import { formatAgentGUIConversationPlainTitle } from "./model/agentGuiProviderIdentity";
 import { CanvasNodeTrashLinedIcon } from "../shared/canvasNodeChromeIcons";
 import { AgentSessionChrome } from "./AgentSessionChrome";
 import {
@@ -789,19 +788,6 @@ function resolveActiveConversationBusyStatus(input: {
   return null;
 }
 
-function conversationDisplayTitle(
-  conversation: Pick<
-    AgentGUINodeViewModel["conversations"][number],
-    "title" | "titleFallback"
-  >,
-  labels: Pick<AgentGUIViewLabels, "fallbackAgentTitle">
-): string {
-  return resolveAgentGUIConversationDisplayTitle(
-    conversation,
-    labels.fallbackAgentTitle
-  );
-}
-
 function conversationPlainTitle(
   conversation: Pick<
     AgentGUINodeViewModel["conversations"][number],
@@ -810,12 +796,10 @@ function conversationPlainTitle(
   labels: Pick<AgentGUIViewLabels, "fallbackAgentTitle">,
   uiLanguage: UiLanguage
 ): string {
-  return formatAgentSessionMentionText(
-    conversationDisplayTitle(conversation, labels),
-    {
-      language: uiLanguage
-    }
-  );
+  return formatAgentGUIConversationPlainTitle(conversation, {
+    fallbackAgentLabel: labels.fallbackAgentTitle,
+    language: uiLanguage
+  });
 }
 
 export function AgentGUINodeView({
