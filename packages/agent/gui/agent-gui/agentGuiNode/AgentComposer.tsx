@@ -100,6 +100,8 @@ import {
 } from "./agentRichText/AgentRichTextEditor";
 import {
   imageFilesFromDataTransfer,
+  nonImageFilesFromDataTransfer,
+  systemFileDragInfoFromDataTransfer,
   readAgentRichTextPromptImages
 } from "./agentRichText/agentRichTextPromptImages";
 import type { AgentPromptContentBlock } from "../../shared/contracts/dto/agentSession";
@@ -819,6 +821,13 @@ export function AgentComposer({
   const agentActivityRuntime = useOptionalAgentActivityRuntime();
   const agentHostApi = useOptionalAgentHostApi();
   const getReferenceForFile = agentHostApi?.workspace.getReferenceForFile;
+  const promptFileUploadSupported = Boolean(
+    agentActivityRuntime?.uploadPromptContent &&
+    (agentActivityRuntime.promptContentUploadSupport?.file ?? true)
+  );
+  const promptFilesSupported = Boolean(
+    resolveDroppedFileReferences && promptFileUploadSupported
+  );
   const [isPaletteOpen, setIsPaletteOpen] = useState(true);
   const [isReviewPickerOpen, setIsReviewPickerOpen] = useState(false);
   const [highlightedIndex, setHighlightedIndex] = useState(0);
@@ -2050,7 +2059,9 @@ export function AgentComposer({
   const applyReferencePickResult = useCallback(
     async (result: WorkspaceReferencePickResult) => {
       if (result.files.length > 0) {
-        const uploadPromptContent = agentActivityRuntime?.uploadPromptContent;
+        const uploadPromptContent = promptFileUploadSupported
+          ? agentActivityRuntime?.uploadPromptContent
+          : undefined;
         const uploadedFiles = await Promise.all(
           result.files.map(async (file) => {
             const hostPath = file.hostPath?.trim() ?? "";
@@ -2100,7 +2111,7 @@ export function AgentComposer({
         editorHandleRef.current?.insertMentionItems(result.mentionItems);
       }
     },
-    [agentActivityRuntime, workspaceId]
+    [agentActivityRuntime, promptFileUploadSupported, workspaceId]
   );
 
   const handleWorkspaceReferencePicker = useCallback(async () => {
@@ -2112,7 +2123,11 @@ export function AgentComposer({
 
   const applyDroppedFileReferences = useCallback(
     async (files: readonly File[]) => {
-      if (!resolveDroppedFileReferences || files.length === 0) {
+      if (
+        !promptFilesSupported ||
+        !resolveDroppedFileReferences ||
+        files.length === 0
+      ) {
         return;
       }
       const references = await resolveDroppedFileReferences(files);
@@ -2121,7 +2136,11 @@ export function AgentComposer({
       }
       await applyReferencePickResult({ files: references, mentionItems: [] });
     },
-    [applyReferencePickResult, resolveDroppedFileReferences]
+    [
+      applyReferencePickResult,
+      promptFilesSupported,
+      resolveDroppedFileReferences
+    ]
   );
 
   // @ 面板里点任务/应用行的「查看产物」入口:关掉面板,打开引用 picker 并定位到该实体;
@@ -2280,6 +2299,25 @@ export function AgentComposer({
       return target instanceof Node && dropTarget.contains(target);
     };
 
+    const systemFileDrag = (
+      event: DragEvent
+    ): { hasImageFiles: boolean; hasRegularFiles: boolean } | null => {
+      if (
+        event.defaultPrevented ||
+        inputDisabled ||
+        !containsEventTarget(event) ||
+        hasWorkspaceFileDropData(event.dataTransfer)
+      ) {
+        return null;
+      }
+      const dragInfo = systemFileDragInfoFromDataTransfer(event.dataTransfer);
+      const hasRegularFiles = dragInfo.hasRegularFiles && promptFilesSupported;
+      if (!dragInfo.hasImageFiles && !hasRegularFiles) {
+        return null;
+      }
+      return { hasImageFiles: dragInfo.hasImageFiles, hasRegularFiles };
+    };
+
     const systemFileDrop = (
       event: DragEvent
     ): { imageFiles: File[]; regularFiles: File[] } | null => {
@@ -2291,33 +2329,31 @@ export function AgentComposer({
       ) {
         return null;
       }
-      const files = Array.from(event.dataTransfer?.files ?? []);
-      if (files.length === 0) {
-        return null;
-      }
       const imageFiles = imageFilesFromDataTransfer(event.dataTransfer);
       const imageFileSet = new Set(imageFiles);
-      const regularFiles = files.filter((file) => !imageFileSet.has(file));
-      const canResolveRegularFiles = Boolean(resolveDroppedFileReferences);
-      const effectiveRegularFiles = canResolveRegularFiles ? regularFiles : [];
-      if (imageFiles.length === 0 && effectiveRegularFiles.length === 0) {
+      const regularFiles = promptFilesSupported
+        ? nonImageFilesFromDataTransfer(event.dataTransfer).filter(
+            (file) => !imageFileSet.has(file)
+          )
+        : [];
+      if (imageFiles.length === 0 && regularFiles.length === 0) {
         return null;
       }
-      return { imageFiles, regularFiles: effectiveRegularFiles };
+      return { imageFiles, regularFiles };
     };
 
     const handleDragOver: EventListener = (event): void => {
       if (!isDragEvent(event)) {
         return;
       }
-      const drop = systemFileDrop(event);
-      if (!drop) {
+      const drag = systemFileDrag(event);
+      if (!drag) {
         return;
       }
       event.preventDefault();
       if (
-        drop.regularFiles.length === 0 &&
-        drop.imageFiles.length > 0 &&
+        !drag.hasRegularFiles &&
+        drag.hasImageFiles &&
         !promptImagesSupported
       ) {
         return;
@@ -2373,8 +2409,8 @@ export function AgentComposer({
     applyDroppedFileReferences,
     inputDisabled,
     onPromptImagesUnsupported,
+    promptFilesSupported,
     promptImagesSupported,
-    resolveDroppedFileReferences,
     scheduleComposerFocus
   ]);
   useEffect(() => {
@@ -2981,7 +3017,7 @@ export function AgentComposer({
                     onPasteImages={handlePastedImages}
                     getReferenceForFile={getReferenceForFile}
                     onDropFiles={
-                      resolveDroppedFileReferences
+                      promptFilesSupported
                         ? applyDroppedFileReferences
                         : undefined
                     }

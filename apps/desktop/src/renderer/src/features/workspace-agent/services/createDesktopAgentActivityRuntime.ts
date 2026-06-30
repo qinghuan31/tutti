@@ -147,9 +147,10 @@ export function createDesktopAgentActivityRuntime(
     reporterNow: options.reporterNow,
     reporterService: options.reporterService
   });
+  const archiveAgentPromptFile = options.hostFilesApi?.archiveAgentPromptFile;
   return {
     promptContentUploadSupport: {
-      file: true,
+      file: Boolean(archiveAgentPromptFile),
       image: false
     },
     async activateSession(input) {
@@ -370,59 +371,58 @@ export function createDesktopAgentActivityRuntime(
       });
       return result;
     },
-    async uploadPromptContent(input) {
-      if (!options.hostFilesApi?.archiveAgentPromptFile) {
-        throw new Error(
-          "Prompt file uploads are not supported by this agent runtime."
-        );
-      }
-      const content = await Promise.all(
-        input.content.map(async (block) => {
-          if (block.type === "file") {
-            const hostPath = block.hostPath?.trim() ?? "";
-            if (!hostPath) {
-              throw new Error("Prompt file upload requires hostPath.");
-            }
-            const archived = await options.hostFilesApi!.archiveAgentPromptFile(
-              {
-                workspaceID: input.workspaceId,
-                hostPath,
-                displayName: block.name ?? null,
-                mimeType: block.mimeType ?? null
-              }
+    ...(archiveAgentPromptFile
+      ? {
+          async uploadPromptContent(
+            input: Parameters<
+              NonNullable<AgentActivityRuntime["uploadPromptContent"]>
+            >[0]
+          ) {
+            const content = await Promise.all(
+              input.content.map(async (block) => {
+                if (block.type === "file") {
+                  const hostPath = block.hostPath?.trim() ?? "";
+                  if (!hostPath) {
+                    throw new Error("Prompt file upload requires hostPath.");
+                  }
+                  const archived = await archiveAgentPromptFile({
+                    workspaceID: input.workspaceId,
+                    hostPath,
+                    displayName: block.name ?? null,
+                    mimeType: block.mimeType ?? null
+                  });
+                  return {
+                    ...block,
+                    name: archived.name,
+                    path: archived.path,
+                    sizeBytes: archived.sizeBytes,
+                    uploadStatus: "uploaded"
+                  };
+                }
+                if (block.type === "image" && block.data) {
+                  const archived = await archiveAgentPromptFile({
+                    workspaceID: input.workspaceId,
+                    dataBase64: block.data,
+                    displayName: block.name ?? null,
+                    mimeType: block.mimeType ?? null
+                  });
+                  const blockWithoutData = { ...block };
+                  delete blockWithoutData.data;
+                  return {
+                    ...blockWithoutData,
+                    name: archived.name,
+                    path: archived.path,
+                    sizeBytes: archived.sizeBytes,
+                    uploadStatus: "uploaded"
+                  };
+                }
+                return block;
+              })
             );
-            return {
-              ...block,
-              name: archived.name,
-              path: archived.path,
-              sizeBytes: archived.sizeBytes,
-              uploadStatus: "uploaded"
-            };
+            return { content };
           }
-          if (block.type === "image" && block.data) {
-            const archived = await options.hostFilesApi!.archiveAgentPromptFile(
-              {
-                workspaceID: input.workspaceId,
-                dataBase64: block.data,
-                displayName: block.name ?? null,
-                mimeType: block.mimeType ?? null
-              }
-            );
-            const blockWithoutData = { ...block };
-            delete blockWithoutData.data;
-            return {
-              ...blockWithoutData,
-              name: archived.name,
-              path: archived.path,
-              sizeBytes: archived.sizeBytes,
-              uploadStatus: "uploaded"
-            };
-          }
-          return block;
-        })
-      );
-      return { content };
-    },
+        }
+      : {}),
     readSessionAttachment: (input) =>
       workspaceAgentActivityService.readSessionAttachment(input),
     async setSessionPinned(input) {

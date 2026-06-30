@@ -72,6 +72,21 @@ function createFileDataTransfer(files: readonly File[]): DataTransfer {
   } as unknown as DataTransfer;
 }
 
+function createProtectedFileDragDataTransfer(
+  files: readonly File[]
+): DataTransfer {
+  const dataTransfer = createFileDataTransfer(files) as unknown as {
+    files: readonly File[];
+    items: Array<{ getAsFile: () => File | null }>;
+  };
+  dataTransfer.files = [];
+  dataTransfer.items = dataTransfer.items.map((item) => ({
+    ...item,
+    getAsFile: () => null
+  }));
+  return dataTransfer as unknown as DataTransfer;
+}
+
 function createImageDataTransfer(file: File): DataTransfer {
   return createFileDataTransfer([file]);
 }
@@ -3302,10 +3317,11 @@ describe("AgentComposer", () => {
     );
     const { container } = render(renderComposer());
     const detailPanel = container.querySelector("#agent-gui-detail");
+    const dragDataTransfer = createProtectedFileDragDataTransfer([report]);
     const dataTransfer = createFileDataTransfer([report]);
 
-    fireEvent.dragOver(detailPanel!, { dataTransfer });
-    expect(dataTransfer.dropEffect).toBe("copy");
+    fireEvent.dragOver(detailPanel!, { dataTransfer: dragDataTransfer });
+    expect(dragDataTransfer.dropEffect).toBe("copy");
     fireEvent.drop(detailPanel!, { dataTransfer });
 
     await waitFor(() =>
@@ -3329,6 +3345,74 @@ describe("AgentComposer", () => {
       )
     );
     expect(draftContent.prompt).not.toContain("/Users/local/Downloads");
+  });
+
+  it("does not accept dropped host files when prompt file uploads are unsupported", async () => {
+    const uploadPromptContent = vi.fn();
+    const resolveDroppedFileReferences = vi.fn(() => [
+      {
+        path: "/Users/local/Downloads/report.pdf",
+        hostPath: "/Users/local/Downloads/report.pdf",
+        displayName: "report.pdf",
+        kind: "file" as const,
+        sourceId: "host-local-file"
+      }
+    ]);
+    const onDraftContentChange = vi.fn();
+    setAgentActivityRuntimeForTests({
+      promptContentUploadSupport: { file: false },
+      uploadPromptContent
+    } as unknown as AgentActivityRuntime);
+    const report = new File(["report"], "report.pdf", {
+      type: "application/pdf"
+    });
+    const { container } = render(
+      <div id="agent-gui-detail">
+        <AgentComposer
+          workspaceId="workspace-1"
+          currentUserId="user-1"
+          provider="codex"
+          draftContent={createDraft("")}
+          availableCommands={
+            [] satisfies readonly AgentHostAgentSessionCommand[]
+          }
+          disabled={false}
+          submitDisabled={false}
+          placeholder="placeholder"
+          composerSettings={createComposerSettings()}
+          queuedPrompts={[]}
+          drainingQueuedPromptId={null}
+          canQueueWhileBusy={false}
+          showStopButton={false}
+          activePrompt={null}
+          isInterrupting={false}
+          isSendingTurn={false}
+          isSubmittingPrompt={false}
+          labels={createLabels()}
+          workspaceUserProjectI18n={workspaceUserProjectI18n}
+          onDraftContentChange={onDraftContentChange}
+          onSettingsChange={vi.fn()}
+          onSubmit={vi.fn()}
+          onSendQueuedPromptNext={vi.fn()}
+          onRemoveQueuedPrompt={vi.fn()}
+          onEditQueuedPrompt={vi.fn()}
+          onInterruptCurrentTurn={vi.fn()}
+          onSubmitInteractivePrompt={vi.fn()}
+          resolveDroppedFileReferences={resolveDroppedFileReferences}
+        />
+      </div>
+    );
+    const detailPanel = container.querySelector("#agent-gui-detail");
+    const dragDataTransfer = createProtectedFileDragDataTransfer([report]);
+    const dataTransfer = createFileDataTransfer([report]);
+
+    fireEvent.dragOver(detailPanel!, { dataTransfer: dragDataTransfer });
+    expect(dragDataTransfer.dropEffect).toBe("none");
+    fireEvent.drop(detailPanel!, { dataTransfer });
+
+    expect(resolveDroppedFileReferences).not.toHaveBeenCalled();
+    expect(uploadPromptContent).not.toHaveBeenCalled();
+    expect(onDraftContentChange).not.toHaveBeenCalled();
   });
 
   it("keeps mixed system image and file drops on their separate draft paths", async () => {

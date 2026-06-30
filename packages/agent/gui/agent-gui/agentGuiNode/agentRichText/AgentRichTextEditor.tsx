@@ -51,6 +51,7 @@ import {
   imageFilesFromDataTransfer,
   nonImageFilesFromDataTransfer,
   readAgentRichTextPromptImages,
+  systemFileDragInfoFromDataTransfer,
   type AgentRichTextPromptImage
 } from "./agentRichTextPromptImages";
 
@@ -863,15 +864,17 @@ export const AgentRichTextEditor = forwardRef<
           if (!dataTransfer || disabled) {
             return false;
           }
-          const imageFiles = imageFilesFromDataTransfer(dataTransfer);
-          const hasRegularSystemFiles =
-            Array.from(dataTransfer.files ?? []).some(
-              (file) => !imageFiles.includes(file)
-            ) && Boolean(onDropFilesRef.current);
-          if (imageFiles.length > 0 || hasRegularSystemFiles) {
+          const systemFileDragInfo =
+            systemFileDragInfoFromDataTransfer(dataTransfer);
+          const canDropRegularSystemFiles =
+            systemFileDragInfo.hasRegularFiles &&
+            Boolean(onDropFilesRef.current);
+          if (systemFileDragInfo.hasImageFiles || canDropRegularSystemFiles) {
             event.preventDefault();
             dataTransfer.dropEffect =
-              hasRegularSystemFiles || promptImagesSupportedRef.current
+              canDropRegularSystemFiles ||
+              (systemFileDragInfo.hasImageFiles &&
+                promptImagesSupportedRef.current)
                 ? "copy"
                 : "none";
             return true;
@@ -895,9 +898,10 @@ export const AgentRichTextEditor = forwardRef<
             return false;
           }
           const imageFiles = imageFilesFromDataTransfer(dataTransfer);
-          const files = Array.from(dataTransfer.files ?? []);
           const imageFileSet = new Set(imageFiles);
-          const regularFiles = files.filter((file) => !imageFileSet.has(file));
+          const regularFiles = nonImageFilesFromDataTransfer(
+            dataTransfer
+          ).filter((file) => !imageFileSet.has(file));
           const canHandleRegularFiles = Boolean(onDropFilesRef.current);
           if (
             imageFiles.length > 0 ||

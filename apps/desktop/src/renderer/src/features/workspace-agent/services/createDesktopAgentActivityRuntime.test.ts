@@ -39,6 +39,15 @@ test("desktop agent activity runtime forwards package diagnostics to renderer di
   ]);
 });
 
+test("desktop agent activity runtime hides prompt uploads without archive support", () => {
+  const runtime = createDesktopAgentActivityRuntime(
+    createWorkspaceAgentActivityService()
+  );
+
+  assert.equal(runtime.promptContentUploadSupport?.file, false);
+  assert.equal(runtime.uploadPromptContent, undefined);
+});
+
 test("desktop agent activity runtime archives prompt file uploads", async () => {
   const archiveInputs: unknown[] = [];
   const runtime = createDesktopAgentActivityRuntime(
