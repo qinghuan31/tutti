@@ -409,15 +409,16 @@ messages.
 
 ### Layer Ownership Summary
 
-| Layer                                   | Owns                                                                                                  | Must not own                                   |
-| --------------------------------------- | ----------------------------------------------------------------------------------------------------- | ---------------------------------------------- |
-| `tuttid` agent service                  | provider runtime start, exec, resume/cancel, validation, persistence reports                          | AgentGUI view state                            |
-| `ActivityProjection`                    | persisted session/message projection and `agent.activity.updated` publication                         | React projection or local UI overlays          |
-| desktop `WorkspaceAgentActivityService` | runtime adapter, snapshot controller, optimistic bridge, event reconcile, desktop/tuttid client calls | transcript rendering semantics                 |
-| `AgentActivityRuntime`                  | AgentGUI-facing source of durable activity data and commands                                          | independent session/message storage            |
-| AgentGuiNode controller/stores          | selection, drafts, loading/error state, pending overlays, command sequencing                          | authoritative session/message state            |
-| shared projection/model helpers         | deterministic conversion from snapshots/messages to view models                                       | provider transport calls                       |
-| React views                             | DOM interaction and rendering from `viewModel`/`actions`                                              | fetching or mutating durable activity directly |
+| Layer                                   | Owns                                                                                                   | Must not own                                                 |
+| --------------------------------------- | ------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------ |
+| `tuttid` agent service                  | provider runtime start, exec, resume/cancel, validation, persistence reports                           | AgentGUI view state                                          |
+| `ActivityProjection`                    | persisted session/message projection and `agent.activity.updated` publication                          | React projection or local UI overlays                        |
+| desktop `WorkspaceAgentActivityService` | runtime adapter, snapshot controller, optimistic bridge, event reconcile, desktop/tuttid client calls  | transcript rendering semantics                               |
+| `AgentActivityRuntime`                  | AgentGUI-facing source of durable activity data and commands                                           | independent session/message storage                          |
+| `AgentQueuedPromptRuntime`              | ephemeral busy-session queued prompts keyed by workspace and agent session, drain claims, retry blocks | persisted node/session/message state                         |
+| AgentGuiNode controller/stores          | selection, drafts, loading/error state, pending overlays, command sequencing                           | authoritative session/message state or queued prompt storage |
+| shared projection/model helpers         | deterministic conversion from snapshots/messages to view models                                        | provider transport calls                                     |
+| React views                             | DOM interaction and rendering from `viewModel`/`actions`                                               | fetching or mutating durable activity directly               |
 
 ## User-Visible Interaction Contracts
 
@@ -514,6 +515,31 @@ User-visible rules:
   flight.
 - Display prompt is for user-facing echo/title when content is collapsed or
   bundled. Expanded prompt blocks remain the runtime command input.
+
+### Busy Queued Prompts
+
+Busy-session queued prompts are AgentGUI-owned ephemeral interaction state. They
+live in `AgentQueuedPromptRuntime`, not in Workbench node snapshots, not in
+`AgentActivityRuntime` durable session/message snapshots, and not in
+conversation-list or session-view compatibility stores.
+
+The desktop AgentGUI workbench host creates one queued-prompt runtime per
+workspace-scoped AgentGUI host input and injects it into every AgentGUI
+workbench node. Queue identity is `(workspaceId, agentSessionId)`, so reopening a
+minimized node or opening another workbench node for the same agent session sees
+the same queue instead of forking by node id.
+
+Draining is claim-based. A controller must call
+`claimNextToDrain({ workspaceId, agentSessionId, ownerId })` and may call
+`AgentActivityRuntime.sendInput` only for the returned claim. Completion and
+release are validated by `claimId`, which prevents a stale unmounted controller
+from deleting a newer claim or sending the same queued prompt twice. Claims are
+released when the owning controller unmounts and also expire by lease timeout so
+a queued prompt cannot stay permanently stuck at the head of the queue.
+
+Preview-mode AgentGUI surfaces are read-only for this runtime: they may render an
+existing queue if injected into the same context, but they must not enqueue,
+claim, drain, promote, edit, or delete queued prompts.
 
 ### Approval And Ask-User Prompts
 

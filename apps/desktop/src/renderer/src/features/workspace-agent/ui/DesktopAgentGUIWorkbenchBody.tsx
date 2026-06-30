@@ -12,6 +12,7 @@ import { useSnapshot } from "valtio";
 import { AgentGUI } from "@tutti-os/agent-gui";
 import type {
   AgentActivityRuntime,
+  AgentQueuedPromptRuntime,
   AgentGUIProviderTarget,
   AgentGUIProps,
   AgentHostInputApi
@@ -78,6 +79,7 @@ export type DesktopAgentGUIConversationRailToggleDetail =
 
 interface DesktopAgentGUIWorkbenchBodyProps {
   agentActivityRuntime: AgentActivityRuntime;
+  agentQueuedPromptRuntime: AgentQueuedPromptRuntime;
   agentHostApi: AgentHostInputApi;
   appCenterService: IWorkspaceAppCenterService;
   agentProviderStatusService?: IAgentProviderStatusService;
@@ -144,6 +146,7 @@ function areDesktopAgentGUIWorkbenchBodyPropsEqual(
 ): boolean {
   return (
     previous.agentActivityRuntime === next.agentActivityRuntime &&
+    previous.agentQueuedPromptRuntime === next.agentQueuedPromptRuntime &&
     previous.agentHostApi === next.agentHostApi &&
     previous.appCenterService === next.appCenterService &&
     previous.agentProviderStatusService === next.agentProviderStatusService &&
@@ -217,6 +220,7 @@ function desktopComputerUseStatusesEqual(
 
 function DesktopAgentGUIWorkbenchBodyImpl({
   agentActivityRuntime,
+  agentQueuedPromptRuntime,
   agentHostApi,
   appCenterService,
   agentProviderStatusService,
@@ -913,6 +917,7 @@ function DesktopAgentGUIWorkbenchBodyImpl({
     <>
       <AgentGUI
         agentActivityRuntime={agentActivityRuntime}
+        agentQueuedPromptRuntime={agentQueuedPromptRuntime}
         agentHostApi={agentHostApi}
         i18n={i18n}
         locale={locale}

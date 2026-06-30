@@ -46,6 +46,7 @@ test("desktop agent GUI workbench host input reuses an injected agent host api",
   });
 
   assert.equal(hostInput.agentHostApi, agentHostApi);
+  assert.equal(typeof hostInput.agentQueuedPromptRuntime.enqueue, "function");
   assert.equal(hostInput.contextMentionProviders[0]?.id, "file");
   assert.equal(
     typeof hostInput.workspaceFileReferenceAdapter.listDirectory,

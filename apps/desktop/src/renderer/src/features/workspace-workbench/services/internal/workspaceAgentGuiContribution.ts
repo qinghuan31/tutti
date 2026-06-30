@@ -124,6 +124,8 @@ export function createWorkspaceAgentGuiContribution(input: {
   ) =>
     createElement(DesktopAgentGUIWorkbenchBody, {
       agentActivityRuntime: agentGUIWorkbenchHostInput.agentActivityRuntime,
+      agentQueuedPromptRuntime:
+        agentGUIWorkbenchHostInput.agentQueuedPromptRuntime,
       agentHostApi: agentGUIWorkbenchHostInput.agentHostApi,
       appCenterService: input.appCenterService,
       agentProviderStatusService: input.agentProviderStatusService,
