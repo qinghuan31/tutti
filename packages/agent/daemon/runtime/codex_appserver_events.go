@@ -1058,13 +1058,20 @@ func appServerThreadStartParams(session Session, cwd string) map[string]any {
 	return params
 }
 
-func appServerTurnStartParams(session Session, threadID string, content []PromptContentBlock, planModeMask map[string]any, defaultModel string) map[string]any {
+func appServerTurnStartParams(
+	session Session,
+	threadID string,
+	content []PromptContentBlock,
+	planModeMask map[string]any,
+	defaultModeMask map[string]any,
+	defaultModel string,
+) map[string]any {
 	settings := session.SettingsValue()
 	params := map[string]any{
 		"threadId": threadID,
 		"input":    appServerUserInput(content),
 	}
-	if collaborationMode := appServerPlanCollaborationMode(settings, planModeMask, defaultModel); collaborationMode != nil {
+	if collaborationMode := appServerCollaborationMode(settings, planModeMask, defaultModeMask, defaultModel); collaborationMode != nil {
 		params["collaborationMode"] = collaborationMode
 	}
 	if model := strings.TrimSpace(settings.Model); model != "" {
@@ -1088,7 +1095,7 @@ func appServerTurnStartParams(session Session, threadID string, content []Prompt
 	return params
 }
 
-// appServerPlanCollaborationMode assembles the turn/start collaborationMode
+// appServerCollaborationMode assembles the turn/start collaborationMode
 // payload. Collaboration mode is sticky thread state on the codex side, so
 // once negotiation succeeded every turn declares its mode explicitly: the
 // Plan preset while plan mode is on, the default mode otherwise (mirrors the
@@ -1096,22 +1103,36 @@ func appServerTurnStartParams(session Session, threadID string, content []Prompt
 // schema requires a concrete settings.model — session override first, then
 // the session default model, then the mask's own model; without any model
 // the field is omitted rather than sending an invalid request.
-func appServerPlanCollaborationMode(settings SessionSettings, planModeMask map[string]any, defaultModel string) map[string]any {
-	if planModeMask == nil {
+func appServerCollaborationMode(
+	settings SessionSettings,
+	planModeMask map[string]any,
+	defaultModeMask map[string]any,
+	defaultModel string,
+) map[string]any {
+	if planModeMask == nil && defaultModeMask == nil {
 		return nil
 	}
-	model := strings.TrimSpace(firstNonEmpty(settings.Model, defaultModel, asString(planModeMask["model"])))
+	mode := "default"
+	modeMask := defaultModeMask
+	if settings.PlanMode {
+		if planModeMask == nil {
+			return nil
+		}
+		modeMask = planModeMask
+		mode = strings.ToLower(strings.TrimSpace(firstNonEmpty(asString(planModeMask["mode"]), "plan")))
+	}
+	model := strings.TrimSpace(firstNonEmpty(settings.Model, defaultModel, asString(modeMask["model"])))
 	if model == "" {
 		return nil
 	}
 	collaborationSettings := map[string]any{
 		"model":                  model,
-		"developer_instructions": nil,
+		"developer_instructions": appServerCollaborationModeDeveloperInstructions(modeMask),
 	}
 	if effort := codexACPReasoningEffortValue(settings.ReasoningEffort); effort != "" {
 		collaborationSettings["reasoning_effort"] = effort
 	} else if settings.PlanMode {
-		if presetEffort := strings.TrimSpace(asString(planModeMask["reasoning_effort"])); presetEffort != "" {
+		if presetEffort := strings.TrimSpace(asString(modeMask["reasoning_effort"])); presetEffort != "" {
 			collaborationSettings["reasoning_effort"] = presetEffort
 		} else {
 			collaborationSettings["reasoning_effort"] = nil
@@ -1119,14 +1140,25 @@ func appServerPlanCollaborationMode(settings SessionSettings, planModeMask map[s
 	} else {
 		collaborationSettings["reasoning_effort"] = nil
 	}
-	mode := "default"
-	if settings.PlanMode {
-		mode = strings.ToLower(strings.TrimSpace(firstNonEmpty(asString(planModeMask["mode"]), "plan")))
-	}
 	return map[string]any{
 		"mode":     mode,
 		"settings": collaborationSettings,
 	}
+}
+
+func appServerCollaborationModeDeveloperInstructions(modeMask map[string]any) any {
+	if modeMask == nil {
+		return nil
+	}
+	if text, ok := modeMask["developer_instructions"].(string); ok && strings.TrimSpace(text) != "" {
+		return text
+	}
+	if settings := payloadObject(modeMask["settings"]); settings != nil {
+		if text, ok := settings["developer_instructions"].(string); ok && strings.TrimSpace(text) != "" {
+			return text
+		}
+	}
+	return nil
 }
 
 func appServerUserInput(content []PromptContentBlock) []map[string]any {

@@ -155,8 +155,12 @@ Codex config before thread creation, not as a repeated per-turn
 same Codex session config should also include a Tutti-owned diagnostic marker
 under `[tutti] conversationDetailMode = "coding" | "general"` so runtime
 inspection can distinguish the global Tutti setting from Codex's own desktop
-preferences. Plan Mode and explicit planning-only flows remain higher priority
-than conversation detail mode prompt guidance.
+preferences. Do not confuse that with Codex collaboration mode presets: when
+`collaborationMode/list` returns Default or Plan `developer_instructions`, the
+Codex app-server adapter must pass the active preset instructions in
+`turn/start.collaborationMode.settings.developer_instructions` so the active
+mode matches Codex App behavior. Plan Mode and explicit planning-only flows
+remain higher priority than conversation detail mode prompt guidance.
 
 ## Runtime Validation
 

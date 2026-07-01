@@ -116,16 +116,16 @@ type codexAppServerSession struct {
 	goal                   map[string]any
 	startupModelsReady     bool
 	startupRateLimitsReady bool
-	// planModeMask is the Plan preset mask from collaborationMode/list
-	// (flat name/mode/model/reasoning_effort fields); nil when the binary
-	// does not expose collaboration modes. defaultModel backs the required
-	// CollaborationMode.settings.model when no session override is set.
-	planModeMask map[string]any
-	defaultModel string
-	authState    string
-	authMessage  string
-	activeTurnID string
-	activeTurn   *codexAppServerActiveTurn
+	// Collaboration mode masks come from collaborationMode/list. The app-server
+	// expects the active mode settings, including developer_instructions, on
+	// every turn/start request.
+	planModeMask    map[string]any
+	defaultModeMask map[string]any
+	defaultModel    string
+	authState       string
+	authMessage     string
+	activeTurnID    string
+	activeTurn      *codexAppServerActiveTurn
 	acpLiveState
 	pendingRequests map[string]*pendingACPRequest
 }
@@ -327,7 +327,7 @@ func (a *CodexAppServerAdapter) Start(ctx context.Context, session Session) (eve
 	if codexAppServerNeedsSynchronousModels(session) {
 		models = a.fetchModels(ctx, client, session, trace)
 	}
-	planModeMask := a.fetchPlanCollaborationMode(ctx, client, session, trace)
+	planModeMask, defaultModeMask := a.fetchCollaborationModeMasks(ctx, client, session, trace)
 
 	threadParams := appServerThreadStartParams(session, a.sessionCWD(session))
 	trace.Log("thread.start.params", codexAppServerTraceThreadStartParams(session, threadParams, false))
@@ -393,6 +393,7 @@ func (a *CodexAppServerAdapter) Start(ctx context.Context, session Session) (eve
 		startupModelsReady:     len(models) > 0,
 		startupRateLimitsReady: false,
 		planModeMask:           planModeMask,
+		defaultModeMask:        defaultModeMask,
 		defaultModel:           codexAppServerSessionDefaultModel(session, models),
 		authState:              "authenticated",
 		acpLiveState:           liveState,
@@ -461,7 +462,7 @@ func (a *CodexAppServerAdapter) Resume(ctx context.Context, session Session) (er
 	if codexAppServerNeedsSynchronousModels(session) {
 		models = a.fetchModels(ctx, client, session, trace)
 	}
-	planModeMask := a.fetchPlanCollaborationMode(ctx, client, session, trace)
+	planModeMask, defaultModeMask := a.fetchCollaborationModeMasks(ctx, client, session, trace)
 
 	params := appServerThreadStartParams(session, a.sessionCWD(session))
 	params["threadId"] = strings.TrimSpace(session.ProviderSessionID)
@@ -509,6 +510,7 @@ func (a *CodexAppServerAdapter) Resume(ctx context.Context, session Session) (er
 		startupModelsReady:     len(models) > 0,
 		startupRateLimitsReady: false,
 		planModeMask:           planModeMask,
+		defaultModeMask:        defaultModeMask,
 		defaultModel:           codexAppServerSessionDefaultModel(session, models),
 		authState:              "authenticated",
 		acpLiveState:           liveState,
@@ -777,17 +779,16 @@ func (a *CodexAppServerAdapter) fetchRateLimitsNoHandler(
 	return payload.RateLimits
 }
 
-// fetchPlanCollaborationMode probes the experimental collaboration mode list
-// and returns the Plan preset mask (flat CollaborationModeMask fields). The
-// turn/start payload is assembled per turn because the schema requires a
-// concrete settings.model. Best effort: any error means the capability stays
-// off.
-func (a *CodexAppServerAdapter) fetchPlanCollaborationMode(
+// fetchCollaborationModeMasks probes the experimental collaboration mode list
+// and returns the Plan and Default preset masks. The turn/start payload is
+// assembled per turn because the schema requires a concrete settings.model.
+// Best effort: any error means the capability stays off.
+func (a *CodexAppServerAdapter) fetchCollaborationModeMasks(
 	ctx context.Context,
 	client *acpClient,
 	session Session,
 	trace *codexAppServerStartupTrace,
-) map[string]any {
+) (map[string]any, map[string]any) {
 	result, err := trace.Call(ctx, client, acpStartCallTimeout, appServerMethodCollaborationModeList, map[string]any{},
 		func(ctx context.Context, message acpMessage) error {
 			trace.LogMessage(message.Method, len(message.ID) > 0, len(message.Params))
@@ -795,27 +796,37 @@ func (a *CodexAppServerAdapter) fetchPlanCollaborationMode(
 			return err
 		})
 	if err != nil {
-		return nil
+		return nil, nil
 	}
 	var payload struct {
 		Data []map[string]any `json:"data"`
 	}
 	if err := json.Unmarshal(result, &payload); err != nil {
-		return nil
+		return nil, nil
 	}
 	trace.Log("collaboration_modes.parsed", map[string]any{
 		"count": len(payload.Data),
 	})
+	var planModeMask map[string]any
+	var defaultModeMask map[string]any
 	for _, preset := range payload.Data {
 		mode := strings.ToLower(strings.TrimSpace(firstNonEmpty(asString(preset["mode"]), asString(preset["name"]))))
-		if mode != "plan" {
-			continue
+		switch mode {
+		case "plan":
+			trace.Log("plan_collaboration_mode.found", nil)
+			planModeMask = clonePayload(preset)
+		case "default":
+			trace.Log("default_collaboration_mode.found", nil)
+			defaultModeMask = clonePayload(preset)
 		}
-		trace.Log("plan_collaboration_mode.found", nil)
-		return clonePayload(preset)
 	}
-	trace.Log("plan_collaboration_mode.missing", nil)
-	return nil
+	if planModeMask == nil {
+		trace.Log("plan_collaboration_mode.missing", nil)
+	}
+	if defaultModeMask == nil {
+		trace.Log("default_collaboration_mode.missing", nil)
+	}
+	return planModeMask, defaultModeMask
 }
 
 // codexAppServerDefaultModel resolves the default model id from model/list,
@@ -1119,7 +1130,7 @@ func (a *CodexAppServerAdapter) Exec(
 	}
 
 	trace := newCodexAppServerTurnTrace(session, turnID, execMetadataFromContext(ctx))
-	turnParams := appServerTurnStartParams(session, appSession.threadID, content, appSession.planModeMask, appSession.defaultModel)
+	turnParams := appServerTurnStartParams(session, appSession.threadID, content, appSession.planModeMask, appSession.defaultModeMask, appSession.defaultModel)
 	trace.Log("turn.start.params", codexAppServerTraceTurnStartParams(session, turnParams, content))
 	turnStartedAt := time.Now()
 	result, err := appSession.client.Call(ctx, appServerMethodTurnStart, turnParams,
