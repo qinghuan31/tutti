@@ -2531,6 +2531,7 @@ func TestControllerSubmitInteractiveSyncsClaudeCodePermissionModeSelection(t *te
 		{name: "accept edits", initial: "default", optionID: "acceptEdits", wantMode: "acceptEdits"},
 		{name: "bypass permissions", initial: "default", optionID: "bypassPermissions", wantMode: "bypassPermissions"},
 		{name: "default", initial: "acceptEdits", optionID: "default", wantMode: "default"},
+		{name: "auto", initial: "default", optionID: "auto", wantMode: "auto"},
 		{name: "dont ask from payload", initial: "default", payload: map[string]any{"optionId": "dontAsk"}, resolved: "dontAsk", wantMode: "dontAsk"},
 	}
 
@@ -2588,14 +2589,151 @@ func TestControllerSubmitInteractiveSyncsClaudeCodePermissionModeSelection(t *te
 			if patch.Settings["permissionModeId"] != tt.wantMode {
 				t.Fatalf("patch settings = %#v, want permission mode %q", patch.Settings, tt.wantMode)
 			}
+			if patch.Settings["planMode"] != false {
+				t.Fatalf("patch settings planMode = %#v, want false", patch.Settings["planMode"])
+			}
 			if patch.RuntimeContext["permissionModeId"] != tt.wantMode {
 				t.Fatalf("patch runtime context = %#v, want permission mode %q", patch.RuntimeContext, tt.wantMode)
+			}
+			if patch.RuntimeContext["planMode"] != false {
+				t.Fatalf("patch runtime context planMode = %#v, want false", patch.RuntimeContext["planMode"])
 			}
 			if patch.LifecycleStatus != "" || patch.CurrentPhase != "" {
 				t.Fatalf("patch status fields = %q/%q, want empty permission-only patch", patch.LifecycleStatus, patch.CurrentPhase)
 			}
 		})
 	}
+}
+
+func TestClaudeCodeModeFromID(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		modeID         string
+		wantPlan       bool
+		wantPermission string
+		wantOK         bool
+	}{
+		{modeID: "plan", wantPlan: true, wantPermission: "", wantOK: true},
+		{modeID: "default", wantPlan: false, wantPermission: "default", wantOK: true},
+		{modeID: "acceptEdits", wantPlan: false, wantPermission: "acceptEdits", wantOK: true},
+		{modeID: "bypassPermissions", wantPlan: false, wantPermission: "bypassPermissions", wantOK: true},
+		{modeID: "auto", wantPlan: false, wantPermission: "auto", wantOK: true},
+		{modeID: "dontAsk", wantPlan: false, wantPermission: "dontAsk", wantOK: true},
+		{modeID: "allow_once", wantOK: false},
+		{modeID: "reject", wantOK: false},
+		{modeID: "", wantOK: false},
+	}
+	for _, tt := range tests {
+		plan, permission, ok := claudeCodeModeFromID(tt.modeID)
+		if ok != tt.wantOK || plan != tt.wantPlan || permission != tt.wantPermission {
+			t.Fatalf("claudeCodeModeFromID(%q) = (%v, %q, %v), want (%v, %q, %v)",
+				tt.modeID, plan, permission, ok, tt.wantPlan, tt.wantPermission, tt.wantOK)
+		}
+	}
+}
+
+func TestControllerSubmitInteractiveExitsPlanModeOnPermissionSelection(t *testing.T) {
+	t.Parallel()
+
+	adapter := &statefulInteractiveAdapter{provider: ProviderClaudeCode}
+	controller := NewController([]Adapter{adapter}, nil)
+	started, err := controller.Start(context.Background(), StartInput{
+		RoomID:           "room-1",
+		AgentSessionID:   "agent-session-exit-plan",
+		Provider:         ProviderClaudeCode,
+		CWD:              "/workspace",
+		Title:            "Claude Code",
+		PermissionModeID: "default",
+		Settings:         &SessionSettings{PlanMode: true, PermissionModeID: "default"},
+	})
+	if err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+
+	events, unsubscribe, ok := controller.Subscribe("room-1", started.Session.AgentSessionID)
+	if !ok {
+		t.Fatal("Subscribe returned ok=false")
+	}
+	defer unsubscribe()
+	_ = waitForStreamEventType(t, events, StreamEventStatePatch)
+
+	if _, err := controller.SubmitInteractive(context.Background(), SubmitInteractiveInput{
+		RoomID:         "room-1",
+		AgentSessionID: started.Session.AgentSessionID,
+		RequestID:      "permission-1",
+		OptionID:       "auto",
+	}); err != nil {
+		t.Fatalf("SubmitInteractive: %v", err)
+	}
+
+	session, ok := controller.Session("room-1", started.Session.AgentSessionID)
+	if !ok {
+		t.Fatal("Session returned ok=false")
+	}
+	if session.PermissionModeID != "auto" {
+		t.Fatalf("session permission mode = %q, want auto", session.PermissionModeID)
+	}
+	if session.Settings == nil || session.Settings.PlanMode {
+		t.Fatalf("session settings = %#v, want plan mode cleared", session.Settings)
+	}
+
+	event := waitForStatePatchPermissionMode(t, events, "auto")
+	patch, ok := event.Data.(agentsessionstore.WorkspaceAgentStatePatch)
+	if !ok {
+		t.Fatalf("event data = %#v, want state patch", event.Data)
+	}
+	if patch.Settings["planMode"] != false {
+		t.Fatalf("patch settings planMode = %#v, want false", patch.Settings["planMode"])
+	}
+}
+
+func TestControllerSubmitInteractiveKeepPlanningStaysInPlanMode(t *testing.T) {
+	t.Parallel()
+
+	adapter := &statefulInteractiveAdapter{provider: ProviderClaudeCode}
+	controller := NewController([]Adapter{adapter}, nil)
+	started, err := controller.Start(context.Background(), StartInput{
+		RoomID:           "room-1",
+		AgentSessionID:   "agent-session-keep-planning",
+		Provider:         ProviderClaudeCode,
+		CWD:              "/workspace",
+		Title:            "Claude Code",
+		PermissionModeID: "default",
+		Settings:         &SessionSettings{PlanMode: true, PermissionModeID: "default"},
+	})
+	if err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+
+	events, unsubscribe, ok := controller.Subscribe("room-1", started.Session.AgentSessionID)
+	if !ok {
+		t.Fatal("Subscribe returned ok=false")
+	}
+	defer unsubscribe()
+	_ = waitForStreamEventType(t, events, StreamEventStatePatch)
+
+	if _, err := controller.SubmitInteractive(context.Background(), SubmitInteractiveInput{
+		RoomID:         "room-1",
+		AgentSessionID: started.Session.AgentSessionID,
+		RequestID:      "permission-1",
+		OptionID:       "plan",
+	}); err != nil {
+		t.Fatalf("SubmitInteractive: %v", err)
+	}
+
+	session, ok := controller.Session("room-1", started.Session.AgentSessionID)
+	if !ok {
+		t.Fatal("Session returned ok=false")
+	}
+	if session.Settings == nil || !session.Settings.PlanMode {
+		t.Fatalf("session settings = %#v, want plan mode preserved", session.Settings)
+	}
+	if session.PermissionModeID != "default" {
+		t.Fatalf("session permission mode = %q, want unchanged default", session.PermissionModeID)
+	}
+	// Keeping planning is a no-op for the mode, so no state patch is published.
+	expectNoStreamEventType(t, events, StreamEventStatePatch)
 }
 
 func TestControllerSubmitInteractiveDoesNotSyncUnsupportedPermissionSelections(t *testing.T) {
@@ -2609,7 +2747,6 @@ func TestControllerSubmitInteractiveDoesNotSyncUnsupportedPermissionSelections(t
 	}{
 		{name: "ordinary allow", provider: ProviderClaudeCode, optionID: "allow_once"},
 		{name: "reject", provider: ProviderClaudeCode, optionID: "reject"},
-		{name: "auto", provider: ProviderClaudeCode, optionID: "auto"},
 		{name: "raw permission alias resolves to ordinary allow", provider: ProviderClaudeCode, optionID: "acceptEdits", resolved: "allow_once"},
 		{name: "non claude", provider: ProviderCodex, optionID: "acceptEdits"},
 	}

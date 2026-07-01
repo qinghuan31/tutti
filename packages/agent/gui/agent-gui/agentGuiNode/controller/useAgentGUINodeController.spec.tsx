@@ -11,6 +11,7 @@ import type {
 } from "@tutti-os/agent-activity-core";
 import type {
   AgentHostAgentActivityStreamEvent,
+  AgentHostWorkspaceAgentStatePatch,
   AgentHostAgentSession,
   AgentHostActivateAgentSessionInput,
   AgentHostActivateAgentSessionResult,
@@ -11519,11 +11520,17 @@ describe("useAgentGUINodeController", () => {
   function installExitPlanPromptHostApi(input: {
     submitInteractive: ReturnType<typeof vi.fn>;
     updateSettings: ReturnType<typeof vi.fn>;
-  }): void {
+  }): { emitStatePatch: (data: AgentHostWorkspaceAgentStatePatch) => void } {
+    let activityListener:
+      | ((event: AgentHostAgentActivityStreamEvent) => void)
+      | undefined;
     installAgentHostApi({
       list: vi.fn(async () => snapshotWithSession("session-1")),
       listSessionTimeline: vi.fn(async () => ({ timelineItems: [] })),
-      subscribeEvents: vi.fn(() => vi.fn()),
+      subscribeEvents: vi.fn((_payload, listener) => {
+        activityListener = listener;
+        return vi.fn();
+      }),
       getState: vi.fn(async () =>
         agentSessionState("session-1", {
           provider: "claude-code",
@@ -11545,9 +11552,16 @@ describe("useAgentGUINodeController", () => {
       submitInteractive: input.submitInteractive,
       updateSettings: input.updateSettings
     });
+    return {
+      emitStatePatch: (data) => {
+        act(() => {
+          activityListener?.({ eventType: "state_patch", data });
+        });
+      }
+    };
   }
 
-  it("clears plan mode after approving an exit-plan prompt", async () => {
+  it("reflects the daemon mode patch after approving an exit-plan prompt", async () => {
     const submitInteractive = vi.fn(async () => ({
       agentSessionId: "session-1",
       requestId: "request-plan",
@@ -11555,7 +11569,10 @@ describe("useAgentGUINodeController", () => {
       events: []
     }));
     const updateSettings = vi.fn(async ({ settings }) => ({ settings }));
-    installExitPlanPromptHostApi({ submitInteractive, updateSettings });
+    const { emitStatePatch } = installExitPlanPromptHostApi({
+      submitInteractive,
+      updateSettings
+    });
 
     const { result } = renderHook(() =>
       useAgentGUINodeController({
@@ -11573,26 +11590,44 @@ describe("useAgentGUINodeController", () => {
         "exit-plan"
       );
     });
+    // Starts in plan mode.
+    expect(
+      result.current.viewModel.composerSettings.draftSettings.planMode
+    ).toBe(true);
 
     act(() => {
       result.current.actions.submitInteractivePrompt({
         requestId: "request-plan",
         action: "allow",
-        optionId: "acceptEdits"
+        optionId: "auto"
       });
     });
 
     await waitFor(() => {
       expect(submitInteractive).toHaveBeenCalled();
     });
-    // Plan approved: the composer setting is cleared so the next turn
-    // executes instead of replanning.
+    // The frontend does NOT write the composer mode itself: the daemon owns the
+    // session mode and pushes an authoritative state patch. No competing
+    // optimistic write / updateSessionSettings call from the GUI.
+    expect(updateSettings).not.toHaveBeenCalled();
+
+    // Daemon publishes the mode patch (planMode cleared + chosen permission
+    // mode); the composer reflects it reactively.
+    emitStatePatch({
+      agentSessionId: "session-1",
+      permissionModeId: "auto",
+      settings: { planMode: false, permissionModeId: "auto" },
+      runtimeContext: { planMode: false, permissionModeId: "auto" },
+      occurredAtUnixMs: 100
+    });
+
     await waitFor(() => {
-      expect(updateSettings).toHaveBeenCalledWith(
-        expect.objectContaining({
-          settings: expect.objectContaining({ planMode: false })
-        })
-      );
+      expect(
+        result.current.viewModel.composerSettings.draftSettings.planMode
+      ).toBe(false);
+      expect(
+        result.current.viewModel.composerSettings.draftSettings.permissionModeId
+      ).toBe("auto");
     });
   });
 

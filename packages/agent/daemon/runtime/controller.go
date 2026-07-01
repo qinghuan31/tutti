@@ -389,13 +389,33 @@ func defaultPermissionModeIDForProvider(provider string) string {
 	}
 }
 
+// claudeCodePermissionModeIDs is the canonical set of claude-code permission
+// modes — i.e. every ACP mode except "plan". It is the single source the
+// allowlist, the forward ACP mapping (claudeCodeACPModeID), and the inverse
+// (claudeCodeModeFromID) all derive from, so adding a mode (e.g. "auto") is a
+// one-line change here rather than across several drifting switch statements.
+var claudeCodePermissionModeIDs = []string{
+	"default",
+	"acceptEdits",
+	"dontAsk",
+	"bypassPermissions",
+	"auto",
+}
+
+func isClaudeCodePermissionModeID(mode string) bool {
+	mode = strings.TrimSpace(mode)
+	for _, id := range claudeCodePermissionModeIDs {
+		if id == mode {
+			return true
+		}
+	}
+	return false
+}
+
 func permissionModeIDAllowedForProvider(provider string, mode string) bool {
 	switch strings.TrimSpace(provider) {
 	case ProviderClaudeCode:
-		switch strings.TrimSpace(mode) {
-		case "default", "acceptEdits", "dontAsk", "bypassPermissions":
-			return true
-		}
+		return isClaudeCodePermissionModeID(mode)
 	case ProviderCodex, ProviderNexight:
 		switch strings.TrimSpace(mode) {
 		case "read-only", "auto", "full-access":
@@ -1268,7 +1288,7 @@ func (c *Controller) SubmitInteractive(ctx context.Context, input SubmitInteract
 	if interactiveAdapter, ok := adapter.(InteractiveAdapter); ok {
 		result, err := interactiveAdapter.SubmitInteractive(ctx, session, input)
 		if err == nil {
-			c.syncPermissionModeFromInteractiveSelection(session, result.OptionID)
+			c.syncClaudeCodeModeFromSelection(session, result.OptionID)
 			c.scheduleInteractiveDenyFollowUp(input)
 		}
 		return result, err
@@ -1276,25 +1296,65 @@ func (c *Controller) SubmitInteractive(ctx context.Context, input SubmitInteract
 	return SubmitInteractiveResult{}, fmt.Errorf("agent provider %q does not support interactive submission", session.Provider)
 }
 
-func (c *Controller) syncPermissionModeFromInteractiveSelection(session Session, optionID string) {
+// claudeCodeModeFromID is the inverse of the adapter's effectiveModeID: it maps
+// an ACP mode id back to the (planMode, permissionModeID) that the session
+// settings represent. ok is false for ids that are not mode switches (ordinary
+// tool-approval options like allow_once/reject_once), which must not touch the
+// session mode. For "plan" the permission mode is left empty, meaning "keep the
+// current permission mode" while in plan.
+func claudeCodeModeFromID(modeID string) (planMode bool, permissionModeID string, ok bool) {
+	modeID = strings.TrimSpace(modeID)
+	if modeID == "plan" {
+		return true, "", true
+	}
+	if isClaudeCodePermissionModeID(modeID) {
+		return false, modeID, true
+	}
+	return false, "", false
+}
+
+// syncClaudeCodeModeFromSelection mirrors a claude-code interactive selection
+// (the exit-plan switch_mode options) into the session's authoritative mode.
+// Selecting a permission mode leaves plan mode and switches the mode in one
+// step; selecting "plan" (keep planning) stays in plan. The single state patch
+// it publishes drives the composer reactively — there is no separate frontend
+// optimistic write.
+func (c *Controller) syncClaudeCodeModeFromSelection(session Session, optionID string) {
 	if c == nil || strings.TrimSpace(session.Provider) != ProviderClaudeCode {
 		return
 	}
-	modeID := claudeCodeInteractivePermissionModeID(optionID)
-	if modeID == "" {
+	planMode, permissionModeID, ok := claudeCodeModeFromID(optionID)
+	if !ok {
 		return
 	}
-	current, ok := c.Session(session.RoomID, session.AgentSessionID)
-	if !ok || strings.TrimSpace(current.Provider) != ProviderClaudeCode {
+	current, found := c.Session(session.RoomID, session.AgentSessionID)
+	if !found || strings.TrimSpace(current.Provider) != ProviderClaudeCode {
 		return
 	}
-	if modeID == strings.TrimSpace(current.PermissionModeID) {
+	c.applyClaudeCodeMode(current, planMode, permissionModeID)
+}
+
+// applyClaudeCodeMode is the single writer of a claude-code session's mode. It
+// updates plan mode and permission mode together, no-ops when nothing changes,
+// and publishes one state patch so every reader (composer, list, reports) sees
+// the same authoritative value. An empty permissionModeID keeps the current
+// permission mode (used when entering plan).
+func (c *Controller) applyClaudeCodeMode(current Session, planMode bool, permissionModeID string) {
+	currentSettings := normalizeSessionSettings(current.Settings, current.Provider, current.PermissionModeID)
+	nextPermission := strings.TrimSpace(permissionModeID)
+	if nextPermission == "" {
+		nextPermission = strings.TrimSpace(currentSettings.PermissionModeID)
+	}
+	if currentSettings.PlanMode == planMode &&
+		strings.TrimSpace(currentSettings.PermissionModeID) == nextPermission &&
+		strings.TrimSpace(current.PermissionModeID) == nextPermission {
 		return
 	}
 	nextSession := current
-	nextSession.PermissionModeID = modeID
+	nextSession.PermissionModeID = nextPermission
 	settings := normalizeSessionSettings(nextSession.Settings, nextSession.Provider, nextSession.PermissionModeID)
-	settings.PermissionModeID = modeID
+	settings.PlanMode = planMode
+	settings.PermissionModeID = nextPermission
 	nextSession.Settings = cloneSessionSettings(settings)
 	nextSession.UpdatedAtUnixMS = unixMS(now())
 	c.store(nextSession)
@@ -1303,18 +1363,11 @@ func (c *Controller) syncPermissionModeFromInteractiveSelection(session Session,
 	c.enqueueSessionStatePatchReport(context.Background(), nextSession, patch)
 }
 
-func claudeCodeInteractivePermissionModeID(optionID string) string {
-	switch strings.TrimSpace(optionID) {
-	case "default", "acceptEdits", "dontAsk", "bypassPermissions":
-		return strings.TrimSpace(optionID)
-	}
-	return ""
-}
-
 func permissionModeStatePatch(session Session) agentsessionstore.WorkspaceAgentStatePatch {
 	settings := normalizeSessionSettings(session.Settings, session.Provider, session.PermissionModeID)
 	runtimeContext := map[string]any{
 		"permissionModeId": strings.TrimSpace(settings.PermissionModeID),
+		"planMode":         settings.PlanMode,
 	}
 	if strings.TrimSpace(session.CWD) != "" {
 		runtimeContext["cwd"] = strings.TrimSpace(session.CWD)

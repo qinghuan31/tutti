@@ -826,6 +826,10 @@ export const en = {
         allowAll: {
           label: "Allow all",
           description: "Do not prompt for tools"
+        },
+        auto: {
+          label: "Auto",
+          description: "Let the agent choose when to ask"
         }
       },
       stayInPlan: "Keep planning",

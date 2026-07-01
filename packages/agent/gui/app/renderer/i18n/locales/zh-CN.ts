@@ -761,6 +761,10 @@ export const zhCN = {
         allowAll: {
           label: "全部允许",
           description: "不再弹出工具确认"
+        },
+        auto: {
+          label: "自动",
+          description: "由智能体自行决定何时询问"
         }
       },
       stayInPlan: "继续规划",

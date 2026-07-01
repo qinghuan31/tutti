@@ -7908,7 +7908,11 @@ export function useAgentGUINodeController({
       }
       setIsRespondingApproval(true);
       setDetailError(null);
-      const submittedPrompt = activePendingPromptRef.current;
+      // Exit-plan mode changes are NOT mirrored optimistically here. The daemon
+      // owns the session mode: on this submit it switches plan/permission mode
+      // and publishes a state patch, which drives the composer reactively (see
+      // syncClaudeCodeModeFromSelection in the runtime controller). A frontend
+      // optimistic write would just race that authoritative patch.
       void Promise.resolve()
         .then(() => {
           if (!isCurrentConversation(agentSessionId)) {
@@ -7926,21 +7930,6 @@ export function useAgentGUINodeController({
         .then((result) => {
           if (!result || !isCurrentConversation(agentSessionId)) {
             return;
-          }
-          if (
-            submittedPrompt?.requestId === normalizedRequestId &&
-            submittedPrompt.kind === "exit-plan" &&
-            input.action === "allow"
-          ) {
-            // Plan approved: leave plan mode so the next turn executes
-            // instead of replanning. The approved option is the permission
-            // mode the provider switches to, so mirror it in the dropdown.
-            updateComposerSettingsRef.current({
-              planMode: false,
-              ...(normalizedOptionId
-                ? { permissionModeId: normalizedOptionId }
-                : {})
-            });
           }
           void refreshMessagesFromSnapshot(agentSessionId);
           void loadSessionState(agentSessionId);
@@ -10523,7 +10512,10 @@ function interactivePromptFromSessionState(
     return {
       kind: "exit-plan",
       requestId: prompt.requestId.trim(),
-      title: prompt.toolName?.trim() || "Exit plan mode"
+      title: prompt.toolName?.trim() || "Exit plan mode",
+      // Legacy exitplanmode session-state prompt carries no runtime mode
+      // options; the surface falls back to the curated default list.
+      options: []
     };
   }
   if (toolName !== "askuserquestion") {
