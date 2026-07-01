@@ -1656,6 +1656,116 @@ func TestCodexAppServerAdapterCommandApprovalApprove(t *testing.T) {
 	}
 }
 
+func TestCodexAppServerAdapterServerRequestResolvedCompletesPendingApproval(t *testing.T) {
+	t.Parallel()
+
+	adapter, transport, session := startedAppServerAdapter(t)
+	transport.conn.commandApproval = true
+
+	var streamed []activityshared.Event
+	var streamedMu sync.Mutex
+	execDone := make(chan []activityshared.Event, 1)
+	go func() {
+		events, _ := adapter.Exec(context.Background(), session, []PromptContentBlock{{
+			Type: "text", Text: "clean the build dir",
+		}}, "", "turn-local-1", func(next []activityshared.Event) {
+			streamedMu.Lock()
+			streamed = append(streamed, next...)
+			streamedMu.Unlock()
+		}, nil)
+		execDone <- events
+	}()
+
+	waitForCondition(t, func() bool {
+		return adapter.getPendingRequest(session.AgentSessionID, "approval-1") != nil
+	})
+	if state := adapter.SessionState(session); state.PendingInteractive == nil {
+		t.Fatalf("pending interactive should be visible before serverRequest/resolved")
+	}
+
+	transport.conn.notify(appServerNotifyServerRequestResolved, map[string]any{
+		"threadId":  "codex-thread-1",
+		"requestId": "approval-1",
+	})
+	waitForCondition(t, func() bool {
+		return adapter.getPendingRequest(session.AgentSessionID, "approval-1") == nil
+	})
+	waitForCondition(t, func() bool {
+		streamedMu.Lock()
+		defer streamedMu.Unlock()
+		return len(eventsOfType(streamed, activityshared.EventCallCompleted)) > 0
+	})
+	if state := adapter.SessionState(session); state.PendingInteractive != nil {
+		t.Fatalf("pending interactive after serverRequest/resolved = %#v, want nil", state.PendingInteractive)
+	}
+	transport.conn.mu.Lock()
+	response := transport.conn.approvalResponse
+	transport.conn.mu.Unlock()
+	if response != nil {
+		t.Fatalf("out-of-band resolved request should not send approval response, got %#v", response)
+	}
+
+	transport.conn.completePendingTurn()
+	events := <-execDone
+	if completedCalls := eventsOfType(events, activityshared.EventCallCompleted); len(completedCalls) == 0 {
+		t.Fatalf("serverRequest/resolved missing call.completed: %#v", events)
+	}
+}
+
+func TestCodexAppServerAdapterUnsupportedServerRequestFailsCall(t *testing.T) {
+	t.Parallel()
+
+	adapter, transport, session := startedAppServerAdapter(t)
+	transport.conn.holdTurn = true
+
+	var streamed []activityshared.Event
+	var streamedMu sync.Mutex
+	execDone := make(chan []activityshared.Event, 1)
+	go func() {
+		events, _ := adapter.Exec(context.Background(), session, []PromptContentBlock{{
+			Type: "text", Text: "run it",
+		}}, "", "turn-local-1", func(next []activityshared.Event) {
+			streamedMu.Lock()
+			streamed = append(streamed, next...)
+			streamedMu.Unlock()
+		}, nil)
+		execDone <- events
+	}()
+	waitForCondition(t, func() bool {
+		return adapter.sessionActiveTurnID(session.AgentSessionID) == "turn-1"
+	})
+
+	transport.conn.sendJSON(map[string]any{
+		"id":     "unsupported-1",
+		"method": "item/unknown/requestApproval",
+		"params": map[string]any{
+			"threadId": "codex-thread-1",
+			"turnId":   "turn-1",
+		},
+	})
+	waitForCondition(t, func() bool {
+		streamedMu.Lock()
+		defer streamedMu.Unlock()
+		return len(eventsOfType(streamed, activityshared.EventCallFailed)) > 0
+	})
+
+	events := <-execDone
+	failedCalls := eventsOfType(events, activityshared.EventCallFailed)
+	if len(failedCalls) == 0 {
+		t.Fatalf("unsupported server request missing call.failed: %#v", events)
+	}
+	errorPayload := payloadObject(failedCalls[0].Payload.Metadata["error"])
+	if got := asString(errorPayload["method"]); got != "item/unknown/requestApproval" {
+		t.Fatalf("unsupported request error method = %q", got)
+	}
+	transport.conn.mu.Lock()
+	response := transport.conn.approvalResponse
+	transport.conn.mu.Unlock()
+	if response == nil || payloadObject(response["error"]) == nil {
+		t.Fatalf("unsupported server request response = %#v, want JSON-RPC error", response)
+	}
+}
+
 func TestCodexAppServerAdapterCommandApprovalDecisionMapping(t *testing.T) {
 	t.Parallel()
 

@@ -94,14 +94,16 @@ type pendingACPRequest struct {
 	prompt         *SessionInteractivePrompt
 	options        []map[string]any
 	response       chan pendingACPResponse
+	state          pendingACPRequestState
 }
 
 type pendingACPResponse struct {
-	optionID string
-	action   string
-	payload  map[string]any
-	result   map[string]any
-	err      error
+	optionID          string
+	action            string
+	payload           map[string]any
+	result            map[string]any
+	err               error
+	outOfBandResolved bool
 }
 
 func NewNexightAdapter(transport ProcessTransport) *CodexAdapter {
@@ -2888,6 +2890,9 @@ func (p *pendingACPRequest) wait(ctx context.Context) (pendingACPResponse, error
 	case <-ctx.Done():
 		return pendingACPResponse{}, ctx.Err()
 	case selection := <-p.response:
+		if selection.outOfBandResolved {
+			return selection, nil
+		}
 		if selection.err != nil {
 			return pendingACPResponse{}, selection.err
 		}

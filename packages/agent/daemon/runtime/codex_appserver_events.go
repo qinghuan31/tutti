@@ -13,9 +13,10 @@ import (
 )
 
 // handleAppServerMessage routes codex app-server server->client traffic.
-// Server requests (approvals, user-input questions) block until the user
-// answers; notifications are translated into activity events through the
-// shared ACP turn normalizer so the rest of the daemon sees one event shape.
+// Server requests (approvals, user-input questions) register pending resolver
+// state and respond asynchronously; notifications are translated into activity
+// events through the shared ACP turn normalizer so the rest of the daemon sees
+// one event shape.
 func (a *CodexAppServerAdapter) handleAppServerMessage(
 	ctx context.Context,
 	client *codexAppServerClient,
@@ -39,7 +40,11 @@ func (a *CodexAppServerAdapter) handleAppServerMessage(
 			appServerMethodPatchApprovalV1:
 			return a.appServerServerRequest(ctx, client, session, turnID, message, emit)
 		default:
-			_ = client.Respond(ctx, message.ID, nil, &acpError{Code: -32601, Message: "method not supported"})
+			err := fmt.Errorf("server request method %q is not supported", message.Method)
+			if emit != nil {
+				emit(appServerUnsupportedServerRequestEvents(session, turnID, message, err))
+			}
+			_ = client.Respond(ctx, message.ID, nil, &acpError{Code: -32601, Message: err.Error()})
 			return nil, nil
 		}
 	}
@@ -836,18 +841,47 @@ func (a *CodexAppServerAdapter) appServerServerRequest(
 	if len(events) > 0 {
 		emit(events)
 	}
+	go a.respondAppServerServerRequest(ctx, client, session, turnID, message, params, pending, emit)
+	return nil, nil
+}
+
+func (a *CodexAppServerAdapter) respondAppServerServerRequest(
+	ctx context.Context,
+	client *codexAppServerClient,
+	session Session,
+	turnID string,
+	message acpMessage,
+	params map[string]any,
+	pending *pendingACPRequest,
+	emit EventSink,
+) {
+	if pending == nil {
+		return
+	}
 	defer a.deletePendingRequest(session.AgentSessionID, pending.requestID)
 	selection, err := pending.wait(ctx)
 	if err != nil {
 		resolved := acpPermissionResolvedEvents(session, turnID, pending, pendingACPResponse{}, err)
+		if emit != nil {
+			emit(resolved)
+		}
 		_ = client.Respond(ctx, message.ID, nil, &acpError{Code: -32000, Message: err.Error()})
-		return resolved, err
+		return
+	}
+	resolved := acpPermissionResolvedEvents(session, turnID, pending, selection, nil)
+	if emit != nil {
+		emit(resolved)
+	}
+	if selection.outOfBandResolved {
+		return
 	}
 	result, responseErr := appServerApprovalResult(message.Method, params, selection)
 	if err := client.Respond(ctx, message.ID, result, responseErr); err != nil {
-		return acpPermissionResolvedEvents(session, turnID, pending, selection, err), err
+		if emit != nil {
+			emit(acpPermissionResolvedEvents(session, turnID, pending, selection, err))
+		}
+		return
 	}
-	return acpPermissionResolvedEvents(session, turnID, pending, selection, nil), nil
 }
 
 func (a *CodexAppServerAdapter) appServerApprovalRequested(
@@ -908,6 +942,42 @@ func (a *CodexAppServerAdapter) appServerApprovalRequested(
 			payload,
 		),
 	}, pending, nil
+}
+
+func appServerUnsupportedServerRequestEvents(
+	session Session,
+	turnID string,
+	message acpMessage,
+	err error,
+) []activityshared.Event {
+	if strings.TrimSpace(turnID) == "" || err == nil {
+		return nil
+	}
+	requestID := acpRequestID(message.ID)
+	callID := firstNonEmpty(requestID, newID())
+	return []activityshared.Event{
+		newTurnActivityEventWithID(
+			session,
+			"server-request:"+callID,
+			EventCallFailed,
+			turnID,
+			messageStreamStateFailed,
+			"",
+			"Unsupported server request",
+			map[string]any{
+				"callId":   callID,
+				"callType": "server_request",
+				"name":     "Unsupported server request",
+				"toolName": "ServerRequest",
+				"status":   messageStreamStateFailed,
+				"error": map[string]any{
+					"requestId": requestID,
+					"method":    message.Method,
+					"message":   err.Error(),
+				},
+			},
+		),
+	}
 }
 
 func (a *CodexAppServerAdapter) appServerUserInputRequested(

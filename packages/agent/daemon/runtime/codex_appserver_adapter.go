@@ -75,6 +75,7 @@ const (
 	appServerNotifyDeprecation           = "deprecationNotice"
 	appServerNotifyModelRerouted         = "model/rerouted"
 	appServerNotifyThreadCompacted       = "thread/compacted"
+	appServerNotifyServerRequestResolved = "serverRequest/resolved"
 	appServerNotifyThreadGoalUpdated     = "thread/goal/updated"
 	appServerNotifyThreadGoalCleared     = "thread/goal/cleared"
 )
@@ -2149,6 +2150,7 @@ func (a *CodexAppServerAdapter) storePendingRequest(pending *pendingACPRequest) 
 		if appSession.pendingRequests == nil {
 			appSession.pendingRequests = make(map[string]*pendingACPRequest)
 		}
+		pending.state = pendingACPRequestStatePending
 		appSession.pendingRequests[strings.TrimSpace(pending.requestID)] = pending
 	}
 	a.mu.Unlock()
@@ -2200,6 +2202,7 @@ func (a *CodexAppServerAdapter) rejectPendingRequests(agentSessionID string, err
 	pending := make([]*pendingACPRequest, 0)
 	if appSession != nil && appSession.pendingRequests != nil {
 		for requestID, request := range appSession.pendingRequests {
+			request.state = pendingACPRequestStateInterrupted
 			pending = append(pending, request)
 			delete(appSession.pendingRequests, requestID)
 		}
