@@ -1821,14 +1821,14 @@ describe("AgentFileMentionPalette", () => {
     );
   });
 
-  it("keeps hero inline notices flush with the composer and inset by 24px", () => {
+  it("keeps hero inline notices aligned with the composer input edge", () => {
     const css = readFileSync(resolve("app/renderer/agentactivity.css"), "utf8");
 
     expect(css).toMatch(
       /\.agent-gui-node__empty-hero-body\s*{[^}]*--agent-gui-empty-hero-gap:\s*24px[^}]*gap:\s*var\(--agent-gui-empty-hero-gap\)/s
     );
     expect(css).toMatch(
-      /\.agent-gui-node__empty-hero-body\s*>\s*\.agent-gui-chrome__session-chrome\s*>\s*\.agent-gui-chrome__card\s*{[^}]*margin-right:\s*24px[^}]*margin-left:\s*24px/s
+      /\.agent-gui-node__empty-hero-body\s*>\s*\.agent-gui-chrome__session-chrome\s*>\s*\.agent-gui-chrome__card\s*{[^}]*margin-right:\s*12px[^}]*margin-left:\s*12px/s
     );
     expect(css).toMatch(
       /\.agent-gui-node__empty-hero-body\s*>\s*\.agent-gui-chrome__session-chrome\s*\+\s*\.agent-gui-node__composer-hero\s*{[^}]*margin-top:\s*calc\(var\(--agent-gui-empty-hero-gap,\s*24px\)\s*\*\s*-1\)/s
