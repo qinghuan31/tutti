@@ -2676,7 +2676,7 @@ aside.workspace-agents-status-panel
 .agent-gui-chrome__card--danger {
   border-color: color-mix(
     in srgb,
-    var(--status-danger, var(--state-danger)) 16%,
+    var(--status-danger, var(--state-danger)) 28%,
     transparent
   );
   border-bottom: 0;
@@ -2684,7 +2684,11 @@ aside.workspace-agents-status-panel
   border-top-right-radius: 8px;
   border-bottom-right-radius: 0;
   border-bottom-left-radius: 0;
-  background: var(--on-danger);
+  background: color-mix(
+    in srgb,
+    var(--status-danger, var(--state-danger)) 10%,
+    var(--background-fronted)
+  );
   grid-template-columns: minmax(0, 1fr) auto;
   align-items: center;
   min-height: 36px;
@@ -5134,6 +5138,7 @@ button.agent-gui-node__conversation-section-toggle:hover
   gap: 6px;
   align-items: center;
   min-width: 0;
+  margin-bottom: 12px;
   padding: 2px 6px 0 22px;
 }
 
