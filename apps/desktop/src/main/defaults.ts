@@ -31,8 +31,6 @@ export interface DesktopResolvedDefaults {
 
 export interface DesktopProtocolClientRegistration {
   scheme: "tutti" | "tutti-dev";
-  executablePath?: string;
-  args?: string[];
 }
 
 export function initializeDesktopEnvironment(options?: {
@@ -81,26 +79,14 @@ export function resolveDesktopLoginCallbackUrl(): string {
 }
 
 export function resolveDesktopLoginProtocolClientRegistration(options: {
-  appPath: string;
-  executablePath: string;
   isPackaged: boolean;
-  argv?: readonly string[];
 }): DesktopProtocolClientRegistration {
   const scheme = resolveDesktopLoginProtocolScheme();
-  if (resolveTuttiEnv() !== "development" || options.isPackaged) {
+  if (resolveTuttiEnv() === "development" && !options.isPackaged) {
     return { scheme };
   }
-  const developmentEntryPath = options.argv?.[1]?.trim();
-  const appEntryPath =
-    developmentEntryPath && !developmentEntryPath.startsWith("-")
-      ? developmentEntryPath
-      : options.appPath;
 
-  return {
-    scheme,
-    executablePath: options.executablePath,
-    args: [appEntryPath]
-  };
+  return { scheme };
 }
 
 export function resolveDesktopDefaultsFromEnv(): DesktopResolvedDefaults {

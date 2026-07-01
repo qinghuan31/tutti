@@ -2,7 +2,6 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { app, BrowserWindow } from "electron";
 import {
-  type DesktopProtocolClientRegistration,
   initializeDesktopEnvironment,
   resolveDesktopDevelopmentAppName,
   resolveDesktopLoginCallbackUrl,
@@ -74,31 +73,6 @@ function focusPrimaryDesktopWindow(): void {
   target.focus();
 }
 
-function registerDesktopLoginProtocolClient(
-  registration: DesktopProtocolClientRegistration
-): void {
-  if (registration.executablePath) {
-    app.removeAsDefaultProtocolClient(registration.scheme);
-    app.removeAsDefaultProtocolClient(
-      registration.scheme,
-      registration.executablePath
-    );
-    app.removeAsDefaultProtocolClient(
-      registration.scheme,
-      registration.executablePath,
-      []
-    );
-    app.setAsDefaultProtocolClient(
-      registration.scheme,
-      registration.executablePath,
-      registration.args
-    );
-    return;
-  }
-
-  app.setAsDefaultProtocolClient(registration.scheme);
-}
-
 export async function bootstrapDesktopApp(): Promise<void> {
   applyElectronDiagnosticSwitches();
   initializeDesktopEnvironment({
@@ -110,12 +84,11 @@ export async function bootstrapDesktopApp(): Promise<void> {
   const loginCallbackUrl = resolveDesktopLoginCallbackUrl();
   const protocolClientRegistration =
     resolveDesktopLoginProtocolClientRegistration({
-      appPath: app.getAppPath(),
-      executablePath: process.execPath,
-      isPackaged: app.isPackaged,
-      argv: process.argv
+      isPackaged: app.isPackaged
     });
-  registerDesktopLoginProtocolClient(protocolClientRegistration);
+  if (app.isPackaged) {
+    app.setAsDefaultProtocolClient(protocolClientRegistration.scheme);
+  }
   app.on("open-url", (event, url) => {
     if (url.startsWith(loginCallbackUrl)) {
       event.preventDefault();

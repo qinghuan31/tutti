@@ -201,35 +201,21 @@ test("resolveDesktopLoginCallbackUrl isolates development protocol scheme", () =
   }
 });
 
-test("resolveDesktopLoginProtocolClientRegistration passes app path in development", () => {
+test("resolveDesktopLoginProtocolClientRegistration skips raw Electron dev registration", () => {
   const previousEnv = { ...process.env };
 
   try {
     process.env.TUTTI_ENV = "development";
     assert.deepEqual(
       resolveDesktopLoginProtocolClientRegistration({
-        appPath: "/repo/apps/desktop",
-        executablePath:
-          "/repo/node_modules/electron/dist/Electron.app/Contents/MacOS/Electron",
-        isPackaged: false,
-        argv: [
-          "/repo/node_modules/electron/dist/Electron.app/Contents/MacOS/Electron",
-          "/repo/apps/desktop/dist/main/index.js"
-        ]
+        isPackaged: false
       }),
-      {
-        scheme: "tutti-dev",
-        executablePath:
-          "/repo/node_modules/electron/dist/Electron.app/Contents/MacOS/Electron",
-        args: ["/repo/apps/desktop/dist/main/index.js"]
-      }
+      { scheme: "tutti-dev" }
     );
 
     process.env.TUTTI_ENV = "production";
     assert.deepEqual(
       resolveDesktopLoginProtocolClientRegistration({
-        appPath: "/Applications/Tutti.app",
-        executablePath: "/Applications/Tutti.app/Contents/MacOS/Tutti",
         isPackaged: true
       }),
       { scheme: "tutti" }
