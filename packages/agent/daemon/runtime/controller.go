@@ -38,9 +38,15 @@ type Controller struct {
 	pendingCommandSnapshots     map[string]AgentSessionCommandSnapshot
 	configOptionsUpdates        map[string]AgentSessionConfigOptionsUpdate
 	pendingConfigOptionsUpdates map[string][]AgentSessionConfigOptionsUpdate
+	lifecycleLocks              map[string]*sessionLifecycleLock
 	hub                         *EventHub
 	reporter                    ActivityReporter
 	reportCh                    chan reportRequest
+}
+
+type sessionLifecycleLock struct {
+	mu   sync.Mutex
+	refs int
 }
 
 type activeTurn struct {
@@ -51,6 +57,23 @@ type activeTurn struct {
 type reportRequest struct {
 	ctx    context.Context
 	report agentsessionstore.ReportActivityInput
+}
+
+type ReleaseIdleLiveSessionsInput struct {
+	IdleAfter time.Duration
+	Now       time.Time
+	Limit     int
+}
+
+type ReleaseIdleLiveSessionsResult struct {
+	Scanned            int
+	Released           int
+	SkippedFresh       int
+	SkippedActiveTurn  int
+	SkippedUnsupported int
+	SkippedNotLive     int
+	SkippedBusy        int
+	Failed             int
 }
 
 type asyncActivityReporter interface {
@@ -77,6 +100,7 @@ func NewController(adapters []Adapter, reporter ActivityReporter) *Controller {
 		pendingCommandSnapshots:     make(map[string]AgentSessionCommandSnapshot),
 		configOptionsUpdates:        make(map[string]AgentSessionConfigOptionsUpdate),
 		pendingConfigOptionsUpdates: make(map[string][]AgentSessionConfigOptionsUpdate),
+		lifecycleLocks:              make(map[string]*sessionLifecycleLock),
 		hub:                         NewEventHub(),
 		reporter:                    reporter,
 	}
@@ -304,6 +328,9 @@ func (c *Controller) Resume(ctx context.Context, input ResumeInput) (Session, er
 }
 
 func (c *Controller) Close(ctx context.Context, input CloseInput) (CloseResult, error) {
+	releaseLifecycleLock := c.acquireLifecycleLock(input.RoomID, input.AgentSessionID)
+	defer releaseLifecycleLock()
+
 	session, adapter, err := c.sessionAndAdapter(input.RoomID, input.AgentSessionID)
 	if err != nil {
 		return CloseResult{}, err
@@ -493,6 +520,9 @@ func applySessionEvents(session Session, events []activityshared.Event) Session 
 }
 
 func (c *Controller) Exec(ctx context.Context, input ExecInput) (ExecResult, error) {
+	releaseLifecycleLock := c.acquireLifecycleLock(input.RoomID, input.AgentSessionID)
+	defer releaseLifecycleLock()
+
 	session, adapter, err := c.sessionAndAdapter(input.RoomID, input.AgentSessionID)
 	if err != nil {
 		return ExecResult{}, err
@@ -569,6 +599,143 @@ func (c *Controller) ensureLiveAdapterSession(ctx context.Context, session Sessi
 		c.publishAdapterCommandSnapshot(session, adapter)
 	}
 	return nil
+}
+
+func (c *Controller) ReleaseIdleLiveSessions(ctx context.Context, input ReleaseIdleLiveSessionsInput) ReleaseIdleLiveSessionsResult {
+	var result ReleaseIdleLiveSessionsResult
+	if c == nil || input.IdleAfter <= 0 {
+		return result
+	}
+	nowTime := input.Now
+	if nowTime.IsZero() {
+		nowTime = now()
+	}
+	nowUnixMS := unixMS(nowTime)
+	idleAfterMS := input.IdleAfter.Milliseconds()
+	if idleAfterMS <= 0 {
+		return result
+	}
+	type candidate struct {
+		session Session
+		adapter Adapter
+	}
+	candidates := make([]candidate, 0)
+	c.mu.Lock()
+	for key, session := range c.sessions {
+		session = c.reconcileSessionStatusLocked(key, session)
+		c.sessions[key] = session
+		candidates = append(candidates, candidate{
+			session: session,
+			adapter: c.adapters[session.Provider],
+		})
+	}
+	c.mu.Unlock()
+	for _, candidate := range candidates {
+		if input.Limit > 0 && result.Scanned >= input.Limit {
+			break
+		}
+		result.Scanned++
+		result.add(c.releaseIdleLiveSession(ctx, candidate.session, candidate.adapter, nowUnixMS, idleAfterMS))
+	}
+	return result
+}
+
+func (c *Controller) releaseIdleLiveSession(
+	ctx context.Context,
+	session Session,
+	adapter Adapter,
+	nowUnixMS int64,
+	idleAfterMS int64,
+) ReleaseIdleLiveSessionsResult {
+	var result ReleaseIdleLiveSessionsResult
+	releaseAdapter, probe, ok := liveSessionReleaseAdapter(adapter)
+	if !ok {
+		result.SkippedUnsupported = 1
+		return result
+	}
+	if strings.TrimSpace(session.ProviderSessionID) == "" || !probe.HasLiveSession(session) {
+		result.SkippedNotLive = 1
+		return result
+	}
+	key := sessionKey(session.RoomID, session.AgentSessionID)
+	c.mu.Lock()
+	_, hasActiveTurn := c.turns[key]
+	c.mu.Unlock()
+	if hasActiveTurn {
+		result.SkippedActiveTurn = 1
+		return result
+	}
+	if !sessionIdleFor(session, nowUnixMS, idleAfterMS) {
+		result.SkippedFresh = 1
+		return result
+	}
+
+	releaseLifecycleLock := c.acquireLifecycleLock(session.RoomID, session.AgentSessionID)
+	defer releaseLifecycleLock()
+
+	refreshed, adapter, err := c.sessionAndAdapter(session.RoomID, session.AgentSessionID)
+	if err != nil {
+		result.SkippedNotLive = 1
+		return result
+	}
+	releaseAdapter, probe, ok = liveSessionReleaseAdapter(adapter)
+	if !ok {
+		result.SkippedUnsupported = 1
+		return result
+	}
+	if strings.TrimSpace(refreshed.ProviderSessionID) == "" || !probe.HasLiveSession(refreshed) {
+		result.SkippedNotLive = 1
+		return result
+	}
+	if c.HasActiveTurn(refreshed.RoomID, refreshed.AgentSessionID) {
+		result.SkippedActiveTurn = 1
+		return result
+	}
+	if !sessionIdleFor(refreshed, nowUnixMS, idleAfterMS) {
+		result.SkippedFresh = 1
+		return result
+	}
+	if err := releaseAdapter.ReleaseLiveSession(ctx, refreshed); err != nil {
+		if errors.Is(err, ErrLiveSessionBusy) {
+			result.SkippedBusy = 1
+			return result
+		}
+		result.Failed = 1
+		slog.Warn("agent live session release failed",
+			"event", "agent_session.live_release.failed",
+			"room_id", refreshed.RoomID,
+			"agent_session_id", refreshed.AgentSessionID,
+			"provider", refreshed.Provider,
+			"provider_session_id", refreshed.ProviderSessionID,
+			"error", err.Error(),
+		)
+		return result
+	}
+	result.Released = 1
+	return result
+}
+
+func liveSessionReleaseAdapter(adapter Adapter) (LiveSessionReleaseAdapter, LiveSessionProbeAdapter, bool) {
+	releaseAdapter, releaseOK := adapter.(LiveSessionReleaseAdapter)
+	probe, probeOK := adapter.(LiveSessionProbeAdapter)
+	return releaseAdapter, probe, releaseOK && probeOK
+}
+
+func sessionIdleFor(session Session, nowUnixMS int64, idleAfterMS int64) bool {
+	if session.UpdatedAtUnixMS <= 0 {
+		return false
+	}
+	return nowUnixMS-session.UpdatedAtUnixMS >= idleAfterMS
+}
+
+func (r *ReleaseIdleLiveSessionsResult) add(next ReleaseIdleLiveSessionsResult) {
+	r.Released += next.Released
+	r.SkippedFresh += next.SkippedFresh
+	r.SkippedActiveTurn += next.SkippedActiveTurn
+	r.SkippedUnsupported += next.SkippedUnsupported
+	r.SkippedNotLive += next.SkippedNotLive
+	r.SkippedBusy += next.SkippedBusy
+	r.Failed += next.Failed
 }
 
 // isResumeRecreatableError reports whether a failed resume should fall back to
@@ -1771,6 +1938,32 @@ func (c *Controller) get(roomID, agentSessionID string) (Session, bool) {
 		c.sessions[key] = session
 	}
 	return session, ok
+}
+
+func (c *Controller) acquireLifecycleLock(roomID, agentSessionID string) func() {
+	if c == nil {
+		return func() {}
+	}
+	key := sessionKey(strings.TrimSpace(roomID), strings.TrimSpace(agentSessionID))
+	c.mu.Lock()
+	lock := c.lifecycleLocks[key]
+	if lock == nil {
+		lock = &sessionLifecycleLock{}
+		c.lifecycleLocks[key] = lock
+	}
+	lock.refs++
+	c.mu.Unlock()
+
+	lock.mu.Lock()
+	return func() {
+		lock.mu.Unlock()
+		c.mu.Lock()
+		lock.refs--
+		if lock.refs <= 0 && c.lifecycleLocks[key] == lock {
+			delete(c.lifecycleLocks, key)
+		}
+		c.mu.Unlock()
+	}
 }
 
 func (c *Controller) findStartSession(
