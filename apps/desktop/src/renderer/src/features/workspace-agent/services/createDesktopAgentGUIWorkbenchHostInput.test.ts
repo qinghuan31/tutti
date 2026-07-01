@@ -275,6 +275,132 @@ test("desktop agent GUI queued prompt drainer ignores stale blocked submit avail
   ]);
 });
 
+test("desktop agent GUI queued prompt drainer ignores stale active turn id when turn lifecycle is settled", async () => {
+  const calls: string[] = [];
+  const sendInputs: unknown[] = [];
+  const activityService = {
+    ...createWorkspaceAgentActivityService(calls),
+    getSnapshot(inputWorkspaceId: string) {
+      return {
+        ...activitySnapshotWithSessions([
+          activitySession("session-1", {
+            currentPhase: "idle",
+            status: "active",
+            submitAvailability: { state: "blocked", reason: "active_turn" },
+            turnLifecycle: { activeTurnId: "stale-turn-1", phase: "settled" },
+            updatedAtUnixMs: 2
+          })
+        ]),
+        workspaceId: inputWorkspaceId
+      };
+    },
+    async sendInput(input) {
+      sendInputs.push(input);
+      return {
+        session: activitySession(input.agentSessionId, {
+          status: "running",
+          updatedAtUnixMs: 3
+        }),
+        turnId: "turn-1",
+        turnLifecycle: { activeTurnId: "turn-1", phase: "submitted" },
+        submitAvailability: { state: "blocked", reason: "active_turn" }
+      };
+    }
+  } satisfies IWorkspaceAgentActivityService;
+  const hostInput = createDesktopAgentGUIWorkbenchHostInput({
+    hostFilesApi: createHostFilesApi(),
+    tuttidClient: createTuttidClient(),
+    platformApi: createPlatformApi(),
+    richTextAtService: createRichTextAtService({ providers: [] }),
+    runtimeApi: createRuntimeApi(),
+    workspaceAgentActivityService: activityService,
+    workspaceId
+  });
+
+  hostInput.agentQueuedPromptRuntime.enqueue({
+    workspaceId,
+    agentSessionId: "session-1",
+    prompt: {
+      id: "queued-settled-turn",
+      content: [{ type: "text", text: "queued after settled turn" }],
+      createdAtUnixMs: 1
+    }
+  });
+
+  await waitForQueuedPromptDrainer(() => sendInputs.length === 1);
+  assert.deepEqual(sendInputs, [
+    {
+      workspaceId,
+      agentSessionId: "session-1",
+      content: [{ type: "text", text: "queued after settled turn" }],
+      displayPrompt: null
+    }
+  ]);
+});
+
+test("desktop agent GUI queued prompt drainer waits when submit availability is blocked for non-active-turn reasons", async () => {
+  const calls: string[] = [];
+  const sendInputs: unknown[] = [];
+  const activityService = {
+    ...createWorkspaceAgentActivityService(calls),
+    getSnapshot(inputWorkspaceId: string) {
+      return {
+        ...activitySnapshotWithSessions([
+          activitySession("session-1", {
+            currentPhase: "idle",
+            status: "active",
+            submitAvailability: { state: "blocked", reason: "auth_required" },
+            turnLifecycle: { activeTurnId: null, phase: "idle" },
+            updatedAtUnixMs: 2
+          })
+        ]),
+        workspaceId: inputWorkspaceId
+      };
+    },
+    async sendInput(input) {
+      sendInputs.push(input);
+      return {
+        session: activitySession(input.agentSessionId, {
+          status: "running",
+          updatedAtUnixMs: 3
+        }),
+        turnId: "turn-1",
+        turnLifecycle: { activeTurnId: "turn-1", phase: "submitted" },
+        submitAvailability: { state: "blocked", reason: "active_turn" }
+      };
+    }
+  } satisfies IWorkspaceAgentActivityService;
+  const hostInput = createDesktopAgentGUIWorkbenchHostInput({
+    hostFilesApi: createHostFilesApi(),
+    tuttidClient: createTuttidClient(),
+    platformApi: createPlatformApi(),
+    richTextAtService: createRichTextAtService({ providers: [] }),
+    runtimeApi: createRuntimeApi(),
+    workspaceAgentActivityService: activityService,
+    workspaceId
+  });
+
+  hostInput.agentQueuedPromptRuntime.enqueue({
+    workspaceId,
+    agentSessionId: "session-1",
+    prompt: {
+      id: "queued-auth-blocked",
+      content: [{ type: "text", text: "wait for auth" }],
+      createdAtUnixMs: 1
+    }
+  });
+
+  await flushQueuedPromptDrainer();
+  assert.deepEqual(sendInputs, []);
+  assert.equal(
+    hostInput.agentQueuedPromptRuntime.getSessionSnapshot({
+      workspaceId,
+      agentSessionId: "session-1"
+    }).prompts.length,
+    1
+  );
+});
+
 test("desktop agent GUI queued prompt drainer waits for activity change after active-turn conflict", async () => {
   const calls: string[] = [];
   const sendInputs: unknown[] = [];

@@ -38,18 +38,18 @@ interface DesktopQueuedPromptSendNextInterrupt {
   sessionStateUpdatedAtUnixMs: number | null;
 }
 
-export interface CreateDesktopAgentQueuedPromptDrainerInput {
+export interface CreateDesktopAgentQueuedPromptDrainCoordinatorInput {
   agentActivityRuntime: AgentActivityRuntime;
   agentQueuedPromptRuntime: AgentQueuedPromptRuntime;
   workspaceId: string;
 }
 
-export function createDesktopAgentQueuedPromptDrainer({
+export function createDesktopAgentQueuedPromptDrainCoordinator({
   agentActivityRuntime,
   agentQueuedPromptRuntime,
   workspaceId
-}: CreateDesktopAgentQueuedPromptDrainerInput): () => void {
-  const ownerId = `desktop-agent-gui-background-queued-prompt-drainer:${workspaceId}`;
+}: CreateDesktopAgentQueuedPromptDrainCoordinatorInput): () => void {
+  const ownerId = `desktop-agent-gui-queued-prompt-drain-coordinator:${workspaceId}`;
   let disposed = false;
   let draining = false;
   let scheduled = false;
@@ -425,10 +425,15 @@ function sessionCanReceiveInput(session: AgentActivitySession): boolean {
     return false;
   }
   const submitState = session.submitAvailability?.state;
-  if (submitState === "available") {
+  if (!submitState || submitState === "available") {
     return true;
   }
-  return true;
+  if (submitState !== "blocked") {
+    return false;
+  }
+  return (
+    normalizeActivityToken(session.submitAvailability?.reason) === "active_turn"
+  );
 }
 
 function sessionLooksBusy(session: AgentActivitySession): boolean {
@@ -441,7 +446,8 @@ function sessionLooksBusy(session: AgentActivitySession): boolean {
       turnPhase === "idle" ||
       turnPhase === "completed" ||
       turnPhase === "canceled" ||
-      turnPhase === "failed"
+      turnPhase === "failed" ||
+      turnPhase === "settled"
     );
   return (
     status === "queued" ||

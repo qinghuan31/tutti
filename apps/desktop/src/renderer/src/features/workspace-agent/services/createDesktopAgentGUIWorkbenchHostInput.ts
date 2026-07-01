@@ -4,7 +4,6 @@ import type {
   AgentGUIProps,
   AgentHostInputApi
 } from "@tutti-os/agent-gui";
-import { createAgentQueuedPromptRuntime } from "@tutti-os/agent-gui/queued-prompt-runtime";
 import type { AgentContextMentionProvider } from "@tutti-os/agent-gui/context-mention-provider";
 import type { TuttidClient } from "@tutti-os/client-tuttid-ts";
 import type { RichTextTriggerProvider } from "@tutti-os/ui-rich-text/types";
@@ -37,11 +36,10 @@ import {
   getCurrentDesktopWorkspaceFileLocationSections,
   resolveDesktopWorkspaceFileDefaultLocationId
 } from "../../workspace-file-manager/services/desktopWorkspaceFileLocations.ts";
-import { createDesktopAgentActivityRuntime } from "./createDesktopAgentActivityRuntime.ts";
 import { createDesktopAgentHostApi } from "./createDesktopAgentHostApi.ts";
-import { createDesktopAgentQueuedPromptDrainer } from "./internal/createDesktopAgentQueuedPromptDrainer.ts";
 import { createAgentChatReadyTracker } from "./internal/agentChatReadyAnalytics.ts";
 import { createAgentWorkspaceFileReferenceTracker } from "./internal/agentWorkspaceFileReferenceAnalytics.ts";
+import { getDesktopAgentActivityRuntimeServices } from "./internal/desktopAgentActivityRuntimeServices.ts";
 import type { IWorkspaceAgentActivityService } from "./workspaceAgentActivityService.interface";
 import type { IWorkspaceUserProjectService } from "../../workspace-user-project/index.ts";
 import { translate } from "../../../i18n/appRuntime.ts";
@@ -98,16 +96,6 @@ export interface CreateDesktopAgentGUIWorkbenchHostInputInput {
   workspaceId: string;
 }
 
-interface DesktopAgentGUIRuntimeServices {
-  agentActivityRuntime: AgentActivityRuntime;
-  agentQueuedPromptRuntime: AgentQueuedPromptRuntime;
-}
-
-const runtimeServicesByActivityService = new WeakMap<
-  IWorkspaceAgentActivityService,
-  Map<string, DesktopAgentGUIRuntimeServices>
->();
-
 export function createDesktopAgentGUIWorkbenchHostInput({
   agentHostApi,
   hostFilesApi,
@@ -149,7 +137,7 @@ export function createDesktopAgentGUIWorkbenchHostInput({
         >
     : undefined;
   const { agentActivityRuntime, agentQueuedPromptRuntime } =
-    getOrCreateDesktopAgentGUIRuntimeServices({
+    getDesktopAgentActivityRuntimeServices({
       hostFilesApi,
       reporterNow,
       reporterService,
@@ -281,58 +269,6 @@ export function createDesktopAgentGUIWorkbenchHostInput({
     resolveMentionReferenceTarget,
     resolveWorkspaceReferenceInitialTarget
   };
-}
-
-function getOrCreateDesktopAgentGUIRuntimeServices(input: {
-  hostFilesApi: DesktopHostFilesApi;
-  reporterNow?: () => number;
-  reporterService?: Pick<IReporterService, "trackEvents">;
-  runtimeApi: DesktopRuntimeApi;
-  warmupOpenclawGateway?: NonNullable<
-    AgentActivityRuntime["warmupOpenclawGateway"]
-  >;
-  workspaceAgentActivityService: IWorkspaceAgentActivityService;
-  workspaceId: string;
-  workspaceUserProjectService?: IWorkspaceUserProjectService;
-}): DesktopAgentGUIRuntimeServices {
-  const workspaceKey = input.workspaceId.trim();
-  let servicesByWorkspace = runtimeServicesByActivityService.get(
-    input.workspaceAgentActivityService
-  );
-  if (!servicesByWorkspace) {
-    servicesByWorkspace = new Map();
-    runtimeServicesByActivityService.set(
-      input.workspaceAgentActivityService,
-      servicesByWorkspace
-    );
-  }
-  const existing = servicesByWorkspace.get(workspaceKey);
-  if (existing) {
-    return existing;
-  }
-  const agentActivityRuntime = createDesktopAgentActivityRuntime(
-    input.workspaceAgentActivityService,
-    {
-      reporterNow: input.reporterNow,
-      reporterService: input.reporterService,
-      hostFilesApi: input.hostFilesApi,
-      runtimeApi: input.runtimeApi,
-      warmupOpenclawGateway: input.warmupOpenclawGateway,
-      workspaceUserProjectService: input.workspaceUserProjectService
-    }
-  );
-  const agentQueuedPromptRuntime = createAgentQueuedPromptRuntime();
-  createDesktopAgentQueuedPromptDrainer({
-    agentActivityRuntime,
-    agentQueuedPromptRuntime,
-    workspaceId: input.workspaceId
-  });
-  const services = {
-    agentActivityRuntime,
-    agentQueuedPromptRuntime
-  };
-  servicesByWorkspace.set(workspaceKey, services);
-  return services;
 }
 
 const resolveWorkspaceReferenceInitialTarget: NonNullable<

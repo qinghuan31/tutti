@@ -76,6 +76,8 @@ export interface AgentQueuedPromptRuntime {
     ownerId: string;
     workspaceId: string;
   }): boolean;
+  /** @deprecated Queue drain owners should release exact claims by claim id. */
+  releaseOwner(ownerId: string): void;
   removePrompt(input: {
     agentSessionId: string;
     promptId: string;
@@ -405,6 +407,23 @@ export function createAgentQueuedPromptRuntime(): AgentQueuedPromptRuntime {
         return { ...queue, claim: null };
       });
       return released;
+    },
+    releaseOwner(ownerId) {
+      const normalizedOwnerId = ownerId.trim();
+      if (!normalizedOwnerId) {
+        return;
+      }
+      for (const queue of Object.values(snapshot.queuesByKey)) {
+        if (queue.claim?.ownerId === normalizedOwnerId) {
+          updateQueue(queue.workspaceId, queue.agentSessionId, (current) => ({
+            ...current,
+            claim:
+              current.claim?.ownerId === normalizedOwnerId
+                ? null
+                : current.claim
+          }));
+        }
+      }
     },
     removePrompt(input) {
       const promptId = input.promptId.trim();
