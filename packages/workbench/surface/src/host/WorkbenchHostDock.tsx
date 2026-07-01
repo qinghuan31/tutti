@@ -447,6 +447,7 @@ export function WorkbenchHostDock({
   } = useDockMagnification({
     dockPlacement,
     dockRootRef: dockMeasureRef,
+    dockViewportRef: dockItemsRef,
     slotRefs
   });
   const clearSlotMagnificationRef = useRef<(anchorKey: string) => void>(() => {

@@ -213,6 +213,193 @@ func TestControllerExecResumesExistingSessionWhenAdapterLiveSessionMissing(t *te
 	}
 }
 
+func TestControllerReleaseIdleLiveSessionsReleasesStaleLiveSession(t *testing.T) {
+	t.Parallel()
+
+	adapter := newReleasableAdapter()
+	controller := NewController([]Adapter{adapter}, nil)
+	started := startReleasableSession(t, controller, "agent-session-1")
+	setSessionUpdatedAt(t, controller, started.Session, time.Now().Add(-time.Hour))
+
+	result := controller.ReleaseIdleLiveSessions(context.Background(), ReleaseIdleLiveSessionsInput{
+		IdleAfter: 30 * time.Minute,
+		Now:       time.Now(),
+	})
+	if result.Released != 1 || result.Scanned != 1 {
+		t.Fatalf("release result = %#v, want one released session", result)
+	}
+	if adapter.hasLiveSession(started.Session.AgentSessionID) {
+		t.Fatalf("adapter still has live session after release")
+	}
+	stored, ok := controller.Session(started.Session.RoomID, started.Session.AgentSessionID)
+	if !ok {
+		t.Fatalf("controller session was deleted by live release")
+	}
+	if stored.ProviderSessionID != "provider-session-agent-session-1" {
+		t.Fatalf("provider session id = %q, want preserved", stored.ProviderSessionID)
+	}
+	if stored.Status == SessionStatusCompleted {
+		t.Fatalf("session status = completed, want release to be non-destructive")
+	}
+}
+
+func TestControllerReleaseIdleLiveSessionsSkipsFreshActiveUnsupportedAndNotLive(t *testing.T) {
+	t.Parallel()
+
+	adapter := newReleasableAdapter()
+	unsupported := &recordingStartAdapter{provider: ProviderHermes}
+	controller := NewController([]Adapter{adapter, unsupported}, nil)
+	fresh := startReleasableSession(t, controller, "fresh-session")
+	active := startReleasableSession(t, controller, "active-session")
+	notLive := startReleasableSession(t, controller, "not-live-session")
+	unsupportedStarted, err := controller.Start(context.Background(), StartInput{
+		RoomID:         "room-1",
+		AgentSessionID: "unsupported-session",
+		Provider:       ProviderHermes,
+	})
+	if err != nil {
+		t.Fatalf("Start unsupported: %v", err)
+	}
+	stale := time.Now().Add(-time.Hour)
+	setSessionUpdatedAt(t, controller, fresh.Session, time.Now())
+	setSessionUpdatedAt(t, controller, active.Session, stale)
+	setSessionUpdatedAt(t, controller, notLive.Session, stale)
+	setSessionUpdatedAt(t, controller, unsupportedStarted.Session, stale)
+	adapter.dropLiveSession(notLive.Session.AgentSessionID)
+
+	if _, err := controller.Exec(context.Background(), ExecInput{
+		RoomID:         active.Session.RoomID,
+		AgentSessionID: active.Session.AgentSessionID,
+		Content:        textPrompt("hold"),
+	}); err != nil {
+		t.Fatalf("Exec active: %v", err)
+	}
+	adapter.waitForExec(t, "hold")
+
+	result := controller.ReleaseIdleLiveSessions(context.Background(), ReleaseIdleLiveSessionsInput{
+		IdleAfter: 30 * time.Minute,
+		Now:       time.Now(),
+	})
+	if result.SkippedFresh != 1 ||
+		result.SkippedActiveTurn != 1 ||
+		result.SkippedUnsupported != 1 ||
+		result.SkippedNotLive != 1 ||
+		result.Released != 0 {
+		t.Fatalf("release result = %#v, want fresh/active/unsupported/not-live skips", result)
+	}
+	adapter.releaseNext()
+	waitForSessionStatus(t, controller, active.Session.RoomID, active.Session.AgentSessionID, SessionStatusReady)
+}
+
+func TestControllerReleaseIdleLiveSessionsFailureContinuesAndDoesNotReportCompletion(t *testing.T) {
+	t.Parallel()
+
+	reporter := &recordingReporter{}
+	adapter := newReleasableAdapter()
+	controller := NewController([]Adapter{adapter}, reporter)
+	failing := startReleasableSession(t, controller, "failing-session")
+	released := startReleasableSession(t, controller, "released-session")
+	stale := time.Now().Add(-time.Hour)
+	setSessionUpdatedAt(t, controller, failing.Session, stale)
+	setSessionUpdatedAt(t, controller, released.Session, stale)
+	adapter.releaseErrByAgentSessionID[failing.Session.AgentSessionID] = errors.New("close failed")
+	reporter.waitForCalls(t, 2)
+
+	result := controller.ReleaseIdleLiveSessions(context.Background(), ReleaseIdleLiveSessionsInput{
+		IdleAfter: 30 * time.Minute,
+		Now:       time.Now(),
+	})
+	if result.Failed != 1 || result.Released != 1 {
+		t.Fatalf("release result = %#v, want one failure and one release", result)
+	}
+	time.Sleep(50 * time.Millisecond)
+	for _, call := range reporter.snapshot() {
+		for _, patch := range call.report.StatePatches {
+			if patch.LifecycleStatus == SessionStatusCompleted {
+				t.Fatalf("release reported completed session patch: %#v", call.report)
+			}
+		}
+	}
+}
+
+func TestControllerExecResumesAfterIdleLiveSessionRelease(t *testing.T) {
+	t.Parallel()
+
+	adapter := newReleasableAdapter()
+	controller := NewController([]Adapter{adapter}, nil)
+	started := startReleasableSession(t, controller, "agent-session-1")
+	setSessionUpdatedAt(t, controller, started.Session, time.Now().Add(-time.Hour))
+	if result := controller.ReleaseIdleLiveSessions(context.Background(), ReleaseIdleLiveSessionsInput{
+		IdleAfter: 30 * time.Minute,
+		Now:       time.Now(),
+	}); result.Released != 1 {
+		t.Fatalf("release result = %#v, want one released session", result)
+	}
+
+	result, err := controller.Exec(context.Background(), ExecInput{
+		RoomID:         started.Session.RoomID,
+		AgentSessionID: started.Session.AgentSessionID,
+		Content:        textPrompt("resume me"),
+	})
+	if err != nil {
+		t.Fatalf("Exec: %v", err)
+	}
+	if !result.Accepted {
+		t.Fatalf("Exec result = %#v, want accepted", result)
+	}
+	if adapter.resumeCalls != 1 {
+		t.Fatalf("resume calls = %d, want 1", adapter.resumeCalls)
+	}
+}
+
+func TestControllerReleaseIdleLiveSessionsWaitsForExecLifecycle(t *testing.T) {
+	t.Parallel()
+
+	adapter := newReleasableAdapter()
+	adapter.validateEntered = make(chan struct{})
+	adapter.validateRelease = make(chan struct{})
+	controller := NewController([]Adapter{adapter}, nil)
+	started := startReleasableSession(t, controller, "agent-session-1")
+	setSessionUpdatedAt(t, controller, started.Session, time.Now().Add(-time.Hour))
+
+	execDone := make(chan error, 1)
+	go func() {
+		_, err := controller.Exec(context.Background(), ExecInput{
+			RoomID:         started.Session.RoomID,
+			AgentSessionID: started.Session.AgentSessionID,
+			Content:        textPrompt("blocked exec"),
+		})
+		execDone <- err
+	}()
+	select {
+	case <-adapter.validateEntered:
+	case <-time.After(2 * time.Second):
+		t.Fatal("timed out waiting for prompt validation")
+	}
+	releaseDone := make(chan ReleaseIdleLiveSessionsResult, 1)
+	go func() {
+		releaseDone <- controller.ReleaseIdleLiveSessions(context.Background(), ReleaseIdleLiveSessionsInput{
+			IdleAfter: 30 * time.Minute,
+			Now:       time.Now(),
+		})
+	}()
+	select {
+	case result := <-releaseDone:
+		t.Fatalf("release completed while Exec lifecycle lock was held: %#v", result)
+	case <-time.After(50 * time.Millisecond):
+	}
+	close(adapter.validateRelease)
+	if err := <-execDone; err != nil {
+		t.Fatalf("Exec: %v", err)
+	}
+	result := <-releaseDone
+	if result.SkippedActiveTurn != 1 || result.Released != 0 {
+		t.Fatalf("release result = %#v, want active turn skip after Exec begins", result)
+	}
+	adapter.releaseNext()
+	waitForSessionStatus(t, controller, started.Session.RoomID, started.Session.AgentSessionID, SessionStatusReady)
+}
+
 func TestControllerHiddenSessionPublishesLiveEventsAndReportsActivity(t *testing.T) {
 	t.Parallel()
 
@@ -1517,6 +1704,160 @@ func (a *reconnectableAdapter) HasLiveSession(session Session) bool {
 
 func (a *reconnectableAdapter) dropLiveSession(agentSessionID string) {
 	a.live[agentSessionID] = false
+}
+
+type releasableAdapter struct {
+	mu                         sync.Mutex
+	live                       map[string]bool
+	resumeCalls                int
+	releaseCalls               int
+	releaseErrByAgentSessionID map[string]error
+	resumeEntered              chan struct{}
+	resumeRelease              chan struct{}
+	validateEntered            chan struct{}
+	validateRelease            chan struct{}
+	execStarted                chan string
+	execRelease                chan struct{}
+}
+
+func newReleasableAdapter() *releasableAdapter {
+	return &releasableAdapter{
+		live:                       make(map[string]bool),
+		releaseErrByAgentSessionID: make(map[string]error),
+		execStarted:                make(chan string, 8),
+		execRelease:                make(chan struct{}, 8),
+	}
+}
+
+func (*releasableAdapter) Provider() string { return ProviderCodex }
+
+func (a *releasableAdapter) Start(_ context.Context, session Session) ([]activityshared.Event, error) {
+	session.ProviderSessionID = "provider-session-" + session.AgentSessionID
+	a.mu.Lock()
+	a.live[session.AgentSessionID] = true
+	a.mu.Unlock()
+	return []activityshared.Event{
+		newSessionActivityEvent(session, EventSessionStarted, SessionStatusReady, nil),
+	}, nil
+}
+
+func (a *releasableAdapter) Resume(_ context.Context, session Session) error {
+	if a.resumeEntered != nil {
+		select {
+		case <-a.resumeEntered:
+		default:
+			close(a.resumeEntered)
+		}
+	}
+	if a.resumeRelease != nil {
+		<-a.resumeRelease
+	}
+	a.mu.Lock()
+	a.resumeCalls++
+	a.live[session.AgentSessionID] = true
+	a.mu.Unlock()
+	return nil
+}
+
+func (a *releasableAdapter) Close(context.Context, Session) error { return nil }
+
+func (a *releasableAdapter) ValidatePromptContent(Session, []PromptContentBlock) error {
+	if a.validateEntered != nil {
+		select {
+		case <-a.validateEntered:
+		default:
+			close(a.validateEntered)
+		}
+	}
+	if a.validateRelease != nil {
+		<-a.validateRelease
+	}
+	return nil
+}
+
+func (a *releasableAdapter) Exec(_ context.Context, session Session, content []PromptContentBlock, _ string, turnID string, _ EventSink, _ CommandSnapshotSink) ([]activityshared.Event, error) {
+	prompt := promptDisplayText(content)
+	a.execStarted <- prompt
+	<-a.execRelease
+	return []activityshared.Event{
+		newTurnActivityEvent(session, EventTurnCompleted, turnID, SessionStatusReady, "", "", nil),
+	}, nil
+}
+
+func (*releasableAdapter) Cancel(context.Context, Session, string) ([]activityshared.Event, error) {
+	return nil, nil
+}
+
+func (a *releasableAdapter) HasLiveSession(session Session) bool {
+	return a.hasLiveSession(session.AgentSessionID)
+}
+
+func (a *releasableAdapter) hasLiveSession(agentSessionID string) bool {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	return a.live[agentSessionID]
+}
+
+func (a *releasableAdapter) ReleaseLiveSession(_ context.Context, session Session) error {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	a.releaseCalls++
+	if err := a.releaseErrByAgentSessionID[session.AgentSessionID]; err != nil {
+		return err
+	}
+	a.live[session.AgentSessionID] = false
+	return nil
+}
+
+func (a *releasableAdapter) dropLiveSession(agentSessionID string) {
+	a.mu.Lock()
+	a.live[agentSessionID] = false
+	a.mu.Unlock()
+}
+
+func (a *releasableAdapter) waitForExec(t *testing.T, prompt string) {
+	t.Helper()
+	select {
+	case got := <-a.execStarted:
+		if got != prompt {
+			t.Fatalf("exec prompt = %q, want %q", got, prompt)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatalf("timed out waiting for exec prompt %q", prompt)
+	}
+}
+
+func (a *releasableAdapter) releaseNext() {
+	a.execRelease <- struct{}{}
+}
+
+func startReleasableSession(t *testing.T, controller *Controller, agentSessionID string) StartResult {
+	t.Helper()
+	started, err := controller.Start(context.Background(), StartInput{
+		RoomID:         "room-1",
+		AgentSessionID: agentSessionID,
+		Provider:       ProviderCodex,
+		CWD:            "/workspace",
+		Title:          "Codex",
+	})
+	if err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+	return started
+}
+
+func setSessionUpdatedAt(t *testing.T, controller *Controller, session Session, updatedAt time.Time) {
+	t.Helper()
+	controller.mu.Lock()
+	key := sessionKey(session.RoomID, session.AgentSessionID)
+	stored, ok := controller.sessions[key]
+	if !ok {
+		controller.mu.Unlock()
+		t.Fatalf("session %q missing", key)
+	}
+	stored.UpdatedAtUnixMS = unixMS(updatedAt)
+	controller.sessions[key] = stored
+	controller.mu.Unlock()
 }
 
 // recreatableResumeAdapter fails Resume with a configurable restore error and

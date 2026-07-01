@@ -8,12 +8,15 @@ import {
   DOCK_ICON_BASE_SIZE,
   DOCK_ICON_PEAK_SIZE,
   DOCK_MAGNIFICATION_HALF_RANGE,
+  createDockMagnificationGlobalPointerTracker,
+  isDockMagnificationPointInsideHitBounds,
   isDockMagnificationSlotLayoutLocked,
   isDockMagnificationSpringSettled,
   mapDistanceToTargetSize,
   resolveDockMagnificationHitBounds,
   resolveDockMagnificationSlotLayoutSize,
-  resolveDockMagnificationSlotCenter
+  resolveDockMagnificationSlotCenter,
+  resolveDockMagnificationVisibleHitBounds
 } from "./dockMagnification.ts";
 
 const source = readFileSync(resolve("src/host/dockMagnification.ts"), "utf8");
@@ -29,6 +32,56 @@ function assertBoundsEqual(
   assert.ok(Math.abs(actual.crossStart - expected.crossStart) < 0.001);
   assert.ok(Math.abs(actual.mainEnd - expected.mainEnd) < 0.001);
   assert.ok(Math.abs(actual.mainStart - expected.mainStart) < 0.001);
+}
+
+class FakePointerTrackingTarget {
+  readonly listeners = new Map<
+    string,
+    Set<EventListenerOrEventListenerObject>
+  >();
+  readonly added: string[] = [];
+  readonly removed: string[] = [];
+
+  addEventListener(
+    type: string,
+    listener: EventListenerOrEventListenerObject | null
+  ) {
+    if (!listener) {
+      return;
+    }
+    this.added.push(type);
+    let listenersForType = this.listeners.get(type);
+    if (!listenersForType) {
+      listenersForType = new Set();
+      this.listeners.set(type, listenersForType);
+    }
+    listenersForType.add(listener);
+  }
+
+  removeEventListener(
+    type: string,
+    listener: EventListenerOrEventListenerObject | null
+  ) {
+    if (!listener) {
+      return;
+    }
+    this.removed.push(type);
+    this.listeners.get(type)?.delete(listener);
+  }
+
+  dispatch(type: string, event: Event) {
+    for (const listener of this.listeners.get(type) ?? []) {
+      if (typeof listener === "function") {
+        listener(event);
+      } else {
+        listener.handleEvent(event);
+      }
+    }
+  }
+
+  listenerCount(type: string) {
+    return this.listeners.get(type)?.size ?? 0;
+  }
 }
 
 test("mapDistanceToTargetSize peaks at center and falls off linearly", () => {
@@ -79,6 +132,76 @@ test("dock magnification hit bounds exclude scroll-control padding before the fi
     mainEnd: 203.2,
     mainStart: 100
   });
+});
+
+test("dock magnification hit bounds include the transparent gap between slots", () => {
+  const hitBounds = resolveDockMagnificationHitBounds(
+    [
+      { bottom: 80, left: 100, right: 143.2, top: 36.8 },
+      { bottom: 80, left: 160, right: 203.2, top: 36.8 }
+    ],
+    "bottom"
+  );
+
+  assert.equal(
+    isDockMagnificationPointInsideHitBounds({
+      clientX: 151.6,
+      clientY: 60,
+      dockPlacement: "bottom",
+      hitBounds
+    }),
+    true
+  );
+  assert.equal(
+    isDockMagnificationPointInsideHitBounds({
+      clientX: 99,
+      clientY: 60,
+      dockPlacement: "bottom",
+      hitBounds
+    }),
+    false
+  );
+});
+
+test("dock magnification visible hit bounds clip overflow slots to the viewport", () => {
+  const slotHitBounds = resolveDockMagnificationHitBounds(
+    [
+      { bottom: 80, left: 100, right: 143.2, top: 36.8 },
+      { bottom: 80, left: 160, right: 203.2, top: 36.8 },
+      { bottom: 80, left: 720, right: 763.2, top: 36.8 }
+    ],
+    "bottom"
+  );
+  const visibleHitBounds = resolveDockMagnificationVisibleHitBounds({
+    dockPlacement: "bottom",
+    hitBounds: slotHitBounds,
+    viewportRect: { bottom: 88, left: 64, right: 560, top: 0 }
+  });
+
+  assertBoundsEqual(visibleHitBounds, {
+    crossEnd: 88,
+    crossStart: 28.8,
+    mainEnd: 560,
+    mainStart: 100
+  });
+  assert.equal(
+    isDockMagnificationPointInsideHitBounds({
+      clientX: 151.6,
+      clientY: 60,
+      dockPlacement: "bottom",
+      hitBounds: visibleHitBounds
+    }),
+    true
+  );
+  assert.equal(
+    isDockMagnificationPointInsideHitBounds({
+      clientX: 730,
+      clientY: 60,
+      dockPlacement: "bottom",
+      hitBounds: visibleHitBounds
+    }),
+    false
+  );
 });
 
 test("left dock magnification hit bounds use the vertical slot range", () => {
@@ -174,6 +297,77 @@ test("dock magnification keeps active styles until leave animation settles", () 
     /if \(pointerAxis === null && allSettled\) \{[\s\S]*?setMagnifyActive\(false\);/
   );
   assert.doesNotMatch(handlePointerLeaveSource, /setMagnifyActive\(false\);/);
+});
+
+test("dock magnification global pointer tracker forwards gap moves and cleans up", () => {
+  const pointerTarget = new FakePointerTrackingTarget();
+  const blurTarget = new FakePointerTrackingTarget();
+  const moves: Array<{ clientX: number; clientY: number }> = [];
+  let canceled = 0;
+  const tracker = createDockMagnificationGlobalPointerTracker({
+    blurTarget,
+    onPointerCancel: () => {
+      canceled += 1;
+    },
+    onPointerMove: (clientX, clientY) => {
+      moves.push({ clientX, clientY });
+    },
+    pointerTarget
+  });
+
+  tracker.start();
+  tracker.start();
+
+  assert.equal(tracker.isActive(), true);
+  assert.equal(pointerTarget.listenerCount("pointermove"), 1);
+  assert.equal(pointerTarget.listenerCount("pointercancel"), 1);
+  assert.equal(blurTarget.listenerCount("blur"), 1);
+  assert.deepEqual(pointerTarget.added, ["pointermove", "pointercancel"]);
+  assert.deepEqual(blurTarget.added, ["blur"]);
+
+  pointerTarget.dispatch("pointermove", {
+    clientX: 151,
+    clientY: 60
+  } as unknown as Event);
+  assert.deepEqual(moves, [{ clientX: 151, clientY: 60 }]);
+
+  pointerTarget.dispatch("pointercancel", new Event("pointercancel"));
+  assert.equal(canceled, 1);
+  assert.equal(tracker.isActive(), false);
+  assert.equal(pointerTarget.listenerCount("pointermove"), 0);
+  assert.equal(pointerTarget.listenerCount("pointercancel"), 0);
+  assert.equal(blurTarget.listenerCount("blur"), 0);
+
+  tracker.start();
+  blurTarget.dispatch("blur", new Event("blur"));
+  assert.equal(canceled, 2);
+  assert.equal(tracker.isActive(), false);
+  assert.equal(pointerTarget.listenerCount("pointermove"), 0);
+  assert.equal(pointerTarget.listenerCount("pointercancel"), 0);
+  assert.equal(blurTarget.listenerCount("blur"), 0);
+});
+
+test("dock magnification starts global tracking on active pointers and stops on bounds exit or reset", () => {
+  assert.match(
+    source,
+    /createDockMagnificationGlobalPointerTracker\(\{[\s\S]*?pointerTarget: document/
+  );
+  assert.match(
+    source,
+    /startGlobalPointerTracking\(\);[\s\S]*?scheduleAnimation\(\);/
+  );
+  assert.match(
+    source,
+    /if \([\s\S]*?!isDockMagnificationPointInsideHitBounds\([\s\S]*?\) \{[\s\S]*?stopGlobalPointerTracking\(\);[\s\S]*?clearTrackedPointer\(\);/
+  );
+  assert.match(
+    source,
+    /const resetMagnification = useCallback\([\s\S]*?stopGlobalPointerTracking\(\);/
+  );
+  assert.match(
+    source,
+    /useEffect\(\s*\(\) => \(\) => \{[\s\S]*?resetMagnification\(\);/
+  );
 });
 
 test("dock magnification caches slot shell lookups during animation", () => {
