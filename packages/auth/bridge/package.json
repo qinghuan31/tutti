@@ -2,6 +2,11 @@
   "name": "@tutti-os/auth-bridge",
   "version": "0.0.0-test.20260630000000.local",
   "private": false,
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/tutti-os/tutti.git",
+    "directory": "packages/auth/bridge"
+  },
   "type": "module",
   "types": "./src/browser.ts",
   "exports": {
