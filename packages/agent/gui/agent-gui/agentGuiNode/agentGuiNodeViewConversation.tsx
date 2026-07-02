@@ -207,6 +207,7 @@ export function groupConversations(
       .sort(
         (left, right) =>
           left.sectionOrder - right.sectionOrder ||
+          Number(right.items.length > 0) - Number(left.items.length > 0) ||
           right.projectUpdatedAtUnixMs - left.projectUpdatedAtUnixMs ||
           left.projectOrder - right.projectOrder ||
           left.label.localeCompare(right.label) ||

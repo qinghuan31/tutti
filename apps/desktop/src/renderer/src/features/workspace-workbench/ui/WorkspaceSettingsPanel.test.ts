@@ -23,8 +23,19 @@ test("workspace settings developer panel exposes analytics debug switch only whe
 test("workspace settings panel lists appearance below general", () => {
   assert.match(
     source,
-    /id: "general" as const,[\s\S]*id: "agent" as const,[\s\S]*id: "appearance" as const,[\s\S]*id: "apps" as const,[\s\S]*id: "about" as const,[\s\S]*id: "developer" as const/
+    /id: "general" as const,[\s\S]*id: "agent" as const,[\s\S]*id: "appearance" as const,[\s\S]*id: "apps" as const,[\s\S]*id: "account" as const,[\s\S]*id: "about" as const,[\s\S]*id: "developer" as const/
   );
+});
+
+test("workspace settings gates account behind Tutti Agent Switch", () => {
+  assert.match(source, /settingsState\.tuttiAgentSwitchEnabled/);
+  assert.match(source, /workspace\.settings\.developer\.tuttiAgentSwitchLabel/);
+  assert.match(
+    source,
+    /settingsService\.setTuttiAgentSwitchEnabled\(enabled\)/
+  );
+  assert.match(source, /settingsState\.activeSection === "account"/);
+  assert.match(source, /<WorkspaceAccountSettingsSection \/>/);
 });
 
 test("workspace settings backdrop preserves titlebar dragging", () => {

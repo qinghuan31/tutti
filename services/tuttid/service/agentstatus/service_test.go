@@ -184,6 +184,22 @@ func specWithSeparateAdapter() ProviderSpec {
 	}
 }
 
+func TestNextMissingInstallerRepairsAdapterLaunchFailureBeforeCLI(t *testing.T) {
+	spec := specWithSeparateAdapter()
+	installer, missing, target := (Service{}).nextMissingInstaller(spec, providerRuntimeResolution{
+		ReasonCode: "acp_adapter_launch_failed",
+	})
+	if !missing {
+		t.Fatal("missing = false, want true")
+	}
+	if target != "adapter" {
+		t.Fatalf("target = %q, want adapter", target)
+	}
+	if installer.Kind != spec.AdapterInstall.Kind {
+		t.Fatalf("installer.Kind = %q, want %q", installer.Kind, spec.AdapterInstall.Kind)
+	}
+}
+
 func TestServiceListReportsInstallActionWhenACPAdapterMissing(t *testing.T) {
 	service := testService(func(name string) (string, error) {
 		if name == "codex" {
@@ -368,6 +384,53 @@ func TestServiceListReportsCodexChecksVersionAndLastError(t *testing.T) {
 	assertProviderCheck(t, status.Checks, "auth", true)
 }
 
+func TestServiceListRunsCodexLauncherWithManagedNodePath(t *testing.T) {
+	home := t.TempDir()
+	binDir := filepath.Join(home, "bin")
+	pkgDir := filepath.Join(home, "lib", "node_modules", "@openai", "codex")
+	writePackageManifest(t, pkgDir, "@openai/codex", MinSupportedCodexVersion)
+	codexPath := filepath.Join(pkgDir, "bin", "codex")
+	writeExecutable(t, codexPath, "#!/usr/bin/env node\n")
+	if err := os.MkdirAll(binDir, 0o755); err != nil {
+		t.Fatalf("mkdir bin dir: %v", err)
+	}
+	if err := os.Symlink(codexPath, filepath.Join(binDir, "codex")); err != nil {
+		t.Fatalf("symlink codex: %v", err)
+	}
+	platformPath, ok := codexPlatformBinaryPath(pkgDir, runtime.GOOS, runtime.GOARCH)
+	if !ok {
+		t.Skipf("codex platform package unavailable for %s/%s", runtime.GOOS, runtime.GOARCH)
+	}
+	writeExecutable(t, platformPath, "#!/bin/sh\nexit 0\n")
+
+	runtimeRoot := fakeManagedRuntimeRoot(t)
+	managedNode := filepath.Join(runtimeRoot, "node", "bin", nodeBinaryNameForTest())
+	writeExecutable(t, managedNode, "#!/bin/sh\nif [ \"$2\" = \"--version\" ]; then echo 'codex "+MinSupportedCodexVersion+"'; exit 0; fi\nexit 0\n")
+
+	service := probeTestService(home)
+	service.Environ = func() []string {
+		return []string{"PATH=" + binDir}
+	}
+	service.IsExecutableFile = isTestExecutable
+	service.ManagedRuntime = fakeManagedRuntimeResolver(t, runtimeRoot)
+	service.RunAuthStatusCommand = func(context.Context, ProviderSpec, string) (AuthInfo, bool) {
+		return AuthInfo{Status: AuthAuthenticated}, true
+	}
+
+	snapshot, err := service.List(context.Background(), ListInput{Providers: []string{"codex"}})
+	if err != nil {
+		t.Fatalf("List() error = %v", err)
+	}
+
+	status := onlyStatus(t, snapshot)
+	if status.Availability.Status != AvailabilityReady {
+		t.Fatalf("Availability.Status = %q, want ready; reason=%q lastError=%#v", status.Availability.Status, status.Availability.ReasonCode, status.LastError)
+	}
+	if status.CLI.Version != MinSupportedCodexVersion {
+		t.Fatalf("CLI.Version = %q, want %q", status.CLI.Version, MinSupportedCodexVersion)
+	}
+}
+
 func TestServiceProbeReportsCodexPlatformPackageIncomplete(t *testing.T) {
 	home := t.TempDir()
 	binDir := filepath.Join(home, "bin")
@@ -471,6 +534,60 @@ func TestServiceRunActionReinstallsCodexWhenPlatformPackageIncomplete(t *testing
 	}
 	if activeStep != "repair" {
 		t.Fatalf("active action step = %q, want %q (repair-in-place)", activeStep, "repair")
+	}
+	if result.Probe == nil || result.Probe.Status != ProbeReady {
+		t.Fatalf("Probe = %#v, want ready probe", result.Probe)
+	}
+}
+
+func TestServiceRunActionRepairsCodexWhenAppServerLaunchFails(t *testing.T) {
+	home := t.TempDir()
+	binDir := filepath.Join(home, "bin")
+	pkgDir := filepath.Join(home, "lib", "node_modules", "@openai", "codex")
+	writePackageManifest(t, pkgDir, "@openai/codex", MinSupportedCodexVersion)
+	codexPath := filepath.Join(pkgDir, "bin", "codex")
+	writeExecutable(t, codexPath, "#!/bin/sh\nif [ \"$1\" = \"--version\" ]; then echo 'codex "+MinSupportedCodexVersion+"'; exit 0; fi\nif [ \"$1\" = \"app-server\" ]; then echo 'app-server failed' >&2; exit 127; fi\nexit 0\n")
+	if err := os.MkdirAll(binDir, 0o755); err != nil {
+		t.Fatalf("mkdir bin dir: %v", err)
+	}
+	if err := os.Symlink(codexPath, filepath.Join(binDir, "codex")); err != nil {
+		t.Fatalf("symlink codex: %v", err)
+	}
+	platformBinary, ok := codexPlatformBinaryPath(pkgDir, runtime.GOOS, runtime.GOARCH)
+	if !ok {
+		t.Skipf("codex platform package is unsupported for %s/%s", runtime.GOOS, runtime.GOARCH)
+	}
+	writeExecutable(t, platformBinary, "#!/bin/sh\nexit 0\n")
+
+	service := probeTestService(home)
+	service.Environ = func() []string {
+		return []string{"PATH=" + binDir, agentNPMRegistryEnv + "=https://registry.example.test"}
+	}
+	service.IsExecutableFile = isTestExecutable
+	service.RunAuthStatusCommand = func(context.Context, ProviderSpec, string) (AuthInfo, bool) {
+		return AuthInfo{Status: AuthAuthenticated}, true
+	}
+
+	var command InstallCommandInput
+	service.InstallCommand = func(_ context.Context, input InstallCommandInput) (InstallCommandResult, error) {
+		command = input
+		writeExecutable(t, codexPath, "#!/bin/sh\nif [ \"$1\" = \"--version\" ]; then echo 'codex "+MinSupportedCodexVersion+"'; exit 0; fi\nif [ \"$1\" = \"app-server\" ]; then sleep 5; fi\nexit 0\n")
+		return InstallCommandResult{ExitCode: 0, Stdout: "installed"}, nil
+	}
+
+	result, err := service.RunAction(context.Background(), RunActionInput{
+		Provider: "codex",
+		ActionID: ActionInstall,
+	})
+	if err != nil {
+		t.Fatalf("RunAction() error = %v", err)
+	}
+	if result.Status != RunActionCompleted {
+		t.Fatalf("Status = %q, want %q; result=%#v", result.Status, RunActionCompleted, result)
+	}
+	if !strings.Contains(command.Command, "@openai/codex") ||
+		!strings.Contains(command.Command, "--include=optional") {
+		t.Fatalf("Command = %q, want Codex CLI repair install with optional deps", command.Command)
 	}
 	if result.Probe == nil || result.Probe.Status != ProbeReady {
 		t.Fatalf("Probe = %#v, want ready probe", result.Probe)
@@ -1090,16 +1207,18 @@ func TestServiceRunActionInstallsThenProbesProvider(t *testing.T) {
 	}
 }
 
-func TestServiceRunCodexCLILatestInstallerUsesGlobalNPM(t *testing.T) {
+func TestServiceRunCodexCLILatestInstallerPrefersManagedNPM(t *testing.T) {
 	home := t.TempDir()
 	binDir := filepath.Join(home, "bin")
-	npmPath := filepath.Join(binDir, npmBinaryNameForTest())
-	writeExecutable(t, npmPath, "#!/bin/sh\nexit 0\n")
+	writeExecutable(t, filepath.Join(binDir, npmBinaryNameForTest()), "#!/bin/sh\nexit 0\n")
+	runtimeRoot := fakeManagedRuntimeRoot(t)
+	managedNPM := filepath.Join(runtimeRoot, "node", "bin", npmBinaryNameForTest())
 	service := probeTestService(home)
 	service.Environ = func() []string {
 		return []string{"PATH=" + binDir, agentNPMRegistryEnv + "=https://registry.example.test"}
 	}
 	service.IsExecutableFile = isTestExecutableUnderHome(home)
+	service.ManagedRuntime = fakeManagedRuntimeResolver(t, runtimeRoot)
 	service.RunAuthStatusCommand = func(context.Context, ProviderSpec, string) (AuthInfo, bool) {
 		return AuthInfo{Status: AuthAuthenticated}, true
 	}
@@ -1128,31 +1247,33 @@ func TestServiceRunCodexCLILatestInstallerUsesGlobalNPM(t *testing.T) {
 	if result.ExitCode != 0 {
 		t.Fatalf("ExitCode = %d, want 0; stderr=%q", result.ExitCode, result.Stderr)
 	}
-	if !strings.Contains(command.Command, npmPath) ||
+	if !strings.Contains(command.Command, managedNPM) ||
 		!strings.Contains(command.Command, "install") ||
 		!strings.Contains(command.Command, "-g") ||
 		!strings.Contains(command.Command, "@openai/codex") ||
 		!strings.Contains(command.Command, "--include=optional") ||
 		!strings.Contains(command.Command, "--prefix") {
-		t.Fatalf("Command = %q, want global npm install with optional deps pinned to a searched --prefix", command.Command)
+		t.Fatalf("Command = %q, want managed npm install with optional deps pinned to a searched --prefix", command.Command)
 	}
 	if !slices.Contains(command.Env, "npm_config_registry=https://registry.example.test") {
 		t.Fatalf("Env = %#v, want selected npm registry", command.Env)
 	}
 }
 
-func TestServiceRunCodexInstallerReportsGlobalNPMActiveAction(t *testing.T) {
+func TestServiceRunCodexInstallerReportsManagedNPMActiveAction(t *testing.T) {
 	home := t.TempDir()
 	binDir := filepath.Join(home, "bin")
-	npmPath := filepath.Join(binDir, npmBinaryNameForTest())
-	nodePath := filepath.Join(binDir, nodeBinaryNameForTest())
-	writeExecutable(t, npmPath, "#!/bin/sh\nexit 0\n")
-	writeExecutable(t, nodePath, "#!/bin/sh\nexit 0\n")
+	writeExecutable(t, filepath.Join(binDir, npmBinaryNameForTest()), "#!/bin/sh\nexit 0\n")
+	writeExecutable(t, filepath.Join(binDir, nodeBinaryNameForTest()), "#!/bin/sh\nexit 0\n")
+	runtimeRoot := fakeManagedRuntimeRoot(t)
+	managedNPM := filepath.Join(runtimeRoot, "node", "bin", npmBinaryNameForTest())
+	managedNode := filepath.Join(runtimeRoot, "node", "bin", nodeBinaryNameForTest())
 	service := probeTestService(home)
 	service.Environ = func() []string {
 		return []string{"PATH=" + binDir, agentNPMRegistryEnv + "=https://registry.example.test"}
 	}
 	service.IsExecutableFile = isTestExecutableUnderHome(home)
+	service.ManagedRuntime = fakeManagedRuntimeResolver(t, runtimeRoot)
 	service.RunAuthStatusCommand = func(context.Context, ProviderSpec, string) (AuthInfo, bool) {
 		return AuthInfo{Status: AuthAuthenticated}, true
 	}
@@ -1175,13 +1296,16 @@ func TestServiceRunCodexInstallerReportsGlobalNPMActiveAction(t *testing.T) {
 		// This callback runs on the RunAction goroutine, so it must never call
 		// t.Fatalf/t.Skipf — those Goexit only this goroutine and hang the test on
 		// <-done. Use t.Errorf and return so the test goroutine unblocks.
-		if !strings.Contains(input.Command, npmPath) ||
+		if !strings.Contains(input.Command, managedNPM) ||
 			!strings.Contains(input.Command, "install") ||
 			!strings.Contains(input.Command, "-g") ||
 			!strings.Contains(input.Command, "@openai/codex") ||
 			!strings.Contains(input.Command, "--include=optional") ||
 			!strings.Contains(input.Command, "--prefix") {
-			t.Errorf("Command = %q, want global npm install with optional deps pinned to a searched --prefix", input.Command)
+			t.Errorf("Command = %q, want managed npm install with optional deps pinned to a searched --prefix", input.Command)
+		}
+		if !slices.Contains(input.Env, "TUTTI_APP_NODE="+managedNode) {
+			t.Errorf("Env = %#v, want managed node marker", input.Env)
 		}
 		if !slices.Contains(input.Env, "npm_config_registry=https://registry.example.test") {
 			t.Errorf("Env = %#v, want selected npm registry", input.Env)
@@ -1237,8 +1361,8 @@ func TestServiceRunCodexInstallerReportsGlobalNPMActiveAction(t *testing.T) {
 	if status.ActiveAction.Registry != "https://registry.example.test" {
 		t.Fatalf("ActiveAction.Registry = %q, want registry override", status.ActiveAction.Registry)
 	}
-	if status.ActiveAction.NodeTarget != nodePath {
-		t.Fatalf("ActiveAction.NodeTarget = %q, want %q", status.ActiveAction.NodeTarget, nodePath)
+	if status.ActiveAction.NodeTarget != managedNode {
+		t.Fatalf("ActiveAction.NodeTarget = %q, want %q", status.ActiveAction.NodeTarget, managedNode)
 	}
 	if !strings.Contains(status.ActiveAction.Stdout, "fetching @openai/codex") {
 		t.Fatalf("ActiveAction.Stdout = %q, want npm stdout", status.ActiveAction.Stdout)

@@ -815,6 +815,10 @@ func (c *Controller) beginTurn(session Session, turnID string, cancel context.Ca
 }
 
 func (c *Controller) runExecTurn(ctx context.Context, session Session, adapter Adapter, content []PromptContentBlock, displayPrompt string, turnID string) {
+	if asyncAdapter, ok := adapter.(AsyncExecAdapter); ok {
+		c.runAsyncExecTurn(ctx, session, asyncAdapter, content, displayPrompt, turnID)
+		return
+	}
 	var emitted []activityshared.Event
 	metadata := execMetadataFromContext(ctx)
 	logAgentSubmitTrace("runtime.turn_goroutine_started", session, turnID, metadata, nil)
@@ -873,6 +877,100 @@ func (c *Controller) runExecTurn(ctx context.Context, session Session, adapter A
 		session.UpdatedAtUnixMS = unixMS(now())
 	}
 	c.finishTurn(session, turnID)
+}
+
+func (c *Controller) runAsyncExecTurn(ctx context.Context, session Session, adapter AsyncExecAdapter, content []PromptContentBlock, displayPrompt string, turnID string) {
+	metadata := execMetadataFromContext(ctx)
+	logAgentSubmitTrace("runtime.async_turn_started", session, turnID, metadata, nil)
+	var mu sync.Mutex
+	finished := false
+	finish := func(next Session) {
+		if finished {
+			return
+		}
+		finished = true
+		c.finishTurn(next, turnID)
+	}
+	emit := func(events []activityshared.Event) {
+		if len(events) == 0 {
+			return
+		}
+		mu.Lock()
+		defer mu.Unlock()
+		previousStatus := session.Status
+		session = applySessionEvents(session, events)
+		session = applyTurnLifecycleFromEvents(session, events)
+		session = c.preserveActiveTurnStatus(session, turnID, previousStatus)
+		if shouldAdvanceSessionUpdatedAtFromEvents(events) {
+			session.UpdatedAtUnixMS = unixMS(now())
+		}
+		c.store(session)
+		c.publish(session, events)
+		c.enqueueSessionReport(ctx, session, events)
+		logAgentSubmitTrace("runtime.async_events_emitted", session, turnID, metadata, map[string]any{
+			"activity_event_count": len(events),
+			"session_status":       session.Status,
+			"turn_phase":           turnLifecyclePhaseFromEvents(events),
+		})
+		if turnHasTerminalEvent(events, turnID) || turnSteeredIntoActiveTurn(events, turnID) {
+			finish(session)
+		}
+	}
+	emitCommands := func(snapshot AgentSessionCommandSnapshot) {
+		mu.Lock()
+		defer mu.Unlock()
+		c.applyCommandSnapshot(session, snapshot)
+	}
+	if err := adapter.ExecAsync(ctx, session, content, displayPrompt, turnID, emit, emitCommands); err != nil {
+		events := []activityshared.Event{newTurnActivityEvent(session, EventTurnFailed, turnID, SessionStatusFailed, "", "", map[string]any{
+			"error": err.Error(),
+		})}
+		if errors.Is(err, context.Canceled) {
+			events = []activityshared.Event{newTurnActivityEvent(session, EventTurnCanceled, turnID, SessionStatusCanceled, "", "", map[string]any{
+				"error": err.Error(),
+			})}
+		}
+		emit(events)
+	}
+}
+
+func turnHasTerminalEvent(events []activityshared.Event, turnID string) bool {
+	turnID = strings.TrimSpace(turnID)
+	for _, event := range events {
+		if turnID != "" && strings.TrimSpace(event.Payload.TurnID) != turnID {
+			continue
+		}
+		switch event.Type {
+		case activityshared.EventTurnCompleted, activityshared.EventTurnFailed:
+			return true
+		default:
+			if string(event.Type) == EventTurnCanceled {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// turnSteeredIntoActiveTurn reports that the adapter steered this submission's
+// content into an already-running provider turn (codex turn/steer): the steer
+// turn id owns no provider turn, so no terminal event will ever arrive for it
+// and the controller record must settle now. The blocking exec path gets this
+// for free by calling finishTurn unconditionally after Exec returns.
+func turnSteeredIntoActiveTurn(events []activityshared.Event, turnID string) bool {
+	turnID = strings.TrimSpace(turnID)
+	if turnID == "" {
+		return false
+	}
+	for _, event := range events {
+		if event.Type != activityshared.EventMessageAppended || strings.TrimSpace(event.Payload.TurnID) != turnID {
+			continue
+		}
+		if steered, ok := event.Payload.Metadata["steered"].(bool); ok && steered {
+			return true
+		}
+	}
+	return false
 }
 
 func submittedTurnLifecycle(turnID string) *TurnLifecycle {
@@ -1036,6 +1134,10 @@ func turnLifecyclePhaseFromEvent(event activityshared.Event) string {
 		}
 	case activityshared.EventTurnCompleted, activityshared.EventTurnFailed:
 		return "settled"
+	default:
+		if string(event.Type) == EventTurnCanceled {
+			return "settled"
+		}
 	}
 	return ""
 }
@@ -1050,6 +1152,9 @@ func turnLifecycleOutcomeFromEvent(event activityshared.Event) string {
 		}
 		return "completed"
 	default:
+		if string(event.Type) == EventTurnCanceled {
+			return "canceled"
+		}
 		return strings.TrimSpace(event.Payload.TurnOutcome)
 	}
 }

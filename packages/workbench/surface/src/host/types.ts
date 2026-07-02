@@ -150,6 +150,7 @@ export interface WorkbenchHostLaunchResult {
     payload?: unknown;
     type: string;
   } | null;
+  cascadeOffset?: { x: number; y: number };
   defaultFrame?: WorkbenchFrame;
   displayMode?: WorkbenchDisplayMode;
   dockEntryId?: string;

@@ -21,6 +21,37 @@ export type TrackEvent = {
   };
 };
 
+export type AccountUserInfo = {
+  user_id: string;
+  name?: string | null;
+  email?: string | null;
+  avatar?: string | null;
+};
+
+export type AccountUserInfoResponse = {
+  user: AccountUserInfo | null;
+};
+
+export type AccountLoginStartResponse = {
+  attempt_id: string;
+  login_url: string;
+  expires_at: number;
+};
+
+export type AccountLoginStatusValue =
+  | "pending"
+  | "completed"
+  | "failed"
+  | "expired";
+
+export type AccountLoginStatusResponse = {
+  attempt_id: string;
+  status: AccountLoginStatusValue;
+  expires_at: number;
+  error?: string | null;
+  user?: AccountUserInfo | null;
+};
+
 export type CliOutputMode = "table" | "json" | "plain" | "markdown";
 
 /**
@@ -1211,6 +1242,22 @@ export type WorkspaceAgentGeneratedFileListResponse = {
 export type WorkspaceAgentSessionListResponse = {
   workspaceId: string;
   sessions: Array<WorkspaceAgentSession>;
+  hasMore: boolean;
+  nextCursor?: string;
+};
+
+export type WorkspaceAgentSessionGroup = {
+  cwd: string;
+  sessionCount: number;
+  latestSessionUpdatedAtUnixMs: number;
+  sessions: Array<WorkspaceAgentSession>;
+  hasMore: boolean;
+  nextCursor?: string;
+};
+
+export type WorkspaceAgentSessionGroupsResponse = {
+  workspaceId: string;
+  groups: Array<WorkspaceAgentSessionGroup>;
 };
 
 export type ExternalAgentImportScanRequest = {
@@ -2171,6 +2218,151 @@ export type TrackEventsResponses = {
    */
   202: unknown;
 };
+
+export type StartAccountLoginData = {
+  body?: never;
+  path?: never;
+  query?: never;
+  url: "/v1/account/login/start";
+};
+
+export type StartAccountLoginErrors = {
+  /**
+   * Bearer token is missing or invalid
+   */
+  401: ApiErrorResponse;
+  /**
+   * HTTP method is not supported on this route
+   */
+  405: ApiErrorResponse;
+  /**
+   * Required daemon service dependency is unavailable
+   */
+  503: ApiErrorResponse;
+};
+
+export type StartAccountLoginError =
+  StartAccountLoginErrors[keyof StartAccountLoginErrors];
+
+export type StartAccountLoginResponses = {
+  /**
+   * Login attempt started
+   */
+  200: AccountLoginStartResponse;
+};
+
+export type StartAccountLoginResponse =
+  StartAccountLoginResponses[keyof StartAccountLoginResponses];
+
+export type GetAccountLoginStatusData = {
+  body?: never;
+  path?: never;
+  query: {
+    attempt_id: string;
+  };
+  url: "/v1/account/login/status";
+};
+
+export type GetAccountLoginStatusErrors = {
+  /**
+   * Request payload or parameters are invalid
+   */
+  400: ApiErrorResponse;
+  /**
+   * Bearer token is missing or invalid
+   */
+  401: ApiErrorResponse;
+  /**
+   * HTTP method is not supported on this route
+   */
+  405: ApiErrorResponse;
+  /**
+   * Required daemon service dependency is unavailable
+   */
+  503: ApiErrorResponse;
+};
+
+export type GetAccountLoginStatusError =
+  GetAccountLoginStatusErrors[keyof GetAccountLoginStatusErrors];
+
+export type GetAccountLoginStatusResponses = {
+  /**
+   * Login attempt status
+   */
+  200: AccountLoginStatusResponse;
+};
+
+export type GetAccountLoginStatusResponse =
+  GetAccountLoginStatusResponses[keyof GetAccountLoginStatusResponses];
+
+export type GetAccountUserInfoData = {
+  body?: never;
+  path?: never;
+  query?: never;
+  url: "/v1/account/user_info";
+};
+
+export type GetAccountUserInfoErrors = {
+  /**
+   * Bearer token is missing or invalid
+   */
+  401: ApiErrorResponse;
+  /**
+   * HTTP method is not supported on this route
+   */
+  405: ApiErrorResponse;
+  /**
+   * Required daemon service dependency is unavailable
+   */
+  503: ApiErrorResponse;
+};
+
+export type GetAccountUserInfoError =
+  GetAccountUserInfoErrors[keyof GetAccountUserInfoErrors];
+
+export type GetAccountUserInfoResponses = {
+  /**
+   * Current account user, if signed in
+   */
+  200: AccountUserInfoResponse;
+};
+
+export type GetAccountUserInfoResponse =
+  GetAccountUserInfoResponses[keyof GetAccountUserInfoResponses];
+
+export type LogoutAccountData = {
+  body?: never;
+  path?: never;
+  query?: never;
+  url: "/v1/account/logout";
+};
+
+export type LogoutAccountErrors = {
+  /**
+   * Bearer token is missing or invalid
+   */
+  401: ApiErrorResponse;
+  /**
+   * HTTP method is not supported on this route
+   */
+  405: ApiErrorResponse;
+  /**
+   * Required daemon service dependency is unavailable
+   */
+  503: ApiErrorResponse;
+};
+
+export type LogoutAccountError = LogoutAccountErrors[keyof LogoutAccountErrors];
+
+export type LogoutAccountResponses = {
+  /**
+   * Account signed out
+   */
+  204: void;
+};
+
+export type LogoutAccountResponse =
+  LogoutAccountResponses[keyof LogoutAccountResponses];
 
 export type ListCliCapabilitiesData = {
   body?: never;
@@ -4604,6 +4796,8 @@ export type ListWorkspaceAgentSessionsData = {
     workspaceID: string;
   };
   query?: {
+    cwd?: string;
+    cursor?: string;
     searchQuery?: string;
     limit?: number;
     visibleOnly?: boolean;
@@ -4699,6 +4893,58 @@ export type CreateWorkspaceAgentSessionResponses = {
 
 export type CreateWorkspaceAgentSessionResponse =
   CreateWorkspaceAgentSessionResponses[keyof CreateWorkspaceAgentSessionResponses];
+
+export type ListWorkspaceAgentSessionGroupsData = {
+  body?: never;
+  path: {
+    workspaceID: string;
+  };
+  query?: {
+    sessionLimit?: number;
+    visibleOnly?: boolean;
+  };
+  url: "/v1/workspaces/{workspaceID}/agent-sessions/groups";
+};
+
+export type ListWorkspaceAgentSessionGroupsErrors = {
+  /**
+   * Request payload or parameters are invalid
+   */
+  400: ApiErrorResponse;
+  /**
+   * Bearer token is missing or invalid
+   */
+  401: ApiErrorResponse;
+  /**
+   * Workspace id was not found
+   */
+  404: ApiErrorResponse;
+  /**
+   * HTTP method is not supported on this route
+   */
+  405: ApiErrorResponse;
+  /**
+   * Workspace operation failed in an upstream adapter or command
+   */
+  502: ApiErrorResponse;
+  /**
+   * Required daemon service dependency is unavailable
+   */
+  503: ApiErrorResponse;
+};
+
+export type ListWorkspaceAgentSessionGroupsError =
+  ListWorkspaceAgentSessionGroupsErrors[keyof ListWorkspaceAgentSessionGroupsErrors];
+
+export type ListWorkspaceAgentSessionGroupsResponses = {
+  /**
+   * Workspace agent session groups
+   */
+  200: WorkspaceAgentSessionGroupsResponse;
+};
+
+export type ListWorkspaceAgentSessionGroupsResponse =
+  ListWorkspaceAgentSessionGroupsResponses[keyof ListWorkspaceAgentSessionGroupsResponses];
 
 export type ScanWorkspaceExternalAgentSessionImportsData = {
   body?: ExternalAgentImportScanRequest;

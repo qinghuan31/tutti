@@ -8,13 +8,7 @@ import type {
   WorkbenchDisplayMode,
   WorkbenchHostNodeHeaderWindowActions
 } from "@tutti-os/workbench-surface";
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipProvider,
-  TooltipTrigger,
-  cn
-} from "@tutti-os/ui-system";
+import { cn } from "@tutti-os/ui-system";
 import {
   workspaceWorkbenchDesktopI18nKeys,
   type WorkspaceWorkbenchDesktopI18nRuntime
@@ -121,16 +115,7 @@ function WorkspaceWorkbenchTrafficLightButton({
       })
   );
 
-  return createElement(
-    TooltipProvider,
-    { delayDuration: 250, skipDelayDuration: 0, children: undefined },
-    createElement(
-      Tooltip,
-      null,
-      createElement(TooltipTrigger, { asChild: true }, button),
-      createElement(TooltipContent, { side: "bottom" }, label)
-    )
-  );
+  return button;
 }
 
 function WorkspaceWorkbenchTrafficLightIcon({

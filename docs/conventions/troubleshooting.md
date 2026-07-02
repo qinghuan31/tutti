@@ -50,7 +50,9 @@ Use this shape for new entries:
   `codex app-server` probe is still missing. Logs may show
   `Missing optional dependency @openai/codex-darwin-arm64`, a long wait on an
   npm registry, or a later repair failure such as `ENOTEMPTY` while moving an
-  existing `@openai/codex` directory.
+  existing `@openai/codex` directory. Another form is an immediate launcher
+  failure such as `env: node: No such file or directory` after the JavaScript
+  `codex` shim has been installed.
 - Quick checks:
   Inspect the npm debug log under the install cache for
   `reify failed optional dependency`, then check whether the matching platform
@@ -63,17 +65,27 @@ Use this shape for new entries:
   when an optional dependency fetch failed, which leaves the launcher installed
   but unable to start. A registry can also be reachable but too slow for the
   platform tarball, so retrying the same source burns the install timeout before
-  mirrors are tried.
+  mirrors are tried. The launcher itself uses `#!/usr/bin/env node`, so every
+  daemon-run Codex command (`--version`, `login status`, and `app-server`) must
+  run with the Tutti-managed Node bin directory on `PATH`; fixing only the npm
+  install command leaves post-install probes broken on machines without system
+  Node.
 - Fix:
   Keep Codex installs on the Tutti-managed Node/npm runtime, install with
   optional dependencies included, and rank configured npm registries with a
   lightweight package metadata probe before attempting the install. Preserve
   `TUTTI_AGENT_NPM_REGISTRY` as an explicit single-registry pin with no mirror
-  fallback.
+  fallback. Also pass the same managed Node `PATH` through provider command
+  resolution, version checks, auth-status checks, and adapter probes. If the
+  CLI path exists but `codex app-server` cannot launch, treat the failed probe
+  as a repair trigger so the install action does not clear immediately without
+  running an installer.
 - Validation:
   Reproduce in a temporary prefix/cache using the Tutti-managed npm. Confirm
   `codex --version`, the platform package metadata and vendor binary, and a
-  short `codex app-server` probe before touching the user's real install.
+  short `codex app-server` probe before touching the user's real install. Include
+  a case where the visible `codex` shim uses `#!/usr/bin/env node` and the normal
+  user `PATH` does not contain `node`.
 - References:
   [npm_registry.go](../../services/tuttid/service/agentstatus/npm_registry.go)
   [installer_codex_cli.go](../../services/tuttid/service/agentstatus/installer_codex_cli.go)

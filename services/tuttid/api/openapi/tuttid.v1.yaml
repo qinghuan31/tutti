@@ -11,6 +11,7 @@ security:
   - bearerAuth: []
 tags:
   - name: runtime
+  - name: account
   - name: analytics
   - name: cli
     description: Public local capability protocol for the bundled CLI and future approved local integrations. Command metadata is machine-readable protocol data; command execution remains authorized by the daemon bearer token and filtered by daemon-owned context.
@@ -59,6 +60,87 @@ paths:
           description: Analytics events accepted for asynchronous delivery
         "400":
           $ref: "#/components/responses/InvalidRequestError"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "405":
+          $ref: "#/components/responses/MethodNotAllowedError"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailableError"
+  /v1/account/login/start:
+    post:
+      operationId: startAccountLogin
+      tags:
+        - account
+      summary: Start desktop account login
+      responses:
+        "200":
+          description: Login attempt started
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AccountLoginStartResponse"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "405":
+          $ref: "#/components/responses/MethodNotAllowedError"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailableError"
+  /v1/account/login/status:
+    get:
+      operationId: getAccountLoginStatus
+      tags:
+        - account
+      summary: Get desktop account login status
+      parameters:
+        - name: attempt_id
+          in: query
+          required: true
+          schema:
+            type: string
+            minLength: 1
+      responses:
+        "200":
+          description: Login attempt status
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AccountLoginStatusResponse"
+        "400":
+          $ref: "#/components/responses/InvalidRequestError"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "405":
+          $ref: "#/components/responses/MethodNotAllowedError"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailableError"
+  /v1/account/user_info:
+    get:
+      operationId: getAccountUserInfo
+      tags:
+        - account
+      summary: Get current desktop account user
+      responses:
+        "200":
+          description: Current account user, if signed in
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AccountUserInfoResponse"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "405":
+          $ref: "#/components/responses/MethodNotAllowedError"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailableError"
+  /v1/account/logout:
+    post:
+      operationId: logoutAccount
+      tags:
+        - account
+      summary: Sign out current desktop account
+      responses:
+        "204":
+          description: Account signed out
         "401":
           $ref: "#/components/responses/UnauthorizedError"
         "405":
@@ -1556,6 +1638,16 @@ paths:
         - agent-session
       summary: List agent sessions for one workspace
       parameters:
+        - name: cwd
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: cursor
+          in: query
+          required: false
+          schema:
+            type: string
         - name: searchQuery
           in: query
           required: false
@@ -1634,6 +1726,46 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/WorkspaceAgentSessionResponse"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "400":
+          $ref: "#/components/responses/InvalidRequestError"
+        "404":
+          $ref: "#/components/responses/WorkspaceNotFoundError"
+        "405":
+          $ref: "#/components/responses/MethodNotAllowedError"
+        "502":
+          $ref: "#/components/responses/WorkspaceOperationError"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailableError"
+  /v1/workspaces/{workspaceID}/agent-sessions/groups:
+    parameters:
+      - $ref: "#/components/parameters/WorkspaceID"
+    get:
+      operationId: listWorkspaceAgentSessionGroups
+      tags:
+        - agent-session
+      summary: List grouped agent session summaries for one workspace
+      parameters:
+        - name: sessionLimit
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+        - name: visibleOnly
+          in: query
+          required: false
+          schema:
+            type: boolean
+      responses:
+        "200":
+          description: Workspace agent session groups
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WorkspaceAgentSessionGroupsResponse"
         "401":
           $ref: "#/components/responses/UnauthorizedError"
         "400":
@@ -3401,6 +3533,81 @@ components:
         params:
           type: object
           additionalProperties: true
+    AccountUserInfo:
+      type: object
+      additionalProperties: false
+      required:
+        - user_id
+      properties:
+        user_id:
+          type: string
+          minLength: 1
+        name:
+          type: string
+          nullable: true
+        email:
+          type: string
+          nullable: true
+        avatar:
+          type: string
+          nullable: true
+    AccountUserInfoResponse:
+      type: object
+      additionalProperties: false
+      required:
+        - user
+      properties:
+        user:
+          allOf:
+            - $ref: "#/components/schemas/AccountUserInfo"
+          nullable: true
+    AccountLoginStartResponse:
+      type: object
+      additionalProperties: false
+      required:
+        - attempt_id
+        - login_url
+        - expires_at
+      properties:
+        attempt_id:
+          type: string
+          minLength: 1
+        login_url:
+          type: string
+          minLength: 1
+        expires_at:
+          type: integer
+          format: int64
+    AccountLoginStatusValue:
+      type: string
+      enum:
+        - pending
+        - completed
+        - failed
+        - expired
+    AccountLoginStatusResponse:
+      type: object
+      additionalProperties: false
+      required:
+        - attempt_id
+        - status
+        - expires_at
+      properties:
+        attempt_id:
+          type: string
+          minLength: 1
+        status:
+          $ref: "#/components/schemas/AccountLoginStatusValue"
+        expires_at:
+          type: integer
+          format: int64
+        error:
+          type: string
+          nullable: true
+        user:
+          allOf:
+            - $ref: "#/components/schemas/AccountUserInfo"
+          nullable: true
     CliOutputMode:
       type: string
       enum:
@@ -6189,6 +6396,7 @@ components:
       required:
         - workspaceId
         - sessions
+        - hasMore
       properties:
         workspaceId:
           type: string
@@ -6197,6 +6405,53 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/WorkspaceAgentSession"
+        hasMore:
+          type: boolean
+        nextCursor:
+          type: string
+          minLength: 1
+    WorkspaceAgentSessionGroup:
+      type: object
+      additionalProperties: false
+      required:
+        - cwd
+        - sessionCount
+        - latestSessionUpdatedAtUnixMs
+        - sessions
+        - hasMore
+      properties:
+        cwd:
+          type: string
+        sessionCount:
+          type: integer
+          minimum: 0
+        latestSessionUpdatedAtUnixMs:
+          type: integer
+          format: int64
+          minimum: 0
+        sessions:
+          type: array
+          items:
+            $ref: "#/components/schemas/WorkspaceAgentSession"
+        hasMore:
+          type: boolean
+        nextCursor:
+          type: string
+          minLength: 1
+    WorkspaceAgentSessionGroupsResponse:
+      type: object
+      additionalProperties: false
+      required:
+        - workspaceId
+        - groups
+      properties:
+        workspaceId:
+          type: string
+          minLength: 1
+        groups:
+          type: array
+          items:
+            $ref: "#/components/schemas/WorkspaceAgentSessionGroup"
     ExternalAgentImportScanRequest:
       type: object
       additionalProperties: false

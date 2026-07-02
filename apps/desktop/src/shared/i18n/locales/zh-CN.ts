@@ -505,6 +505,7 @@ export const zhCN = {
       },
       nav: {
         about: "关于",
+        account: "账号",
         apps: "应用",
         sectionsLabel: "设置分区",
         appearance: "外观",
@@ -518,6 +519,16 @@ export const zhCN = {
         githubAction: "GitHub",
         versionLabel: "版本",
         websiteAction: "官方网站"
+      },
+      account: {
+        description: "登录后可在此设备使用你的 Tutti 账号。",
+        login: "登录",
+        logout: "退出登录",
+        refresh: "刷新",
+        reopenLogin: "重新打开登录页",
+        signedOutTitle: "未登录",
+        signingIn: "登录中...",
+        signingOut: "退出中..."
       },
       apps: {
         appCatalogChannelDescription:
@@ -636,6 +647,8 @@ export const zhCN = {
           "在应用中心卡片中展示应用作者和 GitHub 来源。",
         showAppDeveloperSourcesLabel: "展示应用作者与来源",
         showAppDeveloperSourcesSaveFailed: "暂时无法更新应用中心来源展示设置。",
+        tuttiAgentSwitchDescription: "显示账号与 Agent 开发控制项。",
+        tuttiAgentSwitchLabel: "Tutti Agent Switch",
         visibilityDescription:
           "在设置中隐藏此面板。在「关于」里连续点击版本号七次即可重新显示",
         visibilityLabel: "显示开发者面板"

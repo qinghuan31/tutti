@@ -1011,6 +1011,7 @@ export const AgentGUINode = memo(function AgentGUINode({
       goalClearHint: t("agentHost.agentGui.goalClearHint"),
       processing: t("agentHost.agentGui.processing"),
       turnSummary: t("agentHost.agentGui.turnSummary"),
+      userMessageLocator: t("agentHost.agentGui.userMessageLocator"),
       planLead: t("agentHost.agentGui.planLead"),
       planModes: [
         {

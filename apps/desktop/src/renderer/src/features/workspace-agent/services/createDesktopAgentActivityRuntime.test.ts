@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import type { WorkspaceAgentSession } from "@tutti-os/client-tuttid-ts";
 import { createDesktopAgentActivityRuntime } from "./createDesktopAgentActivityRuntime.ts";
 import type { IWorkspaceAgentActivityService } from "./workspaceAgentActivityService.interface.ts";
 
@@ -153,6 +154,51 @@ test("desktop agent activity runtime archives prompt image uploads", async () =>
   });
 });
 
+test("desktop agent activity runtime maps grouped session pages", async () => {
+  const runtime = createDesktopAgentActivityRuntime({
+    ...createWorkspaceAgentActivityService(),
+    listSessionGroups: async () => ({
+      groups: [
+        {
+          cwd: "/workspace/app",
+          hasMore: true,
+          latestSessionUpdatedAtUnixMs: 2000,
+          nextCursor: "1000|agent-session-1",
+          sessionCount: 2,
+          sessions: [createTuttidSession("agent-session-1")]
+        }
+      ],
+      workspaceId: "workspace-1"
+    }),
+    listSessionsPage: async () => ({
+      hasMore: false,
+      nextCursor: undefined,
+      sessions: [createTuttidSession("agent-session-2")],
+      workspaceId: "workspace-1"
+    })
+  });
+
+  const groups = await runtime.listSessionGroups?.({
+    sessionLimit: 5,
+    workspaceId: "workspace-1"
+  });
+  const page = await runtime.listSessionsPage?.({
+    cursor: "1000|agent-session-1",
+    cwd: "/workspace/app",
+    limit: 5,
+    workspaceId: "workspace-1"
+  });
+
+  assert.equal(
+    groups?.groups[0]?.sessions[0]?.agentSessionId,
+    "agent-session-1"
+  );
+  assert.equal(groups?.groups[0]?.hasMore, true);
+  assert.equal(groups?.groups[0]?.nextCursor, "1000|agent-session-1");
+  assert.equal(page?.sessions[0]?.agentSessionId, "agent-session-2");
+  assert.equal(page?.hasMore, false);
+});
+
 function createWorkspaceAgentActivityService(): IWorkspaceAgentActivityService {
   return {
     _serviceBrand: undefined,
@@ -189,6 +235,15 @@ function createWorkspaceAgentActivityService(): IWorkspaceAgentActivityService {
     listAgentGeneratedFiles: async () => {
       throw new Error("not implemented");
     },
+    listSessionGroups: async () => {
+      throw new Error("not implemented");
+    },
+    listSessionsPage: async () => {
+      throw new Error("not implemented");
+    },
+    searchSessions: async () => {
+      throw new Error("not implemented");
+    },
     scanExternalSessionImports: async () => {
       throw new Error("not implemented");
     },
@@ -220,5 +275,17 @@ function createWorkspaceAgentActivityService(): IWorkspaceAgentActivityService {
     unactivateSession: async () => {
       throw new Error("not implemented");
     }
+  };
+}
+
+function createTuttidSession(id: string): WorkspaceAgentSession {
+  return {
+    id,
+    provider: "codex",
+    cwd: "/workspace/app",
+    status: "completed",
+    visible: true,
+    createdAt: "2026-01-01T00:00:00.000Z",
+    updatedAt: "2026-01-01T00:00:01.000Z"
   };
 }

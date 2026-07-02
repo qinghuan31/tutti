@@ -33,6 +33,7 @@ import {
 } from "./internal/agentNodeResultAnalytics.ts";
 import type { IWorkspaceAgentActivityService } from "./workspaceAgentActivityService.interface";
 import type { IWorkspaceUserProjectService } from "../../workspace-user-project/index.ts";
+import { agentActivitySessionFromTuttidSession } from "./desktopAgentActivityAdapter.ts";
 
 type AgentComposerSettingsChange = {
   field: "model" | "permissionModeId" | "planMode" | "reasoningEffort";
@@ -290,6 +291,37 @@ export function createDesktopAgentActivityRuntime(
     },
     listAgentGeneratedFiles: (input) =>
       workspaceAgentActivityService.listAgentGeneratedFiles(input),
+    async listSessionGroups(input) {
+      const result =
+        await workspaceAgentActivityService.listSessionGroups(input);
+      return {
+        groups: result.groups.map((group) => ({
+          cwd: group.cwd,
+          hasMore: group.hasMore,
+          latestSessionUpdatedAtUnixMs: group.latestSessionUpdatedAtUnixMs,
+          nextCursor: group.nextCursor,
+          sessionCount: group.sessionCount,
+          sessions: group.sessions.map((session) =>
+            agentActivitySessionFromTuttidSession(result.workspaceId, session)
+          )
+        })),
+        workspaceId: result.workspaceId
+      };
+    },
+    async listSessionsPage(input) {
+      const result =
+        await workspaceAgentActivityService.listSessionsPage(input);
+      return {
+        hasMore: result.hasMore,
+        nextCursor: result.nextCursor,
+        sessions: result.sessions.map((session) =>
+          agentActivitySessionFromTuttidSession(result.workspaceId, session)
+        ),
+        workspaceId: result.workspaceId
+      };
+    },
+    searchSessions: (input) =>
+      workspaceAgentActivityService.searchSessions(input),
     async load(workspaceId, signal) {
       const snapshot = await workspaceAgentActivityService.load(
         workspaceId,

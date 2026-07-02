@@ -24,6 +24,7 @@
     "build:npm-packages": "node ./tools/scripts/build-npm-packages.mjs",
     "check:api-generated": "node ./tools/scripts/generate-openapi.mjs --check",
     "check:agent-activity-runtime-boundaries": "node ./tools/scripts/check-agent-activity-runtime-boundaries.mjs",
+    "check:codexproto-generated": "node ./tools/scripts/check-codexproto-generated.mjs",
     "check:defaults-generated": "node ./tools/scripts/generate-defaults.mjs --check",
     "check:changed": "node ./tools/scripts/run-check-changed.mjs",
     "check:electron-runtime-boundaries": "node ./tools/scripts/check-electron-runtime-boundaries.mjs",

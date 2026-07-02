@@ -10,6 +10,7 @@ import (
 	"runtime"
 	"strings"
 
+	"github.com/tutti-os/tutti/services/tuttid/biz/agentprovider"
 	externalagentregistry "github.com/tutti-os/tutti/services/tuttid/service/externalagentregistry"
 	managedruntime "github.com/tutti-os/tutti/services/tuttid/service/managedruntime"
 )
@@ -59,7 +60,7 @@ func (s Service) ResolveProviderCommand(ctx context.Context, provider string) (P
 
 func (s Service) resolveProviderSpec(ctx context.Context, spec ProviderSpec, requireManagedRuntime bool) (ProviderSpec, error) {
 	if strings.TrimSpace(spec.ExternalRegistryID) == "" {
-		return spec, nil
+		return s.resolveStaticProviderSpec(ctx, spec, requireManagedRuntime), nil
 	}
 	agent, err := s.externalAgentRegistry().Agent(ctx, spec.ExternalRegistryID)
 	if err != nil {
@@ -74,6 +75,21 @@ func (s Service) resolveProviderSpec(ctx context.Context, spec ProviderSpec, req
 	}
 	spec.AdapterUnavailableReasonCode = "external_agent_registry_distribution_unavailable"
 	return spec, nil
+}
+
+func (s Service) resolveStaticProviderSpec(ctx context.Context, spec ProviderSpec, requireManagedRuntime bool) ProviderSpec {
+	if spec.Provider != agentprovider.Codex {
+		return spec
+	}
+	appRuntime, ok := s.resolveManagedNodeRuntimeForProvider(ctx, requireManagedRuntime)
+	if !ok {
+		if requireManagedRuntime {
+			spec.AdapterUnavailableReasonCode = ReasonManagedRuntimeUnavailable
+		}
+		return spec
+	}
+	spec.AdapterEnv = append(s.managedRuntimeAdapterEnv(appRuntime), spec.AdapterEnv...)
+	return spec
 }
 
 func (s Service) resolveExternalRegistryNPMSpec(
@@ -134,7 +150,7 @@ func (s Service) resolveExternalRegistryNPMSpec(
 	}
 	command = append(command, distribution.Args...)
 	spec.AdapterCommand = command
-	spec.AdapterEnv = append(appRuntime.EnvOverrides, envMapToList(distribution.Env)...)
+	spec.AdapterEnv = append(s.managedRuntimeAdapterEnv(appRuntime), envMapToList(distribution.Env)...)
 	// Seed the registry for the `npm exec` fallback. Callers that actually execute
 	// this fallback re-rank providers first, because this single-shot path can't
 	// retry a chain.
@@ -191,6 +207,78 @@ func (s Service) resolveExternalRegistryBinarySpec(spec ProviderSpec, agent exte
 	spec.AdapterCommand = command
 	spec.AdapterEnv = envMapToList(target.Env)
 	return spec
+}
+
+func (s Service) managedRuntimeAdapterEnv(appRuntime managedruntime.ResolvedRuntime) []string {
+	env := make([]string, 0, len(appRuntime.EnvOverrides)+1)
+	for _, override := range appRuntime.EnvOverrides {
+		key, _, ok := strings.Cut(override, "=")
+		if ok && strings.EqualFold(key, "PATH") {
+			continue
+		}
+		env = append(env, override)
+	}
+	basePath := managedruntime.EnvValue(s.commandResolver().Env(nil), "PATH")
+	pathDirs := append([]string{}, appRuntime.BinDirs...)
+	pathDirs = append(pathDirs, filepath.SplitList(basePath)...)
+	env = append(env, "PATH="+strings.Join(pathDirs, string(os.PathListSeparator)))
+	return env
+}
+
+func (s Service) resolveManagedNodeRuntimeForProvider(ctx context.Context, require bool) (managedruntime.ResolvedRuntime, bool) {
+	resolver := s.managedRuntimeResolver()
+	if managed, ok := resolver.(managedruntime.DefaultResolver); ok {
+		root := strings.TrimSpace(managed.RuntimeRoot)
+		if root == "" {
+			root = managed.DefaultRoot()
+		}
+		if runtime, ok := resolvedExistingManagedNodeRuntime(root, s.Environ); ok {
+			return runtime, true
+		}
+		if !require {
+			return managedruntime.ResolvedRuntime{}, false
+		}
+	}
+	runtime, err := s.resolveCodexManagedNodeRuntime(ctx)
+	if err != nil {
+		return managedruntime.ResolvedRuntime{}, false
+	}
+	return runtime, true
+}
+
+func resolvedExistingManagedNodeRuntime(root string, environ func() []string) (managedruntime.ResolvedRuntime, bool) {
+	root = strings.TrimSpace(root)
+	if root == "" {
+		return managedruntime.ResolvedRuntime{}, false
+	}
+	nodeBinDir := filepath.Join(root, "node", "bin")
+	nodePath := filepath.Join(nodeBinDir, nodeBinaryName())
+	npmPath := filepath.Join(nodeBinDir, npmBinaryName())
+	if !isExecutablePath(nodePath) || !isExecutablePath(npmPath) {
+		return managedruntime.ResolvedRuntime{}, false
+	}
+	baseEnv := []string(nil)
+	if environ != nil {
+		baseEnv = environ()
+	}
+	basePath := managedruntime.EnvValue(baseEnv, "PATH")
+	return managedruntime.ResolvedRuntime{
+		Root:    root,
+		Node:    nodePath,
+		NPM:     npmPath,
+		BinDirs: []string{nodeBinDir},
+		EnvOverrides: []string{
+			"TUTTI_APP_RUNTIME_ROOT=" + root,
+			"TUTTI_APP_NODE=" + nodePath,
+			"TUTTI_APP_NPM=" + npmPath,
+			"PATH=" + strings.Join(append([]string{nodeBinDir}, filepath.SplitList(basePath)...), string(os.PathListSeparator)),
+		},
+	}, true
+}
+
+func isExecutablePath(path string) bool {
+	info, err := os.Stat(path)
+	return err == nil && !info.IsDir() && info.Mode().Perm()&0o111 != 0
 }
 
 func (s Service) resolveManagedRuntimeForProvider(ctx context.Context, require bool) (managedruntime.ResolvedRuntime, bool) {

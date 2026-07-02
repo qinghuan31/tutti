@@ -107,6 +107,7 @@ type Event struct {
 	Provider          Provider
 	ProviderSessionID string
 	AgentSessionID    string
+	OwnerThreadID     string
 	OccurredAtUnixMS  int64
 	Payload           EventPayload
 }
@@ -141,6 +142,7 @@ type EventContext struct {
 	Provider          Provider
 	ProviderSessionID string
 	AgentSessionID    string
+	OwnerThreadID     string
 	TurnID            string
 	CWD               string
 	Title             string
@@ -344,6 +346,7 @@ func eventFromContext(ctx EventContext, eventType EventType, payload EventPayloa
 		Provider:          ctx.Provider,
 		ProviderSessionID: strings.TrimSpace(ctx.ProviderSessionID),
 		AgentSessionID:    strings.TrimSpace(ctx.AgentSessionID),
+		OwnerThreadID:     strings.TrimSpace(ctx.OwnerThreadID),
 		OccurredAtUnixMS:  ctx.OccurredAtUnixMS,
 		Payload:           payload,
 	}

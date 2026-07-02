@@ -142,6 +142,7 @@ export function agentGuiWorkbenchProviderFromLaunchRequest(
 
 export function createAgentGuiWorkbenchSessionLaunchRequest(input: {
   agentSessionId?: string;
+  openInNewWindow?: boolean;
   provider: unknown;
 }) {
   const provider = normalizeAgentGuiWorkbenchProvider(input.provider);
@@ -149,6 +150,7 @@ export function createAgentGuiWorkbenchSessionLaunchRequest(input: {
     dockEntryId: agentGuiWorkbenchDockEntryId(provider),
     payload: {
       ...(input.agentSessionId ? { agentSessionId: input.agentSessionId } : {}),
+      ...(input.openInNewWindow ? { openInNewWindow: true } : {}),
       provider
     },
     reason: "host" as const,
@@ -194,8 +196,10 @@ export interface AgentGuiWorkbenchLaunchDescriptor {
     | null;
   dockEntryId: string;
   instanceId: string;
+  openInNewWindow: boolean;
   provider: AgentGuiWorkbenchProvider;
   reuseDockEntryNode: boolean;
+  reuseExistingSessionNode: boolean;
   targetAgentSessionId: string | null;
 }
 
@@ -219,19 +223,24 @@ export function createAgentGuiWorkbenchLaunchDescriptor(
         agentTargetId: agentTargetIdFromLaunchPayload(request.payload),
         provider
       }),
+      openInNewWindow: false,
       provider,
       reuseDockEntryNode: shouldReuseAgentGuiWorkbenchDockEntryNode({
         dockEntryId,
         launchKind: "prefill"
       }),
+      reuseExistingSessionNode: true,
       targetAgentSessionId: null
     };
   }
 
   const targetAgentSessionId = agentSessionIdFromLaunchPayload(request.payload);
+  const openInNewWindow = openInNewWindowFromLaunchPayload(request.payload);
   const instanceId = createAgentGuiWorkbenchInstanceId({
-    agentSessionId: targetAgentSessionId,
-    agentTargetId: agentTargetIdFromLaunchPayload(request.payload),
+    agentSessionId: openInNewWindow ? null : targetAgentSessionId,
+    agentTargetId: openInNewWindow
+      ? null
+      : agentTargetIdFromLaunchPayload(request.payload),
     provider
   });
 
@@ -246,11 +255,13 @@ export function createAgentGuiWorkbenchLaunchDescriptor(
       : null,
     dockEntryId,
     instanceId,
+    openInNewWindow,
     provider,
     reuseDockEntryNode: shouldReuseAgentGuiWorkbenchDockEntryNode({
       dockEntryId,
       launchKind: targetAgentSessionId ? "session" : "empty"
     }),
+    reuseExistingSessionNode: !openInNewWindow,
     targetAgentSessionId
   };
 }
@@ -337,4 +348,11 @@ function agentTargetIdFromLaunchPayload(payload: unknown): string | null {
   return typeof agentTargetId === "string" && agentTargetId.trim()
     ? agentTargetId.trim()
     : null;
+}
+
+function openInNewWindowFromLaunchPayload(payload: unknown): boolean {
+  if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
+    return false;
+  }
+  return (payload as { openInNewWindow?: unknown }).openInNewWindow === true;
 }

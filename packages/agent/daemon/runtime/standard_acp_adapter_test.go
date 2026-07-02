@@ -9,6 +9,7 @@ import (
 	"maps"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"sync"
 	"testing"
@@ -1521,13 +1522,109 @@ func TestStandardACPSystemNoticeChunkProjectsAssistantNotice(t *testing.T) {
 	}
 }
 
+func TestNexightSpawnCommandCarriesModelSettings(t *testing.T) {
+	t.Parallel()
+
+	cases := []struct {
+		name     string
+		settings *SessionSettings
+		want     []string
+	}{
+		{
+			name:     "spark model adds reasoning summary override",
+			settings: &SessionSettings{Model: "gpt-5.3-codex-spark", ReasoningEffort: "high"},
+			want: []string{
+				nexightACPCommand,
+				"--config", "model=gpt-5.3-codex-spark",
+				"--config", "model_reasoning_summary=none",
+				"--config", "model_reasoning_effort=high",
+			},
+		},
+		{
+			name:     "plain model omits reasoning summary override",
+			settings: &SessionSettings{Model: "gpt-5.1-codex", ReasoningEffort: "medium"},
+			want: []string{
+				nexightACPCommand,
+				"--config", "model=gpt-5.1-codex",
+				"--config", "model_reasoning_effort=medium",
+			},
+		},
+	}
+
+	for _, tc := range cases {
+		tc := tc
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			transport := newStandardACPTransport("Nexight", "nexight-session-1")
+			adapter := NewNexightAdapter(transport)
+			session := standardTestSession(ProviderNexight)
+			session.Settings = tc.settings
+			if _, err := adapter.Start(context.Background(), session); err != nil {
+				t.Fatalf("Start: %v", err)
+			}
+			transport.mu.Lock()
+			specs := append([]ProcessSpec(nil), transport.specs...)
+			transport.mu.Unlock()
+			if len(specs) != 1 {
+				t.Fatalf("specs = %#v, want one process spawn", specs)
+			}
+			if !reflect.DeepEqual(specs[0].Command, tc.want) {
+				t.Fatalf("spawn command = %#v, want %#v", specs[0].Command, tc.want)
+			}
+		})
+	}
+}
+
+func TestNexightRequiresNewSessionWhenReasoningSummaryOverrideChanges(t *testing.T) {
+	t.Parallel()
+
+	adapter := NewNexightAdapter(nil)
+	session := standardTestSession(ProviderNexight)
+	session.Settings = &SessionSettings{Model: "gpt-5.1-codex"}
+
+	sparkModel := "gpt-5.3-codex-spark"
+	if !adapter.RequiresNewSessionForSettings(session, SessionSettingsPatch{Model: &sparkModel}) {
+		t.Fatal("switching to a spark-family model must force a new session (spawn-time model_reasoning_summary override)")
+	}
+	plainModel := "gpt-5.2-codex"
+	if adapter.RequiresNewSessionForSettings(session, SessionSettingsPatch{Model: &plainModel}) {
+		t.Fatal("plain-to-plain model change must not force a new session")
+	}
+	if adapter.RequiresNewSessionForSettings(session, SessionSettingsPatch{}) {
+		t.Fatal("empty patch must not force a new session")
+	}
+}
+
+func TestStandardACPSpawnCommandUnchangedForOtherProviders(t *testing.T) {
+	t.Parallel()
+
+	transport := newStandardACPTransport("Hermes Agent", "hermes-session-1")
+	adapter := NewHermesAdapter(transport)
+	session := standardTestSession(ProviderHermes)
+	session.Settings = &SessionSettings{Model: "gpt-5.3-codex-spark", ReasoningEffort: "high"}
+	if _, err := adapter.Start(context.Background(), session); err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+	transport.mu.Lock()
+	specs := append([]ProcessSpec(nil), transport.specs...)
+	transport.mu.Unlock()
+	if len(specs) != 1 || !reflect.DeepEqual(specs[0].Command, []string{"hermes", "acp"}) {
+		t.Fatalf("spawn command = %#v, want bare hermes command", specs)
+	}
+	sparkModel := "gpt-5.3-codex-spark"
+	if adapter.RequiresNewSessionForSettings(session, SessionSettingsPatch{Model: &sparkModel}) {
+		t.Fatal("non-nexight providers must not force new sessions for model changes")
+	}
+}
+
 func TestStandardACPTransportFallbackTextProjectsAssistantNotice(t *testing.T) {
 	t.Parallel()
 
-	session := standardTestSession(ProviderCodex)
-	session.ProviderSessionID = "codex-session-1"
+	session := standardTestSession(ProviderNexight)
+	session.ProviderSessionID = "nexight-session-1"
 
-	events := standardACPUpdateEvents(standardACPConfig{provider: ProviderCodex}, session, "turn-1", json.RawMessage(`{
+	events := standardACPUpdateEvents(NewNexightAdapter(nil).config, session, "turn-1", json.RawMessage(`{
 		"update": {
 			"sessionUpdate": "agent_message_chunk",
 			"content": {
@@ -1545,6 +1642,71 @@ func TestStandardACPTransportFallbackTextProjectsAssistantNotice(t *testing.T) {
 	}
 	if got := events[0].Payload.Metadata["noticeKind"]; got != "transport_fallback" {
 		t.Fatalf("noticeKind = %#v, want transport_fallback", got)
+	}
+}
+
+func TestStandardACPReconnectThoughtChunkProjectsAssistantNotice(t *testing.T) {
+	t.Parallel()
+
+	session := standardTestSession(ProviderNexight)
+	session.ProviderSessionID = "nexight-session-1"
+
+	events := standardACPUpdateEvents(NewNexightAdapter(nil).config, session, "turn-1", json.RawMessage(`{
+		"update": {
+			"sessionUpdate": "agent_thought_chunk",
+			"content": {
+				"type": "text",
+				"text": "Reconnecting... 1/5 Some(ResponseStreamDisconnected { http_status_code: None })"
+			}
+		}
+	}`), newACPTurnNormalizer())
+
+	if len(events) != 1 {
+		t.Fatalf("events = %#v, want one system notice message", events)
+	}
+	if got := events[0].Payload.Metadata["kind"]; got != "agent_system_notice" {
+		t.Fatalf("notice kind marker = %#v, want agent_system_notice", got)
+	}
+	if got := events[0].Payload.Metadata["noticeKind"]; got != "transport_retry" {
+		t.Fatalf("noticeKind = %#v, want transport_retry", got)
+	}
+}
+
+func TestNexightACPSystemNoticeMessageFromStderr(t *testing.T) {
+	t.Parallel()
+
+	mapper := NewNexightAdapter(nil).config.stderrMessageMapper
+	if mapper == nil {
+		t.Fatal("nexight config stderrMessageMapper = nil, want stream-error mapper")
+	}
+
+	message, ok := mapper([]byte(
+		`2026-05-29T09:05:51.179821Z ERROR codex_acp::thread: Handled error during turn: Reconnecting... 1/5 Some(ResponseStreamDisconnected { http_status_code: Some(401) }) Some("unexpected status 401 Unauthorized")`,
+	))
+	if !ok {
+		t.Fatal("stderr notice ok = false, want true")
+	}
+	if message.Method != acpMethodUpdate {
+		t.Fatalf("method = %q, want %q", message.Method, acpMethodUpdate)
+	}
+	var params struct {
+		Update map[string]any `json:"update"`
+	}
+	if err := json.Unmarshal(message.Params, &params); err != nil {
+		t.Fatalf("unmarshal params: %v", err)
+	}
+	if got := params.Update["sessionUpdate"]; got != "stream_error" {
+		t.Fatalf("sessionUpdate = %#v, want stream_error", got)
+	}
+	if got := params.Update["noticeKind"]; got != "transport_retry" {
+		t.Fatalf("noticeKind = %#v, want transport_retry", got)
+	}
+	if got := params.Update["source"]; got != "acp_stderr" {
+		t.Fatalf("source = %#v, want acp_stderr", got)
+	}
+
+	if _, ok := mapper([]byte("WARN unrelated")); ok {
+		t.Fatal("generic stderr ok = true, want false")
 	}
 }
 
@@ -1572,33 +1734,6 @@ func TestStandardACPTransportFallbackTextStaysProviderScoped(t *testing.T) {
 	}
 	if got := events[0].Payload.Content; got != "Falling back from WebSockets to HTTPS transport." {
 		t.Fatalf("content = %q, want ordinary assistant content", got)
-	}
-}
-
-func TestStandardACPReconnectThoughtChunkProjectsAssistantNotice(t *testing.T) {
-	t.Parallel()
-
-	session := standardTestSession(ProviderCodex)
-	session.ProviderSessionID = "codex-session-1"
-
-	events := standardACPUpdateEvents(standardACPConfig{provider: ProviderCodex}, session, "turn-1", json.RawMessage(`{
-		"update": {
-			"sessionUpdate": "agent_thought_chunk",
-			"content": {
-				"type": "text",
-				"text": "Reconnecting... 1/5 Some(ResponseStreamDisconnected { http_status_code: None })"
-			}
-		}
-	}`), newACPTurnNormalizer())
-
-	if len(events) != 1 {
-		t.Fatalf("events = %#v, want one system notice message", events)
-	}
-	if got := events[0].Payload.Metadata["kind"]; got != "agent_system_notice" {
-		t.Fatalf("notice kind marker = %#v, want agent_system_notice", got)
-	}
-	if got := events[0].Payload.Metadata["noticeKind"]; got != "transport_retry" {
-		t.Fatalf("noticeKind = %#v, want transport_retry", got)
 	}
 }
 

@@ -908,6 +908,11 @@ describe("AgentTurnSummaryRow", () => {
     expect(
       screen
         .getByText("agentHost.agentGui.turnSummaryFilesChanged:2")
+        .closest("section")?.firstElementChild?.firstElementChild?.className
+    ).toContain("items-center");
+    expect(
+      screen
+        .getByText("agentHost.agentGui.turnSummaryFilesChanged:2")
         .closest("section")?.firstElementChild?.className
     ).not.toContain("border-[var(--line-1)]");
     expect(screen.queryByText("Changed files")).toBeNull();

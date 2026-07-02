@@ -116,8 +116,6 @@ export function AgentGoalBanner({
     <div className={styles.sessionChrome}>
       <section
         className={cn(styles.chromeCard, styles.chromeCardMuted)}
-        data-expandable="false"
-        data-expanded="false"
         role="status"
         data-testid="agent-gui-goal-banner"
       >

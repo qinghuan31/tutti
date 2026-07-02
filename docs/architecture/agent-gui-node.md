@@ -164,6 +164,16 @@ composer will launch.
 This means an AgentGUI bug can start at several different interfaces. Do not
 assume that a visible UI symptom starts in the visible UI component.
 
+Conversation rail "open in new window" actions are internal workbench-window
+launches, not Electron `BrowserWindow` launches. The action should stay inside
+the current Tutti workspace surface: `DesktopAgentGUIWorkbenchBody` calls
+`requestWorkspaceAgentGuiLaunch`, the workspace launch handler calls
+`host.launchNode`, and AgentGUI opens the requested session through an
+`agent-gui:open-session` activation. Normal session launches may reuse an
+already-open node showing that session; the explicit new-window action must pass
+`openInNewWindow` so the descriptor creates a fresh panel-scoped AgentGUI
+instance while still activating the same durable session.
+
 ## Runtime Data Chain
 
 Durable activity state flows in one direction:
@@ -302,9 +312,12 @@ AgentGUI / AgentGuiNode mount
   -> AgentActivityController.load
   -> desktopAgentActivityAdapter.listSessions
   -> tuttid ListWorkspaceAgentSessions
-  -> agent.Service.ListFiltered
+  -> agent.Service.ListPage
   -> live RuntimeController sessions + persisted ActivityProjection sessions
   -> AgentActivityController snapshot
+  -> AgentActivityRuntime.listSessionGroups
+  -> tuttid ListWorkspaceAgentSessionGroups
+  -> agent.Service.ListGroups
   -> conversation-list projection/store
   -> rail and active-session fallback selection
 ```
@@ -313,11 +326,14 @@ The session list is not owned by AgentGuiNode. AgentGuiNode may keep query,
 selection, pending create/delete/submit overlays, and read-state UI metadata.
 The session rows themselves come from the runtime snapshot and are refreshed
 through `load`, event reconciliation, or explicit session fetches.
-The desktop adapter should keep broad session-list loads bounded before they
-enter `AgentActivityRuntime`; large workspaces can accumulate hundreds or
-thousands of historical agent sessions, and pushing all of them through the
-runtime snapshot forces AgentGuiNode to repeatedly project and reconcile data
-the user is unlikely to inspect in the rail.
+The default rail uses grouped session summaries, not a global recent-session
+slice as the source of project truth. `ListWorkspaceAgentSessionGroups` scans
+the durable summary set once, returns project/group counts, latest session
+times, and the first bounded page of sessions per group. Per-project "load
+more" calls `ListWorkspaceAgentSessions` with `cwd`, `cursor`, and `limit`.
+Search is a separate full-summary query path with its own cursor. Keep heavy
+detail data, especially messages and timeline pages, out of list and group
+loads.
 Conversation-list read-state metadata is notification-style UI state. Historical
 imports that carry `runtimeContext.imported === true` should remain visible in
 the rail, but they must not seed unread completion lamps as though they just
@@ -556,6 +572,16 @@ has no reliable `turnId`, the boundary must reject it instead of synthesizing a
 must not retarget optimistic prompts from turnless or untimestamped live
 messages.
 
+Codex app-server sub-agent child-thread rows carry `payload.ownerThreadId` and
+must stay out of the parent transcript. AgentGUI should project those rows only
+through the parent collaboration tool card's sub-agent lanes. Child lifecycle
+state is lane-owned: spawn-card success means only that delegation started
+successfully, not that the child completed. The lane projection should treat
+owner-thread `subAgentLifecycle` markers as terminal state, use
+`agentsStates`/`statuses` from wait or close control-tool output as
+corroborating terminal state, and keep the lane running while child output
+continues without either signal.
+
 ### Layer Ownership Summary
 
 | Layer                                   | Owns                                                                                                   | Must not own                                                 |
@@ -579,7 +605,7 @@ state should map to one owner and one clearing condition.
 ### Rail And Conversation List
 
 ```text
-runtime snapshot sessions
+runtime snapshot sessions + grouped session pages
   -> conversation list query/search/project filters
   -> local pending create/submit/delete overlays
   -> activeConversationId highlight
@@ -598,6 +624,13 @@ User-visible rules:
   and Claude Code rail filters match historical sessions by `session.provider`;
   they must not mutate workbench node `provider`, provider target fields,
   composer drafts, desktop default provider, or composer-default preferences.
+- The default rail view should render bounded session pages per group, not a
+  global top-N session window. Empty project sections are derived from group
+  counts plus user projects, so a project outside the first visible session page
+  must not be shown as empty.
+- When a search result is opened and search is later cleared, the selected
+  session must remain visible through an active-session overlay until its group
+  page contains the authoritative row.
 - A pending create row can appear before the daemon-created session is
   authoritative. It must be replaced by the authoritative session or removed on
   create failure.
@@ -1189,6 +1222,12 @@ structured reference contract marks them as a workspace reference. Host adapters
 that open workspace file nodes should validate explicit agent-command file
 targets before launching the files surface, so a speculative or stale agent
 path does not open a misleading workbench node.
+
+Provider host-app-context prompts should mirror that contract: when agents
+reference code or workspace files in responses, instruct them to emit Markdown
+links with filename labels and absolute filesystem targets such as
+`[filename](/abs/path)`, not relative links, inline-code paths, or line-suffixed
+paths.
 
 Quick checks:
 

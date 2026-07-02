@@ -1821,14 +1821,14 @@ describe("AgentFileMentionPalette", () => {
     );
   });
 
-  it("keeps hero inline notices flush with the composer and inset by 24px", () => {
+  it("keeps hero inline notices aligned with the composer input edge", () => {
     const css = readFileSync(resolve("app/renderer/agentactivity.css"), "utf8");
 
     expect(css).toMatch(
       /\.agent-gui-node__empty-hero-body\s*{[^}]*--agent-gui-empty-hero-gap:\s*24px[^}]*gap:\s*var\(--agent-gui-empty-hero-gap\)/s
     );
     expect(css).toMatch(
-      /\.agent-gui-node__empty-hero-body\s*>\s*\.agent-gui-chrome__session-chrome\s*>\s*\.agent-gui-chrome__card\s*{[^}]*margin-right:\s*24px[^}]*margin-left:\s*24px/s
+      /\.agent-gui-node__empty-hero-body\s*>\s*\.agent-gui-chrome__session-chrome\s*>\s*\.agent-gui-chrome__card\s*{[^}]*margin-right:\s*12px[^}]*margin-left:\s*12px/s
     );
     expect(css).toMatch(
       /\.agent-gui-node__empty-hero-body\s*>\s*\.agent-gui-chrome__session-chrome\s*\+\s*\.agent-gui-node__composer-hero\s*{[^}]*margin-top:\s*calc\(var\(--agent-gui-empty-hero-gap,\s*24px\)\s*\*\s*-1\)/s
@@ -1873,7 +1873,15 @@ describe("AgentFileMentionPalette", () => {
       /\.agent-gui-chrome__card--danger\s*{[^}]*background:\s*color-mix\(\s*in srgb,\s*var\(--status-danger,\s*var\(--state-danger\)\)\s*10%,\s*var\(--background-fronted\)\s*\)/s
     );
     expect(css).toMatch(
-      /\.agent-gui-chrome__card--danger\s+\.agent-gui-chrome__icon,[\s\S]*?\.agent-gui-chrome__card--danger\s+\.agent-gui-chrome__message,[\s\S]*?\.agent-gui-chrome__card--danger\s+\.agent-gui-chrome__expand-cue\s*{[^}]*color:\s*var\(--status-danger,\s*var\(--state-danger\)\)/s
+      /\.agent-gui-chrome__card--danger\s+\.agent-gui-chrome__icon,[\s\S]*?\.agent-gui-chrome__card--danger\s+\.agent-gui-chrome__message\s*{[^}]*color:\s*var\(--status-danger,\s*var\(--state-danger\)\)/s
+    );
+    expect(css).not.toContain("--agent-gui-chrome-card-expanded-height");
+    expect(css).not.toContain("--agent-gui-chrome-card-collapsed-height");
+    expect(css).toMatch(
+      /\.agent-gui-chrome__card--danger[\s\S]*?\.agent-gui-chrome__message:not\(\.agent-gui-chrome__notice-message\)[\s\S]*?{[^}]*-webkit-line-clamp:\s*2/s
+    );
+    expect(css).toMatch(
+      /\.agent-gui-chrome__card--connecting[\s\S]*?\.agent-gui-chrome__message:not\(\.agent-gui-chrome__notice-message\)[\s\S]*?{[^}]*-webkit-line-clamp:\s*2/s
     );
   });
 

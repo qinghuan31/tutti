@@ -261,7 +261,7 @@ export function createDesktopAgentActivityAdapter({
     async listSessions(input) {
       const response = await tuttidClient.listWorkspaceAgentSessions(
         input.workspaceId,
-        { limit: agentActivitySessionListLimit }
+        { limit: agentActivitySessionListLimit, visibleOnly: true }
       );
       return {
         sessions: response.sessions.map((session) =>

@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"slices"
@@ -3412,6 +3413,157 @@ func TestServiceListFilteredMatchesSearchVisibilityLimitAndUpdatedOrder(t *testi
 	}
 	if list[0].ID != "session-newer" {
 		t.Fatalf("list[0].ID = %q, want session-newer", list[0].ID)
+	}
+}
+
+func TestServiceListPageSupportsCWDCursorAndHasMore(t *testing.T) {
+	runtime := newFakeRuntime()
+	for index := 0; index < 4; index++ {
+		id := fmt.Sprintf("session-%d", index+1)
+		runtime.sessions["ws-1:"+id] = RuntimeSession{
+			ID:              id,
+			WorkspaceID:     "ws-1",
+			Provider:        "codex",
+			Cwd:             "/workspace/app",
+			Status:          "completed",
+			Visible:         true,
+			Title:           id,
+			CreatedAtUnixMS: time.UnixMilli(1000).UnixMilli(),
+			UpdatedAtUnixMS: time.UnixMilli(int64(5000 - index*1000)).UnixMilli(),
+		}
+	}
+	runtime.sessions["ws-1:session-other"] = RuntimeSession{
+		ID:              "session-other",
+		WorkspaceID:     "ws-1",
+		Provider:        "codex",
+		Cwd:             "/workspace/other",
+		Status:          "completed",
+		Visible:         true,
+		Title:           "Other",
+		CreatedAtUnixMS: time.UnixMilli(1000).UnixMilli(),
+		UpdatedAtUnixMS: time.UnixMilli(6000).UnixMilli(),
+	}
+
+	service := NewService(runtime)
+	first, err := service.ListPage(context.Background(), "ws-1", ListSessionsInput{
+		CWD:         stringPointer("/workspace/app"),
+		Limit:       2,
+		VisibleOnly: true,
+	})
+	if err != nil {
+		t.Fatalf("ListPage first returned error: %v", err)
+	}
+	if len(first.Sessions) != 2 || first.Sessions[0].ID != "session-1" || first.Sessions[1].ID != "session-2" {
+		t.Fatalf("first page = %#v, want session-1/session-2", first.Sessions)
+	}
+	if !first.HasMore || first.NextCursor == "" {
+		t.Fatalf("first page hasMore/cursor = %v/%q, want true/non-empty", first.HasMore, first.NextCursor)
+	}
+	second, err := service.ListPage(context.Background(), "ws-1", ListSessionsInput{
+		CWD:         stringPointer("/workspace/app"),
+		Cursor:      first.NextCursor,
+		Limit:       2,
+		VisibleOnly: true,
+	})
+	if err != nil {
+		t.Fatalf("ListPage second returned error: %v", err)
+	}
+	if len(second.Sessions) != 2 || second.Sessions[0].ID != "session-3" || second.Sessions[1].ID != "session-4" {
+		t.Fatalf("second page = %#v, want session-3/session-4", second.Sessions)
+	}
+	if second.HasMore || second.NextCursor != "" {
+		t.Fatalf("second page hasMore/cursor = %v/%q, want false/empty", second.HasMore, second.NextCursor)
+	}
+}
+
+func TestServiceListPageCursorSupportsZeroTimestamp(t *testing.T) {
+	encoded := (sessionPageCursor{ID: "session-1", UpdatedAtUnixMS: 0}).String()
+	if encoded != "0|session-1" {
+		t.Fatalf("encoded cursor = %q, want 0|session-1", encoded)
+	}
+	cursor, err := parseSessionListCursor(encoded)
+	if err != nil {
+		t.Fatalf("parseSessionListCursor returned error: %v", err)
+	}
+	if cursor.ID != "session-1" || cursor.UpdatedAtUnixMS != 0 {
+		t.Fatalf("parsed cursor = %#v, want session-1/0", cursor)
+	}
+	sessions := []Session{
+		{ID: "session-1", CreatedAt: time.UnixMilli(0)},
+		{ID: "session-2", CreatedAt: time.UnixMilli(0)},
+	}
+	remaining := sessionsAfterCursor(sessions, cursor)
+	if len(remaining) != 1 || remaining[0].ID != "session-2" {
+		t.Fatalf("remaining sessions = %#v, want session-2", remaining)
+	}
+}
+
+func TestServiceListGroupsReturnsFirstSessionsAndCountsVisibleSessionsByCWD(t *testing.T) {
+	runtime := newFakeRuntime()
+	runtime.sessions["ws-1:session-app-older"] = RuntimeSession{
+		ID:              "session-app-older",
+		WorkspaceID:     "ws-1",
+		Provider:        "codex",
+		Cwd:             "/workspace/app",
+		Status:          "completed",
+		Visible:         true,
+		Title:           "App older",
+		CreatedAtUnixMS: time.UnixMilli(1000).UnixMilli(),
+		UpdatedAtUnixMS: time.UnixMilli(2000).UnixMilli(),
+	}
+	runtime.sessions["ws-1:session-app-newer"] = RuntimeSession{
+		ID:              "session-app-newer",
+		WorkspaceID:     "ws-1",
+		Provider:        "codex",
+		Cwd:             "/workspace/app",
+		Status:          "completed",
+		Visible:         true,
+		Title:           "App newer",
+		CreatedAtUnixMS: time.UnixMilli(1000).UnixMilli(),
+		UpdatedAtUnixMS: time.UnixMilli(5000).UnixMilli(),
+	}
+	runtime.sessions["ws-1:session-hidden"] = RuntimeSession{
+		ID:              "session-hidden",
+		WorkspaceID:     "ws-1",
+		Provider:        "codex",
+		Cwd:             "/workspace/hidden",
+		Status:          "completed",
+		Visible:         false,
+		Title:           "Hidden",
+		CreatedAtUnixMS: time.UnixMilli(1000).UnixMilli(),
+		UpdatedAtUnixMS: time.UnixMilli(6000).UnixMilli(),
+	}
+	runtime.sessions["ws-1:session-site"] = RuntimeSession{
+		ID:              "session-site",
+		WorkspaceID:     "ws-1",
+		Provider:        "codex",
+		Cwd:             "/workspace/site",
+		Status:          "completed",
+		Visible:         true,
+		Title:           "Site",
+		CreatedAtUnixMS: time.UnixMilli(1000).UnixMilli(),
+		UpdatedAtUnixMS: time.UnixMilli(3000).UnixMilli(),
+	}
+
+	service := NewService(runtime)
+	groups, err := service.ListGroups(context.Background(), "ws-1", ListSessionGroupsInput{
+		SessionLimit: 1,
+		VisibleOnly:  true,
+	})
+	if err != nil {
+		t.Fatalf("ListGroups returned error: %v", err)
+	}
+	if len(groups) != 2 {
+		t.Fatalf("len(groups) = %d, want 2: %#v", len(groups), groups)
+	}
+	if groups[0].CWD != "/workspace/app" || groups[0].SessionCount != 2 || groups[0].LatestSessionUpdatedAtUnixMS != 5000 {
+		t.Fatalf("groups[0] = %#v, want app count 2 latest 5000", groups[0])
+	}
+	if len(groups[0].Sessions) != 1 || groups[0].Sessions[0].ID != "session-app-newer" || !groups[0].HasMore || groups[0].NextCursor == "" {
+		t.Fatalf("groups[0] page = %#v, want newest session with hasMore/cursor", groups[0])
+	}
+	if groups[1].CWD != "/workspace/site" || groups[1].SessionCount != 1 || groups[1].LatestSessionUpdatedAtUnixMS != 3000 {
+		t.Fatalf("groups[1] = %#v, want site count 1 latest 3000", groups[1])
 	}
 }
 

@@ -14,6 +14,7 @@ import (
 	tuttiapi "github.com/tutti-os/tutti/services/tuttid/api"
 	workspacedata "github.com/tutti-os/tutti/services/tuttid/data/workspace"
 	tuttiserver "github.com/tutti-os/tutti/services/tuttid/server"
+	accountservice "github.com/tutti-os/tutti/services/tuttid/service/account"
 	agentservice "github.com/tutti-os/tutti/services/tuttid/service/agent"
 	agentsidecarservice "github.com/tutti-os/tutti/services/tuttid/service/agentsidecar"
 	agentstatusservice "github.com/tutti-os/tutti/services/tuttid/service/agentstatus"
@@ -388,6 +389,7 @@ func buildDaemonAPI(ctx context.Context, store workspacedata.CatalogStore, analy
 	terminalService := &workspaceservice.TerminalService{}
 
 	return tuttiapi.DaemonAPI{
+		AccountService: accountservice.NewService(""),
 		UserProjectService: userprojectservice.Service{
 			Store: userProjectStore,
 		},

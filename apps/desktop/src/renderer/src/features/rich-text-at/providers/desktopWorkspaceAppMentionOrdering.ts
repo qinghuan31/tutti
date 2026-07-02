@@ -17,8 +17,8 @@ const workspaceAppMentionRankGroups = [
   ["open-cut"],
   ["product-competition"],
   ["design-review"],
-  ["calendar"],
-  ["document-summarizer"]
+  ["draw-topic-app", "answer-book", "app_answer_book", "idea-draw"],
+  ["calendar"]
 ] as const;
 
 const workspaceAppMentionRankById = buildWorkspaceAppMentionRankById();

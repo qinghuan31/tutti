@@ -58,6 +58,10 @@ type Adapter interface {
 	Cancel(context.Context, Session, string) ([]activityshared.Event, error)
 }
 
+type AsyncExecAdapter interface {
+	ExecAsync(context.Context, Session, []PromptContentBlock, string, string, EventSink, CommandSnapshotSink) error
+}
+
 type ResumeProbeAdapter interface {
 	CanResume(Session) bool
 }

@@ -123,6 +123,10 @@ import { AgentInteractivePromptSurface } from "./AgentInteractivePromptSurface";
 import { AgentConversationListSkeleton } from "./AgentConversationListSkeleton";
 import { useAgentHostApi } from "../../agentActivityHost";
 import {
+  useOptionalAgentActivityRuntime,
+  type AgentActivityRuntimeSessionGroup
+} from "../../agentActivityRuntime";
+import {
   ConversationMeta,
   groupConversations,
   type ConversationSection
@@ -134,6 +138,7 @@ import type {
   AgentMentionWorkspaceReferenceItem
 } from "./agentRichText/agentFileMentionExtension";
 import { createRichTextMentionHref } from "@tutti-os/ui-rich-text/core";
+import { buildAgentGUIConversationSummaries } from "./model/agentGuiConversationModel";
 
 /**
  * 把 @ 面板里的任务/应用 mention 解析为引用 picker 的定位目标(sourceId + 语义 params)。
@@ -332,6 +337,7 @@ export interface AgentGUIViewLabels {
   goalClearHint: string;
   processing: string;
   turnSummary: string;
+  userMessageLocator: string;
   planLead: string;
   planModes: Array<{ id: string; label: string; description: string }>;
   stayInPlan: string;
@@ -1362,9 +1368,11 @@ export function AgentGUINodeView({
         >
           <AgentGUIConversationRailStorePane
             conversations={viewModel.conversations}
+            provider={viewModel.data.provider}
             store={conversationRailStore}
             storeState={conversationRailStoreState}
             userProjects={viewModel.userProjects}
+            workspaceId={viewModel.workspaceId}
           />
         </aside>
         <div
@@ -1772,13 +1780,15 @@ const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
       thinkingLabel: labels.thinkingLabel,
       toolCallsLabel: labels.toolCallsLabel,
       processing: labels.processing,
-      turnSummary: labels.turnSummary
+      turnSummary: labels.turnSummary,
+      userMessageLocator: labels.userMessageLocator
     }),
     [
       labels.processing,
       labels.thinkingLabel,
       labels.toolCallsLabel,
-      labels.turnSummary
+      labels.turnSummary,
+      labels.userMessageLocator
     ]
   );
   const conversationFlowEmpty = useMemo(
@@ -3080,6 +3090,8 @@ const AgentGUIBottomDockPane = memo(function AgentGUIBottomDockPane({
 
 interface AgentGUIConversationRailPaneProps {
   conversations: AgentGUINodeViewModel["conversations"];
+  provider: AgentGUINodeViewModel["data"]["provider"];
+  workspaceId: string;
   userProjects: AgentGUINodeViewModel["userProjects"];
   activeConversationId: string | null;
   pendingDeleteConversationId: string | null;
@@ -3149,7 +3161,7 @@ type OpenclawGatewayViewModel =
 
 type AgentGUIConversationRailDataProps = Pick<
   AgentGUIConversationRailPaneProps,
-  "conversations" | "userProjects"
+  "conversations" | "provider" | "userProjects" | "workspaceId"
 >;
 
 type AgentGUIConversationRailStoreSnapshot = Omit<
@@ -3218,17 +3230,21 @@ function agentGUIConversationRailStoreSnapshotsEqual(
 
 interface AgentGUIConversationRailStorePaneProps {
   conversations: AgentGUINodeViewModel["conversations"];
+  provider: AgentGUINodeViewModel["data"]["provider"];
   store: AgentGUIConversationRailStore;
   storeState: AgentGUIConversationRailStoreSnapshot;
   userProjects: AgentGUINodeViewModel["userProjects"];
+  workspaceId: string;
 }
 
 const AgentGUIConversationRailStorePane = memo(
   function AgentGUIConversationRailStorePane({
     conversations,
+    provider,
     store,
     storeState: _storeState,
-    userProjects
+    userProjects,
+    workspaceId
   }: AgentGUIConversationRailStorePaneProps): React.JSX.Element {
     "use memo";
     const state = useSnapshot(store) as AgentGUIConversationRailStoreSnapshot;
@@ -3236,7 +3252,9 @@ const AgentGUIConversationRailStorePane = memo(
       <AgentGUIConversationRailPane
         {...state}
         conversations={conversations}
+        provider={provider}
         userProjects={userProjects}
+        workspaceId={workspaceId}
       />
     );
   }
@@ -3250,6 +3268,53 @@ function normalizeConversationRailProjectPath(
     return "";
   }
   return normalized.replace(/\/+$/, "") || "/";
+}
+
+function buildRailSessionGroupProjects({
+  groups,
+  userProjects
+}: {
+  groups: readonly AgentActivityRuntimeSessionGroup[];
+  userProjects: AgentGUINodeViewModel["userProjects"];
+}): AgentGUINodeViewModel["userProjects"] {
+  const userProjectByPath = new Map(
+    userProjects.map((project) => [
+      normalizeConversationRailProjectPath(project.path),
+      project
+    ])
+  );
+  const groupProjectPaths = new Set<string>();
+  const groupProjects: AgentGUINodeViewModel["userProjects"] = [];
+  for (const group of groups) {
+    const normalizedPath = normalizeConversationRailProjectPath(group.cwd);
+    if (!normalizedPath || groupProjectPaths.has(normalizedPath)) {
+      continue;
+    }
+    groupProjectPaths.add(normalizedPath);
+    const existingProject = userProjectByPath.get(normalizedPath);
+    groupProjects.push({
+      ...(existingProject ?? {
+        id: `agent-session-group:${normalizedPath}`,
+        label: labelFromProjectPath(normalizedPath),
+        path: group.cwd
+      }),
+      lastUsedAtUnixMs: group.latestSessionUpdatedAtUnixMs,
+      updatedAtUnixMs: group.latestSessionUpdatedAtUnixMs
+    });
+  }
+  const emptyUserProjects = userProjects.filter(
+    (project) =>
+      !groupProjectPaths.has(normalizeConversationRailProjectPath(project.path))
+  );
+  return [...groupProjects, ...emptyUserProjects];
+}
+
+function labelFromProjectPath(path: string): string {
+  const normalized = normalizeConversationRailProjectPath(path);
+  if (!normalized || normalized === "/") {
+    return path || "/";
+  }
+  return normalized.split("/").filter(Boolean).at(-1) ?? normalized;
 }
 
 function stabilizeConversationSections(
@@ -3291,6 +3356,47 @@ function stabilizeConversationSections(
     return { ...section, items };
   });
   return changed ? stable : (previous as ConversationSection[]);
+}
+
+function mergeRefreshedRailSessionGroups(
+  current: AgentActivityRuntimeSessionGroup[],
+  refreshed: AgentActivityRuntimeSessionGroup[]
+): AgentActivityRuntimeSessionGroup[] {
+  const currentByCwd = new Map(current.map((group) => [group.cwd, group]));
+  return refreshed.map((group) => {
+    const existing = currentByCwd.get(group.cwd);
+    if (!existing || existing.sessions.length <= group.sessions.length) {
+      return group;
+    }
+    const sessionIds = new Set(
+      group.sessions.map((session) => session.agentSessionId)
+    );
+    const sessions = [...group.sessions];
+    for (const session of existing.sessions) {
+      if (sessions.length >= group.sessionCount) {
+        break;
+      }
+      if (sessionIds.has(session.agentSessionId)) {
+        continue;
+      }
+      sessionIds.add(session.agentSessionId);
+      sessions.push(session);
+    }
+    const preservedLoadedPages = sessions.length > group.sessions.length;
+    const hasMore = preservedLoadedPages
+      ? existing.hasMore && sessions.length < group.sessionCount
+      : group.hasMore;
+    return {
+      ...group,
+      hasMore,
+      nextCursor: hasMore
+        ? preservedLoadedPages
+          ? existing.nextCursor
+          : group.nextCursor
+        : undefined,
+      sessions
+    };
+  });
 }
 
 function stabilizeConversationSectionItems(
@@ -3640,6 +3746,8 @@ const AgentGUIProviderRail = memo(function AgentGUIProviderRail({
 const AgentGUIConversationRailPane = memo(
   function AgentGUIConversationRailPane({
     conversations,
+    provider,
+    workspaceId,
     userProjects,
     activeConversationId,
     pendingDeleteConversationId,
@@ -3676,11 +3784,33 @@ const AgentGUIConversationRailPane = memo(
     onConfirmDeleteConversation
   }: AgentGUIConversationRailPaneProps): React.JSX.Element {
     "use memo";
+    const agentActivityRuntime = useOptionalAgentActivityRuntime();
     const [conversationQuery, setConversationQuery] = useState("");
     const updateConversationFilter = useStableEventCallback(
       onUpdateConversationFilter
     );
     const selectProvider = useStableEventCallback(onSelectProvider);
+    const [searchConversations, setSearchConversations] = useState<
+      AgentGUINodeViewModel["conversations"]
+    >([]);
+    const [searchConversationQuery, setSearchConversationQuery] = useState("");
+    const [searchHasMore, setSearchHasMore] = useState(false);
+    const [searchNextCursor, setSearchNextCursor] = useState<string | null>(
+      null
+    );
+    const [
+      isLoadingMoreSearchConversations,
+      setIsLoadingMoreSearchConversations
+    ] = useState(false);
+    const [railSessionGroups, setRailSessionGroups] = useState<
+      AgentActivityRuntimeSessionGroup[]
+    >([]);
+    const [activeConversationOverlay, setActiveConversationOverlay] = useState<
+      AgentGUINodeViewModel["conversations"][number] | null
+    >(null);
+    const [loadingMoreSectionIds, setLoadingMoreSectionIds] = useState<
+      ReadonlySet<string>
+    >(() => new Set());
     const [collapsedProjectSectionIds, setCollapsedProjectSectionIds] =
       useState<ReadonlySet<string>>(() => new Set());
     const [currentTimeMs, setCurrentTimeMs] = useState(() => Date.now());
@@ -3692,6 +3822,7 @@ const AgentGUIConversationRailPane = memo(
       new Map<string, HTMLDivElement>()
     );
     const groupedConversationsRef = useRef<ConversationSection[] | null>(null);
+    const wasDeletingConversationRef = useRef(false);
 
     useEffect(() => {
       const timer = window.setInterval(() => {
@@ -3702,12 +3833,247 @@ const AgentGUIConversationRailPane = memo(
       };
     }, []);
 
+    const trimmedConversationQuery = conversationQuery.trim();
+    const hasConversationQuery = trimmedConversationQuery.length > 0;
+    const hasRuntimeGroupSource =
+      !previewMode && Boolean(agentActivityRuntime?.listSessionGroups);
+    const conversationIdentityKey = useMemo(
+      () => conversations.map((conversation) => conversation.id).join("|"),
+      [conversations]
+    );
+    const railSessionGroupProjects = useMemo(
+      () =>
+        buildRailSessionGroupProjects({
+          groups: railSessionGroups,
+          userProjects
+        }),
+      [railSessionGroups, userProjects]
+    );
+    const defaultRailGroupConversations = useMemo(() => {
+      const freshConversationById = new Map(
+        conversations.map((conversation) => [conversation.id, conversation])
+      );
+      return buildAgentGUIConversationSummaries({
+        provider,
+        snapshot: {
+          composerOptionsByProvider: {},
+          presences: [],
+          sessionMessagesById: {},
+          sessions: railSessionGroups.flatMap((group) => group.sessions),
+          workspaceId
+        },
+        userProjects: railSessionGroupProjects
+      }).map(
+        (conversation) =>
+          freshConversationById.get(conversation.id) ?? conversation
+      );
+    }, [
+      conversations,
+      provider,
+      railSessionGroupProjects,
+      railSessionGroups,
+      workspaceId
+    ]);
+    const defaultRailSourceConversations = useMemo(() => {
+      const source = hasRuntimeGroupSource
+        ? defaultRailGroupConversations
+        : conversations;
+      if (
+        !activeConversationOverlay ||
+        source.some((item) => item.id === activeConversationOverlay.id)
+      ) {
+        return source;
+      }
+      return [...source, activeConversationOverlay];
+    }, [
+      activeConversationOverlay,
+      conversations,
+      defaultRailGroupConversations,
+      hasRuntimeGroupSource
+    ]);
+    const effectiveSearchConversations =
+      searchConversationQuery === trimmedConversationQuery
+        ? searchConversations
+        : [];
+    const railSourceConversations = hasConversationQuery
+      ? effectiveSearchConversations
+      : defaultRailSourceConversations;
+    const runtimeSearchSessions = agentActivityRuntime?.searchSessions;
+
+    useEffect(() => {
+      if (
+        !activeConversationOverlay ||
+        activeConversationOverlay.id !== activeConversationId
+      ) {
+        return;
+      }
+      if (
+        defaultRailGroupConversations.some(
+          (item) => item.id === activeConversationOverlay.id
+        )
+      ) {
+        setActiveConversationOverlay(null);
+      }
+    }, [
+      activeConversationId,
+      activeConversationOverlay,
+      defaultRailGroupConversations
+    ]);
+
+    useEffect(() => {
+      if (!hasConversationQuery) {
+        setSearchConversationQuery("");
+        setSearchConversations([]);
+        setSearchHasMore(false);
+        setSearchNextCursor(null);
+        return;
+      }
+      if (!runtimeSearchSessions) {
+        return;
+      }
+      let disposed = false;
+      const timer = window.setTimeout(() => {
+        void runtimeSearchSessions({
+          limit: 100,
+          query: trimmedConversationQuery,
+          workspaceId
+        })
+          .then((result) => {
+            if (disposed) {
+              return;
+            }
+            setSearchConversationQuery(trimmedConversationQuery);
+            setSearchConversations(
+              buildAgentGUIConversationSummaries({
+                provider,
+                snapshot: {
+                  composerOptionsByProvider: {},
+                  presences: [],
+                  sessionMessagesById: {},
+                  sessions: result.sessions,
+                  workspaceId: result.workspaceId
+                },
+                userProjects
+              })
+            );
+            setSearchHasMore(result.hasMore);
+            setSearchNextCursor(result.nextCursor ?? null);
+          })
+          .catch(() => {
+            if (!disposed) {
+              setSearchConversationQuery(trimmedConversationQuery);
+              setSearchConversations([]);
+              setSearchHasMore(false);
+              setSearchNextCursor(null);
+            }
+          });
+      }, 150);
+      return () => {
+        disposed = true;
+        window.clearTimeout(timer);
+      };
+    }, [
+      hasConversationQuery,
+      provider,
+      runtimeSearchSessions,
+      trimmedConversationQuery,
+      userProjects,
+      workspaceId
+    ]);
+
+    useEffect(() => {
+      if (!hasConversationQuery || runtimeSearchSessions) {
+        return;
+      }
+      setSearchConversationQuery(trimmedConversationQuery);
+      setSearchConversations(
+        conversations.filter((candidate) =>
+          conversationPlainTitle(candidate, labels, uiLanguage)
+            .toLowerCase()
+            .includes(trimmedConversationQuery.toLowerCase())
+        )
+      );
+      setSearchHasMore(false);
+      setSearchNextCursor(null);
+    }, [
+      conversations,
+      hasConversationQuery,
+      labels,
+      runtimeSearchSessions,
+      trimmedConversationQuery,
+      uiLanguage
+    ]);
+
+    useEffect(() => {
+      if (!agentActivityRuntime?.listSessionGroups || previewMode) {
+        setRailSessionGroups([]);
+        return;
+      }
+      let disposed = false;
+      const isDeletingNow =
+        isDeletingConversation || isDeletingProjectConversations;
+      const resetLoadedGroups =
+        wasDeletingConversationRef.current && !isDeletingNow;
+      wasDeletingConversationRef.current = isDeletingNow;
+      void agentActivityRuntime
+        .listSessionGroups({
+          sessionLimit: AGENT_GUI_CONVERSATION_RAIL_SECTION_PAGE_SIZE,
+          visibleOnly: true,
+          workspaceId
+        })
+        .then((result) => {
+          if (!disposed) {
+            setRailSessionGroups((current) =>
+              resetLoadedGroups
+                ? result.groups
+                : mergeRefreshedRailSessionGroups(current, result.groups)
+            );
+          }
+        })
+        .catch(() => {
+          if (!disposed) {
+            setRailSessionGroups([]);
+          }
+        });
+      return () => {
+        disposed = true;
+      };
+    }, [
+      agentActivityRuntime,
+      conversationIdentityKey,
+      isDeletingConversation,
+      isDeletingProjectConversations,
+      previewMode,
+      workspaceId
+    ]);
+
+    const groupingProjects = hasConversationQuery
+      ? []
+      : hasRuntimeGroupSource
+        ? railSessionGroupProjects
+        : userProjects;
+    const showEmptyConversationSection = useMemo(
+      () =>
+        !hasConversationQuery &&
+        (hasRuntimeGroupSource
+          ? railSessionGroups.some((group) => !group.cwd.trim())
+          : !conversations.some(
+              (conversation) => conversation.project == null
+            )),
+      [
+        conversations,
+        hasConversationQuery,
+        hasRuntimeGroupSource,
+        railSessionGroups
+      ]
+    );
+
     const filteredConversationResult = useMemo(() => {
       const startedAtMs = agentGuiPerfNowMs();
-      const query = conversationQuery.trim().toLowerCase();
+      const query = trimmedConversationQuery.toLowerCase();
       const items = !query
-        ? conversations
-        : conversations.filter((candidate) =>
+        ? railSourceConversations
+        : railSourceConversations.filter((candidate) =>
             conversationPlainTitle(candidate, labels, uiLanguage)
               .toLowerCase()
               .includes(query)
@@ -3716,15 +4082,15 @@ const AgentGUIConversationRailPane = memo(
         items,
         filterMs: roundAgentGuiPerfMs(agentGuiPerfNowMs() - startedAtMs)
       };
-    }, [conversationQuery, conversations, labels, uiLanguage]);
+    }, [labels, railSourceConversations, trimmedConversationQuery, uiLanguage]);
     const filteredConversations = filteredConversationResult.items;
     const groupedConversationResult = useMemo(() => {
       const startedAtMs = agentGuiPerfNowMs();
       const rawGroups = groupConversations(
         filteredConversations,
         labels,
-        conversationQuery.trim() ? [] : userProjects,
-        { includeEmptyConversations: !conversationQuery.trim() }
+        groupingProjects,
+        { includeEmptyConversations: showEmptyConversationSection }
       );
       const groups = stabilizeConversationSections(
         groupedConversationsRef.current,
@@ -3735,7 +4101,12 @@ const AgentGUIConversationRailPane = memo(
         groups,
         groupMs: roundAgentGuiPerfMs(agentGuiPerfNowMs() - startedAtMs)
       };
-    }, [conversationQuery, filteredConversations, labels, userProjects]);
+    }, [
+      filteredConversations,
+      groupingProjects,
+      labels,
+      showEmptyConversationSection
+    ]);
     const groupedConversations = groupedConversationResult.groups;
     const toggleProjectSectionCollapsed = useCallback((sectionId: string) => {
       setCollapsedProjectSectionIds((current) => {
@@ -3760,17 +4131,152 @@ const AgentGUIConversationRailPane = memo(
     );
     const projectConversationCountsByPath = useMemo(() => {
       const counts = new Map<string, number>();
+      const pathsFromGroups = new Set<string>();
+      for (const group of railSessionGroups) {
+        const normalizedPath = normalizeConversationRailProjectPath(group.cwd);
+        if (!normalizedPath) {
+          continue;
+        }
+        counts.set(normalizedPath, group.sessionCount);
+        pathsFromGroups.add(normalizedPath);
+      }
       for (const conversation of conversations) {
         const normalizedPath = normalizeConversationRailProjectPath(
           conversation.project?.path
         );
-        if (!normalizedPath) {
+        if (!normalizedPath || pathsFromGroups.has(normalizedPath)) {
           continue;
         }
         counts.set(normalizedPath, (counts.get(normalizedPath) ?? 0) + 1);
       }
       return counts;
-    }, [conversations]);
+    }, [conversations, railSessionGroups]);
+    const railSessionGroupBySectionId = useMemo(() => {
+      const groupsBySectionId = new Map<
+        string,
+        AgentActivityRuntimeSessionGroup
+      >();
+      for (const group of railSessionGroups) {
+        const normalizedPath = normalizeConversationRailProjectPath(group.cwd);
+        groupsBySectionId.set(
+          normalizedPath ? `project:${normalizedPath}` : "conversations",
+          group
+        );
+      }
+      return groupsBySectionId;
+    }, [railSessionGroups]);
+    const loadMoreSectionConversations = useCallback(
+      (sectionId: string) => {
+        const group = railSessionGroupBySectionId.get(sectionId);
+        const listSessionsPage = agentActivityRuntime?.listSessionsPage;
+        if (!group?.hasMore || !group.nextCursor || !listSessionsPage) {
+          return;
+        }
+        setLoadingMoreSectionIds((current) => {
+          if (current.has(sectionId)) {
+            return current;
+          }
+          const next = new Set(current);
+          next.add(sectionId);
+          return next;
+        });
+        void listSessionsPage({
+          cursor: group.nextCursor,
+          cwd: group.cwd,
+          limit: AGENT_GUI_CONVERSATION_RAIL_SECTION_PAGE_SIZE,
+          visibleOnly: true,
+          workspaceId
+        })
+          .then((page) => {
+            setRailSessionGroups((current) =>
+              current.map((candidate) => {
+                if (candidate.cwd !== group.cwd) {
+                  return candidate;
+                }
+                const sessionIds = new Set(
+                  candidate.sessions.map((session) => session.agentSessionId)
+                );
+                const nextSessions = [...candidate.sessions];
+                for (const session of page.sessions) {
+                  if (!sessionIds.has(session.agentSessionId)) {
+                    sessionIds.add(session.agentSessionId);
+                    nextSessions.push(session);
+                  }
+                }
+                return {
+                  ...candidate,
+                  hasMore: page.hasMore,
+                  nextCursor: page.nextCursor,
+                  sessions: nextSessions
+                };
+              })
+            );
+          })
+          .finally(() => {
+            setLoadingMoreSectionIds((current) => {
+              if (!current.has(sectionId)) {
+                return current;
+              }
+              const next = new Set(current);
+              next.delete(sectionId);
+              return next;
+            });
+          });
+      },
+      [agentActivityRuntime, railSessionGroupBySectionId, workspaceId]
+    );
+    const loadMoreSearchConversations = useCallback(() => {
+      const searchSessions = agentActivityRuntime?.searchSessions;
+      if (
+        !searchSessions ||
+        !searchHasMore ||
+        !searchNextCursor ||
+        isLoadingMoreSearchConversations
+      ) {
+        return;
+      }
+      setIsLoadingMoreSearchConversations(true);
+      void searchSessions({
+        cursor: searchNextCursor,
+        limit: 100,
+        query: trimmedConversationQuery,
+        workspaceId
+      })
+        .then((result) => {
+          const nextConversations = buildAgentGUIConversationSummaries({
+            provider,
+            snapshot: {
+              composerOptionsByProvider: {},
+              presences: [],
+              sessionMessagesById: {},
+              sessions: result.sessions,
+              workspaceId: result.workspaceId
+            },
+            userProjects
+          });
+          setSearchConversations((current) => {
+            const currentIds = new Set(current.map((item) => item.id));
+            return [
+              ...current,
+              ...nextConversations.filter((item) => !currentIds.has(item.id))
+            ];
+          });
+          setSearchHasMore(result.hasMore);
+          setSearchNextCursor(result.nextCursor ?? null);
+        })
+        .finally(() => {
+          setIsLoadingMoreSearchConversations(false);
+        });
+    }, [
+      agentActivityRuntime,
+      isLoadingMoreSearchConversations,
+      provider,
+      searchHasMore,
+      searchNextCursor,
+      trimmedConversationQuery,
+      userProjects,
+      workspaceId
+    ]);
     const registerConversationItemElement = useCallback(
       (itemId: string, element: HTMLDivElement | null) => {
         if (element) {
@@ -3780,6 +4286,55 @@ const AgentGUIConversationRailPane = memo(
         }
       },
       []
+    );
+    const handleSelectConversation = useCallback(
+      (agentSessionId: string) => {
+        const normalizedAgentSessionId = agentSessionId.trim();
+        if (!normalizedAgentSessionId) {
+          return;
+        }
+        const isLoadedConversation = conversations.some(
+          (conversation) => conversation.id === normalizedAgentSessionId
+        );
+        if (!hasConversationQuery || isLoadedConversation) {
+          onSelectConversation(normalizedAgentSessionId);
+          return;
+        }
+        if (!agentActivityRuntime?.getSession) {
+          onSelectConversation(normalizedAgentSessionId);
+          return;
+        }
+        void agentActivityRuntime
+          .getSession(workspaceId, normalizedAgentSessionId)
+          .then((session) => {
+            const [overlay] = buildAgentGUIConversationSummaries({
+              provider,
+              snapshot: {
+                composerOptionsByProvider: {},
+                presences: [],
+                sessionMessagesById: {},
+                sessions: [session],
+                workspaceId
+              },
+              userProjects: railSessionGroupProjects
+            });
+            setActiveConversationOverlay(overlay ?? null);
+            onSelectConversation(normalizedAgentSessionId);
+          })
+          .catch(() => {
+            // Leave selection unchanged when a stale search result no longer
+            // resolves; the next search/list refresh will remove it.
+          });
+      },
+      [
+        agentActivityRuntime,
+        conversations,
+        hasConversationQuery,
+        onSelectConversation,
+        provider,
+        railSessionGroupProjects,
+        workspaceId
+      ]
     );
 
     useLayoutEffect(() => {
@@ -3888,6 +4443,9 @@ const AgentGUIConversationRailPane = memo(
                 ? (projectConversationCountsByPath.get(normalizedProjectPath) ??
                   0)
                 : 0;
+              const sectionSessionGroup = railSessionGroupBySectionId.get(
+                section.id
+              );
               return (
                 <Fragment key={section.id}>
                   {showProjectRailHeader ? (
@@ -3902,11 +4460,21 @@ const AgentGUIConversationRailPane = memo(
                     createConversationDisabled={createConversationDisabled}
                     currentTimeMs={currentTimeMs}
                     isDeletingConversation={isDeletingConversation}
+                    isLoadingMoreConversations={
+                      hasConversationQuery
+                        ? isLoadingMoreSearchConversations
+                        : loadingMoreSectionIds.has(section.id)
+                    }
                     isSectionCollapsed={isSectionCollapsed}
                     labels={labels}
                     pendingDeleteConversationId={pendingDeleteConversationId}
                     previewMode={previewMode}
                     projectConversationCount={projectConversationCount}
+                    sectionHasMore={
+                      hasConversationQuery
+                        ? searchHasMore
+                        : Boolean(sectionSessionGroup?.hasMore)
+                    }
                     projectLabel={projectLabel}
                     projectPath={projectPath}
                     registerItemElement={registerConversationItemElement}
@@ -3916,11 +4484,16 @@ const AgentGUIConversationRailPane = memo(
                     onConfirmDeleteConversation={onConfirmDeleteConversation}
                     onCreateConversation={onCreateConversation}
                     onRequestDeleteConversation={onRequestDeleteConversation}
-                    onSelectConversation={onSelectConversation}
+                    onSelectConversation={handleSelectConversation}
                     setPendingProjectAction={setPendingProjectAction}
                     onToggleConversationPinned={onToggleConversationPinned}
                     onOpenProjectFiles={onOpenProjectFiles}
                     onOpenConversationWindow={onOpenConversationWindow}
+                    onLoadMoreConversations={
+                      hasConversationQuery
+                        ? loadMoreSearchConversations
+                        : loadMoreSectionConversations
+                    }
                     onToggleProjectSectionCollapsed={
                       toggleProjectSectionCollapsed
                     }
@@ -3981,7 +4554,7 @@ const AgentGUIConversationRailPane = memo(
                 <button
                   type="button"
                   data-testid="agent-gui-config-env-setup"
-                  className="nodrag -mx-1 flex w-[calc(100%+0.5rem)] items-center gap-2 rounded-[6px] px-2 py-1 text-[13px] text-white transition-colors hover:bg-background-hover hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:text-white/50 [-webkit-app-region:no-drag]"
+                  className="nodrag -mx-1 flex w-[calc(100%+0.5rem)] items-center gap-2 rounded-[6px] px-2 py-1 text-[13px] text-[var(--text-primary)] transition-colors hover:bg-[var(--transparency-hover)] hover:text-[var(--text-primary)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--border-focus)] disabled:text-[var(--text-tertiary)] [-webkit-app-region:no-drag]"
                   disabled={previewMode}
                   onClick={() => onOpenAgentEnvSetup()}
                 >
@@ -4071,6 +4644,8 @@ interface AgentGUIConversationRailSectionProps {
   pendingDeleteConversationId: string | null;
   previewMode: boolean;
   isDeletingConversation: boolean;
+  isLoadingMoreConversations: boolean;
+  sectionHasMore: boolean;
   createConversationDisabled: boolean;
   currentTimeMs: number;
   labels: AgentGUIViewLabels;
@@ -4083,6 +4658,7 @@ interface AgentGUIConversationRailSectionProps {
   onToggleProjectSectionCollapsed: (sectionId: string) => void;
   setPendingProjectAction: (action: AgentGUIProjectActionDialog | null) => void;
   onSelectConversation: (agentSessionId: string) => void;
+  onLoadMoreConversations: (sectionId: string) => void;
   onToggleConversationPinned: (agentSessionId: string, pinned: boolean) => void;
   onOpenProjectFiles?: ((action: WorkspaceLinkAction) => void) | null;
   onOpenConversationWindow?: (agentSessionId: string) => void;
@@ -4102,6 +4678,8 @@ const AgentGUIConversationRailSection = memo(
     pendingDeleteConversationId,
     previewMode,
     isDeletingConversation,
+    isLoadingMoreConversations,
+    sectionHasMore,
     createConversationDisabled,
     currentTimeMs,
     labels,
@@ -4110,6 +4688,7 @@ const AgentGUIConversationRailSection = memo(
     onCreateConversation,
     onToggleProjectSectionCollapsed,
     onSelectConversation,
+    onLoadMoreConversations,
     setPendingProjectAction,
     onToggleConversationPinned,
     onOpenProjectFiles,
@@ -4130,18 +4709,32 @@ const AgentGUIConversationRailSection = memo(
       ? []
       : section.items.slice(0, visibleItemCount);
     const canShowMore =
-      !isSectionCollapsed && visibleItemCount < section.items.length;
+      !isSectionCollapsed &&
+      (visibleItemCount < section.items.length || sectionHasMore);
     const canShowLess =
       !isSectionCollapsed &&
       visibleItemCount > AGENT_GUI_CONVERSATION_RAIL_SECTION_PAGE_SIZE;
     const showMoreConversations = useCallback(() => {
+      if (visibleItemCount >= section.items.length && sectionHasMore) {
+        onLoadMoreConversations(section.id);
+        setVisibleItemLimit(
+          (current) => current + AGENT_GUI_CONVERSATION_RAIL_SECTION_PAGE_SIZE
+        );
+        return;
+      }
       setVisibleItemLimit((current) =>
         Math.min(
           section.items.length,
           current + AGENT_GUI_CONVERSATION_RAIL_SECTION_PAGE_SIZE
         )
       );
-    }, [section.items.length]);
+    }, [
+      onLoadMoreConversations,
+      section.id,
+      section.items.length,
+      sectionHasMore,
+      visibleItemCount
+    ]);
     const showLessConversations = useCallback(() => {
       setVisibleItemLimit(AGENT_GUI_CONVERSATION_RAIL_SECTION_PAGE_SIZE);
     }, []);
@@ -4442,6 +5035,7 @@ const AgentGUIConversationRailSection = memo(
                   <button
                     type="button"
                     className={styles.conversationSectionPaginationButton}
+                    disabled={isLoadingMoreConversations}
                     onClick={showMoreConversations}
                   >
                     {labels.showMoreConversations}
@@ -4742,6 +5336,7 @@ interface AgentGUIConversationTimelinePaneProps {
     toolCallsLabel: (count: number) => string;
     processing: string;
     turnSummary: string;
+    userMessageLocator: string;
   };
 }
 

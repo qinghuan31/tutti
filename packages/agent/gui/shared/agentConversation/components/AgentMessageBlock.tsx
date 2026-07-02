@@ -48,7 +48,7 @@ const TRANSPORT_RETRY_PROGRESS_PATTERN =
 const SYSTEM_NOTICE_WARNING_CLASS_NAME =
   "border-[color-mix(in_srgb,var(--state-warning)_14%,transparent)] bg-[color-mix(in_srgb,var(--background-fronted)_100%,var(--state-warning)_6%)]";
 const SYSTEM_NOTICE_ERROR_CLASS_NAME =
-  "border-[color-mix(in_srgb,var(--state-danger)_20%,transparent)] bg-[color-mix(in_srgb,var(--background-fronted)_100%,var(--state-danger)_8%)]";
+  "border-[var(--on-danger-hover)] bg-[var(--on-danger)]";
 
 interface AgentMessageBlockProps {
   workspaceRoot: string | null;
@@ -339,7 +339,7 @@ function AgentUserImageGrid({
   const thumbnailWidth = images.length === 1 ? "160px" : "80px";
   return (
     <div
-      className="grid justify-self-end gap-2"
+      className={styles.userImageGrid}
       style={{
         gridTemplateColumns: `repeat(${columnCount}, ${thumbnailWidth})`
       }}
@@ -348,15 +348,12 @@ function AgentUserImageGrid({
         const src = loadedImages.get(image.id) ?? imageDataUrl(image);
         const loading = !src && loadingIds.has(image.id);
         return (
-          <div
-            key={image.id}
-            className="max-h-20 min-w-0 overflow-hidden rounded-[6px]"
-          >
+          <div key={image.id} className={styles.userImageThumbnail}>
             {src ? (
               <ZoomableImage
                 src={src}
                 alt={image.name?.trim() || "image"}
-                className="block max-h-20 w-full rounded-[6px] object-contain"
+                className="block max-h-20 w-full rounded-[7px] object-contain"
                 draggable={false}
                 downloadName={image.name?.trim() || "image.png"}
               />
@@ -521,8 +518,8 @@ function AgentSystemNoticeMessage({
       </div>
     );
   }
-  const isStatusNotice = systemNoticeIsStatus(notice);
-  const noticeToneClassName = systemNoticeToneClassName(notice);
+  const isStatusNotice = systemNoticeIsStatus(message);
+  const noticeToneClassName = systemNoticeToneClassName(message);
   return (
     <section
       role={isStatusNotice ? "status" : undefined}
@@ -538,12 +535,12 @@ function AgentSystemNoticeMessage({
   );
 }
 
-function systemNoticeToneClassName(
-  notice: AgentMessageContentVM["systemNotice"] | null | undefined
-): string {
+function systemNoticeToneClassName(message: AgentMessageContentVM): string {
+  const notice = message.systemNotice;
   if (
     notice?.severity === "error" ||
-    notice?.noticeKind === "transport_fallback"
+    notice?.noticeKind === "transport_fallback" ||
+    isTransportFallbackNotice(message)
   ) {
     return SYSTEM_NOTICE_ERROR_CLASS_NAME;
   }
@@ -553,13 +550,25 @@ function systemNoticeToneClassName(
   return SYSTEM_NOTICE_WARNING_CLASS_NAME;
 }
 
-function systemNoticeIsStatus(
-  notice: AgentMessageContentVM["systemNotice"] | null | undefined
-): boolean {
+function systemNoticeIsStatus(message: AgentMessageContentVM): boolean {
+  const notice = message.systemNotice;
   return (
     notice?.severity === "warning" ||
     notice?.severity === "error" ||
-    notice?.noticeKind === "transport_fallback"
+    notice?.noticeKind === "transport_fallback" ||
+    isTransportFallbackNotice(message)
+  );
+}
+
+function isTransportFallbackNotice(message: AgentMessageContentVM): boolean {
+  const notice = message.systemNotice;
+  const text = [notice?.title, notice?.detail, message.body]
+    .filter(Boolean)
+    .join("\n")
+    .toLowerCase();
+  return (
+    text.includes("falling back from websockets") ||
+    text.includes("https transport")
   );
 }
 

@@ -43,6 +43,11 @@ export interface WorkspaceAgentOutcomeNotificationControllerInput {
   workspaceId: string;
 }
 
+interface WorkspaceAgentOutcomeUserTitleCache {
+  bySessionId: Map<string, string>;
+  bySessionTurnId: Map<string, string>;
+}
+
 export function createWorkspaceAgentOutcomeNotificationController(
   input: WorkspaceAgentOutcomeNotificationControllerInput
 ): WorkspaceAgentOutcomeNotificationController {
@@ -51,11 +56,23 @@ export function createWorkspaceAgentOutcomeNotificationController(
     return { dispose() {} };
   }
 
+  const userTitleCache: WorkspaceAgentOutcomeUserTitleCache = {
+    bySessionId: new Map(),
+    bySessionTurnId: new Map()
+  };
   const unsubscribe = input.workspaceAgentActivityService.onSessionEvent(
     workspaceId,
     (event) => {
+      rememberWorkspaceAgentOutcomeUserTitle(event, userTitleCache);
+      const conversationTitle = workspaceAgentOutcomeUserTitleFromSessionEvent(
+        event,
+        userTitleCache
+      );
       const notification =
-        buildWorkspaceAgentOutcomeNotificationFromSessionEvent(event);
+        buildWorkspaceAgentOutcomeNotificationFromSessionEvent(
+          event,
+          conversationTitle
+        );
       if (!notification) {
         return;
       }
@@ -79,7 +96,8 @@ export function createWorkspaceAgentOutcomeNotificationController(
 }
 
 export function buildWorkspaceAgentOutcomeNotificationFromSessionEvent(
-  event: unknown
+  event: unknown,
+  conversationTitle?: string
 ): WorkspaceAgentOutcomeNotification | null {
   const source = recordValue(event);
   if (stringValue(source?.eventType) !== "state_patch") {
@@ -100,12 +118,69 @@ export function buildWorkspaceAgentOutcomeNotificationFromSessionEvent(
   }
   return {
     agentSessionId,
-    conversationTitle: stringValue(data.title),
+    conversationTitle:
+      stringValue(conversationTitle) || stringValue(data.title),
     level: status === "completed" ? "success" : "error",
     provider,
     status,
     workspaceId
   };
+}
+
+function rememberWorkspaceAgentOutcomeUserTitle(
+  event: unknown,
+  cache: WorkspaceAgentOutcomeUserTitleCache
+): void {
+  const source = recordValue(event);
+  if (stringValue(source?.eventType) !== "message_update") {
+    return;
+  }
+  const data = recordValue(source?.data);
+  if (!data) {
+    return;
+  }
+  for (const message of messageUpdateRecords(data)) {
+    if (stringValue(message.role).toLowerCase() !== "user") {
+      continue;
+    }
+    const agentSessionId =
+      stringValue(message.agentSessionId) || stringValue(data.agentSessionId);
+    const title = messageTitle(message);
+    if (!agentSessionId || !title) {
+      continue;
+    }
+    cache.bySessionId.set(agentSessionId, title);
+    const turnId = stringValue(message.turnId);
+    if (turnId) {
+      cache.bySessionTurnId.set(sessionTurnKey(agentSessionId, turnId), title);
+    }
+  }
+}
+
+function workspaceAgentOutcomeUserTitleFromSessionEvent(
+  event: unknown,
+  cache: WorkspaceAgentOutcomeUserTitleCache
+): string {
+  const source = recordValue(event);
+  if (stringValue(source?.eventType) !== "state_patch") {
+    return "";
+  }
+  const data = recordValue(source?.data);
+  const turn = recordValue(data?.turn);
+  const agentSessionId = stringValue(data?.agentSessionId);
+  const turnId = stringValue(turn?.turnId);
+  if (!agentSessionId) {
+    return "";
+  }
+  if (turnId) {
+    const turnTitle = cache.bySessionTurnId.get(
+      sessionTurnKey(agentSessionId, turnId)
+    );
+    if (turnTitle) {
+      return turnTitle;
+    }
+  }
+  return cache.bySessionId.get(agentSessionId) ?? "";
 }
 
 function workspaceAgentOutcomeNotificationMessage(
@@ -192,6 +267,56 @@ function formatWorkspaceAgentProviderName(provider: string): string {
     .filter(Boolean)
     .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
     .join(" ");
+}
+
+function messageUpdateRecords(
+  data: Record<string, unknown>
+): Record<string, unknown>[] {
+  if (Array.isArray(data.messages)) {
+    return data.messages.flatMap((message) => {
+      const record = recordValue(message);
+      return record ? [record] : [];
+    });
+  }
+  return [data];
+}
+
+function messageTitle(message: Record<string, unknown>): string {
+  const payload = recordValue(message.payload);
+  return firstNonEmptyString(
+    stringValue(payload?.summary),
+    stringValue(payload?.displayPrompt),
+    stringValue(payload?.text),
+    contentText(payload?.content),
+    stringValue(payload?.message),
+    stringValue(payload?.body),
+    stringValue(payload?.title)
+  );
+}
+
+function contentText(value: unknown): string {
+  if (typeof value === "string") {
+    return value.trim();
+  }
+  if (!Array.isArray(value)) {
+    return "";
+  }
+  return value
+    .map((part) => {
+      const record = recordValue(part);
+      return record ? stringValue(record.text) : "";
+    })
+    .filter(Boolean)
+    .join("\n")
+    .trim();
+}
+
+function firstNonEmptyString(...values: string[]): string {
+  return values.find(Boolean) ?? "";
+}
+
+function sessionTurnKey(agentSessionId: string, turnId: string): string {
+  return `${agentSessionId}\n${turnId}`;
 }
 
 function recordValue(value: unknown): Record<string, unknown> | null {

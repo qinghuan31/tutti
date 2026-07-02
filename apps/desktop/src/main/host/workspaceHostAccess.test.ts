@@ -26,6 +26,18 @@ function createTransportClient(
     async listAgentTargets() {
       throw new Error("not used");
     },
+    async startAccountLogin() {
+      throw new Error("not used");
+    },
+    async getAccountLoginStatus() {
+      throw new Error("not used");
+    },
+    async getAccountUserInfo() {
+      throw new Error("not used");
+    },
+    async logoutAccount() {
+      throw new Error("not used");
+    },
     async applyWorkspaceGitPatch() {
       throw new Error("not used");
     },
@@ -276,6 +288,9 @@ function createTransportClient(
       throw new Error("not used");
     },
     async listWorkspaceAgentSessions() {
+      throw new Error("not used");
+    },
+    async listWorkspaceAgentSessionGroups() {
       throw new Error("not used");
     },
     async scanWorkspaceExternalAgentSessionImports() {

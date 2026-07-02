@@ -16,6 +16,9 @@ func filterSessions(
 		if input.VisibleOnly && !session.Visible {
 			continue
 		}
+		if input.CWD != nil && strings.TrimSpace(session.Cwd) != strings.TrimSpace(*input.CWD) {
+			continue
+		}
 		if !matchesSessionSearch(session, input.SearchQuery) {
 			continue
 		}

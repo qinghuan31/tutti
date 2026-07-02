@@ -58,6 +58,7 @@ export const agentGuiWorkbenchDefaultNodeFrame: WorkbenchFrame = {
 
 export const agentGuiWorkbenchDefaultUsableHeightRatio = 0.7;
 export const agentGuiWorkbenchCompactVisibleAreaRatio = 0.9;
+export const agentGuiWorkbenchNewWindowCascadeOffset = { x: 180, y: 88 };
 
 export const AGENT_GUI_WORKBENCH_CONVERSATION_RAIL_TOGGLE_EVENT =
   "tutti:agent-gui-workbench-conversation-rail-toggle";
@@ -369,8 +370,10 @@ export function createAgentGuiWorkbenchContribution(
         activation,
         dockEntryId,
         instanceId: descriptorInstanceId,
+        openInNewWindow,
         provider,
         reuseDockEntryNode,
+        reuseExistingSessionNode,
         targetAgentSessionId
       } = createAgentGuiWorkbenchLaunchDescriptor({
         ...request,
@@ -379,9 +382,10 @@ export function createAgentGuiWorkbenchContribution(
       // Locate an already-open node currently showing this session (its launch
       // instanceId may differ from the session-keyed one, e.g. a conversation
       // started fresh as a draft) so we focus it instead of opening a duplicate.
-      const existingInstanceId = targetAgentSessionId
-        ? nodeStateSource.findInstanceIdByAgentSessionId(targetAgentSessionId)
-        : null;
+      const existingInstanceId =
+        targetAgentSessionId && reuseExistingSessionNode
+          ? nodeStateSource.findInstanceIdByAgentSessionId(targetAgentSessionId)
+          : null;
       const instanceId = existingInstanceId ?? descriptorInstanceId;
       const title =
         agentGuiWorkbenchDockIdentityFromIdentifier(dockEntryId)?.kind ===
@@ -442,11 +446,16 @@ export function createAgentGuiWorkbenchContribution(
       });
       return {
         activation,
+        ...(openInNewWindow
+          ? { cascadeOffset: agentGuiWorkbenchNewWindowCascadeOffset }
+          : {}),
         defaultFrame,
         dockEntryId,
-        framePolicy: isAgentGuiWorkbenchCompactVisibleFrame(defaultFrame, frame)
-          ? "absolute"
-          : "cascade-same-type-centered",
+        framePolicy:
+          !openInNewWindow &&
+          isAgentGuiWorkbenchCompactVisibleFrame(defaultFrame, frame)
+            ? "absolute"
+            : "cascade-same-type-centered",
         instanceId,
         reuseDockEntryNode,
         title,

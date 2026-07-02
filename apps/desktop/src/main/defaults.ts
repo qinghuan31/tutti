@@ -29,6 +29,10 @@ export interface DesktopResolvedDefaults {
   };
 }
 
+export interface DesktopProtocolClientRegistration {
+  scheme: "tutti" | "tutti-dev";
+}
+
 export function initializeDesktopEnvironment(options?: {
   appVersion?: string;
   isPackaged?: boolean;
@@ -64,6 +68,25 @@ export function resolveDesktopDevelopmentAppName(
 
   const safeAppName = appName.trim() || "Tutti";
   return `${safeAppName} Dev`;
+}
+
+export function resolveDesktopLoginProtocolScheme(): "tutti" | "tutti-dev" {
+  return resolveTuttiEnv() === "development" ? "tutti-dev" : "tutti";
+}
+
+export function resolveDesktopLoginCallbackUrl(): string {
+  return `${resolveDesktopLoginProtocolScheme()}://login/callback`;
+}
+
+export function resolveDesktopLoginProtocolClientRegistration(options: {
+  isPackaged: boolean;
+}): DesktopProtocolClientRegistration {
+  const scheme = resolveDesktopLoginProtocolScheme();
+  if (resolveTuttiEnv() === "development" && !options.isPackaged) {
+    return { scheme };
+  }
+
+  return { scheme };
 }
 
 export function resolveDesktopDefaultsFromEnv(): DesktopResolvedDefaults {

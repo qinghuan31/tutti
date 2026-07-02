@@ -1002,7 +1002,7 @@ class WorkbenchHostSessionController implements WorkbenchHostRuntimeHandle {
     result: WorkbenchHostLaunchResult
   ): WorkbenchHostLaunchResult {
     const dockEntryId = result.dockEntryId?.trim();
-    if (!dockEntryId) {
+    if (!dockEntryId || result.reuseDockEntryNode === false) {
       return result;
     }
 

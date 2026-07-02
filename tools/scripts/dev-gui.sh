@@ -266,6 +266,9 @@ NODE
 prepare_dev_gui_runtime() {
   DEV_GUI_PID_PATH="$(resolve_tuttid_pid_path)"
   DEV_GUI_INITIAL_TUTTID_PID="$(read_tuttid_pid_file "${DEV_GUI_PID_PATH}")"
+  if [[ "$(uname -s)" == "Darwin" ]]; then
+    node "${ROOT_DIR}/tools/scripts/prepare-dev-login-protocol.mjs"
+  fi
 }
 
 resolve_required_node_major() {

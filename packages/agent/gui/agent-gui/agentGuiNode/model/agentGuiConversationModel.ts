@@ -16,6 +16,11 @@ import {
 import { projectAgentSessionEventsToTimelineItems } from "../../../shared/agentConversation/projection/agentSessionEventProjection";
 import { projectAgentConversationVM } from "../../../shared/agentConversation/projection/agentConversationProjection";
 import {
+  attachSubAgentLanesToConversationVM,
+  buildSubAgentLanesByCallId,
+  partitionSubAgentTimelineItems
+} from "../../../shared/agentConversation/projection/subAgentTimelinePartition";
+import {
   extractExitPlanKeepPlanningOptionId,
   extractExitPlanModeOptions,
   isExitPlanSwitchModeInput
@@ -335,8 +340,17 @@ export function buildAgentGUIConversationModels({
   if (!detail) {
     return { conversation: null, detail: null };
   }
+  // Child-thread rows are excluded from the transcript by the canonical
+  // detail builder; here they are regrouped into live sub-agent lanes and
+  // attached to their collab spawn card so running sub-agents stay visible.
+  const subAgentLanesByCallId = buildSubAgentLanesByCallId(
+    partitionSubAgentTimelineItems(timelineItems)
+  );
   return {
-    conversation: projectAgentConversationVM(detail, { avoidGroupingEdits }),
+    conversation: attachSubAgentLanesToConversationVM(
+      projectAgentConversationVM(detail, { avoidGroupingEdits }),
+      subAgentLanesByCallId
+    ),
     detail
   };
 }

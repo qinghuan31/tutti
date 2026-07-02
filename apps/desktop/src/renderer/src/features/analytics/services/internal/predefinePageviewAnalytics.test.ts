@@ -23,7 +23,7 @@ test("predefine pageview analytics reports when the app opens", () => {
     [
       {
         clientTS: runtime.now(),
-        name: "predefine_pageview"
+        name: "app.pageview"
       }
     ]
   ]);
@@ -47,7 +47,7 @@ test("predefine pageview analytics reports app opens even after a focus report t
     [
       {
         clientTS: runtime.now(),
-        name: "predefine_pageview"
+        name: "app.pageview"
       }
     ]
   ]);
@@ -69,7 +69,7 @@ test("predefine pageview analytics reports explicit focus once per local day", (
 
   assert.deepEqual(
     reporterCalls.map((call) => call[0]?.name),
-    ["predefine_pageview", "predefine_pageview"]
+    ["app.pageview", "app.pageview"]
   );
 });
 
@@ -90,7 +90,7 @@ test("predefine pageview analytics reports explicit focus again on a new local d
 
   assert.deepEqual(
     reporterCalls.map((call) => call[0]?.name),
-    ["predefine_pageview", "predefine_pageview", "predefine_pageview"]
+    ["app.pageview", "app.pageview", "app.pageview"]
   );
 });
 

@@ -49,6 +49,51 @@ export interface AgentActivityRuntimeListGeneratedFilesInput {
   workspaceId: string;
 }
 
+export interface AgentActivityRuntimeSearchSessionsInput {
+  cursor?: string;
+  limit?: number;
+  query: string;
+  signal?: AbortSignal;
+  workspaceId: string;
+}
+
+export interface AgentActivityRuntimeSearchSessionsResult {
+  hasMore: boolean;
+  nextCursor?: string;
+  sessions: AgentActivitySession[];
+  workspaceId: string;
+}
+
+export interface AgentActivityRuntimeListSessionsPageInput {
+  cursor?: string;
+  cwd?: string;
+  limit?: number;
+  signal?: AbortSignal;
+  visibleOnly?: boolean;
+  workspaceId: string;
+}
+
+export interface AgentActivityRuntimeSessionPageResult {
+  hasMore: boolean;
+  nextCursor?: string;
+  sessions: AgentActivitySession[];
+  workspaceId: string;
+}
+
+export interface AgentActivityRuntimeSessionGroup {
+  cwd: string;
+  hasMore: boolean;
+  latestSessionUpdatedAtUnixMs: number;
+  nextCursor?: string;
+  sessionCount: number;
+  sessions: AgentActivitySession[];
+}
+
+export interface AgentActivityRuntimeSessionGroupsResult {
+  groups: AgentActivityRuntimeSessionGroup[];
+  workspaceId: string;
+}
+
 export interface AgentActivityRuntimeGeneratedFile {
   label: string;
   path: string;
@@ -247,6 +292,18 @@ export interface AgentActivityRuntime {
   listAgentGeneratedFiles?(
     input: AgentActivityRuntimeListGeneratedFilesInput
   ): Promise<AgentActivityRuntimeGeneratedFileList>;
+  listSessionGroups?(input: {
+    sessionLimit?: number;
+    signal?: AbortSignal;
+    visibleOnly?: boolean;
+    workspaceId: string;
+  }): Promise<AgentActivityRuntimeSessionGroupsResult>;
+  listSessionsPage?(
+    input: AgentActivityRuntimeListSessionsPageInput
+  ): Promise<AgentActivityRuntimeSessionPageResult>;
+  searchSessions?(
+    input: AgentActivityRuntimeSearchSessionsInput
+  ): Promise<AgentActivityRuntimeSearchSessionsResult>;
   load(
     workspaceId: string,
     signal?: AbortSignal

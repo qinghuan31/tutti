@@ -125,23 +125,36 @@ func (s Service) resolveCodexInstallerNodeRuntime(
 	ctx context.Context,
 	resolver runtimecmd.Resolver,
 ) (string, string, []string, error) {
-	if npmPath := strings.TrimSpace(resolveBinaryWithResolver(resolver, []string{npmBinaryName()}, nil)); npmPath != "" {
-		nodeTarget := firstNonBlank(resolveBinaryWithResolver(resolver, []string{nodeBinaryName()}, nil), nodeBinaryName())
-		return npmPath, nodeTarget, resolver.Env(nil), nil
-	}
 	appRuntime, err := s.resolveCodexManagedNodeRuntime(ctx)
 	if err != nil {
-		return "", "", nil, fmt.Errorf("npm was not found on PATH and Tutti managed Node runtime is unavailable: %w", err)
+		if npmPath := strings.TrimSpace(resolveBinaryWithResolver(resolver, []string{npmBinaryName()}, nil)); npmPath != "" {
+			nodeTarget := firstNonBlank(resolveBinaryWithResolver(resolver, []string{nodeBinaryName()}, nil), nodeBinaryName())
+			return npmPath, nodeTarget, resolver.Env(nil), nil
+		}
+		return "", "", nil, fmt.Errorf("tutti managed Node runtime is unavailable and npm was not found on PATH: %w", err)
 	}
 	npmPath := strings.TrimSpace(appRuntime.NPM)
 	if npmPath == "" {
-		return "", "", nil, fmt.Errorf("npm was not found on PATH and Tutti managed Node runtime did not provide npm")
+		if fallbackNPM := strings.TrimSpace(resolveBinaryWithResolver(resolver, []string{npmBinaryName()}, nil)); fallbackNPM != "" {
+			nodeTarget := firstNonBlank(resolveBinaryWithResolver(resolver, []string{nodeBinaryName()}, nil), nodeBinaryName())
+			return fallbackNPM, nodeTarget, resolver.Env(nil), nil
+		}
+		return "", "", nil, fmt.Errorf("tutti managed Node runtime did not provide npm and npm was not found on PATH")
 	}
 	return npmPath, firstNonBlank(appRuntime.Node, nodeBinaryName()), managedruntime.ProcessEnv(appRuntime.EnvOverrides...), nil
 }
 
 func (s Service) resolveCodexManagedNodeRuntime(ctx context.Context) (managedruntime.ResolvedRuntime, error) {
 	resolver := s.managedRuntimeResolver()
+	if managed, ok := resolver.(managedruntime.DefaultResolver); ok {
+		root := strings.TrimSpace(managed.RuntimeRoot)
+		if root == "" {
+			root = managed.DefaultRoot()
+		}
+		if runtime, ok := resolvedExistingManagedNodeRuntime(root, s.Environ); ok {
+			return runtime, nil
+		}
+	}
 	if profileResolver, ok := resolver.(managedruntime.ProfileResolver); ok {
 		return profileResolver.ResolveProfile(ctx, managedruntime.NodeStaticProfile)
 	}

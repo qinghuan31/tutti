@@ -16,6 +16,30 @@ const (
 	BearerAuthScopes bearerAuthContextKey = "bearerAuth.Scopes"
 )
 
+// Defines values for AccountLoginStatusValue.
+const (
+	AccountLoginStatusValueCompleted AccountLoginStatusValue = "completed"
+	AccountLoginStatusValueExpired   AccountLoginStatusValue = "expired"
+	AccountLoginStatusValueFailed    AccountLoginStatusValue = "failed"
+	AccountLoginStatusValuePending   AccountLoginStatusValue = "pending"
+)
+
+// Valid indicates whether the value is a known member of the AccountLoginStatusValue enum.
+func (e AccountLoginStatusValue) Valid() bool {
+	switch e {
+	case AccountLoginStatusValueCompleted:
+		return true
+	case AccountLoginStatusValueExpired:
+		return true
+	case AccountLoginStatusValueFailed:
+		return true
+	case AccountLoginStatusValuePending:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for AgentPromptContentBlockMimeType.
 const (
 	AgentPromptContentBlockMimeTypeImagejpeg AgentPromptContentBlockMimeType = "image/jpeg"
@@ -1389,19 +1413,19 @@ func (e WorkspaceAppUploadPurpose) Valid() bool {
 
 // Defines values for WorkspaceFileEntryKind.
 const (
-	WorkspaceFileEntryKindDirectory WorkspaceFileEntryKind = "directory"
-	WorkspaceFileEntryKindFile      WorkspaceFileEntryKind = "file"
-	WorkspaceFileEntryKindUnknown   WorkspaceFileEntryKind = "unknown"
+	Directory WorkspaceFileEntryKind = "directory"
+	File      WorkspaceFileEntryKind = "file"
+	Unknown   WorkspaceFileEntryKind = "unknown"
 )
 
 // Valid indicates whether the value is a known member of the WorkspaceFileEntryKind enum.
 func (e WorkspaceFileEntryKind) Valid() bool {
 	switch e {
-	case WorkspaceFileEntryKindDirectory:
+	case Directory:
 		return true
-	case WorkspaceFileEntryKindFile:
+	case File:
 		return true
-	case WorkspaceFileEntryKindUnknown:
+	case Unknown:
 		return true
 	default:
 		return false
@@ -1655,6 +1679,38 @@ func (e ListWorkspaceAgentSessionMessagesParamsOrder) Valid() bool {
 	default:
 		return false
 	}
+}
+
+// AccountLoginStartResponse defines model for AccountLoginStartResponse.
+type AccountLoginStartResponse struct {
+	AttemptId string `json:"attempt_id"`
+	ExpiresAt int64  `json:"expires_at"`
+	LoginUrl  string `json:"login_url"`
+}
+
+// AccountLoginStatusResponse defines model for AccountLoginStatusResponse.
+type AccountLoginStatusResponse struct {
+	AttemptId string                  `json:"attempt_id"`
+	Error     *string                 `json:"error,omitempty"`
+	ExpiresAt int64                   `json:"expires_at"`
+	Status    AccountLoginStatusValue `json:"status"`
+	User      *AccountUserInfo        `json:"user,omitempty"`
+}
+
+// AccountLoginStatusValue defines model for AccountLoginStatusValue.
+type AccountLoginStatusValue string
+
+// AccountUserInfo defines model for AccountUserInfo.
+type AccountUserInfo struct {
+	Avatar *string `json:"avatar,omitempty"`
+	Email  *string `json:"email,omitempty"`
+	Name   *string `json:"name,omitempty"`
+	UserId string  `json:"user_id"`
+}
+
+// AccountUserInfoResponse defines model for AccountUserInfoResponse.
+type AccountUserInfoResponse struct {
+	User *AccountUserInfo `json:"user"`
 }
 
 // AddIssueManagerContextRefItem defines model for AddIssueManagerContextRefItem.
@@ -3292,8 +3348,26 @@ type WorkspaceAgentSessionGitBranchesResponse struct {
 	CurrentBranch *string  `json:"currentBranch,omitempty"`
 }
 
+// WorkspaceAgentSessionGroup defines model for WorkspaceAgentSessionGroup.
+type WorkspaceAgentSessionGroup struct {
+	Cwd                          string                  `json:"cwd"`
+	HasMore                      bool                    `json:"hasMore"`
+	LatestSessionUpdatedAtUnixMs int64                   `json:"latestSessionUpdatedAtUnixMs"`
+	NextCursor                   *string                 `json:"nextCursor,omitempty"`
+	SessionCount                 int                     `json:"sessionCount"`
+	Sessions                     []WorkspaceAgentSession `json:"sessions"`
+}
+
+// WorkspaceAgentSessionGroupsResponse defines model for WorkspaceAgentSessionGroupsResponse.
+type WorkspaceAgentSessionGroupsResponse struct {
+	Groups      []WorkspaceAgentSessionGroup `json:"groups"`
+	WorkspaceId string                       `json:"workspaceId"`
+}
+
 // WorkspaceAgentSessionListResponse defines model for WorkspaceAgentSessionListResponse.
 type WorkspaceAgentSessionListResponse struct {
+	HasMore     bool                    `json:"hasMore"`
+	NextCursor  *string                 `json:"nextCursor,omitempty"`
 	Sessions    []WorkspaceAgentSession `json:"sessions"`
 	WorkspaceId string                  `json:"workspaceId"`
 }
@@ -3911,6 +3985,11 @@ type WorkspaceTerminalNotFoundError = ApiErrorResponse
 // bearerAuthContextKey is the context key for bearerAuth security scheme
 type bearerAuthContextKey string
 
+// GetAccountLoginStatusParams defines parameters for GetAccountLoginStatus.
+type GetAccountLoginStatusParams struct {
+	AttemptId string `form:"attempt_id" json:"attempt_id"`
+}
+
 // GetAgentProviderStatusesParams defines parameters for GetAgentProviderStatuses.
 type GetAgentProviderStatusesParams struct {
 	Providers *[]WorkspaceAgentProvider `form:"providers,omitempty" json:"providers,omitempty"`
@@ -3940,9 +4019,17 @@ type ListWorkspaceAgentGeneratedFilesParams struct {
 
 // ListWorkspaceAgentSessionsParams defines parameters for ListWorkspaceAgentSessions.
 type ListWorkspaceAgentSessionsParams struct {
+	Cwd         *string `form:"cwd,omitempty" json:"cwd,omitempty"`
+	Cursor      *string `form:"cursor,omitempty" json:"cursor,omitempty"`
 	SearchQuery *string `form:"searchQuery,omitempty" json:"searchQuery,omitempty"`
 	Limit       *int    `form:"limit,omitempty" json:"limit,omitempty"`
 	VisibleOnly *bool   `form:"visibleOnly,omitempty" json:"visibleOnly,omitempty"`
+}
+
+// ListWorkspaceAgentSessionGroupsParams defines parameters for ListWorkspaceAgentSessionGroups.
+type ListWorkspaceAgentSessionGroupsParams struct {
+	SessionLimit *int  `form:"sessionLimit,omitempty" json:"sessionLimit,omitempty"`
+	VisibleOnly  *bool `form:"visibleOnly,omitempty" json:"visibleOnly,omitempty"`
 }
 
 // ListWorkspaceAgentSessionMessagesParams defines parameters for ListWorkspaceAgentSessionMessages.

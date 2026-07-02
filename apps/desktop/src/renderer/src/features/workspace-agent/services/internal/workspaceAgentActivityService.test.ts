@@ -17,7 +17,10 @@ test("WorkspaceAgentActivityService.sendInput keeps activity snapshot working wh
   const readySession = workspaceAgentSession({ status: "ready" });
   const service = new WorkspaceAgentActivityService({
     tuttidClient: {
-      listWorkspaceAgentSessions: async () => ({ sessions: [readySession] }),
+      listWorkspaceAgentSessions: async () => ({
+        hasMore: false,
+        sessions: [readySession]
+      }),
       sendWorkspaceAgentSessionInput: async () => ({ session: readySession })
     } as unknown as TuttidClient,
     runtimeApi: {
@@ -189,7 +192,7 @@ test("WorkspaceAgentActivityService.importExternalSessions refreshes sessions an
       },
       listWorkspaceAgentSessions: async () => {
         listCalls += 1;
-        return { sessions: [], workspaceId: "ws-1" };
+        return { hasMore: false, sessions: [], workspaceId: "ws-1" };
       }
     } as unknown as TuttidClient,
     runtimeApi: {

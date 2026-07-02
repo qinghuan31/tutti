@@ -101,9 +101,31 @@ type CancelSessionResult struct {
 }
 
 type ListSessionsInput struct {
+	CWD         *string
+	Cursor      string
 	SearchQuery string
 	Limit       int
 	VisibleOnly bool
+}
+
+type SessionListPage struct {
+	Sessions   []Session
+	HasMore    bool
+	NextCursor string
+}
+
+type ListSessionGroupsInput struct {
+	SessionLimit int
+	VisibleOnly  bool
+}
+
+type SessionGroup struct {
+	CWD                          string
+	SessionCount                 int
+	LatestSessionUpdatedAtUnixMS int64
+	Sessions                     []Session
+	HasMore                      bool
+	NextCursor                   string
 }
 
 type PersistedSession struct {

@@ -442,25 +442,9 @@ func (s Service) runInstallAction(ctx context.Context, spec ProviderSpec, result
 	defer clearActiveAction(installCtx, spec.Provider)
 	runtimeResolution := s.resolveProviderRuntime(ctx, spec)
 	summary, updatedRuntime, err := s.installMissingProviderRuntime(installCtx, spec, runtimeResolution)
-	result.Command = strings.Join(summary.Commands, " && ")
-	result.Stdout = trimActionOutput(strings.Join(summary.Stdout, "\n"))
-	result.Stderr = trimActionOutput(strings.Join(summary.Stderr, "\n"))
-	result.ExitCode = summary.ExitCode
+	result = applyInstallerExecutionSummary(result, summary)
 	if err != nil {
-		result.Status = RunActionFailed
-		if errors.Is(err, context.DeadlineExceeded) {
-			result.ReasonCode = "install_timed_out"
-			result.Message = "Install command timed out after " + s.installTimeout().String()
-			return result, nil
-		}
-		if errors.Is(err, context.Canceled) {
-			result.ReasonCode = "install_canceled"
-			result.Message = err.Error()
-			return result, nil
-		}
-		result.ReasonCode = "install_start_failed"
-		result.Message = err.Error()
-		return result, nil
+		return installActionErrorResult(result, err, s.installTimeout()), nil
 	}
 	if len(summary.Commands) == 0 {
 		probeStartedAt := s.now()
@@ -477,6 +461,19 @@ func (s Service) runInstallAction(ctx context.Context, spec ProviderSpec, result
 		}
 		result.Probe = &probe
 		if probe.Status == ProbeFailed {
+			repairStatus := s.statusForSpec(ctx, spec, s.now())
+			if repairStatus.Availability.ReasonCode == "acp_adapter_launch_failed" {
+				runtimeResolution.ReasonCode = "acp_adapter_launch_failed"
+				summary, updatedRuntime, err = s.installMissingProviderRuntime(installCtx, spec, runtimeResolution)
+				result = applyInstallerExecutionSummary(result, summary)
+				result.Probe = nil
+				if err != nil {
+					return installActionErrorResult(result, err, s.installTimeout()), nil
+				}
+				if len(summary.Commands) > 0 {
+					goto postInstallProbe
+				}
+			}
 			result.Status = RunActionFailed
 			result.ReasonCode = "post_install_probe_failed"
 			result.Message = firstNonBlank(probe.Message, probe.ReasonCode, "Agent provider runtime probe failed")
@@ -504,6 +501,7 @@ func (s Service) runInstallAction(ctx context.Context, spec ProviderSpec, result
 		return result, nil
 	}
 
+postInstallProbe:
 	probeStartedAt := s.now()
 	probe, err := s.Probe(ctx, ProbeInput{Provider: spec.Provider})
 	if err != nil {
@@ -542,6 +540,31 @@ func (s Service) runInstallAction(ctx context.Context, spec ProviderSpec, result
 	return result, nil
 }
 
+func applyInstallerExecutionSummary(result RunActionResult, summary installerExecutionSummary) RunActionResult {
+	result.Command = strings.Join(summary.Commands, " && ")
+	result.Stdout = trimActionOutput(strings.Join(summary.Stdout, "\n"))
+	result.Stderr = trimActionOutput(strings.Join(summary.Stderr, "\n"))
+	result.ExitCode = summary.ExitCode
+	return result
+}
+
+func installActionErrorResult(result RunActionResult, err error, timeout time.Duration) RunActionResult {
+	result.Status = RunActionFailed
+	if errors.Is(err, context.DeadlineExceeded) {
+		result.ReasonCode = "install_timed_out"
+		result.Message = "Install command timed out after " + timeout.String()
+		return result
+	}
+	if errors.Is(err, context.Canceled) {
+		result.ReasonCode = "install_canceled"
+		result.Message = err.Error()
+		return result
+	}
+	result.ReasonCode = "install_start_failed"
+	result.Message = err.Error()
+	return result
+}
+
 func (s Service) statusForSpec(ctx context.Context, spec ProviderSpec, now time.Time) ProviderStatus {
 	if status, ok := unsupportedProviderStatus(spec, now); ok {
 		return status
@@ -561,7 +584,7 @@ func (s Service) statusForSpec(ctx context.Context, spec ProviderSpec, now time.
 	auth := s.resolveAuth(ctx, spec, installed, runtimeResolution.CLIPath)
 	cliVersion := ""
 	if installed {
-		cliVersion = s.cliVersion(ctx, runtimeResolution.CLIPath)
+		cliVersion = s.cliVersion(ctx, runtimeResolution.CLIPath, runtimeResolution.Env)
 	}
 	codexPlatformOK := true
 	if spec.Provider == agentprovider.Codex && installed {

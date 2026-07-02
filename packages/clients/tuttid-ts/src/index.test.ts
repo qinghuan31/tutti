@@ -350,6 +350,7 @@ test("shared tuttid client lists workspace agent sessions with query params", as
 
       return new Response(
         JSON.stringify({
+          hasMore: false,
           sessions: [],
           workspaceId: "ws-1"
         }),
@@ -362,6 +363,8 @@ test("shared tuttid client lists workspace agent sessions with query params", as
   });
 
   await client.listWorkspaceAgentSessions("ws-1", {
+    cwd: "/workspace",
+    cursor: "1000|agent-session-1",
     limit: 30,
     searchQuery: "mention",
     visibleOnly: true
@@ -369,8 +372,47 @@ test("shared tuttid client lists workspace agent sessions with query params", as
 
   assert.equal(requestPath, "/v1/workspaces/ws-1/agent-sessions");
   assert.deepEqual(requestQueryEntries, {
+    cwd: "/workspace",
+    cursor: "1000|agent-session-1",
     limit: "30",
     searchQuery: "mention",
+    visibleOnly: "true"
+  });
+});
+
+test("shared tuttid client lists workspace agent session groups with query params", async () => {
+  let requestPath = "";
+  let requestQueryEntries: Record<string, string> = {};
+
+  const client = createTuttidClient({
+    fetch: async (input, init) => {
+      const request =
+        input instanceof Request ? input : new Request(input, init);
+      const url = new URL(request.url);
+      requestPath = url.pathname;
+      requestQueryEntries = Object.fromEntries(url.searchParams.entries());
+
+      return new Response(
+        JSON.stringify({
+          groups: [],
+          workspaceId: "ws-1"
+        }),
+        {
+          status: 200,
+          headers: { "content-type": "application/json" }
+        }
+      );
+    }
+  });
+
+  await client.listWorkspaceAgentSessionGroups("ws-1", {
+    sessionLimit: 5,
+    visibleOnly: true
+  });
+
+  assert.equal(requestPath, "/v1/workspaces/ws-1/agent-sessions/groups");
+  assert.deepEqual(requestQueryEntries, {
+    sessionLimit: "5",
     visibleOnly: "true"
   });
 });

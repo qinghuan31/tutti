@@ -1,16 +1,10 @@
 package agentstatus
 
 import (
-	"archive/tar"
-	"archive/zip"
-	"compress/gzip"
 	"context"
-	"crypto/sha256"
-	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
 	"log/slog"
 	"net/http"
 	"os"
@@ -296,6 +290,14 @@ func (s Service) installMissingProviderRuntime(
 }
 
 func (s Service) nextMissingInstaller(spec ProviderSpec, runtime providerRuntimeResolution) (InstallerSpec, bool, string) {
+	if strings.TrimSpace(runtime.ReasonCode) == "acp_adapter_launch_failed" {
+		if spec.AdapterInstall.Kind != "" {
+			return spec.AdapterInstall, true, "adapter"
+		}
+		if spec.Install.Kind != "" {
+			return spec.Install, true, "cli"
+		}
+	}
 	if strings.TrimSpace(runtime.CLIPath) == "" {
 		if spec.Install.Kind == "" {
 			return InstallerSpec{}, false, ""
@@ -347,7 +349,7 @@ func (s Service) providerCLIRequiresInstall(spec ProviderSpec, runtime providerR
 	if !s.codexPlatformBinaryOK(runtime.CLIPath) {
 		return true
 	}
-	return !codexVersionMeetsMinimum(s.cliVersion(context.Background(), runtime.CLIPath))
+	return !codexVersionMeetsMinimum(s.cliVersion(context.Background(), runtime.CLIPath, runtime.Env))
 }
 
 func adapterPackageRequirementSatisfied(requirement AdapterPackageRequirement, version string) bool {
@@ -391,7 +393,7 @@ func (s Service) executeInstaller(
 	case InstallerKindShellCommand:
 		result, err := s.installCommand(installCtx, InstallCommandInput{
 			Command:  spec.ShellCommand,
-			Env:      s.commandResolver().Env(nil),
+			Env:      s.shellCommandInstallerEnv(installCtx, spec),
 			OnStdout: activeActionStdoutAppender(ctx, provider),
 		})
 		if err == nil && result.ExitCode == 0 {
@@ -438,6 +440,23 @@ func (s Service) executeInstaller(
 	default:
 		return command, InstallCommandResult{ExitCode: 1, Stderr: fmt.Sprintf("unsupported installer kind %q", spec.Kind)}, nil
 	}
+}
+
+func (s Service) shellCommandInstallerEnv(ctx context.Context, spec InstallerSpec) []string {
+	resolver := s.commandResolver()
+	if !shellCommandUsesNPM(spec.ShellCommand) {
+		return resolver.Env(nil)
+	}
+	appRuntime, ok := s.resolveManagedNodeRuntimeForProvider(ctx, false)
+	if !ok {
+		return resolver.Env(nil)
+	}
+	return resolver.Env(appRuntime.EnvOverrides)
+}
+
+func shellCommandUsesNPM(command string) bool {
+	fields := strings.Fields(command)
+	return len(fields) > 0 && fields[0] == npmBinaryName()
 }
 
 func installerLockCommand(spec InstallerSpec) string {
@@ -660,132 +679,6 @@ func ensureWritableInstallDir(dir string) error {
 	closeErr := file.Close()
 	removeErr := os.Remove(path)
 	return errors.Join(closeErr, removeErr)
-}
-
-func extractReleaseBinary(archivePath string, binaryName string, destinationPath string) error {
-	switch {
-	case strings.HasSuffix(archivePath, ".tar.gz"):
-		return extractReleaseBinaryFromTarGz(archivePath, binaryName, destinationPath)
-	case strings.HasSuffix(archivePath, ".zip"):
-		return extractReleaseBinaryFromZip(archivePath, binaryName, destinationPath)
-	default:
-		return fmt.Errorf("unsupported release archive format: %s", archivePath)
-	}
-}
-
-func extractReleaseBinaryFromTarGz(archivePath string, binaryName string, destinationPath string) error {
-	file, err := os.Open(archivePath)
-	if err != nil {
-		return fmt.Errorf("open release archive: %w", err)
-	}
-	defer func() {
-		_ = file.Close()
-	}()
-	gzipReader, err := gzip.NewReader(file)
-	if err != nil {
-		return fmt.Errorf("open gzip release archive: %w", err)
-	}
-	defer func() {
-		_ = gzipReader.Close()
-	}()
-	reader := tar.NewReader(gzipReader)
-	for {
-		header, err := reader.Next()
-		if errors.Is(err, io.EOF) {
-			break
-		}
-		if err != nil {
-			return fmt.Errorf("read tar release archive: %w", err)
-		}
-		if header == nil || header.FileInfo().IsDir() {
-			continue
-		}
-		if filepath.Base(header.Name) != binaryName {
-			continue
-		}
-		return writeReleaseBinary(destinationPath, reader, header.FileInfo().Mode())
-	}
-	return fmt.Errorf("release archive does not contain %s", binaryName)
-}
-
-func extractReleaseBinaryFromZip(archivePath string, binaryName string, destinationPath string) error {
-	reader, err := zip.OpenReader(archivePath)
-	if err != nil {
-		return fmt.Errorf("open zip release archive: %w", err)
-	}
-	defer func() {
-		_ = reader.Close()
-	}()
-	for _, file := range reader.File {
-		if file == nil || file.FileInfo().IsDir() {
-			continue
-		}
-		if filepath.Base(file.Name) != binaryName {
-			continue
-		}
-		content, err := file.Open()
-		if err != nil {
-			return fmt.Errorf("open zipped release binary %s: %w", binaryName, err)
-		}
-		err = writeReleaseBinary(destinationPath, content, file.Mode())
-		closeErr := content.Close()
-		return errors.Join(err, closeErr)
-	}
-	return fmt.Errorf("release archive does not contain %s", binaryName)
-}
-
-func writeReleaseBinary(destinationPath string, content io.Reader, mode os.FileMode) error {
-	if err := os.MkdirAll(filepath.Dir(destinationPath), 0o755); err != nil {
-		return fmt.Errorf("create release binary parent: %w", err)
-	}
-	target, err := os.OpenFile(destinationPath, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0o755)
-	if err != nil {
-		return fmt.Errorf("create release binary destination: %w", err)
-	}
-	_, copyErr := io.Copy(target, content)
-	closeErr := target.Close()
-	if mode != 0 {
-		mode = mode.Perm()
-		if mode == 0 {
-			mode = 0o755
-		}
-		if chmodErr := os.Chmod(destinationPath, mode); chmodErr != nil {
-			return errors.Join(copyErr, closeErr, chmodErr)
-		}
-	}
-	return errors.Join(copyErr, closeErr)
-}
-
-func fileSHA256(path string) (string, error) {
-	file, err := os.Open(path)
-	if err != nil {
-		return "", fmt.Errorf("open file for sha256: %w", err)
-	}
-	defer func() {
-		_ = file.Close()
-	}()
-	hash := sha256.New()
-	if _, err := io.Copy(hash, file); err != nil {
-		return "", fmt.Errorf("compute file sha256: %w", err)
-	}
-	return hex.EncodeToString(hash.Sum(nil)), nil
-}
-
-func normalizeSHA256(value string) string {
-	value = strings.TrimSpace(value)
-	value = strings.TrimPrefix(strings.ToLower(value), "sha256:")
-	return value
-}
-
-func archiveSuffix(url string) string {
-	switch {
-	case strings.HasSuffix(url, ".tar.gz"):
-		return ".tar.gz"
-	case strings.HasSuffix(url, ".zip"):
-		return ".zip"
-	default:
-		return ""
-	}
 }
 
 func (s Service) httpClient() *http.Client {

@@ -161,6 +161,60 @@ export class WorkspaceAgentActivityService implements IWorkspaceAgentActivitySer
     );
   }
 
+  async listSessionGroups(
+    input: Parameters<IWorkspaceAgentActivityService["listSessionGroups"]>[0]
+  ): ReturnType<IWorkspaceAgentActivityService["listSessionGroups"]> {
+    return this.dependencies.tuttidClient.listWorkspaceAgentSessionGroups(
+      normalizeWorkspaceId(input.workspaceId),
+      {
+        sessionLimit: input.sessionLimit,
+        visibleOnly: input.visibleOnly ?? true
+      }
+    );
+  }
+
+  async listSessionsPage(
+    input: Parameters<IWorkspaceAgentActivityService["listSessionsPage"]>[0]
+  ): ReturnType<IWorkspaceAgentActivityService["listSessionsPage"]> {
+    return this.dependencies.tuttidClient.listWorkspaceAgentSessions(
+      normalizeWorkspaceId(input.workspaceId),
+      {
+        cursor: input.cursor,
+        cwd: input.cwd,
+        limit: input.limit,
+        visibleOnly: input.visibleOnly ?? true
+      }
+    );
+  }
+
+  async searchSessions(
+    input: Parameters<IWorkspaceAgentActivityService["searchSessions"]>[0]
+  ): ReturnType<IWorkspaceAgentActivityService["searchSessions"]> {
+    const workspaceId = normalizeWorkspaceId(input.workspaceId);
+    const query = input.query.trim();
+    if (!query) {
+      return { hasMore: false, sessions: [], workspaceId };
+    }
+    const response =
+      await this.dependencies.tuttidClient.listWorkspaceAgentSessions(
+        workspaceId,
+        {
+          limit: input.limit ?? 100,
+          cursor: input.cursor,
+          searchQuery: query,
+          visibleOnly: true
+        }
+      );
+    return {
+      hasMore: response.hasMore,
+      nextCursor: response.nextCursor,
+      sessions: response.sessions.map((session) =>
+        agentActivitySessionFromTuttidSession(workspaceId, session)
+      ),
+      workspaceId: response.workspaceId
+    };
+  }
+
   async scanExternalSessionImports(
     workspaceId: string,
     request?: Parameters<

@@ -75,6 +75,8 @@ type stubAgentSessionService struct {
 	importExternalFn                func(context.Context, string, agentservice.ExternalImportInput) (agentservice.ExternalImportResult, error)
 	validImportPathsFn              func(context.Context, agentservice.ExternalImportInput) ([]string, error)
 	listFn                          func(context.Context, string, agentservice.ListSessionsInput) ([]agentservice.Session, error)
+	listPageFn                      func(context.Context, string, agentservice.ListSessionsInput) (agentservice.SessionListPage, error)
+	listGroupsFn                    func(context.Context, string, agentservice.ListSessionGroupsInput) ([]agentservice.SessionGroup, error)
 	listGeneratedFilesFn            func(context.Context, string, agentservice.ListGeneratedFilesInput) (agentservice.GeneratedFileList, error)
 	listMessagesFn                  func(context.Context, string, string, agentservice.ListMessagesInput) (agentservice.SessionMessagesPage, error)
 	readAttachmentFn                func(context.Context, string, string, string) (agentservice.PromptAttachment, error)
@@ -203,6 +205,24 @@ func (s stubAgentSessionService) ListFiltered(ctx context.Context, workspaceID s
 		return nil, nil
 	}
 	return s.listFn(ctx, workspaceID, input)
+}
+
+func (s stubAgentSessionService) ListPage(ctx context.Context, workspaceID string, input agentservice.ListSessionsInput) (agentservice.SessionListPage, error) {
+	if s.listPageFn != nil {
+		return s.listPageFn(ctx, workspaceID, input)
+	}
+	if s.listFn == nil {
+		return agentservice.SessionListPage{}, nil
+	}
+	sessions, err := s.listFn(ctx, workspaceID, input)
+	return agentservice.SessionListPage{Sessions: sessions}, err
+}
+
+func (s stubAgentSessionService) ListGroups(ctx context.Context, workspaceID string, input agentservice.ListSessionGroupsInput) ([]agentservice.SessionGroup, error) {
+	if s.listGroupsFn == nil {
+		return nil, nil
+	}
+	return s.listGroupsFn(ctx, workspaceID, input)
 }
 
 func (s stubAgentSessionService) Clear(ctx context.Context, workspaceID string) (agentservice.ClearSessionsResult, error) {
@@ -630,20 +650,66 @@ func TestDaemonAPIGeneratedRoutesListAgentSessionsForwardsQuery(t *testing.T) {
 	mux := http.NewServeMux()
 	RegisterRoutes(mux, NewRoutes(DaemonAPI{
 		AgentSessionService: stubAgentSessionService{
-			listFn: func(_ context.Context, workspaceID string, input agentservice.ListSessionsInput) ([]agentservice.Session, error) {
+			listPageFn: func(_ context.Context, workspaceID string, input agentservice.ListSessionsInput) (agentservice.SessionListPage, error) {
 				if workspaceID != "ws-1" {
 					t.Fatalf("workspaceID = %q, want ws-1", workspaceID)
 				}
-				if input.SearchQuery != "mention" || input.Limit != 30 || !input.VisibleOnly {
-					t.Fatalf("list input = %#v, want searchQuery=mention limit=30 visibleOnly=true", input)
+				if input.CWD == nil || *input.CWD != "/workspace" || input.Cursor != "1000|agent-session-0" || input.SearchQuery != "mention" || input.Limit != 30 || !input.VisibleOnly {
+					t.Fatalf("list input = %#v, want cwd/cursor/searchQuery/limit/visibleOnly", input)
 				}
-				return []agentservice.Session{{
-					ID:        "agent-session-1",
-					Provider:  "codex",
-					Cwd:       "/workspace",
-					Status:    "working",
-					Visible:   true,
-					CreatedAt: time.UnixMilli(1000),
+				return agentservice.SessionListPage{
+					HasMore:    true,
+					NextCursor: "1000|agent-session-1",
+					Sessions: []agentservice.Session{{
+						ID:        "agent-session-1",
+						Provider:  "codex",
+						Cwd:       "/workspace",
+						Status:    "working",
+						Visible:   true,
+						CreatedAt: time.UnixMilli(1000),
+					}},
+				}, nil
+			},
+		},
+	}))
+
+	recorder := performGeneratedRouteRequest(
+		t,
+		mux,
+		http.MethodGet,
+		"/v1/workspaces/ws-1/agent-sessions?cwd=/workspace&cursor=1000%7Cagent-session-0&searchQuery=mention&limit=30&visibleOnly=true",
+		nil,
+	)
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d; body: %s", recorder.Code, http.StatusOK, recorder.Body.String())
+	}
+}
+
+func TestDaemonAPIGeneratedRoutesListAgentSessionGroupsForwardsQuery(t *testing.T) {
+	mux := http.NewServeMux()
+	RegisterRoutes(mux, NewRoutes(DaemonAPI{
+		AgentSessionService: stubAgentSessionService{
+			listGroupsFn: func(_ context.Context, workspaceID string, input agentservice.ListSessionGroupsInput) ([]agentservice.SessionGroup, error) {
+				if workspaceID != "ws-1" {
+					t.Fatalf("workspaceID = %q, want ws-1", workspaceID)
+				}
+				if input.SessionLimit != 5 || !input.VisibleOnly {
+					t.Fatalf("input = %#v, want sessionLimit=5 visibleOnly=true", input)
+				}
+				return []agentservice.SessionGroup{{
+					CWD:                          "/workspace",
+					HasMore:                      true,
+					LatestSessionUpdatedAtUnixMS: 2000,
+					NextCursor:                   "1000|agent-session-1",
+					SessionCount:                 2,
+					Sessions: []agentservice.Session{{
+						ID:        "agent-session-1",
+						Provider:  "codex",
+						Cwd:       "/workspace",
+						Status:    "working",
+						Visible:   true,
+						CreatedAt: time.UnixMilli(1000),
+					}},
 				}}, nil
 			},
 		},
@@ -653,7 +719,7 @@ func TestDaemonAPIGeneratedRoutesListAgentSessionsForwardsQuery(t *testing.T) {
 		t,
 		mux,
 		http.MethodGet,
-		"/v1/workspaces/ws-1/agent-sessions?searchQuery=mention&limit=30&visibleOnly=true",
+		"/v1/workspaces/ws-1/agent-sessions/groups?sessionLimit=5&visibleOnly=true",
 		nil,
 	)
 	if recorder.Code != http.StatusOK {

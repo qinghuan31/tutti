@@ -5,10 +5,13 @@ import (
 	"errors"
 	"io"
 	"net/http"
+	"os"
 	"path/filepath"
 	"slices"
 	"strings"
 	"testing"
+
+	managedruntime "github.com/tutti-os/tutti/services/tuttid/service/managedruntime"
 )
 
 func TestAgentNPMRegistriesDefaultsToOfficialFirstThenMirrors(t *testing.T) {
@@ -223,6 +226,24 @@ func TestRunCodexCLILatestInstallerPinsDedicatedCache(t *testing.T) {
 	}
 	if gotCache == "" || filepath.Base(gotCache) != agentNPMCacheDirName {
 		t.Fatalf("npm_config_cache = %q, want a dedicated cache dir (must not depend on global ~/.npm)", gotCache)
+	}
+}
+
+func TestShellCommandNPMInstallerEnvPrefersManagedRuntime(t *testing.T) {
+	runtimeRoot := fakeManagedRuntimeRoot(t)
+	managedNodeBin := filepath.Join(runtimeRoot, "node", "bin")
+	service := Service{
+		ManagedRuntime: fakeManagedRuntimeResolver(t, runtimeRoot),
+		Environ:        func() []string { return []string{"PATH=/usr/bin:/bin"} },
+	}
+
+	env := service.shellCommandInstallerEnv(context.Background(), InstallerSpec{
+		Kind:         InstallerKindShellCommand,
+		ShellCommand: "npm install -g openclaw",
+	})
+	path := managedruntime.EnvValue(env, "PATH")
+	if !strings.HasPrefix(path, managedNodeBin+string(os.PathListSeparator)) {
+		t.Fatalf("PATH = %q, want managed node bin first", path)
 	}
 }
 

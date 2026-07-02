@@ -95,7 +95,7 @@ func (a *CodexAppServerAdapter) execReviewSlashCommand(
 		// configured with model_reasoning_summary=none (for example spark).
 		"summary": appServerReviewReasoningSummary(),
 	}
-	result, err := appSession.client.Call(ctx, appServerMethodReviewStart, params,
+	result, err := appSession.client.ReviewStart(ctx, params,
 		a.appServerMessageHandler(appSession, session, turnID, normalizer, emitEvents, emitCommands))
 	if err != nil {
 		if errors.Is(err, context.Canceled) || errors.Is(err, errPermissionRequestCanceled) {

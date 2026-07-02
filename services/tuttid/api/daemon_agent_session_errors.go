@@ -23,6 +23,24 @@ func writeListWorkspaceAgentSessionsError(err error) tuttigenerated.ListWorkspac
 	}
 }
 
+func writeListWorkspaceAgentSessionGroupsError(err error) tuttigenerated.ListWorkspaceAgentSessionGroupsResponseObject {
+	protocolErr := apierrors.Classify(err)
+	switch protocolErr.Code {
+	case tuttigenerated.WorkspaceNotFound:
+		return tuttigenerated.ListWorkspaceAgentSessionGroups404JSONResponse{
+			WorkspaceNotFoundErrorJSONResponse: workspaceNotFoundError(protocolErr),
+		}
+	case tuttigenerated.InvalidRequest:
+		return tuttigenerated.ListWorkspaceAgentSessionGroups400JSONResponse{
+			InvalidRequestErrorJSONResponse: invalidRequestError(protocolErr),
+		}
+	default:
+		return tuttigenerated.ListWorkspaceAgentSessionGroups502JSONResponse{
+			WorkspaceOperationErrorJSONResponse: workspaceOperationError(protocolErr),
+		}
+	}
+}
+
 func writeClearWorkspaceAgentSessionsError(err error) tuttigenerated.ClearWorkspaceAgentSessionsResponseObject {
 	protocolErr := apierrors.Classify(err)
 	switch protocolErr.Code {

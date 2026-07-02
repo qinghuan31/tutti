@@ -793,7 +793,7 @@ aside.workspace-agents-status-panel
   display: flex;
   flex: 1 1 auto;
   flex-direction: column;
-  gap: 12px;
+  gap: 8px;
   min-height: 0;
 }
 
@@ -1015,7 +1015,7 @@ aside.workspace-agents-status-panel
 
 .workspace-agents-status-panel__skeleton-line--title {
   width: 82%;
-  height: 16px;
+  height: 18px;
 }
 
 .workspace-agents-status-panel__skeleton-line--summary {
@@ -1991,6 +1991,122 @@ aside.workspace-agents-status-panel
   color: var(--text-tertiary);
 }
 
+.workspace-agents-status-panel__detail-subagents {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  width: 100%;
+  min-width: 0;
+}
+
+.workspace-agents-status-panel__detail-subagent-card {
+  min-width: 0;
+  border: 1px solid color-mix(in srgb, var(--text-tertiary) 24%, transparent);
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--text-tertiary) 5%, transparent);
+  overflow: hidden;
+}
+
+.workspace-agents-status-panel__detail-subagent-header {
+  display: grid;
+  grid-template-columns: 12px 8px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 7px;
+  min-width: 0;
+  padding: 8px 9px;
+  cursor: pointer;
+  list-style: none;
+  font-size: 11px;
+  line-height: 1.45;
+}
+
+.workspace-agents-status-panel__detail-subagent-header::-webkit-details-marker {
+  display: none;
+}
+
+.workspace-agents-status-panel__detail-subagent-chevron {
+  width: 6px;
+  height: 6px;
+  border-right: 1.5px solid var(--text-tertiary);
+  border-bottom: 1.5px solid var(--text-tertiary);
+  transform: rotate(-45deg);
+  transition: transform 120ms ease;
+}
+
+.workspace-agents-status-panel__detail-subagent-card[open]
+  .workspace-agents-status-panel__detail-subagent-chevron {
+  transform: rotate(45deg);
+}
+
+.workspace-agents-status-panel__detail-subagent-status {
+  flex: none;
+  align-self: center;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--text-tertiary);
+}
+
+.workspace-agents-status-panel__detail-subagent-status--running {
+  background: var(--state-success, #22c55e);
+  animation: workspace-agents-subagent-pulse 1.6s ease-in-out infinite;
+}
+
+.workspace-agents-status-panel__detail-subagent-status--completed {
+  background: var(--state-success, #22c55e);
+}
+
+.workspace-agents-status-panel__detail-subagent-status--failed {
+  background: var(--state-danger);
+}
+
+.workspace-agents-status-panel__detail-subagent-status--canceled {
+  background: var(--text-tertiary);
+}
+
+.workspace-agents-status-panel__detail-subagent-title {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--text-primary);
+  font-weight: 650;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.workspace-agents-status-panel__detail-subagent-meta {
+  flex: none;
+  color: var(--text-tertiary);
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.workspace-agents-status-panel__detail-subagent-body {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  min-width: 0;
+  padding: 0 9px 9px 27px;
+}
+
+.workspace-agents-status-panel__detail-subagent-activity {
+  min-width: 0;
+  color: var(--text-tertiary);
+  font-size: 11px;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+
+@keyframes workspace-agents-subagent-pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+
+  50% {
+    opacity: 0.35;
+  }
+}
+
 .workspace-agents-status-panel__detail-tool-bullets {
   display: flex;
   flex-direction: column;
@@ -2462,8 +2578,8 @@ aside.workspace-agents-status-panel
 .agent-gui-node__empty-hero-body
   > .agent-gui-chrome__session-chrome
   > .agent-gui-chrome__card {
-  margin-right: 24px;
-  margin-left: 24px;
+  margin-right: 12px;
+  margin-left: 12px;
 }
 
 .agent-gui-node__empty-hero-body
@@ -2526,7 +2642,7 @@ aside.workspace-agents-status-panel
   gap: 8px;
   border: 1px solid var(--agent-gui-border-subtle, var(--line-2));
   border-radius: 12px;
-  padding: 16px;
+  padding: 12px;
   background: var(--agent-gui-surface-strong, var(--background-panel));
 }
 
@@ -2539,24 +2655,19 @@ aside.workspace-agents-status-panel
   animation: agent-gui-chrome-card-enter 260ms
     var(--agent-gui-chrome-card-spring);
   box-sizing: border-box;
-  height: var(--agent-gui-chrome-card-collapsed-height, 36px);
+  height: auto;
+  min-height: 36px;
   overflow: hidden;
   transform: translateY(0) scaleY(1);
   transform-origin: bottom center;
   transition:
-    height 300ms var(--agent-gui-chrome-card-spring),
-    padding-top 260ms var(--agent-gui-chrome-card-spring),
-    padding-bottom 260ms var(--agent-gui-chrome-card-spring),
     border-radius 220ms cubic-bezier(0.16, 1, 0.3, 1),
     transform 280ms var(--agent-gui-chrome-card-spring);
-  will-change: height, transform;
+  will-change: transform;
 }
 
 @keyframes agent-gui-chrome-card-enter {
   from {
-    height: 0;
-    padding-top: 0;
-    padding-bottom: 0;
     opacity: 0;
     transform: translateY(6px) scaleY(0.96);
   }
@@ -2579,28 +2690,13 @@ aside.workspace-agents-status-panel
   grid-template-columns: minmax(0, 1fr) auto;
   align-items: center;
   min-height: 36px;
-  padding: 4px 16px;
-  cursor: pointer;
-}
-
-.agent-gui-chrome__card--warning .agent-gui-chrome__icon,
-.agent-gui-chrome__card--warning .agent-gui-chrome__message,
-.agent-gui-chrome__card--warning .agent-gui-chrome__expand-cue {
-  color: var(--agent-gui-warning, var(--cove-label-orange));
-}
-
-.agent-gui-chrome__card[data-expandable="false"] {
+  padding: 6px 16px;
   cursor: default;
 }
 
-.agent-gui-chrome__card--warning[data-expanded="true"],
-.agent-gui-chrome__card--danger[data-expanded="true"],
-.agent-gui-chrome__card--muted[data-expanded="true"],
-.agent-gui-chrome__card--connecting[data-expanded="true"] {
-  height: var(--agent-gui-chrome-card-expanded-height, 220px);
-  align-items: start;
-  padding-top: 8px;
-  padding-bottom: 8px;
+.agent-gui-chrome__card--warning .agent-gui-chrome__icon,
+.agent-gui-chrome__card--warning .agent-gui-chrome__message {
+  color: var(--agent-gui-warning, var(--cove-label-orange));
 }
 
 .agent-gui-chrome__card--warning .agent-gui-chrome__actions button,
@@ -2641,9 +2737,9 @@ aside.workspace-agents-status-panel
   border-bottom-left-radius: 0;
   align-items: center;
   min-height: 36px;
-  padding: 4px 16px;
+  padding: 6px 16px;
   background: var(--transparency-block);
-  cursor: pointer;
+  cursor: default;
 }
 
 .agent-gui-chrome__card--connecting {
@@ -2656,8 +2752,8 @@ aside.workspace-agents-status-panel
   color: var(--accent);
   align-items: center;
   min-height: 36px;
-  padding: 4px 16px;
-  cursor: pointer;
+  padding: 6px 16px;
+  cursor: default;
   background:
     linear-gradient(
       color-mix(in srgb, var(--accent) 8%, transparent),
@@ -2692,21 +2788,16 @@ aside.workspace-agents-status-panel
   grid-template-columns: minmax(0, 1fr) auto;
   align-items: center;
   min-height: 36px;
-  padding: 4px 16px;
-  cursor: pointer;
+  padding: 6px 16px;
+  cursor: default;
 }
 
 .agent-gui-chrome__card[data-has-inline-actions="true"] {
   padding-right: 4px;
 }
 
-.agent-gui-chrome__card[data-has-inline-actions="true"][data-expanded="true"] {
-  padding-right: 4px;
-}
-
 .agent-gui-chrome__card--danger .agent-gui-chrome__icon,
-.agent-gui-chrome__card--danger .agent-gui-chrome__message,
-.agent-gui-chrome__card--danger .agent-gui-chrome__expand-cue {
+.agent-gui-chrome__card--danger .agent-gui-chrome__message {
   color: var(--status-danger, var(--state-danger));
 }
 
@@ -2743,41 +2834,6 @@ aside.workspace-agents-status-panel
   color: currentColor;
 }
 
-.agent-gui-chrome__expand-cue {
-  flex: 0 0 auto;
-  width: 16px;
-  height: 16px;
-  color: currentColor;
-  opacity: 0;
-  transform: translateY(1px) rotate(-90deg);
-  transform-origin: center;
-  transition:
-    opacity 120ms ease,
-    transform 260ms
-      var(--agent-gui-chrome-card-spring, cubic-bezier(0.22, 1.18, 0.36, 1));
-  will-change: transform;
-}
-
-.agent-gui-chrome__expand-cue[data-visible="false"] {
-  visibility: hidden;
-}
-
-.agent-gui-chrome__card[data-expandable="true"]:hover
-  .agent-gui-chrome__expand-cue[data-visible="true"],
-.agent-gui-chrome__card[data-expandable="true"]:focus-visible
-  .agent-gui-chrome__expand-cue[data-visible="true"],
-.agent-gui-chrome__card[data-expandable="true"]:focus-within
-  .agent-gui-chrome__expand-cue[data-visible="true"],
-.agent-gui-chrome__card[data-expanded="true"]
-  .agent-gui-chrome__expand-cue[data-visible="true"] {
-  opacity: 1;
-}
-
-.agent-gui-chrome__card[data-expanded="true"]
-  .agent-gui-chrome__expand-cue[data-visible="true"] {
-  transform: translateY(1px) rotate(0deg);
-}
-
 .agent-gui-chrome__title {
   color: var(--agent-gui-text-secondary, var(--text-secondary));
   font-size: 13px;
@@ -2795,6 +2851,31 @@ aside.workspace-agents-status-panel
   color: var(--agent-gui-text-secondary, var(--text-secondary));
   font-size: 13px;
   line-height: 20px;
+}
+
+.agent-gui-chrome__card--warning
+  .agent-gui-chrome__message:not(.agent-gui-chrome__notice-message),
+.agent-gui-chrome__card--danger
+  .agent-gui-chrome__message:not(.agent-gui-chrome__notice-message),
+.agent-gui-chrome__card--muted
+  .agent-gui-chrome__message:not(.agent-gui-chrome__notice-message),
+.agent-gui-chrome__card--connecting
+  .agent-gui-chrome__message:not(.agent-gui-chrome__notice-message) {
+  display: -webkit-box;
+  overflow: hidden;
+  text-overflow: clip;
+  white-space: normal;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
+.agent-gui-chrome__message-tooltip {
+  max-width: min(560px, calc(100vw - 32px));
+  max-height: min(40vh, 260px);
+  overflow: auto;
+  overflow-wrap: anywhere;
+  text-align: left;
+  white-space: pre-wrap;
 }
 
 .agent-gui-chrome__notice-message {
@@ -2845,12 +2926,6 @@ aside.workspace-agents-status-panel
 
 .agent-gui-chrome__inline-actions button {
   flex: 0 0 auto;
-}
-
-.agent-gui-chrome__card[data-expanded="true"] .agent-gui-chrome__message {
-  overflow: visible;
-  text-overflow: clip;
-  white-space: normal;
 }
 
 .agent-gui-chrome__actions,
@@ -3390,6 +3465,21 @@ aside.workspace-agents-status-panel
 .agent-gui-conversation__user-message-flow
   > .agent-gui-conversation__message-group {
   justify-items: end;
+}
+
+.agent-gui-conversation__user-image-grid {
+  display: grid;
+  gap: 8px;
+  justify-self: end;
+}
+
+.agent-gui-conversation__user-image-thumbnail {
+  box-sizing: border-box;
+  max-height: 80px;
+  min-width: 0;
+  overflow: hidden;
+  border: 1px solid var(--line-2);
+  border-radius: 8px;
 }
 
 .agent-gui-conversation__assistant-message-flow {
@@ -5236,7 +5326,7 @@ button.agent-gui-node__conversation-section-toggle:hover
 }
 
 .agent-gui-node__conversation-list-skeleton-rib {
-  height: 8px;
+  height: 12px;
   transform-origin: left center;
 }
 
@@ -5677,6 +5767,9 @@ button.agent-gui-node__conversation-section-toggle:hover
 }
 
 .agent-gui-node__timeline {
+  --agent-gui-message-locator-inline-offset: var(--agent-gui-detail-padding-x);
+
+  position: relative;
   display: grid;
   flex: 1 1 auto;
   align-content: start;
@@ -5696,6 +5789,211 @@ button.agent-gui-node__conversation-section-toggle:hover
   width: 100%;
   min-width: 0;
   transform-origin: top center;
+}
+
+.agent-gui-message-locator {
+  --agent-message-locator-dot-size: 6px;
+  --agent-message-locator-hit-size: 18px;
+  --agent-message-locator-center-offset: 10px;
+  --agent-message-locator-visible-height: 100vh;
+
+  position: sticky;
+  top: max(
+    0px,
+    calc(
+      (
+          var(--agent-message-locator-visible-height) -
+            var(--agent-message-locator-height)
+        ) /
+        2
+    )
+  );
+  right: 0;
+  z-index: 7;
+  justify-self: stretch;
+  width: calc(100% + var(--agent-gui-message-locator-inline-offset));
+  height: var(--agent-message-locator-height);
+  margin-right: calc(-1 * var(--agent-gui-message-locator-inline-offset));
+  margin-bottom: calc(-1 * var(--agent-message-locator-height));
+  pointer-events: none;
+}
+
+.agent-gui-message-locator::before {
+  position: absolute;
+  top: 0;
+  right: calc(
+    var(--agent-message-locator-center-offset) -
+      var(--agent-message-locator-hit-size) / 2
+  );
+  width: var(--agent-message-locator-hit-size);
+  height: 100%;
+  content: "";
+  pointer-events: auto;
+}
+
+.agent-gui-message-locator__track-segment {
+  position: absolute;
+  top: var(--agent-message-locator-segment-position);
+  right: var(--agent-message-locator-center-offset);
+  width: 1px;
+  height: 8px;
+  transform: translateX(50%);
+  background: color-mix(
+    in srgb,
+    var(--line-2, var(--tutti-line-2)) 82%,
+    transparent
+  );
+}
+
+.agent-gui-message-locator__tick {
+  position: absolute;
+  top: var(--agent-message-locator-position);
+  right: calc(
+    var(--agent-message-locator-center-offset) -
+      var(--agent-message-locator-hit-size) / 2
+  );
+  display: grid;
+  width: var(--agent-message-locator-hit-size);
+  height: var(--agent-message-locator-hit-size);
+  padding: 0;
+  border: 0;
+  place-items: center;
+  background: transparent;
+  color: inherit;
+  transform: translateY(-50%);
+  cursor: pointer;
+  pointer-events: auto;
+}
+
+.agent-gui-message-locator__dot {
+  box-sizing: border-box;
+  width: var(--agent-message-locator-dot-size);
+  height: var(--agent-message-locator-dot-size);
+  border: 0 solid transparent;
+  border-radius: 999px;
+  background: color-mix(
+    in srgb,
+    var(--text-tertiary, var(--tutti-text-tertiary)) 62%,
+    transparent
+  );
+  transition:
+    background 140ms ease,
+    border-color 140ms ease,
+    transform 140ms ease;
+}
+
+.agent-gui-message-locator__tick:hover .agent-gui-message-locator__dot,
+.agent-gui-message-locator__tick:focus-visible .agent-gui-message-locator__dot,
+.agent-gui-message-locator__tick[data-selected="true"]
+  .agent-gui-message-locator__dot {
+  transform: scale(1.6667);
+}
+
+.agent-gui-message-locator__tick[data-selected="true"]
+  .agent-gui-message-locator__dot {
+  border-width: 2px;
+  border-color: var(--text-secondary, var(--tutti-text-secondary));
+  background: transparent;
+}
+
+.agent-gui-message-locator__tick:hover .agent-gui-message-locator__dot,
+.agent-gui-message-locator__tick:focus-visible .agent-gui-message-locator__dot {
+  border-width: 2px;
+  border-color: var(--text-primary, var(--tutti-text-primary));
+  background: transparent;
+}
+
+.agent-gui-message-locator__tick[data-unread-agent-response="true"]
+  .agent-gui-message-locator__dot {
+  background: var(--tutti-purple);
+}
+
+.agent-gui-message-locator__tick[data-unread-agent-response="true"]:hover
+  .agent-gui-message-locator__dot,
+.agent-gui-message-locator__tick[data-unread-agent-response="true"]:focus-visible
+  .agent-gui-message-locator__dot {
+  border-width: 2px;
+  border-color: var(--tutti-purple);
+  background: transparent;
+}
+
+.agent-gui-message-locator__panel {
+  position: absolute;
+  top: 50%;
+  right: 22px;
+  display: grid;
+  width: min(360px, calc(100vw - 112px));
+  max-width: max-content;
+  gap: 12px;
+  padding: 16px;
+  border: 1px solid
+    color-mix(in srgb, var(--line-2, var(--tutti-line-2)) 72%, transparent);
+  border-radius: 8px;
+  background: var(
+    --background-fronted,
+    var(--surface-1, var(--tutti-surface-1))
+  );
+  box-shadow: var(--shadow-panel);
+  color: var(--text-primary, var(--tutti-text-primary));
+  opacity: 0;
+  transform: translateY(-50%) translateX(4px);
+  transition:
+    opacity 140ms ease,
+    transform 140ms ease;
+  pointer-events: none;
+}
+
+.agent-gui-message-locator__panel[data-open="true"] {
+  opacity: 1;
+  transform: translateY(-50%) translateX(0);
+  pointer-events: auto;
+}
+
+.agent-gui-message-locator__panel-item {
+  display: block;
+  min-width: 0;
+  max-width: 100%;
+  padding: 0;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text-tertiary, var(--tutti-text-tertiary));
+  text-align: left;
+  cursor: pointer;
+  transition: color 160ms ease;
+}
+
+.agent-gui-message-locator__panel-item:hover,
+.agent-gui-message-locator__panel-item:focus-visible {
+  background: color-mix(
+    in srgb,
+    var(--surface-2, var(--tutti-surface-2)) 86%,
+    transparent
+  );
+  outline: none;
+}
+
+.agent-gui-message-locator__panel-item[data-active="true"] {
+  color: var(--text-primary, var(--tutti-text-primary));
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .agent-gui-message-locator__panel,
+  .agent-gui-message-locator__panel-item {
+    transition: none;
+  }
+}
+
+.agent-gui-message-locator__panel-item-text {
+  display: block;
+  overflow: hidden;
+  max-width: 100%;
+  text-align: left;
+  font-size: 13px;
+  font-weight: 520;
+  line-height: 1.35;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .agent-gui-transcript-virtual {
@@ -5748,6 +6046,8 @@ button.agent-gui-node__conversation-section-toggle:hover
 }
 
 .workspace-agents-status-panel__conversation-timeline.agent-gui-node__timeline {
+  --agent-gui-message-locator-inline-offset: 28px;
+
   padding-right: 28px;
   padding-left: 28px;
 }
@@ -8145,4 +8445,83 @@ html[data-theme="light"] [data-message-center-item-id].agent-gui-edge-glow {
 
 [data-workspace-app-icon="true"] > .tsh-agent-object-token__kind-icon {
   display: block;
+}
+
+.workspace-agents-status-panel__detail-subagent-log {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.workspace-agents-status-panel__detail-subagent-log-entry {
+  color: var(--tutti-text-muted, rgba(0, 0, 0, 0.55));
+  font-size: 12px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.workspace-agents-status-panel__detail-subagent-log-entry--latest {
+  color: var(--tutti-text-primary, rgba(0, 0, 0, 0.85));
+}
+
+.workspace-agents-status-panel__detail-subagent-log-entry--tool {
+  font-family: var(--tutti-font-mono, ui-monospace, monospace);
+}
+
+.workspace-agents-status-panel__detail-subagent-log-entry--failure {
+  color: var(--tutti-status-danger, #c0392b);
+}
+
+.workspace-agents-status-panel__detail-subagent-log-omitted {
+  color: var(--tutti-text-muted, rgba(0, 0, 0, 0.45));
+  font-size: 11px;
+  font-style: italic;
+}
+
+.workspace-agents-status-panel__detail-subagent-activity--failure {
+  color: var(--tutti-status-danger, #c0392b);
+}
+
+.workspace-agents-status-panel__detail-subagent-name {
+  color: var(--tutti-text-primary, rgba(0, 0, 0, 0.85));
+  margin-left: 4px;
+}
+
+.workspace-agents-status-panel__detail-tool-row--subagent
+  .workspace-agents-status-panel__detail-subagent-status {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+}
+
+/* Sub-agent body indents like an expanded tool (24px under the icon column) */
+.workspace-agents-status-panel__detail-subagent-reveal {
+  box-sizing: border-box;
+  padding-left: 24px;
+}
+
+/* Bash-block-style sub-agent body: task strip on top, progress below */
+.workspace-agents-status-panel__detail-subagent-terminal {
+  overflow: hidden;
+  border: 1px solid var(--line-2);
+  border-radius: 8px;
+  background: var(--background-panel);
+}
+
+.workspace-agents-status-panel__detail-subagent-task-strip {
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--line-2);
+  color: var(--text-secondary);
+  font-size: 11px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.workspace-agents-status-panel__detail-subagent-activity--in-terminal {
+  padding: 8px 12px;
+  font-size: 11px;
+  line-height: 1.5;
 }

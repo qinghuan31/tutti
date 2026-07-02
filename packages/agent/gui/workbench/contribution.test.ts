@@ -9,6 +9,7 @@ import {
   AGENT_GUI_WORKBENCH_NEW_CONVERSATION_EVENT,
   agentGuiWorkbenchDefaultCopy,
   buildAgentGuiDockEntries,
+  agentGuiWorkbenchNewWindowCascadeOffset,
   createAgentGuiWorkbenchContribution,
   resolveAgentGuiWorkbenchDefaultLaunchFrame,
   resolveAgentGuiWorkbenchContributionCopy
@@ -697,6 +698,109 @@ describe("agent GUI workbench contribution copy", () => {
         y: 81
       },
       framePolicy: "absolute"
+    });
+  });
+
+  it("opens requested sessions in new panel instances when explicitly requested", async () => {
+    const contribution = createTestAgentGuiWorkbenchContribution({
+      renderBody: () => null,
+      workspaceId: "workspace-1"
+    });
+    const baseRequest = {
+      layoutConstraints: {
+        minHeight: 160,
+        minWidth: 280,
+        safeArea: {
+          bottom: 79,
+          left: 0,
+          right: 0,
+          top: 52
+        },
+        surfacePadding: 0
+      },
+      reason: "host" as const,
+      surfaceSize: {
+        height: 900,
+        width: 1440
+      },
+      typeId: "agent-gui",
+      workspaceId: "workspace-1"
+    };
+
+    const existingLaunch = await contribution.onLaunchRequest?.({
+      ...baseRequest,
+      payload: {
+        agentSessionId: "session-1",
+        provider: "codex"
+      }
+    });
+    const newWindowLaunch = await contribution.onLaunchRequest?.({
+      ...baseRequest,
+      payload: {
+        agentSessionId: "session-1",
+        openInNewWindow: true,
+        provider: "codex"
+      }
+    });
+
+    expect(existingLaunch?.instanceId).toBe(
+      "agent-gui:codex:session:session-1"
+    );
+    expect(newWindowLaunch?.instanceId).toContain("agent-gui:codex:panel:");
+    expect(newWindowLaunch?.instanceId).not.toBe(existingLaunch?.instanceId);
+    expect(existingLaunch?.cascadeOffset).toBeUndefined();
+    expect(newWindowLaunch?.cascadeOffset).toEqual(
+      agentGuiWorkbenchNewWindowCascadeOffset
+    );
+    expect(newWindowLaunch?.activation).toEqual({
+      payload: {
+        agentSessionId: "session-1"
+      },
+      type: "agent-gui:open-session"
+    });
+  });
+
+  it("keeps compact new-window session launches on the cascade policy", async () => {
+    const contribution = createTestAgentGuiWorkbenchContribution({
+      renderBody: () => null,
+      workspaceId: "workspace-1"
+    });
+
+    const launchResult = await contribution.onLaunchRequest?.({
+      layoutConstraints: {
+        minHeight: 160,
+        minWidth: 280,
+        safeArea: {
+          bottom: 79,
+          left: 0,
+          right: 0,
+          top: 52
+        },
+        surfacePadding: 0
+      },
+      payload: {
+        agentSessionId: "session-1",
+        openInNewWindow: true,
+        provider: "codex"
+      },
+      reason: "host",
+      surfaceSize: {
+        height: 700,
+        width: 980
+      },
+      typeId: "agent-gui",
+      workspaceId: "workspace-1"
+    });
+
+    expect(launchResult).toMatchObject({
+      cascadeOffset: agentGuiWorkbenchNewWindowCascadeOffset,
+      defaultFrame: {
+        height: 512,
+        width: 882,
+        x: 49,
+        y: 81
+      },
+      framePolicy: "cascade-same-type-centered"
     });
   });
 

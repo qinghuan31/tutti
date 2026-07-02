@@ -206,7 +206,7 @@ func (f *fakeAgentSessions) ListActivePeers(_ context.Context, workspaceID strin
 	title := "Work"
 	return agentservice.ActivePeers{
 		Agents: []agentservice.ActivePeer{{
-			Session:      agentservice.Session{ID: "SESSION-1", Provider: "codex", Status: "working", Title: &title, CreatedAt: time.Unix(1, 0)},
+			Session:      agentservice.Session{ID: "SESSION-1", Provider: "codex", Cwd: "/workspace/repo", Status: "working", Title: &title, CreatedAt: time.Unix(1, 0)},
 			SelfRelation: "unknown",
 		}},
 		SelfKnown:      false,
@@ -1585,6 +1585,9 @@ func TestActivePeersReturnsServiceProjection(t *testing.T) {
 	}
 	agents := output.Value["agents"].([]any)
 	if len(agents) != 1 || agents[0].(map[string]any)["agentSessionId"] != "SESSION-1" {
+		t.Fatalf("agents = %#v", agents)
+	}
+	if agents[0].(map[string]any)["cwd"] != "/workspace/repo" {
 		t.Fatalf("agents = %#v", agents)
 	}
 	if agents[0].(map[string]any)["selfRelation"] != "unknown" {

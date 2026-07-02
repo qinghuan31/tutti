@@ -35,6 +35,21 @@ type standardACPConfig struct {
 	env                func(Session) []string
 	commandResolver    ProviderCommandResolver
 	beforeNewSession   func(context.Context, *acpClient, Session, json.RawMessage) error
+	// allowSyntheticNotice lets codex-acp-derived providers promote bare
+	// transport text ("Reconnecting... 1/5", "Falling back ... transport")
+	// streamed as ordinary chunks into system-notice banners instead of
+	// appending it to the assistant reply.
+	allowSyntheticNotice bool
+	// stderrMessageMapper translates provider stderr frames into synthetic
+	// session/update messages (e.g. codex-acp retry logs -> transport notices).
+	stderrMessageMapper acpStderrMessageMapper
+	// commandWithSettings appends session-settings-derived spawn arguments to
+	// the resolved command (e.g. codex-acp `--config model=...` flags that can
+	// only be applied at process start).
+	commandWithSettings func([]string, Session) []string
+	// requiresNewSessionForSettings reports settings patches that can only
+	// take effect via a fresh process/session (spawn-time-only flags).
+	requiresNewSessionForSettings func(Session, SessionSettingsPatch) bool
 }
 
 type standardACPAdapter struct {
@@ -104,6 +119,129 @@ func claudeCodeLegacyACPModelCandidates(model string) []string {
 	default:
 		return nil
 	}
+}
+
+func NewNexightAdapter(transport ProcessTransport) *standardACPAdapter {
+	return NewNexightAdapterWithHostMetadata(transport, LegacyHostMetadata())
+}
+
+func NewNexightAdapterWithHostMetadata(transport ProcessTransport, host HostMetadata) *standardACPAdapter {
+	return &standardACPAdapter{
+		config: standardACPConfig{
+			provider:            ProviderNexight,
+			adapterName:         "nexight-acp",
+			command:             []string{nexightACPCommand},
+			defaultTitle:        "Nexight",
+			defaultTitleAliases: []string{"", ProviderNexight, "tutti"},
+			authRequiredMessage: "Nexight ACP requires authentication in the runtime VM. Sync the Nexight host credentials, then retry this session.",
+			permissionModeID:    codexACPModeID,
+			initializeParams:    func() map[string]any { return defaultACPInitializeParams(host) },
+			env:                 func(session Session) []string { return standardACPEnv(session, host) },
+			// nexight-acp is codex-acp derived: transport retry/fallback text
+			// arrives as ordinary chunks and stderr logs, so keep the notice
+			// projection the old CodexAdapter provided.
+			allowSyntheticNotice: true,
+			stderrMessageMapper:  nexightACPSystemNoticeMessageFromStderr,
+			// Model/effort (and the spark-family model_reasoning_summary=none
+			// override) are spawn-time codex config flags; the reasoning-summary
+			// override cannot change on a live process, so switching across the
+			// spark boundary forces a new session.
+			commandWithSettings:           nexightACPCommandWithSettings,
+			requiresNewSessionForSettings: nexightRequiresNewSessionForSettings,
+		},
+		transport: transport,
+		host:      host,
+		sessions:  make(map[string]*standardACPSession),
+	}
+}
+
+// nexightACPSystemNoticeMessageFromStderr projects codex-acp "handled error
+// during turn" stderr retry logs into a synthetic stream_error session/update
+// so reconnect attempts surface as transport notices instead of vanishing.
+// (Recovered from the retired CodexAdapter; nexight-acp shares that stderr
+// format.)
+func nexightACPSystemNoticeMessageFromStderr(stderr []byte) (acpMessage, bool) {
+	text := strings.TrimSpace(string(stderr))
+	if text == "" {
+		return acpMessage{}, false
+	}
+	normalized := strings.ToLower(text)
+	if !strings.Contains(normalized, "handled error during turn") {
+		return acpMessage{}, false
+	}
+	if !strings.Contains(normalized, "responsestreamdisconnected") &&
+		!strings.Contains(normalized, "broken pipe") &&
+		!strings.Contains(normalized, "response stream") {
+		return acpMessage{}, false
+	}
+	detail := truncateACPLogValue(text, 4000)
+	params, err := json.Marshal(map[string]any{
+		"update": map[string]any{
+			"kind":              "agent_system_notice",
+			"sessionUpdate":     "stream_error",
+			"message":           "ResponseStreamDisconnected",
+			"noticeKind":        "transport_retry",
+			"severity":          "warning",
+			"title":             "Codex connection interrupted. Reconnecting...",
+			"detail":            detail,
+			"additionalDetails": detail,
+			"retryable":         true,
+			"source":            "acp_stderr",
+		},
+	})
+	if err != nil {
+		return acpMessage{}, false
+	}
+	return acpMessage{
+		JSONRPC: "2.0",
+		Method:  acpMethodUpdate,
+		Params:  params,
+	}, true
+}
+
+// nexightACPConfigFlag is the codex-acp CLI flag for spawn-time config
+// overrides (recovered with the settings logic from the retired CodexAdapter).
+const nexightACPConfigFlag = "--config"
+
+// nexightACPCommandWithSettings appends the session's model/effort settings as
+// spawn-time codex config flags; without them model selection depends entirely
+// on the agent advertising a "model" config option after session/new.
+func nexightACPCommandWithSettings(base []string, session Session) []string {
+	command := append([]string(nil), base...)
+	if len(command) == 0 {
+		return command
+	}
+	for _, entry := range nexightACPConfigEntries(session) {
+		command = append(command, nexightACPConfigFlag, entry)
+	}
+	return command
+}
+
+func nexightACPConfigEntries(session Session) []string {
+	settings := session.SettingsValue()
+	entries := make([]string, 0, 4)
+	if model := strings.TrimSpace(settings.Model); model != "" {
+		entries = append(entries, "model="+model)
+		if summary := codexACPReasoningSummaryOverride(model); summary != "" {
+			entries = append(entries, codexACPConfigModelReasoningSummary+"="+summary)
+		}
+	}
+	if reasoning := codexACPReasoningEffortValue(settings.ReasoningEffort); reasoning != "" {
+		entries = append(entries, "model_reasoning_effort="+reasoning)
+	}
+	return entries
+}
+
+// nexightRequiresNewSessionForSettings forces a new session when the
+// spark-family model_reasoning_summary spawn override would change: it is a
+// process-start-only flag, so a live session cannot apply it.
+func nexightRequiresNewSessionForSettings(session Session, patch SessionSettingsPatch) bool {
+	if patch.Model == nil {
+		return false
+	}
+	currentModel := session.SettingsValue().Model
+	nextModel := strings.TrimSpace(*patch.Model)
+	return codexACPReasoningSummaryOverride(currentModel) != codexACPReasoningSummaryOverride(nextModel)
 }
 
 func NewGeminiAdapter(transport ProcessTransport) *standardACPAdapter {
@@ -780,6 +918,9 @@ func (a *standardACPAdapter) startInitializedClient(
 		}
 		env = append(env, resolved.Env...)
 	}
+	if a.config.commandWithSettings != nil {
+		command = a.config.commandWithSettings(command, session)
+	}
 	processStartedAt := time.Now()
 	a.logHermesStartupDiagnostics("process_start.start", map[string]any{
 		"room_id":          session.RoomID,
@@ -812,7 +953,7 @@ func (a *standardACPAdapter) startInitializedClient(
 		"agent_session_id": session.AgentSessionID,
 		"elapsed_ms":       time.Since(processStartedAt).Milliseconds(),
 	})
-	client := newACPClientWithStderrMessageMapper(conn, standardACPStderrMessageMapper(a.config.provider))
+	client := newACPClientWithStderrMessageMapper(conn, a.config.stderrMessageMapper)
 	client.SetMessageHandler(func(ctx context.Context, message acpMessage) error {
 		turnSession := session
 		turnID := a.sessionRecentTurnID(session.AgentSessionID)
@@ -1548,11 +1689,23 @@ func (a *standardACPAdapter) updateSessionConfigOption(
 	updateConfigOptionDescriptorValue(session.configOptionDescriptors, configID, value)
 }
 
+// RequiresNewSessionForSettings implements NewSessionSettingsAdapter for
+// providers whose config declares spawn-time-only settings (currently Nexight).
+func (a *standardACPAdapter) RequiresNewSessionForSettings(session Session, patch SessionSettingsPatch) bool {
+	if a == nil || a.config.requiresNewSessionForSettings == nil {
+		return false
+	}
+	return a.config.requiresNewSessionForSettings(session, patch)
+}
+
 func (a *standardACPAdapter) ApplySessionSettings(
 	ctx context.Context,
 	session Session,
 	patch SessionSettingsPatch,
 ) error {
+	if a.RequiresNewSessionForSettings(session, patch) {
+		return ErrSessionSettingsRequireNewSession
+	}
 	acpSession := a.getSession(session.AgentSessionID)
 	if acpSession == nil || acpSession.client == nil {
 		return nil
@@ -2866,7 +3019,7 @@ func standardACPUpdateEvents(config standardACPConfig, session Session, turnID s
 	case "user_message_chunk":
 		return nil
 	case "agent_message_chunk":
-		if events, ok := acpSystemNoticeEvents(session, turnID, params.Update, normalizer, "agent_message_chunk", config.provider == ProviderCodex); ok {
+		if events, ok := acpSystemNoticeEvents(session, turnID, params.Update, normalizer, "agent_message_chunk", config.allowSyntheticNotice); ok {
 			return events
 		}
 		content := acpTextContent(params.Update["content"])
@@ -2875,7 +3028,7 @@ func standardACPUpdateEvents(config standardACPConfig, session Session, turnID s
 		}
 		return normalizer.AppendAssistantChunk(session, turnID, content)
 	case "agent_thought_chunk":
-		if events, ok := acpSystemNoticeEvents(session, turnID, params.Update, normalizer, "agent_thought_chunk", config.provider == ProviderCodex); ok {
+		if events, ok := acpSystemNoticeEvents(session, turnID, params.Update, normalizer, "agent_thought_chunk", config.allowSyntheticNotice); ok {
 			return events
 		}
 		content := acpTextContent(params.Update["content"])
@@ -2913,7 +3066,7 @@ func standardACPUpdateEvents(config standardACPConfig, session Session, turnID s
 		}
 		return nil
 	case "stream_error", "warning", "system_notice":
-		if events, ok := acpSystemNoticeEvents(session, turnID, params.Update, normalizer, updateType, config.provider == ProviderCodex); ok {
+		if events, ok := acpSystemNoticeEvents(session, turnID, params.Update, normalizer, updateType, config.allowSyntheticNotice); ok {
 			return events
 		}
 		return nil
@@ -2958,13 +3111,6 @@ func logACPGoalUpdate(config standardACPConfig, session Session, turnID string, 
 		"goal_objective_len", len(strings.TrimSpace(asString(goal["objective"]))),
 		"goal_has_reason", strings.TrimSpace(asString(goal["reason"])) != "",
 	)
-}
-
-func standardACPStderrMessageMapper(provider string) acpStderrMessageMapper {
-	if strings.TrimSpace(provider) == ProviderCodex {
-		return codexACPSystemNoticeMessageFromStderr
-	}
-	return nil
 }
 
 func standardACPInterruptEvents(

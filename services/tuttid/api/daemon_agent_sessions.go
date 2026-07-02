@@ -9,7 +9,6 @@ import (
 	tuttigenerated "github.com/tutti-os/tutti/services/tuttid/api/generated"
 	"github.com/tutti-os/tutti/services/tuttid/apierrors"
 	agentactivitybiz "github.com/tutti-os/tutti/services/tuttid/biz/agentactivity"
-	agentproviderbiz "github.com/tutti-os/tutti/services/tuttid/biz/agentprovider"
 	preferencesbiz "github.com/tutti-os/tutti/services/tuttid/biz/preferences"
 	agentservice "github.com/tutti-os/tutti/services/tuttid/service/agent"
 )
@@ -17,6 +16,8 @@ import (
 type AgentSessionService interface {
 	List(context.Context, string) ([]agentservice.Session, error)
 	ListFiltered(context.Context, string, agentservice.ListSessionsInput) ([]agentservice.Session, error)
+	ListPage(context.Context, string, agentservice.ListSessionsInput) (agentservice.SessionListPage, error)
+	ListGroups(context.Context, string, agentservice.ListSessionGroupsInput) ([]agentservice.SessionGroup, error)
 	GetComposerOptions(context.Context, agentservice.ComposerOptionsInput) (agentservice.ComposerOptions, error)
 	ListGeneratedFiles(context.Context, string, agentservice.ListGeneratedFilesInput) (agentservice.GeneratedFileList, error)
 	ListMessages(context.Context, string, string, agentservice.ListMessagesInput) (agentservice.SessionMessagesPage, error)
@@ -57,6 +58,12 @@ func (api DaemonAPI) ListWorkspaceAgentSessions(ctx context.Context, request tut
 		}, nil
 	}
 	input := agentservice.ListSessionsInput{}
+	if request.Params.Cwd != nil {
+		input.CWD = optionalStringPointer(strings.TrimSpace(*request.Params.Cwd))
+	}
+	if request.Params.Cursor != nil {
+		input.Cursor = strings.TrimSpace(*request.Params.Cursor)
+	}
 	if request.Params.SearchQuery != nil {
 		input.SearchQuery = strings.TrimSpace(*request.Params.SearchQuery)
 	}
@@ -69,14 +76,19 @@ func (api DaemonAPI) ListWorkspaceAgentSessions(ctx context.Context, request tut
 	if request.Params.VisibleOnly != nil {
 		input.VisibleOnly = *request.Params.VisibleOnly
 	}
-	sessions, err := api.AgentSessionService.ListFiltered(ctx, string(request.WorkspaceID), input)
+	page, err := api.AgentSessionService.ListPage(ctx, string(request.WorkspaceID), input)
 	if err != nil {
 		return writeListWorkspaceAgentSessionsError(err), nil
 	}
-	return tuttigenerated.ListWorkspaceAgentSessions200JSONResponse{
-		Sessions:    generatedAgentSessions(sessions),
+	response := tuttigenerated.ListWorkspaceAgentSessions200JSONResponse{
+		HasMore:     page.HasMore,
+		Sessions:    generatedAgentSessions(page.Sessions),
 		WorkspaceId: string(request.WorkspaceID),
-	}, nil
+	}
+	if page.NextCursor != "" {
+		response.NextCursor = optionalStringPointer(page.NextCursor)
+	}
+	return response, nil
 }
 
 func (api DaemonAPI) ClearWorkspaceAgentSessions(ctx context.Context, request tuttigenerated.ClearWorkspaceAgentSessionsRequestObject) (tuttigenerated.ClearWorkspaceAgentSessionsResponseObject, error) {
@@ -499,33 +511,6 @@ func composerSettingsFromGenerated(settings tuttigenerated.AgentSessionComposerS
 	}
 }
 
-func (api DaemonAPI) composerDefaultsForProvider(ctx context.Context, provider string) agentservice.ComposerSettings {
-	if api.PreferencesService == nil {
-		return agentservice.ComposerSettings{}
-	}
-	preferences, err := api.PreferencesService.Get(ctx)
-	if err != nil {
-		return agentservice.ComposerSettings{}
-	}
-	defaults := preferences.AgentComposerDefaultsByProvider[agentproviderbiz.Normalize(provider)]
-	return agentservice.ComposerSettings{
-		Model:            defaults.Model,
-		PermissionModeID: defaults.PermissionModeID,
-		ReasoningEffort:  defaults.ReasoningEffort,
-	}
-}
-
-func (api DaemonAPI) composerDefaultLocale(ctx context.Context) string {
-	if api.PreferencesService == nil {
-		return ""
-	}
-	preferences, err := api.PreferencesService.Get(ctx)
-	if err != nil {
-		return ""
-	}
-	return preferences.Locale
-}
-
 func (api DaemonAPI) agentConversationDetailMode(ctx context.Context) string {
 	if api.PreferencesService == nil {
 		return preferencesbiz.DefaultDesktopAgentConversationDetailMode
@@ -535,89 +520,6 @@ func (api DaemonAPI) agentConversationDetailMode(ctx context.Context) string {
 		return preferencesbiz.DefaultDesktopAgentConversationDetailMode
 	}
 	return preferencesbiz.NormalizeDesktopAgentConversationDetailMode(preferences.AgentConversationDetailMode)
-}
-
-func mergeComposerSettings(base agentservice.ComposerSettings, override agentservice.ComposerSettings) agentservice.ComposerSettings {
-	if strings.TrimSpace(override.Model) != "" {
-		base.Model = override.Model
-	}
-	if strings.TrimSpace(override.PermissionModeID) != "" {
-		base.PermissionModeID = override.PermissionModeID
-	}
-	if override.PlanMode {
-		base.PlanMode = override.PlanMode
-	}
-	if strings.TrimSpace(override.ReasoningEffort) != "" {
-		base.ReasoningEffort = override.ReasoningEffort
-	}
-	if strings.TrimSpace(override.Speed) != "" {
-		base.Speed = override.Speed
-	}
-	return base
-}
-
-func composerSettingsPatchFromGenerated(settings tuttigenerated.AgentSessionComposerSettings) agentservice.ComposerSettingsPatch {
-	return agentservice.ComposerSettingsPatch{
-		Model:            settings.Model,
-		PermissionModeID: settings.PermissionModeId,
-		PlanMode:         settings.PlanMode,
-		BrowserUse:       settings.BrowserUse,
-		ReasoningEffort:  settings.ReasoningEffort,
-		Speed:            settings.Speed,
-	}
-}
-
-func generatedAgentProviderComposerOptions(options agentservice.ComposerOptions) tuttigenerated.AgentProviderComposerOptionsResponse {
-	effectiveSettings := generatedAgentSessionComposerSettings(options.EffectiveSettings)
-	return tuttigenerated.AgentProviderComposerOptionsResponse{
-		CapabilityCatalog: generatedAgentProviderCapabilityOptions(options.CapabilityCatalog),
-		EffectiveSettings: effectiveSettings,
-		ModelConfig:       generatedComposerConfigOption(options.ModelConfig),
-		PermissionConfig:  generatedPermissionConfig(options.PermissionConfig),
-		Provider:          tuttigenerated.WorkspaceAgentProvider(options.Provider),
-		ReasoningConfig:   generatedComposerConfigOption(options.ReasoningConfig),
-		SpeedConfig:       generatedComposerConfigOptionPointer(options.SpeedConfig),
-		RuntimeContext:    options.RuntimeContext,
-		Skills:            generatedAgentProviderSkillOptions(options.Skills),
-	}
-}
-
-func generatedAgentSessionComposerSettings(settings agentservice.ComposerSettings) tuttigenerated.AgentSessionComposerSettings {
-	result := tuttigenerated.AgentSessionComposerSettings{
-		Model:            optionalStringPointer(strings.TrimSpace(settings.Model)),
-		PermissionModeId: optionalStringPointer(strings.TrimSpace(settings.PermissionModeID)),
-		PlanMode:         boolPointer(settings.PlanMode),
-		ReasoningEffort:  optionalStringPointer(strings.TrimSpace(settings.ReasoningEffort)),
-		Speed:            optionalStringPointer(strings.TrimSpace(settings.Speed)),
-	}
-	if settings.BrowserUse != nil {
-		result.BrowserUse = settings.BrowserUse
-	}
-	return result
-}
-
-func generatedPermissionConfig(config agentservice.PermissionConfig) tuttigenerated.PermissionConfig {
-	result := tuttigenerated.PermissionConfig{
-		Configurable: config.Configurable,
-		Modes:        make([]tuttigenerated.PermissionModeOption, 0, len(config.Modes)),
-	}
-	if strings.TrimSpace(config.DefaultValue) != "" {
-		result.DefaultValue = optionalStringPointer(config.DefaultValue)
-	}
-	for _, mode := range config.Modes {
-		option := tuttigenerated.PermissionModeOption{
-			Id:       strings.TrimSpace(mode.ID),
-			Label:    strings.TrimSpace(mode.Label),
-			Semantic: tuttigenerated.PermissionModeSemantic(mode.Semantic),
-		}
-		if strings.TrimSpace(mode.Description) != "" {
-			option.Description = optionalStringPointer(mode.Description)
-		}
-		if option.Id != "" && option.Label != "" {
-			result.Modes = append(result.Modes, option)
-		}
-	}
-	return result
 }
 
 func optionalStringValue(input *string) string {

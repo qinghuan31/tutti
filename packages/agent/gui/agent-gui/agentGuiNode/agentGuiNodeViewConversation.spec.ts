@@ -117,6 +117,36 @@ describe("groupConversations", () => {
     expect(groups[2]?.label).toBe("Chats");
   });
 
+  it("orders project sections with conversations before empty projects", () => {
+    const nowMs = new Date("2026-06-05T12:00:00Z").getTime();
+    const conversations: AgentGUIConversationSummary[] = [
+      conversation("app-chat", nowMs, {
+        project: project("/workspace/app", "App", {
+          updatedAtUnixMs: nowMs - 100_000
+        }),
+        sortTimeUnixMs: nowMs
+      })
+    ];
+
+    const groups = groupConversations(
+      conversations,
+      labels,
+      [
+        project("/workspace/empty", "Empty", { updatedAtUnixMs: nowMs }),
+        project("/workspace/app", "App", { updatedAtUnixMs: nowMs - 100_000 })
+      ],
+      { includeEmptyConversations: true }
+    );
+
+    expect(groups.map((group) => group.id)).toEqual([
+      "project:/workspace/app",
+      "project:/workspace/empty",
+      "conversations"
+    ]);
+    expect(groups[0]?.items.map((item) => item.id)).toEqual(["app-chat"]);
+    expect(groups[1]?.items).toEqual([]);
+  });
+
   it("keeps the conversations section visible when it has no conversations", () => {
     const groups = groupConversations([], labels, [], {
       includeEmptyConversations: true

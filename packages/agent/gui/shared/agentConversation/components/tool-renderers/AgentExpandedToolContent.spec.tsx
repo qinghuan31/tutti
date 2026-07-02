@@ -4,6 +4,7 @@ import { setAgentGuiI18nTestLocale } from "../../../../i18n/testUtils";
 import { type WorkspaceAgentSessionDetailToolCall } from "../../../workspaceAgentSessionDetailViewModel";
 import { projectAgentToolCall } from "../../projection/agentToolProjection";
 import { AgentExpandedToolContent } from "./AgentExpandedToolContent";
+import { AgentSubAgentCard } from "../AgentSubAgentCards";
 import { ToolMarkdownBlock } from "./agentToolContentShared";
 
 describe("AgentExpandedToolContent", () => {
@@ -1209,6 +1210,77 @@ describe("AgentExpandedToolContent", () => {
 
     expect(screen.getByText("MCP")).toBeTruthy();
     expect(screen.getByText("Found issue TSH-456")).toBeTruthy();
+  });
+
+  it("renders a named standalone sub-agent card with an activity log", async () => {
+    setAgentGuiI18nTestLocale("en");
+
+    render(
+      <AgentSubAgentCard
+        subAgent={{
+          ownerThreadId: "child-thread-1",
+          status: "running",
+          name: "Repo smell analyst",
+          task: "inspect the repository",
+          laneIndex: 1,
+          laneCount: 1,
+          latestActivity: "Run command",
+          latestActivityKind: "tool",
+          activityLog: [
+            { kind: "message", text: "Scanning layout", atUnixMs: 50_000 },
+            { kind: "tool", text: "Run command", atUnixMs: 101_000 }
+          ],
+          activityOmittedCount: 3,
+          failureDetail: null,
+          startedAtUnixMs: 1_000,
+          latestActivityAtUnixMs: 101_000,
+          terminalAtUnixMs: null
+        }}
+      />
+    );
+
+    // Identity comes from the sub-agent's own thread name, never the tool name.
+    expect(screen.getByText("Repo smell analyst")).toBeTruthy();
+    expect(screen.queryByText("spawnAgent")).toBeNull();
+    expect(screen.getByText(/1m 40s · Running/)).toBeTruthy();
+    // Bash-block layout: task strip on top, latest progress line below - no
+    // section labels.
+    expect(screen.getByText("inspect the repository")).toBeTruthy();
+    expect(screen.getByText("Run command")).toBeTruthy();
+    expect(screen.queryByText("TASK")).toBeNull();
+    expect(screen.queryByText("PROGRESS")).toBeNull();
+    expect(screen.queryByText("Scanning layout")).toBeNull();
+    expect(screen.queryByText("3 earlier steps omitted")).toBeNull();
+  });
+
+  it("titles an unnamed sub-agent with the localized fallback and starting label", async () => {
+    setAgentGuiI18nTestLocale("en");
+
+    render(
+      <AgentSubAgentCard
+        subAgent={{
+          ownerThreadId: "child-thread-1",
+          status: "running",
+          name: null,
+          task: "inspect the repository",
+          laneIndex: 2,
+          laneCount: 3,
+          latestActivity: null,
+          latestActivityKind: null,
+          activityLog: [],
+          activityOmittedCount: 0,
+          failureDetail: null,
+          startedAtUnixMs: 1_000,
+          latestActivityAtUnixMs: 1_000,
+          terminalAtUnixMs: null
+        }}
+      />
+    );
+
+    // Tool-row-aligned header: label + per-lane index as the name slot.
+    expect(screen.getByText("Sub-agent")).toBeTruthy();
+    expect(screen.getByText("#2")).toBeTruthy();
+    expect(screen.getByText("Starting…")).toBeTruthy();
   });
 });
 

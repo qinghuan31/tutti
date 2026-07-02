@@ -117,10 +117,64 @@ describe("agent gui workbench launch contract", () => {
       },
       dockEntryId: "agent-gui",
       instanceId: "agent-gui:codex:session:session-2",
+      openInNewWindow: false,
       provider: "codex",
       reuseDockEntryNode: false,
+      reuseExistingSessionNode: true,
       targetAgentSessionId: "session-2"
     });
+  });
+
+  it("can launch an existing session into a new internal window", () => {
+    const descriptor = createAgentGuiWorkbenchLaunchDescriptor({
+      dockEntryId: "agent-gui",
+      payload: {
+        agentSessionId: "session-2",
+        openInNewWindow: true,
+        provider: "codex"
+      },
+      typeId: "agent-gui"
+    });
+
+    expect(descriptor.activation).toEqual({
+      payload: {
+        agentSessionId: "session-2"
+      },
+      type: "agent-gui:open-session"
+    });
+    expect(descriptor.instanceId).toContain("agent-gui:codex:panel:");
+    expect(descriptor.openInNewWindow).toBe(true);
+    expect(descriptor.reuseDockEntryNode).toBe(false);
+    expect(descriptor.reuseExistingSessionNode).toBe(false);
+    expect(descriptor.targetAgentSessionId).toBe("session-2");
+  });
+
+  it("keeps target-backed empty launches stable unless a new window is requested", () => {
+    const targetLaunchDescriptor = createAgentGuiWorkbenchLaunchDescriptor({
+      dockEntryId: "agent-gui",
+      payload: {
+        agentTargetId: "local:codex",
+        provider: "codex"
+      },
+      typeId: "agent-gui"
+    });
+    const newWindowDescriptor = createAgentGuiWorkbenchLaunchDescriptor({
+      dockEntryId: "agent-gui",
+      payload: {
+        agentTargetId: "local:codex",
+        openInNewWindow: true,
+        provider: "codex"
+      },
+      typeId: "agent-gui"
+    });
+
+    expect(targetLaunchDescriptor.instanceId).toBe(
+      "agent-gui:codex:target:local%3Acodex"
+    );
+    expect(newWindowDescriptor.instanceId).toContain("agent-gui:codex:panel:");
+    expect(newWindowDescriptor.instanceId).not.toBe(
+      targetLaunchDescriptor.instanceId
+    );
   });
 
   it("keeps unified aggregate dock launches provider-specific at the instance layer", () => {
@@ -174,6 +228,7 @@ describe("agent gui workbench launch contract", () => {
       dockEntryId: "agent-gui",
       provider: "codex",
       reuseDockEntryNode: true,
+      reuseExistingSessionNode: true,
       targetAgentSessionId: null
     });
   });
