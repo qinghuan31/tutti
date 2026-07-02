@@ -304,6 +304,12 @@ describe("AgentTranscriptItemView render stability", () => {
     expect(css).toMatch(
       /\.agent-gui-conversation__user-message-flow\s*{[^}]*row-gap:\s*14px/s
     );
+    expect(css).toMatch(
+      /\.agent-gui-conversation__user-image-grid\s*{[^}]*justify-self:\s*end/s
+    );
+    expect(css).toMatch(
+      /\.agent-gui-conversation__user-image-thumbnail\s*{[^}]*border:\s*1px solid var\(--line-2\)[^}]*border-radius:\s*8px/s
+    );
   });
 
   it("loads user prompt image attachments from the activity runtime", async () => {
@@ -359,9 +365,11 @@ describe("AgentTranscriptItemView render stability", () => {
       expect(image).toHaveClass("cursor-zoom-in", "max-h-20", "object-contain");
       const imageBlock = image.closest("div");
       expect(imageBlock).toBeInstanceOf(HTMLElement);
-      expect(imageBlock).toHaveClass("max-h-20", "overflow-hidden");
+      expect(imageBlock).toHaveClass(
+        "agent-gui-conversation__user-image-thumbnail"
+      );
       const imageGrid = imageBlock?.parentElement;
-      expect(imageGrid).toHaveClass("grid", "justify-self-end");
+      expect(imageGrid).toHaveClass("agent-gui-conversation__user-image-grid");
       expect(imageGrid).toHaveStyle({
         gridTemplateColumns: "repeat(1, 160px)"
       });
@@ -677,11 +685,44 @@ describe("AgentTranscriptItemView render stability", () => {
     );
 
     const notice = getByRole("status");
-    expect(notice.className).toContain("var(--state-danger)_20%");
-    expect(notice.className).toContain("var(--state-danger)_8%");
+    expect(notice.className).toContain("border-[var(--on-danger-hover)]");
+    expect(notice.className).toContain("bg-[var(--on-danger)]");
     expect(notice.className).not.toContain("var(--state-warning)_6%");
     expect(
       getByText("agentHost.agentGui.systemNoticeTransportFallback")
+    ).toBeTruthy();
+  });
+
+  it("renders fallback warning notices with danger chrome", () => {
+    const { getByRole, getByText } = render(
+      <AgentMessageBlock
+        workspaceRoot="/workspace/demo"
+        basePath="/workspace/demo"
+        row={assistantMessageRow({
+          kind: "message-content",
+          id: "assistant-warning-fallback",
+          turnId: "turn-1",
+          body: "Falling back from WebSockets to HTTPS transport.",
+          occurredAtUnixMs: 1,
+          systemNotice: {
+            noticeKind: "warning",
+            severity: "warning",
+            title: "Falling back from WebSockets to HTTPS transport.",
+            detail:
+              "stream disconnected before completion: websocket closed by server before response.completed",
+            retryable: true
+          }
+        })}
+        thinkingLabel="Thought process"
+      />
+    );
+
+    const notice = getByRole("status");
+    expect(notice.className).toContain("border-[var(--on-danger-hover)]");
+    expect(notice.className).toContain("bg-[var(--on-danger)]");
+    expect(notice.className).not.toContain("var(--state-warning)_6%");
+    expect(
+      getByText("Falling back from WebSockets to HTTPS transport.")
     ).toBeTruthy();
   });
 

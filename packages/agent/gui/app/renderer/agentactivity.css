@@ -3467,6 +3467,21 @@ aside.workspace-agents-status-panel
   justify-items: end;
 }
 
+.agent-gui-conversation__user-image-grid {
+  display: grid;
+  gap: 8px;
+  justify-self: end;
+}
+
+.agent-gui-conversation__user-image-thumbnail {
+  box-sizing: border-box;
+  max-height: 80px;
+  min-width: 0;
+  overflow: hidden;
+  border: 1px solid var(--line-2);
+  border-radius: 8px;
+}
+
 .agent-gui-conversation__assistant-message-flow {
   gap: 0;
 }
