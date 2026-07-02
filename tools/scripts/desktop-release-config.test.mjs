@@ -296,6 +296,10 @@ test("desktop macOS packaging builds architecture-specific and universal artifac
     /lipo\s+"\$\{output_path\}"\s+-verify_arch\s+arm64\s+x86_64\s+\|\|\s+\{/
   );
   assert.match(buildScript, /electron-builder --mac --x64 --arm64 --universal/);
+  assert.equal(
+    packageJson.build.mac.x64ArchFiles,
+    "Contents/Resources/bin/claude-sdk-sidecar/node_modules/@anthropic-ai/claude-agent-sdk-darwin-arm64/claude"
+  );
 });
 
 test("desktop release workflow opts JavaScript actions into Node 24", async () => {
