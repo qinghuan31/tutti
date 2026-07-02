@@ -9,6 +9,7 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	goruntime "runtime"
 	"sort"
 	"strings"
 	"sync"
@@ -21,7 +22,11 @@ const (
 	claudeCodeRuntimeACP           = "acp"
 	claudeCodeRuntimeSDK           = "sdk"
 	claudeSDKSidecarCommandEnv     = "TUTTI_CLAUDE_SDK_SIDECAR_COMMAND"
+	claudeSDKSidecarEntryPathEnv   = "TUTTI_CLAUDE_SDK_SIDECAR_ENTRY_PATH"
 	claudeSDKSidecarTestDriverEnv  = "TUTTI_CLAUDE_SDK_SIDECAR_TEST_DRIVER"
+	claudeSDKAppNodeEnv            = "TUTTI_APP_NODE"
+	claudeSDKAppRuntimeRootEnv     = "TUTTI_APP_RUNTIME_ROOT"
+	claudeSDKAppRuntimeCacheEnv    = "TUTTI_APP_RUNTIME_CACHE_ROOT"
 	claudeSDKSidecarAdapterName    = "claude-agent-sdk"
 	claudeSDKSidecarDefaultNodeArg = "--experimental-strip-types"
 	claudeSDKDefaultContextWindow  = int64(200000)
@@ -125,7 +130,7 @@ func (a *ClaudeCodeSDKAdapter) Start(ctx context.Context, session Session) ([]ac
 		AgentSessionID: session.AgentSessionID,
 		RoomID:         session.RoomID,
 		CWD:            session.CWD,
-		Command:        claudeSDKSidecarCommand(),
+		Command:        claudeSDKSidecarCommand(session.Env),
 		Env:            claudeSDKSidecarEnv(session),
 		DirectStart:    true,
 	})
@@ -1834,15 +1839,59 @@ func claudeCodeSDKRuntimeEnabled() bool {
 	return strings.EqualFold(runtime, claudeCodeRuntimeSDK)
 }
 
-func claudeSDKSidecarCommand() []string {
+func claudeSDKSidecarCommand(env []string) []string {
 	if command := strings.TrimSpace(os.Getenv(claudeSDKSidecarCommandEnv)); command != "" {
 		return strings.Fields(command)
+	}
+	if entry := claudeSDKEnvValue(env, claudeSDKSidecarEntryPathEnv); entry != "" {
+		return []string{claudeSDKNodeCommand(env), claudeSDKSidecarDefaultNodeArg, entry}
 	}
 	root := findRepoRoot()
 	if root == "" {
 		return []string{"node", claudeSDKSidecarDefaultNodeArg, "packages/agent/claude-sdk-sidecar/src/main.ts"}
 	}
 	return []string{"node", claudeSDKSidecarDefaultNodeArg, filepath.Join(root, "packages/agent/claude-sdk-sidecar/src/main.ts")}
+}
+
+func claudeSDKNodeCommand(env []string) string {
+	if node := claudeSDKEnvValue(env, claudeSDKAppNodeEnv); node != "" {
+		return node
+	}
+	if root := claudeSDKEnvValue(env, claudeSDKAppRuntimeRootEnv); root != "" {
+		if node := claudeSDKManagedNodePath(root); isExecutableFile(node) {
+			return node
+		}
+	}
+	if cacheRoot := claudeSDKEnvValue(env, claudeSDKAppRuntimeCacheEnv); cacheRoot != "" {
+		root := filepath.Join(cacheRoot, goruntime.GOOS+"-"+goruntime.GOARCH)
+		if node := claudeSDKManagedNodePath(root); isExecutableFile(node) {
+			return node
+		}
+	}
+	return "node"
+}
+
+func claudeSDKEnvValue(env []string, key string) string {
+	if value := strings.TrimSpace(envValueFromList(env, key)); value != "" {
+		return value
+	}
+	return strings.TrimSpace(os.Getenv(key))
+}
+
+func claudeSDKManagedNodePath(root string) string {
+	return filepath.Join(root, "node", "bin", claudeSDKNodeBinaryName())
+}
+
+func claudeSDKNodeBinaryName() string {
+	if goruntime.GOOS == "windows" {
+		return "node.exe"
+	}
+	return "node"
+}
+
+func isExecutableFile(path string) bool {
+	info, err := os.Stat(path)
+	return err == nil && !info.IsDir() && info.Mode().Perm()&0o111 != 0
 }
 
 func claudeSDKSidecarEnv(session Session) []string {

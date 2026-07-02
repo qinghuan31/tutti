@@ -89,6 +89,7 @@ Use the owner documents linked below for detailed behavior. This file exists to 
 | `TUTTI_ACP_TOOL_DEBUG`                 | This document                                   | Enables verbose migrated ACP tool-call normalization diagnostics.                                |
 | `TUTTI_CLAUDE_CODE_RUNTIME`            | This document                                   | Selects the Claude Code runtime adapter. Default is `sdk`; `acp` selects the legacy ACP adapter. |
 | `TUTTI_CLAUDE_SDK_SIDECAR_COMMAND`     | This document                                   | Overrides the command used by tuttid to launch the experimental Claude SDK sidecar.              |
+| `TUTTI_CLAUDE_SDK_SIDECAR_ENTRY_PATH`  | This document                                   | Internal packaged-desktop handoff pointing tuttid at the vendored Claude SDK sidecar entry.      |
 | `TUTTI_CLAUDE_SDK_SIDECAR_TEST_DRIVER` | This document                                   | Enables the deterministic Claude SDK sidecar test driver instead of the real SDK query loop.     |
 | `TUTTI_MOCK_AGENT_UNBOUND`             | This document                                   | Forces Codex unbound and Claude Code auth-required for onboarding diagnostics.                   |
 | `TUTTI_WORKSPACE_ID`                   | This document                                   | Supplies a workspace id to migrated agent context readers when no input id is provided.          |

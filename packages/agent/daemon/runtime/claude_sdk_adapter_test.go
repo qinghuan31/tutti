@@ -8,6 +8,8 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"runtime"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
@@ -1148,6 +1150,56 @@ func TestClaudeCodeSDKAdapterStartSendsInitialSettings(t *testing.T) {
 		settings["reasoningEffort"] != "xhigh" ||
 		settings["speed"] != "fast" {
 		t.Fatalf("start settings = %#v", settings)
+	}
+}
+
+func TestClaudeSDKSidecarCommandUsesVendoredEntryWithManagedNodeEnv(t *testing.T) {
+	t.Setenv(claudeSDKSidecarCommandEnv, "")
+	t.Setenv(claudeSDKSidecarEntryPathEnv, "")
+
+	got := claudeSDKSidecarCommand([]string{
+		claudeSDKAppNodeEnv + "=/runtime/node/bin/node",
+		claudeSDKSidecarEntryPathEnv + "=/resources/bin/claude-sdk-sidecar/src/main.ts",
+	})
+	want := []string{"/runtime/node/bin/node", claudeSDKSidecarDefaultNodeArg, "/resources/bin/claude-sdk-sidecar/src/main.ts"}
+	if !slices.Equal(got, want) {
+		t.Fatalf("claudeSDKSidecarCommand() = %#v, want %#v", got, want)
+	}
+}
+
+func TestClaudeSDKSidecarCommandUsesManagedNodeCacheRoot(t *testing.T) {
+	t.Setenv(claudeSDKSidecarCommandEnv, "")
+	t.Setenv(claudeSDKSidecarEntryPathEnv, "")
+
+	cacheRoot := t.TempDir()
+	nodePath := filepath.Join(cacheRoot, runtime.GOOS+"-"+runtime.GOARCH, "node", "bin", claudeSDKNodeBinaryName())
+	if err := os.MkdirAll(filepath.Dir(nodePath), 0o755); err != nil {
+		t.Fatalf("mkdir node dir: %v", err)
+	}
+	if err := os.WriteFile(nodePath, []byte("#!/bin/sh\n"), 0o755); err != nil {
+		t.Fatalf("write node: %v", err)
+	}
+
+	got := claudeSDKSidecarCommand([]string{
+		claudeSDKAppRuntimeCacheEnv + "=" + cacheRoot,
+		claudeSDKSidecarEntryPathEnv + "=/resources/bin/claude-sdk-sidecar/src/main.ts",
+	})
+	want := []string{nodePath, claudeSDKSidecarDefaultNodeArg, "/resources/bin/claude-sdk-sidecar/src/main.ts"}
+	if !slices.Equal(got, want) {
+		t.Fatalf("claudeSDKSidecarCommand() = %#v, want %#v", got, want)
+	}
+}
+
+func TestClaudeSDKSidecarCommandOverrideWinsOverVendoredEntry(t *testing.T) {
+	t.Setenv(claudeSDKSidecarCommandEnv, "/custom/sidecar --flag")
+
+	got := claudeSDKSidecarCommand([]string{
+		claudeSDKAppNodeEnv + "=/runtime/node/bin/node",
+		claudeSDKSidecarEntryPathEnv + "=/resources/bin/claude-sdk-sidecar/src/main.ts",
+	})
+	want := []string{"/custom/sidecar", "--flag"}
+	if !slices.Equal(got, want) {
+		t.Fatalf("claudeSDKSidecarCommand() = %#v, want %#v", got, want)
 	}
 }
 
