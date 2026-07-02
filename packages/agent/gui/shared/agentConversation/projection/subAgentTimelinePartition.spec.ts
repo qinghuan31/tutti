@@ -243,6 +243,52 @@ describe("subAgentTimelinePartition", () => {
       ]);
     });
 
+    it("keys lanes by the card input's receiverThreadIds over time affinity while both spawns run", () => {
+      const partition = partitionSubAgentTimelineItems([
+        collabCardItem({
+          id: 10,
+          eventId: "spawn-1-started",
+          callId: "spawn-1",
+          status: "running",
+          occurredAtUnixMs: 100,
+          receiverThreadIds: ["child-thread-1"]
+        }),
+        collabCardItem({
+          id: 11,
+          eventId: "spawn-2-started",
+          callId: "spawn-2",
+          status: "running",
+          occurredAtUnixMs: 110,
+          receiverThreadIds: ["child-thread-2"]
+        }),
+        // child-1's first activity lands after spawn-2 started: time affinity
+        // alone would mis-attribute it to spawn-2 while both are running.
+        childAssistantItem({
+          id: 12,
+          eventId: "child-1-msg",
+          ownerThreadId: "child-thread-1",
+          text: "working on task one",
+          occurredAtUnixMs: 150
+        }),
+        childAssistantItem({
+          id: 13,
+          eventId: "child-2-msg",
+          ownerThreadId: "child-thread-2",
+          text: "working on task two",
+          occurredAtUnixMs: 160
+        })
+      ]);
+
+      const lanes = buildSubAgentLanesByCallId(partition);
+
+      expect(lanes.get("spawn-1")).toEqual([
+        expect.objectContaining({ ownerThreadId: "child-thread-1" })
+      ]);
+      expect(lanes.get("spawn-2")).toEqual([
+        expect.objectContaining({ ownerThreadId: "child-thread-2" })
+      ]);
+    });
+
     it("marks lanes failed when their card failed", () => {
       const partition = partitionSubAgentTimelineItems([
         collabCardItem({
@@ -356,7 +402,8 @@ function collabCardItem({
   status,
   occurredAtUnixMs,
   itemType = "call.started",
-  output
+  output,
+  receiverThreadIds
 }: {
   id: number;
   eventId: string;
@@ -365,6 +412,7 @@ function collabCardItem({
   occurredAtUnixMs: number;
   itemType?: string;
   output?: Record<string, unknown>;
+  receiverThreadIds?: readonly string[];
 }): WorkspaceAgentActivityTimelineItem {
   return timelineItem({
     id,
@@ -380,7 +428,11 @@ function collabCardItem({
       toolName: "Agent",
       kind: "execute",
       status,
-      input: { task: "inspect the repository", agentName: "spawnAgent" },
+      input: {
+        task: "inspect the repository",
+        agentName: "spawnAgent",
+        ...(receiverThreadIds ? { receiverThreadIds } : {})
+      },
       ...(output ? { output } : {})
     },
     occurredAtUnixMs,

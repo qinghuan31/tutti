@@ -554,3 +554,33 @@ func TestCodexAppServerAdapterApplyTokenUsageNoCumulativeFalsePositive(t *testin
 		t.Fatalf("usedTokens = %d, want per-request last (%d)", used, perRequest)
 	}
 }
+
+// The GUI keys sub-agent lanes to the collab card by child thread id, so the
+// projected rawInput must carry the item's receiverThreadIds from the start
+// (item/started already includes them).
+func TestAppServerCollabAgentRawInputCarriesReceiverThreadIDs(t *testing.T) {
+	t.Parallel()
+
+	update, ok := appServerItemToolCallUpdate(map[string]any{
+		"type":              "collabAgentToolCall",
+		"id":                "call-subagent-1",
+		"tool":              "spawnAgent",
+		"status":            "inProgress",
+		"prompt":            "Do a thing.",
+		"receiverThreadIds": []any{"child-thread-1", " child-thread-2 ", ""},
+	}, false)
+	if !ok {
+		t.Fatalf("update was not produced")
+	}
+	rawInput, ok := update["rawInput"].(map[string]any)
+	if !ok {
+		t.Fatalf("rawInput = %#v, want map", update["rawInput"])
+	}
+	ids, ok := rawInput["receiverThreadIds"].([]any)
+	if !ok {
+		t.Fatalf("rawInput.receiverThreadIds = %#v, want []any", rawInput["receiverThreadIds"])
+	}
+	if len(ids) != 2 || ids[0] != "child-thread-1" || ids[1] != "child-thread-2" {
+		t.Fatalf("receiverThreadIds = %#v, want [child-thread-1 child-thread-2]", ids)
+	}
+}

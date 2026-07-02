@@ -303,10 +303,21 @@ func appServerItemToolCallUpdate(item map[string]any, completed bool) (map[strin
 		} else {
 			update["kind"] = "execute"
 		}
-		update["rawInput"] = map[string]any{
+		rawInput := map[string]any{
 			"task":      asStringRaw(item["prompt"]),
 			"agentName": tool,
 		}
+		// The GUI keys sub-agent lanes to this card by child thread id; without
+		// receiverThreadIds it can only guess by time affinity, which
+		// mis-attributes lanes while multiple spawns run concurrently.
+		if receivers := appServerReceiverThreadIDs(item["receiverThreadIds"]); len(receivers) > 0 {
+			ids := make([]any, 0, len(receivers))
+			for _, id := range receivers {
+				ids = append(ids, id)
+			}
+			rawInput["receiverThreadIds"] = ids
+		}
+		update["rawInput"] = rawInput
 		if completed {
 			output := appServerCollabAgentRawOutput(item)
 			if len(output) > 0 {

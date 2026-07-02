@@ -71,15 +71,17 @@ export function partitionSubAgentTimelineItems(
 }
 
 // A collab spawn card summarizes one delegated agent in the parent transcript.
-// The daemon does not forward the raw item's receiverThreadIds to the GUI, so
-// lanes attach to cards by (a) exact match — a completed card's output payload
-// mentions the child thread id — and then (b) time affinity: the most recently
-// started collab card that began at or before the lane's first activity,
-// preferring cards that are still running.
+// Lanes attach to cards by (a) the card input's receiverThreadIds — the daemon
+// forwards the raw item's declared child thread ids, the authoritative key —
+// then (b) exact match on a completed card's output payload mentioning the
+// child thread id, and finally (c) time affinity for rows produced before the
+// daemon forwarded receiverThreadIds: the most recently started collab card
+// that began at or before the lane's first activity, preferring running cards.
 interface SubAgentCollabCard {
   callId: string;
   startedAtUnixMs: number;
   status: AgentTaskSubAgentStatus;
+  receiverThreadIds: ReadonlySet<string>;
   outputStrings: ReadonlySet<string>;
 }
 
@@ -98,6 +100,7 @@ export function buildSubAgentLanesByCallId(
     const sortedItems = [...items].sort(compareTimelineItemsAscending);
     const startedAtUnixMs = timelineItemTime(sortedItems[0]);
     const card =
+      cards.find((candidate) => candidate.receiverThreadIds.has(ownerThreadId)) ??
       cards.find((candidate) => candidate.outputStrings.has(ownerThreadId)) ??
       matchCardByTimeAffinity(cards, startedAtUnixMs);
     if (!card) {
@@ -262,6 +265,7 @@ function collectCollabCards(
       startedAtUnixMs: number;
       latestAtUnixMs: number;
       latestStatus: string | null;
+      receiverThreadIds: Set<string>;
       outputStrings: Set<string>;
     }
   >();
@@ -282,6 +286,7 @@ function collectCollabCards(
         startedAtUnixMs: time,
         latestAtUnixMs: time,
         latestStatus: status ?? null,
+        receiverThreadIds: collectReceiverThreadIds(item.payload?.input),
         outputStrings: collectStringValues(item.payload?.output)
       });
       continue;
@@ -290,6 +295,9 @@ function collectCollabCards(
     if (time >= existing.latestAtUnixMs) {
       existing.latestAtUnixMs = time;
       existing.latestStatus = status ?? existing.latestStatus;
+    }
+    for (const value of collectReceiverThreadIds(item.payload?.input)) {
+      existing.receiverThreadIds.add(value);
     }
     for (const value of collectStringValues(item.payload?.output)) {
       existing.outputStrings.add(value);
@@ -300,6 +308,7 @@ function collectCollabCards(
       callId: card.callId,
       startedAtUnixMs: card.startedAtUnixMs,
       status: subAgentStatusFromCallStatus(card.latestStatus),
+      receiverThreadIds: card.receiverThreadIds,
       outputStrings: card.outputStrings
     }))
     .sort((left, right) => left.startedAtUnixMs - right.startedAtUnixMs);
@@ -353,6 +362,24 @@ function subAgentStatusFromCallStatus(
     default:
       return "running";
   }
+}
+
+function collectReceiverThreadIds(input: unknown): Set<string> {
+  const out = new Set<string>();
+  if (input == null || typeof input !== "object" || Array.isArray(input)) {
+    return out;
+  }
+  const raw = (input as Record<string, unknown>).receiverThreadIds;
+  if (!Array.isArray(raw)) {
+    return out;
+  }
+  for (const entry of raw) {
+    const id = stringValue(entry);
+    if (id) {
+      out.add(id);
+    }
+  }
+  return out;
 }
 
 function collectStringValues(value: unknown, depth = 0): Set<string> {
