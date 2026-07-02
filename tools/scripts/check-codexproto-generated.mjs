@@ -21,41 +21,54 @@ const daemonRoot = join(workspaceRoot, "packages", "agent", "daemon");
 const codexprotoRoot = join(daemonRoot, "runtime", "codexproto");
 const vendoredSchemaRoot = join(codexprotoRoot, "schema", "json");
 
-const tempRoot = mkdtempSync(join(tmpdir(), "tutti-codexproto-"));
-
-try {
-  const upstreamRoot = join(tempRoot, "codex");
-  run("git", ["init", upstreamRoot], workspaceRoot);
-  run("git", ["-C", upstreamRoot, "remote", "add", "origin", codexRepoUrl], workspaceRoot);
-  run(
-    "git",
-    ["-C", upstreamRoot, "fetch", "--depth=1", "origin", codexSourceCommit],
-    workspaceRoot
+// The upstream re-fetch against the pinned Codex commit is CI's job
+// (ADR 0002): local check:full runs must not block on cloning
+// github.com/openai/codex (and must work offline). Pass --upstream to
+// opt in locally.
+if (process.env.CI || process.argv.includes("--upstream")) {
+  compareVendoredSchemaAgainstUpstream();
+} else {
+  console.log(
+    "skipping upstream codex schema comparison (CI-only; pass --upstream to run locally)"
   );
-  run(
-    "git",
-    ["-C", upstreamRoot, "checkout", "FETCH_HEAD", "--", schemaSubdir],
-    workspaceRoot
-  );
+}
 
-  compareDirectories(join(upstreamRoot, schemaSubdir), vendoredSchemaRoot);
+run("go", ["run", "./runtime/codexproto/internal/codegen"], daemonRoot);
+run(
+  "git",
+  [
+    "diff",
+    "--exit-code",
+    "--",
+    "packages/agent/daemon/runtime/codexproto"
+  ],
+  workspaceRoot
+);
+assertNoUntrackedGeneratedFiles();
 
-  run("go", ["run", "./runtime/codexproto/internal/codegen"], daemonRoot);
-  run(
-    "git",
-    [
-      "diff",
-      "--exit-code",
-      "--",
-      "packages/agent/daemon/runtime/codexproto"
-    ],
-    workspaceRoot
-  );
-  assertNoUntrackedGeneratedFiles();
+console.log("codexproto generated artifacts are current");
 
-  console.log("codexproto generated artifacts are current");
-} finally {
-  rmSync(tempRoot, { recursive: true, force: true });
+function compareVendoredSchemaAgainstUpstream() {
+  const tempRoot = mkdtempSync(join(tmpdir(), "tutti-codexproto-"));
+  try {
+    const upstreamRoot = join(tempRoot, "codex");
+    run("git", ["init", upstreamRoot], workspaceRoot);
+    run("git", ["-C", upstreamRoot, "remote", "add", "origin", codexRepoUrl], workspaceRoot);
+    run(
+      "git",
+      ["-C", upstreamRoot, "fetch", "--depth=1", "origin", codexSourceCommit],
+      workspaceRoot
+    );
+    run(
+      "git",
+      ["-C", upstreamRoot, "checkout", "FETCH_HEAD", "--", schemaSubdir],
+      workspaceRoot
+    );
+
+    compareDirectories(join(upstreamRoot, schemaSubdir), vendoredSchemaRoot);
+  } finally {
+    rmSync(tempRoot, { recursive: true, force: true });
+  }
 }
 
 function compareDirectories(expectedRoot, actualRoot) {
