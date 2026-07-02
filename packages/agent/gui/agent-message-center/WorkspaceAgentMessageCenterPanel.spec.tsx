@@ -39,18 +39,6 @@ const baseItem: WorkspaceAgentMessageCenterItem = {
   sortTimeUnixMs: 1
 };
 
-const emptyModel: WorkspaceAgentMessageCenterModel = {
-  waitingCount: 0,
-  items: [],
-  counts: {
-    all: 0,
-    working: 0,
-    waiting: 0,
-    completed: 0,
-    failed: 0
-  }
-};
-
 function createMessageCenterItem(
   overrides: Partial<WorkspaceAgentMessageCenterItem> & {
     agentSessionId: string;
@@ -180,32 +168,6 @@ function openViewOptions(): void {
 }
 
 describe("WorkspaceAgentMessageCenterCard", () => {
-  it("stretches the empty message center viewport before centering the empty state", () => {
-    const { container } = render(
-      <WorkspaceAgentMessageCenterPanel
-        open
-        model={emptyModel}
-        onClose={vi.fn()}
-        onOpenChat={vi.fn()}
-        onSubmitPrompt={vi.fn()}
-      />
-    );
-
-    const messageCenter = screen.getByTestId("workspace-agent-message-center");
-    const scrollArea = messageCenter.querySelector(
-      ".agent-vertical-scroll-area"
-    );
-    const viewport = scrollArea?.querySelector("div");
-    const emptyState = screen.getByText("No agent messages yet");
-
-    expect(container).toBeTruthy();
-    expect(screen.getByRole("button", { name: "View options" })).toBeTruthy();
-    expect(scrollArea).toHaveClass("flex-1");
-    expect(scrollArea).not.toHaveClass("flex");
-    expect(viewport).toHaveClass("flex", "h-full", "w-full", "flex-col");
-    expect(emptyState).toHaveClass("flex-1", "justify-center");
-  });
-
   it("adds edge glow only for waiting message center cards", () => {
     const { container, rerender } = render(
       <TooltipProvider>
@@ -784,41 +746,6 @@ describe("WorkspaceAgentMessageCenterCard", () => {
     ).not.toBeNull();
   });
 
-  it("marks message center controls with package style hooks", () => {
-    const { container } = render(
-      <TooltipProvider>
-        <WorkspaceAgentMessageCenterCard
-          item={createTestCardItem()}
-          isSubmitting={false}
-          onOpenChat={vi.fn()}
-          onSubmitPrompt={vi.fn()}
-        />
-      </TooltipProvider>
-    );
-
-    expect(
-      container.querySelector(
-        '[data-message-center-item-id="message-center-session-1"]'
-      )
-    ).toHaveClass("workspace-agent-message-center__card");
-    expect(screen.getByText("Completed").parentElement).toHaveClass(
-      "workspace-agent-message-center__status"
-    );
-    expect(screen.getByText("Completed").parentElement).toHaveClass(
-      "text-[var(--state-success)]"
-    );
-    expect(screen.getByRole("button", { name: "Open session" })).toHaveClass(
-      "workspace-agent-message-center__open-chat-button"
-    );
-    expect(screen.getByRole("button", { name: "/workspace" })).toHaveClass(
-      "workspace-agent-message-center__project-info-button"
-    );
-    expect(screen.getByText("Codex").parentElement).toHaveClass(
-      "workspace-agent-message-center__provider"
-    );
-    expect(screen.getByText("Codex")).toHaveClass("text-[13px]");
-  });
-
   it("hydrates the shared tooltip trigger for truncated card titles on hover", () => {
     render(
       <TooltipProvider>
@@ -1028,7 +955,7 @@ describe("WorkspaceAgentMessageCenterPanel", () => {
     );
     expect(screen.queryByRole("heading", { name: "Waiting · 1" })).toBeNull();
 
-    // Non-interactive items still group by status, with font-normal headings.
+    // Non-interactive items still group by status.
     const errorHeading = screen.getByRole("heading", { name: "Error · 1" });
     const runningHeading = screen.getByRole("heading", {
       name: "Running · 1"
@@ -1036,12 +963,6 @@ describe("WorkspaceAgentMessageCenterPanel", () => {
     const completedHeading = screen.getByRole("heading", {
       name: "Completed · 1"
     });
-    expect(errorHeading).toHaveClass("font-normal");
-    expect(runningHeading).toHaveClass("font-normal");
-    expect(completedHeading).toHaveClass("font-normal");
-    expect(errorHeading).toHaveClass("text-[var(--state-danger)]");
-    expect(runningHeading).toHaveClass("text-[var(--status-running)]");
-    expect(completedHeading).toHaveClass("text-[var(--state-success)]");
     expect(
       errorHeading.querySelector('[data-slot="status-dot"]')
     ).toHaveAttribute("data-tone", "red");

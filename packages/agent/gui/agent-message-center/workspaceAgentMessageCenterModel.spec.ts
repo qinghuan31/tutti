@@ -574,6 +574,7 @@ describe("buildWorkspaceAgentMessageCenterModel", () => {
           message({
             agentSessionId: "session-1",
             messageId: "assistant-1",
+            status: "error",
             payload: { text: "Runtime error" },
             occurredAtUnixMs: 10
           })

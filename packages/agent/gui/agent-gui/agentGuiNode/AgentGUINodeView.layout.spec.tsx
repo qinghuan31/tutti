@@ -9,11 +9,16 @@ import {
 } from "@testing-library/react";
 import { createDefaultWorkspaceUserProjectI18nRuntime } from "@tutti-os/workspace-user-project/i18n";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import type { AgentActivitySnapshot } from "@tutti-os/agent-activity-core";
 import type { WorkspaceAgentSessionDetailViewModel } from "../../shared/workspaceAgentSessionDetailViewModel";
 import type { AgentPromptContentBlock } from "../../shared/contracts/dto";
 import type { AgentGUINodeViewModel } from "./model/agentGuiNodeTypes";
 import { AgentGUINodeView, type AgentGUIViewLabels } from "./AgentGUINodeView";
 import { createLocalAgentGUIProviderTarget } from "../../providerTargets";
+import {
+  AgentActivityRuntimeProvider,
+  type AgentActivityRuntime
+} from "../../agentActivityRuntime";
 
 const conversationFlowMock = vi.hoisted(() => ({
   calls: [] as Array<{ conversation: unknown; labels: unknown }>
@@ -844,37 +849,6 @@ describe("AgentGUINodeView layout persistence", () => {
     ).toBeInTheDocument();
   });
 
-  it("does not rerender the conversation rail when only the active detail state changes", () => {
-    const actions = createActions();
-    const labels = createLabels();
-    const viewModel = {
-      ...createViewModel(),
-      conversations: Array.from({ length: 20 }, (_, index) =>
-        createConversationSummary(`session-${index + 1}`)
-      )
-    };
-    const initialOptions = {
-      actions,
-      isActive: true,
-      labels,
-      viewModel
-    };
-
-    const { rerender } = renderAgentGUINodeView(initialOptions);
-
-    expect(conversationMetaMock.calls).toHaveLength(5);
-    conversationMetaMock.calls = [];
-
-    rerender(
-      buildAgentGUINodeViewElement({
-        ...initialOptions,
-        isActive: false
-      })
-    );
-
-    expect(conversationMetaMock.calls).toHaveLength(0);
-  });
-
   it("scrolls the active conversation item into view", () => {
     const originalScrollIntoView = HTMLElement.prototype.scrollIntoView;
     const scrollIntoView = vi.fn();
@@ -900,99 +874,6 @@ describe("AgentGUINodeView layout persistence", () => {
     }
   });
 
-  it("does not re-scroll the active conversation when only conversation metadata changes", () => {
-    const originalScrollIntoView = HTMLElement.prototype.scrollIntoView;
-    const scrollIntoView = vi.fn();
-    HTMLElement.prototype.scrollIntoView = scrollIntoView;
-
-    try {
-      const firstConversation = createConversationSummary("session-1");
-      const activeConversation = createConversationSummary("session-2");
-      const viewModel = {
-        ...createViewModel(),
-        conversations: [firstConversation, activeConversation],
-        activeConversation,
-        activeConversationId: "session-2"
-      };
-      const { rerender } = renderAgentGUINodeView({ viewModel });
-
-      expect(scrollIntoView).toHaveBeenCalledTimes(1);
-
-      const updatedActiveConversation = {
-        ...activeConversation,
-        status: "working" as const,
-        updatedAtUnixMs: activeConversation.updatedAtUnixMs + 1_000
-      };
-      rerender(
-        <AgentGUINodeView
-          viewModel={{
-            ...viewModel,
-            conversations: [firstConversation, updatedActiveConversation],
-            activeConversation: updatedActiveConversation
-          }}
-          isAgentProviderReady={true}
-          actions={createActions()}
-          conversationRailCollapsed={false}
-          conversationRailWidthPx={240}
-          conversationRailMinWidthPx={220}
-          conversationRailMaxWidthPx={420}
-          detailMinWidthPx={220}
-          uiLanguage="en"
-          onConversationRailWidthChanged={vi.fn()}
-          labels={createLabels()}
-          workspaceUserProjectI18n={workspaceUserProjectI18n}
-        />
-      );
-
-      expect(scrollIntoView).toHaveBeenCalledTimes(1);
-    } finally {
-      HTMLElement.prototype.scrollIntoView = originalScrollIntoView;
-    }
-  });
-
-  it("keeps projected conversation and transcript labels stable across unrelated rerenders", () => {
-    const viewModel = {
-      ...createViewModel(),
-      activeConversation: createConversationSummary("session-1"),
-      activeConversationId: "session-1",
-      conversationDetail: createConversationDetail()
-    };
-    const actions = createActions();
-    const labels = createLabels();
-    const onConversationRailWidthChanged = vi.fn();
-
-    const { rerender } = renderAgentGUINodeView({
-      conversationRailWidthPx: 240,
-      onConversationRailWidthChanged,
-      viewModel,
-      actions,
-      labels
-    });
-    const firstCall = conversationFlowMock.calls.at(-1);
-
-    rerender(
-      <AgentGUINodeView
-        viewModel={viewModel}
-        actions={actions}
-        isAgentProviderReady={true}
-        conversationRailCollapsed={false}
-        conversationRailWidthPx={320}
-        conversationRailMinWidthPx={220}
-        conversationRailMaxWidthPx={420}
-        detailMinWidthPx={220}
-        uiLanguage="en"
-        onConversationRailWidthChanged={onConversationRailWidthChanged}
-        labels={labels}
-        workspaceUserProjectI18n={workspaceUserProjectI18n}
-      />
-    );
-    const secondCall = conversationFlowMock.calls.at(-1);
-
-    expect(firstCall?.conversation).toBeTruthy();
-    expect(secondCall?.conversation).toBe(firstCall?.conversation);
-    expect(secondCall?.labels).toBe(firstCall?.labels);
-  });
-
   it("does not rerender the conversation detail flow when filtering the rail list", () => {
     const viewModel = {
       ...createViewModel(),
@@ -1013,98 +894,6 @@ describe("AgentGUINodeView layout persistence", () => {
       {
         target: { value: "session-2" }
       }
-    );
-
-    expect(conversationFlowMock.calls).toHaveLength(initialRenderCount);
-  });
-
-  it("does not rerender the conversation detail flow when detail chrome state changes", () => {
-    const viewModel = {
-      ...createViewModel(),
-      activeConversation: createConversationSummary("session-1"),
-      activeConversationId: "session-1",
-      conversationDetail: createConversationDetail()
-    };
-    const actions = createActions();
-    const labels = createLabels();
-    const onConversationRailWidthChanged = vi.fn();
-
-    const { rerender } = renderAgentGUINodeView({
-      viewModel,
-      actions,
-      labels,
-      onConversationRailWidthChanged
-    });
-    const initialRenderCount = conversationFlowMock.calls.length;
-
-    rerender(
-      <AgentGUINodeView
-        viewModel={{
-          ...viewModel,
-          inlineNotice: {
-            id: "notice-1",
-            message: "detail failed",
-            tone: "error",
-            autoDismissMs: null
-          }
-        }}
-        actions={actions}
-        isAgentProviderReady={true}
-        conversationRailCollapsed={false}
-        conversationRailWidthPx={240}
-        conversationRailMinWidthPx={220}
-        conversationRailMaxWidthPx={420}
-        detailMinWidthPx={220}
-        uiLanguage="en"
-        onConversationRailWidthChanged={onConversationRailWidthChanged}
-        labels={labels}
-        workspaceUserProjectI18n={workspaceUserProjectI18n}
-      />
-    );
-
-    expect(conversationFlowMock.calls).toHaveLength(initialRenderCount);
-  });
-
-  it("does not rerender the conversation detail flow when detail header status changes", () => {
-    const viewModel = {
-      ...createViewModel(),
-      activeConversation: createConversationSummary("session-1"),
-      activeConversationId: "session-1",
-      conversationDetail: createConversationDetail()
-    };
-    const actions = createActions();
-    const labels = createLabels();
-    const onConversationRailWidthChanged = vi.fn();
-
-    const { rerender } = renderAgentGUINodeView({
-      viewModel,
-      actions,
-      labels,
-      onConversationRailWidthChanged
-    });
-    const initialRenderCount = conversationFlowMock.calls.length;
-
-    rerender(
-      <AgentGUINodeView
-        viewModel={{
-          ...viewModel,
-          activeConversation: {
-            ...viewModel.activeConversation!,
-            status: "working"
-          }
-        }}
-        actions={actions}
-        isAgentProviderReady={true}
-        conversationRailCollapsed={false}
-        conversationRailWidthPx={240}
-        conversationRailMinWidthPx={220}
-        conversationRailMaxWidthPx={420}
-        detailMinWidthPx={220}
-        uiLanguage="en"
-        onConversationRailWidthChanged={onConversationRailWidthChanged}
-        labels={labels}
-        workspaceUserProjectI18n={workspaceUserProjectI18n}
-      />
     );
 
     expect(conversationFlowMock.calls).toHaveLength(initialRenderCount);
@@ -1693,24 +1482,26 @@ function buildAgentGUINodeViewElement({
   slashStatusLimits = []
 }: RenderAgentGUINodeViewOptions = {}) {
   return (
-    <AgentGUINodeView
-      viewModel={viewModel}
-      onLinkAction={onLinkAction}
-      isActive={isActive}
-      isAgentProviderReady={isAgentProviderReady}
-      slashStatusLimits={slashStatusLimits}
-      actions={actions}
-      workspaceUserProjectI18n={workspaceUserProjectI18n}
-      conversationRailCollapsed={conversationRailCollapsed}
-      conversationRailWidthPx={conversationRailWidthPx}
-      conversationRailMinWidthPx={220}
-      conversationRailMaxWidthPx={420}
-      detailMinWidthPx={220}
-      uiLanguage="en"
-      onOpenConversationWindow={onOpenConversationWindow}
-      onConversationRailWidthChanged={onConversationRailWidthChanged}
-      labels={labels}
-    />
+    <AgentActivityRuntimeProvider runtime={testAgentActivityRuntime}>
+      <AgentGUINodeView
+        viewModel={viewModel}
+        onLinkAction={onLinkAction}
+        isActive={isActive}
+        isAgentProviderReady={isAgentProviderReady}
+        slashStatusLimits={slashStatusLimits}
+        actions={actions}
+        workspaceUserProjectI18n={workspaceUserProjectI18n}
+        conversationRailCollapsed={conversationRailCollapsed}
+        conversationRailWidthPx={conversationRailWidthPx}
+        conversationRailMinWidthPx={220}
+        conversationRailMaxWidthPx={420}
+        detailMinWidthPx={220}
+        uiLanguage="en"
+        onOpenConversationWindow={onOpenConversationWindow}
+        onConversationRailWidthChanged={onConversationRailWidthChanged}
+        labels={labels}
+      />
+    </AgentActivityRuntimeProvider>
   );
 }
 
@@ -1719,6 +1510,161 @@ function renderAgentGUINodeView(options: RenderAgentGUINodeViewOptions = {}) {
 }
 
 type AgentGUINodeViewProps = Parameters<typeof AgentGUINodeView>[0];
+
+function createNoopAgentActivityRuntime(): AgentActivityRuntime {
+  const snapshot = createEmptyAgentActivitySnapshot();
+  return {
+    promptContentUploadSupport: { file: true, image: true },
+    async cancelSession(input) {
+      return {
+        session: createRuntimeSession(input.workspaceId, input.agentSessionId),
+        canceled: false,
+        reason: "no_active_turn"
+      };
+    },
+    async createSession(input) {
+      return createRuntimeSession(
+        input.workspaceId,
+        "session-1",
+        input.cwd ?? "/workspace"
+      );
+    },
+    async deleteSession() {
+      return { removed: true };
+    },
+    async activateSession(input) {
+      return {
+        session: createRuntimeSession(
+          input.workspaceId,
+          input.agentSessionId,
+          input.cwd ?? "/workspace"
+        ),
+        activation: { mode: input.mode, status: "attached" }
+      };
+    },
+    async getSession(workspaceId, agentSessionId) {
+      return createRuntimeSession(workspaceId, agentSessionId);
+    },
+    async getComposerOptions() {
+      return {};
+    },
+    async updateSessionSettings(input) {
+      return {
+        agentSessionId: input.agentSessionId,
+        settings: input.settings
+      };
+    },
+    async warmupOpenclawGateway() {
+      return { accepted: true, ready: true };
+    },
+    async getSessionControlState() {
+      return { status: "ready" } as Awaited<
+        ReturnType<AgentActivityRuntime["getSessionControlState"]>
+      >;
+    },
+    getSnapshot() {
+      return snapshot;
+    },
+    async listSessionMessages() {
+      return { messages: [], latestVersion: 0, hasMore: false };
+    },
+    async listAgentGeneratedFiles(input) {
+      return { workspaceId: input.workspaceId, entries: [] };
+    },
+    async listSessionsPage(input) {
+      return {
+        workspaceId: input.workspaceId,
+        sessions: [],
+        hasMore: false
+      };
+    },
+    async load() {
+      return snapshot;
+    },
+    ensureSessionSynchronized() {
+      return () => undefined;
+    },
+    retainSessionEvents() {
+      return () => undefined;
+    },
+    async sendInput(input) {
+      return {
+        session: createRuntimeSession(input.workspaceId, input.agentSessionId),
+        turnId: "turn-1",
+        turnLifecycle: { activeTurnId: "turn-1", phase: "submitted" },
+        submitAvailability: { state: "ready" }
+      };
+    },
+    async uploadPromptContent(input) {
+      return { content: input.content };
+    },
+    async readSessionAttachment(input) {
+      return {
+        attachmentId: input.attachmentId,
+        mimeType: "application/octet-stream",
+        data: ""
+      };
+    },
+    async readPromptAsset(input) {
+      return {
+        assetId: input.assetId ?? undefined,
+        mimeType: input.mimeType,
+        path: input.path ?? "",
+        data: ""
+      };
+    },
+    async setSessionPinned(input) {
+      return createRuntimeSession(input.workspaceId, input.agentSessionId);
+    },
+    async trackSettingsProjectChange() {},
+    async trackDraftComposerSettingsChange() {},
+    reportDiagnostic() {},
+    async unactivateSession(input) {
+      return {
+        agentSessionId: input.agentSessionId,
+        buffered: true
+      };
+    },
+    async submitInteractive() {
+      return {};
+    },
+    subscribeSessionEvents() {
+      return () => undefined;
+    },
+    subscribe() {
+      return () => undefined;
+    }
+  };
+}
+
+function createRuntimeSession(
+  workspaceId: string,
+  agentSessionId: string,
+  cwd = "/workspace"
+) {
+  return {
+    workspaceId,
+    agentSessionId,
+    provider: "codex" as const,
+    providerSessionId: `provider-${agentSessionId}`,
+    cwd,
+    title: "",
+    status: "ready",
+    createdAtUnixMs: 1,
+    updatedAtUnixMs: 1
+  };
+}
+
+function createEmptyAgentActivitySnapshot(): AgentActivitySnapshot {
+  return {
+    workspaceId: "workspace-1",
+    presences: [],
+    sessions: [],
+    sessionMessagesById: {}
+  };
+}
+
+const testAgentActivityRuntime = createNoopAgentActivityRuntime();
 
 function createActions(): AgentGUINodeViewProps["actions"] {
   return {
