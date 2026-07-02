@@ -1397,6 +1397,64 @@ func TestCodexAppServerAdapterCancelInterruptsActiveTurn(t *testing.T) {
 	}
 }
 
+func TestCodexAppServerAdapterCancelInterruptsLinkedChildThreads(t *testing.T) {
+	t.Parallel()
+
+	adapter, transport, session := startedAppServerAdapter(t)
+	transport.conn.holdTurn = true
+	adapter.rememberAppServerChildThreads(session.AgentSessionID, "codex-thread-1", map[string]any{
+		"type":              "collabAgentToolCall",
+		"id":                "spawn-child-1",
+		"receiverThreadIds": []any{"child-thread-1", "child-thread-2"},
+	})
+
+	execDone := make(chan []activityshared.Event, 1)
+	go func() {
+		events, _ := adapter.Exec(context.Background(), session, []PromptContentBlock{{
+			Type: "text", Text: "long parent task",
+		}}, "", "turn-local-1", nil, nil)
+		execDone <- events
+	}()
+
+	waitForCondition(t, func() bool {
+		return adapter.sessionActiveTurnID(session.AgentSessionID) == "turn-1"
+	})
+	cancelEvents, err := adapter.Cancel(context.Background(), session, "user requested")
+	if err != nil {
+		t.Fatalf("Cancel: %v", err)
+	}
+	if len(cancelEvents) != 2 {
+		t.Fatalf("cancel child events = %#v, want two canceled markers", cancelEvents)
+	}
+	for _, event := range cancelEvents {
+		if event.Payload.Metadata["messageKind"] != "subAgentLifecycle" ||
+			event.Payload.Metadata["subAgentLifecycleStatus"] != "canceled" ||
+			event.OwnerThreadID == "" {
+			t.Fatalf("cancel child event = %#v", event)
+		}
+	}
+	waitForCondition(t, func() bool {
+		return len(appServerRequestParamsList(t, transport.conn, appServerMethodTurnInterrupt)) == 3
+	})
+	requests := appServerRequestParamsList(t, transport.conn, appServerMethodTurnInterrupt)
+	byThread := map[string]map[string]any{}
+	for _, request := range requests {
+		byThread[asString(request["threadId"])] = request
+	}
+	if asString(byThread["codex-thread-1"]["turnId"]) != "turn-1" {
+		t.Fatalf("parent interrupt requests = %#v", requests)
+	}
+	if asString(byThread["child-thread-1"]["turnId"]) != "" ||
+		asString(byThread["child-thread-2"]["turnId"]) != "" {
+		t.Fatalf("child interrupt requests = %#v, want empty turnId startup interrupts", requests)
+	}
+	select {
+	case <-execDone:
+	case <-time.After(5 * time.Second):
+		t.Fatalf("Exec did not finish after interrupt")
+	}
+}
+
 func TestCodexAppServerAdapterCancelForceClosesWedgedTurn(t *testing.T) {
 	t.Parallel()
 

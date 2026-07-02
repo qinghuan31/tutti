@@ -1663,6 +1663,7 @@ func (a *CodexAppServerAdapter) Cancel(ctx context.Context, session Session, rea
 	if appSession == nil || appSession.client == nil {
 		return nil, ErrSessionDisconnected
 	}
+	childEvents := a.interruptLinkedChildThreads(session, appSession, reason)
 	activeTurnID, queued := a.requestActiveTurnCancel(session.AgentSessionID)
 	// Unblock any handler waiting on an approval answer first: the message
 	// read loop is parked inside that handler, so the interrupt response
@@ -1670,12 +1671,15 @@ func (a *CodexAppServerAdapter) Cancel(ctx context.Context, session Session, rea
 	a.rejectPendingRequests(session.AgentSessionID, errPermissionRequestCanceled)
 	if activeTurnID == "" {
 		if queued {
-			return nil, nil
+			return childEvents, nil
+		}
+		if len(childEvents) > 0 {
+			return childEvents, nil
 		}
 		return nil, ErrSessionNoActiveTurn
 	}
 	appTurn := a.sessionActiveTurn(session.AgentSessionID)
-	return nil, a.interruptActiveTurn(ctx, appSession, session, appTurn, activeTurnID, reason)
+	return childEvents, a.interruptActiveTurn(ctx, appSession, session, appTurn, activeTurnID, reason)
 }
 
 // interruptActiveTurn stops the active turn. It first asks codex to cancel
@@ -1746,21 +1750,79 @@ func (a *CodexAppServerAdapter) sendTurnInterrupt(
 	activeTurnID string,
 	reason string,
 ) {
+	a.sendThreadInterrupt(appSession.client, session, appSession.threadID, activeTurnID, reason)
+}
+
+func (a *CodexAppServerAdapter) sendThreadInterrupt(
+	client *codexAppServerClient,
+	session Session,
+	threadID string,
+	turnID string,
+	reason string,
+) {
+	threadID = strings.TrimSpace(threadID)
+	if client == nil || threadID == "" {
+		return
+	}
 	interruptCtx, cancel := context.WithTimeout(context.Background(), acpPermissionModeTimeout)
 	defer cancel()
-	if _, err := appSession.client.TurnInterruptNoHandler(interruptCtx, acpPermissionModeTimeout, map[string]any{
-		"threadId": appSession.threadID,
-		"turnId":   activeTurnID,
+	if _, err := client.TurnInterruptNoHandler(interruptCtx, acpPermissionModeTimeout, map[string]any{
+		"threadId": threadID,
+		"turnId":   strings.TrimSpace(turnID),
 	}); err != nil {
 		slog.Warn("agent session app-server interrupt failed",
 			"event", "agent_session.app_server.interrupt.failed",
 			"agent_session_id", session.AgentSessionID,
-			"provider_session_id", appSession.threadID,
-			"turn_id", activeTurnID,
+			"provider_session_id", threadID,
+			"turn_id", turnID,
 			"reason", reason,
 			"error", err.Error(),
 		)
 	}
+}
+
+func (a *CodexAppServerAdapter) interruptLinkedChildThreads(
+	session Session,
+	appSession *codexAppServerSession,
+	reason string,
+) []activityshared.Event {
+	if a == nil || appSession == nil || appSession.client == nil {
+		return nil
+	}
+	childThreadIDs := a.takeLinkedChildThreadIDs(session.AgentSessionID)
+	if len(childThreadIDs) == 0 {
+		return nil
+	}
+	events := make([]activityshared.Event, 0, len(childThreadIDs))
+	for _, childThreadID := range childThreadIDs {
+		go a.sendThreadInterrupt(appSession.client, session, childThreadID, "", reason)
+		event := appServerSubAgentLifecycleEvent(session, childThreadID, "", "canceled", reason)
+		if event.Type != "" {
+			events = append(events, event)
+		}
+	}
+	return events
+}
+
+func (a *CodexAppServerAdapter) takeLinkedChildThreadIDs(agentSessionID string) []string {
+	if a == nil {
+		return nil
+	}
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	appSession := a.sessions[strings.TrimSpace(agentSessionID)]
+	if appSession == nil || len(appSession.childThreads) == 0 {
+		return nil
+	}
+	childThreadIDs := make([]string, 0, len(appSession.childThreads))
+	for childThreadID := range appSession.childThreads {
+		if trimmed := strings.TrimSpace(childThreadID); trimmed != "" {
+			childThreadIDs = append(childThreadIDs, trimmed)
+		}
+	}
+	sort.Strings(childThreadIDs)
+	appSession.childThreads = nil
+	return childThreadIDs
 }
 
 func (a *CodexAppServerAdapter) markTurnForceCanceled(turn *codexAppServerActiveTurn) {

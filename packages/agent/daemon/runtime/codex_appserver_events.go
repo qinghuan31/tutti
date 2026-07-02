@@ -410,6 +410,7 @@ type appServerNotificationRoute struct {
 	ownerThreadID string
 	turnID        string
 	normalizer    *acpTurnNormalizer
+	events        []activityshared.Event
 	drop          bool
 }
 
@@ -429,6 +430,14 @@ func (a *CodexAppServerAdapter) appServerNotificationRoute(
 	if !ok {
 		a.logAppServerForeignThreadDrop(session, method, params, eventThreadID)
 		return appServerNotificationRoute{drop: true}
+	}
+	if event := appServerChildTerminalStatusEvent(session, eventThreadID, method, params); event.Type != "" {
+		return appServerNotificationRoute{
+			ownerThreadID: eventThreadID,
+			turnID:        event.Payload.TurnID,
+			events:        []activityshared.Event{event},
+			drop:          true,
+		}
 	}
 	if appServerSuppressChildNotification(method) {
 		return appServerNotificationRoute{drop: true}
@@ -546,6 +555,85 @@ func appServerSuppressChildNotification(method string) bool {
 	default:
 		return false
 	}
+}
+
+func appServerChildTerminalStatusEvent(
+	session Session,
+	ownerThreadID string,
+	method string,
+	params map[string]any,
+) activityshared.Event {
+	ownerThreadID = strings.TrimSpace(ownerThreadID)
+	if ownerThreadID == "" {
+		return activityshared.Event{}
+	}
+	switch method {
+	case appServerNotifyTurnCompleted:
+		turn := payloadObject(params["turn"])
+		turnID := firstNonEmpty(asString(params["turnId"]), asString(turn["id"]))
+		status := appServerChildLifecycleStatus(asString(turn["status"]))
+		return appServerSubAgentLifecycleEvent(session, ownerThreadID, turnID, status, appServerChildFailureDetail(turn))
+	case appServerNotifyError:
+		if willRetry, _ := params["willRetry"].(bool); willRetry {
+			return activityshared.Event{}
+		}
+		turnID := firstNonEmpty(asString(params["turnId"]), asString(payloadObject(params["turn"])["id"]))
+		return appServerSubAgentLifecycleEvent(session, ownerThreadID, turnID, "failed", appServerChildFailureDetail(payloadObject(params["error"])))
+	default:
+		return activityshared.Event{}
+	}
+}
+
+func appServerChildLifecycleStatus(status string) string {
+	switch strings.TrimSpace(strings.ToLower(status)) {
+	case "failed", "error", "errored":
+		return "failed"
+	case "canceled", "cancelled", "interrupted":
+		return "canceled"
+	default:
+		return "completed"
+	}
+}
+
+func appServerChildFailureDetail(payload map[string]any) string {
+	return firstNonEmpty(
+		asStringRaw(payload["message"]),
+		asStringRaw(payload["detail"]),
+		asStringRaw(payload["error"]),
+		asStringRaw(payload["reason"]),
+	)
+}
+
+func appServerSubAgentLifecycleEvent(session Session, ownerThreadID string, turnID string, status string, detail string) activityshared.Event {
+	ownerThreadID = strings.TrimSpace(ownerThreadID)
+	status = strings.TrimSpace(status)
+	if ownerThreadID == "" || status == "" {
+		return activityshared.Event{}
+	}
+	messageID := "subagent-lifecycle:" + ownerThreadID + ":" + firstNonEmpty(strings.TrimSpace(turnID), newID())
+	payload := map[string]any{
+		"messageId":               messageID,
+		"contentMode":             messageContentModeSnapshot,
+		"streamState":             status,
+		"messageKind":             "subAgentLifecycle",
+		"subAgentLifecycleStatus": status,
+		"ownerThreadId":           ownerThreadID,
+	}
+	if detail != "" {
+		payload["detail"] = detail
+	}
+	event := newTurnActivityEventWithID(
+		session,
+		messageID,
+		EventMessage,
+		strings.TrimSpace(turnID),
+		status,
+		RoleAssistant,
+		"",
+		payload,
+	)
+	event.OwnerThreadID = ownerThreadID
+	return event
 }
 
 func appServerReceiverThreadIDs(value any) []string {

@@ -200,8 +200,15 @@ func TestCodexAppServerAdapterRoutesLinkedChildThreadEvents(t *testing.T) {
 			"turn":     map[string]any{"id": "child-turn-1", "status": "completed"},
 		}),
 	}, normalizer, nil).Events
-	if len(childLifecycleEvents) != 0 {
-		t.Fatalf("child lifecycle events = %#v, want suppressed", childLifecycleEvents)
+	if len(childLifecycleEvents) != 1 {
+		t.Fatalf("child lifecycle events = %#v, want one compact status marker", childLifecycleEvents)
+	}
+	lifecycle := childLifecycleEvents[0]
+	if lifecycle.OwnerThreadID != "child-thread-1" ||
+		lifecycle.Payload.TurnID != "child-turn-1" ||
+		lifecycle.Payload.Metadata["messageKind"] != "subAgentLifecycle" ||
+		lifecycle.Payload.Metadata["subAgentLifecycleStatus"] != "completed" {
+		t.Fatalf("child lifecycle marker = %#v", lifecycle)
 	}
 
 	childEvents := reducer.ReduceNotification(nil, session, "parent-turn-1", acpMessage{
@@ -346,8 +353,12 @@ func TestCodexAppServerChildThreadErrorDoesNotFailParentTurn(t *testing.T) {
 			"error":     map[string]any{"message": "child thread exploded"},
 		}),
 	}, normalizer, nil).Events
-	if len(events) != 0 {
-		t.Fatalf("child error events = %#v, want suppressed", events)
+	if len(events) != 1 ||
+		events[0].OwnerThreadID != "child-thread-1" ||
+		events[0].Payload.Metadata["messageKind"] != "subAgentLifecycle" ||
+		events[0].Payload.Metadata["subAgentLifecycleStatus"] != "failed" ||
+		events[0].Payload.Metadata["detail"] != "child thread exploded" {
+		t.Fatalf("child error events = %#v, want one child failed marker", events)
 	}
 	if activeTurn.phase != codexAppServerTurnPhaseRunning {
 		t.Fatalf("parent turn phase = %q, want still running", activeTurn.phase)

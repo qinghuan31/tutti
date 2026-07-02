@@ -38,7 +38,7 @@ func (r codexAppServerReducer) ReduceNotification(
 	}
 	route := a.appServerNotificationRoute(session, message.Method, params)
 	if route.drop {
-		return codexAppServerReduction{}
+		return codexAppServerReduction{Events: appServerEventsWithOwnerThreadID(route.events, route.ownerThreadID)}
 	}
 	if route.normalizer != nil {
 		normalizer = route.normalizer
