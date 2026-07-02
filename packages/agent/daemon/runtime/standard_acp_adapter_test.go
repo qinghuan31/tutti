@@ -1521,6 +1521,98 @@ func TestStandardACPSystemNoticeChunkProjectsAssistantNotice(t *testing.T) {
 	}
 }
 
+func TestStandardACPTransportFallbackTextProjectsAssistantNotice(t *testing.T) {
+	t.Parallel()
+
+	session := standardTestSession(ProviderNexight)
+	session.ProviderSessionID = "nexight-session-1"
+
+	events := standardACPUpdateEvents(NewNexightAdapter(nil).config, session, "turn-1", json.RawMessage(`{
+		"update": {
+			"sessionUpdate": "agent_message_chunk",
+			"content": {
+				"type": "text",
+				"text": "Falling back from WebSockets to HTTPS transport."
+			}
+		}
+	}`), newACPTurnNormalizer())
+
+	if len(events) != 1 {
+		t.Fatalf("events = %#v, want one system notice message", events)
+	}
+	if got := events[0].Payload.Metadata["kind"]; got != "agent_system_notice" {
+		t.Fatalf("notice kind marker = %#v, want agent_system_notice", got)
+	}
+	if got := events[0].Payload.Metadata["noticeKind"]; got != "transport_fallback" {
+		t.Fatalf("noticeKind = %#v, want transport_fallback", got)
+	}
+}
+
+func TestStandardACPReconnectThoughtChunkProjectsAssistantNotice(t *testing.T) {
+	t.Parallel()
+
+	session := standardTestSession(ProviderNexight)
+	session.ProviderSessionID = "nexight-session-1"
+
+	events := standardACPUpdateEvents(NewNexightAdapter(nil).config, session, "turn-1", json.RawMessage(`{
+		"update": {
+			"sessionUpdate": "agent_thought_chunk",
+			"content": {
+				"type": "text",
+				"text": "Reconnecting... 1/5 Some(ResponseStreamDisconnected { http_status_code: None })"
+			}
+		}
+	}`), newACPTurnNormalizer())
+
+	if len(events) != 1 {
+		t.Fatalf("events = %#v, want one system notice message", events)
+	}
+	if got := events[0].Payload.Metadata["kind"]; got != "agent_system_notice" {
+		t.Fatalf("notice kind marker = %#v, want agent_system_notice", got)
+	}
+	if got := events[0].Payload.Metadata["noticeKind"]; got != "transport_retry" {
+		t.Fatalf("noticeKind = %#v, want transport_retry", got)
+	}
+}
+
+func TestNexightACPSystemNoticeMessageFromStderr(t *testing.T) {
+	t.Parallel()
+
+	mapper := NewNexightAdapter(nil).config.stderrMessageMapper
+	if mapper == nil {
+		t.Fatal("nexight config stderrMessageMapper = nil, want stream-error mapper")
+	}
+
+	message, ok := mapper([]byte(
+		`2026-05-29T09:05:51.179821Z ERROR codex_acp::thread: Handled error during turn: Reconnecting... 1/5 Some(ResponseStreamDisconnected { http_status_code: Some(401) }) Some("unexpected status 401 Unauthorized")`,
+	))
+	if !ok {
+		t.Fatal("stderr notice ok = false, want true")
+	}
+	if message.Method != acpMethodUpdate {
+		t.Fatalf("method = %q, want %q", message.Method, acpMethodUpdate)
+	}
+	var params struct {
+		Update map[string]any `json:"update"`
+	}
+	if err := json.Unmarshal(message.Params, &params); err != nil {
+		t.Fatalf("unmarshal params: %v", err)
+	}
+	if got := params.Update["sessionUpdate"]; got != "stream_error" {
+		t.Fatalf("sessionUpdate = %#v, want stream_error", got)
+	}
+	if got := params.Update["noticeKind"]; got != "transport_retry" {
+		t.Fatalf("noticeKind = %#v, want transport_retry", got)
+	}
+	if got := params.Update["source"]; got != "acp_stderr" {
+		t.Fatalf("source = %#v, want acp_stderr", got)
+	}
+
+	if _, ok := mapper([]byte("WARN unrelated")); ok {
+		t.Fatal("generic stderr ok = true, want false")
+	}
+}
+
 func TestStandardACPTransportFallbackTextStaysProviderScoped(t *testing.T) {
 	t.Parallel()
 

@@ -35,6 +35,14 @@ type standardACPConfig struct {
 	env                func(Session) []string
 	commandResolver    ProviderCommandResolver
 	beforeNewSession   func(context.Context, *acpClient, Session, json.RawMessage) error
+	// allowSyntheticNotice lets codex-acp-derived providers promote bare
+	// transport text ("Reconnecting... 1/5", "Falling back ... transport")
+	// streamed as ordinary chunks into system-notice banners instead of
+	// appending it to the assistant reply.
+	allowSyntheticNotice bool
+	// stderrMessageMapper translates provider stderr frames into synthetic
+	// session/update messages (e.g. codex-acp retry logs -> transport notices).
+	stderrMessageMapper acpStderrMessageMapper
 }
 
 type standardACPAdapter struct {
@@ -122,11 +130,60 @@ func NewNexightAdapterWithHostMetadata(transport ProcessTransport, host HostMeta
 			permissionModeID:    codexACPModeID,
 			initializeParams:    func() map[string]any { return defaultACPInitializeParams(host) },
 			env:                 func(session Session) []string { return standardACPEnv(session, host) },
+			// nexight-acp is codex-acp derived: transport retry/fallback text
+			// arrives as ordinary chunks and stderr logs, so keep the notice
+			// projection the old CodexAdapter provided.
+			allowSyntheticNotice: true,
+			stderrMessageMapper:  nexightACPSystemNoticeMessageFromStderr,
 		},
 		transport: transport,
 		host:      host,
 		sessions:  make(map[string]*standardACPSession),
 	}
+}
+
+// nexightACPSystemNoticeMessageFromStderr projects codex-acp "handled error
+// during turn" stderr retry logs into a synthetic stream_error session/update
+// so reconnect attempts surface as transport notices instead of vanishing.
+// (Recovered from the retired CodexAdapter; nexight-acp shares that stderr
+// format.)
+func nexightACPSystemNoticeMessageFromStderr(stderr []byte) (acpMessage, bool) {
+	text := strings.TrimSpace(string(stderr))
+	if text == "" {
+		return acpMessage{}, false
+	}
+	normalized := strings.ToLower(text)
+	if !strings.Contains(normalized, "handled error during turn") {
+		return acpMessage{}, false
+	}
+	if !strings.Contains(normalized, "responsestreamdisconnected") &&
+		!strings.Contains(normalized, "broken pipe") &&
+		!strings.Contains(normalized, "response stream") {
+		return acpMessage{}, false
+	}
+	detail := truncateACPLogValue(text, 4000)
+	params, err := json.Marshal(map[string]any{
+		"update": map[string]any{
+			"kind":              "agent_system_notice",
+			"sessionUpdate":     "stream_error",
+			"message":           "ResponseStreamDisconnected",
+			"noticeKind":        "transport_retry",
+			"severity":          "warning",
+			"title":             "Codex connection interrupted. Reconnecting...",
+			"detail":            detail,
+			"additionalDetails": detail,
+			"retryable":         true,
+			"source":            "acp_stderr",
+		},
+	})
+	if err != nil {
+		return acpMessage{}, false
+	}
+	return acpMessage{
+		JSONRPC: "2.0",
+		Method:  acpMethodUpdate,
+		Params:  params,
+	}, true
 }
 
 func NewGeminiAdapter(transport ProcessTransport) *standardACPAdapter {
@@ -835,7 +892,7 @@ func (a *standardACPAdapter) startInitializedClient(
 		"agent_session_id": session.AgentSessionID,
 		"elapsed_ms":       time.Since(processStartedAt).Milliseconds(),
 	})
-	client := newACPClientWithStderrMessageMapper(conn, nil)
+	client := newACPClientWithStderrMessageMapper(conn, a.config.stderrMessageMapper)
 	client.SetMessageHandler(func(ctx context.Context, message acpMessage) error {
 		turnSession := session
 		turnID := a.sessionRecentTurnID(session.AgentSessionID)
@@ -2889,7 +2946,7 @@ func standardACPUpdateEvents(config standardACPConfig, session Session, turnID s
 	case "user_message_chunk":
 		return nil
 	case "agent_message_chunk":
-		if events, ok := acpSystemNoticeEvents(session, turnID, params.Update, normalizer, "agent_message_chunk", false); ok {
+		if events, ok := acpSystemNoticeEvents(session, turnID, params.Update, normalizer, "agent_message_chunk", config.allowSyntheticNotice); ok {
 			return events
 		}
 		content := acpTextContent(params.Update["content"])
@@ -2898,7 +2955,7 @@ func standardACPUpdateEvents(config standardACPConfig, session Session, turnID s
 		}
 		return normalizer.AppendAssistantChunk(session, turnID, content)
 	case "agent_thought_chunk":
-		if events, ok := acpSystemNoticeEvents(session, turnID, params.Update, normalizer, "agent_thought_chunk", false); ok {
+		if events, ok := acpSystemNoticeEvents(session, turnID, params.Update, normalizer, "agent_thought_chunk", config.allowSyntheticNotice); ok {
 			return events
 		}
 		content := acpTextContent(params.Update["content"])
@@ -2936,7 +2993,7 @@ func standardACPUpdateEvents(config standardACPConfig, session Session, turnID s
 		}
 		return nil
 	case "stream_error", "warning", "system_notice":
-		if events, ok := acpSystemNoticeEvents(session, turnID, params.Update, normalizer, updateType, false); ok {
+		if events, ok := acpSystemNoticeEvents(session, turnID, params.Update, normalizer, updateType, config.allowSyntheticNotice); ok {
 			return events
 		}
 		return nil
