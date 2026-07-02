@@ -1,7 +1,7 @@
-import { PredefinePageviewReporter } from "../../reporters/predefine-pageview/predefinePageviewReporter.ts";
+import { AppPageviewReporter } from "../../reporters/app-pageview/appPageviewReporter.ts";
 import type { IReporterService } from "../reporterService.interface.ts";
 
-const focusedDayStorageKey = "tutti.analytics.predefine_pageview.focused_day";
+const focusedDayStorageKey = "tutti.analytics.app.pageview.focused_day";
 
 export interface PredefinePageviewAnalyticsController {
   dispose(): void;
@@ -33,7 +33,7 @@ export function startPredefinePageviewAnalytics(input: {
     if (disposed) {
       return;
     }
-    void new PredefinePageviewReporter({
+    void new AppPageviewReporter({
       now,
       reporterService: input.reporterService
     }).report();

@@ -1,8 +1,8 @@
 import type { AnalyticsReporterDependencies } from "../baseReporter.ts";
 
-export class PredefinePageviewReporter {
+export class AppPageviewReporter {
   private readonly dependencies: AnalyticsReporterDependencies;
-  private readonly eventName = "predefine_pageview";
+  private readonly eventName = "app.pageview";
 
   constructor(dependencies: AnalyticsReporterDependencies) {
     this.dependencies = dependencies;

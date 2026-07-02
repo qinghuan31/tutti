@@ -4,7 +4,7 @@ import path from "node:path";
 import test from "node:test";
 
 const expectedAnalyticsEvents = [
-  "predefine_pageview",
+  "app.pageview",
   "app.startup_failed",
   "app.renderer_error",
   "daemon.startup_failed",
