@@ -385,6 +385,7 @@ function AgentMessageLocatorRail({
   const [shouldRenderPanel, setShouldRenderPanel] = useState(false);
   const [activeKey, setActiveKey] = useState<string | null>(null);
   const [selectedKey, setSelectedKey] = useState<string | null>(null);
+  const [visibleHeightPx, setVisibleHeightPx] = useState<number | null>(null);
   useEffect(() => {
     if (isPanelOpen) {
       setShouldRenderPanel(true);
@@ -409,6 +410,45 @@ function AgentMessageLocatorRail({
       setSelectedKey(null);
     }
   }, [items, selectedKey]);
+  useLayoutEffect(() => {
+    const locator = locatorRef.current;
+    const scrollParent = locator
+      ? findMessageLocatorScrollParent(locator)
+      : null;
+    if (!scrollParent) {
+      return;
+    }
+
+    let animationFrame: number | null = null;
+    const updateVisibleHeight = (): void => {
+      animationFrame = null;
+      const nextHeight = scrollParent.clientHeight;
+      setVisibleHeightPx((current) =>
+        current === nextHeight ? current : nextHeight
+      );
+    };
+    const scheduleUpdate = (): void => {
+      if (animationFrame !== null) {
+        return;
+      }
+      animationFrame = window.requestAnimationFrame(updateVisibleHeight);
+    };
+
+    scheduleUpdate();
+    const resizeObserver =
+      typeof ResizeObserver === "undefined"
+        ? null
+        : new ResizeObserver(scheduleUpdate);
+    resizeObserver?.observe(scrollParent);
+    window.addEventListener("resize", scheduleUpdate);
+    return () => {
+      resizeObserver?.disconnect();
+      window.removeEventListener("resize", scheduleUpdate);
+      if (animationFrame !== null) {
+        window.cancelAnimationFrame(animationFrame);
+      }
+    };
+  }, [items.length]);
   useEffect(() => {
     const locator = locatorRef.current;
     const scrollParent = locator
@@ -505,7 +545,12 @@ function AgentMessageLocatorRail({
       onMouseLeave={closePanelSoon}
       style={
         {
-          "--agent-message-locator-height": `${railHeight}px`
+          "--agent-message-locator-height": `${railHeight}px`,
+          ...(visibleHeightPx !== null
+            ? {
+                "--agent-message-locator-visible-height": `${visibleHeightPx}px`
+              }
+            : {})
         } as CSSProperties
       }
     >

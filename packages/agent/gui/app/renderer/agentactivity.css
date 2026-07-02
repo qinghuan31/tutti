@@ -5664,9 +5664,19 @@ button.agent-gui-node__conversation-section-toggle:hover
   --agent-message-locator-dot-size: 6px;
   --agent-message-locator-hit-size: 18px;
   --agent-message-locator-center-offset: 10px;
+  --agent-message-locator-visible-height: 100vh;
 
   position: sticky;
-  top: 50%;
+  top: max(
+    0px,
+    calc(
+      (
+          var(--agent-message-locator-visible-height) -
+            var(--agent-message-locator-height)
+        ) /
+        2
+    )
+  );
   right: 0;
   z-index: 7;
   justify-self: stretch;
@@ -5674,7 +5684,6 @@ button.agent-gui-node__conversation-section-toggle:hover
   height: var(--agent-message-locator-height);
   margin-right: calc(-1 * var(--agent-gui-message-locator-inline-offset));
   margin-bottom: calc(-1 * var(--agent-message-locator-height));
-  transform: translateY(-50%);
   pointer-events: none;
 }
 
