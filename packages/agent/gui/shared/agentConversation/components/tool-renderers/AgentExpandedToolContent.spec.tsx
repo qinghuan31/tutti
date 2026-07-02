@@ -1275,7 +1275,9 @@ describe("AgentExpandedToolContent", () => {
       />
     );
 
-    expect(screen.getByText("Sub-agent 2")).toBeTruthy();
+    // Tool-row-aligned header: label + per-lane index as the name slot.
+    expect(screen.getByText("Sub-agent")).toBeTruthy();
+    expect(screen.getByText("#2")).toBeTruthy();
     expect(screen.getByText("Starting…")).toBeTruthy();
   });
 });

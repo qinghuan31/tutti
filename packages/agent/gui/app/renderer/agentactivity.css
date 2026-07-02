@@ -8174,3 +8174,21 @@ html[data-theme="light"] [data-message-center-item-id].agent-gui-edge-glow {
 .workspace-agents-status-panel__detail-subagent-activity--failure {
   color: var(--tutti-status-danger, #c0392b);
 }
+
+/* Tool-row-aligned sub-agent header */
+.workspace-agents-status-panel__detail-tool-row--subagent {
+  margin: 2px 0;
+}
+
+.workspace-agents-status-panel__detail-subagent-name {
+  color: var(--tutti-text-primary, rgba(0, 0, 0, 0.85));
+  margin-left: 4px;
+}
+
+.workspace-agents-status-panel__detail-tool-row--subagent
+  .workspace-agents-status-panel__detail-subagent-status {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+}

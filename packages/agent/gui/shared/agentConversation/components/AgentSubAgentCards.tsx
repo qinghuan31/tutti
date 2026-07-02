@@ -1,16 +1,19 @@
-import type { JSX } from "react";
+import { useState, type JSX } from "react";
+import { ChevronDown, ChevronRight } from "lucide-react";
 import { translate } from "../../../i18n/index";
 import type { AgentTaskSubAgentVM } from "../contracts/agentTaskItemVM";
 import type { AgentToolCallVM } from "../contracts/agentToolCallVM";
+import { CollapsibleReveal } from "./CollapsibleReveal";
 import {
   ToolMarkdownBlock,
   ToolSection
 } from "./tool-renderers/agentToolContentShared";
 import { formatAgentToolDurationMs } from "./tool-renderers/render-data/agentToolRenderData";
 
-// A delegated sub-agent renders as a first-class card in the transcript -
-// not nested inside a tool row. The card's identity and status are the
-// sub-agent's own (child thread name + lifecycle), never the spawn tool's.
+// A delegated sub-agent renders as a first-class row aligned with tool rows:
+// header = "Sub-agent · <name> · <elapsed> · <status>" with a chevron, body =
+// the indented detail panel (TASK / PROGRESS). Identity and status are the
+// sub-agent's own (child thread nickname + lifecycle), never the spawn tool's.
 export function AgentSubAgentCards({
   call,
   onLinkClick
@@ -44,48 +47,136 @@ export function AgentSubAgentCard({
   onLinkClick?: (href: string) => void;
 }): JSX.Element {
   "use memo";
+  const running = subAgent.status === "running";
+  // Mirror AgentTaskCallCard: pinned open while running, collapsible after.
+  const pinned = running;
+  const [expanded, setExpanded] = useState(false);
+  const isExpanded = pinned || expanded;
+  const header = (
+    <SubAgentHeader subAgent={subAgent} expanded={isExpanded} pinned={pinned} />
+  );
+
+  return (
+    <div
+      className="workspace-agents-status-panel__detail-tool-row workspace-agents-status-panel__detail-tool-row--subagent"
+      data-status={subAgent.status}
+    >
+      {pinned ? (
+        <div className="workspace-agents-status-panel__detail-tool-row-head">
+          {header}
+        </div>
+      ) : (
+        <button
+          type="button"
+          className="workspace-agents-status-panel__detail-tool-row-head workspace-agents-status-panel__detail-tool-row-head--button"
+          aria-expanded={isExpanded}
+          aria-label={subAgentAriaLabel(subAgent)}
+          onClick={() => setExpanded((value) => !value)}
+        >
+          {header}
+        </button>
+      )}
+      {pinned ? (
+        <SubAgentBody subAgent={subAgent} onLinkClick={onLinkClick} />
+      ) : (
+        <CollapsibleReveal expanded={isExpanded}>
+          <SubAgentBody subAgent={subAgent} onLinkClick={onLinkClick} />
+        </CollapsibleReveal>
+      )}
+    </div>
+  );
+}
+
+function SubAgentHeader({
+  subAgent,
+  expanded,
+  pinned
+}: {
+  subAgent: AgentTaskSubAgentVM;
+  expanded: boolean;
+  pinned: boolean;
+}): JSX.Element {
+  "use memo";
+  const running = subAgent.status === "running";
   const statusLabel = subAgentStatusLabel(subAgent.status);
   const elapsedText = subAgentElapsedText(subAgent);
-  const title = subAgentTitle(subAgent);
+  const nameText = subAgentNameText(subAgent);
   return (
-    <details
-      className="workspace-agents-status-panel__detail-subagent-card"
-      data-status={subAgent.status}
-      open={subAgent.status === "running"}
+    <div
+      data-active={running ? "true" : undefined}
+      className={[
+        "workspace-agents-status-panel__detail-tool-row-header-content",
+        running ? "tsh-inline-scanlight-group" : ""
+      ]
+        .filter(Boolean)
+        .join(" ")}
     >
-      <summary className="workspace-agents-status-panel__detail-subagent-header">
-        <span className="workspace-agents-status-panel__detail-subagent-chevron" />
+      <div className="workspace-agents-status-panel__detail-tool-row-icon tsh-inline-scanlight-icon">
         <span
           className={`workspace-agents-status-panel__detail-subagent-status workspace-agents-status-panel__detail-subagent-status--${subAgent.status}`}
           role="img"
           aria-label={statusLabel}
         />
-        <span className="workspace-agents-status-panel__detail-subagent-title">
-          {title}
-        </span>
-        <span className="workspace-agents-status-panel__detail-subagent-meta">
+      </div>
+      <div className="workspace-agents-status-panel__detail-tool-row-text">
+        <strong className="workspace-agents-status-panel__detail-tool-row-title">
+          {translate("agentHost.agentTool.details.subAgentFallbackName")}
+        </strong>
+        {nameText ? (
+          <span className="workspace-agents-status-panel__detail-subagent-name">
+            {nameText}
+          </span>
+        ) : null}
+        <span className="workspace-agents-status-panel__detail-tool-status">
           {elapsedText ? `${elapsedText} · ` : ""}
           {statusLabel}
         </span>
-      </summary>
-      <div className="workspace-agents-status-panel__detail-subagent-body">
-        {subAgent.task ? (
-          <ToolSection
-            title={translate("agentHost.agentTool.details.subAgentTask")}
-          >
-            <ToolMarkdownBlock
-              content={subAgent.task}
-              onLinkClick={onLinkClick}
-            />
-          </ToolSection>
-        ) : null}
-        <ToolSection
-          title={translate("agentHost.agentTool.details.subAgentProgress")}
-        >
-          <SubAgentProgress subAgent={subAgent} />
-        </ToolSection>
       </div>
-    </details>
+      {pinned ? null : expanded ? (
+        <ChevronDown
+          size={12}
+          strokeWidth={2.2}
+          aria-hidden="true"
+          className="workspace-agents-status-panel__detail-tool-row-chevron"
+        />
+      ) : (
+        <ChevronRight
+          size={12}
+          strokeWidth={2.2}
+          aria-hidden="true"
+          className="workspace-agents-status-panel__detail-tool-row-chevron"
+        />
+      )}
+    </div>
+  );
+}
+
+function SubAgentBody({
+  subAgent,
+  onLinkClick
+}: {
+  subAgent: AgentTaskSubAgentVM;
+  onLinkClick?: (href: string) => void;
+}): JSX.Element {
+  "use memo";
+  return (
+    <div className="workspace-agents-status-panel__detail-tool-body">
+      {subAgent.task ? (
+        <ToolSection
+          title={translate("agentHost.agentTool.details.subAgentTask")}
+        >
+          <ToolMarkdownBlock
+            content={subAgent.task}
+            onLinkClick={onLinkClick}
+          />
+        </ToolSection>
+      ) : null}
+      <ToolSection
+        title={translate("agentHost.agentTool.details.subAgentProgress")}
+      >
+        <SubAgentProgress subAgent={subAgent} />
+      </ToolSection>
+    </div>
   );
 }
 
@@ -95,8 +186,8 @@ function SubAgentProgress({
   subAgent: AgentTaskSubAgentVM;
 }): JSX.Element {
   "use memo";
-  // Per user feedback: progress stays a single line - the sub-agent's most
-  // recent activity (or failure detail), not a scrolling log.
+  // Progress stays a single line - the sub-agent's most recent activity (or
+  // failure detail), not a scrolling log.
   const text =
     subAgent.failureDetail ??
     subAgent.latestActivity ??
@@ -118,12 +209,21 @@ function SubAgentProgress({
   );
 }
 
-function subAgentTitle(subAgent: AgentTaskSubAgentVM): string {
+function subAgentNameText(subAgent: AgentTaskSubAgentVM): string | null {
   if (subAgent.name) {
     return subAgent.name;
   }
-  const base = translate("agentHost.agentTool.details.subAgentFallbackName");
-  return subAgent.laneCount > 1 ? `${base} ${subAgent.laneIndex}` : base;
+  return subAgent.laneCount > 1 ? `#${subAgent.laneIndex}` : null;
+}
+
+function subAgentAriaLabel(subAgent: AgentTaskSubAgentVM): string {
+  return [
+    translate("agentHost.agentTool.details.subAgentFallbackName"),
+    subAgentNameText(subAgent),
+    subAgentStatusLabel(subAgent.status)
+  ]
+    .filter(Boolean)
+    .join(" ");
 }
 
 function subAgentStatusLabel(status: AgentTaskSubAgentVM["status"]): string {
