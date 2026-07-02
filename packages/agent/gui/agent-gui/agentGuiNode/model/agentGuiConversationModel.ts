@@ -108,7 +108,9 @@ export type AgentGUIConversationProjectionSource = Pick<
   | "sortTimeUnixMs"
   | "updatedAtUnixMs"
   | "syncState"
->;
+> & {
+  turnLifecycle?: WorkspaceAgentActivitySession["turnLifecycle"];
+};
 
 interface AgentGUIConversationProjectResolutionContext {
   projectResolver: AgentGUIConversationProjectResolver;
@@ -792,6 +794,7 @@ function timelineSessionFromItems(
     cwd: conversation?.cwd?.trim() ?? "",
     lifecycleStatus: sessionLifecycleStatus(conversation?.status ?? "ready"),
     turnPhase: conversation?.status === "working" ? "working" : "idle",
+    turnLifecycle: conversation?.turnLifecycle ?? null,
     effectiveStatus: conversation?.status ?? "ready",
     status: conversation?.status ?? "ready",
     title: conversation?.title,
