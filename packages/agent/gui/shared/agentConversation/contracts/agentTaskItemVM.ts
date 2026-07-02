@@ -35,6 +35,9 @@ export interface AgentTaskSubAgentVM {
   // are summarized by activityOmittedCount.
   activityLog: readonly AgentTaskSubAgentActivityVM[];
   activityOmittedCount: number;
+  // True while the spawn call is accepted but no child thread exists yet -
+  // codex queues spawns beyond its per-session concurrency cap.
+  queued?: boolean;
   failureDetail: string | null;
   startedAtUnixMs: number | null;
   latestActivityAtUnixMs: number | null;

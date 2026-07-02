@@ -140,7 +140,10 @@ export function buildSubAgentLanesByCallId(
       lanesByCallId.set(card.callId, [
         {
           ...subAgentLane(`spawn-pending:${card.callId}`, [], card),
-          status: card.callStatus
+          status: card.callStatus,
+          // No child thread exists yet: codex caps concurrent sub-agents
+          // (4/session by default) and queues further spawns.
+          queued: card.callStatus === "running"
         }
       ]);
     }
@@ -271,7 +274,7 @@ export function deriveSubAgentNameFromTask(task: string | null): string | null {
   }
   const firstSentence = task
     .trim()
-    .split(/[。．.!?！？\n]/, 1)[0]
+    .split(/[。．.!?！？，,\n]/, 1)[0]
     ?.trim();
   if (!firstSentence) {
     return null;

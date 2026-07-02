@@ -418,6 +418,28 @@ describe("subAgentTimelinePartition", () => {
       expect(lanes).toHaveLength(1);
       expect(lanes?.[0]?.status).toBe("failed");
       expect(lanes?.[0]?.name).toBe("只讀 explorer");
+      expect(lanes?.[0]?.queued).toBe(false);
+    });
+
+    it("marks a still-running receiver-less spawn as queued and cuts names at commas", () => {
+      const partition = partitionSubAgentTimelineItems([
+        collabCardItem({
+          id: 10,
+          eventId: "spawn-1-started",
+          callId: "spawn-1",
+          status: "running",
+          occurredAtUnixMs: 100,
+          task: "你是 repo smell reviewer，請只做讀取分析，不要修改檔案。目標：分析 apps/desktop。"
+        })
+      ]);
+
+      const lane = buildSubAgentLanesByCallId(partition).get("spawn-1")?.[0];
+
+      // codex caps concurrent sub-agents per session; a spawn beyond the cap
+      // stays running with no child thread until a slot frees.
+      expect(lane?.queued).toBe(true);
+      expect(lane?.status).toBe("running");
+      expect(lane?.name).toBe("repo smell reviewer");
     });
 
     it("does not seed lanes from wait/close control cards", () => {

@@ -1359,6 +1359,7 @@ export const en = {
         delegateSession: "Delegate session",
         subAgents: "Sub-agents",
         subAgentStarting: "Starting…",
+        subAgentQueued: "Queued — waiting for an agent slot…",
         subAgentFallbackName: "Sub-agent",
         subAgentEarlierOmitted: "{{count}} earlier steps omitted",
         subAgentTask: "TASK",

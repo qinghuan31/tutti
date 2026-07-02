@@ -100,7 +100,11 @@ function SubAgentProgress({
   const text =
     subAgent.failureDetail ??
     subAgent.latestActivity ??
-    translate("agentHost.agentTool.details.subAgentStarting");
+    translate(
+      subAgent.queued
+        ? "agentHost.agentTool.details.subAgentQueued"
+        : "agentHost.agentTool.details.subAgentStarting"
+    );
   return (
     <div
       className={`workspace-agents-status-panel__detail-subagent-activity${

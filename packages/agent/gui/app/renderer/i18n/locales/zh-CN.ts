@@ -1274,6 +1274,7 @@ export const zhCN = {
         delegateSession: "委托会话",
         subAgents: "子智能体",
         subAgentStarting: "正在启动…",
+        subAgentQueued: "排队中——等待可用执行槽…",
         subAgentFallbackName: "子智能体",
         subAgentEarlierOmitted: "已省略较早的 {{count}} 步",
         subAgentTask: "任务",
