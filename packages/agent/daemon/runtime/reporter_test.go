@@ -345,6 +345,7 @@ func TestReportActivityInputProjectsRuntimeMessagesToMessageUpdates(t *testing.T
 		"streamState": messageStreamStateCompleted,
 	})
 	thinkingEvent.OwnerThreadID = "child-thread-1"
+	thinkingEvent.OwnerCallID = "spawn-call-1"
 	thinkingEvent.OccurredAtUnixMS = 103
 
 	report := reportActivityInput(session, []activityshared.Event{userEvent, assistantEvent, thinkingEvent})
@@ -384,7 +385,8 @@ func TestReportActivityInputProjectsRuntimeMessagesToMessageUpdates(t *testing.T
 		thinking.Kind != "reasoning" ||
 		thinking.Payload["content"] != "checking files" ||
 		thinking.Payload["source"] != "runtime" ||
-		thinking.Payload["ownerThreadId"] != "child-thread-1" {
+		thinking.Payload["ownerThreadId"] != "child-thread-1" ||
+		thinking.Payload["ownerCallId"] != "spawn-call-1" {
 		t.Fatalf("thinking message update = %#v", thinking)
 	}
 }

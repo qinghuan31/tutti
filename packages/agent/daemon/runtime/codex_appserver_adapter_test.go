@@ -1449,6 +1449,7 @@ func TestCodexAppServerAdapterFetchesChildThreadNickname(t *testing.T) {
 			if event.Payload.Metadata["messageKind"] == "subAgentName" &&
 				event.Payload.Metadata["subAgentName"] == "Euclid" &&
 				event.OwnerThreadID == "child-thread-1" &&
+				event.OwnerCallID == "spawn-child-1" &&
 				event.Payload.TurnID != "" {
 				return true
 			}
@@ -1566,7 +1567,8 @@ func TestCodexAppServerAdapterCancelInterruptsLinkedChildThreads(t *testing.T) {
 	for _, event := range cancelEvents {
 		if event.Payload.Metadata["messageKind"] != "subAgentLifecycle" ||
 			event.Payload.Metadata["subAgentLifecycleStatus"] != "canceled" ||
-			event.OwnerThreadID == "" {
+			event.OwnerThreadID == "" ||
+			event.OwnerCallID != "spawn-child-1" {
 			t.Fatalf("cancel child event = %#v", event)
 		}
 		// The activity store rejects turnless message updates, so a canceled

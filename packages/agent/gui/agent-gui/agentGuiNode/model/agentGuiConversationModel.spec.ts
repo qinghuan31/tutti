@@ -1951,7 +1951,8 @@ describe("agentGuiConversationModel", () => {
         role: "assistant",
         payload: {
           text: "Scanning the repository layout",
-          ownerThreadId: "child-thread-1"
+          ownerThreadId: "child-thread-1",
+          ownerCallId: "spawn-1"
         },
         occurredAtUnixMs: 30
       }),
@@ -1967,7 +1968,8 @@ describe("agentGuiConversationModel", () => {
         payload: {
           callId: "child-call-1",
           name: "Run command",
-          ownerThreadId: "child-thread-1"
+          ownerThreadId: "child-thread-1",
+          ownerCallId: "spawn-1"
         },
         occurredAtUnixMs: 40
       })
