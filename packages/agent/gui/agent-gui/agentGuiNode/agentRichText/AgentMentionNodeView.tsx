@@ -410,7 +410,12 @@ function AgentMentionLegacyFileNodeView({
           ) : null}
         </span>
       )}
-      <span className="tsh-agent-object-token__main">{mention.label}</span>
+      <TruncatingPillLabel
+        className="tsh-agent-object-token__main"
+        tooltip={mention.label}
+      >
+        {mention.label}
+      </TruncatingPillLabel>
     </NodeViewWrapper>
   );
 }
