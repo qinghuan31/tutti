@@ -896,6 +896,102 @@ describe("useAgentGUINodeController", () => {
     });
   });
 
+  it("does not hydrate target-backed composer settings from stale provider defaults", async () => {
+    const getComposerOptions = vi.fn(async () => ({
+      provider: "claude-code",
+      modelConfig: {
+        configurable: true,
+        options: [{ value: "claude-sonnet", name: "Claude Sonnet" }]
+      },
+      permissionConfig: {
+        configurable: true,
+        defaultValue: "acceptEdits",
+        modes: [
+          {
+            id: "acceptEdits",
+            label: "Accept edits",
+            semantic: "accept-edits"
+          }
+        ]
+      }
+    }));
+    installAgentHostApi({
+      list: vi.fn(async () => ({ presences: [], sessions: [] })),
+      listSessionTimeline: vi.fn(async () => ({ timelineItems: [] })),
+      subscribeEvents: vi.fn(() => vi.fn()),
+      getComposerOptions
+    });
+
+    const { result } = renderHook(() =>
+      useAgentGUINodeController({
+        workspaceId: "room-1",
+        currentUserId: "user-1",
+        workspacePath: "/workspace",
+        avoidGroupingEdits: false,
+        data: agentGuiData(null, "codex", {
+          agentTargetId: "local:claude-code",
+          composerOverrides: {
+            model: "gpt-5.5",
+            permissionModeId: "auto",
+            reasoningEffort: "high"
+          },
+          composerOverridesByProvider: {
+            codex: {
+              model: "gpt-5.5",
+              permissionModeId: "auto",
+              reasoningEffort: "high"
+            }
+          }
+        }),
+        conversationScope: "multi-provider",
+        providerTargets: [
+          {
+            targetId: "local:codex",
+            agentTargetId: "local:codex",
+            provider: "codex",
+            ref: { kind: "local-provider", provider: "codex" },
+            label: "Codex"
+          },
+          {
+            targetId: "local:claude-code",
+            agentTargetId: "local:claude-code",
+            provider: "claude-code",
+            ref: { kind: "local-provider", provider: "claude-code" },
+            label: "Claude Code"
+          }
+        ],
+        onDataChange: vi.fn()
+      })
+    );
+
+    await waitFor(() => {
+      expect(getComposerOptions).toHaveBeenCalledWith(
+        expect.objectContaining({
+          agentTargetId: "local:claude-code",
+          provider: "claude-code",
+          settings: expect.objectContaining({
+            model: null,
+            permissionModeId: null
+          })
+        })
+      );
+    });
+    expect(result.current.viewModel.selectedProviderTarget.provider).toBe(
+      "claude-code"
+    );
+    await waitFor(() => {
+      expect(result.current.viewModel.composerSettings.availableModels).toEqual(
+        [{ value: "claude-sonnet", label: "Claude Sonnet" }]
+      );
+    });
+    expect(
+      result.current.viewModel.composerSettings.selectedModelValue
+    ).not.toBe("gpt-5.5");
+    expect(
+      result.current.viewModel.composerSettings.selectedPermissionModeValue
+    ).not.toBe("auto");
+  });
+
   it("keeps provider filters disabled for single-provider conversation scope", async () => {
     installAgentHostApi({
       list: vi.fn(async () => ({
