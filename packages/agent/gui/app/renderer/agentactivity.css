@@ -2406,6 +2406,10 @@ aside.workspace-agents-status-panel
   white-space: nowrap;
 }
 
+.agent-gui-node__mention-palette-hint-item > span:last-child {
+  font-size: 11px;
+}
+
 .agent-gui-node__mention-palette-hint-button,
 .agent-gui-node__mention-palette-shortcut-button {
   appearance: none;
@@ -2427,10 +2431,11 @@ aside.workspace-agents-status-panel
   justify-content: center;
   height: 20px;
   min-width: 20px;
+  border: 1px solid var(--line-2, var(--tutti-line-2));
   border-radius: 4px;
   background: color-mix(in srgb, var(--transparency-block) 72%, transparent);
   color: var(--agent-gui-text-secondary, var(--text-secondary));
-  font-size: 13px;
+  font-size: 11px;
   font-weight: 600;
   line-height: 1;
   padding: 4px 6px;
@@ -2454,7 +2459,7 @@ aside.workspace-agents-status-panel
 .agent-gui-node__mention-palette-shortcut--arrow {
   width: 20px;
   min-width: 20px;
-  font-size: 13px;
+  font-size: 11px;
   line-height: 1;
   padding: 0;
 }
@@ -2476,6 +2481,18 @@ aside.workspace-agents-status-panel
 
 .agent-gui-node__mention-palette {
   --agent-mention-file-icon-size: 16px;
+}
+
+.agent-gui-node__mention-palette .rich-text-at-mention-palette__row-button,
+.agent-gui-node__mention-palette .rich-text-at-mention-palette__expand-button {
+  min-height: 28px;
+  padding-top: 4px;
+  padding-bottom: 4px;
+}
+
+.agent-gui-node__mention-palette
+  .rich-text-at-mention-palette__empty-state-inner {
+  width: min(100%, 52ch);
 }
 
 .agent-gui-node__mention-file-thumb {
@@ -7620,12 +7637,12 @@ html[data-theme="light"] [data-message-center-item-id].agent-gui-edge-glow {
   align-items: center;
   justify-content: space-between;
   gap: 8px;
-  padding: 8px 12px 4px;
+  padding: 2px 12px;
 }
 
 .agent-gui-node__composer-input-group-hero
   .agent-gui-node__composer-project-row {
-  padding: 4px 12px 4px;
+  padding: 2px 12px;
 }
 
 .agent-gui-node__composer-project-row .agent-gui-node__composer-menu-trigger {
