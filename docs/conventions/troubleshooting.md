@@ -1038,10 +1038,14 @@ delimited by ---`, and the composer skill picker may show partial or
   For nested launches: register tool_use blocks from child-stream assistant
   messages, treat the `Async agent launched successfully` result text as the
   authoritative subagent-launch signal even when the tool name is unknown,
-  inherit the delegated-task turn id along the parent tool-use chain, let
-  interactive requests fall back to any delegated task's turn id (settled
-  ones included) and open a synthetic turn as last resort rather than emit a
-  turnless event.
+  inherit the delegated-task turn id along the parent tool-use chain, and do
+  not settle a nested `end_turn` assistant while it still has a child tool_use
+  whose tool_result has not been processed. Use the sidecar's pending
+  `toolByID` entry for that pre-result window, then rely on the delegated task
+  created from the launch result while the grandchild is running. Let
+  interactive requests fall back to any delegated task's turn id (settled ones
+  included) and open a synthetic turn as last resort rather than emit a turnless
+  event.
 - Validation:
   Add adapter coverage that stored pending turn ids survive missing
   `approval_resolved.turnId`. Add service coverage for ghost approval reconcile
@@ -1052,8 +1056,9 @@ delimited by ---`, and the composer skill picker may show partial or
   launches, keep sidecar coverage that a grandchild launch registers with the
   inherited turn id (with and without an observed tool_use block), that a
   nested approval after the parent task completed still carries a turn id, and
-  that a child `end_turn` assistant defers completion while a grandchild task
-  is running.
+  that a child `end_turn` assistant defers completion both while a grandchild
+  tool_result is still pending and while the resulting grandchild task is
+  running.
 
 ### Claude SDK parent waits forever for background agents that already finished
 

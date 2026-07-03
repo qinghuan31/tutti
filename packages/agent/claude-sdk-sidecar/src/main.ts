@@ -1148,6 +1148,7 @@ export class SessionRuntime {
         }
         if (
           this.isNestedDelegatedTaskTerminalAssistant(message) &&
+          !this.hasPendingChildToolUses(parentToolUseID) &&
           !this.hasRunningChildDelegatedTasks(parentToolUseID)
         ) {
           this.completeDelegatedTaskFromParentMessage(parentToolUseID, {
@@ -2580,6 +2581,15 @@ export class SessionRuntime {
         task.parentTaskToolUseId === parentToolUseId &&
         task.status === "running"
       ) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  private hasPendingChildToolUses(parentToolUseId: string): boolean {
+    for (const tool of this.toolByID.values()) {
+      if (tool.parentToolUseId === parentToolUseId) {
         return true;
       }
     }

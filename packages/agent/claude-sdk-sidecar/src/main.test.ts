@@ -2168,6 +2168,61 @@ test("nested end_turn assistant defers parent completion while grandchild runs",
   }
 });
 
+test("nested end_turn assistant defers parent completion while child tool result is pending", async () => {
+  const events: Array<{ type: string; payload?: Record<string, unknown> }> = [];
+  const restoreSink = withSidecarEventSinkForTest((event) =>
+    events.push(event)
+  );
+  try {
+    const session = new SessionRuntime(
+      "provider-session-1",
+      "/repo",
+      {},
+      false,
+      false,
+      {
+        model: "",
+        permissionModeId: "default",
+        planMode: false,
+        effort: "",
+        speed: ""
+      },
+      sidecarClaudeOptionsFromPayload({}),
+      undefined,
+      fakeNestedToolUseAndEndTurnQuery
+    );
+
+    await session.start();
+    session.exec("turn-1", "delegate task");
+    await waitForEvent(events, "task_completed");
+    // Let the fake stream drain the grandchild result and final parent end.
+    await new Promise((resolve) => setTimeout(resolve, 50));
+
+    const parentCompletions = events.filter(
+      (event) =>
+        event.type === "task_completed" &&
+        event.payload?.parentToolUseId === "toolu-parent"
+    );
+    assert.equal(parentCompletions.length, 1);
+    assert.equal(parentCompletions[0]?.payload?.summary, "Parent finished.");
+
+    const childCompletedIndex = events.findIndex(
+      (event) =>
+        event.type === "task_completed" &&
+        event.payload?.parentToolUseId === "toolu-child"
+    );
+    const parentCompletedIndex = events.findIndex(
+      (event) =>
+        event.type === "task_completed" &&
+        event.payload?.parentToolUseId === "toolu-parent"
+    );
+    assert.ok(childCompletedIndex >= 0);
+    assert.ok(parentCompletedIndex > childCompletedIndex);
+  } finally {
+    restoreSink();
+  }
+});
+
 function fakeNestedDelegatedLaunchQuery({
   prompt
 }: {
@@ -2346,6 +2401,52 @@ function fakeNestedDeferredParentCompletionQuery({
   } as AsyncIterable<SDKMessage>;
 }
 
+function fakeNestedToolUseAndEndTurnQuery({
+  prompt
+}: {
+  prompt: AsyncIterable<SDKUserMessage>;
+}): AsyncIterable<SDKMessage> {
+  return {
+    async *[Symbol.asyncIterator]() {
+      const firstPrompt = await prompt[Symbol.asyncIterator]().next();
+      const promptMessage = firstPrompt.value as SDKUserMessage & {
+        uuid?: string;
+      };
+      yield {
+        ...promptMessage,
+        uuid: promptMessage.uuid,
+        type: "user",
+        parent_tool_use_id: null,
+        session_id: "provider-session-1"
+      } as SDKMessage;
+      yield delegatedAgentToolUse("toolu-parent", "Parent task");
+      yield delegatedAgentToolResult("toolu-parent", "agent-parent");
+      yield {
+        type: "result",
+        subtype: "success"
+      } as unknown as SDKMessage;
+      yield nestedAssistantToolUseWithEndTurn(
+        "toolu-parent",
+        "toolu-child",
+        "Grandchild task",
+        "Launched grandchild."
+      );
+      yield nestedAgentLaunchResult(
+        "toolu-parent",
+        "toolu-child",
+        "agent-child"
+      );
+      yield userTaskNotification("agent-child", "toolu-child");
+      yield nestedEndTurnAssistant(
+        "toolu-parent",
+        "assistant-final-end",
+        "Parent finished."
+      );
+    },
+    close() {}
+  } as AsyncIterable<SDKMessage>;
+}
+
 function nestedAssistantToolUse(
   parentToolUseId: string,
   id: string,
@@ -2359,6 +2460,36 @@ function nestedAssistantToolUse(
     message: {
       role: "assistant",
       content: [
+        {
+          type: "tool_use",
+          id,
+          name: "Task",
+          input: {
+            description,
+            prompt: description
+          }
+        }
+      ]
+    }
+  } as unknown as SDKMessage;
+}
+
+function nestedAssistantToolUseWithEndTurn(
+  parentToolUseId: string,
+  id: string,
+  description: string,
+  text: string
+): SDKMessage {
+  return {
+    type: "assistant",
+    uuid: `${id}-nested-end-turn-assistant`,
+    parent_tool_use_id: parentToolUseId,
+    session_id: "provider-session-1",
+    message: {
+      role: "assistant",
+      stop_reason: "end_turn",
+      content: [
+        { type: "text", text },
         {
           type: "tool_use",
           id,
