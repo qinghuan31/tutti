@@ -52,7 +52,7 @@
     "generate:event-protocol": "node ./tools/scripts/generate-event-protocol.mjs",
     "install:golangci-lint": "node ./tools/scripts/setup-dev.mjs --install=golangci-lint",
     "lint": "pnpm lint:ts && pnpm lint:go",
-    "lint:go": "pnpm generate:builtin-apps && node ./tools/scripts/run-golangci-lint.mjs",
+    "lint:go": "pnpm generate:builtin-apps && node ./tools/scripts/check-http-client-funnel.mjs && node ./tools/scripts/run-golangci-lint.mjs",
     "lint:ts": "oxlint . --deny-warnings",
     "lark:logs": "node ./tools/scripts/lark-log-tool.mjs",
     "format": "pnpm format:code && pnpm format:assets",

@@ -178,7 +178,7 @@ func (s Service) probeProviderAPI(ctx context.Context, provider string) *Network
 func (s Service) probeProxy(ctx context.Context) *NetworkProxyStatus {
 	resolve := s.ResolveProxy
 	if resolve == nil {
-		resolve = runtimecmd.HTTPProxyFunc()
+		resolve = runtimecmd.DynamicProxyFunc()
 	}
 	request, err := http.NewRequest(http.MethodHead, officialNPMRegistry, nil)
 	if err != nil {

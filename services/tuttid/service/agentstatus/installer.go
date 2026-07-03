@@ -13,6 +13,7 @@ import (
 	"slices"
 	"strings"
 
+	"github.com/tutti-os/tutti/packages/agentactivity/daemon/httpx"
 	"github.com/tutti-os/tutti/packages/agentactivity/daemon/runtimecmd"
 	"github.com/tutti-os/tutti/services/tuttid/biz/agentprovider"
 	managedruntime "github.com/tutti-os/tutti/services/tuttid/service/managedruntime"
@@ -686,12 +687,9 @@ func (s Service) httpClient() *http.Client {
 		return s.HTTPClient
 	}
 	// Route downloads (codex CLI package, claude install.sh, release binaries)
-	// through the macOS system proxy. This is an in-process HTTP call, so it
-	// cannot inherit the proxy env we inject into spawned children — resolve it
-	// directly. Prefers an explicit env proxy, falls back to the system proxy.
-	transport := http.DefaultTransport.(*http.Transport).Clone()
-	transport.Proxy = runtimecmd.HTTPProxyFunc()
-	return &http.Client{Transport: transport}
+	// through the shared proxy-aware funnel. This is an in-process HTTP call,
+	// so it cannot inherit the proxy env we inject into spawned children.
+	return httpx.Default()
 }
 
 func joinShellCommand(parts []string) string {
