@@ -732,6 +732,12 @@ const composerPaletteZIndex = "var(--z-popover)";
 const SLASH_PALETTE_HEIGHT_PX = 280;
 const MENTION_PALETTE_MIN_HEIGHT_PX = 280;
 const MENTION_PALETTE_MAX_HEIGHT_PX = 320;
+// Floor for the palette's width so narrow composer/window widths can't shrink
+// it below what a mention row's trailing status badge / action button needs
+// to stay visible (see: Feishu recvo2ITCPLrhC — right-side row content was
+// getting clipped off-screen in narrow windows because only an upper width
+// bound was enforced).
+const MENTION_PALETTE_MIN_WIDTH_PX = 280;
 const MENTION_PALETTE_GAP_PX = 8;
 const MENTION_PALETTE_VIEWPORT_PADDING_PX = 8;
 const DRAFT_IMAGE_PREVIEW_BASE_HEIGHT_PX = 72;
@@ -2262,12 +2268,13 @@ export function AgentComposer({
     const rect = anchor.getBoundingClientRect();
     const viewportWidth = window.innerWidth;
     const viewportHeight = window.innerHeight;
-    const width = Math.max(
+    const maxAvailableWidth = Math.max(
       0,
-      Math.min(
-        rect.width,
-        viewportWidth - MENTION_PALETTE_VIEWPORT_PADDING_PX * 2
-      )
+      viewportWidth - MENTION_PALETTE_VIEWPORT_PADDING_PX * 2
+    );
+    const width = Math.max(
+      Math.min(rect.width, maxAvailableWidth),
+      Math.min(MENTION_PALETTE_MIN_WIDTH_PX, maxAvailableWidth)
     );
     const left = Math.max(
       MENTION_PALETTE_VIEWPORT_PADDING_PX,

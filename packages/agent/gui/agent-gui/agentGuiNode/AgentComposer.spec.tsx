@@ -3512,6 +3512,50 @@ describe("AgentComposer", () => {
     expect(draftContent.prompt).not.toMatch(/^@/);
   });
 
+  it("floors the mention palette width instead of collapsing to the anchor's measured width", async () => {
+    // jsdom's getBoundingClientRect() always reports a zero-size rect, which
+    // reproduces the narrow-window case: with no lower bound, the palette
+    // used to render at 0px wide and clip its rows' right-side content
+    // (Feishu recvo2ITCPLrhC).
+    render(
+      <AgentComposer
+        workspaceId="workspace-1"
+        currentUserId="user-1"
+        provider="codex"
+        draftContent={createDraft("@")}
+        availableCommands={[] satisfies readonly AgentHostAgentSessionCommand[]}
+        disabled={false}
+        submitDisabled={false}
+        placeholder="placeholder"
+        composerSettings={createComposerSettings()}
+        queuedPrompts={[]}
+        drainingQueuedPromptId={null}
+        canQueueWhileBusy={false}
+        showStopButton={false}
+        activePrompt={null}
+        isInterrupting={false}
+        isSendingTurn={false}
+        isSubmittingPrompt={false}
+        labels={createLabels()}
+        workspaceUserProjectI18n={workspaceUserProjectI18n}
+        onDraftContentChange={vi.fn()}
+        onSettingsChange={vi.fn()}
+        onSubmit={vi.fn()}
+        onSendQueuedPromptNext={vi.fn()}
+        onRemoveQueuedPrompt={vi.fn()}
+        onEditQueuedPrompt={vi.fn()}
+        onInterruptCurrentTurn={vi.fn()}
+        onSubmitInteractivePrompt={vi.fn()}
+      />
+    );
+
+    const surface = await screen.findByTestId(
+      "agent-gui-mention-palette-surface"
+    );
+    const width = Number.parseFloat(surface.style.width);
+    expect(width).toBeGreaterThanOrEqual(280);
+  });
+
   it("keeps the active @ trigger after canceling references from a mention row", async () => {
     let draftContent = createDraft("@");
     const onDraftContentChange = vi.fn((nextDraft: AgentComposerDraft) => {
