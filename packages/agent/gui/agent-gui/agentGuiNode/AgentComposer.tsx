@@ -699,7 +699,7 @@ const composerStyles = {
   footerGroup: styles.composerFooterLeft,
   footerGroupRight: styles.composerFooterRight,
   dropdownSurface:
-    "nodrag isolate rounded-[12px] border border-hairline bg-background-fronted p-[4px] text-foreground shadow-[var(--tsh-shell-shadow)] [-webkit-app-region:no-drag]"
+    "nodrag isolate rounded-[12px] border border-hairline bg-background-fronted p-[4px] text-foreground shadow-[var(--shadow-panel)] [-webkit-app-region:no-drag]"
 };
 
 const workspaceReferenceSelectValue = "__tutti_workspace_reference_idle__";
