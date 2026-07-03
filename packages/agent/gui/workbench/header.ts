@@ -220,7 +220,8 @@ export function AgentGuiWorkbenchHeader({
             createElement(
               "span",
               {
-                className: "agent-gui-workbench-header__title-text"
+                className: "agent-gui-workbench-header__title-text",
+                title: sessionTitle
               },
               sessionTitle
             )
@@ -237,7 +238,8 @@ export function AgentGuiWorkbenchHeader({
           createElement(
             "span",
             {
-              className: "agent-gui-workbench-header__title-text"
+              className: "agent-gui-workbench-header__title-text",
+              title: sessionTitle
             },
             sessionTitle
           )

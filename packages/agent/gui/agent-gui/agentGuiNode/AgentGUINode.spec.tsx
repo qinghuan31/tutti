@@ -2074,6 +2074,44 @@ describe("AgentGUINode", () => {
       expect(root.querySelector('[data-agent-file-mention="true"]')).toBeNull();
     }
   });
+  it("exposes the full session title as a native tooltip when the title is CSS-truncated", () => {
+    const longTitle =
+      "Investigate why English session titles truncate after only three or four words in the narrow sidebar rail";
+    const conversation = {
+      id: "session-1",
+      provider: "codex" as const,
+      title: longTitle,
+      status: "ready" as const,
+      cwd: "/workspace",
+      updatedAtUnixMs: 1
+    };
+    mockViewModel = createViewModel({
+      conversations: [conversation],
+      activeConversation: conversation,
+      activeConversationId: "session-1",
+      conversationDetail: detailViewModel({
+        activity: {
+          ...detailViewModel().activity,
+          title: longTitle
+        },
+        session: {
+          ...detailViewModel().session,
+          title: longTitle
+        }
+      })
+    });
+
+    const { container } = renderAgentGUINode();
+    const railTitle = container.querySelector(
+      ".agent-gui-node__conversation-title"
+    );
+    const headerTitle = container.querySelector(
+      ".agent-gui-node__detail-header-title"
+    );
+
+    expect(railTitle).toHaveAttribute("title", longTitle);
+    expect(headerTitle).toHaveAttribute("title", longTitle);
+  });
   it("filters conversations from the sidebar search field", () => {
     mockViewModel = createViewModel({
       conversations: [

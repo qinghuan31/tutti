@@ -1096,6 +1096,10 @@ describe("agent GUI workbench contribution copy", () => {
     expect(screen.getByText("Current session title")).toHaveClass(
       "agent-gui-workbench-header__title-text"
     );
+    expect(screen.getByText("Current session title")).toHaveAttribute(
+      "title",
+      "Current session title"
+    );
     expect(screen.queryByTestId("agent-gui-window-detail-title")).toBeNull();
 
     fireEvent.click(screen.getByTestId("agent-gui-window-close"));
@@ -1237,6 +1241,11 @@ describe("agent GUI workbench contribution copy", () => {
     expect(
       screen.getByTestId("agent-gui-window-detail-title")
     ).toHaveTextContent("Current session title");
+    expect(
+      screen
+        .getByTestId("agent-gui-window-detail-title")
+        .querySelector(".agent-gui-workbench-header__title-text")
+    ).toHaveAttribute("title", "Current session title");
     expect(
       screen.queryByRole("button", { name: "window actions" })
     ).not.toBeInTheDocument();

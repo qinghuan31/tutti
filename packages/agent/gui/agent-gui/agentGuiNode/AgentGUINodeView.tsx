@@ -2837,12 +2837,17 @@ const AgentGUIDetailHeader = memo(function AgentGUIDetailHeader({
 
   const runPath = activeConversation.cwd.trim();
   const statusTitle = showSyncIndicator ? syncLabel : undefined;
+  const plainTitle = conversationPlainTitle(
+    activeConversation,
+    labels,
+    uiLanguage
+  );
 
   return (
     <div className={styles.detailHeader}>
       <span className={styles.detailHeaderTitleGroup}>
-        <span className={styles.detailHeaderTitle}>
-          {conversationPlainTitle(activeConversation, labels, uiLanguage)}
+        <span className={styles.detailHeaderTitle} title={plainTitle}>
+          {plainTitle}
         </span>
         {runPath ? (
           <AgentRunPathInfo path={runPath} previewMode={previewMode} />
@@ -4705,6 +4710,7 @@ const AgentGUIConversationRailItem = memo(
   }: AgentGUIConversationRailItemProps): React.JSX.Element {
     "use memo";
     const pinned = (item.pinnedAtUnixMs ?? 0) > 0;
+    const plainTitle = conversationPlainTitle(item, labels, uiLanguage);
     const setItemElement = useCallback(
       (element: HTMLDivElement | null) => {
         registerItemElement(item.id, element);
@@ -4744,8 +4750,8 @@ const AgentGUIConversationRailItem = memo(
           className={styles.conversationSelect}
           onClick={handleSelect}
         >
-          <span className={styles.conversationTitle}>
-            {conversationPlainTitle(item, labels, uiLanguage)}
+          <span className={styles.conversationTitle} title={plainTitle}>
+            {plainTitle}
           </span>
           <ConversationMeta item={item} nowMs={currentTimeMs} labels={labels} />
         </button>
