@@ -6,6 +6,7 @@ import {
   useRef,
   useState,
   type CSSProperties,
+  type FocusEvent as ReactFocusEvent,
   type FormEvent
 } from "react";
 import { createPortal } from "react-dom";
@@ -22,8 +23,7 @@ import type {
 import {
   Popover,
   PopoverAnchor,
-  PopoverContent,
-  PopoverTrigger
+  PopoverContent
 } from "../../app/renderer/components/ui/popover";
 import { Spinner } from "../../app/renderer/components/ui/spinner";
 import {
@@ -549,6 +549,7 @@ function AgentUsageChip({
   const usagePopoverHoverTimerRef = useRef<ReturnType<
     typeof setTimeout
   > | null>(null);
+  const usagePopoverContentRef = useRef<HTMLDivElement | null>(null);
   const clampedPercent = Math.max(0, Math.min(100, percentUsed));
   const chipLabel = labels.usageChipLabel({ percent: clampedPercent });
   const showTokens = usedTokens !== null && totalTokens !== null;
@@ -605,6 +606,25 @@ function AgentUsageChip({
     },
     [closeUsagePopover, openUsagePopover]
   );
+  const handleUsageTriggerBlur = useCallback(
+    (event: ReactFocusEvent<HTMLButtonElement>) => {
+      const nextFocusTarget = event.relatedTarget;
+      if (
+        nextFocusTarget instanceof Node &&
+        usagePopoverContentRef.current?.contains(nextFocusTarget)
+      ) {
+        clearUsagePopoverHoverTimer();
+        clearUsagePopoverCloseTimer();
+        return;
+      }
+      closeUsagePopover();
+    },
+    [
+      clearUsagePopoverCloseTimer,
+      clearUsagePopoverHoverTimer,
+      closeUsagePopover
+    ]
+  );
 
   useEffect(
     () => () => {
@@ -623,8 +643,7 @@ function AgentUsageChip({
       )}
       data-testid="agent-gui-usage-chip"
       data-usage-level={usageLevel}
-      onBlur={tooltipsEnabled ? closeUsagePopover : undefined}
-      onClick={tooltipsEnabled ? openUsagePopover : undefined}
+      onBlur={tooltipsEnabled ? handleUsageTriggerBlur : undefined}
       onFocus={tooltipsEnabled ? openUsagePopoverAfterHoverDelay : undefined}
       onPointerEnter={(event) => {
         if (tooltipsEnabled && event.pointerType !== "touch") {
@@ -653,9 +672,10 @@ function AgentUsageChip({
       open={usagePopoverOpen}
       onOpenChange={handleUsagePopoverOpenChange}
     >
-      <PopoverTrigger asChild>{trigger}</PopoverTrigger>
+      <PopoverAnchor asChild>{trigger}</PopoverAnchor>
       {usagePopoverOpen ? (
         <PopoverContent
+          ref={usagePopoverContentRef}
           side="bottom"
           align="end"
           className="w-[320px] max-w-[calc(100vw-32px)] gap-3 text-xs"
