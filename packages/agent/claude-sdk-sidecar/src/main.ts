@@ -1144,6 +1144,10 @@ export class SessionRuntime {
               "tool_updated",
               parentToolUseID
             );
+            // Proactively establish delegated task state for agent tool uses
+            // to avoid race conditions between assistant message completion
+            // checks and tool_completed event processing.
+            this.reserveDelegatedTaskForAgentToolUse(block, parentToolUseID);
           }
         }
         if (
@@ -2501,6 +2505,35 @@ export class SessionRuntime {
     if (agentId) {
       this.delegatedParentByAgentID.set(agentId, parentToolUseId);
     }
+  }
+
+  private reserveDelegatedTaskForAgentToolUse(
+    toolUseBlock: Record<string, unknown>,
+    parentToolUseId: string
+  ): void {
+    const toolName = stringValue(toolUseBlock.name);
+    const toolId = stringValue(toolUseBlock.id);
+    if (!toolId || !this.isAgentToolName(toolName)) {
+      return;
+    }
+    // Reserve a delegated task slot for the agent tool use to handle the race
+    // condition where assistant message completion checks run before the
+    // tool_completed event has established the delegated task state.
+    if (!this.delegatedTasksByParentToolUseID.has(toolId)) {
+      const task: DelegatedTaskState = {
+        parentToolUseId: toolId,
+        turnId: this.activeTurnId,
+        input: recordValue(toolUseBlock.input) ?? {},
+        status: "running",
+        ...(parentToolUseId ? { parentTaskToolUseId: parentToolUseId } : {})
+      };
+      this.delegatedTasksByParentToolUseID.set(toolId, task);
+    }
+  }
+
+  private isAgentToolName(toolName: string): boolean {
+    const normalized = toolName.toLowerCase();
+    return normalized === "task" || normalized.includes("agent");
   }
 
   private resolveDelegatedTaskFromMessage(
