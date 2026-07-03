@@ -108,6 +108,10 @@
         "types": "./dist/agent-conversation/index.d.ts",
         "import": "./dist/agent-conversation/index.js"
       },
+      "./agent-env": {
+        "types": "./dist/agent-env/index.d.ts",
+        "import": "./dist/agent-env/index.js"
+      },
       "./context-mention-palette": {
         "types": "./dist/context-mention-palette/index.d.ts",
         "import": "./dist/context-mention-palette/index.js"
@@ -178,6 +182,9 @@
         ],
         "agent-conversation": [
           "./dist/agent-conversation/index.d.ts"
+        ],
+        "agent-env": [
+          "./dist/agent-env/index.d.ts"
         ],
         "context-mention-palette": [
           "./dist/context-mention-palette/index.d.ts"
