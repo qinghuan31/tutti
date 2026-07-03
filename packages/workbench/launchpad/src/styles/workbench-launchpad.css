@@ -277,7 +277,7 @@
 }
 
 .workspace-launchpad-item--disabled {
-  cursor: default;
+  cursor: not-allowed;
   filter: grayscale(0.45);
   opacity: 0.42;
 }
