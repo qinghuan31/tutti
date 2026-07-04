@@ -1108,12 +1108,16 @@ func (a *CodexAppServerAdapter) respondAppServerServerRequest(
 		_ = client.Respond(ctx, message.ID, nil, &acpError{Code: -32000, Message: err.Error()})
 		return
 	}
+	if selection.outOfBandResolved {
+		resolved := acpPermissionOutOfBandResolvedEvents(session, turnID, pending)
+		if emit != nil {
+			emit(resolved)
+		}
+		return
+	}
 	resolved := acpPermissionResolvedEvents(session, turnID, pending, selection, nil)
 	if emit != nil {
 		emit(resolved)
-	}
-	if selection.outOfBandResolved {
-		return
 	}
 	result, responseErr := appServerApprovalResult(message.Method, params, selection)
 	if err := client.Respond(ctx, message.ID, result, responseErr); err != nil {

@@ -1913,7 +1913,7 @@ func TestCodexAppServerAdapterCommandApprovalApprove(t *testing.T) {
 	}
 }
 
-func TestCodexAppServerAdapterServerRequestResolvedCompletesPendingApproval(t *testing.T) {
+func TestCodexAppServerAdapterServerRequestResolvedFailsPendingApprovalWithoutClaimingSuccess(t *testing.T) {
 	t.Parallel()
 
 	adapter, transport, session := startedAppServerAdapter(t)
@@ -1947,11 +1947,21 @@ func TestCodexAppServerAdapterServerRequestResolvedCompletesPendingApproval(t *t
 	waitForCondition(t, func() bool {
 		return adapter.getPendingRequest(session.AgentSessionID, "approval-1") == nil
 	})
+	// The provider resolved this request without ever telling tutti the
+	// decision, so we must not claim the underlying call succeeded (that
+	// previously rendered a phantom "completed" file-output card even
+	// though nothing was actually written). It should surface as failed.
 	waitForCondition(t, func() bool {
 		streamedMu.Lock()
 		defer streamedMu.Unlock()
-		return len(eventsOfType(streamed, activityshared.EventCallCompleted)) > 0
+		return len(eventsOfType(streamed, activityshared.EventCallFailed)) > 0
 	})
+	streamedMu.Lock()
+	if completedCalls := eventsOfType(streamed, activityshared.EventCallCompleted); len(completedCalls) > 0 {
+		streamedMu.Unlock()
+		t.Fatalf("serverRequest/resolved with no known decision must not emit call.completed: %#v", completedCalls)
+	}
+	streamedMu.Unlock()
 	if state := adapter.SessionState(session); state.PendingInteractive != nil {
 		t.Fatalf("pending interactive after serverRequest/resolved = %#v, want nil", state.PendingInteractive)
 	}
@@ -1964,8 +1974,11 @@ func TestCodexAppServerAdapterServerRequestResolvedCompletesPendingApproval(t *t
 
 	transport.conn.completePendingTurn()
 	events := <-execDone
-	if completedCalls := eventsOfType(events, activityshared.EventCallCompleted); len(completedCalls) == 0 {
-		t.Fatalf("serverRequest/resolved missing call.completed: %#v", events)
+	if failedCalls := eventsOfType(events, activityshared.EventCallFailed); len(failedCalls) == 0 {
+		t.Fatalf("serverRequest/resolved missing call.failed: %#v", events)
+	}
+	if completedCalls := eventsOfType(events, activityshared.EventCallCompleted); len(completedCalls) > 0 {
+		t.Fatalf("serverRequest/resolved with no known decision must not emit call.completed: %#v", completedCalls)
 	}
 }
 

@@ -2656,6 +2656,72 @@ func TestControllerExecReconcilesWorkingStatusAfterTurnFinishesWithoutTerminalEv
 	}
 }
 
+func TestControllerExecReportsTerminalTurnAsSettledAndAvailable(t *testing.T) {
+	t.Parallel()
+
+	adapter := newBlockingExecAdapter()
+	adapter.provider = ProviderClaudeCode
+	reporter := &recordingReporter{}
+	controller := NewController([]Adapter{adapter}, reporter)
+	started, err := controller.Start(context.Background(), StartInput{
+		RoomID:         "room-1",
+		AgentSessionID: "agent-session-1",
+		Provider:       ProviderClaudeCode,
+		Title:          "Test",
+	})
+	if err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+	if _, err := controller.Exec(context.Background(), ExecInput{
+		RoomID:         "room-1",
+		AgentSessionID: started.Session.AgentSessionID,
+		Content:        textPrompt("run"),
+	}); err != nil {
+		t.Fatalf("Exec: %v", err)
+	}
+	adapter.waitForPrompt(t, "run")
+	adapter.releaseNext()
+	session := waitForSessionStatus(t, controller, "room-1", started.Session.AgentSessionID, SessionStatusReady)
+	if session.SubmitAvailability == nil || session.SubmitAvailability.State != "available" {
+		t.Fatalf("session submit availability = %#v, want available", session.SubmitAvailability)
+	}
+
+	reports := reporter.waitForCalls(t, 3)
+	var terminalPatch *agentsessionstore.WorkspaceAgentStatePatch
+	for _, call := range reports {
+		for index := range call.report.StatePatches {
+			patch := &call.report.StatePatches[index]
+			if patch.Turn != nil && patch.Turn.CompletedAtUnixMS > 0 {
+				terminalPatch = patch
+			}
+		}
+	}
+	if terminalPatch == nil {
+		t.Fatalf("reports = %#v, missing terminal turn patch", reports)
+	}
+	if terminalPatch.CurrentPhase != string(activityshared.TurnPhaseIdle) {
+		t.Fatalf("terminal patch current phase = %q, want idle", terminalPatch.CurrentPhase)
+	}
+	if terminalPatch.Turn == nil ||
+		terminalPatch.Turn.ActiveTurnID != nil ||
+		terminalPatch.Turn.Phase != "settled" ||
+		terminalPatch.Turn.Outcome != "completed" ||
+		terminalPatch.Turn.SubmitAvailability == nil ||
+		terminalPatch.Turn.SubmitAvailability.State != "available" {
+		t.Fatalf("terminal turn patch = %#v, want settled available with nil active turn", terminalPatch.Turn)
+	}
+	if terminalPatch.TurnLifecycle == nil ||
+		terminalPatch.TurnLifecycle.ActiveTurnID != nil ||
+		terminalPatch.TurnLifecycle.Phase != "settled" ||
+		terminalPatch.TurnLifecycle.Outcome == nil ||
+		*terminalPatch.TurnLifecycle.Outcome != "completed" {
+		t.Fatalf("terminal turn lifecycle = %#v, want completed settled with nil active turn", terminalPatch.TurnLifecycle)
+	}
+	if terminalPatch.SubmitAvailability == nil || terminalPatch.SubmitAvailability.State != "available" {
+		t.Fatalf("terminal submit availability = %#v, want available", terminalPatch.SubmitAvailability)
+	}
+}
+
 func TestControllerExecUsesAsyncAdapterAndFinalizesFromTerminalEvent(t *testing.T) {
 	t.Parallel()
 
@@ -3862,6 +3928,69 @@ func TestControllerFinishParentTurnDoesNotOverwriteSyntheticLifecycle(t *testing
 	}
 	if _, ok := controller.activeTurn("room-1", "agent-session-1"); ok {
 		t.Fatal("parent active turn map entry still exists")
+	}
+}
+
+func TestControllerFinishTurnKeepsLiveBackgroundAgentsWorking(t *testing.T) {
+	t.Parallel()
+
+	controller := NewController(nil, nil)
+	turnID := "turn-1"
+	session := Session{
+		RoomID:         "room-1",
+		AgentSessionID: "agent-session-1",
+		Provider:       ProviderClaudeCode,
+		Status:         SessionStatusWorking,
+		TurnLifecycle: &TurnLifecycle{
+			ActiveTurnID: stringPtr(turnID),
+			Phase:        "running",
+		},
+		SubmitAvailability: blockedSubmitAvailability("active_turn"),
+		RuntimeContext: map[string]any{
+			"backgroundAgents": map[string]any{
+				"count": 1,
+				"items": []any{map[string]any{
+					"parentToolUseId": "call-agent-1",
+					"status":          "running",
+				}},
+			},
+		},
+	}
+	controller.store(session)
+	controller.mu.Lock()
+	controller.turns[sessionKey(session.RoomID, session.AgentSessionID)] = activeTurn{turnID: turnID}
+	controller.mu.Unlock()
+
+	outcome := "completed"
+	controller.finishTurn(Session{
+		RoomID:         session.RoomID,
+		AgentSessionID: session.AgentSessionID,
+		Provider:       session.Provider,
+		Status:         SessionStatusReady,
+		TurnLifecycle: &TurnLifecycle{
+			Phase:   "settled",
+			Outcome: &outcome,
+		},
+		SubmitAvailability: availableSubmitAvailability(),
+		RuntimeContext:     session.RuntimeContext,
+	}, turnID)
+
+	updated, ok := controller.get(session.RoomID, session.AgentSessionID)
+	if !ok {
+		t.Fatal("session missing after finish")
+	}
+	if updated.Status != SessionStatusWorking {
+		t.Fatalf("status = %q, want working while background agent runs", updated.Status)
+	}
+	if updated.SubmitAvailability == nil ||
+		updated.SubmitAvailability.State != "blocked" ||
+		updated.SubmitAvailability.Reason != "background_agent" {
+		t.Fatalf("submit availability = %#v, want blocked background_agent", updated.SubmitAvailability)
+	}
+	if updated.TurnLifecycle == nil ||
+		updated.TurnLifecycle.ActiveTurnID != nil ||
+		updated.TurnLifecycle.Phase != "settled" {
+		t.Fatalf("turn lifecycle = %#v, want settled parent turn", updated.TurnLifecycle)
 	}
 }
 

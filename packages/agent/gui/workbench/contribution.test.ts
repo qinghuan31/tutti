@@ -760,6 +760,51 @@ describe("agent GUI workbench contribution copy", () => {
     });
   });
 
+  it("preserves the frame of an already-open session window when re-launched (e.g. from a completion notification)", async () => {
+    const contribution = createTestAgentGuiWorkbenchContribution({
+      renderBody: () => null,
+      workspaceId: "workspace-1"
+    });
+    const baseRequest = {
+      layoutConstraints: {
+        minHeight: 160,
+        minWidth: 280,
+        safeArea: {
+          bottom: 79,
+          left: 0,
+          right: 0,
+          top: 52
+        },
+        surfacePadding: 0
+      },
+      reason: "host" as const,
+      surfaceSize: {
+        height: 900,
+        width: 1440
+      },
+      typeId: "agent-gui",
+      workspaceId: "workspace-1"
+    };
+    const payload = {
+      agentSessionId: "session-1",
+      provider: "codex"
+    };
+
+    const firstLaunch = await contribution.onLaunchRequest?.({
+      ...baseRequest,
+      payload
+    });
+    const relaunch = await contribution.onLaunchRequest?.({
+      ...baseRequest,
+      payload
+    });
+
+    expect(firstLaunch?.instanceId).toBe("agent-gui:codex:session:session-1");
+    expect(relaunch?.instanceId).toBe(firstLaunch?.instanceId);
+    expect(firstLaunch?.preserveExistingNodeFrame).not.toBe(true);
+    expect(relaunch?.preserveExistingNodeFrame).toBe(true);
+  });
+
   it("keeps compact new-window session launches on the cascade policy", async () => {
     const contribution = createTestAgentGuiWorkbenchContribution({
       renderBody: () => null,

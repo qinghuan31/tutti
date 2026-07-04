@@ -1222,7 +1222,7 @@ export class SessionRuntime {
         }
         if (
           this.isNestedDelegatedTaskTerminalAssistant(message) &&
-          !this.hasRunningChildDelegatedTasks(parentToolUseID)
+          !this.hasUnsettledChildWork(parentToolUseID)
         ) {
           this.completeDelegatedTaskFromParentMessage(parentToolUseID, {
             status: "completed",
@@ -2660,6 +2660,22 @@ export class SessionRuntime {
     return false;
   }
 
+  private hasUnsettledChildWork(parentToolUseId: string): boolean {
+    return (
+      this.hasPendingChildToolResults(parentToolUseId) ||
+      this.hasRunningChildDelegatedTasks(parentToolUseId)
+    );
+  }
+
+  private hasPendingChildToolResults(parentToolUseId: string): boolean {
+    for (const tool of this.toolByID.values()) {
+      if (tool.parentToolUseId === parentToolUseId) {
+        return true;
+      }
+    }
+    return false;
+  }
+
   private emitDelegatedTaskParentUpdate(
     task: DelegatedTaskState,
     message: Record<string, unknown>
@@ -3357,6 +3373,15 @@ function contextWindowTokensFromModelUsage(value: unknown): number {
     "max"
   ]) {
     const tokens = numberValue(record[key]);
+    if (tokens > 0) {
+      return tokens;
+    }
+  }
+  for (const nested of Object.values(record)) {
+    if (typeof nested !== "object" || nested === null) {
+      continue;
+    }
+    const tokens = contextWindowTokensFromModelUsage(nested);
     if (tokens > 0) {
       return tokens;
     }

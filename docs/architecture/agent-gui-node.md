@@ -682,6 +682,13 @@ may carry lifecycle status such as `active` while the visible state is derived
 from `currentPhase` or turn lifecycle. Projection layers that bridge into legacy
 Host DTOs must normalize the tuple together, or `active/idle` and
 `active/working` sessions will render as the wrong conversation state.
+Daemon terminal turn reports must settle the tuple atomically: clear
+`turn.activeTurnId` and `turnLifecycle.activeTurnId`, set
+`turnLifecycle.phase` to `settled`, set `currentPhase` to `idle`, and replace an
+`active_turn` submit block with `submitAvailability.state = "available"`.
+Message Center and AgentGUI should keep AgentActivityRuntime as the source of
+truth instead of guessing that a completed turn with stale active-turn fields is
+safe to treat as finished.
 
 When the visible symptom is a sticky error badge on a rail row, dock preview, or
 message-center trigger, also inspect the latest loaded turn messages. A

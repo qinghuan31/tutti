@@ -1066,6 +1066,18 @@ func TestReporterProjectsSessionAndTurnLifecycleToStatePatches(t *testing.T) {
 	}
 	if input.StatePatches[2].Turn == nil ||
 		input.StatePatches[2].Turn.CompletedAtUnixMS == 0 ||
+		input.StatePatches[2].Turn.ActiveTurnID != nil ||
+		input.StatePatches[2].Turn.Phase != "settled" ||
+		input.StatePatches[2].Turn.Outcome != "completed" ||
+		input.StatePatches[2].Turn.SubmitAvailability == nil ||
+		input.StatePatches[2].Turn.SubmitAvailability.State != "available" ||
+		input.StatePatches[2].TurnLifecycle == nil ||
+		input.StatePatches[2].TurnLifecycle.ActiveTurnID != nil ||
+		input.StatePatches[2].TurnLifecycle.Phase != "settled" ||
+		input.StatePatches[2].TurnLifecycle.Outcome == nil ||
+		*input.StatePatches[2].TurnLifecycle.Outcome != "completed" ||
+		input.StatePatches[2].SubmitAvailability == nil ||
+		input.StatePatches[2].SubmitAvailability.State != "available" ||
 		input.StatePatches[2].CurrentPhase != string(activityshared.TurnPhaseIdle) {
 		t.Fatalf("turn completed patch = %#v", input.StatePatches[2])
 	}
@@ -1159,7 +1171,20 @@ func TestReporterProjectsTurnFailureErrorToStatePatch(t *testing.T) {
 	if len(input.StatePatches) != 1 {
 		t.Fatalf("state patches = %#v, want 1", input.StatePatches)
 	}
-	if input.StatePatches[0].CurrentPhase != string(activityshared.TurnPhaseFailed) {
+	if input.StatePatches[0].CurrentPhase != string(activityshared.TurnPhaseIdle) ||
+		input.StatePatches[0].Turn == nil ||
+		input.StatePatches[0].Turn.ActiveTurnID != nil ||
+		input.StatePatches[0].Turn.Phase != "settled" ||
+		input.StatePatches[0].Turn.Outcome != "failed" ||
+		input.StatePatches[0].Turn.SubmitAvailability == nil ||
+		input.StatePatches[0].Turn.SubmitAvailability.State != "available" ||
+		input.StatePatches[0].TurnLifecycle == nil ||
+		input.StatePatches[0].TurnLifecycle.ActiveTurnID != nil ||
+		input.StatePatches[0].TurnLifecycle.Phase != "settled" ||
+		input.StatePatches[0].TurnLifecycle.Outcome == nil ||
+		*input.StatePatches[0].TurnLifecycle.Outcome != "failed" ||
+		input.StatePatches[0].SubmitAvailability == nil ||
+		input.StatePatches[0].SubmitAvailability.State != "available" {
 		t.Fatalf("turn failed patch = %#v", input.StatePatches[0])
 	}
 	if input.StatePatches[0].LastError != "Codex request failed because a quota or rate limit was reached." {

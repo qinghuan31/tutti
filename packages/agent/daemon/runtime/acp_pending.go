@@ -216,6 +216,42 @@ func acpPermissionResolvedEvents(session Session, turnID string, pending *pendin
 	}
 }
 
+// acpPermissionOutOfBandResolvedEvents handles the case where the provider
+// (codex app-server) reports a pending approval/interactive request as
+// resolved without tutti ever sending or receiving a decision for it (the
+// serverRequest/resolved notification carries no outcome — it fires for
+// auto-approve, provider-side timeout, cancellation, or another client
+// alike). Because the real outcome is unknown, this must NOT reuse the
+// "completed" event: doing so previously rendered a false-positive success
+// card (e.g. a file-output card for a file that was never written) whenever
+// the user left an approval prompt unanswered long enough for codex to give
+// up on it. The call is marked failed instead, and the turn is still nudged
+// back to "working" so the session does not stall waiting for an approval
+// that will never be answered.
+func acpPermissionOutOfBandResolvedEvents(session Session, turnID string, pending *pendingACPRequest) []activityshared.Event {
+	if pending == nil {
+		return nil
+	}
+	callType := firstNonEmpty(strings.TrimSpace(pending.callType), "approval")
+	return []activityshared.Event{
+		newTurnActivityEventWithID(session, pending.eventID, EventCallFailed, turnID, messageStreamStateFailed, "", pending.name, map[string]any{
+			"callId":   pending.callID,
+			"callType": callType,
+			"name":     pending.name,
+			"toolName": pending.toolName,
+			"status":   messageStreamStateFailed,
+			"error": map[string]any{
+				"requestId": pending.requestID,
+				"message":   "Codex resolved this request without a response from tutti (it may have timed out or been canceled); outcome unknown.",
+			},
+		}),
+		newTurnActivityEvent(session, EventTurnUpdated, turnID, SessionStatusWorking, "", "", map[string]any{
+			"phase":     string(activityshared.TurnPhaseWorking),
+			"requestId": pending.requestID,
+		}),
+	}
+}
+
 func (p *pendingACPRequest) snapshotPrompt() *SessionInteractivePrompt {
 	if p == nil {
 		return nil

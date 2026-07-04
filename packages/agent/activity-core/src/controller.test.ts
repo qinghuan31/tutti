@@ -1126,6 +1126,64 @@ test("controller preserves inline state patch turn metadata", async () => {
   });
 });
 
+test("controller clears active turn and submit block from settled inline state patch", async () => {
+  const controller = createAgentActivityController({
+    adapter: fakeAdapter({
+      listSessions: () =>
+        Promise.resolve({
+          sessions: [
+            createSession({
+              turnLifecycle: { activeTurnId: "turn-1", phase: "running" },
+              submitAvailability: {
+                state: "blocked",
+                reason: "active_turn"
+              },
+              currentPhase: "working",
+              lastEventUnixMs: 1000,
+              updatedAtUnixMs: 1000
+            })
+          ]
+        })
+    }),
+    workspaceId: "workspace-1"
+  });
+
+  await controller.load();
+  const result = controller.applyActivityUpdatedEvent({
+    workspaceId: "workspace-1",
+    agentSessionId: "session-1",
+    eventType: "state_patch",
+    data: {
+      workspaceId: "workspace-1",
+      agentSessionId: "session-1",
+      eventType: "state_patch",
+      currentPhase: "idle",
+      lastEventUnixMs: 2000,
+      submitAvailability: { state: "available" },
+      turn: {
+        turnId: "turn-1",
+        activeTurnId: null,
+        phase: "settled",
+        outcome: "completed",
+        submitAvailability: { state: "available" },
+        completedAtUnixMs: 2000
+      }
+    }
+  });
+
+  assert.equal(result.applied, true);
+  const session = controller.getSnapshot().sessions[0];
+  assert.deepEqual(session?.turnLifecycle, {
+    activeTurnId: null,
+    phase: "settled",
+    settling: undefined,
+    outcome: "completed",
+    completedCommand: null
+  });
+  assert.deepEqual(session?.submitAvailability, { state: "available" });
+  assert.equal(session?.currentPhase, "idle");
+});
+
 test("controller maps session update events into complete session snapshots", () => {
   const controller = createAgentActivityController({
     adapter: fakeAdapter(),
