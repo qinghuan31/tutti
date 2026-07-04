@@ -223,15 +223,16 @@ function agentSessionStateSettings(
     return defaults?.settings;
   }
   const settings = normalizeComposerSettings(session.settings);
+  const defaultModel = normalizedOptionalString(defaults?.settings?.model);
   if (
     session.provider === "claude-code" &&
     settings.model === "default" &&
-    normalizedOptionalString(defaults?.settings?.model) !== null &&
-    defaults?.settings?.model !== "default"
+    defaultModel !== null &&
+    defaultModel !== "default"
   ) {
     return {
       ...settings,
-      model: defaults.settings.model
+      model: defaultModel
     };
   }
   return settings;
