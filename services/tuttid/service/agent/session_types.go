@@ -32,6 +32,7 @@ type Service struct {
 	providerAvailabilityCache    *providerAvailabilityCache
 	capabilityCatalogCache       *composerCapabilityCatalogCache
 	liveModelCache               *composerLiveModelCache
+	claudeStartupLock            *claudeStartupSerializer
 }
 
 type StaleTurnResumeReconciler interface {

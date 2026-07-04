@@ -1146,66 +1146,6 @@ func TestServiceCreateRejectsInvalidCachedClaudeModelBeforePreparingRuntime(t *t
 	}
 }
 
-func TestServiceCreateDiscoversClaudeModelsBeforeStartingInvalidModel(t *testing.T) {
-	runtime := newFakeRuntime()
-	runtime.startHook = func(input RuntimeStartInput, session RuntimeSession) RuntimeSession {
-		if input.Visible == nil || *input.Visible {
-			t.Fatalf("discovery start visible = %#v, want hidden draft session", input.Visible)
-		}
-		if input.Model != "" {
-			t.Fatalf("discovery start model = %q, want empty model", input.Model)
-		}
-		session.RuntimeContext = map[string]any{
-			"configOptions": []any{
-				map[string]any{
-					"id": "model",
-					"options": []any{
-						map[string]any{"value": "default", "name": "Default"},
-						map[string]any{"value": "sonnet", "name": "Sonnet"},
-						map[string]any{"value": "mimo-v2.5-pro", "name": "MIMO V2.5 Pro"},
-					},
-				},
-			},
-		}
-		return session
-	}
-	service := newTestService(runtime)
-	var prepareInput agentsidecarservice.PrepareInput
-	var cleanupCalls []agentsidecarservice.CleanupInput
-	service.RuntimePreparer = fakeRuntimePreparer{
-		input:        &prepareInput,
-		cleanupCalls: &cleanupCalls,
-	}
-
-	_, err := service.Create(context.Background(), "ws-1", CreateSessionInput{
-		AgentTargetID: agenttargetbiz.IDLocalClaudeCode,
-		Provider:      "claude-code",
-		Model:         stringRef("MiniMax-M2.7"),
-		Cwd:           stringRef("/repo"),
-	})
-	if err == nil {
-		t.Fatal("Create returned nil error, want invalid model error")
-	}
-	var invalidModel *InvalidModelError
-	if !errors.As(err, &invalidModel) {
-		t.Fatalf("Create error = %T %[1]v, want InvalidModelError", err)
-	}
-	if invalidModel.Provider != "claude-code" ||
-		invalidModel.Model != "MiniMax-M2.7" ||
-		!slices.Equal(invalidModel.AvailableModels, []string{"default", "sonnet", "mimo-v2.5-pro"}) {
-		t.Fatalf("invalid model error = %#v", invalidModel)
-	}
-	if len(runtime.startCalls) != 1 {
-		t.Fatalf("start calls = %d, want only hidden discovery session", len(runtime.startCalls))
-	}
-	if prepareInput.Provider != "claude-code" || prepareInput.Model != "" {
-		t.Fatalf("discovery prepare input = %#v, want claude-code without requested model", prepareInput)
-	}
-	if len(cleanupCalls) == 0 {
-		t.Fatal("cleanup calls = 0, want discovery runtime cleanup")
-	}
-}
-
 func TestServiceCreateUsesProviderDefaultModelWhenModelOmitted(t *testing.T) {
 	runtime := newFakeRuntime()
 	service := newTestService(runtime)
@@ -1639,6 +1579,29 @@ func TestServiceCreateEmptySessionDoesNotExec(t *testing.T) {
 	}
 }
 
+func TestServiceCreateClaudeModelValidationUsesOnlyCachedLiveModels(t *testing.T) {
+	t.Setenv("CLAUDE_CONFIG_DIR", t.TempDir())
+	runtime := newFakeRuntime()
+	service := newTestService(runtime)
+
+	_, err := service.Create(context.Background(), "ws-1", CreateSessionInput{
+		AgentSessionID: "session-1",
+		AgentTargetID:  agenttargetbiz.IDLocalClaudeCode,
+		Provider:       "claude-code",
+		Model:          stringRef("custom-claude-model"),
+		InitialContent: TextPromptContent("hello"),
+	})
+	if err != nil {
+		t.Fatalf("Create error = %v", err)
+	}
+	if len(runtime.startCalls) != 1 {
+		t.Fatalf("start calls = %d, want only real session start", len(runtime.startCalls))
+	}
+	if got := runtime.startCalls[0].AgentSessionID; got != "session-1" {
+		t.Fatalf("started session id = %q, want real session id", got)
+	}
+}
+
 func TestServiceCreateDoesNotPassDerivedPromptToRuntime(t *testing.T) {
 	runtime := newFakeRuntime()
 	service := newTestService(runtime)
@@ -1732,6 +1695,51 @@ func TestServiceSendInputPassesDisplayPromptToRuntime(t *testing.T) {
 	}
 	if _, ok := call.Metadata[""]; ok {
 		t.Fatalf("runtime metadata includes blank key: %#v", call.Metadata)
+	}
+}
+
+func TestServiceSendInputWaitsForClaudeStartupSlotBeforeExec(t *testing.T) {
+	runtime := newFakeRuntime()
+	runtime.sessions["ws-1:session-1"] = RuntimeSession{
+		ID:          "session-1",
+		WorkspaceID: "ws-1",
+		Provider:    "claude-code",
+		Status:      "ready",
+		Visible:     true,
+	}
+	service := NewService(runtime)
+	if err := service.claudeStartup().acquire(context.Background()); err != nil {
+		t.Fatalf("acquire startup lock: %v", err)
+	}
+
+	done := make(chan error, 1)
+	go func() {
+		_, err := service.SendInput(context.Background(), "ws-1", "session-1", SendInput{
+			Content: TextPromptContent("hello"),
+		})
+		done <- err
+	}()
+
+	select {
+	case err := <-done:
+		t.Fatalf("SendInput completed while startup slot held: %v", err)
+	case <-time.After(50 * time.Millisecond):
+	}
+	if len(runtime.execCalls) != 0 {
+		t.Fatalf("exec calls = %d, want blocked while startup slot held", len(runtime.execCalls))
+	}
+	service.claudeStartup().release()
+
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Fatalf("SendInput error = %v", err)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("SendInput did not continue after startup slot release")
+	}
+	if len(runtime.execCalls) != 1 {
+		t.Fatalf("exec calls = %d, want 1 after startup slot release", len(runtime.execCalls))
 	}
 }
 
@@ -2462,6 +2470,36 @@ func TestGetComposerOptionsClaudeCodeLiveModelsSanitizesUnsupportedSelectedModel
 		if option["value"] == "claude-sonnet-4-20250514" {
 			t.Fatalf("runtime model options = %#v, want no unsupported selected model", runtimeModelOptions)
 		}
+	}
+}
+
+func TestGetComposerOptionsClaudeCodeSkipsDiscoveryBesideRunningSession(t *testing.T) {
+	t.Setenv("CLAUDE_CONFIG_DIR", t.TempDir())
+	runtime := newFakeRuntime()
+	runtime.sessions["ws-1:session-1"] = RuntimeSession{
+		ID:          "session-1",
+		WorkspaceID: "ws-1",
+		Provider:    "claude-code",
+		Status:      "ready",
+		RuntimeContext: map[string]any{
+			"capabilities": []any{"imageInput"},
+		},
+	}
+	service := NewService(runtime)
+
+	options, err := service.GetComposerOptions(context.Background(), ComposerOptionsInput{
+		Provider:    "claude-code",
+		WorkspaceID: "ws-1",
+		Cwd:         "/repo",
+	})
+	if err != nil {
+		t.Fatalf("GetComposerOptions returned error: %v", err)
+	}
+	if len(runtime.startCalls) != 0 {
+		t.Fatalf("start calls = %d, want no hidden discovery next to running session", len(runtime.startCalls))
+	}
+	if options.ModelConfig.Configurable || len(options.ModelConfig.Options) != 0 {
+		t.Fatalf("modelConfig = %#v, want no unverified model config", options.ModelConfig)
 	}
 }
 

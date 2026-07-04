@@ -14,9 +14,100 @@ import (
 
 const liveModelDiscoveryPollInterval = 100 * time.Millisecond
 
+// liveModelDiscoveryTimeout bounds how long a single hidden discovery session
+// may run. The startup lock is held for the discovery session's whole lifetime,
+// so this also bounds how long a real Claude session start can wait behind an
+// in-flight discovery.
+const liveModelDiscoveryTimeout = 20 * time.Second
+
+// liveModelDiscoveryCleanupTimeout bounds hidden discovery teardown while the
+// Claude startup lock is still held.
+const liveModelDiscoveryCleanupTimeout = 5 * time.Second
+
+// claudeStartupSerializer serializes credential-touching Claude startups so that
+// Tutti never runs two `claude` processes that both refresh the shared OAuth
+// token at the same time.
+//
+// The live-model discovery session is a hidden, throwaway `claude` process that
+// shares the on-disk credential store (~/.claude keychain + plaintext) with the
+// real conversation session and is deleted as soon as the model list is read.
+// If it performs an OAuth token refresh and is then torn down mid-flight, the
+// rotated refresh token can be lost; the real session's next refresh then fails
+// with `invalid_grant`, and Claude Code responds by wiping the stored tokens,
+// locking the user out ("Not logged in · Please run /login").
+//
+// The discovery spawn holds this lock for its entire lifetime (spawn -> read ->
+// delete), and real session startups (Create/Resume) hold it while starting.
+// Because the discovery session is fully torn down before the lock is released,
+// a real session start that waits on this lock never overlaps a live discovery
+// process. It is a channel-based mutex so acquisition honors context cancel.
+type claudeStartupSerializer struct {
+	sem chan struct{}
+}
+
+func newClaudeStartupSerializer() *claudeStartupSerializer {
+	return &claudeStartupSerializer{sem: make(chan struct{}, 1)}
+}
+
+func (s *claudeStartupSerializer) acquire(ctx context.Context) error {
+	select {
+	case s.sem <- struct{}{}:
+		return nil
+	case <-ctx.Done():
+		return ctx.Err()
+	}
+}
+
+func (s *claudeStartupSerializer) release() {
+	select {
+	case <-s.sem:
+	default:
+	}
+}
+
+func (s *Service) claudeStartup() *claudeStartupSerializer {
+	if s.claudeStartupLock == nil {
+		s.claudeStartupLock = newClaudeStartupSerializer()
+	}
+	return s.claudeStartupLock
+}
+
+// awaitClaudeStartupSlot blocks until no live-model discovery session is
+// running for Claude, then returns a release function the caller must invoke
+// once its own session startup has completed. Non-Claude providers do not
+// participate and get a no-op release.
+func (s *Service) awaitClaudeStartupSlot(ctx context.Context, provider string) (func(), error) {
+	if agentprovider.Normalize(provider) != agentprovider.ClaudeCode {
+		return func() {}, nil
+	}
+	if err := s.claudeStartup().acquire(ctx); err != nil {
+		return nil, err
+	}
+	return s.claudeStartup().release, nil
+}
+
+// liveClaudeModelOptionsFromRunningSession returns the model list already
+// advertised by a live Claude session in the workspace, if any. It lets model
+// discovery reuse an in-flight conversation instead of spawning a second,
+// credential-sharing process next to it.
+func (s *Service) liveClaudeModelOptionsFromRunningSession(workspaceID string) ([]ComposerConfigOptionValue, bool) {
+	hasClaudeSession := false
+	for _, session := range s.controller().Sessions(workspaceID) {
+		if agentprovider.Normalize(session.Provider) != agentprovider.ClaudeCode {
+			continue
+		}
+		hasClaudeSession = true
+		if options := extractModelOptionsFromRuntimeContext(session.RuntimeContext); len(options) > 0 {
+			return options, true
+		}
+	}
+	return nil, hasClaudeSession
+}
+
 var liveComposerModelDiscoveryGroup singleflight.Group
 
 var errLiveModelDiscoverySessionFailed = errors.New("live model discovery session failed")
+var errLiveModelDiscoverySkippedForRunningSession = errors.New("live model discovery skipped because Claude session is already running")
 
 func (s *Service) discoverLiveComposerModels(
 	ctx context.Context,
@@ -61,9 +152,6 @@ func (s *Service) discoverLiveComposerModelsUncached(
 	settings ComposerSettings,
 ) ([]ComposerConfigOptionValue, error) {
 	provider := agentprovider.ClaudeCode
-	if err := s.ensureProviderRuntimeInstalled(ctx, provider); err != nil {
-		return nil, err
-	}
 	resolvedCwd := strings.TrimSpace(cwd)
 	if resolvedCwd != "" {
 		resolved, err := s.resolveCwd(ctx, &resolvedCwd)
@@ -72,6 +160,30 @@ func (s *Service) discoverLiveComposerModelsUncached(
 		}
 		resolvedCwd = resolved
 	}
+	// Serialize against real Claude session startups: hold the lock for the
+	// throwaway discovery session's entire lifetime so it never runs alongside
+	// another credential-touching claude process (see claudeStartupSerializer).
+	if err := s.claudeStartup().acquire(ctx); err != nil {
+		return nil, err
+	}
+	defer s.claudeStartup().release()
+	// If a real Claude session is already live, reuse its advertised model list
+	// instead of spawning a second, credential-sharing process next to it.
+	if reused, hasClaudeSession := s.liveClaudeModelOptionsFromRunningSession(workspaceID); hasClaudeSession {
+		if len(reused) > 0 {
+			return reused, nil
+		}
+		return nil, errLiveModelDiscoverySkippedForRunningSession
+	}
+	if err := s.ensureProviderRuntimeInstalled(ctx, provider); err != nil {
+		return nil, err
+	}
+	// Bound the discovery lifetime. Because the startup lock is held until the
+	// throwaway session is torn down, a session that never reports its model
+	// list must not be able to hold the lock (and thus block real Claude
+	// session startups) indefinitely.
+	spawnCtx, cancelSpawn := context.WithTimeout(ctx, liveModelDiscoveryTimeout)
+	defer cancelSpawn()
 	visible := false
 	startInput := CreateSessionInput{
 		AgentSessionID:   uuid.NewString(),
@@ -85,11 +197,11 @@ func (s *Service) discoverLiveComposerModelsUncached(
 		Speed:            stringPointer(strings.TrimSpace(settings.Speed)),
 		Visible:          &visible,
 	}
-	prepared, err := s.prepareRuntime(ctx, workspaceID, resolvedCwd, startInput)
+	prepared, err := s.prepareRuntime(spawnCtx, workspaceID, resolvedCwd, startInput)
 	if err != nil {
 		return nil, err
 	}
-	session, err := s.controller().Start(ctx, RuntimeStartInput{
+	session, err := s.controller().Start(spawnCtx, RuntimeStartInput{
 		WorkspaceID:      workspaceID,
 		AgentSessionID:   startInput.AgentSessionID,
 		Provider:         provider,
@@ -112,9 +224,11 @@ func (s *Service) discoverLiveComposerModelsUncached(
 		return nil, normalizeRuntimeError(err)
 	}
 	defer func() {
-		_, _ = s.Delete(context.Background(), workspaceID, session.ID)
+		cleanupCtx, cancelCleanup := context.WithTimeout(context.Background(), liveModelDiscoveryCleanupTimeout)
+		defer cancelCleanup()
+		_, _ = s.Delete(cleanupCtx, workspaceID, session.ID)
 	}()
-	return s.pollComposerModelOptions(ctx, workspaceID, session)
+	return s.pollComposerModelOptions(spawnCtx, workspaceID, session)
 }
 
 func (s *Service) pollComposerModelOptions(

@@ -59,22 +59,32 @@ func (s *Service) ensureRuntimeSessionResult(
 	if err != nil {
 		return ensuredRuntimeSession{}, err
 	}
-	session, err := s.controller().Resume(ctx, RuntimeResumeInput{
-		WorkspaceID:       strings.TrimSpace(persisted.WorkspaceID),
-		AgentSessionID:    strings.TrimSpace(persisted.ID),
-		Provider:          strings.TrimSpace(persisted.Provider),
-		ProviderSessionID: strings.TrimSpace(persisted.ProviderSessionID),
-		Cwd:               strings.TrimSpace(prepared.Cwd),
-		Env:               append([]string(nil), prepared.Env...),
-		Title:             strings.TrimSpace(persisted.Title),
-		Status:            strings.TrimSpace(persisted.Status),
-		Settings:          cloneComposerSettings(persisted.Settings),
-		CreatedAtUnixMS:   persisted.CreatedAtUnixMS,
-		UpdatedAtUnixMS:   persisted.UpdatedAtUnixMS,
-		Visible:           boolPointer(visibleFromRuntimeContext(persisted.RuntimeContext, true)),
-		RuntimeContext:    clonePayload(persisted.RuntimeContext),
-		RecreateIfMissing: imported,
-	})
+	// Wait out any in-flight Claude live-model discovery so this resume's
+	// startup never overlaps the throwaway discovery process (shared OAuth
+	// credentials). Released as soon as the session has resumed.
+	releaseStartup, err := s.awaitClaudeStartupSlot(ctx, persisted.Provider)
+	if err != nil {
+		return ensuredRuntimeSession{}, err
+	}
+	session, err := func() (RuntimeSession, error) {
+		defer releaseStartup()
+		return s.controller().Resume(ctx, RuntimeResumeInput{
+			WorkspaceID:       strings.TrimSpace(persisted.WorkspaceID),
+			AgentSessionID:    strings.TrimSpace(persisted.ID),
+			Provider:          strings.TrimSpace(persisted.Provider),
+			ProviderSessionID: strings.TrimSpace(persisted.ProviderSessionID),
+			Cwd:               strings.TrimSpace(prepared.Cwd),
+			Env:               append([]string(nil), prepared.Env...),
+			Title:             strings.TrimSpace(persisted.Title),
+			Status:            strings.TrimSpace(persisted.Status),
+			Settings:          cloneComposerSettings(persisted.Settings),
+			CreatedAtUnixMS:   persisted.CreatedAtUnixMS,
+			UpdatedAtUnixMS:   persisted.UpdatedAtUnixMS,
+			Visible:           boolPointer(visibleFromRuntimeContext(persisted.RuntimeContext, true)),
+			RuntimeContext:    clonePayload(persisted.RuntimeContext),
+			RecreateIfMissing: imported,
+		})
+	}()
 	if err != nil {
 		return ensuredRuntimeSession{}, normalizeRuntimeError(err)
 	}
