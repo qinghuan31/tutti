@@ -1967,6 +1967,7 @@ func codexAppServerCapabilities(planMode bool) []string {
 		"steer",
 		"review",
 		"goal",
+		CapabilityGoalPause,
 		"rollback",
 		"fork",
 		"perTurnModelOverride",

@@ -189,6 +189,11 @@ export interface AgentGUINodeViewModel {
   isRespondingApproval: boolean;
   promptImagesSupported: boolean;
   compactSupported: boolean | null;
+  /**
+   * Provider goal supports a real paused state (codex thread goals). Claude
+   * Code's goal has none — the banner then omits pause/resume controls.
+   */
+  goalPauseSupported: boolean;
   usage: AgentActivityUsage | null;
   backgroundAgentCount: number;
   /** Codex plan turn finished: offer the TUI-equivalent implement prompt. */

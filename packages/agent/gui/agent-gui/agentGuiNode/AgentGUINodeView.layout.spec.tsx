@@ -3135,6 +3135,7 @@ function createViewModel(
     isRespondingApproval: false,
     promptImagesSupported: true,
     compactSupported: null,
+    goalPauseSupported: true,
     usage: null,
     backgroundAgentCount: 0,
     listError: null,

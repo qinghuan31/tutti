@@ -3969,6 +3969,11 @@ export function useAgentGUINodeController({
     composerOptions: providerComposerOptions,
     sessionRuntimeContext: activeSessionState?.runtimeContext
   });
+  const goalPauseSupported =
+    resolveAgentActivityCapability("goalPause", {
+      composerOptions: providerComposerOptions,
+      sessionRuntimeContext: activeSessionState?.runtimeContext
+    }) ?? false;
   const activeSessionRuntimeContext = activeSessionState?.runtimeContext;
   const backgroundAgentCount = useMemo(
     () => activeBackgroundAgentCount(activeSessionRuntimeContext),
@@ -10945,6 +10950,7 @@ export function useAgentGUINodeController({
         isRespondingApproval,
         promptImagesSupported,
         compactSupported,
+        goalPauseSupported,
         usage,
         backgroundAgentCount,
         listError,
@@ -11007,6 +11013,7 @@ export function useAgentGUINodeController({
       openclawGateway,
       promptImagesSupported,
       compactSupported,
+      goalPauseSupported,
       usage,
       backgroundAgentCount,
       isInterrupting,

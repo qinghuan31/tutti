@@ -1144,67 +1144,12 @@ func (a *CodexAppServerAdapter) nextTurnLifecycleSeq(agentSessionID string) uint
 }
 
 // stampTurnLifecycleSnapshots stamps an adapter-origin TurnLifecycle snapshot
-// onto every turn.* event in the batch (ADR 0008). Every such event is
-// emitted by this adapter at one of its own turn-machine transition points,
-// so the snapshot is the machine's statement serialized exactly once; events
-// that already carry a snapshot (controller-stamped submit events) are left
-// untouched.
+// onto every turn.* event in the batch (ADR 0008); see
+// stampAdapterTurnLifecycleEvents for the contract.
 func (a *CodexAppServerAdapter) stampTurnLifecycleSnapshots(agentSessionID string, events []activityshared.Event) []activityshared.Event {
-	for index := range events {
-		snapshot, ok := adapterSnapshotForTurnEvent(events[index])
-		if !ok {
-			continue
-		}
-		if _, stamped := activityshared.TurnLifecycleSnapshotFromEvent(events[index]); stamped {
-			continue
-		}
-		snapshot.Origin = activityshared.TurnLifecycleOriginAdapter
-		snapshot.Seq = a.nextTurnLifecycleSeq(agentSessionID)
-		activityshared.StampTurnLifecycleSnapshot(&events[index], snapshot)
-	}
-	return events
-}
-
-// adapterSnapshotForTurnEvent translates the turn transition an event states
-// into the full lifecycle snapshot for that moment.
-func adapterSnapshotForTurnEvent(event activityshared.Event) (activityshared.TurnLifecycleSnapshot, bool) {
-	turnID := strings.TrimSpace(event.Payload.TurnID)
-	switch event.Type {
-	case activityshared.EventTurnStarted:
-		return activityshared.TurnLifecycleSnapshot{
-			ActiveTurnID: turnID,
-			Phase:        string(activityshared.TurnPhaseRunning),
-		}, true
-	case activityshared.EventTurnUpdated:
-		switch strings.TrimSpace(event.Payload.TurnPhase) {
-		case string(activityshared.TurnPhaseSubmitted):
-			return activityshared.TurnLifecycleSnapshot{ActiveTurnID: turnID, Phase: string(activityshared.TurnPhaseSubmitted)}, true
-		case string(activityshared.TurnPhaseWorking), string(activityshared.TurnPhaseRunning), "streaming":
-			return activityshared.TurnLifecycleSnapshot{ActiveTurnID: turnID, Phase: string(activityshared.TurnPhaseRunning)}, true
-		case string(activityshared.TurnPhaseWaitingApproval), string(activityshared.TurnPhaseWaiting):
-			return activityshared.TurnLifecycleSnapshot{ActiveTurnID: turnID, Phase: string(activityshared.TurnPhaseWaitingApproval)}, true
-		case string(activityshared.TurnPhaseWaitingInput):
-			return activityshared.TurnLifecycleSnapshot{ActiveTurnID: turnID, Phase: string(activityshared.TurnPhaseWaitingInput)}, true
-		default:
-			return activityshared.TurnLifecycleSnapshot{}, false
-		}
-	case activityshared.EventTurnCompleted:
-		outcome := strings.TrimSpace(event.Payload.TurnOutcome)
-		if outcome == "" {
-			outcome = string(activityshared.TurnOutcomeCompleted)
-		}
-		return activityshared.TurnLifecycleSnapshot{
-			Phase:   string(activityshared.TurnPhaseSettled),
-			Outcome: outcome,
-		}, true
-	case activityshared.EventTurnFailed:
-		return activityshared.TurnLifecycleSnapshot{
-			Phase:   string(activityshared.TurnPhaseSettled),
-			Outcome: string(activityshared.TurnOutcomeFailed),
-		}, true
-	default:
-		return activityshared.TurnLifecycleSnapshot{}, false
-	}
+	return stampAdapterTurnLifecycleEvents(events, func() uint64 {
+		return a.nextTurnLifecycleSeq(agentSessionID)
+	})
 }
 
 func (a *CodexAppServerAdapter) emitSessionEvents(agentSessionID string, events []activityshared.Event) {
