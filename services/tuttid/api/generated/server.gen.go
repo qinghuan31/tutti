@@ -139,6 +139,9 @@ type ServerInterface interface {
 	// List git branches for the agent session working directory
 	// (GET /v1/workspaces/{workspaceID}/agent-sessions/{agentSessionID}/git-branches)
 	ListWorkspaceAgentSessionGitBranches(w http.ResponseWriter, r *http.Request, workspaceID WorkspaceID, agentSessionID AgentSessionID)
+	// Perform a goal control action on one workspace agent session
+	// (POST /v1/workspaces/{workspaceID}/agent-sessions/{agentSessionID}/goal)
+	GoalControlWorkspaceAgentSession(w http.ResponseWriter, r *http.Request, workspaceID WorkspaceID, agentSessionID AgentSessionID)
 	// Send user input to one workspace agent session
 	// (POST /v1/workspaces/{workspaceID}/agent-sessions/{agentSessionID}/input)
 	SendWorkspaceAgentSessionInput(w http.ResponseWriter, r *http.Request, workspaceID WorkspaceID, agentSessionID AgentSessionID)
@@ -1786,6 +1789,47 @@ func (siw *ServerInterfaceWrapper) ListWorkspaceAgentSessionGitBranches(w http.R
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.ListWorkspaceAgentSessionGitBranches(w, r, workspaceID, agentSessionID)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GoalControlWorkspaceAgentSession operation middleware
+func (siw *ServerInterfaceWrapper) GoalControlWorkspaceAgentSession(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "workspaceID" -------------
+	var workspaceID WorkspaceID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "workspaceID", r.PathValue("workspaceID"), &workspaceID, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "workspaceID", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "agentSessionID" -------------
+	var agentSessionID AgentSessionID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "agentSessionID", r.PathValue("agentSessionID"), &agentSessionID, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "agentSessionID", Err: err})
+		return
+	}
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, BearerAuthScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GoalControlWorkspaceAgentSession(w, r, workspaceID, agentSessionID)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -6047,6 +6091,7 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/v1/workspaces/{workspaceID}/agent-sessions/{agentSessionID}/attachments/{attachmentID}", wrapper.ReadWorkspaceAgentSessionAttachment)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/v1/workspaces/{workspaceID}/agent-sessions/{agentSessionID}/cancel", wrapper.CancelWorkspaceAgentSession)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/v1/workspaces/{workspaceID}/agent-sessions/{agentSessionID}/git-branches", wrapper.ListWorkspaceAgentSessionGitBranches)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/v1/workspaces/{workspaceID}/agent-sessions/{agentSessionID}/goal", wrapper.GoalControlWorkspaceAgentSession)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/v1/workspaces/{workspaceID}/agent-sessions/{agentSessionID}/input", wrapper.SendWorkspaceAgentSessionInput)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/v1/workspaces/{workspaceID}/agent-sessions/{agentSessionID}/interactives/{requestID}/response", wrapper.SubmitWorkspaceAgentInteractive)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/v1/workspaces/{workspaceID}/agent-sessions/{agentSessionID}/messages", wrapper.ListWorkspaceAgentSessionMessages)
@@ -10106,6 +10151,124 @@ type ListWorkspaceAgentSessionGitBranches503JSONResponse struct {
 }
 
 func (response ListWorkspaceAgentSessionGitBranches503JSONResponse) VisitListWorkspaceAgentSessionGitBranchesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GoalControlWorkspaceAgentSessionRequestObject struct {
+	WorkspaceID    WorkspaceID    `json:"workspaceID"`
+	AgentSessionID AgentSessionID `json:"agentSessionID"`
+	Body           *GoalControlWorkspaceAgentSessionJSONRequestBody
+}
+
+type GoalControlWorkspaceAgentSessionResponseObject interface {
+	VisitGoalControlWorkspaceAgentSessionResponse(w http.ResponseWriter) error
+}
+
+type GoalControlWorkspaceAgentSession200JSONResponse WorkspaceAgentSessionGoalControlResponse
+
+func (response GoalControlWorkspaceAgentSession200JSONResponse) VisitGoalControlWorkspaceAgentSessionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GoalControlWorkspaceAgentSession400JSONResponse struct {
+	InvalidRequestErrorJSONResponse
+}
+
+func (response GoalControlWorkspaceAgentSession400JSONResponse) VisitGoalControlWorkspaceAgentSessionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GoalControlWorkspaceAgentSession401JSONResponse struct{ UnauthorizedErrorJSONResponse }
+
+func (response GoalControlWorkspaceAgentSession401JSONResponse) VisitGoalControlWorkspaceAgentSessionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GoalControlWorkspaceAgentSession404JSONResponse struct {
+	WorkspaceNotFoundErrorJSONResponse
+}
+
+func (response GoalControlWorkspaceAgentSession404JSONResponse) VisitGoalControlWorkspaceAgentSessionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GoalControlWorkspaceAgentSession405JSONResponse struct {
+	MethodNotAllowedErrorJSONResponse
+}
+
+func (response GoalControlWorkspaceAgentSession405JSONResponse) VisitGoalControlWorkspaceAgentSessionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(405)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GoalControlWorkspaceAgentSession502JSONResponse struct {
+	WorkspaceOperationErrorJSONResponse
+}
+
+func (response GoalControlWorkspaceAgentSession502JSONResponse) VisitGoalControlWorkspaceAgentSessionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(502)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GoalControlWorkspaceAgentSession503JSONResponse struct {
+	ServiceUnavailableErrorJSONResponse
+}
+
+func (response GoalControlWorkspaceAgentSession503JSONResponse) VisitGoalControlWorkspaceAgentSessionResponse(w http.ResponseWriter) error {
 
 	var buf bytes.Buffer
 	if err := json.NewEncoder(&buf).Encode(response); err != nil {
@@ -21287,6 +21450,9 @@ type StrictServerInterface interface {
 	// List git branches for the agent session working directory
 	// (GET /v1/workspaces/{workspaceID}/agent-sessions/{agentSessionID}/git-branches)
 	ListWorkspaceAgentSessionGitBranches(ctx context.Context, request ListWorkspaceAgentSessionGitBranchesRequestObject) (ListWorkspaceAgentSessionGitBranchesResponseObject, error)
+	// Perform a goal control action on one workspace agent session
+	// (POST /v1/workspaces/{workspaceID}/agent-sessions/{agentSessionID}/goal)
+	GoalControlWorkspaceAgentSession(ctx context.Context, request GoalControlWorkspaceAgentSessionRequestObject) (GoalControlWorkspaceAgentSessionResponseObject, error)
 	// Send user input to one workspace agent session
 	// (POST /v1/workspaces/{workspaceID}/agent-sessions/{agentSessionID}/input)
 	SendWorkspaceAgentSessionInput(ctx context.Context, request SendWorkspaceAgentSessionInputRequestObject) (SendWorkspaceAgentSessionInputResponseObject, error)
@@ -22723,6 +22889,42 @@ func (sh *strictHandler) ListWorkspaceAgentSessionGitBranches(w http.ResponseWri
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(ListWorkspaceAgentSessionGitBranchesResponseObject); ok {
 		if err := validResponse.VisitListWorkspaceAgentSessionGitBranchesResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GoalControlWorkspaceAgentSession operation middleware
+func (sh *strictHandler) GoalControlWorkspaceAgentSession(w http.ResponseWriter, r *http.Request, workspaceID WorkspaceID, agentSessionID AgentSessionID) {
+	var request GoalControlWorkspaceAgentSessionRequestObject
+
+	request.WorkspaceID = workspaceID
+	request.AgentSessionID = agentSessionID
+
+	var body GoalControlWorkspaceAgentSessionJSONRequestBody
+	decoder := json.NewDecoder(r.Body)
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GoalControlWorkspaceAgentSession(ctx, request.(GoalControlWorkspaceAgentSessionRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GoalControlWorkspaceAgentSession")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GoalControlWorkspaceAgentSessionResponseObject); ok {
+		if err := validResponse.VisitGoalControlWorkspaceAgentSessionResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

@@ -525,6 +525,25 @@ export function createDesktopAgentActivityAdapter({
         )
       };
     },
+    async goalControl(input) {
+      const result = await tuttidClient.goalControlWorkspaceAgentSession(
+        input.workspaceId,
+        input.agentSessionId,
+        {
+          action: input.action,
+          ...(input.objective !== undefined
+            ? { objective: input.objective }
+            : {})
+        }
+      );
+      return {
+        goal: result.goal ?? null,
+        session: agentActivitySessionFromTuttidSession(
+          input.workspaceId,
+          result.session
+        )
+      };
+    },
     async submitInteractive(input) {
       return await tuttidClient.submitWorkspaceAgentInteractive(
         input.workspaceId,

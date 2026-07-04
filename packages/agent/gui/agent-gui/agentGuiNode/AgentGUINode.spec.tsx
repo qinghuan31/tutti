@@ -6837,6 +6837,12 @@ function createNoopAgentActivityRuntime(): AgentActivityRuntime {
   });
   return {
     promptContentUploadSupport: { file: true, image: true },
+    async goalControl(input) {
+      return {
+        session: createSession(input.workspaceId, input.agentSessionId),
+        goal: null
+      };
+    },
     async cancelSession(input) {
       return {
         session: createSession(input.workspaceId, input.agentSessionId),
@@ -7057,6 +7063,7 @@ function createViewModel(
     isRespondingApproval: false,
     promptImagesSupported: true,
     compactSupported: null,
+    goalPauseSupported: true,
     usage: null,
     backgroundAgentCount: 0,
     isDeletingConversation: false,

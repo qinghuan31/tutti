@@ -175,6 +175,9 @@ import type {
   GetWorkspaceWorkbenchData,
   GetWorkspaceWorkbenchErrors,
   GetWorkspaceWorkbenchResponses,
+  GoalControlWorkspaceAgentSessionData,
+  GoalControlWorkspaceAgentSessionErrors,
+  GoalControlWorkspaceAgentSessionResponses,
   ImportWorkspaceAppData,
   ImportWorkspaceAppErrors,
   ImportWorkspaceAppResponses,
@@ -1853,6 +1856,28 @@ export const cancelWorkspaceAgentSession = <
     security: [{ scheme: "bearer", type: "http" }],
     url: "/v1/workspaces/{workspaceID}/agent-sessions/{agentSessionID}/cancel",
     ...options
+  });
+
+/**
+ * Perform a goal control action on one workspace agent session
+ */
+export const goalControlWorkspaceAgentSession = <
+  ThrowOnError extends boolean = false
+>(
+  options: Options<GoalControlWorkspaceAgentSessionData, ThrowOnError>
+) =>
+  (options.client ?? client).post<
+    GoalControlWorkspaceAgentSessionResponses,
+    GoalControlWorkspaceAgentSessionErrors,
+    ThrowOnError
+  >({
+    security: [{ scheme: "bearer", type: "http" }],
+    url: "/v1/workspaces/{workspaceID}/agent-sessions/{agentSessionID}/goal",
+    ...options,
+    headers: {
+      "Content-Type": "application/json",
+      ...options.headers
+    }
   });
 
 /**

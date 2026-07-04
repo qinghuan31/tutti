@@ -597,6 +597,14 @@ test("desktop agent GUI queued prompt drainer interrupts active turn for send-ne
         })
       };
     },
+    async goalControl(input) {
+      return {
+        goal: null,
+        session: activitySession(input.agentSessionId, {
+          updatedAtUnixMs: 2
+        })
+      };
+    },
     async sendInput(input) {
       sendInputs.push(input);
       return {
@@ -2037,6 +2045,15 @@ function createWorkspaceAgentActivityService(
           ...emptySession(),
           agentSessionId: input.agentSessionId,
           status: "canceled"
+        }
+      };
+    },
+    async goalControl(input) {
+      return {
+        goal: null,
+        session: {
+          ...emptySession(),
+          agentSessionId: input.agentSessionId
         }
       };
     },

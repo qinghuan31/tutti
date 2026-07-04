@@ -956,17 +956,31 @@ func (a *CodexAppServerAdapter) applyAccountUpdate(agentSessionID string, params
 	}
 }
 
-func (a *CodexAppServerAdapter) applyGoalUpdate(agentSessionID string, goal map[string]any) {
+// applyGoalUpdate stores the latest goal snapshot and reports the status
+// transition so callers can emit user-visible notices when the goal stops
+// progressing (paused/blocked/usageLimited/budgetLimited).
+func (a *CodexAppServerAdapter) applyGoalUpdate(agentSessionID string, goal map[string]any) (oldStatus, newStatus string, statusChanged bool) {
 	if len(goal) == 0 {
-		return
+		return "", "", false
 	}
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	appSession := a.sessions[strings.TrimSpace(agentSessionID)]
 	if appSession == nil {
-		return
+		return "", "", false
 	}
+	oldStatus = strings.TrimSpace(asString(appSession.goal["status"]))
 	appSession.goal = clonePayload(goal)
+	newStatus = strings.TrimSpace(asString(appSession.goal["status"]))
+	if oldStatus != newStatus {
+		slog.Info("agent session app-server goal status changed",
+			"event", "agent_session.app_server.goal.status_changed",
+			"agent_session_id", agentSessionID,
+			"old_status", oldStatus,
+			"new_status", newStatus,
+		)
+	}
+	return oldStatus, newStatus, oldStatus != newStatus
 }
 
 func (a *CodexAppServerAdapter) applyGoalClear(agentSessionID string) {
@@ -975,6 +989,13 @@ func (a *CodexAppServerAdapter) applyGoalClear(agentSessionID string) {
 	appSession := a.sessions[strings.TrimSpace(agentSessionID)]
 	if appSession == nil {
 		return
+	}
+	if appSession.goal != nil {
+		slog.Info("agent session app-server goal cleared",
+			"event", "agent_session.app_server.goal.cleared",
+			"agent_session_id", agentSessionID,
+			"old_status", strings.TrimSpace(asString(appSession.goal["status"])),
+		)
 	}
 	appSession.goal = nil
 }
@@ -1102,18 +1123,29 @@ func (a *CodexAppServerAdapter) respondAppServerServerRequest(
 	selection, err := pending.wait(ctx)
 	if err != nil {
 		resolved := acpPermissionResolvedEvents(session, turnID, pending, pendingACPResponse{}, err)
+		// The shared error path emits only call.failed; append the
+		// back-to-running turn.updated so the lifecycle cannot strand in
+		// waiting_approval when a request is rejected or canceled.
+		resolved = append(resolved, newTurnActivityEvent(session, EventTurnUpdated, turnID, SessionStatusWorking, "", "", map[string]any{
+			"phase":     string(activityshared.TurnPhaseWorking),
+			"requestId": pending.requestID,
+		}))
 		if emit != nil {
 			emit(resolved)
 		}
 		_ = client.Respond(ctx, message.ID, nil, &acpError{Code: -32000, Message: err.Error()})
 		return
 	}
+	if selection.outOfBandResolved {
+		resolved := acpPermissionOutOfBandResolvedEvents(session, turnID, pending)
+		if emit != nil {
+			emit(resolved)
+		}
+		return
+	}
 	resolved := acpPermissionResolvedEvents(session, turnID, pending, selection, nil)
 	if emit != nil {
 		emit(resolved)
-	}
-	if selection.outOfBandResolved {
-		return
 	}
 	result, responseErr := appServerApprovalResult(message.Method, params, selection)
 	if err := client.Respond(ctx, message.ID, result, responseErr); err != nil {
@@ -1713,6 +1745,27 @@ func appServerGoalNoticeEvent(session Session, turnID string, method string, res
 	}
 }
 
+// appServerGoalStatusNoticeEvent describes a goal status transition into a
+// non-progressing state the user did not ask for, so they learn why the goal
+// stopped advancing. Deliberate transitions (paused via Stop or the banner)
+// emit nothing: the banner already shows the state and repeated toggles would
+// spam the transcript.
+func appServerGoalStatusNoticeEvent(session Session, turnID string, newStatus string) *activityshared.Event {
+	title := ""
+	switch newStatus {
+	case "blocked":
+		title = "Goal blocked — the agent cannot continue without help."
+	case "usageLimited":
+		title = "Goal stopped: usage limit reached."
+	case "budgetLimited":
+		title = "Goal stopped: token budget exhausted."
+	default:
+		return nil
+	}
+	event := appServerSystemNoticeEvent(session, turnID, "system_notice", title, "")
+	return &event
+}
+
 func appServerGoalStatusDetail(goal map[string]any) string {
 	status := strings.TrimSpace(asString(goal["status"]))
 	if status == "" {
@@ -1914,6 +1967,7 @@ func codexAppServerCapabilities(planMode bool) []string {
 		"steer",
 		"review",
 		"goal",
+		CapabilityGoalPause,
 		"rollback",
 		"fork",
 		"perTurnModelOverride",

@@ -215,6 +215,17 @@ function installAgentActivityRuntime(
         }) => Promise<AgentHostActivateAgentSessionResult>
       )(input)
     ),
+    goalControl: async (input) => ({
+      goal: null,
+      session: {
+        workspaceId: input.workspaceId,
+        agentSessionId: input.agentSessionId,
+        provider: "codex",
+        cwd: "",
+        title: "Codex",
+        status: "ready"
+      }
+    }),
     cancelSession: async (input) => ({
       canceled: true,
       reason: "active_turn_canceled",

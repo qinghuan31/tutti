@@ -8,6 +8,21 @@ import type {
 import { SessionRuntime, withSidecarEventSinkForTest } from "./main.ts";
 import { sidecarClaudeOptionsFromPayload } from "./options.ts";
 
+type TestCanUseToolOptions = Parameters<
+  NonNullable<ClaudeQueryOptions["canUseTool"]>
+>[2];
+
+function testCanUseToolOptions(input: {
+  requestId: string;
+  toolUseID: string;
+}): TestCanUseToolOptions {
+  return {
+    signal: new AbortController().signal,
+    requestId: input.requestId,
+    toolUseID: input.toolUseID
+  } as TestCanUseToolOptions;
+}
+
 test("late delegated task notification keeps original parent turn id", async () => {
   const events: Array<{ type: string; payload?: Record<string, unknown> }> = [];
   const restoreSink = withSidecarEventSinkForTest((event) =>
@@ -497,11 +512,10 @@ test("bypass permission mode allows ordinary tools without approval", async () =
           permissionResult = await queryOptions.canUseTool?.(
             "Bash",
             { command: "rm -rf /repo/*" },
-            {
-              signal: new AbortController().signal,
+            testCanUseToolOptions({
               requestId: "request-bash",
               toolUseID: "toolu-bash"
-            }
+            })
           );
         })
     );
@@ -558,11 +572,10 @@ test("bypass permission mode still surfaces AskUserQuestion", async () => {
                 }
               ]
             },
-            {
-              signal: new AbortController().signal,
+            testCanUseToolOptions({
               requestId: "request-ask",
               toolUseID: "toolu-ask"
-            }
+            })
           );
         })
     );
@@ -2433,11 +2446,10 @@ function fakeNestedApprovalQuery(
       const result = await options.canUseTool?.(
         "Bash",
         { command: "ls" },
-        {
-          signal: new AbortController().signal,
+        testCanUseToolOptions({
           requestId: "request-nested-bash",
           toolUseID: "toolu-nested-bash"
-        }
+        })
       );
       onPermissionResult(result);
     },

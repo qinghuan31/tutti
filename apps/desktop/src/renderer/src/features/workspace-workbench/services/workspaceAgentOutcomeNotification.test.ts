@@ -109,6 +109,31 @@ test("outcome notification builder ignores state patches without stable turn out
   );
 });
 
+test("outcome notification builder ignores freshly imported sessions with no active turn", () => {
+  // Bulk external-session import (services/tuttid/service/agent/external_import.go
+  // importExternalSession) always reports imported sessions directly in a
+  // terminal "completed" lifecycle status with no live turn. The state patch
+  // synthesized for such a session (hostStatePatchEventFromSession ->
+  // inferActiveTurnState) therefore carries no `turn` field at all, matching
+  // this shape. Regression coverage for the "many spurious AI-completed
+  // toasts after a bulk history import" report.
+  assert.equal(
+    buildWorkspaceAgentOutcomeNotificationFromSessionEvent({
+      eventType: "state_patch",
+      data: {
+        agentSessionId: "imported-codex-session-1",
+        lifecycleStatus: "completed",
+        currentPhase: "completed",
+        provider: "codex",
+        runtimeContext: { imported: true, visible: true },
+        title: "Imported conversation",
+        workspaceId: "ws-1"
+      }
+    }),
+    null
+  );
+});
+
 test("outcome notification controller notifies from live session events", () => {
   const harness = createOutcomeNotificationHarness((workspaceId) =>
     activitySnapshot({ workspaceId })

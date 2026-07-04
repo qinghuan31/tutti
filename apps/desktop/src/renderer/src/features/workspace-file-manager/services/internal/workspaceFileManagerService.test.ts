@@ -894,6 +894,7 @@ function createDependenciesStub(): {
       rollbackWorkspaceApp: fail,
       cancelWorkspaceAgentSession: fail,
       cancelWorkspaceAgentSessionWithResult: fail,
+      goalControlWorkspaceAgentSession: fail,
       sendWorkspaceAgentSessionInput: fail,
       readWorkspaceAgentSessionAttachment: fail,
       listWorkspaceAgentSessionGitBranches: fail,

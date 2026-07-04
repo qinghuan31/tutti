@@ -109,6 +109,13 @@ type externalImportedSession struct {
 	StartedAtUnixMS  int64
 	UpdatedAtUnixMS  int64
 	Messages         []externalImportedMessage
+	// Model and ReasoningEffort capture the provider-reported model/effort the
+	// local CLI was actually using (Codex `turn_context.model`/`effort`,
+	// Claude Code `message.model`) so imported sessions preserve the user's
+	// local model configuration instead of falling back to workspace
+	// defaults when the conversation is continued.
+	Model           string
+	ReasoningEffort string
 }
 
 type externalImportedMessage struct {
@@ -259,6 +266,21 @@ func providersFromExternalImportSelections(selections []ExternalImportProjectSel
 		}
 	}
 	return out
+}
+
+// externalImportedSessionSettings carries the provider-reported model/effort
+// forward into the imported session's composer settings so continuing the
+// conversation in Tutti reuses the same model configuration the user's local
+// CLI had, instead of silently falling back to workspace defaults.
+func externalImportedSessionSettings(session externalImportedSession) map[string]any {
+	settings := ComposerSettings{
+		Model:           strings.TrimSpace(session.Model),
+		ReasoningEffort: normalizeReasoningEffortForProvider(session.Provider, session.ReasoningEffort),
+	}
+	if composerSettingsIsEmpty(settings) {
+		return nil
+	}
+	return composerSettingsToPayload(settings)
 }
 
 func externalImportAgentTargetID(provider string) string {
@@ -481,6 +503,8 @@ func (s *Service) importExternalSession(ctx context.Context, workspaceID string,
 		AgentTargetID:     externalImportAgentTargetID(session.Provider),
 		Provider:          session.Provider,
 		ProviderSessionID: session.ProviderSessionID,
+		Model:             session.Model,
+		Settings:          externalImportedSessionSettings(session),
 		RuntimeContext: map[string]any{
 			"visible":                 true,
 			"imported":                true,

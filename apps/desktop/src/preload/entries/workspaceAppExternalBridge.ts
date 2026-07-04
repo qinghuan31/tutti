@@ -81,6 +81,7 @@ export interface WorkspaceAppUploadXMLHttpRequest {
 }
 
 export const workspaceAppExternalChannels = {
+  activityReportActive: "workspace-app-activity:report-active",
   atQuery: "workspace-app-at:query",
   browserOpenUrl: "workspace-app:open-url",
   filesOpen: "workspace-app-files:open",
@@ -121,6 +122,13 @@ export function createWorkspaceAppExternalBridge(
       },
       subscribe(listener) {
         return dependencies.appContext.subscribe(listener);
+      }
+    },
+    activity: {
+      reportActive() {
+        return dependencies.invoke<void>(
+          workspaceAppExternalChannels.activityReportActive
+        );
       }
     },
     browser: {

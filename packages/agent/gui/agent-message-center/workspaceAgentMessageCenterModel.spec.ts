@@ -256,6 +256,41 @@ describe("buildWorkspaceAgentMessageCenterModel", () => {
     });
   });
 
+  it("skips reasoning/thinking messages when picking the latest agent message summary", () => {
+    const model = buildWorkspaceAgentMessageCenterModel(
+      snapshot({
+        messages: [
+          message({
+            agentSessionId: "session-1",
+            messageId: "reply-1",
+            role: "assistant",
+            kind: "text",
+            payload: { text: "你好！系统正常，我已准备好为你提供帮助。" },
+            occurredAtUnixMs: 10
+          }),
+          message({
+            agentSessionId: "session-1",
+            messageId: "reasoning-1",
+            role: "assistant",
+            kind: "reasoning",
+            payload: {
+              text: '<reasoning>用户发送了</reasoning><reasoning>"test", 这是一个简单的测试消息。</reasoning>'
+            },
+            occurredAtUnixMs: 20
+          })
+        ],
+        sessions: [session({ agentSessionId: "session-1" })]
+      })
+    );
+
+    expect(model.items[0]?.lastAgentMessageSummary).toBe(
+      "你好！系统正常，我已准备好为你提供帮助。"
+    );
+    expect(model.items[0]?.digest.primary.summary).toBe(
+      "你好！系统正常，我已准备好为你提供帮助。"
+    );
+  });
+
   it("prefers displayPrompt for message-center model summaries", () => {
     const model = buildWorkspaceAgentMessageCenterModel(
       snapshot({

@@ -457,6 +457,10 @@ export function createAgentGuiWorkbenchContribution(
             ? "absolute"
             : "cascade-same-type-centered",
         instanceId,
+        // Reusing the window already showing this specific conversation
+        // (e.g. clicking a completion notification) should just focus it,
+        // not reset it back to the default size/position.
+        preserveExistingNodeFrame: existingInstanceId !== null,
         reuseDockEntryNode,
         title,
         typeId: agentGuiWorkbenchTypeId

@@ -161,7 +161,8 @@ export function AgentInteractivePromptSurface({
 // click — selecting an option submits it immediately, matching the approval and
 // plan cards. Multi-select / multi-question / free-text-only prompts can't be
 // answered in one tap, so they defer to the conversation (the card's "open
-// conversation" jump), showing just the question for context.
+// conversation" jump); their options are still shown as read-only context
+// (see the non-oneClickable branch below) rather than being omitted.
 function CompactAskUserPromptSurface({
   prompt,
   embedded = false,
@@ -226,6 +227,29 @@ function CompactAskUserPromptSurface({
                       </span>
                     ) : null}
                   </button>
+                ))}
+              </div>
+            ) : question.options.length > 0 ? (
+              // Multi-select / multi-question prompts can't be answered with a
+              // single click here, so the options are shown as read-only
+              // context instead of being silently omitted. Answering still
+              // happens in the full conversation via the card's "open
+              // conversation" jump.
+              <div className={styles.interactivePromptOptions}>
+                {question.options.map((option) => (
+                  <div
+                    key={option.label}
+                    className={styles.interactiveOptionDisplay}
+                  >
+                    <span className={styles.interactiveOptionTitle}>
+                      {option.label}
+                    </span>
+                    {option.description ? (
+                      <span className={styles.interactiveOptionDescription}>
+                        {option.description}
+                      </span>
+                    ) : null}
+                  </div>
                 ))}
               </div>
             ) : null}

@@ -35,6 +35,7 @@ const composerMock = vi.hoisted(() => ({
     backgroundAgentStatusText?: string | null;
     composerFocusRequestSequence?: number | null;
     compactSupported?: boolean | null;
+    hasActiveConversation?: boolean;
     isSendingTurn?: boolean;
     onSubmit?: (
       content: AgentPromptContentBlock[],
@@ -69,6 +70,7 @@ vi.mock("./AgentComposer", () => ({
     backgroundAgentStatusText?: string | null;
     composerFocusRequestSequence?: number | null;
     compactSupported?: boolean | null;
+    hasActiveConversation?: boolean;
     isSendingTurn?: boolean;
     onSubmit?: (
       content: AgentPromptContentBlock[],
@@ -84,6 +86,7 @@ vi.mock("./AgentComposer", () => ({
       backgroundAgentStatusText: props.backgroundAgentStatusText,
       composerFocusRequestSequence: props.composerFocusRequestSequence,
       compactSupported: props.compactSupported,
+      hasActiveConversation: props.hasActiveConversation,
       isSendingTurn: props.isSendingTurn,
       onProviderSelect: props.onProviderSelect,
       providerSelectReadonly: props.providerSelectReadonly,
@@ -608,6 +611,34 @@ describe("AgentGUINodeView layout persistence", () => {
     expect(composerMock.calls.at(-1)).toMatchObject({
       providerSelectReadonly: true,
       providerTargets
+    });
+  });
+
+  it("tells the composer whether there is an active conversation, so it knows when to defer clearing the draft on submit (Feishu UUl2Oc)", () => {
+    renderAgentGUINodeView({
+      viewModel: {
+        ...createViewModel(),
+        activeConversation: null,
+        activeConversationId: null
+      }
+    });
+
+    expect(composerMock.calls.at(-1)).toMatchObject({
+      hasActiveConversation: false
+    });
+
+    const conversation = createConversationSummary("session-1");
+    renderAgentGUINodeView({
+      viewModel: {
+        ...createViewModel(),
+        activeConversation: conversation,
+        activeConversationId: conversation.id,
+        conversations: [conversation]
+      }
+    });
+
+    expect(composerMock.calls.at(-1)).toMatchObject({
+      hasActiveConversation: true
     });
   });
 
@@ -1281,7 +1312,7 @@ describe("AgentGUINodeView layout persistence", () => {
     ).toBeInTheDocument();
   });
 
-  it("does not refetch runtime rail sections when an existing conversation summary or active provider updates", async () => {
+  it("refetches runtime rail sections only for provider changes, not conversation summary updates", async () => {
     const listSessionSections = vi.fn<
       NonNullable<AgentActivityRuntime["listSessionSections"]>
     >(async (input) => ({
@@ -1354,11 +1385,6 @@ describe("AgentGUINodeView layout persistence", () => {
         labels: { ...labels },
         viewModel: {
           ...viewModel,
-          data: {
-            ...viewModel.data,
-            provider: "codex" as const
-          },
-          selectedProviderTarget: createLocalAgentGUIProviderTarget("codex"),
           activeConversation: updatedConversation,
           activeConversationId: updatedConversation.id,
           conversations: [updatedConversation]
@@ -1372,6 +1398,34 @@ describe("AgentGUINodeView layout persistence", () => {
       ).toHaveTextContent("Updated title");
     });
     expect(listSessionSections).toHaveBeenCalledTimes(1);
+    expect(listSessionSections).toHaveBeenCalledWith(
+      expect.objectContaining({ agentTargetId: "local:claude-code" })
+    );
+
+    rendered.rerender(
+      buildAgentGUINodeViewElement({
+        activityRuntime,
+        labels: { ...labels },
+        viewModel: {
+          ...viewModel,
+          data: {
+            ...viewModel.data,
+            provider: "codex" as const
+          },
+          selectedProviderTarget: createLocalAgentGUIProviderTarget("codex"),
+          activeConversation: updatedConversation,
+          activeConversationId: updatedConversation.id,
+          conversations: [updatedConversation]
+        }
+      })
+    );
+
+    await waitFor(() => {
+      expect(listSessionSections).toHaveBeenCalledTimes(2);
+    });
+    expect(listSessionSections).toHaveBeenLastCalledWith(
+      expect.objectContaining({ agentTargetId: "local:codex" })
+    );
   });
 
   it("passes the active agent target filter to runtime rail section requests", async () => {
@@ -2867,6 +2921,12 @@ function createNoopAgentActivityRuntime(): AgentActivityRuntime {
   const snapshot = createEmptyAgentActivitySnapshot();
   return {
     promptContentUploadSupport: { file: true, image: true },
+    async goalControl(input) {
+      return {
+        session: createRuntimeSession(input.workspaceId, input.agentSessionId),
+        goal: null
+      };
+    },
     async cancelSession(input) {
       return {
         session: createRuntimeSession(input.workspaceId, input.agentSessionId),
@@ -3069,6 +3129,7 @@ function createActions(): AgentGUINodeViewProps["actions"] {
     createConversation: vi.fn(),
     selectConversation: vi.fn(),
     submitPrompt: vi.fn(),
+    goalControl: vi.fn(),
     submitGuidancePrompt: vi.fn(),
     loadOlderConversationMessages: vi.fn(),
     showPromptImagesUnsupported: vi.fn(),
@@ -3128,6 +3189,7 @@ function createViewModel(
     isRespondingApproval: false,
     promptImagesSupported: true,
     compactSupported: null,
+    goalPauseSupported: true,
     usage: null,
     backgroundAgentCount: 0,
     listError: null,
@@ -3410,14 +3472,18 @@ function createLabels(): AgentGUIViewLabels {
     retryActivation: "retryActivation",
     continueInNewConversation: "continueInNewConversation",
     goalLabel: "goalLabel",
-    goalStatusActive: "goalStatusActive",
-    goalStatusPaused: "goalStatusPaused",
-    goalStatusBlocked: "goalStatusBlocked",
-    goalStatusUsageLimited: "goalStatusUsageLimited",
-    goalStatusBudgetLimited: "goalStatusBudgetLimited",
-    goalStatusComplete: "goalStatusComplete",
+    goalTitleActive: "goalTitleActive",
+    goalTitlePaused: "goalTitlePaused",
+    goalTitleBlocked: "goalTitleBlocked",
+    goalTitleUsageLimited: "goalTitleUsageLimited",
+    goalTitleBudgetLimited: "goalTitleBudgetLimited",
+    goalTitleComplete: "goalTitleComplete",
     goalBudgetUsage: (used: number, budget: number) => `${used}/${budget}`,
     goalClearHint: "goalClearHint",
+    goalEditAction: "goalEditAction",
+    goalPauseAction: "goalPauseAction",
+    goalResumeAction: "goalResumeAction",
+    goalClearAction: "goalClearAction",
     processing: "processing",
     turnSummary: "turnSummary",
     userMessageLocator: "userMessageLocator",

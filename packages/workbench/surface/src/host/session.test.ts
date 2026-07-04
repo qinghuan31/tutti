@@ -2455,6 +2455,71 @@ test("launchNode skips closed dock frames when dock entry reuse is disabled", as
   session.dispose();
 });
 
+test("launchNode preserves a resized existing window's frame when the host asks to preserve it", async () => {
+  const customAgentFrame = { x: 28, y: 64, width: 1200, height: 820 };
+  const session = createWorkbenchHostSession({
+    nodes: [filesNodeDefinition, agentGuiNodeDefinition],
+    onLaunchRequest() {
+      return {
+        defaultFrame: agentGuiNodeDefinition.frame,
+        instanceId: "agent-gui:codex",
+        framePolicy: "cascade-same-type-centered",
+        preserveExistingNodeFrame: true,
+        typeId: "agent-gui"
+      };
+    },
+    snapshotRepository: {
+      async load() {
+        return createWorkbenchSnapshotFromState(
+          {
+            nodeStack: ["agent-gui:agent-gui:codex"],
+            nodes: [
+              {
+                data: {
+                  instanceId: "agent-gui:codex",
+                  typeId: "agent-gui"
+                },
+                displayMode: "floating",
+                frame: customAgentFrame,
+                id: "agent-gui:agent-gui:codex",
+                isMinimized: false,
+                kind: "agent-gui",
+                restoreFrame: null,
+                title: "Codex"
+              }
+            ]
+          },
+          {
+            metadata: {
+              workbenchHostInitialized: true
+            }
+          }
+        );
+      },
+      async save(_workspaceId, snapshot) {
+        return snapshot;
+      }
+    },
+    workspaceId: "workspace-1"
+  });
+
+  await session.load();
+  const nodeId = await session.launchNode({
+    reason: "host",
+    typeId: "agent-gui"
+  });
+
+  const node = session.controller
+    .getSnapshot()
+    .nodes.find((entry) => entry.id === nodeId);
+  // Regression test for a bug where clicking a completion notification to
+  // focus an already-open conversation window reset it back to the default
+  // frame instead of leaving the user's current size/position alone.
+  assert.deepEqual(node?.frame, customAgentFrame);
+
+  session.dispose();
+});
+
 test("launchNode recenters an existing same-type-centered cascade window", async () => {
   const staleAgentFrame = { x: 28, y: 64, width: 960, height: 620 };
   const session = createWorkbenchHostSession({

@@ -11,6 +11,7 @@ import {
   useRef,
   useState
 } from "react";
+import type { AgentActivityGoalControlAction } from "@tutti-os/agent-activity-core";
 import { useSnapshot } from "valtio";
 import { proxy } from "valtio/vanilla";
 import {
@@ -171,6 +172,16 @@ const AGENT_GUI_TOP_MASK_SCROLL_EPSILON_PX = 1;
 const AGENT_GUI_CONVERSATION_RAIL_SECTION_PAGE_SIZE = 5;
 const AGENT_GUI_CONVERSATION_RAIL_PROJECTION_PROVIDER: AgentGUIProvider =
   "codex";
+// TODO(legacySplit-removal): remove together with the legacySplit dock layout.
+// Single-provider docks have no agent-target filter, so rail sections scope to
+// the provider's system-local target. Ids must match the daemon backfill
+// (services/tuttid/biz/agenttarget/model.go IDLocalCodex/IDLocalClaudeCode).
+const AGENT_GUI_SINGLE_PROVIDER_SECTION_AGENT_TARGET_IDS: Partial<
+  Record<AgentGUIProvider, string>
+> = {
+  "claude-code": "local:claude-code",
+  codex: "local:codex"
+};
 
 const AGENT_GUI_TIMELINE_SCROLL_AREA_CONTENT_STYLE: CSSProperties = {
   width: "100%",
@@ -350,14 +361,18 @@ export interface AgentGUIViewLabels {
   retryActivation: string;
   continueInNewConversation: string;
   goalLabel: string;
-  goalStatusActive: string;
-  goalStatusPaused: string;
-  goalStatusBlocked: string;
-  goalStatusUsageLimited: string;
-  goalStatusBudgetLimited: string;
-  goalStatusComplete: string;
+  goalTitleActive: string;
+  goalTitlePaused: string;
+  goalTitleBlocked: string;
+  goalTitleUsageLimited: string;
+  goalTitleBudgetLimited: string;
+  goalTitleComplete: string;
   goalBudgetUsage: (used: number, budget: number) => string;
   goalClearHint: string;
+  goalEditAction: string;
+  goalPauseAction: string;
+  goalResumeAction: string;
+  goalClearAction: string;
   processing: string;
   turnSummary: string;
   userMessageLocator: string;
@@ -510,6 +525,10 @@ interface AgentGUINodeViewProps {
     submitPrompt: (
       content: AgentPromptContentBlock[],
       displayPrompt?: string
+    ) => void;
+    goalControl: (
+      action: AgentActivityGoalControlAction,
+      objective?: string
     ) => void;
     submitGuidancePrompt: (
       content: AgentPromptContentBlock[],
@@ -1297,6 +1316,12 @@ export function AgentGUINodeView({
       : railConfigProvider;
   const effectiveRailSlashStatusLimits =
     railSlashStatusLimits ?? slashStatusLimits;
+  const sectionAgentTargetFallbackId =
+    viewModel.conversationScope === "single-provider"
+      ? (AGENT_GUI_SINGLE_PROVIDER_SECTION_AGENT_TARGET_IDS[
+          viewModel.data.provider
+        ] ?? null)
+      : null;
   const openAgentEnvSetup = useCallback(() => {
     if (!effectiveRailConfigProvider) {
       return;
@@ -1327,6 +1352,7 @@ export function AgentGUINodeView({
         providerTargetsLoading: viewModel.providerTargetsLoading,
         conversationScope: viewModel.conversationScope,
         conversationFilter: viewModel.conversationFilter,
+        sectionAgentTargetFallbackId,
         onCreateConversation: requestCreateConversation,
         onUpdateConversationFilter: actions.updateConversationFilter,
         onSelectConversationFilterTarget:
@@ -1365,6 +1391,7 @@ export function AgentGUINodeView({
         retryOpenclawGateway,
         selectConversation,
         selectProjectDirectory,
+        sectionAgentTargetFallbackId,
         effectiveRailConfigProvider,
         effectiveRailSlashStatusLimits,
         viewModel.selectedProviderTarget,
@@ -1904,26 +1931,32 @@ const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
   );
   const goalBannerLabels = useMemo<AgentGoalBannerLabels>(
     () => ({
-      goalLabel: labels.goalLabel,
-      statusActive: labels.goalStatusActive,
-      statusPaused: labels.goalStatusPaused,
-      statusBlocked: labels.goalStatusBlocked,
-      statusUsageLimited: labels.goalStatusUsageLimited,
-      statusBudgetLimited: labels.goalStatusBudgetLimited,
-      statusComplete: labels.goalStatusComplete,
+      titleActive: labels.goalTitleActive,
+      titlePaused: labels.goalTitlePaused,
+      titleBlocked: labels.goalTitleBlocked,
+      titleUsageLimited: labels.goalTitleUsageLimited,
+      titleBudgetLimited: labels.goalTitleBudgetLimited,
+      titleComplete: labels.goalTitleComplete,
       budgetUsage: labels.goalBudgetUsage,
-      clearHint: labels.goalClearHint
+      clearHint: labels.goalClearHint,
+      editAction: labels.goalEditAction,
+      pauseAction: labels.goalPauseAction,
+      resumeAction: labels.goalResumeAction,
+      clearAction: labels.goalClearAction
     }),
     [
-      labels.goalLabel,
-      labels.goalStatusActive,
-      labels.goalStatusPaused,
-      labels.goalStatusBlocked,
-      labels.goalStatusUsageLimited,
-      labels.goalStatusBudgetLimited,
-      labels.goalStatusComplete,
+      labels.goalTitleActive,
+      labels.goalTitlePaused,
+      labels.goalTitleBlocked,
+      labels.goalTitleUsageLimited,
+      labels.goalTitleBudgetLimited,
+      labels.goalTitleComplete,
       labels.goalBudgetUsage,
-      labels.goalClearHint
+      labels.goalClearHint,
+      labels.goalEditAction,
+      labels.goalPauseAction,
+      labels.goalResumeAction,
+      labels.goalClearAction
     ]
   );
   const interactivePromptLabels = useMemo(
@@ -2220,6 +2253,7 @@ const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
     actions.updateComposerSettings
   );
   const submitPrompt = useStableEventCallback(actions.submitPrompt);
+  const goalControl = useStableEventCallback(actions.goalControl);
   const submitGuidancePrompt = useStableEventCallback(
     actions.submitGuidancePrompt
   );
@@ -2314,6 +2348,7 @@ const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
       availableSkills: viewModel.availableSkills,
       disabled: composerDisabled,
       disabledReason: composerDisabledReason,
+      hasActiveConversation: viewModel.activeConversationId !== null,
       submitDisabled,
       composerSettings: viewModel.composerSettings,
       queuedPrompts: viewModel.queuedPrompts,
@@ -2405,6 +2440,7 @@ const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
       actions.selectProvider,
       updateDraftContent,
       updateSelectedProjectPath,
+      viewModel.activeConversationId,
       viewModel.availableCommands,
       viewModel.availableSkills,
       viewModel.compactSupported,
@@ -2808,6 +2844,8 @@ const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
           onSubmitBottomDockInteractivePrompt={
             submitBottomDockInteractivePrompt
           }
+          onGoalControl={goalControl}
+          goalPauseSupported={viewModel.goalPauseSupported}
         />
       ) : null}
     </main>
@@ -3224,6 +3262,8 @@ interface AgentGUIBottomDockPaneProps {
   onRetryActivation: AgentGUINodeViewProps["actions"]["retryActivation"];
   onContinueInNewConversation: AgentGUINodeViewProps["actions"]["continueInNewConversation"];
   onSubmitBottomDockInteractivePrompt: AgentGUINodeViewProps["actions"]["submitInteractivePrompt"];
+  onGoalControl: AgentGUINodeViewProps["actions"]["goalControl"];
+  goalPauseSupported: boolean;
 }
 
 const AgentGUIBottomDockPane = memo(function AgentGUIBottomDockPane({
@@ -3240,7 +3280,9 @@ const AgentGUIBottomDockPane = memo(function AgentGUIBottomDockPane({
   onAuthLogin,
   onRetryActivation,
   onContinueInNewConversation,
-  onSubmitBottomDockInteractivePrompt
+  onSubmitBottomDockInteractivePrompt,
+  onGoalControl,
+  goalPauseSupported
 }: AgentGUIBottomDockPaneProps): React.JSX.Element {
   "use memo";
   const state = useSnapshot(store) as AgentGUIBottomDockStoreSnapshot;
@@ -3259,6 +3301,7 @@ const AgentGUIBottomDockPane = memo(function AgentGUIBottomDockPane({
   const goalStatus = goal ? stringValue(goal.status) : "";
   const goalTokenBudget = goal ? numberValue(goal.tokenBudget) : null;
   const goalTokensUsed = goal ? numberValue(goal.tokensUsed) : null;
+  const goalTimeUsedSeconds = goal ? numberValue(goal.timeUsedSeconds) : null;
   const showGoalBanner = isGoalBannerVisible(goalObjective, goalStatus);
 
   return (
@@ -3310,7 +3353,16 @@ const AgentGUIBottomDockPane = memo(function AgentGUIBottomDockPane({
           status={goalStatus}
           tokenBudget={goalTokenBudget ?? undefined}
           tokensUsed={goalTokensUsed ?? undefined}
+          timeUsedSeconds={goalTimeUsedSeconds ?? undefined}
           labels={goalBannerLabels}
+          onEditObjective={(objective) => onGoalControl("set", objective)}
+          onPauseGoal={
+            goalPauseSupported ? () => onGoalControl("pause") : undefined
+          }
+          onResumeGoal={
+            goalPauseSupported ? () => onGoalControl("resume") : undefined
+          }
+          onClearGoal={() => onGoalControl("clear")}
         />
       ) : null}
       {bottomDockReplacementPrompt ? (
@@ -3359,6 +3411,7 @@ interface AgentGUIConversationRailPaneProps {
   providerTargetsLoading: AgentGUINodeViewModel["providerTargetsLoading"];
   conversationScope: AgentGUINodeViewModel["conversationScope"];
   conversationFilter: AgentGUINodeViewModel["conversationFilter"];
+  sectionAgentTargetFallbackId: string | null;
   onUpdateConversationFilter: (
     filter: AgentGUINodeViewModel["conversationFilter"]
   ) => void;
@@ -3461,6 +3514,8 @@ function agentGUIConversationRailStoreSnapshotsEqual(
     current.providerTargetsLoading === next.providerTargetsLoading &&
     current.conversationScope === next.conversationScope &&
     current.conversationFilter === next.conversationFilter &&
+    current.sectionAgentTargetFallbackId ===
+      next.sectionAgentTargetFallbackId &&
     current.onUpdateConversationFilter === next.onUpdateConversationFilter &&
     current.onSelectConversationFilterTarget ===
       next.onSelectConversationFilterTarget &&
@@ -4013,6 +4068,7 @@ interface AgentGUIConversationRailInput {
   conversations: AgentGUINodeViewModel["conversations"];
   labels: AgentGUIViewLabels;
   previewMode: boolean;
+  sectionAgentTargetFallbackId: string | null;
   userProjects: AgentGUINodeViewModel["userProjects"];
   workspaceId: string;
 }
@@ -4023,6 +4079,7 @@ function useAgentGUIConversationRail({
   conversations,
   labels,
   previewMode,
+  sectionAgentTargetFallbackId,
   userProjects,
   workspaceId
 }: AgentGUIConversationRailInput): {
@@ -4050,7 +4107,7 @@ function useAgentGUIConversationRail({
   const sectionAgentTargetId =
     conversationFilter.kind === "agentTarget"
       ? conversationFilter.agentTargetId.trim()
-      : "";
+      : (sectionAgentTargetFallbackId?.trim() ?? "");
   const userProjectPaths = useMemo(
     () =>
       userProjects
@@ -4325,6 +4382,7 @@ const AgentGUIConversationRailPane = memo(
     providerTargetsLoading,
     conversationScope,
     conversationFilter,
+    sectionAgentTargetFallbackId,
     onUpdateConversationFilter,
     onSelectConversationFilterTarget,
     onCreateConversation,
@@ -4375,6 +4433,7 @@ const AgentGUIConversationRailPane = memo(
       conversations,
       labels,
       previewMode,
+      sectionAgentTargetFallbackId,
       userProjects,
       workspaceId
     });

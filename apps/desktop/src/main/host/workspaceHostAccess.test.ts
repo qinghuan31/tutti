@@ -332,6 +332,9 @@ function createTransportClient(
     async cancelWorkspaceAgentSessionWithResult() {
       throw new Error("not used");
     },
+    async goalControlWorkspaceAgentSession() {
+      throw new Error("not used");
+    },
     async sendWorkspaceAgentSessionInput() {
       throw new Error("not used");
     },
