@@ -1147,6 +1147,7 @@ func TestServiceCreateRejectsInvalidCachedClaudeModelBeforePreparingRuntime(t *t
 }
 
 func TestServiceCreateDiscoversClaudeModelsBeforeStartingInvalidModel(t *testing.T) {
+	t.Setenv(liveModelDiscoveryEnableEnvKey, "1")
 	runtime := newFakeRuntime()
 	runtime.startHook = func(input RuntimeStartInput, session RuntimeSession) RuntimeSession {
 		if input.Visible == nil || *input.Visible {
@@ -2342,6 +2343,7 @@ func TestGetComposerOptionsClaudeCodeWithoutWorkspaceClearsUnverifiedSelectedMod
 }
 
 func TestGetComposerOptionsClaudeCodeDiscoversLiveModels(t *testing.T) {
+	t.Setenv(liveModelDiscoveryEnableEnvKey, "1")
 	t.Setenv("CLAUDE_CONFIG_DIR", t.TempDir())
 	runtime := newFakeRuntime()
 	runtime.startHook = func(input RuntimeStartInput, session RuntimeSession) RuntimeSession {
@@ -2398,6 +2400,7 @@ func TestGetComposerOptionsClaudeCodeDiscoversLiveModels(t *testing.T) {
 }
 
 func TestGetComposerOptionsClaudeCodeLiveModelsSanitizesUnsupportedSelectedModel(t *testing.T) {
+	t.Setenv(liveModelDiscoveryEnableEnvKey, "1")
 	t.Setenv("CLAUDE_CONFIG_DIR", t.TempDir())
 	runtime := newFakeRuntime()
 	runtime.startHook = func(input RuntimeStartInput, session RuntimeSession) RuntimeSession {
@@ -2466,6 +2469,7 @@ func TestGetComposerOptionsClaudeCodeLiveModelsSanitizesUnsupportedSelectedModel
 }
 
 func TestGetComposerOptionsClaudeCodeDeletesHiddenDiscoverySession(t *testing.T) {
+	t.Setenv(liveModelDiscoveryEnableEnvKey, "1")
 	runtime := newFakeRuntime()
 	persisted := fakeSessionReader{sessions: map[string]PersistedSession{}}
 	runtime.startHook = func(input RuntimeStartInput, session RuntimeSession) RuntimeSession {
@@ -2510,6 +2514,7 @@ func TestGetComposerOptionsClaudeCodeDeletesHiddenDiscoverySession(t *testing.T)
 }
 
 func TestGetComposerOptionsClaudeCodeLiveModelsUsesCache(t *testing.T) {
+	t.Setenv(liveModelDiscoveryEnableEnvKey, "1")
 	runtime := newFakeRuntime()
 	runtime.startHook = func(input RuntimeStartInput, session RuntimeSession) RuntimeSession {
 		if input.Provider != "claude-code" {
@@ -2549,6 +2554,7 @@ func TestGetComposerOptionsClaudeCodeLiveModelsUsesCache(t *testing.T) {
 }
 
 func TestGetComposerOptionsClaudeCodeLiveModelsFailedStartupReturnsQuickly(t *testing.T) {
+	t.Setenv(liveModelDiscoveryEnableEnvKey, "1")
 	runtime := newFakeRuntime()
 	runtime.startHook = func(input RuntimeStartInput, session RuntimeSession) RuntimeSession {
 		if input.Provider != "claude-code" {
@@ -2590,6 +2596,7 @@ func TestGetComposerOptionsClaudeCodeLiveModelsFailedStartupReturnsQuickly(t *te
 }
 
 func TestGetComposerOptionsClaudeCodeLiveModelsPropagatesCallerCancellation(t *testing.T) {
+	t.Setenv(liveModelDiscoveryEnableEnvKey, "1")
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	runtime := newFakeRuntime()
@@ -2631,6 +2638,7 @@ func TestGetComposerOptionsClaudeCodeLiveModelsPropagatesCallerCancellation(t *t
 }
 
 func TestGetComposerOptionsClaudeCodeLiveModelsSharedDiscoveryHonorsCallerCancellation(t *testing.T) {
+	t.Setenv(liveModelDiscoveryEnableEnvKey, "1")
 	runtime := newFakeRuntime()
 	firstStarted := make(chan struct{})
 	firstClosed := make(chan struct{})

@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"os"
 	"strings"
 	"time"
 
@@ -13,6 +14,24 @@ import (
 )
 
 const liveModelDiscoveryPollInterval = 100 * time.Millisecond
+
+// liveModelDiscoveryEnableEnvKey re-enables the Claude live-model discovery
+// session. It is disabled by default because discovery spawns a second, hidden
+// `claude` process that shares the on-disk credential store (~/.claude keychain
+// + plaintext) with the real conversation session. When that throwaway session
+// performs an OAuth token refresh and is then torn down mid-flight (it is
+// deleted as soon as the model list is read), the rotated refresh token can be
+// lost; the real session's next refresh then fails with `invalid_grant`, and
+// Claude Code responds by wiping the stored tokens — locking the user out
+// ("Not logged in · Please run /login"). Skipping the concurrent discovery
+// session removes that race. Set TUTTI_ENABLE_CLAUDE_LIVE_MODEL_DISCOVERY=1 to
+// restore the previous behavior.
+const liveModelDiscoveryEnableEnvKey = "TUTTI_ENABLE_CLAUDE_LIVE_MODEL_DISCOVERY"
+
+func liveModelDiscoveryDisabled() bool {
+	value := strings.TrimSpace(os.Getenv(liveModelDiscoveryEnableEnvKey))
+	return !(value == "1" || strings.EqualFold(value, "true"))
+}
 
 var liveComposerModelDiscoveryGroup singleflight.Group
 
@@ -61,6 +80,11 @@ func (s *Service) discoverLiveComposerModelsUncached(
 	settings ComposerSettings,
 ) ([]ComposerConfigOptionValue, error) {
 	provider := agentprovider.ClaudeCode
+	// Do not spawn the concurrent, credential-sharing discovery session unless
+	// explicitly re-enabled. See liveModelDiscoveryEnableEnvKey for why.
+	if liveModelDiscoveryDisabled() {
+		return nil, nil
+	}
 	if err := s.ensureProviderRuntimeInstalled(ctx, provider); err != nil {
 		return nil, err
 	}

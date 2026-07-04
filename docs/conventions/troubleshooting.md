@@ -1932,3 +1932,45 @@ target app`. Compare `/Applications/Tutti.app/Contents/Info.plist` with the
   Claude SDK sidecar process env includes `IS_SANDBOX=1`. Add callback coverage
   proving bypass mode allows an ordinary Bash request without
   `approval_requested`, while `AskUserQuestion` still surfaces user input.
+
+### Claude Code logs out after sending a message (invalid_grant, credentials wiped)
+
+- Symptom:
+  Inside the desktop app, sending a message around the OAuth token expiry window
+  leaves Claude Code in a "Not logged in · Please run /login" state. The keychain
+  entry (`Claude Code-credentials`) has empty `accessToken`/`refreshToken` and
+  `expiresAt: 0`, while the plaintext `~/.claude/.credentials.json` may still hold
+  a valid token. The Claude CLI alone does not reproduce it.
+- Quick checks:
+  Capture `/v1/oauth/token` traffic (mitmproxy). A single send produces two
+  `agent_session.process_start.env_diagnostics` events for `claude-code` in the
+  same workspace with different `agent_session_id`s: one with
+  `permissionMode="default"` and `hasModel=false` (the hidden live-model
+  discovery session), one with the real conversation settings. A `400
+invalid_grant` on the refresh POST is immediately followed by the keychain
+  entry being cleared.
+- Root cause:
+  Composer-options loading spawns a hidden, `visible:false` Claude live-model
+  discovery session that shares the on-disk credential store with the real
+  conversation session and is deleted as soon as the model list is read. When it
+  performs an OAuth refresh near expiry, the server rotates the refresh token; if
+  the throwaway session is torn down before persisting the rotated token, the
+  real session later refreshes with the now-consumed refresh token, gets `400
+invalid_grant`, and Claude Code wipes the stored credentials. Because
+  `fallbackStorage` prefers the (now empty) keychain entry over the still-valid
+  plaintext file, the user is locked out.
+- Fix:
+  Do not run a concurrent, credential-sharing throwaway Claude session for model
+  discovery. Discovery is disabled by default in
+  `discoverLiveComposerModelsUncached`; set
+  `TUTTI_ENABLE_CLAUDE_LIVE_MODEL_DISCOVERY=1` to restore the previous behavior.
+  Composer options fall back to the static model catalog and Claude selects its
+  default model when none is verified.
+- Validation:
+  Run `go test ./service/agent/...` in `services/tuttid`; discovery-dependent
+  tests set `TUTTI_ENABLE_CLAUDE_LIVE_MODEL_DISCOVERY=1`. Reproduce by setting the
+  keychain `expiresAt` to `now + 4min`, then send a message and confirm the
+  credentials are no longer wiped.
+- References:
+  [composer_live_model_discovery.go](../../services/tuttid/service/agent/composer_live_model_discovery.go)
+  [model_validation.go](../../services/tuttid/service/agent/model_validation.go)
