@@ -230,6 +230,14 @@ controller action
   -> projection rebuild
 ```
 
+Session title rename follows this command path. AgentGUI may expose UI entry
+points such as rail double-click/context menu or the detail-header overflow
+menu, but the durable mutation must go through `AgentActivityRuntime` and the
+desktop `WorkspaceAgentActivityService` to `tuttid`. Manual titles are
+authoritative user state: once a persisted session has a user title, later
+runtime state reports must not overwrite it with provider-derived automatic
+titles.
+
 Local overlays are allowed only to bridge UI latency:
 
 - pending create/submit/delete state in `agentGuiConversationListStore`
@@ -812,6 +820,11 @@ User-visible rules:
 - AgentGUI conversation titles must use the shared title projection before they
   reach desktop-owned chrome, dock previews, message center cards, or toast
   notifications. Do not display raw `session.title.trim()` in those surfaces.
+- Manual rename overlays must update every mounted AgentGUI projection for the
+  same workspace/session, including rail rows, detail headers, and workbench
+  node chrome. Clear a rename overlay only after the durable source returns the
+  same display title; do not treat generic session `updatedAt` or activity
+  timestamps as title-version ordering.
 - Live runtime snapshot data is the source for workbench and dock titles. Do
   not persist or restore `lastActiveConversationTitle` from workbench node
   state.

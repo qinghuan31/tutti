@@ -696,6 +696,17 @@ export function createDesktopTuttidClient(
         request
       );
     },
+    async updateWorkspaceAgentSessionTitle(
+      workspaceID,
+      agentSessionID,
+      request
+    ) {
+      return (await resolveClient()).updateWorkspaceAgentSessionTitle(
+        workspaceID,
+        agentSessionID,
+        request
+      );
+    },
     async submitWorkspaceAgentInteractive(
       workspaceID,
       agentSessionID,

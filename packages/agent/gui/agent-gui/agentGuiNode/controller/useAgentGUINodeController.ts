@@ -156,6 +156,7 @@ import {
   markAgentGUIConversationCreatePending,
   markAgentGUIConversationSubmitPending,
   markLocalDeletedAgentGUIConversation,
+  patchAgentGUIConversationSummaryInWorkspace,
   patchAgentGUIConversationSummary,
   removeAgentGUIConversationSummaries,
   scheduleAgentGUIConversationListProjection,
@@ -170,6 +171,7 @@ import { useAgentGuiConversationList } from "../../../contexts/workspace/present
 import { createOptimisticPromptMessage } from "./agentGuiController.promptHelpers";
 import { useAgentGUIActivation } from "./useAgentGUIActivation";
 import { pendingInterruptActionForDisplayStatus } from "./pendingInterrupt";
+import { publishAgentGUIConversationTitleOverride } from "../agentGuiConversationTitleOverrides";
 import {
   formatAgentMentionMarkdown,
   normalizeAgentSessionMentionTitle
@@ -243,6 +245,7 @@ type AgentGUIRuntimeErrorPhase =
   | "retry_activation"
   | "send_prompt"
   | "submit_interactive"
+  | "rename_conversation"
   | "toggle_conversation_pinned"
   | "delete_conversation"
   | "update_session_settings"
@@ -9514,6 +9517,68 @@ export function useAgentGUINodeController({
     [agentActivityRuntime, patchConversation, workspaceId]
   );
 
+  const renameConversation = useCallback(
+    async (input: { agentSessionId: string; title: string }) => {
+      const normalizedAgentSessionId = input.agentSessionId.trim();
+      const title = input.title.trim();
+      if (!normalizedAgentSessionId || !title) {
+        return;
+      }
+      setDetailError(null);
+      try {
+        const session = await agentActivityRuntime.updateSessionTitle({
+          workspaceId,
+          agentSessionId: normalizedAgentSessionId,
+          title
+        });
+        const nextTitle = session.title.trim() ? session.title : title;
+        const patch = {
+          title: nextTitle,
+          ...(typeof session.updatedAtUnixMs === "number"
+            ? { updatedAtUnixMs: session.updatedAtUnixMs }
+            : {})
+        };
+        patchAgentGUIConversationSummaryInWorkspace({
+          workspaceId,
+          conversationId: normalizedAgentSessionId,
+          patch
+        });
+        publishAgentGUIConversationTitleOverride({
+          workspaceId,
+          id: normalizedAgentSessionId,
+          title: nextTitle,
+          updatedAtUnixMs:
+            typeof session.updatedAtUnixMs === "number"
+              ? session.updatedAtUnixMs
+              : Date.now()
+        });
+        setTransientConversation((current) =>
+          current?.id === normalizedAgentSessionId
+            ? {
+                ...current,
+                title: nextTitle,
+                ...(typeof session.updatedAtUnixMs === "number"
+                  ? { updatedAtUnixMs: session.updatedAtUnixMs }
+                  : {})
+              }
+            : current
+        );
+      } catch (error) {
+        reportAgentGUIRuntimeError({
+          agentSessionId: normalizedAgentSessionId,
+          context: { title },
+          error,
+          phase: "rename_conversation",
+          provider: dataRef.current.provider,
+          runtime: agentActivityRuntime,
+          workspaceId
+        });
+        throw error;
+      }
+    },
+    [agentActivityRuntime, setTransientConversation, workspaceId]
+  );
+
   const activeConversation = useMemo(() => {
     const resolved = resolveConversationSummaryById(
       conversations,
@@ -10595,6 +10660,8 @@ export function useAgentGUINodeController({
   const stableToggleConversationPinned = useStableControllerEventCallback(
     toggleConversationPinned
   );
+  const stableRenameConversation =
+    useStableControllerEventCallback(renameConversation);
   const stableRequestDeleteConversation = useStableControllerEventCallback(
     requestDeleteConversation
   );
@@ -10653,6 +10720,7 @@ export function useAgentGUINodeController({
         stableConfirmDeleteProjectConversations,
       confirmDeleteConversations: stableConfirmDeleteConversations,
       toggleConversationPinned: stableToggleConversationPinned,
+      renameConversation: stableRenameConversation,
       requestDeleteConversation: stableRequestDeleteConversation,
       retryActivation: stableRetryActivation,
       continueInNewConversation: stableContinueInNewConversation,
@@ -10673,6 +10741,7 @@ export function useAgentGUINodeController({
       stableLoadOlderConversationMessages,
       stableRemoveProject,
       stableRemoveQueuedPrompt,
+      stableRenameConversation,
       stableRequestDeleteConversation,
       stableRequestDeleteProjectConversations,
       stableRetryActivation,

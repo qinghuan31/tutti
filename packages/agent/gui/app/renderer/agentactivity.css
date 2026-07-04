@@ -6377,16 +6377,41 @@ button.agent-gui-node__conversation-section-toggle:hover
     visibility 120ms ease;
 }
 
+.agent-gui-node__detail-header-more-button {
+  width: 20px;
+  height: 20px;
+  flex: 0 0 auto;
+  color: var(--text-secondary);
+  opacity: 0;
+  visibility: hidden;
+  transition:
+    background-color 120ms ease,
+    color 120ms ease,
+    opacity 120ms ease,
+    visibility 120ms ease;
+}
+
+.agent-gui-node__detail-header-more-button svg {
+  width: 14px;
+  height: 14px;
+}
+
 .agent-gui-node__detail-header-title-group:hover
   .agent-gui-node__detail-header-path-info,
 .agent-gui-node__detail-header-title-group:focus-within
-  .agent-gui-node__detail-header-path-info {
+  .agent-gui-node__detail-header-path-info,
+.agent-gui-node__detail-header-title-group:hover
+  .agent-gui-node__detail-header-more-button,
+.agent-gui-node__detail-header-title-group:focus-within
+  .agent-gui-node__detail-header-more-button {
   opacity: 1;
   visibility: visible;
 }
 
 .agent-gui-node__detail-header-path-info:hover,
-.agent-gui-node__detail-header-path-info:focus-visible {
+.agent-gui-node__detail-header-path-info:focus-visible,
+.agent-gui-node__detail-header-more-button:hover,
+.agent-gui-node__detail-header-more-button:focus-visible {
   background: var(--transparency-hover);
   color: var(--text-primary);
   outline: none;

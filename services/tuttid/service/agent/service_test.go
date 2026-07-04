@@ -1691,6 +1691,48 @@ func TestServiceUpdateVisibleUpdatesRuntimeSession(t *testing.T) {
 	}
 }
 
+func TestServiceUpdateTitleTrimsAndReturnsPersistedTitle(t *testing.T) {
+	runtime := newFakeRuntime()
+	runtime.sessions["ws-1:session-1"] = RuntimeSession{
+		ID:          "session-1",
+		WorkspaceID: "ws-1",
+		Provider:    "codex",
+		Status:      "ready",
+		Title:       "Runtime title",
+	}
+	service := newTestService(runtime)
+	service.SessionReader = fakeSessionReader{
+		sessions: map[string]PersistedSession{
+			"ws-1:session-1": {
+				ID:          "session-1",
+				WorkspaceID: "ws-1",
+				Provider:    "codex",
+				Status:      "ready",
+				Title:       "Old title",
+			},
+		},
+	}
+
+	session, err := service.UpdateTitle(context.Background(), " ws-1 ", " session-1 ", "  Manual title  ")
+	if err != nil {
+		t.Fatalf("UpdateTitle error = %v", err)
+	}
+	if session.Title == nil || *session.Title != "Manual title" {
+		t.Fatalf("title = %#v, want Manual title", session.Title)
+	}
+}
+
+func TestServiceUpdateTitleRejectsInvalidTitle(t *testing.T) {
+	service := newTestService(newFakeRuntime())
+
+	if _, err := service.UpdateTitle(context.Background(), "ws-1", "session-1", "   "); !errors.Is(err, ErrInvalidArgument) {
+		t.Fatalf("blank title error = %v, want ErrInvalidArgument", err)
+	}
+	if _, err := service.UpdateTitle(context.Background(), "ws-1", "session-1", strings.Repeat("a", maxSessionTitleLength+1)); !errors.Is(err, ErrInvalidArgument) {
+		t.Fatalf("long title error = %v, want ErrInvalidArgument", err)
+	}
+}
+
 func TestServiceSendInputPassesDisplayPromptToRuntime(t *testing.T) {
 	runtime := newFakeRuntime()
 	service := NewService(runtime)
@@ -5082,6 +5124,18 @@ func (f fakeSessionReader) ClearSessions(_ context.Context, workspaceID string) 
 	return ClearSessionsResult{RemovedSessions: removed, RemovedSessionIDs: removedIDs}, nil
 }
 
+func (f fakeSessionReader) UpdateSessionTitle(_ context.Context, workspaceID string, agentSessionID string, title string) (PersistedSession, bool, error) {
+	key := strings.TrimSpace(workspaceID) + ":" + strings.TrimSpace(agentSessionID)
+	session, ok := f.sessions[key]
+	if !ok {
+		return PersistedSession{}, false, nil
+	}
+	session.Title = strings.TrimSpace(title)
+	session.UpdatedAtUnixMS = time.Now().UnixMilli()
+	f.sessions[key] = session
+	return session, true, nil
+}
+
 func (f fakeSessionReader) ReconcileStaleTurnOnResume(_ context.Context, session PersistedSession) error {
 	if f.reconciled != nil {
 		*f.reconciled = append(*f.reconciled, session)
@@ -5197,6 +5251,10 @@ func (r *activityProjectionRepoStub) ReportSessionState(_ context.Context, input
 }
 
 func (*activityProjectionRepoStub) UpdateSessionPinned(context.Context, string, string, bool) (agentactivitybiz.Session, bool, error) {
+	return agentactivitybiz.Session{}, false, nil
+}
+
+func (*activityProjectionRepoStub) UpdateSessionTitle(context.Context, string, string, string) (agentactivitybiz.Session, bool, error) {
 	return agentactivitybiz.Session{}, false, nil
 }
 

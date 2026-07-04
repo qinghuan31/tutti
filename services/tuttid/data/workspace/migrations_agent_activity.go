@@ -31,6 +31,7 @@ CREATE TABLE IF NOT EXISTS workspace_agent_sessions (
   runtime_context_json TEXT NOT NULL DEFAULT '{}',
   cwd TEXT NOT NULL DEFAULT '',
   title TEXT NOT NULL DEFAULT '',
+  title_source TEXT NOT NULL DEFAULT '',
   status TEXT NOT NULL DEFAULT '',
   current_phase TEXT NOT NULL DEFAULT '',
   last_error TEXT NOT NULL DEFAULT '',
@@ -202,6 +203,35 @@ INSERT INTO tuttid_schema_migrations (id, applied_at_unix_ms)
   VALUES (?, ?);
 `, schemaMigrationWorkspaceAgentActivityV5, now); err != nil {
 		return fmt.Errorf("record workspace agent activity v5 migration: %w", err)
+	}
+	return nil
+}
+
+func (s *SQLiteStore) applyWorkspaceAgentActivityV6(ctx context.Context) error {
+	applied, err := s.hasMigration(ctx, schemaMigrationWorkspaceAgentActivityV6)
+	if err != nil {
+		return err
+	}
+
+	hasTitleSource, err := s.hasColumn(ctx, "workspace_agent_sessions", "title_source")
+	if err != nil {
+		return err
+	}
+
+	now := unixMs(time.Now().UTC())
+	if !hasTitleSource {
+		if _, err := s.db.ExecContext(ctx, `ALTER TABLE workspace_agent_sessions ADD COLUMN title_source TEXT NOT NULL DEFAULT '';`); err != nil {
+			return fmt.Errorf("migrate workspace agent activity to v6 title source: %w", err)
+		}
+	}
+	if applied {
+		return nil
+	}
+	if _, err := s.db.ExecContext(ctx, `
+INSERT INTO tuttid_schema_migrations (id, applied_at_unix_ms)
+  VALUES (?, ?);
+`, schemaMigrationWorkspaceAgentActivityV6, now); err != nil {
+		return fmt.Errorf("record workspace agent activity v6 migration: %w", err)
 	}
 	return nil
 }

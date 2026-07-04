@@ -451,6 +451,8 @@ export function createDesktopAgentActivityRuntime(
       ).report();
       return session;
     },
+    updateSessionTitle: (input) =>
+      workspaceAgentActivityService.updateSessionTitle(input),
     async updateSessionSettings(input) {
       const previousState =
         await workspaceAgentActivityService.getSessionControlState({

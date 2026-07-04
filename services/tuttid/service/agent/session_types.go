@@ -210,6 +210,10 @@ type SessionPinUpdater interface {
 	UpdateSessionPinned(context.Context, string, string, bool) (PersistedSession, bool, error)
 }
 
+type SessionTitleUpdater interface {
+	UpdateSessionTitle(context.Context, string, string, string) (PersistedSession, bool, error)
+}
+
 type RuntimeSession struct {
 	ID                 string
 	WorkspaceID        string

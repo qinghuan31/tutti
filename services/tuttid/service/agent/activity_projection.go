@@ -152,7 +152,11 @@ func (p *ActivityProjection) ReportSessionState(
 				input.WorkspaceID,
 				input.AgentSessionID,
 				"state_patch",
-				activityStatePatchEventPayload(input, result.LastEventUnixMS),
+				activityStatePatchEventPayload(
+					input,
+					result.LastEventUnixMS,
+					firstNonEmptyString(result.Session.Title, sessionStateTitle(input.State)),
+				),
 			)
 		} else {
 			p.publishActivityUpdated(
@@ -201,6 +205,7 @@ func (p *ActivityProjection) reportFailedRuntimeNodeResult(ctx context.Context, 
 func activityStatePatchEventPayload(
 	input agentsessionstore.ReportSessionStateInput,
 	lastEventUnixMS int64,
+	titleOverride ...string,
 ) map[string]any {
 	state := input.State
 	payload := map[string]any{
@@ -225,7 +230,11 @@ func activityStatePatchEventPayload(
 	if cwd := strings.TrimSpace(state.CWD); cwd != "" {
 		payload["cwd"] = cwd
 	}
-	if title := strings.TrimSpace(sessionStateTitle(state)); title != "" {
+	title := strings.TrimSpace(sessionStateTitle(state))
+	if len(titleOverride) > 0 {
+		title = strings.TrimSpace(titleOverride[0])
+	}
+	if title != "" {
 		payload["title"] = title
 	}
 	if lifecycleStatus := strings.TrimSpace(state.LifecycleStatus); lifecycleStatus != "" {

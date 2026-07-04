@@ -2068,6 +2068,16 @@ function createWorkspaceAgentActivityService(
         settings: input.settings
       };
     },
+    async updateSessionTitle(input) {
+      calls.push(
+        `updateSessionTitle:${input.workspaceId}:${input.agentSessionId}`
+      );
+      return {
+        ...emptySession(),
+        agentSessionId: input.agentSessionId,
+        title: input.title
+      };
+    },
     async getSession(_workspaceId, agentSessionId) {
       return { ...emptySession(), agentSessionId };
     },

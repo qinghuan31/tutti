@@ -90,6 +90,7 @@ const styles = {
   conversationUnreadLamp: "agent-gui-node__conversation-unread-lamp",
   detailHeader: "agent-gui-node__detail-header",
   detailHeaderPathInfo: "agent-gui-node__detail-header-path-info",
+  detailHeaderMoreButton: "agent-gui-node__detail-header-more-button",
   providerSetupNotice: "agent-gui-node__provider-setup-notice",
   providerSetupNoticeIcon: "agent-gui-node__provider-setup-notice-icon",
   providerSetupNoticeText: "agent-gui-node__provider-setup-notice-text",

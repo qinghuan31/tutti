@@ -6925,6 +6925,110 @@ describe("useAgentGUINodeController", () => {
     });
   });
 
+  it("patches the active conversation and list summary after renaming a session", async () => {
+    installAgentHostApi({
+      list: vi.fn(async () => ({
+        presences: [],
+        sessions: [
+          workspaceAgentSession("session-1", {
+            provider: "codex",
+            title: "Old title",
+            updatedAtUnixMs: 30
+          })
+        ]
+      })),
+      listSessionTimeline: vi.fn(async () => ({ timelineItems: [] })),
+      subscribeEvents: vi.fn(() => vi.fn())
+    });
+
+    const { result } = renderHook(() =>
+      useAgentGUINodeController({
+        workspaceId: "room-1",
+        currentUserId: "user-1",
+        workspacePath: "/workspace",
+        avoidGroupingEdits: false,
+        data: agentGuiData("session-1", "codex"),
+        onDataChange: vi.fn()
+      })
+    );
+
+    await waitFor(() => {
+      expect(result.current.viewModel.activeConversation?.title).toBe(
+        "Old title"
+      );
+    });
+
+    await act(async () => {
+      await result.current.actions.renameConversation({
+        agentSessionId: "session-1",
+        title: "New title"
+      });
+    });
+
+    await waitFor(() => {
+      expect(result.current.viewModel.activeConversation?.title).toBe(
+        "New title"
+      );
+    });
+    expect(result.current.viewModel.conversations[0]?.title).toBe("New title");
+  });
+
+  it("patches mounted conversation lists in sibling AgentGUI instances after renaming a session", async () => {
+    installAgentHostApi({
+      list: vi.fn(async () => ({
+        presences: [],
+        sessions: [
+          workspaceAgentSession("session-1", {
+            provider: "codex",
+            title: "Old title",
+            updatedAtUnixMs: 30
+          })
+        ]
+      })),
+      listSessionTimeline: vi.fn(async () => ({ timelineItems: [] })),
+      subscribeEvents: vi.fn(() => vi.fn())
+    });
+
+    const { result } = renderHook(() => ({
+      first: useAgentGUINodeController({
+        workspaceId: "room-1",
+        currentUserId: "user-1",
+        workspacePath: "/workspace",
+        avoidGroupingEdits: false,
+        data: agentGuiData("session-1", "codex"),
+        onDataChange: vi.fn()
+      }),
+      second: useAgentGUINodeController({
+        workspaceId: "room-1",
+        currentUserId: "user-1",
+        workspacePath: "/workspace",
+        avoidGroupingEdits: false,
+        data: agentGuiData("session-1", "codex"),
+        onDataChange: vi.fn()
+      })
+    }));
+
+    await waitFor(() => {
+      expect(result.current.second.viewModel.conversations[0]?.title).toBe(
+        "Old title"
+      );
+    });
+
+    await act(async () => {
+      await result.current.first.actions.renameConversation({
+        agentSessionId: "session-1",
+        title: "New shared title"
+      });
+    });
+
+    expect(result.current.first.viewModel.conversations[0]?.title).toBe(
+      "New shared title"
+    );
+    expect(result.current.second.viewModel.conversations[0]?.title).toBe(
+      "New shared title"
+    );
+  });
+
   it("clears a pinned conversation when a refreshed session list reports null pin state", async () => {
     const list = vi
       .fn()
@@ -16206,6 +16310,12 @@ function installAgentActivityRuntimeForHostMocks({
         settings: input.settings
       });
     },
+    async updateSessionTitle(input) {
+      return upsertRuntimeSession(setSnapshot, input.workspaceId, {
+        agentSessionId: input.agentSessionId,
+        title: input.title
+      });
+    },
     ...(trackSettingsProjectChange
       ? {
           trackSettingsProjectChange: async (input) => {
@@ -16440,6 +16550,12 @@ function installNoopAgentActivityRuntimeForTests(): void {
         agentSessionId: input.agentSessionId,
         settings: input.settings
       }),
+      updateSessionTitle: async (input) =>
+        upsertRuntimeSession(
+          (workspaceId, updater) => updater(getSnapshot(workspaceId)),
+          input.workspaceId,
+          { agentSessionId: input.agentSessionId, title: input.title }
+        ),
       getSessionControlState: async (input) =>
         agentSessionState(input.agentSessionId, {
           workspaceId: input.workspaceId

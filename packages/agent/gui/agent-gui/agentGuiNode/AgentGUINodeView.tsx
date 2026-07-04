@@ -55,6 +55,19 @@ import type { WorkspaceUserProjectI18nRuntime } from "@tutti-os/workspace-user-p
 import type { WorkspaceFileManagerI18nRuntime } from "@tutti-os/workspace-file-manager";
 import type { WorkspaceFileEntry } from "@tutti-os/workspace-file-manager/services";
 import { BareIconButton, ScrollArea } from "@tutti-os/ui-system/components";
+import {
+  ContextMenu,
+  ContextMenuContent,
+  ContextMenuItem,
+  ContextMenuTrigger,
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+  Input
+} from "@tutti-os/ui-system/components";
 import { Button } from "../../app/renderer/components/ui/button";
 import {
   CreateChatIcon,
@@ -98,7 +111,10 @@ import type {
   AgentGUINodeViewModel,
   AgentGUISessionChrome
 } from "./model/agentGuiNodeTypes";
-import { formatAgentGUIConversationPlainTitle } from "./model/agentGuiProviderIdentity";
+import {
+  formatAgentGUIConversationPlainTitle,
+  resolveAgentGUIExplicitConversationTitle
+} from "./model/agentGuiProviderIdentity";
 import { CanvasNodeTrashLinedIcon } from "../shared/canvasNodeChromeIcons";
 import { AgentSessionChrome } from "./AgentSessionChrome";
 import {
@@ -139,6 +155,10 @@ import {
   type ConversationSection
 } from "./agentGuiNodeViewConversation";
 import { buildAgentGUIConversationSummaries } from "./model/agentGuiConversationModel";
+import {
+  subscribeAgentGUIConversationTitleOverrides,
+  type AgentGUIConversationTitleOverride
+} from "./agentGuiConversationTitleOverrides";
 import styles from "./AgentGUINode.styles";
 import type { AgentContextMentionProvider } from "./agentContextMentionProvider";
 import type {
@@ -171,6 +191,7 @@ const AGENT_GUI_TOP_MASK_SCROLL_EPSILON_PX = 1;
 const AGENT_GUI_CONVERSATION_RAIL_SECTION_PAGE_SIZE = 5;
 const AGENT_GUI_CONVERSATION_RAIL_PROJECTION_PROVIDER: AgentGUIProvider =
   "codex";
+const AGENT_GUI_SESSION_TITLE_MAX_LENGTH = 120;
 
 const AGENT_GUI_TIMELINE_SCROLL_AREA_CONTENT_STYLE: CSSProperties = {
   width: "100%",
@@ -377,6 +398,15 @@ export interface AgentGUIViewLabels {
   openConversationWindow: string;
   showMoreConversations: string;
   showLessConversations: string;
+  renameSession: string;
+  renameSessionTitle: string;
+  renameSessionDescription: string;
+  renameSessionInputLabel: string;
+  renameSessionTitleRequired: string;
+  renameSessionTitleTooLong: (maxLength: number) => string;
+  renameSessionSave: string;
+  renameSessionSaving: string;
+  renameSessionFailed: string;
   deleteSession: string;
   pinSession: string;
   unpinSession: string;
@@ -543,6 +573,10 @@ interface AgentGUINodeViewProps {
     retryActivation: () => void;
     continueInNewConversation: () => void;
     retryOpenclawGateway: () => void;
+    renameConversation: (input: {
+      agentSessionId: string;
+      title: string;
+    }) => Promise<void>;
     toggleConversationPinned: (agentSessionId: string, pinned: boolean) => void;
     removeProject: (path: string) => void;
     confirmDeleteProjectConversations: (path?: string) => void;
@@ -916,6 +950,40 @@ export function AgentGUINodeView({
   );
   const [workspaceReferencePickerOpen, setWorkspaceReferencePickerOpen] =
     useState(false);
+  const [renameSessionDialog, setRenameSessionDialog] =
+    useState<AgentGUIRenameSessionDialogState | null>(null);
+  const [renameSessionDraft, setRenameSessionDraft] = useState("");
+  const [renameSessionError, setRenameSessionError] = useState<string | null>(
+    null
+  );
+  const [isRenamingSession, setIsRenamingSession] = useState(false);
+  const [conversationTitleOverrides, setConversationTitleOverrides] = useState<
+    ReadonlyMap<string, AgentGUIConversationTitleOverride>
+  >(() => new Map());
+  useEffect(
+    () =>
+      subscribeAgentGUIConversationTitleOverrides((override) => {
+        if (override.workspaceId !== viewModel.workspaceId) {
+          return;
+        }
+        setConversationTitleOverrides((current) => {
+          const existing = current.get(override.id);
+          if (existing && existing.updatedAtUnixMs > override.updatedAtUnixMs) {
+            return current;
+          }
+          if (
+            existing?.title === override.title &&
+            existing.updatedAtUnixMs === override.updatedAtUnixMs
+          ) {
+            return current;
+          }
+          const next = new Map(current);
+          next.set(override.id, override);
+          return next;
+        });
+      }),
+    [viewModel.workspaceId]
+  );
   // 打开引用 picker 时的定位目标(点任务/应用行的产物图标时设置;「+」按钮则为 null)。
   const [workspaceReferencePickerTarget, setWorkspaceReferencePickerTarget] =
     useState<ReferenceLocateTarget | null>(null);
@@ -929,6 +997,7 @@ export function AgentGUINodeView({
   const workspaceReferencePickerResolverRef = useRef<
     ((result: WorkspaceReferencePickResult) => void) | null
   >(null);
+  const renameSessionInputRef = useRef<HTMLInputElement | null>(null);
   const emptyReferencePickResult: WorkspaceReferencePickResult = useMemo(
     () => ({ files: [], mentionItems: [] }),
     []
@@ -986,6 +1055,100 @@ export function AgentGUINodeView({
     setWorkspaceReferencePickerOpen(false);
     setWorkspaceReferencePickerTarget(null);
   }, [emptyReferencePickResult]);
+  useEffect(() => {
+    setConversationTitleOverrides((current) =>
+      pruneResolvedConversationTitleOverrides(current, [
+        ...viewModel.conversations,
+        ...(viewModel.activeConversation ? [viewModel.activeConversation] : [])
+      ])
+    );
+  }, [
+    conversationTitleRenderKey(viewModel.activeConversation),
+    viewModel.activeConversation,
+    viewModel.conversations
+  ]);
+  useEffect(() => {
+    if (!renameSessionDialog) {
+      return;
+    }
+    window.requestAnimationFrame(() => {
+      renameSessionInputRef.current?.focus();
+      renameSessionInputRef.current?.select();
+    });
+  }, [renameSessionDialog]);
+  const openRenameSessionDialog = useCallback(
+    (conversation: AgentGUIRenameableConversation) => {
+      const title = conversationPlainTitle(conversation, labels, uiLanguage);
+      setRenameSessionDialog({
+        agentSessionId: conversation.id,
+        title
+      });
+      setRenameSessionDraft(title);
+      setRenameSessionError(null);
+    },
+    [labels, uiLanguage]
+  );
+  const closeRenameSessionDialog = useCallback(() => {
+    if (isRenamingSession) {
+      return;
+    }
+    setRenameSessionDialog(null);
+    setRenameSessionDraft("");
+    setRenameSessionError(null);
+  }, [isRenamingSession]);
+  const renameConversation = useStableEventCallback(actions.renameConversation);
+  const submitRenameSession = useCallback(async () => {
+    if (!renameSessionDialog) {
+      return;
+    }
+    const title = renameSessionDraft.trim();
+    if (!title) {
+      setRenameSessionError(labels.renameSessionTitleRequired);
+      return;
+    }
+    if ([...title].length > AGENT_GUI_SESSION_TITLE_MAX_LENGTH) {
+      setRenameSessionError(
+        labels.renameSessionTitleTooLong(AGENT_GUI_SESSION_TITLE_MAX_LENGTH)
+      );
+      return;
+    }
+    if (title === renameSessionDialog.title.trim()) {
+      setRenameSessionDialog(null);
+      setRenameSessionDraft("");
+      setRenameSessionError(null);
+      return;
+    }
+    setIsRenamingSession(true);
+    setRenameSessionError(null);
+    try {
+      await renameConversation({
+        agentSessionId: renameSessionDialog.agentSessionId,
+        title
+      });
+      setConversationTitleOverrides((current) => {
+        const next = new Map(current);
+        next.set(renameSessionDialog.agentSessionId, {
+          workspaceId: viewModel.workspaceId,
+          id: renameSessionDialog.agentSessionId,
+          title,
+          updatedAtUnixMs: Date.now()
+        });
+        return next;
+      });
+      setRenameSessionDialog(null);
+      setRenameSessionDraft("");
+    } catch {
+      setRenameSessionError(labels.renameSessionFailed);
+    } finally {
+      setIsRenamingSession(false);
+    }
+  }, [
+    labels,
+    renameConversation,
+    renameSessionDialog,
+    renameSessionDraft,
+    viewModel.workspaceId
+  ]);
   const settleReferencePicker = useCallback(
     (
       result: WorkspaceReferencePickResult,
@@ -1339,6 +1502,7 @@ export function AgentGUINodeView({
         onConfirmDeleteProjectConversations: confirmDeleteProjectConversations,
         onConfirmDeleteConversations: confirmDeleteConversations,
         onRequestDeleteConversation: requestDeleteConversation,
+        onRequestRenameConversation: openRenameSessionDialog,
         onCancelDeleteConversation: cancelDeleteConversation,
         onConfirmDeleteConversation: confirmDeleteConversation,
         onOpenProjectFiles: openProjectFiles,
@@ -1353,6 +1517,7 @@ export function AgentGUINodeView({
         conversationRailCollapsed,
         createConversationDisabled,
         labels,
+        openRenameSessionDialog,
         openAgentEnvSetup,
         openConversationWindow,
         openProjectFiles,
@@ -1414,6 +1579,45 @@ export function AgentGUINodeView({
       ),
     [viewModel.providerTargets, viewModel.workspaceId]
   );
+  const trimmedRenameSessionDraft = renameSessionDraft.trim();
+  const renameSessionDraftTooLong =
+    [...trimmedRenameSessionDraft].length > AGENT_GUI_SESSION_TITLE_MAX_LENGTH;
+  const renameSessionSubmitDisabled =
+    isRenamingSession ||
+    !trimmedRenameSessionDraft ||
+    renameSessionDraftTooLong ||
+    trimmedRenameSessionDraft === (renameSessionDialog?.title.trim() ?? "");
+  const activeConversationRenderKey = conversationTitleRenderKey(
+    viewModel.activeConversation
+  );
+  const displayActiveConversation = useMemo(() => {
+    if (!viewModel.activeConversation) {
+      return viewModel.activeConversation;
+    }
+    return (
+      applyConversationTitleOverridesToConversations(
+        [viewModel.activeConversation],
+        conversationTitleOverrides
+      )[0] ?? viewModel.activeConversation
+    );
+  }, [
+    activeConversationRenderKey,
+    conversationTitleOverrides,
+    viewModel.activeConversation
+  ]);
+  const displayActiveConversationRenderKey = conversationTitleRenderKey(
+    displayActiveConversation
+  );
+  const displayViewModel = useMemo(
+    () =>
+      displayActiveConversation === viewModel.activeConversation
+        ? viewModel
+        : {
+            ...viewModel,
+            activeConversation: displayActiveConversation
+          },
+    [displayActiveConversation, viewModel]
+  );
 
   const content = (
     <AgentTargetPresentationProvider agentTargets={agentTargetPresentations}>
@@ -1434,7 +1638,10 @@ export function AgentGUINodeView({
           inert={conversationRailCollapsed ? true : undefined}
         >
           <AgentGUIConversationRailStorePane
+            activeConversation={displayActiveConversation}
+            activeConversationTitleKey={displayActiveConversationRenderKey}
             conversations={viewModel.conversations}
+            conversationTitleOverrides={conversationTitleOverrides}
             store={conversationRailStore}
             storeState={conversationRailStoreState}
             userProjects={viewModel.userProjects}
@@ -1473,7 +1680,7 @@ export function AgentGUINodeView({
 
         <section id="agent-gui-detail" className={styles.detailPanel}>
           <AgentGUIDetailPane
-            viewModel={viewModel}
+            viewModel={displayViewModel}
             actions={actions}
             labels={labels}
             uiLanguage={uiLanguage}
@@ -1496,9 +1703,83 @@ export function AgentGUINodeView({
             workspaceAppIcons={effectiveWorkspaceAppIcons}
             workspaceUserProjectI18n={workspaceUserProjectI18n}
             previewMode={previewMode}
+            onRequestRenameSession={openRenameSessionDialog}
           />
         </section>
       </div>
+      <Dialog
+        open={renameSessionDialog !== null}
+        onOpenChange={(open) => {
+          if (!open) {
+            closeRenameSessionDialog();
+          }
+        }}
+      >
+        <DialogContent
+          className="nodrag tsh-desktop-no-drag [-webkit-app-region:no-drag] sm:max-w-[420px]"
+          overlayClassName={AGENT_GUI_CONFIRMATION_DIALOG_OVERLAY_CLASS_NAME}
+          showCloseButton={!isRenamingSession}
+        >
+          <form
+            className="grid gap-4"
+            onSubmit={(event) => {
+              event.preventDefault();
+              void submitRenameSession();
+            }}
+          >
+            <DialogHeader>
+              <DialogTitle>{labels.renameSessionTitle}</DialogTitle>
+              <DialogDescription>
+                {labels.renameSessionDescription}
+              </DialogDescription>
+            </DialogHeader>
+            <label className="grid gap-2">
+              <span className="sr-only">{labels.renameSessionInputLabel}</span>
+              <Input
+                ref={renameSessionInputRef}
+                aria-invalid={Boolean(
+                  renameSessionError || renameSessionDraftTooLong
+                )}
+                disabled={isRenamingSession}
+                maxLength={AGENT_GUI_SESSION_TITLE_MAX_LENGTH}
+                value={renameSessionDraft}
+                onChange={(event) => {
+                  setRenameSessionDraft(event.target.value);
+                  setRenameSessionError(null);
+                }}
+              />
+            </label>
+            {renameSessionError || renameSessionDraftTooLong ? (
+              <p className="m-0 text-[12px] leading-[16px] text-shell-warning">
+                {renameSessionError ??
+                  labels.renameSessionTitleTooLong(
+                    AGENT_GUI_SESSION_TITLE_MAX_LENGTH
+                  )}
+              </p>
+            ) : null}
+            <DialogFooter>
+              <Button
+                type="button"
+                variant="ghost"
+                size="dialog"
+                disabled={isRenamingSession}
+                onClick={closeRenameSessionDialog}
+              >
+                {labels.cancel}
+              </Button>
+              <Button
+                type="submit"
+                size="dialog"
+                disabled={renameSessionSubmitDisabled}
+              >
+                {isRenamingSession
+                  ? labels.renameSessionSaving
+                  : labels.renameSessionSave}
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
       {referenceSourceAggregator ? (
         <ReferenceSourcePicker
           aggregator={referenceSourceAggregator}
@@ -1561,6 +1842,9 @@ interface AgentGUIDetailPaneProps {
   resolveDroppedFileReferences?: AgentComposerProps["resolveDroppedFileReferences"];
   selectProjectDirectory?: () => Promise<{ path: string } | null>;
   onRequestGitBranches?: AgentComposerGitBranchLoader | null;
+  onRequestRenameSession: (
+    conversation: AgentGUIRenameableConversation
+  ) => void;
   contextMentionProviders?: readonly AgentContextMentionProvider[];
   workspaceAppIcons?: readonly AgentMessageMarkdownWorkspaceAppIcon[];
 }
@@ -1653,6 +1937,7 @@ const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
   resolveDroppedFileReferences = null,
   selectProjectDirectory,
   onRequestGitBranches,
+  onRequestRenameSession,
   contextMentionProviders,
   workspaceAppIcons = EMPTY_WORKSPACE_APP_ICONS
 }: AgentGUIDetailPaneProps): React.JSX.Element {
@@ -2703,6 +2988,7 @@ const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
         syncLabel={syncLabel}
         showFailedSyncLabel={showFailedSyncLabel}
         previewMode={previewMode}
+        onRequestRenameSession={onRequestRenameSession}
       />
       {showProviderSetupNotice ? (
         <div
@@ -2817,13 +3103,16 @@ const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
 interface AgentGUIDetailHeaderProps {
   activeConversation: AgentGUINodeViewModel["activeConversation"];
   hidden: boolean;
-  labels: Pick<AgentGUIViewLabels, "fallbackAgentTitle">;
+  labels: Pick<AgentGUIViewLabels, "fallbackAgentTitle" | "renameSession">;
   uiLanguage: UiLanguage;
   showSyncIndicator: boolean;
   syncStatus: SyncIndicatorStatus;
   syncLabel: string;
   showFailedSyncLabel: boolean;
   previewMode: boolean;
+  onRequestRenameSession: (
+    conversation: AgentGUIRenameableConversation
+  ) => void;
 }
 
 const AgentGUIDetailHeader = memo(function AgentGUIDetailHeader({
@@ -2835,7 +3124,8 @@ const AgentGUIDetailHeader = memo(function AgentGUIDetailHeader({
   syncStatus,
   syncLabel,
   showFailedSyncLabel,
-  previewMode
+  previewMode,
+  onRequestRenameSession
 }: AgentGUIDetailHeaderProps): React.JSX.Element | null {
   "use memo";
 
@@ -2845,6 +3135,9 @@ const AgentGUIDetailHeader = memo(function AgentGUIDetailHeader({
 
   const runPath = activeConversation.cwd.trim();
   const statusTitle = showSyncIndicator ? syncLabel : undefined;
+  const handleRequestRename = () => {
+    onRequestRenameSession(activeConversation);
+  };
 
   return (
     <div className={styles.detailHeader}>
@@ -2855,6 +3148,32 @@ const AgentGUIDetailHeader = memo(function AgentGUIDetailHeader({
         {runPath ? (
           <AgentRunPathInfo path={runPath} previewMode={previewMode} />
         ) : null}
+        {previewMode ? null : (
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <BareIconButton
+                className={styles.detailHeaderMoreButton}
+                aria-label={labels.renameSession}
+                title={labels.renameSession}
+                size="sm"
+              >
+                <MoreHorizontalIcon aria-hidden="true" />
+              </BareIconButton>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent
+              align="start"
+              className={`${styles.composerMenuContent} nodrag [-webkit-app-region:no-drag]`}
+              sideOffset={6}
+            >
+              <DropdownMenuItem
+                className={`${styles.composerMenuItem} nodrag [-webkit-app-region:no-drag]`}
+                onSelect={handleRequestRename}
+              >
+                <span>{labels.renameSession}</span>
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        )}
       </span>
       <span
         className="inline-flex flex-none items-center gap-2 whitespace-nowrap"
@@ -3337,7 +3656,13 @@ const AgentGUIBottomDockPane = memo(function AgentGUIBottomDockPane({
 });
 
 interface AgentGUIConversationRailPaneProps {
+  activeConversation: AgentGUINodeViewModel["activeConversation"];
+  activeConversationTitleKey: string;
   conversations: AgentGUINodeViewModel["conversations"];
+  conversationTitleOverrides: ReadonlyMap<
+    string,
+    AgentGUIConversationTitleOverride
+  >;
   workspaceId: string;
   userProjects: AgentGUINodeViewModel["userProjects"];
   activeConversationId: string | null;
@@ -3378,6 +3703,9 @@ interface AgentGUIConversationRailPaneProps {
   onConfirmDeleteProjectConversations: (path?: string) => void;
   onConfirmDeleteConversations: (agentSessionIds: string[]) => void;
   onRequestDeleteConversation: (agentSessionId: string) => void;
+  onRequestRenameConversation: (
+    conversation: AgentGUIRenameableConversation
+  ) => void;
   onCancelDeleteConversation: () => void;
   onConfirmDeleteConversation: () => void;
 }
@@ -3401,6 +3729,16 @@ type AgentGUIProjectActionDialog =
       path: string;
     };
 
+interface AgentGUIRenameSessionDialogState {
+  agentSessionId: string;
+  title: string;
+}
+
+type AgentGUIRenameableConversation = Pick<
+  AgentGUINodeViewModel["conversations"][number],
+  "id" | "title" | "titleFallback"
+>;
+
 type OpenclawGatewayViewModel =
   | NonNullable<AgentGUINodeViewModel["openclawGateway"]>
   | {
@@ -3410,7 +3748,12 @@ type OpenclawGatewayViewModel =
 
 type AgentGUIConversationRailDataProps = Pick<
   AgentGUIConversationRailPaneProps,
-  "conversations" | "userProjects" | "workspaceId"
+  | "activeConversation"
+  | "activeConversationTitleKey"
+  | "conversations"
+  | "conversationTitleOverrides"
+  | "userProjects"
+  | "workspaceId"
 >;
 
 type AgentGUIConversationRailStoreSnapshot = Omit<
@@ -3476,13 +3819,20 @@ function agentGUIConversationRailStoreSnapshotsEqual(
     current.onConfirmDeleteProjectConversations ===
       next.onConfirmDeleteProjectConversations &&
     current.onRequestDeleteConversation === next.onRequestDeleteConversation &&
+    current.onRequestRenameConversation === next.onRequestRenameConversation &&
     current.onCancelDeleteConversation === next.onCancelDeleteConversation &&
     current.onConfirmDeleteConversation === next.onConfirmDeleteConversation
   );
 }
 
 interface AgentGUIConversationRailStorePaneProps {
+  activeConversation: AgentGUINodeViewModel["activeConversation"];
+  activeConversationTitleKey: string;
   conversations: AgentGUINodeViewModel["conversations"];
+  conversationTitleOverrides: ReadonlyMap<
+    string,
+    AgentGUIConversationTitleOverride
+  >;
   store: AgentGUIConversationRailStore;
   storeState: AgentGUIConversationRailStoreSnapshot;
   userProjects: AgentGUINodeViewModel["userProjects"];
@@ -3491,7 +3841,10 @@ interface AgentGUIConversationRailStorePaneProps {
 
 const AgentGUIConversationRailStorePane = memo(
   function AgentGUIConversationRailStorePane({
+    activeConversation,
+    activeConversationTitleKey: _activeConversationTitleKey,
     conversations,
+    conversationTitleOverrides,
     store,
     storeState: _storeState,
     userProjects,
@@ -3502,13 +3855,36 @@ const AgentGUIConversationRailStorePane = memo(
     return (
       <AgentGUIConversationRailPane
         {...state}
+        activeConversation={activeConversation}
+        activeConversationTitleKey={_activeConversationTitleKey}
         conversations={conversations}
+        conversationTitleOverrides={conversationTitleOverrides}
         userProjects={userProjects}
         workspaceId={workspaceId}
       />
     );
   }
 );
+
+function conversationTitleRenderKey(
+  conversation:
+    | Pick<
+        NonNullable<AgentGUINodeViewModel["activeConversation"]>,
+        "id" | "title" | "titleFallback" | "updatedAtUnixMs"
+      >
+    | null
+    | undefined
+): string {
+  if (!conversation) {
+    return "";
+  }
+  return [
+    conversation.id,
+    conversation.title,
+    conversation.titleFallback ?? "",
+    String(conversation.updatedAtUnixMs)
+  ].join("\u0000");
+}
 
 function normalizeConversationRailProjectPath(
   path: string | null | undefined
@@ -3676,6 +4052,131 @@ function updateConversationSectionsFromSummaries(
       }
       sectionChanged = true;
       return nextItem;
+    });
+    if (!sectionChanged) {
+      return section;
+    }
+    changed = true;
+    return {
+      ...section,
+      items
+    };
+  });
+  return changed ? nextSections : (previous as ConversationSection[]);
+}
+
+type AgentGUIConversationTitleOverrideSource = Pick<
+  AgentGUINodeViewModel["conversations"][number],
+  "id" | "title" | "titleFallback" | "updatedAtUnixMs"
+>;
+
+function shouldApplyConversationTitleOverride(
+  source: AgentGUIConversationTitleOverrideSource,
+  override: AgentGUIConversationTitleOverride
+): boolean {
+  return source.title !== override.title || source.titleFallback !== null;
+}
+
+function pruneResolvedConversationTitleOverrides(
+  overrides: ReadonlyMap<string, AgentGUIConversationTitleOverride>,
+  sources: readonly AgentGUIConversationTitleOverrideSource[]
+): ReadonlyMap<string, AgentGUIConversationTitleOverride> {
+  if (overrides.size === 0 || sources.length === 0) {
+    return overrides;
+  }
+  let next: Map<string, AgentGUIConversationTitleOverride> | null = null;
+  for (const source of sources) {
+    const override = overrides.get(source.id);
+    if (!override) {
+      continue;
+    }
+    const sourceResolvedOverride =
+      source.title === override.title && source.titleFallback === null;
+    if (!sourceResolvedOverride) {
+      continue;
+    }
+    next ??= new Map(overrides);
+    next.delete(source.id);
+  }
+  return next ?? overrides;
+}
+
+function applyConversationTitleOverridesToConversations(
+  conversations: readonly AgentGUINodeViewModel["conversations"][number][],
+  overrides: ReadonlyMap<string, AgentGUIConversationTitleOverride>
+): AgentGUINodeViewModel["conversations"] {
+  if (overrides.size === 0) {
+    return conversations as AgentGUINodeViewModel["conversations"];
+  }
+  let changed = false;
+  const next = conversations.map((conversation) => {
+    const override = overrides.get(conversation.id);
+    if (!override) {
+      return conversation;
+    }
+    if (!shouldApplyConversationTitleOverride(conversation, override)) {
+      return conversation;
+    }
+    const updatedAtUnixMs = Math.max(
+      conversation.updatedAtUnixMs,
+      override.updatedAtUnixMs
+    );
+    if (
+      conversation.title === override.title &&
+      conversation.titleFallback === null &&
+      conversation.updatedAtUnixMs === updatedAtUnixMs
+    ) {
+      return conversation;
+    }
+    changed = true;
+    return {
+      ...conversation,
+      title: override.title,
+      titleFallback: null,
+      updatedAtUnixMs
+    };
+  });
+  return changed
+    ? next
+    : (conversations as AgentGUINodeViewModel["conversations"]);
+}
+
+function applyConversationTitleOverridesToSections(
+  previous: ConversationSection[] | null,
+  overrides: ReadonlyMap<string, AgentGUIConversationTitleOverride>
+): ConversationSection[] | null {
+  if (!previous || overrides.size === 0) {
+    return previous;
+  }
+  let changed = false;
+  const nextSections = previous.map((section) => {
+    let sectionChanged = false;
+    const items = section.items.map((item) => {
+      const override = overrides.get(item.id);
+      if (!override) {
+        return item;
+      }
+      if (!shouldApplyConversationTitleOverride(item, override)) {
+        return item;
+      }
+      const updatedAtUnixMs = Math.max(
+        item.updatedAtUnixMs,
+        override.updatedAtUnixMs
+      );
+      if (
+        item.title === override.title &&
+        item.titleFallback === null &&
+        item.updatedAtUnixMs === updatedAtUnixMs
+      ) {
+        return item;
+      }
+      sectionChanged = true;
+      return {
+        ...item,
+        title: override.title,
+        titleFallback: null,
+        updatedAtUnixMs
+      };
     });
     if (!sectionChanged) {
       return section;
@@ -4011,6 +4512,10 @@ interface AgentGUIConversationRailInput {
   conversationFilter: AgentGUINodeViewModel["conversationFilter"];
   conversationQuery: string;
   conversations: AgentGUINodeViewModel["conversations"];
+  conversationTitleOverrides: ReadonlyMap<
+    string,
+    AgentGUIConversationTitleOverride
+  >;
   labels: AgentGUIViewLabels;
   previewMode: boolean;
   userProjects: AgentGUINodeViewModel["userProjects"];
@@ -4021,6 +4526,7 @@ function useAgentGUIConversationRail({
   conversationFilter,
   conversationQuery,
   conversations,
+  conversationTitleOverrides,
   labels,
   previewMode,
   userProjects,
@@ -4040,9 +4546,13 @@ function useAgentGUIConversationRail({
   >(() => new Map());
   const pagingRequestSequenceRef = useRef(0);
   const pagingAbortControllersRef = useRef(new Map<string, AbortController>());
+  const conversationTitleOverridesRef = useRef(conversationTitleOverrides);
   const runtimeListSessionSections = agentActivityRuntime.listSessionSections;
   const runtimeListSessionSectionPage =
     agentActivityRuntime.listSessionSectionPage;
+  useEffect(() => {
+    conversationTitleOverridesRef.current = conversationTitleOverrides;
+  }, [conversationTitleOverrides]);
   const runtimeSectionsEnabled =
     !previewMode &&
     Boolean(runtimeListSessionSections) &&
@@ -4124,7 +4634,13 @@ function useAgentGUIConversationRail({
           workspaceId: page.workspaceId
         });
         setRuntimeRailSections((current) =>
-          stabilizeConversationSections(current, sections)
+          stabilizeConversationSections(
+            current,
+            applyConversationTitleOverridesToSections(
+              sections,
+              conversationTitleOverridesRef.current
+            ) ?? sections
+          )
         );
         setSectionPageStates(() => {
           const next = new Map<string, ConversationRailSectionPageState>();
@@ -4166,9 +4682,12 @@ function useAgentGUIConversationRail({
       return;
     }
     setRuntimeRailSections((current) =>
-      updateConversationSectionsFromSummaries(current, conversations)
+      applyConversationTitleOverridesToSections(
+        updateConversationSectionsFromSummaries(current, conversations),
+        conversationTitleOverrides
+      )
     );
-  }, [conversations, runtimeSectionsEnabled]);
+  }, [conversationTitleOverrides, conversations, runtimeSectionsEnabled]);
 
   const loadMoreSectionConversations = useCallback(
     (section: ConversationSection) => {
@@ -4215,21 +4734,25 @@ function useAgentGUIConversationRail({
           ) {
             return;
           }
-          const pageConversations = buildAgentGUIConversationSummaries({
-            conversationFilter,
-            provider: AGENT_GUI_CONVERSATION_RAIL_PROJECTION_PROVIDER,
-            snapshot: {
-              composerOptionsByProvider: {},
-              presences: [],
-              sessionMessagesById: {},
-              sessions: pageSection.sessions,
-              workspaceId
-            },
-            userProjects: []
-          }).map((conversation) => ({
-            ...conversation,
-            project: section.kind === "project" ? section.project : null
-          }));
+          const pageConversations =
+            applyConversationTitleOverridesToConversations(
+              buildAgentGUIConversationSummaries({
+                conversationFilter,
+                provider: AGENT_GUI_CONVERSATION_RAIL_PROJECTION_PROVIDER,
+                snapshot: {
+                  composerOptionsByProvider: {},
+                  presences: [],
+                  sessionMessagesById: {},
+                  sessions: pageSection.sessions,
+                  workspaceId
+                },
+                userProjects: []
+              }).map((conversation) => ({
+                ...conversation,
+                project: section.kind === "project" ? section.project : null
+              })),
+              conversationTitleOverridesRef.current
+            );
           setRuntimeRailSections((current) => {
             if (!current) {
               return current;
@@ -4304,7 +4827,10 @@ function useAgentGUIConversationRail({
 
 const AgentGUIConversationRailPane = memo(
   function AgentGUIConversationRailPane({
+    activeConversation,
+    activeConversationTitleKey,
     conversations,
+    conversationTitleOverrides,
     workspaceId,
     userProjects,
     activeConversationId,
@@ -4339,6 +4865,7 @@ const AgentGUIConversationRailPane = memo(
     onConfirmDeleteProjectConversations,
     onConfirmDeleteConversations,
     onRequestDeleteConversation,
+    onRequestRenameConversation,
     onCancelDeleteConversation,
     onConfirmDeleteConversation
   }: AgentGUIConversationRailPaneProps): React.JSX.Element {
@@ -4361,6 +4888,33 @@ const AgentGUIConversationRailPane = memo(
     const conversationItemElementsRef = useRef(
       new Map<string, HTMLDivElement>()
     );
+    const effectiveConversationTitleOverrides = useMemo(() => {
+      const title = activeConversation
+        ? resolveAgentGUIExplicitConversationTitle(activeConversation)
+        : null;
+      if (!activeConversation?.id || !title) {
+        return conversationTitleOverrides;
+      }
+      const existing = conversationTitleOverrides.get(activeConversation.id);
+      if (existing?.title === title) {
+        return conversationTitleOverrides;
+      }
+      const next = new Map(conversationTitleOverrides);
+      next.set(activeConversation.id, {
+        workspaceId,
+        id: activeConversation.id,
+        title,
+        updatedAtUnixMs: Math.max(
+          activeConversation.updatedAtUnixMs,
+          existing?.updatedAtUnixMs ?? 0
+        )
+      });
+      return next;
+    }, [
+      activeConversation,
+      activeConversationTitleKey,
+      conversationTitleOverrides
+    ]);
     const activeConversationScrollCompletedRef = useRef<string | null>(null);
     const previousActiveConversationIdRef = useRef<string | null>(null);
     const groupedConversationsRef = useRef<ConversationSection[] | null>(null);
@@ -4373,11 +4927,20 @@ const AgentGUIConversationRailPane = memo(
       conversationFilter,
       conversationQuery,
       conversations,
+      conversationTitleOverrides: effectiveConversationTitleOverrides,
       labels,
       previewMode,
       userProjects,
       workspaceId
     });
+    const displaySourceConversations = useMemo(
+      () =>
+        applyConversationTitleOverridesToConversations(
+          conversations,
+          effectiveConversationTitleOverrides
+        ),
+      [conversations, effectiveConversationTitleOverrides]
+    );
 
     useEffect(() => {
       const timer = window.setInterval(() => {
@@ -4394,8 +4957,8 @@ const AgentGUIConversationRailPane = memo(
           ? (runtimeRailSections?.flatMap((section) => section.items) ?? [])
           : runtimeRailSections
             ? runtimeRailSections.flatMap((section) => section.items)
-            : conversations,
-      [conversations, runtimeRailSections, runtimeSectionsEnabled]
+            : displaySourceConversations,
+      [displaySourceConversations, runtimeRailSections, runtimeSectionsEnabled]
     );
 
     const filteredConversationResult = useMemo(() => {
@@ -4663,6 +5226,7 @@ const AgentGUIConversationRailPane = memo(
                     onCreateConversation={onCreateConversation}
                     onLoadMoreConversations={loadMoreSectionConversations}
                     onRequestDeleteConversation={onRequestDeleteConversation}
+                    onRequestRenameConversation={onRequestRenameConversation}
                     onSelectConversation={onSelectConversation}
                     setPendingProjectAction={setPendingProjectAction}
                     onToggleConversationPinned={onToggleConversationPinned}
@@ -4839,6 +5403,9 @@ interface AgentGUIConversationRailSectionProps {
   onOpenProjectFiles?: ((action: WorkspaceLinkAction) => void) | null;
   onOpenConversationWindow?: (agentSessionId: string) => void;
   onRequestDeleteConversation: (agentSessionId: string) => void;
+  onRequestRenameConversation: (
+    conversation: AgentGUIRenameableConversation
+  ) => void;
   onCancelDeleteConversation: () => void;
   onConfirmDeleteConversation: () => void;
 }
@@ -4870,6 +5437,7 @@ const AgentGUIConversationRailSection = memo(
     onOpenProjectFiles,
     onOpenConversationWindow,
     onRequestDeleteConversation,
+    onRequestRenameConversation,
     onCancelDeleteConversation,
     onConfirmDeleteConversation
   }: AgentGUIConversationRailSectionProps): React.JSX.Element {
@@ -5200,6 +5768,7 @@ const AgentGUIConversationRailSection = memo(
                 onCancelDeleteConversation={onCancelDeleteConversation}
                 onConfirmDeleteConversation={onConfirmDeleteConversation}
                 onRequestDeleteConversation={onRequestDeleteConversation}
+                onRequestRenameConversation={onRequestRenameConversation}
                 onSelectConversation={onSelectConversation}
                 onToggleConversationPinned={onToggleConversationPinned}
                 onOpenConversationWindow={onOpenConversationWindow}
@@ -5249,6 +5818,9 @@ interface AgentGUIConversationRailItemProps {
   onToggleConversationPinned: (agentSessionId: string, pinned: boolean) => void;
   onOpenConversationWindow?: (agentSessionId: string) => void;
   onRequestDeleteConversation: (agentSessionId: string) => void;
+  onRequestRenameConversation: (
+    conversation: AgentGUIRenameableConversation
+  ) => void;
   onCancelDeleteConversation: () => void;
   onConfirmDeleteConversation: () => void;
 }
@@ -5268,6 +5840,7 @@ const AgentGUIConversationRailItem = memo(
     onToggleConversationPinned,
     onOpenConversationWindow,
     onRequestDeleteConversation,
+    onRequestRenameConversation,
     onCancelDeleteConversation,
     onConfirmDeleteConversation
   }: AgentGUIConversationRailItemProps): React.JSX.Element {
@@ -5296,8 +5869,11 @@ const AgentGUIConversationRailItem = memo(
     const handleRequestDelete = useCallback(() => {
       onRequestDeleteConversation(item.id);
     }, [item.id, onRequestDeleteConversation]);
+    const handleRequestRename = useCallback(() => {
+      onRequestRenameConversation(item);
+    }, [item, onRequestRenameConversation]);
 
-    return (
+    const row = (
       <div
         ref={setItemElement}
         className={styles.conversationItem}
@@ -5311,6 +5887,7 @@ const AgentGUIConversationRailItem = memo(
           type="button"
           className={styles.conversationSelect}
           onClick={handleSelect}
+          onDoubleClick={handleRequestRename}
         >
           <span className={styles.conversationTitle}>
             {conversationPlainTitle(item, labels, uiLanguage)}
@@ -5402,6 +5979,24 @@ const AgentGUIConversationRailItem = memo(
           </div>
         )}
       </div>
+    );
+
+    if (previewMode) {
+      return row;
+    }
+
+    return (
+      <ContextMenu>
+        <ContextMenuTrigger asChild>{row}</ContextMenuTrigger>
+        <ContextMenuContent className="nodrag [-webkit-app-region:no-drag]">
+          <ContextMenuItem
+            className="nodrag [-webkit-app-region:no-drag]"
+            onSelect={handleRequestRename}
+          >
+            {labels.renameSession}
+          </ContextMenuItem>
+        </ContextMenuContent>
+      </ContextMenu>
     );
   }
 );

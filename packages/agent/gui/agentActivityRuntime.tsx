@@ -129,6 +129,12 @@ export interface AgentActivityRuntimeSetSessionPinnedInput {
   workspaceId: string;
 }
 
+export interface AgentActivityRuntimeUpdateSessionTitleInput {
+  agentSessionId: string;
+  title: string;
+  workspaceId: string;
+}
+
 export interface AgentActivityRuntimeTrackSettingsProjectChangeInput {
   action: "clear" | "create_new" | "select_existing";
   agentSessionId: string;
@@ -335,6 +341,9 @@ export interface AgentActivityRuntime {
   ): Promise<AgentActivityRuntimePromptAsset>;
   setSessionPinned(
     input: AgentActivityRuntimeSetSessionPinnedInput
+  ): Promise<AgentActivitySession>;
+  updateSessionTitle(
+    input: AgentActivityRuntimeUpdateSessionTitleInput
   ): Promise<AgentActivitySession>;
   trackSettingsProjectChange?(
     input: AgentActivityRuntimeTrackSettingsProjectChangeInput

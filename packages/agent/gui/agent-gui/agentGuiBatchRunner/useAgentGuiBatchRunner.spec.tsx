@@ -257,6 +257,14 @@ function installAgentActivityRuntime(
       agentSessionId: input.agentSessionId,
       settings: input.settings
     }),
+    updateSessionTitle: async (input) => ({
+      workspaceId: input.workspaceId,
+      agentSessionId: input.agentSessionId,
+      provider: "codex",
+      cwd: "",
+      title: input.title,
+      status: "ready"
+    }),
     getSnapshot,
     listSessionMessages,
     load: async (workspaceId) => getSnapshot(workspaceId),

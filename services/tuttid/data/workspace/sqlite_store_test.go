@@ -96,6 +96,68 @@ func TestSQLiteStoreMigrationRepairsAgentTargetIDColumnWhenMarkerExists(t *testi
 	}
 }
 
+func TestSQLiteStoreMigrationRepairsAgentActivityTitleSourceColumn(t *testing.T) {
+	t.Parallel()
+
+	dbPath := filepath.Join(t.TempDir(), "tuttid.db")
+	createLegacyAgentActivityV4MarkedDatabaseWithoutAgentTargetID(t, dbPath)
+
+	store, err := OpenSQLiteStore(dbPath)
+	if err != nil {
+		t.Fatalf("OpenSQLiteStore() error = %v", err)
+	}
+	t.Cleanup(func() {
+		_ = store.Close()
+	})
+
+	ctx := context.Background()
+	if err := store.Migrate(ctx); err != nil {
+		t.Fatalf("Migrate() error = %v", err)
+	}
+
+	hasTitleSource, err := store.hasColumn(ctx, "workspace_agent_sessions", "title_source")
+	if err != nil {
+		t.Fatalf("hasColumn(title_source) error = %v", err)
+	}
+	if !hasTitleSource {
+		t.Fatal("title_source column was not repaired")
+	}
+
+	renamed, ok, err := store.UpdateSessionTitle(ctx, "ws-legacy-agent-target-id", "session-legacy", "Manual legacy title")
+	if err != nil {
+		t.Fatalf("UpdateSessionTitle() error = %v", err)
+	}
+	if !ok {
+		t.Fatal("UpdateSessionTitle() ok = false, want true")
+	}
+	if renamed.Title != "Manual legacy title" {
+		t.Fatalf("renamed title = %q, want Manual legacy title", renamed.Title)
+	}
+
+	if _, err := store.ReportSessionState(ctx, agentactivitybiz.SessionStateReport{
+		WorkspaceID:      "ws-legacy-agent-target-id",
+		AgentSessionID:   "session-legacy",
+		Origin:           agentsessionstore.WorkspaceAgentSessionOriginRuntime,
+		Provider:         "codex",
+		Title:            "Runtime overwrite",
+		Status:           "running",
+		OccurredAtUnixMS: 2,
+	}); err != nil {
+		t.Fatalf("ReportSessionState() error = %v", err)
+	}
+
+	session, ok, err := store.GetSession(ctx, "ws-legacy-agent-target-id", "session-legacy")
+	if err != nil {
+		t.Fatalf("GetSession() error = %v", err)
+	}
+	if !ok {
+		t.Fatal("GetSession() ok = false, want true")
+	}
+	if session.Title != "Manual legacy title" {
+		t.Fatalf("title after runtime report = %q, want Manual legacy title", session.Title)
+	}
+}
+
 func TestSQLiteStoreCreateUpdateAndList(t *testing.T) {
 	t.Parallel()
 
@@ -2123,6 +2185,65 @@ func TestSQLiteStoreUpdateAgentActivitySessionPinned(t *testing.T) {
 	}
 	if _, ok, err := store.UpdateSessionPinned(ctx, "ws-agent-pin", "session-1", true); err != nil || ok {
 		t.Fatalf("UpdateSessionPinned(deleted) ok=%v error=%v, want ok=false", ok, err)
+	}
+}
+
+func TestSQLiteStoreUpdateAgentActivitySessionTitlePreservesManualTitle(t *testing.T) {
+	t.Parallel()
+
+	store := openTestSQLiteStore(t)
+	ctx := context.Background()
+
+	if err := store.Create(ctx, workspacebiz.Summary{
+		ID:   "ws-agent-title",
+		Name: "Workspace Agent Title",
+	}); err != nil {
+		t.Fatalf("Create() error = %v", err)
+	}
+	if _, err := store.ReportSessionState(ctx, agentactivitybiz.SessionStateReport{
+		WorkspaceID:      "ws-agent-title",
+		AgentSessionID:   "session-1",
+		Origin:           agentsessionstore.WorkspaceAgentSessionOriginRuntime,
+		Provider:         "codex",
+		Title:            "Runtime title",
+		Status:           "running",
+		OccurredAtUnixMS: 100,
+	}); err != nil {
+		t.Fatalf("ReportSessionState() error = %v", err)
+	}
+
+	renamed, ok, err := store.UpdateSessionTitle(ctx, "ws-agent-title", "session-1", "Manual title")
+	if err != nil {
+		t.Fatalf("UpdateSessionTitle() error = %v", err)
+	}
+	if !ok {
+		t.Fatal("UpdateSessionTitle() ok = false, want true")
+	}
+	if renamed.Title != "Manual title" {
+		t.Fatalf("renamed title = %q, want Manual title", renamed.Title)
+	}
+
+	if _, err := store.ReportSessionState(ctx, agentactivitybiz.SessionStateReport{
+		WorkspaceID:      "ws-agent-title",
+		AgentSessionID:   "session-1",
+		Origin:           agentsessionstore.WorkspaceAgentSessionOriginRuntime,
+		Provider:         "codex",
+		Title:            "Later runtime title",
+		Status:           "running",
+		OccurredAtUnixMS: 200,
+	}); err != nil {
+		t.Fatalf("ReportSessionState() after rename error = %v", err)
+	}
+
+	session, ok, err := store.GetSession(ctx, "ws-agent-title", "session-1")
+	if err != nil {
+		t.Fatalf("GetSession() error = %v", err)
+	}
+	if !ok {
+		t.Fatal("GetSession() ok = false, want true")
+	}
+	if session.Title != "Manual title" {
+		t.Fatalf("title after runtime report = %q, want Manual title", session.Title)
 	}
 }
 

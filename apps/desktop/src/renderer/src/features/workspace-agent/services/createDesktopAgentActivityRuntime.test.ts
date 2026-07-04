@@ -153,6 +153,39 @@ test("desktop agent activity runtime archives prompt image uploads", async () =>
   });
 });
 
+test("desktop agent activity runtime forwards session title updates", async () => {
+  const updateInputs: unknown[] = [];
+  const service = createWorkspaceAgentActivityService();
+  service.updateSessionTitle = async (input) => {
+    updateInputs.push(input);
+    return {
+      agentSessionId: input.agentSessionId,
+      cwd: "/workspace",
+      provider: "codex",
+      status: "ready",
+      title: input.title,
+      updatedAtUnixMs: 1,
+      workspaceId: input.workspaceId
+    };
+  };
+  const runtime = createDesktopAgentActivityRuntime(service);
+
+  const session = await runtime.updateSessionTitle({
+    workspaceId: "workspace-1",
+    agentSessionId: "session-1",
+    title: "Renamed session"
+  });
+
+  assert.deepEqual(updateInputs, [
+    {
+      workspaceId: "workspace-1",
+      agentSessionId: "session-1",
+      title: "Renamed session"
+    }
+  ]);
+  assert.equal(session.title, "Renamed session");
+});
+
 function createWorkspaceAgentActivityService(): IWorkspaceAgentActivityService {
   return {
     _serviceBrand: undefined,
@@ -175,6 +208,9 @@ function createWorkspaceAgentActivityService(): IWorkspaceAgentActivityService {
       throw new Error("not implemented");
     },
     updateSessionSettings: async () => {
+      throw new Error("not implemented");
+    },
+    updateSessionTitle: async () => {
       throw new Error("not implemented");
     },
     getSessionControlState: async () => {

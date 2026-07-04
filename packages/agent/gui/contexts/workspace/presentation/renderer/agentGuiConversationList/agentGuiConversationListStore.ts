@@ -1622,6 +1622,12 @@ function updateAgentGUIConversationListConversations(
   });
 }
 
+type AgentGUIConversationSummaryPatch =
+  | Partial<Omit<AgentGUIConversationSummary, "project">>
+  | ((
+      conversation: AgentGUIConversationSummary
+    ) => Partial<Omit<AgentGUIConversationSummary, "project">> | null);
+
 export function setAgentGUIConversationListActiveConversation(input: {
   conversationId: string | null | undefined;
   ownerKey: string;
@@ -1840,11 +1846,7 @@ export function patchAgentGUIConversationSummary(input: {
   conversationId: string;
   // `project` is omitted from the patch type: it is view-derived, never store
   // state. (Even if it slipped through, stripProjectFromConversations drops it.)
-  patch:
-    | Partial<Omit<AgentGUIConversationSummary, "project">>
-    | ((
-        conversation: AgentGUIConversationSummary
-      ) => Partial<Omit<AgentGUIConversationSummary, "project">> | null);
+  patch: AgentGUIConversationSummaryPatch;
 }): void {
   const conversationId = input.conversationId.trim();
   if (!conversationId) {
@@ -1875,6 +1877,28 @@ export function patchAgentGUIConversationSummary(input: {
     });
     return changed ? next : current;
   });
+}
+
+export function patchAgentGUIConversationSummaryInWorkspace(input: {
+  workspaceId: string;
+  conversationId: string;
+  patch: AgentGUIConversationSummaryPatch;
+}): void {
+  const workspaceId = input.workspaceId.trim();
+  const conversationId = input.conversationId.trim();
+  if (!workspaceId || !conversationId) {
+    return;
+  }
+  for (const state of Object.values(snapshot.statesByQueryKey)) {
+    if (state.query.workspaceId !== workspaceId) {
+      continue;
+    }
+    patchAgentGUIConversationSummary({
+      query: state.query,
+      conversationId,
+      patch: input.patch
+    });
+  }
 }
 
 /** Remove conversations by id (optimistic local delete, no reappear-guard). */

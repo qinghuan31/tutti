@@ -625,9 +625,9 @@ func upsertAgentSessionTx(
 INSERT INTO workspace_agent_sessions (
   workspace_id, agent_session_id, origin, agent_target_id, provider, provider_session_id, model,
   settings_json, runtime_context_json, cwd, rail_section_kind, rail_project_path, rail_section_key,
-  title, status, current_phase, last_error, last_event_at_unix_ms, started_at_unix_ms,
+  title, title_source, status, current_phase, last_error, last_event_at_unix_ms, started_at_unix_ms,
   ended_at_unix_ms, created_at_unix_ms, updated_at_unix_ms
-) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 ON CONFLICT(workspace_id, agent_session_id) DO UPDATE SET
   origin = excluded.origin,
   agent_target_id = excluded.agent_target_id,
@@ -640,7 +640,10 @@ ON CONFLICT(workspace_id, agent_session_id) DO UPDATE SET
   rail_section_kind = excluded.rail_section_kind,
   rail_project_path = excluded.rail_project_path,
   rail_section_key = excluded.rail_section_key,
-  title = excluded.title,
+  title = CASE
+    WHEN workspace_agent_sessions.title_source = 'user' THEN workspace_agent_sessions.title
+    ELSE excluded.title
+  END,
   status = excluded.status,
   current_phase = excluded.current_phase,
   last_error = excluded.last_error,
@@ -652,7 +655,7 @@ ON CONFLICT(workspace_id, agent_session_id) DO UPDATE SET
 WHERE workspace_agent_sessions.deleted_at_unix_ms = 0
 `, session.WorkspaceID, session.AgentSessionID, session.Origin, nullString(session.AgentTargetID), session.Provider,
 		session.ProviderSessionID, session.Model, settingsJSON, runtimeContextJSON,
-		session.CWD, railSection.Kind, railSection.ProjectPath, railSection.Key, session.Title,
+		session.CWD, railSection.Kind, railSection.ProjectPath, railSection.Key, session.Title, "",
 		session.Status, session.CurrentPhase, session.LastError, session.LastEventUnixMS,
 		session.StartedAtUnixMS, session.EndedAtUnixMS, session.CreatedAtUnixMS,
 		session.UpdatedAtUnixMS)
@@ -663,7 +666,14 @@ WHERE workspace_agent_sessions.deleted_at_unix_ms = 0
 	if err != nil {
 		return false, false, 0, agentactivitybiz.Session{}, err
 	}
-	return accepted, sessionStateReportApplied(input, projected.Session), projected.LastEventUnixMS, projectionSessionToBiz(projected.Session), nil
+	persistedSession, ok, err := getAgentSessionTx(ctx, tx, workspaceID, agentSessionID)
+	if err != nil {
+		return false, false, 0, agentactivitybiz.Session{}, err
+	}
+	if !ok {
+		return accepted, sessionStateReportApplied(input, projected.Session), projected.LastEventUnixMS, projectionSessionToBiz(projected.Session), nil
+	}
+	return accepted, sessionStateReportApplied(input, projected.Session), projected.LastEventUnixMS, persistedSession, nil
 }
 
 func getAgentSessionForUpdate(

@@ -728,6 +728,25 @@ export class WorkspaceAgentActivityService implements IWorkspaceAgentActivitySer
     };
   }
 
+  async updateSessionTitle(input: {
+    agentSessionId: string;
+    title: string;
+    workspaceId: string;
+  }): ReturnType<IWorkspaceAgentActivityService["updateSessionTitle"]> {
+    const session =
+      await this.dependencies.tuttidClient.updateWorkspaceAgentSessionTitle(
+        input.workspaceId,
+        input.agentSessionId,
+        { title: input.title }
+      );
+    const activitySession = agentActivitySessionFromTuttidSession(
+      input.workspaceId,
+      session
+    );
+    this.upsertAuthoritativeSession(activitySession);
+    return activitySession;
+  }
+
   getSessionControlState(input: {
     agentSessionId: string;
     workspaceId: string;

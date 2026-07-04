@@ -1,6 +1,7 @@
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import {
+  act,
   fireEvent,
   render,
   screen,
@@ -14,6 +15,7 @@ import type { WorkspaceAgentSessionDetailViewModel } from "../../shared/workspac
 import type { AgentPromptContentBlock } from "../../shared/contracts/dto";
 import type { AgentGUINodeViewModel } from "./model/agentGuiNodeTypes";
 import { AgentGUINodeView, type AgentGUIViewLabels } from "./AgentGUINodeView";
+import { publishAgentGUIConversationTitleOverride } from "./agentGuiConversationTitleOverrides";
 import { createLocalAgentGUIProviderTarget } from "../../providerTargets";
 import {
   AgentActivityRuntimeProvider,
@@ -986,6 +988,419 @@ describe("AgentGUINodeView layout persistence", () => {
     expect(
       screen.getByRole("button", { name: "/workspace/demo" })
     ).toHaveAttribute("data-slot", "tooltip-trigger");
+  });
+
+  it("renames the active conversation from the detail title menu", async () => {
+    const actions = createActions();
+    const conversation = {
+      ...createConversationSummary("session-1"),
+      title: "Old title"
+    };
+
+    renderAgentGUINodeView({
+      actions,
+      viewModel: {
+        ...createViewModel(),
+        activeConversation: conversation,
+        activeConversationId: conversation.id,
+        conversations: [conversation]
+      }
+    });
+
+    const detailMenuButton = screen.getByRole("button", {
+      name: "renameSession"
+    });
+    fireEvent.pointerDown(detailMenuButton);
+    fireEvent.click(detailMenuButton);
+    fireEvent.click(await screen.findByText("renameSession"));
+    fireEvent.change(screen.getByLabelText("renameSessionInputLabel"), {
+      target: { value: "New title" }
+    });
+    fireEvent.click(screen.getByRole("button", { name: "renameSessionSave" }));
+
+    await waitFor(() => {
+      expect(actions.renameConversation).toHaveBeenCalledWith({
+        agentSessionId: "session-1",
+        title: "New title"
+      });
+    });
+  });
+
+  it("updates a runtime section rail title after renaming a conversation", async () => {
+    const actions = createActions();
+    vi.mocked(actions.renameConversation).mockImplementation(async (input) => {
+      publishAgentGUIConversationTitleOverride({
+        workspaceId: "room-1",
+        id: input.agentSessionId,
+        title: input.title,
+        updatedAtUnixMs: 20
+      });
+    });
+    const project = {
+      id: "project-app",
+      path: "/workspace/app",
+      label: "App"
+    };
+    const runtimeSession = {
+      ...createRuntimeSession("room-1", "session-1", project.path),
+      title: "Old runtime title",
+      updatedAtUnixMs: 10
+    };
+    const conversation = {
+      ...createConversationSummary("session-1"),
+      cwd: project.path,
+      title: "Old runtime title",
+      updatedAtUnixMs: 10
+    };
+
+    renderAgentGUINodeView({
+      actions,
+      activityRuntime: {
+        ...createNoopAgentActivityRuntime(),
+        listSessionSections: async () => ({
+          workspaceId: "room-1",
+          sections: [
+            createRuntimeProjectSection({
+              hasMore: false,
+              project,
+              sessions: [runtimeSession],
+              workspaceId: "room-1"
+            })
+          ]
+        }),
+        listSessionSectionPage: async (input) => ({
+          kind: "project",
+          sectionKey: input.sectionKey,
+          userProject: createRuntimeUserProject(project),
+          sessions: [],
+          hasMore: false
+        })
+      },
+      viewModel: {
+        ...createViewModel(),
+        activeConversation: conversation,
+        activeConversationId: conversation.id,
+        conversations: [conversation],
+        userProjects: [project]
+      }
+    });
+
+    await screen.findByRole("button", { name: /Old runtime title/u });
+
+    const detailMenuButton = screen.getByRole("button", {
+      name: "renameSession"
+    });
+    fireEvent.pointerDown(detailMenuButton);
+    fireEvent.click(detailMenuButton);
+    fireEvent.click(await screen.findByText("renameSession"));
+    fireEvent.change(screen.getByLabelText("renameSessionInputLabel"), {
+      target: { value: "New runtime title" }
+    });
+    fireEvent.click(screen.getByRole("button", { name: "renameSessionSave" }));
+
+    await waitFor(() => {
+      expect(actions.renameConversation).toHaveBeenCalledWith({
+        agentSessionId: "session-1",
+        title: "New runtime title"
+      });
+    });
+    expect(
+      await screen.findByRole("button", { name: /New runtime title/u })
+    ).toBeInTheDocument();
+  });
+
+  it("uses the active conversation title for a runtime section provider placeholder row", async () => {
+    const project = {
+      id: "project-app",
+      path: "/workspace/app",
+      label: "App"
+    };
+    const runtimeSession = {
+      ...createRuntimeSession("room-1", "session-1", project.path),
+      title: "Claude Code",
+      updatedAtUnixMs: 30
+    };
+    const staleConversation = {
+      ...createConversationSummary("session-1"),
+      cwd: project.path,
+      provider: "claude-code" as const,
+      title: "Claude Code",
+      updatedAtUnixMs: 30
+    };
+    const activeConversation = {
+      ...staleConversation,
+      title: "帮我新增一个 hello_world.md 文件吧",
+      updatedAtUnixMs: 20
+    };
+
+    renderAgentGUINodeView({
+      activityRuntime: {
+        ...createNoopAgentActivityRuntime(),
+        listSessionSections: async () => ({
+          workspaceId: "room-1",
+          sections: [
+            createRuntimeProjectSection({
+              hasMore: false,
+              project,
+              sessions: [runtimeSession],
+              workspaceId: "room-1"
+            })
+          ]
+        }),
+        listSessionSectionPage: async (input) => ({
+          kind: "project",
+          sectionKey: input.sectionKey,
+          userProject: createRuntimeUserProject(project),
+          sessions: [],
+          hasMore: false
+        })
+      },
+      viewModel: {
+        ...createViewModel(),
+        activeConversation,
+        activeConversationId: activeConversation.id,
+        conversations: [staleConversation],
+        userProjects: [project]
+      }
+    });
+
+    expect(
+      await screen.findByRole("button", {
+        name: /帮我新增一个 hello_world\.md 文件吧/u
+      })
+    ).toBeInTheDocument();
+  });
+
+  it("refreshes the runtime section rail when an active conversation title changes without a new object", async () => {
+    const project = {
+      id: "project-app",
+      path: "/workspace/app",
+      label: "App"
+    };
+    const runtimeSession = {
+      ...createRuntimeSession("room-1", "session-1", project.path),
+      title: "Claude Code",
+      updatedAtUnixMs: 30
+    };
+    const activeConversation = {
+      ...createConversationSummary("session-1"),
+      cwd: project.path,
+      provider: "claude-code" as const,
+      title: "Claude Code",
+      updatedAtUnixMs: 30
+    };
+    const viewModel = {
+      ...createViewModel(),
+      activeConversation,
+      activeConversationId: activeConversation.id,
+      conversations: [activeConversation],
+      userProjects: [project]
+    };
+    const activityRuntime: AgentActivityRuntime = {
+      ...createNoopAgentActivityRuntime(),
+      listSessionSections: async () => ({
+        workspaceId: "room-1",
+        sections: [
+          createRuntimeProjectSection({
+            hasMore: false,
+            project,
+            sessions: [runtimeSession],
+            workspaceId: "room-1"
+          })
+        ]
+      }),
+      listSessionSectionPage: async (input) => ({
+        kind: "project" as const,
+        sectionKey: input.sectionKey,
+        userProject: createRuntimeUserProject(project),
+        sessions: [],
+        hasMore: false
+      })
+    };
+    const { rerender } = renderAgentGUINodeView({
+      activityRuntime,
+      viewModel
+    });
+
+    await screen.findByRole("button", { name: /Claude Code/u });
+
+    activeConversation.title = "帮我新增一个 hello_world.md 文件吧";
+    activeConversation.updatedAtUnixMs = 20;
+    rerender(
+      buildAgentGUINodeViewElement({
+        activityRuntime,
+        viewModel
+      })
+    );
+
+    expect(
+      await screen.findByRole("button", {
+        name: /帮我新增一个 hello_world\.md 文件吧/u
+      })
+    ).toBeInTheDocument();
+  });
+
+  it("syncs a runtime section rail title from a published rename override", async () => {
+    const project = {
+      id: "project-app",
+      path: "/workspace/app",
+      label: "App"
+    };
+    const runtimeSession = {
+      ...createRuntimeSession("room-1", "session-1", project.path),
+      title: "Old published title",
+      updatedAtUnixMs: 10
+    };
+    const conversation = {
+      ...createConversationSummary("session-1"),
+      cwd: project.path,
+      title: "Old published title",
+      updatedAtUnixMs: 10
+    };
+
+    renderAgentGUINodeView({
+      activityRuntime: {
+        ...createNoopAgentActivityRuntime(),
+        listSessionSections: async () => ({
+          workspaceId: "room-1",
+          sections: [
+            createRuntimeProjectSection({
+              hasMore: false,
+              project,
+              sessions: [runtimeSession],
+              workspaceId: "room-1"
+            })
+          ]
+        }),
+        listSessionSectionPage: async (input) => ({
+          kind: "project",
+          sectionKey: input.sectionKey,
+          userProject: createRuntimeUserProject(project),
+          sessions: [],
+          hasMore: false
+        })
+      },
+      viewModel: {
+        ...createViewModel(),
+        activeConversation: null,
+        activeConversationId: null,
+        conversations: [conversation],
+        userProjects: [project]
+      }
+    });
+
+    await screen.findByRole("button", { name: /Old published title/u });
+
+    act(() => {
+      publishAgentGUIConversationTitleOverride({
+        workspaceId: "room-1",
+        id: "session-1",
+        title: "New published title",
+        updatedAtUnixMs: 20
+      });
+    });
+
+    expect(
+      await screen.findByRole("button", { name: /New published title/u })
+    ).toBeInTheDocument();
+
+    act(() => {
+      publishAgentGUIConversationTitleOverride({
+        workspaceId: "room-1",
+        id: "session-1",
+        title: "Stale published title",
+        updatedAtUnixMs: 15
+      });
+    });
+
+    expect(
+      screen.getByRole("button", { name: /New published title/u })
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: /Stale published title/u })
+    ).not.toBeInTheDocument();
+  });
+
+  it("syncs the active detail title from a published rename override", async () => {
+    const conversation = {
+      ...createConversationSummary("session-1"),
+      title: "Old detail title",
+      updatedAtUnixMs: 10
+    };
+
+    renderAgentGUINodeView({
+      viewModel: {
+        ...createViewModel(),
+        activeConversation: conversation,
+        activeConversationId: conversation.id,
+        conversations: [conversation]
+      }
+    });
+
+    expect(screen.getAllByText("Old detail title").length).toBeGreaterThan(0);
+
+    act(() => {
+      publishAgentGUIConversationTitleOverride({
+        workspaceId: "room-1",
+        id: "session-1",
+        title: "New detail title",
+        updatedAtUnixMs: 20
+      });
+    });
+
+    await waitFor(() => {
+      expect(screen.getAllByText("New detail title").length).toBeGreaterThan(0);
+    });
+    expect(screen.queryByText("Old detail title")).not.toBeInTheDocument();
+  });
+
+  it("opens the rename dialog when a rail conversation is double-clicked", () => {
+    const conversation = createConversationSummary("session-1");
+    renderAgentGUINodeView({
+      viewModel: {
+        ...createViewModel(),
+        activeConversation: conversation,
+        activeConversationId: conversation.id,
+        conversations: [conversation]
+      }
+    });
+
+    const conversationItem = screen.getByTestId(
+      "agent-gui-conversation-item-session-1"
+    );
+    fireEvent.doubleClick(
+      within(conversationItem).getByRole("button", { name: /session-1/ })
+    );
+
+    expect(screen.getByText("renameSessionTitle")).toBeInTheDocument();
+    expect(screen.getByLabelText("renameSessionInputLabel")).toHaveValue(
+      "session-1"
+    );
+  });
+
+  it("opens the rename dialog from the rail conversation context menu", async () => {
+    const conversation = {
+      ...createConversationSummary("session-1"),
+      title: "Context title"
+    };
+    renderAgentGUINodeView({
+      viewModel: {
+        ...createViewModel(),
+        activeConversation: conversation,
+        activeConversationId: conversation.id,
+        conversations: [conversation]
+      }
+    });
+
+    fireEvent.contextMenu(
+      screen.getByTestId("agent-gui-conversation-item-session-1")
+    );
+    fireEvent.click(await screen.findByText("renameSession"));
+
+    expect(screen.getByText("renameSessionTitle")).toBeInTheDocument();
+    expect(screen.getByLabelText("renameSessionInputLabel")).toHaveValue(
+      "Context title"
+    );
   });
 
   it("renders a fishbone loading skeleton for the initial conversation list load", () => {
@@ -2961,6 +3376,12 @@ function createNoopAgentActivityRuntime(): AgentActivityRuntime {
     async setSessionPinned(input) {
       return createRuntimeSession(input.workspaceId, input.agentSessionId);
     },
+    async updateSessionTitle(input) {
+      return {
+        ...createRuntimeSession(input.workspaceId, input.agentSessionId),
+        title: input.title
+      };
+    },
     async trackSettingsProjectChange() {},
     async trackDraftComposerSettingsChange() {},
     reportDiagnostic() {},
@@ -3084,6 +3505,7 @@ function createActions(): AgentGUINodeViewProps["actions"] {
     retryActivation: vi.fn(),
     continueInNewConversation: vi.fn(),
     retryOpenclawGateway: vi.fn(),
+    renameConversation: vi.fn(async () => undefined),
     toggleConversationPinned: vi.fn(),
     removeProject: vi.fn(),
     confirmDeleteProjectConversations: vi.fn(),
@@ -3440,6 +3862,16 @@ function createLabels(): AgentGUIViewLabels {
     openConversationWindow: "openConversationWindow",
     showMoreConversations: "showMoreConversations",
     showLessConversations: "showLessConversations",
+    renameSession: "renameSession",
+    renameSessionTitle: "renameSessionTitle",
+    renameSessionDescription: "renameSessionDescription",
+    renameSessionInputLabel: "renameSessionInputLabel",
+    renameSessionTitleRequired: "renameSessionTitleRequired",
+    renameSessionTitleTooLong: (maxLength: number) =>
+      `renameSessionTitleTooLong:${maxLength}`,
+    renameSessionSave: "renameSessionSave",
+    renameSessionSaving: "renameSessionSaving",
+    renameSessionFailed: "renameSessionFailed",
     deleteSession: "deleteSession",
     pinSession: "pinSession",
     unpinSession: "unpinSession",

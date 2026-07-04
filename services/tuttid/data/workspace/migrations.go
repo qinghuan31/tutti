@@ -17,6 +17,7 @@ const schemaMigrationWorkspaceAgentActivityV2 = "workspace_agent_activity_v2"
 const schemaMigrationWorkspaceAgentActivityV3 = "workspace_agent_activity_v3"
 const schemaMigrationWorkspaceAgentActivityV4 = "workspace_agent_activity_v4"
 const schemaMigrationWorkspaceAgentActivityV5 = "workspace_agent_activity_v5"
+const schemaMigrationWorkspaceAgentActivityV6 = "workspace_agent_activity_v6"
 const schemaMigrationWorkspaceAgentActivityRailV1 = "workspace_agent_activity_rail_v1"
 const schemaMigrationAgentTargetsV1 = "agent_targets_v1"
 const schemaMigrationWorkspaceIssuesV1 = "workspace_issues_v1"
@@ -120,6 +121,10 @@ INSERT OR IGNORE INTO tuttid_schema_migrations (id, applied_at_unix_ms)
 	}
 
 	if err := s.applyWorkspaceAgentActivityV5(ctx); err != nil {
+		return err
+	}
+
+	if err := s.applyWorkspaceAgentActivityV6(ctx); err != nil {
 		return err
 	}
 

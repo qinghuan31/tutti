@@ -11,6 +11,7 @@ export type AgentGUIRuntimeErrorPhase =
   | "retry_activation"
   | "send_prompt"
   | "submit_interactive"
+  | "rename_conversation"
   | "toggle_conversation_pinned"
   | "delete_conversation"
   | "update_session_settings"

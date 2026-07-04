@@ -125,6 +125,11 @@ export interface IWorkspaceAgentActivityService {
     settings: AgentHostAgentSessionComposerSettings;
     workspaceId: string;
   }): Promise<AgentHostUpdateAgentSessionSettingsResult>;
+  updateSessionTitle(input: {
+    agentSessionId: string;
+    title: string;
+    workspaceId: string;
+  }): Promise<AgentActivitySession>;
   getSessionControlState(input: {
     agentSessionId: string;
     workspaceId: string;

@@ -901,6 +901,7 @@ function createDependenciesStub(): {
       resolveWorkspaceGitPatchSupport: fail,
       updateWorkspaceAgentSessionSettings: fail,
       updateWorkspaceAgentSessionPin: fail,
+      updateWorkspaceAgentSessionTitle: fail,
       submitWorkspaceAgentInteractive: fail,
       searchWorkspaceFiles: fail,
       startEnabledWorkspaceApps: fail,

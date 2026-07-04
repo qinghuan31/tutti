@@ -1317,6 +1317,90 @@ describe("AgentGUINode", () => {
     ).toBeNull();
   });
 
+  it("rerenders when only the remembered active conversation title changes", () => {
+    const initialState: AgentGUINodeData = {
+      provider: "codex",
+      lastActiveAgentSessionId: "session-1",
+      lastActiveConversationTitle: "Old memo title",
+      conversationRailWidthPx: null,
+      conversationRailCollapsed: true
+    };
+    mockViewModel = createViewModel({
+      activeConversation: {
+        id: "session-1",
+        provider: "codex",
+        title: "Old memo title",
+        status: "ready",
+        cwd: "/workspace",
+        updatedAtUnixMs: 1
+      },
+      activeConversationId: "session-1"
+    });
+
+    const workspaceFileReferenceAdapter = createWorkspaceFileReferenceAdapter();
+    const managedAgentsState = createManagedAgentsState();
+    const contextMentionProviders = createAgentGUITestContextMentionProviders();
+    const agentActivityRuntime = createNoopAgentActivityRuntime();
+    const onClose = vi.fn();
+    const onResize = vi.fn();
+    const onUpdateNode =
+      vi.fn<
+        (updater: (current: AgentGUINodeData) => AgentGUINodeData) => void
+      >();
+    const onShowMessage = vi.fn();
+    const renderNode = (state: AgentGUINodeData) => (
+      <AgentActivityHostProvider agentActivityRuntime={agentActivityRuntime}>
+        <AgentGUINode
+          nodeId="agent-gui-1"
+          workspaceId="room-1"
+          currentUserId="user-1"
+          workspacePath="/workspace"
+          workspaceFileReferenceAdapter={workspaceFileReferenceAdapter}
+          agentSettings={{ avoidGroupingEdits: false }}
+          title="Codex"
+          state={state}
+          position={{ x: 0, y: 0 }}
+          width={720}
+          height={560}
+          desktopSize={{ width: 1200, height: 800 }}
+          onClose={onClose}
+          onResize={onResize}
+          onUpdateNode={onUpdateNode}
+          onShowMessage={onShowMessage}
+          managedAgentsState={managedAgentsState}
+          contextMentionProviders={contextMentionProviders}
+          isActive
+        />
+      </AgentActivityHostProvider>
+    );
+
+    const { container, rerender } = render(renderNode(initialState));
+    expect(
+      container.querySelector('[data-workspace-node-window-title="true"]')
+    ).toHaveTextContent("Old memo title");
+
+    const nextState = {
+      ...initialState,
+      lastActiveConversationTitle: "New memo title"
+    };
+    mockViewModel = createViewModel({
+      activeConversation: {
+        id: "session-1",
+        provider: "codex",
+        title: "New memo title",
+        status: "ready",
+        cwd: "/workspace",
+        updatedAtUnixMs: 2
+      },
+      activeConversationId: "session-1"
+    });
+    rerender(renderNode(nextState));
+
+    expect(
+      container.querySelector('[data-workspace-node-window-title="true"]')
+    ).toHaveTextContent("New memo title");
+  });
+
   it("keeps a fallback active conversation title at the window top when the rail is collapsed", () => {
     mockViewModel = createViewModel({
       activeConversation: {
@@ -6927,6 +7011,12 @@ function createNoopAgentActivityRuntime(): AgentActivityRuntime {
     },
     async setSessionPinned(input) {
       return createSession(input.workspaceId, input.agentSessionId);
+    },
+    async updateSessionTitle(input) {
+      return {
+        ...createSession(input.workspaceId, input.agentSessionId),
+        title: input.title
+      };
     },
     async trackSettingsProjectChange() {},
     async trackDraftComposerSettingsChange() {},

@@ -458,6 +458,8 @@ function agentGuiStateEquals(
         right.providerTargetRef
       ) &&
       left.lastActiveAgentSessionId === right.lastActiveAgentSessionId &&
+      (left.lastActiveConversationTitle ?? null) ===
+        (right.lastActiveConversationTitle ?? null) &&
       left.conversationRailWidthPx === right.conversationRailWidthPx &&
       left.conversationRailCollapsed === right.conversationRailCollapsed &&
       (left.composerOverrides?.model ?? null) ===
@@ -833,12 +835,31 @@ export const AgentGUINode = memo(function AgentGUINode({
     },
     [actions, onUpdateNode, previewMode]
   );
+  const handleRenameConversation = useCallback(
+    async (...args: Parameters<typeof actions.renameConversation>) => {
+      await actions.renameConversation(...args);
+      const input = args[0];
+      const agentSessionId = input.agentSessionId.trim();
+      const conversationTitle = input.title.trim();
+      if (!agentSessionId || !conversationTitle || previewMode) {
+        return;
+      }
+      onUpdateNode((current) =>
+        current.lastActiveAgentSessionId === agentSessionId &&
+        current.lastActiveConversationTitle !== conversationTitle
+          ? { ...current, lastActiveConversationTitle: conversationTitle }
+          : current
+      );
+    },
+    [actions, onUpdateNode, previewMode]
+  );
   const viewActions = useMemo(
     () => ({
       ...actions,
-      createConversation: handleCreateConversation
+      createConversation: handleCreateConversation,
+      renameConversation: handleRenameConversation
     }),
-    [actions, handleCreateConversation]
+    [actions, handleCreateConversation, handleRenameConversation]
   );
 
   const fallbackAgentTitle = t("sidebar.fallbackAgentLabel");
@@ -1220,6 +1241,20 @@ export const AgentGUINode = memo(function AgentGUINode({
       openConversationWindow: t("agentHost.agentGui.openConversationWindow"),
       showMoreConversations: t("agentHost.agentGui.showMoreConversations"),
       showLessConversations: t("agentHost.agentGui.showLessConversations"),
+      renameSession: t("agentHost.agentGui.renameSession"),
+      renameSessionTitle: t("agentHost.agentGui.renameSessionTitle"),
+      renameSessionDescription: t(
+        "agentHost.agentGui.renameSessionDescription"
+      ),
+      renameSessionInputLabel: t("agentHost.agentGui.renameSessionInputLabel"),
+      renameSessionTitleRequired: t(
+        "agentHost.agentGui.renameSessionTitleRequired"
+      ),
+      renameSessionTitleTooLong: (maxLength: number) =>
+        t("agentHost.agentGui.renameSessionTitleTooLong", { maxLength }),
+      renameSessionSave: t("agentHost.agentGui.renameSessionSave"),
+      renameSessionSaving: t("agentHost.agentGui.renameSessionSaving"),
+      renameSessionFailed: t("agentHost.agentGui.renameSessionFailed"),
       deleteSession: t("agentHost.agentGui.deleteSession"),
       pinSession: t("agentHost.agentGui.pinSession"),
       unpinSession: t("agentHost.agentGui.unpinSession"),

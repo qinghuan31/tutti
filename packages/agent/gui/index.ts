@@ -70,6 +70,7 @@ export type {
   AgentActivityRuntimeUploadPromptContentInput,
   AgentActivityRuntimeUploadPromptContentResult,
   AgentActivityRuntimeUpdateSessionSettingsInput,
+  AgentActivityRuntimeUpdateSessionTitleInput,
   AgentActivityRuntimeWarmupOpenclawGatewayInput
 } from "./agentActivityRuntime";
 export {
