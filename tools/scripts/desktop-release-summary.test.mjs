@@ -86,6 +86,8 @@ test("desktop release summary upserts a managed GitHub release section", () => {
   assert.doesNotMatch(nextBody, /本次版本聚焦发布链路稳定性/);
   assert.match(nextBody, /Stable downloads only point to official releases/);
   assert.match(nextBody, /Highlights/);
+  assert.doesNotMatch(nextBody, /QA Focus/);
+  assert.doesNotMatch(nextBody, /Verify the download entry/);
   assert.match(nextBody, /Raw GitHub note/);
   assert.doesNotMatch(nextBody, /old summary/);
 });

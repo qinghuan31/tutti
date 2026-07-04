@@ -19,7 +19,11 @@ function removeManagedSection(body) {
   return body.replace(managedSectionPattern, "\n").trimEnd();
 }
 
-function renderLocaleSummary(title, localeSummary) {
+function renderLocaleSummary(
+  title,
+  localeSummary,
+  { includeQaFocus = true } = {}
+) {
   const lines = [`### ${title}`, "", localeSummary.headline, ""];
   for (const section of localeSummary.sections ?? []) {
     lines.push(`#### ${section.title}`);
@@ -29,7 +33,7 @@ function renderLocaleSummary(title, localeSummary) {
     lines.push("");
   }
   const qaFocus = localeSummary.qaFocus ?? [];
-  if (qaFocus.length > 0) {
+  if (includeQaFocus && qaFocus.length > 0) {
     lines.push(title === "中文" ? "#### QA 重点" : "#### QA Focus");
     for (const item of qaFocus) {
       lines.push(`- ${item}`);
@@ -44,7 +48,9 @@ function renderReleaseSummarySection(summary) {
     SECTION_START,
     "## Release Summary",
     "",
-    ...renderLocaleSummary("Highlights", summary.en),
+    ...renderLocaleSummary("Highlights", summary.en, {
+      includeQaFocus: false
+    }),
     SECTION_END
   ].join("\n");
 }
