@@ -13,6 +13,7 @@ import {
   resolveAgentMentionFileThumbnailUrl,
   resolveAgentMentionFileVisualKind
 } from "../../shared/mentionFilePresentation";
+import { getAgentCustomMentionKind } from "../../../shared/agentCustomMentionKinds";
 import { translate } from "../../../i18n/index";
 import { AgentMentionNodeView } from "./AgentMentionNodeView";
 import { AGENT_RICH_TEXT_CARET_ANCHOR } from "./agentRichTextCaretAnchor";
@@ -29,7 +30,8 @@ export type AgentMentionKind =
   | "workspace-app"
   | "workspace-reference"
   | "workspace-app-factory"
-  | "workspace-issue";
+  | "workspace-issue"
+  | "custom";
 
 export type AgentMentionReferenceSource = "app" | "task";
 
@@ -127,6 +129,21 @@ export interface AgentMentionWorkspaceAppFactoryItem {
   contextPath?: string;
 }
 
+// 宿主注册的自定义 mention(见 shared/agentCustomMentionKinds):href 是完整信息源
+// (round-trip 无损),item 只承载通用展示字段;业务细节由宿主在注册的钩子里从 href 还原。
+export interface AgentMentionCustomItem {
+  kind: "custom";
+  /** 注册表里的 kind(= mention:// providerId)。 */
+  customKind: string;
+  href: string;
+  workspaceId: string;
+  targetId: string;
+  /** chip 第一行。 */
+  name: string;
+  /** chip 第二行(通用双行卡)。 */
+  summary?: string;
+}
+
 export type AgentContextMentionItem =
   | AgentMentionFileItem
   | AgentMentionAgentTargetItem
@@ -134,7 +151,8 @@ export type AgentContextMentionItem =
   | AgentMentionWorkspaceAppItem
   | AgentMentionWorkspaceReferenceItem
   | AgentMentionWorkspaceAppFactoryItem
-  | AgentMentionWorkspaceIssueItem;
+  | AgentMentionWorkspaceIssueItem
+  | AgentMentionCustomItem;
 
 export type AgentFileMentionItem = AgentContextMentionItem;
 
@@ -155,6 +173,7 @@ export interface AgentFileMentionExtensionOptions {
   onSuggestionKeyDown?: (event: KeyboardEvent) => boolean;
   removeActionAriaLabel?: string;
   renderAsLink?: boolean;
+  shouldSuppressSuggestion?: () => boolean;
 }
 
 export interface ParsedAgentMentionMarkdown {
@@ -214,7 +233,9 @@ export function createAgentFileMentionExtension(
         thumbnailUrl: { default: "" },
         source: { default: "" },
         groupId: { default: "" },
-        fileCount: { default: "" }
+        fileCount: { default: "" },
+        customKind: { default: "" },
+        preview: { default: "" }
       };
     },
 
@@ -394,6 +415,9 @@ export function createAgentFileMentionExtension(
           allowSpaces: true,
           items: () => [],
           allow: ({ state, range }) => {
+            if (options.shouldSuppressSuggestion?.()) {
+              return false;
+            }
             if (range.from <= 1) {
               return true;
             }
@@ -730,6 +754,22 @@ export function parseMentionItemFromHref(input: {
       contextPath: mention.scope?.contextPath?.trim() || undefined
     };
   }
+  const customDefinition = getAgentCustomMentionKind(resource);
+  if (customDefinition) {
+    const presentation = customDefinition.present(mention, href);
+    if (!presentation) {
+      return null;
+    }
+    return {
+      kind: "custom",
+      customKind: resource,
+      href,
+      workspaceId: presentation.workspaceId?.trim() || workspaceId,
+      targetId,
+      name: presentation.name.trim() || name,
+      summary: presentation.summary?.trim() || undefined
+    };
+  }
   return null;
 }
 
@@ -816,6 +856,17 @@ export function mentionItemToAttrs(
       contextPath: item.contextPath ?? ""
     };
   }
+  if (item.kind === "custom") {
+    return {
+      name: item.name,
+      kind: item.kind,
+      customKind: item.customKind,
+      href: item.href,
+      ...workspaceMentionAttrs(item.workspaceId),
+      targetId: item.targetId,
+      preview: item.summary ?? ""
+    };
+  }
   return {
     name: item.name,
     kind: item.kind,
@@ -873,6 +924,26 @@ export function attrsToMentionItem(
         typeof attrs.summaryPreview === "string"
           ? attrs.summaryPreview
           : undefined
+    };
+  }
+  if (kind === "custom") {
+    const workspaceId = workspaceIdFromMentionAttrs(attrs);
+    const targetId =
+      typeof attrs.targetId === "string" ? attrs.targetId.trim() : "";
+    const customKind =
+      typeof attrs.customKind === "string" ? attrs.customKind.trim() : "";
+    const summary =
+      typeof attrs.preview === "string" && attrs.preview.trim()
+        ? attrs.preview.trim()
+        : undefined;
+    return {
+      kind,
+      customKind,
+      href,
+      workspaceId,
+      targetId,
+      name,
+      summary
     };
   }
   if (kind === "workspace-issue") {
@@ -1083,6 +1154,9 @@ function normalizeMentionKind(value: unknown): AgentMentionKind {
   if (value === "workspace-app-factory") {
     return "workspace-app-factory";
   }
+  if (value === "custom") {
+    return "custom";
+  }
   return "file";
 }
 
@@ -1126,6 +1200,12 @@ function mentionVisual(item: AgentContextMentionItem): {
     };
   }
   if (item.kind === "workspace-reference") {
+    return {
+      kindLabel: "Reference",
+      primary: item.name
+    };
+  }
+  if (item.kind === "custom") {
     return {
       kindLabel: "Reference",
       primary: item.name

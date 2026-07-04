@@ -743,7 +743,7 @@ describe("AgentRichTextEditor", () => {
     expect(onSubmit).not.toHaveBeenCalled();
   });
 
-  it("opens file mention suggestions only after start or whitespace", async () => {
+  it("does not open file mention suggestions after pasted at queries", async () => {
     const onFileMentionSuggestionChange = vi.fn();
     const rendered = render(
       <AgentRichTextEditor
@@ -760,9 +760,12 @@ describe("AgentRichTextEditor", () => {
       clipboardData: clipboard("@readme")
     });
     await waitFor(() =>
-      expect(onFileMentionSuggestionChange).toHaveBeenLastCalledWith(
-        expect.objectContaining({ query: "readme", text: "@readme" })
+      expect(screen.getByRole("textbox", { name: "Prompt" })).toHaveTextContent(
+        "@readme"
       )
+    );
+    expect(onFileMentionSuggestionChange).not.toHaveBeenCalledWith(
+      expect.objectContaining({ query: "readme", text: "@readme" })
     );
 
     onFileMentionSuggestionChange.mockClear();
@@ -786,6 +789,57 @@ describe("AgentRichTextEditor", () => {
     );
     expect(onFileMentionSuggestionChange).not.toHaveBeenCalledWith(
       expect.objectContaining({ query: "b.com" })
+    );
+  });
+
+  it("opens file mention suggestions after pasting a bare at trigger", async () => {
+    const onFileMentionSuggestionChange = vi.fn();
+    render(
+      <AgentRichTextEditor
+        value=""
+        disabled={false}
+        placeholder="Prompt"
+        onChange={vi.fn()}
+        onSubmit={vi.fn()}
+        onFileMentionSuggestionChange={onFileMentionSuggestionChange}
+      />
+    );
+
+    fireEvent.paste(await screen.findByRole("textbox", { name: "Prompt" }), {
+      clipboardData: clipboard("@")
+    });
+
+    await waitFor(() =>
+      expect(onFileMentionSuggestionChange).toHaveBeenLastCalledWith(
+        expect.objectContaining({ query: "", text: "@" })
+      )
+    );
+  });
+
+  it("opens file mention suggestions from the imperative mention palette handle", async () => {
+    const ref = createRef<AgentRichTextEditorHandle>();
+    const onFileMentionSuggestionChange = vi.fn();
+    render(
+      <AgentRichTextEditor
+        ref={ref}
+        value=""
+        disabled={false}
+        placeholder="Prompt"
+        onChange={vi.fn()}
+        onSubmit={vi.fn()}
+        onFileMentionSuggestionChange={onFileMentionSuggestionChange}
+      />
+    );
+
+    await screen.findByRole("textbox", { name: "Prompt" });
+    act(() => {
+      ref.current?.openMentionPalette();
+    });
+
+    await waitFor(() =>
+      expect(onFileMentionSuggestionChange).toHaveBeenLastCalledWith(
+        expect.objectContaining({ query: "", text: "@" })
+      )
     );
   });
 

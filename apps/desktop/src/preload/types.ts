@@ -5,6 +5,10 @@ import type {
 import type {
   DesktopBackendConfig,
   DesktopComputerUseActionResult,
+  DesktopComputerUsePermissionGrantStatus,
+  DesktopComputerUsePermissionPane,
+  DesktopComputerUseRestartDriverInput,
+  DesktopComputerUseRestartDriverResult,
   DesktopComputerUseStatus,
   DesktopClipboardImagePayload,
   DesktopCreateUserDocumentsProjectDirectoryResult,
@@ -239,6 +243,12 @@ export interface DesktopComputerUseApi {
   install(): Promise<DesktopComputerUseActionResult>;
   uninstall(): Promise<DesktopComputerUseActionResult>;
   grantPermissions(): Promise<DesktopComputerUseActionResult>;
+  startPermissionGrant(): Promise<DesktopComputerUsePermissionGrantStatus>;
+  getPermissionGrantStatus(): Promise<DesktopComputerUsePermissionGrantStatus | null>;
+  openPermissionSettings(pane: DesktopComputerUsePermissionPane): Promise<void>;
+  restartDriver(
+    input?: DesktopComputerUseRestartDriverInput
+  ): Promise<DesktopComputerUseRestartDriverResult>;
 }
 
 export interface DesktopApi {

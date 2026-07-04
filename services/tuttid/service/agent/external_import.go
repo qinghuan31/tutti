@@ -16,6 +16,7 @@ import (
 
 	agentactivitybiz "github.com/tutti-os/tutti/services/tuttid/biz/agentactivity"
 	agentproviderbiz "github.com/tutti-os/tutti/services/tuttid/biz/agentprovider"
+	agenttargetbiz "github.com/tutti-os/tutti/services/tuttid/biz/agenttarget"
 )
 
 type ExternalImportScanInput struct {
@@ -260,6 +261,17 @@ func providersFromExternalImportSelections(selections []ExternalImportProjectSel
 	return out
 }
 
+func externalImportAgentTargetID(provider string) string {
+	switch agentproviderbiz.Normalize(provider) {
+	case agentproviderbiz.Codex:
+		return agenttargetbiz.IDLocalCodex
+	case agentproviderbiz.ClaudeCode:
+		return agenttargetbiz.IDLocalClaudeCode
+	default:
+		return ""
+	}
+}
+
 func scanExternalAgentSessions(ctx context.Context, providers []string, days int) externalScanData {
 	data := externalScanData{}
 	projects := map[string]*ExternalImportProject{}
@@ -466,6 +478,7 @@ func (s *Service) importExternalSession(ctx context.Context, workspaceID string,
 		WorkspaceID:       workspaceID,
 		AgentSessionID:    agentSessionID,
 		Origin:            WorkspaceAgentSessionOriginImported,
+		AgentTargetID:     externalImportAgentTargetID(session.Provider),
 		Provider:          session.Provider,
 		ProviderSessionID: session.ProviderSessionID,
 		RuntimeContext: map[string]any{

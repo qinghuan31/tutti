@@ -10,7 +10,10 @@ import {
   projectDesktopAgentGUIWorkbenchState,
   type DesktopAgentGUINodeState
 } from "./desktopAgentGUINodeState.ts";
-import { withDesktopAgentGUIProviderComposerDefaults } from "./ui/desktopAgentGUIWorkbenchStateHelpers.ts";
+import {
+  resolveDesktopAgentGUIProviderForAgentTarget,
+  withDesktopAgentGUIProviderComposerDefaults
+} from "./ui/desktopAgentGUIWorkbenchStateHelpers.ts";
 
 test("desktop agent gui node state preserves supported providers and falls back to codex", () => {
   assert.equal(
@@ -169,6 +172,61 @@ test("desktop agent gui composer defaults are agent target keyed", () => {
   });
   assert.equal(state.composerOverridesByProvider, null);
   assert.equal(state.composerOverrides, null);
+});
+
+test("desktop agent gui target state resolves composer defaults from the target provider", () => {
+  assert.equal(
+    resolveDesktopAgentGUIProviderForAgentTarget(
+      "local:claude-code",
+      [
+        {
+          agentTargetId: "local:codex",
+          provider: "codex"
+        },
+        {
+          agentTargetId: "local:claude-code",
+          provider: "claude-code"
+        }
+      ],
+      "codex"
+    ),
+    "claude-code"
+  );
+  assert.equal(
+    resolveDesktopAgentGUIProviderForAgentTarget(null, [], "codex"),
+    "codex"
+  );
+  assert.equal(
+    resolveDesktopAgentGUIProviderForAgentTarget(
+      "local:claude-code",
+      [],
+      "codex"
+    ),
+    "claude-code"
+  );
+});
+
+test("desktop agent gui target defaults do not use the fallback dock provider", () => {
+  const state = withDesktopAgentGUIProviderComposerDefaults(
+    {
+      ...createDefaultDesktopAgentGUINodeState("claude-code"),
+      agentTargetId: "local:claude-code"
+    },
+    "claude-code",
+    {
+      model: "default",
+      permissionModeId: "default",
+      reasoningEffort: "high"
+    }
+  );
+
+  assert.deepEqual(state.composerOverridesByAgentTargetId, {
+    "local:claude-code": {
+      model: "default",
+      permissionModeId: "default",
+      reasoningEffort: "high"
+    }
+  });
 });
 
 test("desktop agent gui node state normalizes partial runtime data", () => {

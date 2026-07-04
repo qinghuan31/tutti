@@ -352,11 +352,16 @@ func TestRenderProviderSkillBundleOmitsComputerUseWhenUnavailable(t *testing.T) 
 
 func setComputerUseAvailableForTest(t *testing.T) bool {
 	t.Helper()
-	executable, err := os.Executable()
-	if err != nil {
-		t.Fatalf("resolve test executable: %v", err)
+	// CheckReady executes the resolved command, so the override must be a
+	// hermetic stub that answers `permissions status --json`. Pointing it at
+	// the test binary itself would re-run the whole test suite recursively.
+	stub := filepath.Join(t.TempDir(), "cua-driver-stub")
+	script := "#!/bin/sh\n" +
+		"printf '%s' '{\"accessibility\":true,\"screen_recording\":true,\"screen_recording_capturable\":true}'\n"
+	if err := os.WriteFile(stub, []byte(script), 0o755); err != nil {
+		t.Fatalf("write cua-driver stub: %v", err)
 	}
-	t.Setenv("TUTTI_COMPUTER_MCP_COMMAND", executable)
+	t.Setenv("TUTTI_COMPUTER_MCP_COMMAND", stub)
 	return runtime.GOOS == "darwin"
 }
 

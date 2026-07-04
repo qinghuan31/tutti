@@ -18,6 +18,7 @@ import {
   resolveDesktopLogsDir,
   type DesktopDaemonEndpoint
 } from "../transport/paths.ts";
+import { applyUserShellProxyToSession } from "../net/sessionProxy.ts";
 import { resolveUserShellEnv } from "./userShellEnv.ts";
 import {
   createDaemonRestartController,
@@ -100,6 +101,7 @@ class ManagedTuttid implements TuttidManager {
     const forwardStdout = shouldForwardDaemonStdout(logOutput);
     const logger = getDesktopLogger();
     const userShellEnv = await resolveManagedDaemonUserShellEnv();
+    void applyUserShellProxyToSession(userShellEnv);
     logger.info("starting managed tuttid", {
       command: launchSpec.command,
       args: launchSpec.args,

@@ -1,4 +1,8 @@
-import type { DesktopDeveloperLogKind } from "@shared/contracts/ipc";
+import type {
+  DesktopComputerUsePermissionPane,
+  DesktopComputerUseRestartDriverInput,
+  DesktopDeveloperLogKind
+} from "@shared/contracts/ipc";
 import type { DesktopLocale } from "@shared/i18n";
 import type {
   DesktopAgentProvider,
@@ -155,6 +159,39 @@ export class WorkspaceSettingsService implements IWorkspaceSettingsService {
 
   grantComputerUsePermissions() {
     return this.dependencies.client.grantComputerUsePermissions();
+  }
+
+  startComputerUsePermissionGrant() {
+    return this.dependencies.client.startComputerUsePermissionGrant();
+  }
+
+  getComputerUsePermissionGrantStatus() {
+    return this.dependencies.client.getComputerUsePermissionGrantStatus();
+  }
+
+  logComputerUsePermissionDiagnostic(input: {
+    details?: Record<string, unknown>;
+    event: string;
+    level?: "debug" | "error" | "info" | "warn";
+  }): void {
+    void this.dependencies.client
+      .logComputerUsePermissionDiagnostic({
+        details: input.details,
+        event: input.event,
+        level: input.level,
+        workspaceId: this.store.workspaceID
+      })
+      .catch(() => undefined);
+  }
+
+  openComputerUsePermissionSettings(
+    pane: DesktopComputerUsePermissionPane
+  ): Promise<void> {
+    return this.dependencies.client.openComputerUsePermissionSettings(pane);
+  }
+
+  restartComputerUseDriver(input?: DesktopComputerUseRestartDriverInput) {
+    return this.dependencies.client.restartComputerUseDriver(input);
   }
 
   syncWorkspace(workspace: WorkspaceSettingsWorkspaceInput): void {
