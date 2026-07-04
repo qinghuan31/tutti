@@ -3652,6 +3652,63 @@ describe("AgentComposer", () => {
     expect(onDraftContentChange).not.toHaveBeenCalled();
   });
 
+  it("cancels an empty-result @ search on Enter instead of sending, then sends on the next Enter", () => {
+    // A non-empty query (rather than a bare "@") puts the mention search in
+    // "results" mode, matching the reported scenario: the user typed @ plus
+    // some text and the search resolved to zero matches. No providers are
+    // wired up in this test, so it deterministically has no results.
+    let draftContent = createDraft("@doesnotexist12345");
+    const onDraftContentChange = vi.fn((nextDraft: AgentComposerDraft) => {
+      draftContent = nextDraft;
+    });
+    const onSubmit = vi.fn();
+
+    render(
+      <AgentComposer
+        workspaceId="workspace-1"
+        currentUserId="user-1"
+        provider="codex"
+        draftContent={draftContent}
+        availableCommands={[] satisfies readonly AgentHostAgentSessionCommand[]}
+        disabled={false}
+        submitDisabled={false}
+        placeholder="placeholder"
+        composerSettings={createComposerSettings()}
+        queuedPrompts={[]}
+        drainingQueuedPromptId={null}
+        canQueueWhileBusy={false}
+        showStopButton={false}
+        activePrompt={null}
+        isInterrupting={false}
+        isSendingTurn={false}
+        isSubmittingPrompt={false}
+        labels={createLabels()}
+        workspaceUserProjectI18n={workspaceUserProjectI18n}
+        onDraftContentChange={onDraftContentChange}
+        onSettingsChange={vi.fn()}
+        onSubmit={onSubmit}
+        onSendQueuedPromptNext={vi.fn()}
+        onRemoveQueuedPrompt={vi.fn()}
+        onEditQueuedPrompt={vi.fn()}
+        onInterruptCurrentTurn={vi.fn()}
+        onSubmitInteractivePrompt={vi.fn()}
+      />
+    );
+
+    const textbox = screen.getByPlaceholderText("placeholder");
+
+    // The first Enter should dismiss the empty panel rather than send — the
+    // typed "@doesnotexist12345" text stays untouched.
+    fireEvent.keyDown(textbox, { key: "Enter" });
+    expect(onSubmit).not.toHaveBeenCalled();
+    expect(draftContent.prompt).toBe("@doesnotexist12345");
+
+    // With the search cancelled, the next Enter behaves as if there were no
+    // active @ context and sends the message normally.
+    fireEvent.keyDown(textbox, { key: "Enter" });
+    expect(onSubmit).toHaveBeenCalled();
+  });
+
   it("opens the mention palette from the @ footer button", async () => {
     let draftContent = createDraft("");
     const onDraftContentChange = vi.fn((nextDraft: AgentComposerDraft) => {

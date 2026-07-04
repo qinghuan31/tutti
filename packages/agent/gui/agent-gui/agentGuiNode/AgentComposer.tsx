@@ -1768,7 +1768,16 @@ export function AgentComposer({
       return makeAtPanelKeyDown({
         close: closeFileMentionPalette,
         commitSelection: () => {
-          createFileMentionPaletteAdapter().commitHighlighted();
+          // No highlighted/committable entry (e.g. the search has zero
+          // results): Enter has nothing to select, so treat it as
+          // dismissing the empty panel instead of a silent no-op. This
+          // matches Escape's behavior and mirrors the "clear the active
+          // mention context" contract — a second Enter afterwards then
+          // falls through to the normal submit handler.
+          const result = createFileMentionPaletteAdapter().commitHighlighted();
+          if (result.type === "none") {
+            closeFileMentionPalette();
+          }
         },
         cycleFilter: cycleFileMentionFilter,
         moveSelection: moveFileMentionSelection,
