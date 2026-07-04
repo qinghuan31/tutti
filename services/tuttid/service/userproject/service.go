@@ -52,6 +52,12 @@ func (s Service) List(ctx context.Context) ([]userprojectbiz.Project, error) {
 	}
 	result := make([]userprojectbiz.Project, 0, len(projects))
 	for _, project := range projects {
+		if isCodexScratchProjectPath(project.Path) {
+			if err := s.Store.DeleteUserProject(ctx, project.ID); err != nil {
+				return nil, fmt.Errorf("prune codex scratch user project: %w", err)
+			}
+			continue
+		}
 		available, prune := projectDirectoryStatus(project.Path)
 		if available {
 			result = append(result, project)
@@ -157,4 +163,64 @@ func projectDirectoryStatus(path string) (available bool, prune bool) {
 func projectID(path string) string {
 	sum := sha256.Sum256([]byte(path))
 	return "user_project_" + hex.EncodeToString(sum[:])[:24]
+}
+
+// isCodexScratchProjectPath reports whether path is anywhere under the Codex
+// desktop app's auto-provisioned scratch tree (~/Documents/Codex/...). Codex
+// creates a directory there whenever a conversation starts without the user
+// picking a real local project, and the leaf directory name is a
+// machine-generated slug rather than a folder the user chose, so it must
+// never be surfaced as a "project" in the workspace file manager / project
+// list. Mirrors isExternalImportCodexScratchCwd in
+// service/agent/external_import_parse.go, which applies the same rule while
+// scanning external sessions to import; this copy guards the user-project
+// list/store directly so that any project record that already ended up
+// pointing at a scratch directory (for example one registered by an import
+// that ran before that scan-side fix existed, or by any other future caller
+// of Use) gets pruned rather than surfacing indefinitely. The exact shape of
+// the scratch slug has changed across Codex versions — older releases used a
+// single combined "<date>-<slug>" segment (Documents/Codex/2026-04-24-gh),
+// newer ones split it into "<date>/<slug>" (Documents/Codex/2026-04-24/gh) —
+// so this intentionally only checks that the path is nested under
+// Documents/Codex rather than pattern-matching a specific segment shape, to
+// stay robust across formats.
+func isCodexScratchProjectPath(path string) bool {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return false
+	}
+	home, ok := canonicalExistingDir(home)
+	if !ok {
+		return false
+	}
+	path = strings.TrimSpace(path)
+	if path == "" {
+		return false
+	}
+	path = filepath.Clean(path)
+	rel, err := filepath.Rel(home, path)
+	if err != nil || rel == "." || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+		return false
+	}
+	parts := strings.SplitN(filepath.ToSlash(rel), "/", 3)
+	return len(parts) >= 3 && parts[0] == "Documents" && parts[1] == "Codex" && parts[2] != ""
+}
+
+func canonicalExistingDir(path string) (string, bool) {
+	path = strings.TrimSpace(path)
+	if path == "" {
+		return "", false
+	}
+	abs, err := filepath.Abs(path)
+	if err != nil {
+		return "", false
+	}
+	info, err := os.Stat(abs)
+	if err != nil || !info.IsDir() {
+		return "", false
+	}
+	if resolved, err := filepath.EvalSymlinks(abs); err == nil {
+		abs = resolved
+	}
+	return filepath.Clean(abs), true
 }

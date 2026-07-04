@@ -138,6 +138,53 @@ func TestServiceListPrunesUnavailableProjects(t *testing.T) {
 	}
 }
 
+func TestServiceListPrunesCodexScratchProjects(t *testing.T) {
+	ctx := context.Background()
+	home := filepath.Join(t.TempDir(), "home")
+	scratchCwd := filepath.Join(home, "Documents", "Codex", "2026-06-26", "ge")
+	legacyScratchCwd := filepath.Join(home, "Documents", "Codex", "2026-04-24-gh")
+	realProjectDir := filepath.Join(home, "Documents", "tutti")
+	for _, dir := range []string{scratchCwd, legacyScratchCwd, realProjectDir} {
+		if err := os.MkdirAll(dir, 0o755); err != nil {
+			t.Fatalf("MkdirAll(%q) error = %v", dir, err)
+		}
+	}
+	if canonical, ok := canonicalExistingDir(home); ok {
+		home = canonical
+	}
+	if canonical, ok := canonicalExistingDir(scratchCwd); ok {
+		scratchCwd = canonical
+	}
+	if canonical, ok := canonicalExistingDir(legacyScratchCwd); ok {
+		legacyScratchCwd = canonical
+	}
+	if canonical, ok := canonicalExistingDir(realProjectDir); ok {
+		realProjectDir = canonical
+	}
+	t.Setenv("HOME", home)
+
+	store := &recordingUserProjectStore{
+		projects: []userprojectbiz.Project{
+			{ID: "scratch", Path: scratchCwd, Label: "ge"},
+			{ID: "legacy-scratch", Path: legacyScratchCwd, Label: "2026-04-24-gh"},
+			{ID: "real", Path: realProjectDir, Label: "tutti"},
+		},
+	}
+	service := Service{Store: store}
+
+	projects, err := service.List(ctx)
+	if err != nil {
+		t.Fatalf("List() error = %v", err)
+	}
+
+	if len(projects) != 1 || projects[0].ID != "real" {
+		t.Fatalf("List() projects = %#v, want only the real project", projects)
+	}
+	if strings.Join(store.deletedIDs, ",") != "scratch,legacy-scratch" {
+		t.Fatalf("deleted IDs = %#v, want scratch,legacy-scratch", store.deletedIDs)
+	}
+}
+
 func TestServiceCheckPathReportsDirectoryStatusWithoutStore(t *testing.T) {
 	ctx := context.Background()
 	root := t.TempDir()
