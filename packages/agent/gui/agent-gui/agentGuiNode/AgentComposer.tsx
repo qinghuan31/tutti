@@ -204,6 +204,15 @@ export interface AgentComposerProps {
   availableSkills?: readonly AgentGUIProviderSkillOption[];
   disabled: boolean;
   disabledReason?: string | null;
+  /**
+   * False while submitting is about to start a brand-new conversation (no
+   * active conversation yet). Starting one is async (session creation +
+   * activation round trip), so the composer must NOT eagerly clear its own
+   * draft echo on submit in that case — the view would otherwise show a
+   * gap where the input is empty and nothing has happened yet. Defaults to
+   * true so existing/test call sites keep today's immediate-clear behavior.
+   */
+  hasActiveConversation?: boolean;
   submitDisabled: boolean;
   placeholder: string;
   composerSettings: AgentGUIComposerSettingsVM;
@@ -836,6 +845,7 @@ export function AgentComposer({
   availableSkills = EMPTY_PROVIDER_SKILLS,
   disabled,
   disabledReason,
+  hasActiveConversation = true,
   submitDisabled,
   placeholder,
   composerSettings,
@@ -1550,11 +1560,21 @@ export function AgentComposer({
       } else {
         onSubmit(submitContent);
       }
-      draftPromptRef.current = "";
-      draftImagesRef.current = [];
-      draftFilesRef.current = [];
-      setPaletteDraftPrompt("");
-      onDraftContentChange(emptyAgentComposerDraft());
+      // Starting a brand-new conversation (no active conversation yet) is
+      // async — session creation + activation round trip — before the view
+      // switches away from composer-home to show it. Skip the eager local
+      // clear in that case so the just-submitted text stays visible instead
+      // of leaving the composer blank with nothing happening;
+      // startConversation's resolution (see useAgentGUINodeController)
+      // authoritatively clears this same draft, or leaves it untouched on
+      // failure, once the view actually transitions.
+      if (hasActiveConversation) {
+        draftPromptRef.current = "";
+        draftImagesRef.current = [];
+        draftFilesRef.current = [];
+        setPaletteDraftPrompt("");
+        onDraftContentChange(emptyAgentComposerDraft());
+      }
     }
   );
 
