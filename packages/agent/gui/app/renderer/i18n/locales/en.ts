@@ -694,6 +694,7 @@ export const en = {
       selectConversation: "Select a session",
       loadingConversations: "Loading sessions...",
       loadingConversation: "Loading session...",
+      scrollToBottom: "Scroll to bottom",
       searchNoConversations: "No related sessions",
       conversationUnavailable: "Session unavailable.",
       contextPickerBrowseHint: "Search workspace files based on your input",

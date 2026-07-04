@@ -1,6 +1,7 @@
 const styles = {
   bottomDock: "agent-gui-node__bottom-dock",
   bottomDockPrompt: "agent-gui-node__bottom-dock-prompt",
+  bottomDockScrollToBottom: "agent-gui-node__bottom-dock-scroll-to-bottom",
   body: "agent-gui-node__body",
   composer: "agent-gui-node__composer",
   composerChip: "agent-gui-node__composer-chip",

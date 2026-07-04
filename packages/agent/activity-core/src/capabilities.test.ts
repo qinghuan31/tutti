@@ -57,6 +57,7 @@ test("vocabulary matches the Go side", () => {
     "browserUse",
     "compact",
     "computerUse",
+    "goalPause",
     "imageInput",
     "interrupt",
     "planMode",

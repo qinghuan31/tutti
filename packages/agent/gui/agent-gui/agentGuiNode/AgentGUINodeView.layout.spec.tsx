@@ -35,6 +35,7 @@ const composerMock = vi.hoisted(() => ({
     backgroundAgentStatusText?: string | null;
     composerFocusRequestSequence?: number | null;
     compactSupported?: boolean | null;
+    hasActiveConversation?: boolean;
     isSendingTurn?: boolean;
     onSubmit?: (
       content: AgentPromptContentBlock[],
@@ -69,6 +70,7 @@ vi.mock("./AgentComposer", () => ({
     backgroundAgentStatusText?: string | null;
     composerFocusRequestSequence?: number | null;
     compactSupported?: boolean | null;
+    hasActiveConversation?: boolean;
     isSendingTurn?: boolean;
     onSubmit?: (
       content: AgentPromptContentBlock[],
@@ -84,6 +86,7 @@ vi.mock("./AgentComposer", () => ({
       backgroundAgentStatusText: props.backgroundAgentStatusText,
       composerFocusRequestSequence: props.composerFocusRequestSequence,
       compactSupported: props.compactSupported,
+      hasActiveConversation: props.hasActiveConversation,
       isSendingTurn: props.isSendingTurn,
       onProviderSelect: props.onProviderSelect,
       providerSelectReadonly: props.providerSelectReadonly,
@@ -608,6 +611,34 @@ describe("AgentGUINodeView layout persistence", () => {
     expect(composerMock.calls.at(-1)).toMatchObject({
       providerSelectReadonly: true,
       providerTargets
+    });
+  });
+
+  it("tells the composer whether there is an active conversation, so it knows when to defer clearing the draft on submit (Feishu UUl2Oc)", () => {
+    renderAgentGUINodeView({
+      viewModel: {
+        ...createViewModel(),
+        activeConversation: null,
+        activeConversationId: null
+      }
+    });
+
+    expect(composerMock.calls.at(-1)).toMatchObject({
+      hasActiveConversation: false
+    });
+
+    const conversation = createConversationSummary("session-1");
+    renderAgentGUINodeView({
+      viewModel: {
+        ...createViewModel(),
+        activeConversation: conversation,
+        activeConversationId: conversation.id,
+        conversations: [conversation]
+      }
+    });
+
+    expect(composerMock.calls.at(-1)).toMatchObject({
+      hasActiveConversation: true
     });
   });
 
@@ -1281,7 +1312,7 @@ describe("AgentGUINodeView layout persistence", () => {
     ).toBeInTheDocument();
   });
 
-  it("does not refetch runtime rail sections when an existing conversation summary or active provider updates", async () => {
+  it("refetches runtime rail sections only for provider changes, not conversation summary updates", async () => {
     const listSessionSections = vi.fn<
       NonNullable<AgentActivityRuntime["listSessionSections"]>
     >(async (input) => ({
@@ -1354,11 +1385,6 @@ describe("AgentGUINodeView layout persistence", () => {
         labels: { ...labels },
         viewModel: {
           ...viewModel,
-          data: {
-            ...viewModel.data,
-            provider: "codex" as const
-          },
-          selectedProviderTarget: createLocalAgentGUIProviderTarget("codex"),
           activeConversation: updatedConversation,
           activeConversationId: updatedConversation.id,
           conversations: [updatedConversation]
@@ -1372,6 +1398,34 @@ describe("AgentGUINodeView layout persistence", () => {
       ).toHaveTextContent("Updated title");
     });
     expect(listSessionSections).toHaveBeenCalledTimes(1);
+    expect(listSessionSections).toHaveBeenCalledWith(
+      expect.objectContaining({ agentTargetId: "local:claude-code" })
+    );
+
+    rendered.rerender(
+      buildAgentGUINodeViewElement({
+        activityRuntime,
+        labels: { ...labels },
+        viewModel: {
+          ...viewModel,
+          data: {
+            ...viewModel.data,
+            provider: "codex" as const
+          },
+          selectedProviderTarget: createLocalAgentGUIProviderTarget("codex"),
+          activeConversation: updatedConversation,
+          activeConversationId: updatedConversation.id,
+          conversations: [updatedConversation]
+        }
+      })
+    );
+
+    await waitFor(() => {
+      expect(listSessionSections).toHaveBeenCalledTimes(2);
+    });
+    expect(listSessionSections).toHaveBeenLastCalledWith(
+      expect.objectContaining({ agentTargetId: "local:codex" })
+    );
   });
 
   it("passes the active agent target filter to runtime rail section requests", async () => {
@@ -2367,6 +2421,45 @@ describe("AgentGUINodeView layout persistence", () => {
       "agent-gui-node__timeline--scrolled-from-top"
     );
   });
+
+  it("shows a scroll-to-bottom action when the timeline is away from bottom", () => {
+    const activeConversation = createConversationSummary("session-1");
+    renderAgentGUINodeView({
+      viewModel: {
+        ...createViewModel(),
+        conversations: [activeConversation],
+        activeConversation,
+        activeConversationId: activeConversation.id,
+        conversationDetail: createConversationDetail()
+      }
+    });
+
+    const timeline = screen.getByTestId("agent-gui-timeline") as HTMLElement;
+    Object.defineProperty(timeline, "scrollHeight", {
+      configurable: true,
+      get: () => 1000
+    });
+    Object.defineProperty(timeline, "clientHeight", {
+      configurable: true,
+      get: () => 400
+    });
+    const scrollTo = vi.spyOn(timeline, "scrollTo");
+
+    timeline.scrollTop = 240;
+    fireEvent.scroll(timeline);
+
+    const button = screen.getByTestId("agent-gui-scroll-to-bottom");
+    expect(button).toHaveAccessibleName("scrollToBottom");
+
+    fireEvent.click(button);
+
+    expect(scrollTo).toHaveBeenCalledWith({
+      top: 600,
+      behavior: "smooth"
+    });
+    expect(screen.queryByTestId("agent-gui-scroll-to-bottom")).toBeNull();
+  });
+
   it("renders older-message loading above the transcript", () => {
     const activeConversation = createConversationSummary("session-1");
     renderAgentGUINodeView({
@@ -3135,6 +3228,7 @@ function createViewModel(
     isRespondingApproval: false,
     promptImagesSupported: true,
     compactSupported: null,
+    goalPauseSupported: true,
     usage: null,
     backgroundAgentCount: 0,
     listError: null,
@@ -3379,6 +3473,7 @@ function createLabels(): AgentGUIViewLabels {
     selectConversation: "selectConversation",
     loadingConversations: "loadingConversations",
     loadingConversation: "loadingConversation",
+    scrollToBottom: "scrollToBottom",
     searchNoConversations: "searchNoConversations",
     conversationUnavailable: "conversationUnavailable",
     fallbackAgentTitle: "Agent",

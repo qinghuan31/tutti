@@ -1,5 +1,5 @@
 import { act, fireEvent, render, screen } from "@testing-library/react";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { setAgentGuiI18nTestLocale } from "../../../../i18n/testUtils";
 import { type WorkspaceAgentSessionDetailToolCall } from "../../../workspaceAgentSessionDetailViewModel";
 import { projectAgentToolCall } from "../../projection/agentToolProjection";
@@ -9,6 +9,7 @@ import { ToolMarkdownBlock } from "./agentToolContentShared";
 
 describe("AgentExpandedToolContent", () => {
   afterEach(async () => {
+    vi.useRealTimers();
     setAgentGuiI18nTestLocale("zh-CN");
   });
 
@@ -125,6 +126,76 @@ describe("AgentExpandedToolContent", () => {
     expect(screen.getByText("generated.md")).toBeTruthy();
     expect(screen.getByText("const ready = true")).toBeTruthy();
     expect(screen.queryByText("Allow once")).toBeNull();
+  });
+
+  it("renders web fetch URL details in a Claude Code web-read approval dialog", async () => {
+    setAgentGuiI18nTestLocale("en");
+
+    // Claude Code's approval payload has no ACP `kind` field — the nested
+    // toolCall is identified only by `title`/`toolName` ("WebFetch"), unlike
+    // Codex's ACP `kind: "fetch"`. Both must resolve to the web-fetch
+    // renderer instead of the bare summary fallback.
+    render(
+      <AgentExpandedToolContent
+        call={projectAgentToolCall(
+          toolCall({
+            callType: "approval",
+            toolName: "Approval",
+            status: "Completed",
+            statusKind: "completed",
+            payload: {
+              input: {
+                options: [{ id: "allow_once", label: "Allow once" }],
+                toolCall: {
+                  title: "WebFetch",
+                  toolName: "WebFetch",
+                  rawInput: {
+                    url: "https://docs.example.com/guide",
+                    prompt: "Summarize the guide"
+                  }
+                }
+              }
+            }
+          })
+        )}
+      />
+    );
+
+    expect(screen.getByText("URL")).toBeTruthy();
+    expect(screen.getByText("docs.example.com")).toBeTruthy();
+    expect(screen.getByText("https://docs.example.com/guide")).toBeTruthy();
+  });
+
+  it("renders web fetch URL details in an ACP (Codex) web-read approval dialog", async () => {
+    setAgentGuiI18nTestLocale("en");
+
+    render(
+      <AgentExpandedToolContent
+        call={projectAgentToolCall(
+          toolCall({
+            callType: "approval",
+            toolName: "Approval",
+            status: "Completed",
+            statusKind: "completed",
+            payload: {
+              input: {
+                options: [{ id: "allow_once", label: "Allow once" }],
+                toolCall: {
+                  kind: "fetch",
+                  title: "open_page",
+                  rawInput: {
+                    url: "https://docs.example.com/guide"
+                  }
+                }
+              }
+            }
+          })
+        )}
+      />
+    );
+
+    expect(screen.getByText("URL")).toBeTruthy();
+    expect(screen.getByText("docs.example.com")).toBeTruthy();
   });
 
   it("renders ask-user options and selected answer from the typed ask-user vm", async () => {
@@ -1251,6 +1322,8 @@ describe("AgentExpandedToolContent", () => {
 
   it("renders a named standalone sub-agent card with an activity log", async () => {
     setAgentGuiI18nTestLocale("en");
+    vi.useFakeTimers();
+    vi.setSystemTime(101_000);
 
     render(
       <AgentSubAgentCard

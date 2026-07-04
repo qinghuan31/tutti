@@ -641,6 +641,7 @@ export const zhCN = {
       selectConversation: "选择一个会话",
       loadingConversations: "正在加载会话...",
       loadingConversation: "正在加载会话...",
+      scrollToBottom: "滚动至底部",
       searchNoConversations: "暂无相关会话",
       conversationUnavailable: "会话不可用。",
       contextPickerBrowseHint: "根据你输入的内容搜索工作区文件",

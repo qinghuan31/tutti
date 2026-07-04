@@ -87,10 +87,36 @@ func (s *Service) CallTool(ctx context.Context, workspaceID, cwd, tool string, a
 		return ToolResult{}, err
 	}
 	result, err := session.callTool(ctx, tool, args)
+	if err != nil && tool != "new_page" && isBrowserPageGoneError(err) {
+		// The browser process is still alive and connected (so the process-exit
+		// recovery below never triggers), but it has zero open pages/tabs — most
+		// commonly because the user closed the automated browser window
+		// themselves rather than through Tutti. chrome-devtools-mcp does not
+		// auto-create a page in that state, so every page-scoped call would
+		// otherwise fail forever with the same error. Open a fresh page to
+		// restore a live session, then retry the original call once.
+		if _, healErr := session.callTool(ctx, "new_page", map[string]any{"url": "about:blank"}); healErr == nil {
+			result, err = session.callTool(ctx, tool, args)
+		}
+	}
 	if err != nil && session.client != nil && session.client.isClosed() {
 		s.Shutdown(workspaceID)
 	}
 	return result, err
+}
+
+// isBrowserPageGoneError reports whether err is chrome-devtools-mcp's error for
+// a page-scoped tool call made after the selected page (or all pages) closed
+// out from under the browser, e.g. because the user manually closed the
+// automated browser window. See McpContext#getSelectedMcpPage in the vendored
+// chrome-devtools-mcp package.
+func isBrowserPageGoneError(err error) bool {
+	if err == nil {
+		return false
+	}
+	msg := strings.ToLower(err.Error())
+	return strings.Contains(msg, "the selected page has been closed") ||
+		strings.Contains(msg, "no page selected")
 }
 
 func (s *Service) getOrCreate(workspaceID, connectionMode string) *browserSession {

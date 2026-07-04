@@ -6293,6 +6293,62 @@ button.agent-gui-node__conversation-section-toggle:hover
   pointer-events: none;
 }
 
+.agent-gui-node__bottom-dock-scroll-to-bottom {
+  position: absolute;
+  bottom: calc(
+    100% + var(--agent-gui-bottom-dock-floating-safe-area, 0px) + 8px
+  );
+  left: 50%;
+  z-index: 6;
+  display: inline-grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  margin: 0;
+  padding: 0;
+  border: 1px solid
+    color-mix(in srgb, var(--line-2, var(--tutti-line-2)) 72%, transparent);
+  border-radius: 999px;
+  background: var(--background-fronted, var(--tutti-surface-1));
+  box-shadow: 0 10px 26px rgb(0 0 0 / 10%);
+  color: var(--text-secondary, var(--tutti-text-secondary));
+  pointer-events: auto;
+  cursor: pointer;
+  transform: translateX(-50%);
+  transition:
+    background 140ms ease,
+    color 140ms ease,
+    transform 140ms ease;
+}
+
+.agent-gui-node__bottom-dock-scroll-to-bottom:hover {
+  background: var(--background-fronted, var(--tutti-surface-1));
+  color: var(--text-primary, var(--tutti-text-primary));
+  transform: translateX(-50%) translateY(-1px);
+}
+
+.agent-gui-node__bottom-dock-scroll-to-bottom:focus-visible {
+  border-color: color-mix(
+    in srgb,
+    var(--text-secondary, var(--tutti-text-secondary)) 46%,
+    transparent
+  );
+  background: var(--background-fronted, var(--tutti-surface-1));
+  color: var(--text-primary, var(--tutti-text-primary));
+  outline: none;
+  transform: translateX(-50%) translateY(-1px);
+}
+
+.agent-gui-node__bottom-dock-scroll-to-bottom:active {
+  transform: translateX(-50%);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .agent-gui-node__bottom-dock-scroll-to-bottom {
+    transition: none;
+  }
+}
+
 .agent-gui-node__bottom-dock > .agent-gui-chrome__session-chrome,
 .agent-gui-node__bottom-dock-prompt,
 .agent-gui-node__bottom-dock

@@ -1,7 +1,8 @@
 # ADR 0008 — Turn lifecycle snapshot authority: one source of truth for "is a turn running"
 
 - Date: 2026-07-03
-- Status: Accepted (Phase A implemented for codex; Phase B pending for other providers)
+- Status: Accepted (Phase A implemented for codex; Phase B implemented for the
+  Claude SDK adapter, pending for the standard ACP adapters)
 - Extends: ADR 0005 (reducer as the codex turn-lifecycle source of truth) — this ADR
   promotes that principle from inside the codex adapter to the whole chain
   (controller → persisted store → service → GUI).
@@ -66,12 +67,19 @@ session-level signals)`; `SubmitAvailability` =
    processing indicator and the desktop queue-drain busy check gate on the
    lifecycle through the shared predicate.
 
-## Phase B (pending)
+## Phase B (Claude SDK adapter done; standard ACP pending)
 
 Standard ACP and Claude SDK adapters stamp their existing turn-event call
 sites; the authority flag then flips automatically per session. Afterwards the
 legacy folding path, the patch-shaping fallback, the snapshot-enrichment
 overwrite, and the GUI lifecycle-less fallbacks are deleted.
+
+The Claude SDK adapter stamps via the shared `stampAdapterTurnLifecycleEvents`
+helper (turn_lifecycle_stamp.go) at its three emission boundaries — the Exec
+submit events, the sidecar event dispatch choke point, and Cancel's returned
+events — and guards Cancel with a settled-turn check so a cancel racing the
+turn's own settle cannot fabricate a second terminal transition. The legacy
+folding deletion still waits on the standard ACP adapters.
 
 ## Invariant tests
 

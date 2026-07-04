@@ -751,6 +751,142 @@ func TestServiceImportsCodexScratchCwdAsNoProjectWithoutRegisteringIt(t *testing
 	}
 }
 
+func TestServiceImportPreservesLocalCodexModelAndReasoningEffort(t *testing.T) {
+	ctx := context.Background()
+	store := openAgentServiceSQLiteStore(t)
+	if err := store.Create(ctx, workspacebiz.Summary{ID: "ws-1", Name: "Workspace One"}); err != nil {
+		t.Fatalf("Create workspace error = %v", err)
+	}
+	root := t.TempDir()
+	project := filepath.Join(root, "project")
+	if err := os.MkdirAll(project, 0o755); err != nil {
+		t.Fatalf("create project error = %v", err)
+	}
+	if canonical, ok := canonicalExistingDir(project); ok {
+		project = canonical
+	}
+	codexHome := filepath.Join(root, "codex-home")
+	t.Setenv("CODEX_HOME", codexHome)
+	t.Setenv("CLAUDE_CONFIG_DIR", filepath.Join(root, "claude-home"))
+	now := time.Now().UTC().Format(time.RFC3339Nano)
+	writeAgentServiceJSONL(t, filepath.Join(codexHome, "sessions", "codex-model.jsonl"),
+		map[string]any{
+			"timestamp": now,
+			"type":      "session_meta",
+			"payload":   map[string]any{"id": "codex-model", "cwd": project},
+		},
+		map[string]any{
+			"timestamp": now,
+			"type":      "turn_context",
+			"payload":   map[string]any{"turn_id": "turn-1", "cwd": project, "model": "gpt-5.4", "effort": "xhigh"},
+		},
+		map[string]any{"timestamp": now, "type": "response_item", "payload": map[string]any{
+			"type": "message", "id": "codex-model-1", "role": "user",
+			"content": []any{map[string]any{"type": "input_text", "text": "Use my usual settings"}},
+		}},
+	)
+
+	service := NewService(newFakeRuntime())
+	projection := NewActivityProjection(store)
+	service.SessionReader = projection
+	service.MessageReader = projection
+	service.ExternalImportStore = store
+
+	result, err := service.ImportExternalSessions(ctx, "ws-1", ExternalImportInput{
+		Projects: []ExternalImportProjectSelection{{Path: project}},
+	})
+	if err != nil {
+		t.Fatalf("ImportExternalSessions error = %v", err)
+	}
+	if result.ImportedSessions != 1 {
+		t.Fatalf("import result = %#v, want one imported session", result)
+	}
+	session, err := service.Get(ctx, "ws-1", externalImportedSessionID("codex", "codex-model"))
+	if err != nil {
+		t.Fatalf("Get imported Codex session error = %v", err)
+	}
+	if session.Settings.Model != "gpt-5.4" {
+		t.Fatalf("settings.Model = %q, want imported turn_context model", session.Settings.Model)
+	}
+	if session.Settings.ReasoningEffort != "xhigh" {
+		t.Fatalf("settings.ReasoningEffort = %q, want imported turn_context effort", session.Settings.ReasoningEffort)
+	}
+}
+
+func TestServiceScanCountsAndImportsSessionWithDeletedWorkingDirectory(t *testing.T) {
+	// Regression: a session whose recorded cwd no longer exists (a deleted
+	// git worktree, a cleaned-up temp dir) used to be silently dropped from
+	// the scan entirely — not counted in ScannedSessions, not offered for
+	// import, and not appearing in SkippedSessions either (it never got that
+	// far). That both undercounts what scan reports (eW5WPl sub-issue 1) and
+	// can make a substantial real conversation look empty/vanished (uOivri),
+	// since it never surfaces anywhere for the user to see or import.
+	ctx := context.Background()
+	store := openAgentServiceSQLiteStore(t)
+	if err := store.Create(ctx, workspacebiz.Summary{ID: "ws-1", Name: "Workspace One"}); err != nil {
+		t.Fatalf("Create workspace error = %v", err)
+	}
+	root := t.TempDir()
+	deletedCwd := filepath.Join(root, "deleted-project")
+	if err := os.MkdirAll(deletedCwd, 0o755); err != nil {
+		t.Fatalf("create then delete cwd error = %v", err)
+	}
+	if canonical, ok := canonicalExistingDir(deletedCwd); ok {
+		deletedCwd = canonical
+	}
+	if err := os.RemoveAll(deletedCwd); err != nil {
+		t.Fatalf("remove cwd error = %v", err)
+	}
+	codexHome := filepath.Join(root, "codex-home")
+	t.Setenv("CODEX_HOME", codexHome)
+	t.Setenv("CLAUDE_CONFIG_DIR", filepath.Join(root, "claude-home"))
+	now := time.Now().UTC().Format(time.RFC3339Nano)
+	writeAgentServiceJSONL(t, filepath.Join(codexHome, "sessions", "deleted-cwd.jsonl"),
+		map[string]any{
+			"timestamp": now,
+			"type":      "session_meta",
+			"payload":   map[string]any{"id": "deleted-cwd", "cwd": deletedCwd},
+		},
+		map[string]any{"timestamp": now, "type": "response_item", "payload": map[string]any{
+			"type": "message", "id": "deleted-cwd-1", "role": "user",
+			"content": []any{map[string]any{"type": "input_text", "text": "Still real content"}},
+		}},
+	)
+
+	service := NewService(newFakeRuntime())
+	scan, err := service.ScanExternalImports(ctx, ExternalImportScanInput{})
+	if err != nil {
+		t.Fatalf("ScanExternalImports error = %v", err)
+	}
+	if scan.ScannedSessions != 1 || scan.SkippedSessions != 0 {
+		t.Fatalf("scan = %#v, want the deleted-cwd session counted as scanned, not skipped", scan)
+	}
+	if len(scan.Sessions) != 1 || scan.Sessions[0].ProjectPath != deletedCwd {
+		t.Fatalf("scan sessions = %#v, want one session grouped under its original deleted cwd %q", scan.Sessions, deletedCwd)
+	}
+
+	projection := NewActivityProjection(store)
+	service.SessionReader = projection
+	service.MessageReader = projection
+	service.ExternalImportStore = store
+	result, err := service.ImportExternalSessions(ctx, "ws-1", ExternalImportInput{
+		Projects: []ExternalImportProjectSelection{{Path: root}},
+	})
+	if err != nil {
+		t.Fatalf("ImportExternalSessions error = %v", err)
+	}
+	if result.ImportedSessions != 1 || result.ImportedMessages != 1 {
+		t.Fatalf("import result = %#v, want the deleted-cwd session imported", result)
+	}
+	session, err := service.Get(ctx, "ws-1", externalImportedSessionID("codex", "deleted-cwd"))
+	if err != nil {
+		t.Fatalf("Get imported deleted-cwd session error = %v", err)
+	}
+	if session.Cwd != deletedCwd {
+		t.Fatalf("session cwd = %q, want original deleted cwd %q preserved", session.Cwd, deletedCwd)
+	}
+}
+
 func TestServiceListsImportedSessionsByExternalActivityTime(t *testing.T) {
 	ctx := context.Background()
 	store := openAgentServiceSQLiteStore(t)
@@ -1183,66 +1319,6 @@ func TestServiceCreateRejectsInvalidCachedClaudeModelBeforePreparingRuntime(t *t
 	}
 	if prepareInput.Provider != "" {
 		t.Fatalf("runtime preparer was called: %#v", prepareInput)
-	}
-}
-
-func TestServiceCreateDiscoversClaudeModelsBeforeStartingInvalidModel(t *testing.T) {
-	runtime := newFakeRuntime()
-	runtime.startHook = func(input RuntimeStartInput, session RuntimeSession) RuntimeSession {
-		if input.Visible == nil || *input.Visible {
-			t.Fatalf("discovery start visible = %#v, want hidden draft session", input.Visible)
-		}
-		if input.Model != "" {
-			t.Fatalf("discovery start model = %q, want empty model", input.Model)
-		}
-		session.RuntimeContext = map[string]any{
-			"configOptions": []any{
-				map[string]any{
-					"id": "model",
-					"options": []any{
-						map[string]any{"value": "default", "name": "Default"},
-						map[string]any{"value": "sonnet", "name": "Sonnet"},
-						map[string]any{"value": "mimo-v2.5-pro", "name": "MIMO V2.5 Pro"},
-					},
-				},
-			},
-		}
-		return session
-	}
-	service := newTestService(runtime)
-	var prepareInput agentsidecarservice.PrepareInput
-	var cleanupCalls []agentsidecarservice.CleanupInput
-	service.RuntimePreparer = fakeRuntimePreparer{
-		input:        &prepareInput,
-		cleanupCalls: &cleanupCalls,
-	}
-
-	_, err := service.Create(context.Background(), "ws-1", CreateSessionInput{
-		AgentTargetID: agenttargetbiz.IDLocalClaudeCode,
-		Provider:      "claude-code",
-		Model:         stringRef("MiniMax-M2.7"),
-		Cwd:           stringRef("/repo"),
-	})
-	if err == nil {
-		t.Fatal("Create returned nil error, want invalid model error")
-	}
-	var invalidModel *InvalidModelError
-	if !errors.As(err, &invalidModel) {
-		t.Fatalf("Create error = %T %[1]v, want InvalidModelError", err)
-	}
-	if invalidModel.Provider != "claude-code" ||
-		invalidModel.Model != "MiniMax-M2.7" ||
-		!slices.Equal(invalidModel.AvailableModels, []string{"default", "sonnet", "mimo-v2.5-pro"}) {
-		t.Fatalf("invalid model error = %#v", invalidModel)
-	}
-	if len(runtime.startCalls) != 1 {
-		t.Fatalf("start calls = %d, want only hidden discovery session", len(runtime.startCalls))
-	}
-	if prepareInput.Provider != "claude-code" || prepareInput.Model != "" {
-		t.Fatalf("discovery prepare input = %#v, want claude-code without requested model", prepareInput)
-	}
-	if len(cleanupCalls) == 0 {
-		t.Fatal("cleanup calls = 0, want discovery runtime cleanup")
 	}
 }
 
@@ -1679,6 +1755,29 @@ func TestServiceCreateEmptySessionDoesNotExec(t *testing.T) {
 	}
 }
 
+func TestServiceCreateClaudeModelValidationUsesOnlyCachedLiveModels(t *testing.T) {
+	t.Setenv("CLAUDE_CONFIG_DIR", t.TempDir())
+	runtime := newFakeRuntime()
+	service := newTestService(runtime)
+
+	_, err := service.Create(context.Background(), "ws-1", CreateSessionInput{
+		AgentSessionID: "session-1",
+		AgentTargetID:  agenttargetbiz.IDLocalClaudeCode,
+		Provider:       "claude-code",
+		Model:          stringRef("custom-claude-model"),
+		InitialContent: TextPromptContent("hello"),
+	})
+	if err != nil {
+		t.Fatalf("Create error = %v", err)
+	}
+	if len(runtime.startCalls) != 1 {
+		t.Fatalf("start calls = %d, want only real session start", len(runtime.startCalls))
+	}
+	if got := runtime.startCalls[0].AgentSessionID; got != "session-1" {
+		t.Fatalf("started session id = %q, want real session id", got)
+	}
+}
+
 func TestServiceCreateDoesNotPassDerivedPromptToRuntime(t *testing.T) {
 	runtime := newFakeRuntime()
 	service := newTestService(runtime)
@@ -1772,6 +1871,51 @@ func TestServiceSendInputPassesDisplayPromptToRuntime(t *testing.T) {
 	}
 	if _, ok := call.Metadata[""]; ok {
 		t.Fatalf("runtime metadata includes blank key: %#v", call.Metadata)
+	}
+}
+
+func TestServiceSendInputWaitsForClaudeStartupSlotBeforeExec(t *testing.T) {
+	runtime := newFakeRuntime()
+	runtime.sessions["ws-1:session-1"] = RuntimeSession{
+		ID:          "session-1",
+		WorkspaceID: "ws-1",
+		Provider:    "claude-code",
+		Status:      "ready",
+		Visible:     true,
+	}
+	service := NewService(runtime)
+	if err := service.claudeStartup().acquire(context.Background()); err != nil {
+		t.Fatalf("acquire startup lock: %v", err)
+	}
+
+	done := make(chan error, 1)
+	go func() {
+		_, err := service.SendInput(context.Background(), "ws-1", "session-1", SendInput{
+			Content: TextPromptContent("hello"),
+		})
+		done <- err
+	}()
+
+	select {
+	case err := <-done:
+		t.Fatalf("SendInput completed while startup slot held: %v", err)
+	case <-time.After(50 * time.Millisecond):
+	}
+	if len(runtime.execCalls) != 0 {
+		t.Fatalf("exec calls = %d, want blocked while startup slot held", len(runtime.execCalls))
+	}
+	service.claudeStartup().release()
+
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Fatalf("SendInput error = %v", err)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("SendInput did not continue after startup slot release")
+	}
+	if len(runtime.execCalls) != 1 {
+		t.Fatalf("exec calls = %d, want 1 after startup slot release", len(runtime.execCalls))
 	}
 }
 
@@ -2292,12 +2436,19 @@ func TestServiceGetsComposerOptionsNormalizesClaudeMinimalReasoningEffort(t *tes
 	if !ok || len(configOptions) < 1 {
 		t.Fatalf("configOptions = %#v", options.RuntimeContext["configOptions"])
 	}
-	if configOptions[0]["id"] != "effort" {
-		t.Fatalf("first config option = %#v, want effort", configOptions[0])
+	var reasoningOption map[string]any
+	for _, option := range configOptions {
+		if option["id"] == "effort" {
+			reasoningOption = option
+			break
+		}
 	}
-	reasoningOptions, ok := configOptions[0]["options"].([]map[string]string)
+	if reasoningOption == nil {
+		t.Fatalf("configOptions = %#v, want effort option", configOptions)
+	}
+	reasoningOptions, ok := reasoningOption["options"].([]map[string]string)
 	if !ok {
-		t.Fatalf("reasoning options = %#v", configOptions[0]["options"])
+		t.Fatalf("reasoning options = %#v", reasoningOption["options"])
 	}
 	for _, option := range reasoningOptions {
 		if option["value"] == "minimal" {
@@ -2306,7 +2457,7 @@ func TestServiceGetsComposerOptionsNormalizesClaudeMinimalReasoningEffort(t *tes
 	}
 }
 
-func TestServiceGetsComposerOptionsSkipsClaudeStaticModelCatalog(t *testing.T) {
+func TestServiceGetsComposerOptionsUsesClaudeStaticModelsWithoutModelCatalog(t *testing.T) {
 	runtime := newFakeRuntime()
 	service := NewService(runtime)
 	t.Setenv("CLAUDE_CONFIG_DIR", t.TempDir())
@@ -2327,27 +2478,34 @@ func TestServiceGetsComposerOptionsSkipsClaudeStaticModelCatalog(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GetComposerOptions returned error: %v", err)
 	}
-	if options.EffectiveSettings.Model != "" {
-		t.Fatalf("effectiveSettings.model = %q, want empty", options.EffectiveSettings.Model)
+	if options.EffectiveSettings.Model != "default" {
+		t.Fatalf("effectiveSettings.model = %q, want static default", options.EffectiveSettings.Model)
 	}
 	if options.EffectiveSettings.ReasoningEffort != "high" {
 		t.Fatalf("effectiveSettings.reasoningEffort = %q, want high", options.EffectiveSettings.ReasoningEffort)
 	}
-	if options.RuntimeContext["modelCatalogSource"] != nil {
-		t.Fatalf("modelCatalogSource = %#v, want nil", options.RuntimeContext["modelCatalogSource"])
+	if options.RuntimeContext["modelCatalogSource"] != "claude-static" {
+		t.Fatalf("modelCatalogSource = %#v, want claude-static", options.RuntimeContext["modelCatalogSource"])
 	}
 	configOptions, ok := options.RuntimeContext["configOptions"].([]map[string]any)
 	if !ok || len(configOptions) == 0 {
 		t.Fatalf("configOptions = %#v", options.RuntimeContext["configOptions"])
 	}
-	for _, option := range configOptions {
-		if option["id"] == "model" {
-			t.Fatalf("configOptions = %#v, want no static Claude model option", configOptions)
+	if configOptions[0]["id"] != "model" {
+		t.Fatalf("configOptions = %#v, want static Claude model option first", configOptions)
+	}
+	modelOptions, ok := configOptions[0]["options"].([]map[string]string)
+	if !ok || len(modelOptions) != 4 {
+		t.Fatalf("model options = %#v, want Claude static aliases", configOptions[0]["options"])
+	}
+	for _, option := range modelOptions {
+		if option["value"] == "test-ignored" {
+			t.Fatalf("model options = %#v, want no daemon ModelCatalog models for Claude", modelOptions)
 		}
 	}
 }
 
-func TestGetComposerOptionsClaudeCodeWithoutWorkspaceClearsUnverifiedSelectedModel(t *testing.T) {
+func TestGetComposerOptionsClaudeCodeWithoutWorkspaceUsesStaticModels(t *testing.T) {
 	runtime := newFakeRuntime()
 	service := NewService(runtime)
 
@@ -2361,34 +2519,70 @@ func TestGetComposerOptionsClaudeCodeWithoutWorkspaceClearsUnverifiedSelectedMod
 	if err != nil {
 		t.Fatalf("GetComposerOptions returned error: %v", err)
 	}
-	if options.EffectiveSettings.Model != "" {
-		t.Fatalf("effectiveSettings.model = %q, want empty without live model verification", options.EffectiveSettings.Model)
+	if options.EffectiveSettings.Model != "claude-sonnet-4-20250514" {
+		t.Fatalf("effectiveSettings.model = %q, want requested custom model", options.EffectiveSettings.Model)
 	}
-	if options.RuntimeContext["model"] != nil {
-		t.Fatalf("runtime model = %#v, want nil without live model verification", options.RuntimeContext["model"])
+	if options.RuntimeContext["model"] != "claude-sonnet-4-20250514" {
+		t.Fatalf("runtime model = %#v, want requested custom model", options.RuntimeContext["model"])
 	}
-	if options.ModelConfig.Configurable || len(options.ModelConfig.Options) != 0 {
-		t.Fatalf("modelConfig = %#v, want no unverified Claude model config", options.ModelConfig)
+	if !options.ModelConfig.Configurable || len(options.ModelConfig.Options) != 5 {
+		t.Fatalf("modelConfig = %#v, want static Claude models plus requested custom model", options.ModelConfig)
 	}
 	configOptions, ok := options.RuntimeContext["configOptions"].([]map[string]any)
 	if !ok || len(configOptions) == 0 {
 		t.Fatalf("configOptions = %#v", options.RuntimeContext["configOptions"])
 	}
-	for _, option := range configOptions {
-		if option["id"] == "model" {
-			t.Fatalf("configOptions = %#v, want no unverified Claude model option", configOptions)
-		}
+	if configOptions[0]["id"] != "model" {
+		t.Fatalf("configOptions = %#v, want static Claude model option first", configOptions)
+	}
+	if options.RuntimeContext["modelCatalogSource"] != "claude-static" {
+		t.Fatalf("modelCatalogSource = %#v, want claude-static", options.RuntimeContext["modelCatalogSource"])
 	}
 }
 
-func TestGetComposerOptionsClaudeCodeDiscoversLiveModels(t *testing.T) {
+func TestGetComposerOptionsClaudeCodeIncludesSettingsJSONModel(t *testing.T) {
+	configDir := t.TempDir()
+	t.Setenv("CLAUDE_CONFIG_DIR", configDir)
+	if err := os.WriteFile(filepath.Join(configDir, "settings.json"), []byte(`{"model":"claude-opus-4-6"}`), 0o600); err != nil {
+		t.Fatalf("write Claude settings: %v", err)
+	}
+	runtime := newFakeRuntime()
+	service := NewService(runtime)
+
+	options, err := service.GetComposerOptions(context.Background(), ComposerOptionsInput{
+		Provider: "claude-code",
+		Cwd:      "/repo",
+	})
+	if err != nil {
+		t.Fatalf("GetComposerOptions returned error: %v", err)
+	}
+	if options.EffectiveSettings.Model != "claude-opus-4-6" {
+		t.Fatalf("effectiveSettings.model = %q, want settings.json model", options.EffectiveSettings.Model)
+	}
+	found := false
+	for _, option := range options.ModelConfig.Options {
+		if option.Value == "claude-opus-4-6" {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Fatalf("modelConfig options = %#v, want settings.json model included", options.ModelConfig.Options)
+	}
+	if options.RuntimeContext["modelCatalogSource"] != "claude-static" {
+		t.Fatalf("modelCatalogSource = %#v, want claude-static", options.RuntimeContext["modelCatalogSource"])
+	}
+}
+
+func TestGetComposerOptionsClaudeCodeReusesRunningSessionLiveModels(t *testing.T) {
 	t.Setenv("CLAUDE_CONFIG_DIR", t.TempDir())
 	runtime := newFakeRuntime()
-	runtime.startHook = func(input RuntimeStartInput, session RuntimeSession) RuntimeSession {
-		if input.Provider != "claude-code" {
-			return session
-		}
-		session.RuntimeContext = map[string]any{
+	runtime.sessions["ws-1:session-1"] = RuntimeSession{
+		ID:          "session-1",
+		WorkspaceID: "ws-1",
+		Provider:    "claude-code",
+		Status:      "ready",
+		RuntimeContext: map[string]any{
 			"configOptions": []any{
 				map[string]any{
 					"id":           "model",
@@ -2406,8 +2600,7 @@ func TestGetComposerOptionsClaudeCodeDiscoversLiveModels(t *testing.T) {
 					},
 				},
 			},
-		}
-		return session
+		},
 	}
 	service := NewService(runtime)
 
@@ -2419,11 +2612,11 @@ func TestGetComposerOptionsClaudeCodeDiscoversLiveModels(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GetComposerOptions returned error: %v", err)
 	}
-	if len(runtime.startCalls) != 1 {
-		t.Fatalf("start calls = %d, want 1", len(runtime.startCalls))
+	if len(runtime.startCalls) != 0 {
+		t.Fatalf("start calls = %d, want no hidden discovery", len(runtime.startCalls))
 	}
-	if len(runtime.closeCalls) != 1 {
-		t.Fatalf("close calls = %d, want 1", len(runtime.closeCalls))
+	if len(runtime.closeCalls) != 0 {
+		t.Fatalf("close calls = %d, want no hidden discovery cleanup", len(runtime.closeCalls))
 	}
 	if !options.ModelConfig.Configurable || len(options.ModelConfig.Options) != 2 {
 		t.Fatalf("modelConfig = %#v, want discovered model options", options.ModelConfig)
@@ -2440,14 +2633,12 @@ func TestGetComposerOptionsClaudeCodeDiscoversLiveModels(t *testing.T) {
 func TestGetComposerOptionsClaudeCodeLiveModelsSanitizesUnsupportedSelectedModel(t *testing.T) {
 	t.Setenv("CLAUDE_CONFIG_DIR", t.TempDir())
 	runtime := newFakeRuntime()
-	runtime.startHook = func(input RuntimeStartInput, session RuntimeSession) RuntimeSession {
-		if input.Provider != "claude-code" {
-			return session
-		}
-		if input.Model != "" {
-			t.Fatalf("discovery start model = %q, want empty model", input.Model)
-		}
-		session.RuntimeContext = map[string]any{
+	runtime.sessions["ws-1:session-1"] = RuntimeSession{
+		ID:          "session-1",
+		WorkspaceID: "ws-1",
+		Provider:    "claude-code",
+		Status:      "ready",
+		RuntimeContext: map[string]any{
 			"configOptions": []any{
 				map[string]any{
 					"id":           "model",
@@ -2460,8 +2651,7 @@ func TestGetComposerOptionsClaudeCodeLiveModelsSanitizesUnsupportedSelectedModel
 					},
 				},
 			},
-		}
-		return session
+		},
 	}
 	service := NewService(runtime)
 
@@ -2505,57 +2695,126 @@ func TestGetComposerOptionsClaudeCodeLiveModelsSanitizesUnsupportedSelectedModel
 	}
 }
 
-func TestGetComposerOptionsClaudeCodeDeletesHiddenDiscoverySession(t *testing.T) {
+func TestGetComposerOptionsClaudeCodeSkipsDiscoveryBesideRunningSession(t *testing.T) {
+	t.Setenv("CLAUDE_CONFIG_DIR", t.TempDir())
 	runtime := newFakeRuntime()
-	persisted := fakeSessionReader{sessions: map[string]PersistedSession{}}
+	runtime.sessions["ws-1:session-1"] = RuntimeSession{
+		ID:          "session-1",
+		WorkspaceID: "ws-1",
+		Provider:    "claude-code",
+		Status:      "ready",
+		RuntimeContext: map[string]any{
+			"capabilities": []any{"imageInput"},
+		},
+	}
+	service := NewService(runtime)
+
+	options, err := service.GetComposerOptions(context.Background(), ComposerOptionsInput{
+		Provider:    "claude-code",
+		WorkspaceID: "ws-1",
+		Cwd:         "/repo",
+	})
+	if err != nil {
+		t.Fatalf("GetComposerOptions returned error: %v", err)
+	}
+	if len(runtime.startCalls) != 0 {
+		t.Fatalf("start calls = %d, want no hidden discovery next to running session", len(runtime.startCalls))
+	}
+	if !options.ModelConfig.Configurable || len(options.ModelConfig.Options) != 4 {
+		t.Fatalf("modelConfig = %#v, want static Claude model config when running session has no models", options.ModelConfig)
+	}
+	if options.RuntimeContext["modelCatalogSource"] != "claude-static" {
+		t.Fatalf("modelCatalogSource = %#v, want claude-static", options.RuntimeContext["modelCatalogSource"])
+	}
+}
+
+func TestGetComposerOptionsClaudeCodeStartsHiddenDiscoveryOnceAndDeletesLater(t *testing.T) {
+	runtime := newFakeRuntime()
 	runtime.startHook = func(input RuntimeStartInput, session RuntimeSession) RuntimeSession {
 		if input.Provider != "claude-code" {
-			return session
+			t.Fatalf("start provider = %q, want claude-code", input.Provider)
+		}
+		if input.Visible == nil || *input.Visible {
+			t.Fatalf("visible = %#v, want hidden discovery session", input.Visible)
+		}
+		if input.RuntimeContext["hiddenLiveModelDiscovery"] != true {
+			t.Fatalf("runtime context = %#v, want hidden discovery marker", input.RuntimeContext)
 		}
 		session.RuntimeContext = map[string]any{
 			"configOptions": []any{
 				map[string]any{
 					"id":           "model",
-					"currentValue": "default",
+					"currentValue": "sonnet",
 					"options": []any{
-						map[string]any{"name": "Default", "value": "default"},
+						map[string]any{"name": "Sonnet", "value": "sonnet"},
+						map[string]any{"name": "Opus", "value": "opus"},
 					},
 				},
 			},
 		}
-		persisted.sessions[input.WorkspaceID+":"+session.ID] = PersistedSession{
-			ID:          session.ID,
-			WorkspaceID: input.WorkspaceID,
-			Provider:    input.Provider,
-			Visible:     session.Visible,
-		}
 		return session
 	}
 	service := NewService(runtime)
-	service.SessionReader = persisted
+	service.LiveModelDiscoveryDeleteDelay = 50 * time.Millisecond
 
-	if _, err := service.GetComposerOptions(context.Background(), ComposerOptionsInput{
+	options, err := service.GetComposerOptions(context.Background(), ComposerOptionsInput{
 		Provider:    "claude-code",
 		WorkspaceID: "ws-1",
 		Cwd:         "/repo",
-	}); err != nil {
+	})
+	if err != nil {
 		t.Fatalf("GetComposerOptions returned error: %v", err)
 	}
-	if len(runtime.closeCalls) != 1 {
-		t.Fatalf("close calls = %d, want 1", len(runtime.closeCalls))
+	if len(runtime.startCalls) != 1 {
+		t.Fatalf("start calls = %d, want one hidden discovery", len(runtime.startCalls))
 	}
-	if len(persisted.sessions) != 0 {
-		t.Fatalf("persisted sessions = %#v, want hidden discovery session deleted", persisted.sessions)
+	if len(runtime.closeCalls) != 0 {
+		t.Fatalf("close calls = %#v, want no immediate hidden discovery cleanup", runtime.closeCalls)
+	}
+	if !options.ModelConfig.Configurable || len(options.ModelConfig.Options) != 2 {
+		t.Fatalf("modelConfig = %#v, want discovered Claude model config", options.ModelConfig)
+	}
+	if options.RuntimeContext["modelCatalogSource"] != "acp-live-discovery" {
+		t.Fatalf("modelCatalogSource = %#v, want acp-live-discovery", options.RuntimeContext["modelCatalogSource"])
+	}
+
+	second, err := service.GetComposerOptions(context.Background(), ComposerOptionsInput{
+		Provider:    "claude-code",
+		WorkspaceID: "ws-1",
+		Cwd:         "/repo",
+	})
+	if err != nil {
+		t.Fatalf("GetComposerOptions second returned error: %v", err)
+	}
+	if len(runtime.startCalls) != 1 {
+		t.Fatalf("start calls = %d, want hidden discovery only once", len(runtime.startCalls))
+	}
+	if !second.ModelConfig.Configurable || len(second.ModelConfig.Options) != 2 {
+		t.Fatalf("second modelConfig = %#v, want cached discovered model config", second.ModelConfig)
+	}
+
+	deadline := time.After(2 * time.Second)
+	for len(runtime.closeCalls) == 0 {
+		select {
+		case <-deadline:
+			t.Fatalf("close calls = %#v, want delayed hidden discovery cleanup", runtime.closeCalls)
+		default:
+			time.Sleep(5 * time.Millisecond)
+		}
+	}
+	if runtime.closeCalls[0].AgentSessionID != runtime.startCalls[0].AgentSessionID {
+		t.Fatalf("close calls = %#v, want delayed cleanup for hidden discovery session %q", runtime.closeCalls, runtime.startCalls[0].AgentSessionID)
 	}
 }
 
 func TestGetComposerOptionsClaudeCodeLiveModelsUsesCache(t *testing.T) {
 	runtime := newFakeRuntime()
-	runtime.startHook = func(input RuntimeStartInput, session RuntimeSession) RuntimeSession {
-		if input.Provider != "claude-code" {
-			return session
-		}
-		session.RuntimeContext = map[string]any{
+	runtime.sessions["ws-1:session-1"] = RuntimeSession{
+		ID:          "session-1",
+		WorkspaceID: "ws-1",
+		Provider:    "claude-code",
+		Status:      "ready",
+		RuntimeContext: map[string]any{
 			"configOptions": []any{
 				map[string]any{
 					"id":           "model",
@@ -2565,13 +2824,12 @@ func TestGetComposerOptionsClaudeCodeLiveModelsUsesCache(t *testing.T) {
 					},
 				},
 			},
-		}
-		return session
+		},
 	}
 	service := NewService(runtime)
 
-	for range 2 {
-		_, err := service.GetComposerOptions(context.Background(), ComposerOptionsInput{
+	for index := range 2 {
+		options, err := service.GetComposerOptions(context.Background(), ComposerOptionsInput{
 			Provider:    "claude-code",
 			WorkspaceID: "ws-1",
 			Cwd:         "/repo",
@@ -2579,164 +2837,18 @@ func TestGetComposerOptionsClaudeCodeLiveModelsUsesCache(t *testing.T) {
 		if err != nil {
 			t.Fatalf("GetComposerOptions returned error: %v", err)
 		}
-	}
-	if len(runtime.startCalls) != 1 {
-		t.Fatalf("start calls = %d, want 1 with cache", len(runtime.startCalls))
-	}
-	if len(runtime.closeCalls) != 1 {
-		t.Fatalf("close calls = %d, want 1 with cache", len(runtime.closeCalls))
-	}
-}
-
-func TestGetComposerOptionsClaudeCodeLiveModelsFailedStartupReturnsQuickly(t *testing.T) {
-	runtime := newFakeRuntime()
-	runtime.startHook = func(input RuntimeStartInput, session RuntimeSession) RuntimeSession {
-		if input.Provider != "claude-code" {
-			return session
+		if !options.ModelConfig.Configurable || len(options.ModelConfig.Options) != 1 {
+			t.Fatalf("modelConfig = %#v, want cached live models", options.ModelConfig)
 		}
-		session.Status = "failed"
-		session.LastError = "auth failed"
-		return session
-	}
-	service := NewService(runtime)
-	startedAt := time.Now()
-
-	options, err := service.GetComposerOptions(context.Background(), ComposerOptionsInput{
-		Provider:    "claude-code",
-		WorkspaceID: "ws-failed",
-		Cwd:         "/repo",
-		Settings: ComposerSettings{
-			Model: "claude-sonnet-4-20250514",
-		},
-	})
-	if err != nil {
-		t.Fatalf("GetComposerOptions returned error: %v", err)
-	}
-	if elapsed := time.Since(startedAt); elapsed >= 400*time.Millisecond {
-		t.Fatalf("GetComposerOptions elapsed = %s, want failed discovery to return quickly", elapsed)
-	}
-	if len(runtime.closeCalls) != 1 {
-		t.Fatalf("close calls = %d, want 1", len(runtime.closeCalls))
-	}
-	if options.ModelConfig.Configurable || len(options.ModelConfig.Options) != 0 {
-		t.Fatalf("modelConfig = %#v, want no unverified Claude model config after failed discovery", options.ModelConfig)
-	}
-	if options.EffectiveSettings.Model != "" {
-		t.Fatalf("effectiveSettings.model = %q, want empty after failed live model verification", options.EffectiveSettings.Model)
-	}
-	if options.RuntimeContext["model"] != nil {
-		t.Fatalf("runtime model = %#v, want nil after failed live model verification", options.RuntimeContext["model"])
-	}
-}
-
-func TestGetComposerOptionsClaudeCodeLiveModelsPropagatesCallerCancellation(t *testing.T) {
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-	runtime := newFakeRuntime()
-	closed := make(chan struct{})
-	runtime.closeHook = func(RuntimeCloseInput) {
-		select {
-		case <-closed:
-		default:
-			close(closed)
+		if index == 0 {
+			delete(runtime.sessions, "ws-1:session-1")
 		}
 	}
-	runtime.startHook = func(input RuntimeStartInput, session RuntimeSession) RuntimeSession {
-		if input.Provider == "claude-code" {
-			cancel()
-		}
-		return session
+	if len(runtime.startCalls) != 0 {
+		t.Fatalf("start calls = %d, want no hidden discovery", len(runtime.startCalls))
 	}
-	service := NewService(runtime)
-
-	_, err := service.GetComposerOptions(ctx, ComposerOptionsInput{
-		Provider:    "claude-code",
-		WorkspaceID: "ws-canceled",
-		Cwd:         "/repo",
-	})
-	if !errors.Is(err, context.Canceled) {
-		t.Fatalf("GetComposerOptions error = %v, want context canceled", err)
-	}
-	if len(runtime.startCalls) != 1 {
-		t.Fatalf("start calls = %d, want 1", len(runtime.startCalls))
-	}
-	select {
-	case <-closed:
-	case <-time.After(time.Second):
-		t.Fatal("runtime close was not called after caller cancellation")
-	}
-	if len(runtime.closeCalls) != 1 {
-		t.Fatalf("close calls = %d, want 1 even on caller cancellation", len(runtime.closeCalls))
-	}
-}
-
-func TestGetComposerOptionsClaudeCodeLiveModelsSharedDiscoveryHonorsCallerCancellation(t *testing.T) {
-	runtime := newFakeRuntime()
-	firstStarted := make(chan struct{})
-	firstClosed := make(chan struct{})
-	runtime.closeHook = func(RuntimeCloseInput) {
-		select {
-		case <-firstClosed:
-		default:
-			close(firstClosed)
-		}
-	}
-	runtime.startHook = func(input RuntimeStartInput, session RuntimeSession) RuntimeSession {
-		if input.Provider == "claude-code" {
-			select {
-			case <-firstStarted:
-			default:
-				close(firstStarted)
-			}
-		}
-		return session
-	}
-	service := NewService(runtime)
-	firstCtx, cancelFirst := context.WithCancel(context.Background())
-	defer cancelFirst()
-	firstDone := make(chan error, 1)
-	go func() {
-		_, err := service.GetComposerOptions(firstCtx, ComposerOptionsInput{
-			Provider:    "claude-code",
-			WorkspaceID: "ws-shared-canceled",
-			Cwd:         "/repo",
-		})
-		firstDone <- err
-	}()
-
-	select {
-	case <-firstStarted:
-	case <-time.After(time.Second):
-		t.Fatal("first live model discovery did not start")
-	}
-
-	secondCtx, cancelSecond := context.WithCancel(context.Background())
-	cancelSecond()
-	_, err := service.GetComposerOptions(secondCtx, ComposerOptionsInput{
-		Provider:    "claude-code",
-		WorkspaceID: "ws-shared-canceled",
-		Cwd:         "/repo",
-	})
-	if !errors.Is(err, context.Canceled) {
-		t.Fatalf("GetComposerOptions error = %v, want context canceled for shared caller", err)
-	}
-	if len(runtime.startCalls) != 1 {
-		t.Fatalf("start calls = %d, want 1 shared live model discovery", len(runtime.startCalls))
-	}
-
-	cancelFirst()
-	select {
-	case err := <-firstDone:
-		if !errors.Is(err, context.Canceled) {
-			t.Fatalf("first GetComposerOptions error = %v, want context canceled", err)
-		}
-	case <-time.After(time.Second):
-		t.Fatal("first live model discovery did not stop after cancellation")
-	}
-	select {
-	case <-firstClosed:
-	case <-time.After(time.Second):
-		t.Fatal("shared live model discovery did not close after cancellation")
+	if len(runtime.closeCalls) != 0 {
+		t.Fatalf("close calls = %d, want no hidden discovery cleanup", len(runtime.closeCalls))
 	}
 }
 
@@ -3522,6 +3634,43 @@ func TestServiceListFilteredMatchesSearchVisibilityLimitAndUpdatedOrder(t *testi
 	}
 	if list[0].ID != "session-newer" {
 		t.Fatalf("list[0].ID = %q, want session-newer", list[0].ID)
+	}
+}
+
+func TestServiceListDeletesStalePersistedHiddenLiveModelDiscoverySession(t *testing.T) {
+	reader := fakeSessionReader{
+		sessions: map[string]PersistedSession{
+			"ws-1:hidden": {
+				ID:          "hidden",
+				WorkspaceID: "ws-1",
+				Provider:    "claude-code",
+				Cwd:         "/",
+				RuntimeContext: map[string]any{
+					"visible": false,
+				},
+				UpdatedAtUnixMS: time.UnixMilli(5000).UnixMilli(),
+			},
+			"ws-1:session-1": {
+				ID:              "session-1",
+				WorkspaceID:     "ws-1",
+				Provider:        "claude-code",
+				Visible:         true,
+				UpdatedAtUnixMS: time.UnixMilli(4000).UnixMilli(),
+			},
+		},
+	}
+	service := NewService(newFakeRuntime())
+	service.SessionReader = reader
+
+	list, err := service.List(context.Background(), "ws-1")
+	if err != nil {
+		t.Fatalf("List returned error: %v", err)
+	}
+	if len(list) != 1 || list[0].ID != "session-1" {
+		t.Fatalf("sessions = %#v, want only session-1", list)
+	}
+	if _, ok := reader.sessions["ws-1:hidden"]; ok {
+		t.Fatal("hidden discovery session still persisted, want deleted")
 	}
 }
 
@@ -4459,6 +4608,32 @@ func TestServiceEnsureRuntimeSessionDoesNotReconcileLiveRuntimeWaitingApprovalTu
 	}
 }
 
+func TestServiceEnsureRuntimeSessionDeletesStalePersistedHiddenLiveModelDiscoverySession(t *testing.T) {
+	reader := fakeSessionReader{
+		sessions: map[string]PersistedSession{
+			"ws-1:hidden": {
+				ID:          "hidden",
+				WorkspaceID: "ws-1",
+				Provider:    "claude-code",
+				Cwd:         "/",
+				RuntimeContext: map[string]any{
+					"visible": false,
+				},
+			},
+		},
+	}
+	service := NewService(newFakeRuntime())
+	service.SessionReader = reader
+
+	_, err := service.ensureRuntimeSessionResult(context.Background(), "ws-1", "hidden")
+	if !errors.Is(err, ErrSessionNotFound) {
+		t.Fatalf("ensureRuntimeSessionResult error = %v, want %v", err, ErrSessionNotFound)
+	}
+	if _, ok := reader.sessions["ws-1:hidden"]; ok {
+		t.Fatal("hidden discovery session still persisted, want deleted")
+	}
+}
+
 func TestServiceGetDoesNotReconcileLiveRuntimePendingInteractive(t *testing.T) {
 	runtime := newFakeRuntime()
 	runtime.sessions["ws-1:session-1"] = RuntimeSession{
@@ -5165,6 +5340,7 @@ func (f *fakeRuntime) Start(_ context.Context, input RuntimeStartInput) (Runtime
 		Status:          "ready",
 		Title:           input.Title,
 		Visible:         input.Visible == nil || *input.Visible,
+		RuntimeContext:  clonePayload(input.RuntimeContext),
 		WorkspaceID:     input.WorkspaceID,
 		CreatedAtUnixMS: now,
 		UpdatedAtUnixMS: now,

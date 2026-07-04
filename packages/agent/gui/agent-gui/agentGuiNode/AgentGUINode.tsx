@@ -1093,6 +1093,7 @@ export const AgentGUINode = memo(function AgentGUINode({
       selectConversation: t("agentHost.agentGui.selectConversation"),
       loadingConversations: t("agentHost.agentGui.loadingConversations"),
       loadingConversation: t("agentHost.agentGui.loadingConversation"),
+      scrollToBottom: t("agentHost.agentGui.scrollToBottom"),
       searchNoConversations: t("agentHost.agentGui.searchNoConversations"),
       conversationUnavailable: t("agentHost.agentGui.conversationUnavailable"),
       fallbackAgentTitle,

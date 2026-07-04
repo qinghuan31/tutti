@@ -3,22 +3,38 @@ import {
   type TuttidClient
 } from "@tutti-os/client-tuttid-ts";
 import type { DesktopRuntimeApi } from "@preload/types";
+import type { DesktopBackendConfig } from "@shared/contracts/ipc";
 
 export function createDesktopTuttidClient(
   runtimeApi: DesktopRuntimeApi
 ): TuttidClient {
-  let clientPromise: Promise<TuttidClient> | null = null;
+  let cachedConfig: DesktopBackendConfig | null = null;
+  let cachedClient: TuttidClient | null = null;
 
+  // The managed tuttid daemon can restart (crash recovery, forced update
+  // relaunch, etc.) and rebinds to a new ephemeral port each time it comes
+  // back up. getBackendConfig() is a cheap main-process IPC read (no network
+  // I/O), so we re-check it on every call and only rebuild the underlying
+  // client when the resolved endpoint actually changed. Caching the client
+  // (and therefore its baseUrl) for the lifetime of the renderer would leave
+  // every request silently pointed at a dead port after a daemon restart.
   const resolveClient = async (): Promise<TuttidClient> => {
-    clientPromise ??= runtimeApi.getBackendConfig().then((config) =>
-      createTuttidClient({
+    const config = await runtimeApi.getBackendConfig();
+    if (
+      !cachedClient ||
+      !cachedConfig ||
+      cachedConfig.baseUrl !== config.baseUrl ||
+      cachedConfig.accessToken !== config.accessToken
+    ) {
+      cachedConfig = config;
+      cachedClient = createTuttidClient({
         auth: config.accessToken,
         baseUrl: config.baseUrl,
         fetch: globalThis.fetch.bind(globalThis)
-      })
-    );
+      });
+    }
 
-    return clientPromise;
+    return cachedClient;
   };
 
   return {

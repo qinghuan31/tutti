@@ -189,6 +189,7 @@ import {
   resolveEffectiveComposerSettings,
   sameComposerSettings
 } from "./agentGuiController.composerHelpers";
+import { mergeAgentSessionControlStateSnapshot } from "./agentGuiController.sessionHelpers";
 import {
   PLAN_IMPLEMENTATION_ACTION_FEEDBACK,
   PLAN_IMPLEMENTATION_ACTION_IMPLEMENT,
@@ -2471,6 +2472,30 @@ function modelSelectionFromComposerOptions(
   };
 }
 
+function configOptionCurrentValue(
+  runtimeContext: Record<string, unknown> | null | undefined,
+  ids: readonly string[]
+): string | null {
+  const rawConfigOptions = Array.isArray(runtimeContext?.configOptions)
+    ? runtimeContext.configOptions
+    : [];
+  const idSet = new Set(ids);
+  for (const rawOption of rawConfigOptions) {
+    const option = recordValue(rawOption);
+    if (!option) {
+      continue;
+    }
+    const id = normalizeOptionalText(option.id as string | null | undefined);
+    if (!id || !idSet.has(id)) {
+      continue;
+    }
+    return normalizeOptionalText(
+      (option.currentValue ?? option.current_value) as string | null | undefined
+    );
+  }
+  return null;
+}
+
 function reasoningSelectionFromComposerOptions(
   options: AgentActivityComposerOptions | null,
   currentValue: AgentSessionReasoningEffort | null
@@ -3969,6 +3994,11 @@ export function useAgentGUINodeController({
     composerOptions: providerComposerOptions,
     sessionRuntimeContext: activeSessionState?.runtimeContext
   });
+  const goalPauseSupported =
+    resolveAgentActivityCapability("goalPause", {
+      composerOptions: providerComposerOptions,
+      sessionRuntimeContext: activeSessionState?.runtimeContext
+    }) ?? false;
   const activeSessionRuntimeContext = activeSessionState?.runtimeContext;
   const backgroundAgentCount = useMemo(
     () => activeBackgroundAgentCount(activeSessionRuntimeContext),
@@ -5565,9 +5595,9 @@ export function useAgentGUINodeController({
           ...sessionStateSnapshotCauseBySessionIdRef.current,
           [agentSessionId]: cause ? { source: cause.source } : undefined
         };
-        setAgentSessionViewControlState(
+        updateAgentSessionViewControlState(
           sessionViewRef(agentSessionId),
-          snapshot
+          (current) => mergeAgentSessionControlStateSnapshot(current, snapshot)
         );
       } catch (error) {
         if (
@@ -8666,9 +8696,13 @@ export function useAgentGUINodeController({
           const nextAppliedSettings = optimisticSettings
             ? {
                 ...result.settings,
+                ...sessionSettingsPatch,
                 ...optimisticSettings
               }
-            : result.settings;
+            : {
+                ...result.settings,
+                ...sessionSettingsPatch
+              };
           updateAgentSessionViewControlState(
             sessionViewRef(agentSessionId),
             (existing) =>
@@ -10213,7 +10247,12 @@ export function useAgentGUINodeController({
   const draftSettings = activeConversationId
     ? (sessionSettings ?? defaultConversationDraftSettings)
     : homeComposerSettings;
-  const draftModel = normalizeOptionalText(draftSettings.model);
+  const liveConfigModel =
+    activeConversationId !== null
+      ? configOptionCurrentValue(activeSessionRuntimeContext, ["model"])
+      : null;
+  const draftModel =
+    liveConfigModel ?? normalizeOptionalText(draftSettings.model);
   const draftReasoningEffort = normalizeOptionalText(
     draftSettings.reasoningEffort
   ) as AgentSessionReasoningEffort | null;
@@ -10945,6 +10984,7 @@ export function useAgentGUINodeController({
         isRespondingApproval,
         promptImagesSupported,
         compactSupported,
+        goalPauseSupported,
         usage,
         backgroundAgentCount,
         listError,
@@ -11007,6 +11047,7 @@ export function useAgentGUINodeController({
       openclawGateway,
       promptImagesSupported,
       compactSupported,
+      goalPauseSupported,
       usage,
       backgroundAgentCount,
       isInterrupting,
