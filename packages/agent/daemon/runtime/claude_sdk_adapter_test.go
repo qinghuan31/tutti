@@ -764,6 +764,67 @@ func TestClaudeCodeSDKAdapterCancelClearsPendingInteractive(t *testing.T) {
 	}
 }
 
+// TestClaudeCodeSDKAdapterReaderFailureFailsPendingInteractive guards against
+// a real bug found while investigating a Feishu report (LENj32): if the
+// sidecar connection/process dies while a permission dialog is still
+// unanswered (e.g. the user left it open for a while), failClaudeSDKReader
+// used to discard the pending approval bookkeeping silently along with the
+// rest of the session. The GUI would then see the request vanish on the next
+// reconnect with no terminal event explaining why, while the turn itself
+// failed for an unrelated-looking reason -- giving the impression the
+// approval was answered or bypassed when it never was.
+func TestClaudeCodeSDKAdapterReaderFailureFailsPendingInteractive(t *testing.T) {
+	adapter := NewClaudeCodeSDKAdapter(nil)
+	session := standardTestSession(ProviderClaudeCode)
+	adapterSession := &claudeSDKAdapterSession{
+		conn:             &recordingClaudeSDKConnection{},
+		session:          session,
+		pendingRequests:  make(map[string]*pendingACPRequest),
+		pendingResponses: make(map[string]chan claudeSDKSidecarEvent),
+		turns:            make(map[string]*claudeSDKTurnWaiter),
+		liveState:        newClaudeSDKLiveState(),
+	}
+	adapter.storeSession(session.AgentSessionID, adapterSession)
+
+	if _, _, err := adapter.sidecarTurnEvents(adapterSession, session, "turn-disconnect", claudeSDKSidecarEvent{
+		Type: "approval_requested",
+		Payload: map[string]any{
+			"turnId":    "turn-disconnect",
+			"requestId": "approval-disconnect",
+			"toolName":  "Bash",
+			"input":     map[string]any{"command": "sleep 10"},
+		},
+	}); err != nil {
+		t.Fatalf("approval_requested: %v", err)
+	}
+	if prompt := adapter.SessionState(session).PendingInteractive; prompt == nil {
+		t.Fatal("pending prompt missing before disconnect")
+	}
+
+	var mu sync.Mutex
+	var received []activityshared.Event
+	adapter.SetSessionEventSink(func(_ string, events []activityshared.Event) {
+		mu.Lock()
+		defer mu.Unlock()
+		received = append(received, events...)
+	})
+
+	adapter.failClaudeSDKReader(session.AgentSessionID, adapterSession, errors.New("sidecar connection lost"))
+
+	mu.Lock()
+	events := append([]activityshared.Event(nil), received...)
+	mu.Unlock()
+	if len(events) != 1 || events[0].Type != activityshared.EventCallFailed {
+		t.Fatalf("disconnect events = %#v, want a single failed pending approval event", events)
+	}
+	if msg, _ := events[0].Payload.Error["message"].(string); msg != "sidecar connection lost" {
+		t.Fatalf("failed approval error = %#v, want the disconnect reason", events[0].Payload.Error)
+	}
+	if adapter.getSession(session.AgentSessionID) != nil {
+		t.Fatal("session should be removed after the reader fails")
+	}
+}
+
 func TestClaudeCodeSDKAdapterExecWithSidecarTestDriver(t *testing.T) {
 	t.Setenv(claudeSDKSidecarTestDriverEnv, "1")
 

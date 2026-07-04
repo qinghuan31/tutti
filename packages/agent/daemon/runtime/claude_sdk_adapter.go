@@ -763,7 +763,20 @@ func (a *ClaudeCodeSDKAdapter) failClaudeSDKReader(agentSessionID string, adapte
 	for _, response := range responses {
 		response <- claudeSDKSidecarEvent{Type: "error", Payload: map[string]any{"error": err.Error()}}
 	}
+	// Any interactive/permission request still awaiting a human decision when
+	// the sidecar connection is lost must be resolved explicitly. Without
+	// this, the pending approval bookkeeping is discarded silently along
+	// with the session (below), leaving the GUI's permission dialog with no
+	// terminal event: on the next reconnect/resume it simply vanishes with
+	// no explanation while the turn itself fails, giving the appearance that
+	// the request was answered (or bypassed) when it never was.
+	session := a.claudeSDKSessionSnapshot(adapterSession)
+	if strings.TrimSpace(session.AgentSessionID) == "" {
+		session.AgentSessionID = agentSessionID
+	}
+	pendingFailureEvents := a.claudeSDKPendingRequestFailureEvents(adapterSession, session, "", err)
 	a.removeSession(agentSessionID)
+	a.emitClaudeSDKSessionEvents(agentSessionID, pendingFailureEvents)
 }
 
 func (a *ClaudeCodeSDKAdapter) takeClaudeSDKResponseWaiter(adapterSession *claudeSDKAdapterSession, event claudeSDKSidecarEvent) chan claudeSDKSidecarEvent {
