@@ -173,6 +173,7 @@ export async function bootstrapDesktopApp(): Promise<void> {
   registerTuttiAssetProtocol();
   registerWorkspaceFileIconProtocol(workspaceFileIconCache);
   const desktopAppServices = await createDesktopAppServices({
+    appVersion: app.getVersion(),
     enableDevelopmentReloadShortcut: Boolean(rendererUrl) && !app.isPackaged,
     fallbackLocale: systemLocale,
     browserNodeGuestPreloadPath,
