@@ -279,6 +279,48 @@ test("session start emits SDK model config options from initialization", async (
   }
 });
 
+test("context usage prefers result modelUsage window over SDK maxTokens", async () => {
+  const events: Array<{ type: string; payload?: Record<string, unknown> }> = [];
+  const restoreSink = withSidecarEventSinkForTest((event) =>
+    events.push(event)
+  );
+  try {
+    const session = new SessionRuntime(
+      "provider-session-1",
+      "/repo",
+      {},
+      false,
+      false,
+      {
+        model: "sonnet",
+        permissionModeId: "default",
+        planMode: false,
+        effort: "",
+        speed: ""
+      },
+      sidecarClaudeOptionsFromPayload({}),
+      undefined,
+      ({ prompt }) => fakeContextUsageQuery(prompt)
+    );
+
+    await session.start();
+    session.exec("turn-1", "hi");
+    await waitForEvent(events, "turn_completed");
+
+    const usage = events.find(
+      (event) =>
+        event.type === "usage_updated" && isRecord(event.payload?.contextWindow)
+    );
+    const contextWindow = isRecord(usage?.payload?.contextWindow)
+      ? usage.payload.contextWindow
+      : undefined;
+    assert.equal(contextWindow?.usedTokens, 36_092);
+    assert.equal(contextWindow?.totalTokens, 1_000_000);
+  } finally {
+    restoreSink();
+  }
+});
+
 test("late compact boundary still attaches to slash compact turn", async () => {
   const events: Array<{ type: string; payload?: Record<string, unknown> }> = [];
   const restoreSink = withSidecarEventSinkForTest((event) =>
@@ -457,6 +499,7 @@ test("bypass permission mode allows ordinary tools without approval", async () =
             { command: "rm -rf /repo/*" },
             {
               signal: new AbortController().signal,
+              requestId: "request-bash",
               toolUseID: "toolu-bash"
             }
           );
@@ -517,6 +560,7 @@ test("bypass permission mode still surfaces AskUserQuestion", async () => {
             },
             {
               signal: new AbortController().signal,
+              requestId: "request-ask",
               toolUseID: "toolu-ask"
             }
           );
@@ -1245,6 +1289,57 @@ function fakeSimpleResultQuery(
     },
     close() {}
   } as AsyncIterable<SDKMessage>;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function fakeContextUsageQuery(
+  prompt: AsyncIterable<SDKUserMessage>
+): AsyncIterable<SDKMessage> & {
+  getContextUsage: () => Promise<unknown>;
+  close: () => void;
+} {
+  return {
+    async *[Symbol.asyncIterator]() {
+      const firstPrompt = await prompt[Symbol.asyncIterator]().next();
+      const promptMessage = firstPrompt.value as SDKUserMessage & {
+        uuid?: string;
+      };
+      yield {
+        ...promptMessage,
+        uuid: promptMessage.uuid,
+        type: "user",
+        parent_tool_use_id: null,
+        session_id: "provider-session-1"
+      } as SDKMessage;
+      yield {
+        type: "result",
+        subtype: "success",
+        modelUsage: {
+          "claude-sonnet-5": {
+            inputTokens: 12,
+            outputTokens: 3,
+            cacheReadInputTokens: 0,
+            cacheCreationInputTokens: 0,
+            webSearchRequests: 0,
+            costUSD: 0,
+            contextWindow: 1_000_000,
+            maxOutputTokens: 64_000
+          }
+        }
+      } as unknown as SDKMessage;
+    },
+    async getContextUsage() {
+      return {
+        totalTokens: 36_092,
+        maxTokens: 200_000,
+        rawMaxTokens: 1_000_000
+      };
+    },
+    close() {}
+  };
 }
 
 function fakeEarlyConsolidatedAssistantQuery(
@@ -2168,6 +2263,61 @@ test("nested end_turn assistant defers parent completion while grandchild runs",
   }
 });
 
+test("nested end_turn assistant defers parent completion while child tool result is pending", async () => {
+  const events: Array<{ type: string; payload?: Record<string, unknown> }> = [];
+  const restoreSink = withSidecarEventSinkForTest((event) =>
+    events.push(event)
+  );
+  try {
+    const session = new SessionRuntime(
+      "provider-session-1",
+      "/repo",
+      {},
+      false,
+      false,
+      {
+        model: "",
+        permissionModeId: "default",
+        planMode: false,
+        effort: "",
+        speed: ""
+      },
+      sidecarClaudeOptionsFromPayload({}),
+      undefined,
+      fakeNestedToolUseAndEndTurnQuery
+    );
+
+    await session.start();
+    session.exec("turn-1", "delegate task");
+    await waitForEvent(events, "task_completed");
+    // Let the fake stream drain the grandchild result and final parent end.
+    await new Promise((resolve) => setTimeout(resolve, 50));
+
+    const parentCompletions = events.filter(
+      (event) =>
+        event.type === "task_completed" &&
+        event.payload?.parentToolUseId === "toolu-parent"
+    );
+    assert.equal(parentCompletions.length, 1);
+    assert.equal(parentCompletions[0]?.payload?.summary, "Parent finished.");
+
+    const childCompletedIndex = events.findIndex(
+      (event) =>
+        event.type === "task_completed" &&
+        event.payload?.parentToolUseId === "toolu-child"
+    );
+    const parentCompletedIndex = events.findIndex(
+      (event) =>
+        event.type === "task_completed" &&
+        event.payload?.parentToolUseId === "toolu-parent"
+    );
+    assert.ok(childCompletedIndex >= 0);
+    assert.ok(parentCompletedIndex > childCompletedIndex);
+  } finally {
+    restoreSink();
+  }
+});
+
 function fakeNestedDelegatedLaunchQuery({
   prompt
 }: {
@@ -2285,6 +2435,7 @@ function fakeNestedApprovalQuery(
         { command: "ls" },
         {
           signal: new AbortController().signal,
+          requestId: "request-nested-bash",
           toolUseID: "toolu-nested-bash"
         }
       );
@@ -2346,6 +2497,52 @@ function fakeNestedDeferredParentCompletionQuery({
   } as AsyncIterable<SDKMessage>;
 }
 
+function fakeNestedToolUseAndEndTurnQuery({
+  prompt
+}: {
+  prompt: AsyncIterable<SDKUserMessage>;
+}): AsyncIterable<SDKMessage> {
+  return {
+    async *[Symbol.asyncIterator]() {
+      const firstPrompt = await prompt[Symbol.asyncIterator]().next();
+      const promptMessage = firstPrompt.value as SDKUserMessage & {
+        uuid?: string;
+      };
+      yield {
+        ...promptMessage,
+        uuid: promptMessage.uuid,
+        type: "user",
+        parent_tool_use_id: null,
+        session_id: "provider-session-1"
+      } as SDKMessage;
+      yield delegatedAgentToolUse("toolu-parent", "Parent task");
+      yield delegatedAgentToolResult("toolu-parent", "agent-parent");
+      yield {
+        type: "result",
+        subtype: "success"
+      } as unknown as SDKMessage;
+      yield nestedAssistantToolUseWithEndTurn(
+        "toolu-parent",
+        "toolu-child",
+        "Grandchild task",
+        "Launched grandchild."
+      );
+      yield nestedAgentLaunchResult(
+        "toolu-parent",
+        "toolu-child",
+        "agent-child"
+      );
+      yield userTaskNotification("agent-child", "toolu-child");
+      yield nestedEndTurnAssistant(
+        "toolu-parent",
+        "assistant-final-end",
+        "Parent finished."
+      );
+    },
+    close() {}
+  } as AsyncIterable<SDKMessage>;
+}
+
 function nestedAssistantToolUse(
   parentToolUseId: string,
   id: string,
@@ -2359,6 +2556,36 @@ function nestedAssistantToolUse(
     message: {
       role: "assistant",
       content: [
+        {
+          type: "tool_use",
+          id,
+          name: "Task",
+          input: {
+            description,
+            prompt: description
+          }
+        }
+      ]
+    }
+  } as unknown as SDKMessage;
+}
+
+function nestedAssistantToolUseWithEndTurn(
+  parentToolUseId: string,
+  id: string,
+  description: string,
+  text: string
+): SDKMessage {
+  return {
+    type: "assistant",
+    uuid: `${id}-nested-end-turn-assistant`,
+    parent_tool_use_id: parentToolUseId,
+    session_id: "provider-session-1",
+    message: {
+      role: "assistant",
+      stop_reason: "end_turn",
+      content: [
+        { type: "text", text },
         {
           type: "tool_use",
           id,

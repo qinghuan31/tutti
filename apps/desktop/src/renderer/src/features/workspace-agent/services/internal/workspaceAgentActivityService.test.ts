@@ -101,6 +101,50 @@ test("WorkspaceAgentActivityService.activateSession omits provider target refs f
   });
 });
 
+test("WorkspaceAgentActivityService keeps explicit Claude model display over default alias state", async () => {
+  const createdSession = workspaceAgentSession({
+    provider: "claude-code",
+    settings: { model: "opus" },
+    status: "working"
+  });
+  const loadedSession = workspaceAgentSession({
+    provider: "claude-code",
+    settings: { model: "default" },
+    status: "working"
+  });
+  const service = new WorkspaceAgentActivityService({
+    tuttidClient: {
+      createWorkspaceAgentSession: async () => createdSession,
+      getWorkspaceAgentSession: async () => loadedSession,
+      sendWorkspaceAgentSessionInput: async () => ({ session: loadedSession }),
+      updateWorkspaceAgentSessionVisibility: async () => loadedSession
+    } as unknown as TuttidClient,
+    runtimeApi: {
+      logTerminalDiagnostic: async () => {}
+    }
+  });
+
+  const activation = await service.activateSession({
+    agentSessionId: "session-1",
+    agentTargetId: "local:claude-code",
+    cwd: "/workspace",
+    initialContent: [{ type: "text", text: "hi" }],
+    mode: "new",
+    provider: "claude-code",
+    settings: { model: "opus" },
+    title: "Claude",
+    visible: true,
+    workspaceId: "ws-1"
+  });
+  const controlState = await service.getSessionControlState({
+    agentSessionId: "session-1",
+    workspaceId: "ws-1"
+  });
+
+  assert.equal(activation.session.status, "working");
+  assert.equal(controlState.settings?.model, "opus");
+});
+
 test("WorkspaceAgentActivityService composer options cache is agent target keyed", async () => {
   const composerOptionCalls: unknown[] = [];
   const service = new WorkspaceAgentActivityService({
@@ -487,14 +531,21 @@ test("WorkspaceAgentActivityService.submitPlanDecision routes a claude exit-plan
 });
 
 function workspaceAgentSession(overrides: {
+  provider?: string;
+  runtimeContext?: Record<string, unknown>;
+  settings?: Record<string, unknown>;
   status: string;
 }): Record<string, unknown> {
   return {
     id: "session-1",
-    provider: "codex",
+    provider: overrides.provider ?? "codex",
     cwd: "/workspace",
     title: "Session 1",
     status: overrides.status,
+    ...(overrides.runtimeContext
+      ? { runtimeContext: overrides.runtimeContext }
+      : {}),
+    ...(overrides.settings ? { settings: overrides.settings } : {}),
     visible: true,
     createdAt: "2026-06-16T00:00:00.000Z",
     updatedAt: "2026-06-16T00:00:00.000Z"
