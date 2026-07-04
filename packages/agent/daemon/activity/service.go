@@ -1741,8 +1741,11 @@ func (s *Store) updateActivitySyncState(
 	}
 	next := update(current, time.Now().UnixMilli())
 	current.state = next
-	entry.mu.Unlock()
+	// Persist while holding entry.mu so sync-state writes serialize with
+	// HideAgentSession's delete (also under entry.mu): a save must never land
+	// after the delete and resurrect a hidden session's sync state.
 	s.saveSyncState(roomID, next)
+	entry.mu.Unlock()
 	s.notifyRoomUpdate(roomID)
 	return next, true
 }
