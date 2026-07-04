@@ -1695,10 +1695,17 @@ export class SessionRuntime {
       const compactResult = stringValue(message.compact_result);
       if (compactResult === "success" && this.compactionInProgress) {
         this.compactionInProgress = false;
-        this.emitCompactCompleted(
-          this.compactEventTurnId(),
-          "Compacting completed."
-        );
+        const turnId = this.compactEventTurnId();
+        this.emitCompactCompleted(turnId, "Compacting completed.");
+        // The `status`/`compact_result` signal can arrive without a
+        // companion `compact_boundary` system message (or arrive first),
+        // so it cannot rely on emitCompactBoundaryUsage to refresh the
+        // context-usage percentage. Without this, the GUI keeps showing
+        // the pre-compaction (often ~100%) usage forever after a manual
+        // /compact, since no further usage_updated event is guaranteed to
+        // follow "Compacting completed." — see the P1 bug where the usage
+        // chip stays pinned at 100% after clicking compact.
+        void this.emitContextUsageSnapshot(turnId);
         return;
       }
       if (compactResult === "failed" && this.compactionInProgress) {

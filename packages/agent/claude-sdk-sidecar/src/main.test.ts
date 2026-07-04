@@ -378,6 +378,58 @@ test("late compact boundary still attaches to slash compact turn", async () => {
   }
 });
 
+test("compact success reported only via status message still refreshes usage", async () => {
+  // Real Claude Code compaction can report completion via the `status`
+  // system message (`compact_result: "success"`) without a `compact_boundary`
+  // message ever following it in a given ordering/timing window. Before this
+  // fix, that path emitted "Compacting completed." without ever refreshing
+  // the context-usage percentage, so the GUI usage chip stayed pinned at its
+  // pre-compaction value (e.g. 100%) until some unrelated later turn happened
+  // to report fresh usage.
+  const events: Array<{ type: string; payload?: Record<string, unknown> }> = [];
+  const restoreSink = withSidecarEventSinkForTest((event) =>
+    events.push(event)
+  );
+  try {
+    const session = new SessionRuntime(
+      "provider-session-1",
+      "/repo",
+      {},
+      false,
+      false,
+      {
+        model: "",
+        permissionModeId: "default",
+        planMode: false,
+        effort: "",
+        speed: ""
+      },
+      sidecarClaudeOptionsFromPayload({}),
+      undefined,
+      ({ prompt }) => fakeStatusOnlyCompactQuery(prompt)
+    );
+
+    await session.start();
+    session.exec("turn-status-only", "/compact");
+    await waitForEvent(events, "turn_completed");
+    await waitForEvent(events, "compact_completed");
+
+    const usage = events.find(
+      (event) =>
+        event.type === "usage_updated" && isRecord(event.payload?.contextWindow)
+    );
+    const contextWindow = isRecord(usage?.payload?.contextWindow)
+      ? usage.payload.contextWindow
+      : undefined;
+    assert.ok(usage, "expected a usage_updated event carrying contextWindow");
+    assert.equal(usage?.payload?.turnId, "turn-status-only");
+    assert.equal(contextWindow?.usedTokens, 4_061);
+    assert.equal(contextWindow?.totalTokens, 1_000_000);
+  } finally {
+    restoreSink();
+  }
+});
+
 test("nested end_turn assistant completes delegated task without child result", async () => {
   const events: Array<{ type: string; payload?: Record<string, unknown> }> = [];
   const restoreSink = withSidecarEventSinkForTest((event) =>
@@ -1776,6 +1828,56 @@ function fakeCompactBoundaryQuery(
     },
     close() {}
   } as AsyncIterable<SDKMessage>;
+}
+
+// Mirrors the real Claude Code sequence observed for a manual /compact: a
+// `status`/`compact_result: "success"` system message reports completion with
+// no accompanying `compact_boundary` message, so the only way to learn the
+// post-compaction size is the `getContextUsage()` snapshot.
+function fakeStatusOnlyCompactQuery(
+  prompt: AsyncIterable<SDKUserMessage>
+): AsyncIterable<SDKMessage> & {
+  getContextUsage: () => Promise<unknown>;
+  close: () => void;
+} {
+  return {
+    async *[Symbol.asyncIterator]() {
+      const firstPrompt = await prompt[Symbol.asyncIterator]().next();
+      const promptMessage = firstPrompt.value as SDKUserMessage & {
+        uuid?: string;
+      };
+      yield {
+        ...promptMessage,
+        uuid: promptMessage.uuid,
+        type: "user",
+        parent_tool_use_id: null,
+        session_id: "provider-session-1"
+      } as SDKMessage;
+      yield {
+        type: "system",
+        subtype: "status",
+        status: "compacting"
+      } as unknown as SDKMessage;
+      yield {
+        type: "system",
+        subtype: "status",
+        status: null,
+        compact_result: "success"
+      } as unknown as SDKMessage;
+      yield {
+        type: "result",
+        subtype: "success"
+      } as unknown as SDKMessage;
+    },
+    async getContextUsage() {
+      return {
+        totalTokens: 4_061,
+        maxTokens: 1_000_000,
+        rawMaxTokens: 1_000_000
+      };
+    },
+    close() {}
+  };
 }
 
 function fakePermissionCheckQuery(
