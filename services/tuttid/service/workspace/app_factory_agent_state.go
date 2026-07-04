@@ -7,8 +7,8 @@ import (
 	"log/slog"
 	"strings"
 
-	agentsessionstore "github.com/tutti-os/tutti/packages/agentactivity/daemon/activity"
-	agentactivityprojection "github.com/tutti-os/tutti/packages/agentactivity/daemon/activity/projection"
+	agentsessionstore "github.com/tutti-os/tutti/packages/agent/daemon/activity"
+	agentactivityprojection "github.com/tutti-os/tutti/packages/agent/daemon/activity/projection"
 	agentactivitybiz "github.com/tutti-os/tutti/services/tuttid/biz/agentactivity"
 	workspacebiz "github.com/tutti-os/tutti/services/tuttid/biz/workspace"
 )

@@ -195,6 +195,9 @@ function createWorkspaceAgentActivityService(): IWorkspaceAgentActivityService {
     cancelSession: async () => {
       throw new Error("not implemented");
     },
+    goalControl: async () => {
+      throw new Error("not implemented");
+    },
     createSession: async () => {
       throw new Error("not implemented");
     },

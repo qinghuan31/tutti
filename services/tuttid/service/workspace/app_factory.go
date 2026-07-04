@@ -13,7 +13,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	agentsessionstore "github.com/tutti-os/tutti/packages/agentactivity/daemon/activity"
+	agentsessionstore "github.com/tutti-os/tutti/packages/agent/daemon/activity"
 	workspacefiles "github.com/tutti-os/tutti/packages/workspace/files"
 	workspacebiz "github.com/tutti-os/tutti/services/tuttid/biz/workspace"
 	workspacedata "github.com/tutti-os/tutti/services/tuttid/data/workspace"

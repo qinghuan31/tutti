@@ -15,7 +15,7 @@ import (
 	"strings"
 	"sync"
 
-	activityshared "github.com/tutti-os/tutti/packages/agentactivity/daemon/activity/events"
+	activityshared "github.com/tutti-os/tutti/packages/agent/daemon/activity/events"
 )
 
 const (
@@ -59,6 +59,20 @@ type claudeSDKAdapterSession struct {
 	liveState         acpLiveState
 	sendMu            sync.Mutex
 	readerStarted     bool
+	// lifecycleSeq numbers the adapter's TurnLifecycle snapshots (ADR 0008):
+	// monotonically increasing per session so consumers receiving snapshots
+	// over different channels (the Exec emit closure and the session event
+	// sink) can drop stale ones. Guarded by the adapter mutex.
+	lifecycleSeq uint64
+	// settledTurns remembers turn IDs whose terminal event already left this
+	// adapter, so a late Cancel re-states the settled snapshot instead of
+	// fabricating a competing terminal transition. Guarded by the adapter
+	// mutex.
+	settledTurns map[string]string
+	// goalArmTurnID is the sidecar turn carrying a queued /goal set command
+	// that has not settled yet; until it does, other turns settling must not
+	// be read as goal completion. Guarded by the adapter mutex.
+	goalArmTurnID string
 }
 
 type claudeSDKBackgroundAgent struct {
@@ -294,7 +308,7 @@ func (a *ClaudeCodeSDKAdapter) Exec(
 	if event, ok := adapterSession.mirrorGoalSlashPrompt(session, visibleText); ok {
 		startEvents = append(startEvents, event)
 	}
-	emitEvents(startEvents)
+	emitEvents(a.stampTurnLifecycleSnapshots(adapterSession, startEvents))
 
 	waiter := a.registerClaudeSDKTurn(adapterSession, turnID, emit)
 	if err := a.startClaudeSDKReader(session.AgentSessionID, adapterSession); err != nil {
@@ -341,12 +355,15 @@ func (a *ClaudeCodeSDKAdapter) Cancel(_ context.Context, session Session, turnID
 		},
 	})
 	events := a.claudeSDKPendingRequestFailureEvents(adapterSession, session, turnID, errPermissionRequestCanceled)
-	if strings.TrimSpace(turnID) != "" {
-		events = append(events, newTurnActivityEvent(session, EventTurnCanceled, turnID, SessionStatusCanceled, "", "", map[string]any{
+	// Only synthesize a terminal transition for a turn that is still live; a
+	// cancel racing the turn's own settle otherwise emits a second,
+	// contradicting terminal event (the stuck-view class ADR 0008 removes).
+	if trimmed := strings.TrimSpace(turnID); trimmed != "" && !a.turnAlreadySettled(adapterSession, trimmed) {
+		events = append(events, newTurnActivityEvent(session, EventTurnCanceled, trimmed, SessionStatusCanceled, "", "", map[string]any{
 			"reason": "user",
 		}))
 	}
-	return events, nil
+	return a.stampTurnLifecycleSnapshots(adapterSession, events), nil
 }
 
 func (a *ClaudeCodeSDKAdapter) ApplySessionSettings(
@@ -573,6 +590,8 @@ func (a *ClaudeCodeSDKAdapter) sidecarTurnEvents(adapterSession *claudeSDKAdapte
 		return adapterSession.claudeSDKToolEvents(session, turnID, event.Payload, EventCallFailed, messageStreamStateFailed, event.Type), false, nil
 	case "task_started", "task_progress", "task_completed":
 		return adapterSession.claudeSDKTaskLifecycleEvents(session, turnID, event.Type, event.Payload), false, nil
+	case "plan_updated":
+		return claudeSDKPlanEvents(session, turnID, event.Payload), false, nil
 	case "usage_updated":
 		if adapterSession.applyUsageUpdated(event.Payload) {
 			if event, ok := acpUsageUpdatedEvent(session); ok {
@@ -599,19 +618,25 @@ func (a *ClaudeCodeSDKAdapter) sidecarTurnEvents(adapterSession *claudeSDKAdapte
 		events = append(events, newSessionActivityEvent(session, EventSessionUpdated, firstNonEmpty(session.Status, SessionStatusReady), claudeSDKRuntimeContext(session, adapterSession)))
 		return events, false, nil
 	case "turn_completed":
-		return []activityshared.Event{newTurnActivityEvent(session, EventTurnCompleted, turnID, SessionStatusReady, "", "", map[string]any{
+		events := []activityshared.Event{newTurnActivityEvent(session, EventTurnCompleted, turnID, SessionStatusReady, "", "", map[string]any{
 			"adapter":    claudeSDKSidecarAdapterName,
 			"stopReason": firstNonEmpty(payloadString(event.Payload, "stopReason"), "end_turn"),
-		})}, true, nil
+		})}
+		events = append(events, a.goalEventsOnTurnSettled(adapterSession, session, turnID, true)...)
+		return events, true, nil
 	case "turn_canceled":
-		return []activityshared.Event{newTurnActivityEvent(session, EventTurnCanceled, turnID, SessionStatusCanceled, "", "", map[string]any{
+		events := []activityshared.Event{newTurnActivityEvent(session, EventTurnCanceled, turnID, SessionStatusCanceled, "", "", map[string]any{
 			"adapter": claudeSDKSidecarAdapterName,
-		})}, true, nil
+		})}
+		events = append(events, a.goalEventsOnTurnSettled(adapterSession, session, turnID, false)...)
+		return events, true, nil
 	case "turn_failed":
-		return []activityshared.Event{newTurnActivityEvent(session, EventTurnFailed, turnID, SessionStatusFailed, "", "", map[string]any{
+		events := []activityshared.Event{newTurnActivityEvent(session, EventTurnFailed, turnID, SessionStatusFailed, "", "", map[string]any{
 			"adapter": claudeSDKSidecarAdapterName,
 			"error":   payloadString(event.Payload, "error"),
-		})}, true, nil
+		})}
+		events = append(events, a.goalEventsOnTurnSettled(adapterSession, session, turnID, false)...)
+		return events, true, nil
 	default:
 		return nil, false, nil
 	}
@@ -643,6 +668,71 @@ func (a *ClaudeCodeSDKAdapter) runClaudeSDKReader(agentSessionID string, adapter
 	}
 }
 
+// nextTurnLifecycleSeq allocates the next per-session lifecycle snapshot
+// sequence number.
+func (a *ClaudeCodeSDKAdapter) nextTurnLifecycleSeq(adapterSession *claudeSDKAdapterSession) uint64 {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	adapterSession.lifecycleSeq++
+	return adapterSession.lifecycleSeq
+}
+
+// stampTurnLifecycleSnapshots stamps an adapter-origin TurnLifecycle snapshot
+// onto every turn.* event in the batch (ADR 0008); see
+// stampAdapterTurnLifecycleEvents for the contract. It also records terminal
+// transitions so Cancel can tell an already-settled turn apart from a live
+// one.
+func (a *ClaudeCodeSDKAdapter) stampTurnLifecycleSnapshots(adapterSession *claudeSDKAdapterSession, events []activityshared.Event) []activityshared.Event {
+	if a == nil || adapterSession == nil || len(events) == 0 {
+		return events
+	}
+	events = stampAdapterTurnLifecycleEvents(events, func() uint64 {
+		return a.nextTurnLifecycleSeq(adapterSession)
+	})
+	a.mu.Lock()
+	for _, event := range events {
+		switch event.Type {
+		// turn.canceled folds into turn.completed with an interrupted
+		// outcome at construction (newTurnActivityEventWithID), so these two
+		// cover every terminal transition.
+		case activityshared.EventTurnCompleted, activityshared.EventTurnFailed:
+			turnID := strings.TrimSpace(event.Payload.TurnID)
+			if turnID == "" {
+				continue
+			}
+			if adapterSession.settledTurns == nil {
+				adapterSession.settledTurns = make(map[string]string)
+			}
+			// Sessions are long-lived; keep the guard bounded rather than
+			// growing one entry per turn forever.
+			if len(adapterSession.settledTurns) > 64 {
+				adapterSession.settledTurns = make(map[string]string)
+			}
+			outcome := strings.TrimSpace(event.Payload.TurnOutcome)
+			if outcome == "" {
+				if snapshot, ok := activityshared.TurnLifecycleSnapshotFromEvent(event); ok {
+					outcome = snapshot.Outcome
+				}
+			}
+			adapterSession.settledTurns[turnID] = outcome
+		}
+	}
+	a.mu.Unlock()
+	return events
+}
+
+// turnAlreadySettled reports whether a terminal event for the turn already
+// left this adapter.
+func (a *ClaudeCodeSDKAdapter) turnAlreadySettled(adapterSession *claudeSDKAdapterSession, turnID string) bool {
+	if a == nil || adapterSession == nil {
+		return false
+	}
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	_, settled := adapterSession.settledTurns[strings.TrimSpace(turnID)]
+	return settled
+}
+
 func (a *ClaudeCodeSDKAdapter) dispatchClaudeSDKEvent(agentSessionID string, adapterSession *claudeSDKAdapterSession, event claudeSDKSidecarEvent) {
 	if a == nil || adapterSession == nil {
 		return
@@ -661,11 +751,25 @@ func (a *ClaudeCodeSDKAdapter) dispatchClaudeSDKEvent(agentSessionID string, ada
 		session.AgentSessionID = agentSessionID
 	}
 	next, terminal, err := a.sidecarTurnEvents(adapterSession, session, turnID, event)
+	next = a.stampTurnLifecycleSnapshots(adapterSession, next)
 	if len(next) > 0 {
 		a.updateClaudeSDKSessionSnapshot(adapterSession, next)
 	}
 	if waiter != nil {
 		a.completeClaudeSDKWaiterEvent(adapterSession, waiter, turnID, next, terminal, err)
+		return
+	}
+	if terminal {
+		// No daemon-registered Exec()/ExecAsync() waiter is tracking this
+		// turnID's outcome: either its terminal event was already delivered
+		// once (the waiter already completed and was unregistered) or this
+		// turn never became the tracked active turn in the first place (for
+		// example an internal/queued Claude SDK turn — see turnQueue /
+		// settleQueuedTurn in the sidecar — that got settled without ever
+		// being submitted through Exec). Publishing it here would surface a
+		// stray, possibly contradictory outcome notification for the session:
+		// a phantom completed/failed toast landing alongside the real turn's
+		// own outcome toast for the same agent session. Drop it instead.
 		return
 	}
 	if err != nil {
@@ -763,7 +867,20 @@ func (a *ClaudeCodeSDKAdapter) failClaudeSDKReader(agentSessionID string, adapte
 	for _, response := range responses {
 		response <- claudeSDKSidecarEvent{Type: "error", Payload: map[string]any{"error": err.Error()}}
 	}
+	// Any interactive/permission request still awaiting a human decision when
+	// the sidecar connection is lost must be resolved explicitly. Without
+	// this, the pending approval bookkeeping is discarded silently along
+	// with the session (below), leaving the GUI's permission dialog with no
+	// terminal event: on the next reconnect/resume it simply vanishes with
+	// no explanation while the turn itself fails, giving the appearance that
+	// the request was answered (or bypassed) when it never was.
+	session := a.claudeSDKSessionSnapshot(adapterSession)
+	if strings.TrimSpace(session.AgentSessionID) == "" {
+		session.AgentSessionID = agentSessionID
+	}
+	pendingFailureEvents := a.claudeSDKPendingRequestFailureEvents(adapterSession, session, "", err)
 	a.removeSession(agentSessionID)
+	a.emitClaudeSDKSessionEvents(agentSessionID, pendingFailureEvents)
 }
 
 func (a *ClaudeCodeSDKAdapter) takeClaudeSDKResponseWaiter(adapterSession *claudeSDKAdapterSession, event claudeSDKSidecarEvent) chan claudeSDKSidecarEvent {
@@ -1270,6 +1387,37 @@ func claudeSDKBackgroundAgentStatusIsTerminal(status string) bool {
 	}
 }
 
+// claudeSDKPlanEvents maps the sidecar's plan_updated entries (SDK task list)
+// onto the same synthesized update_todo tool call codex publishes for plan
+// updates, so the GUI plan rendering works identically across providers.
+func claudeSDKPlanEvents(session Session, turnID string, payload map[string]any) []activityshared.Event {
+	entries, _ := payload["entries"].([]any)
+	if len(entries) == 0 || strings.TrimSpace(turnID) == "" {
+		return nil
+	}
+	todos := make([]any, 0, len(entries))
+	for _, entry := range entries {
+		item := payloadObject(entry)
+		text := asStringRaw(item["content"])
+		if text == "" {
+			continue
+		}
+		todos = append(todos, map[string]any{
+			"content": text,
+			"status":  appServerItemStatus(asString(item["status"])),
+		})
+	}
+	if len(todos) == 0 {
+		return nil
+	}
+	return []activityshared.Event{claudeSDKToolActivityEvent(session, turnID, map[string]any{
+		"toolCallId": "plan:" + strings.TrimSpace(turnID),
+		"name":       "update_todo",
+		"input":      map[string]any{"todos": todos},
+		"metadata":   map[string]any{"kind": "think"},
+	}, EventCallCompleted, messageStreamStateCompleted)}
+}
+
 func claudeSDKToolActivityEvent(session Session, turnID string, payload map[string]any, eventType string, status string) activityshared.Event {
 	callID := firstNonEmpty(
 		payloadString(payload, "toolCallId"),
@@ -1400,17 +1548,21 @@ func (s *claudeSDKAdapterSession) applyUsageUpdated(payload map[string]any) bool
 		return false
 	}
 	previous := s.liveState.usage
-	update := claudeSDKUsageUpdate(payload, previous)
+	contextModel := s.currentUsageModel(payload)
+	update := claudeSDKUsageUpdate(payload, previous, contextModel)
 	if len(update) == 0 {
-		s.logUsageUpdate(payload, update, previous, acpUsageState{}, false, "empty_normalized_update")
+		s.logUsageUpdate(payload, update, previous, acpUsageState{}, contextModel, false, "empty_normalized_update")
 		return false
 	}
 	if usage, ok := acpUsageValue(update); ok {
+		if usage.contextKnown {
+			usage.contextModel = contextModel
+		}
 		s.liveState.usage = mergeACPUsageState(previous, usage)
-		s.logUsageUpdate(payload, update, previous, s.liveState.usage, true, "")
+		s.logUsageUpdate(payload, update, previous, s.liveState.usage, contextModel, true, "")
 		return true
 	}
-	s.logUsageUpdate(payload, update, previous, acpUsageState{}, false, "invalid_normalized_update")
+	s.logUsageUpdate(payload, update, previous, acpUsageState{}, contextModel, false, "invalid_normalized_update")
 	return false
 }
 
@@ -1419,6 +1571,7 @@ func (s *claudeSDKAdapterSession) logUsageUpdate(
 	update map[string]any,
 	previous acpUsageState,
 	current acpUsageState,
+	contextModel string,
 	applied bool,
 	reason string,
 ) {
@@ -1447,9 +1600,9 @@ func (s *claudeSDKAdapterSession) logUsageUpdate(
 		rawContextSource = contextWindow
 	}
 	rawUsed, _ := firstACPInt64(rawContextSource, "usedTokens", "used_tokens", "used", "totalTokens", "total_tokens", "total")
-	rawTotal := claudeSDKContextWindowTokens(payload)
+	rawTotal := claudeSDKContextWindowTokens(payload, contextModel)
 	if rawTotal <= 0 {
-		rawTotal = claudeSDKContextWindowTokens(usageSource)
+		rawTotal = claudeSDKContextWindowTokens(usageSource, contextModel)
 	}
 	rawInput, _ := firstACPInt64(usageSource, "input_tokens", "inputTokens")
 	rawOutput, _ := firstACPInt64(usageSource, "output_tokens", "outputTokens")
@@ -1479,9 +1632,11 @@ func (s *claudeSDKAdapterSession) logUsageUpdate(
 		"previous_context_known", previous.contextKnown,
 		"previous_used_tokens", previous.contextUsedTokens,
 		"previous_total_tokens", previous.contextWindowTokens,
+		"previous_context_model", previous.contextModel,
 		"current_context_known", current.contextKnown,
 		"current_used_tokens", current.contextUsedTokens,
 		"current_total_tokens", current.contextWindowTokens,
+		"current_context_model", current.contextModel,
 		"applied", applied,
 		"reason", strings.TrimSpace(reason),
 	)
@@ -1497,6 +1652,19 @@ func sortedPayloadKeys(payload map[string]any) []string {
 	}
 	sort.Strings(keys)
 	return keys
+}
+
+func (s *claudeSDKAdapterSession) currentUsageModel(payload map[string]any) string {
+	if s == nil {
+		return ""
+	}
+	if model := claudeSDKCanonicalModel(payloadString(payload, "model")); model != "" {
+		return model
+	}
+	if model := claudeSDKCanonicalModel(asString(s.liveState.configOptions["model"])); model != "" {
+		return model
+	}
+	return claudeSDKCanonicalModel(s.session.SettingsValue().Model)
 }
 
 func (s *claudeSDKAdapterSession) applySpeedUpdated(payload map[string]any) bool {
@@ -1576,13 +1744,16 @@ func (s *claudeSDKAdapterSession) applyConfigOption(configID string, value strin
 	return true
 }
 
-func claudeSDKUsageUpdate(payload map[string]any, previous acpUsageState) map[string]any {
+func claudeSDKUsageUpdate(payload map[string]any, previous acpUsageState, contextModel string) map[string]any {
 	if len(payload) == 0 {
 		return nil
 	}
 	if contextWindow := payloadMap(payload, "contextWindow"); len(contextWindow) > 0 {
 		if _, ok := firstACPInt64(contextWindow, "totalTokens", "total_tokens", "size", "limit", "max"); !ok {
-			total := previous.contextWindowTokens
+			total := int64(0)
+			if claudeSDKCanReusePreviousContextWindow(previous, contextModel) {
+				total = previous.contextWindowTokens
+			}
 			if total <= 0 {
 				total = claudeSDKDefaultContextWindow
 			}
@@ -1605,11 +1776,11 @@ func claudeSDKUsageUpdate(payload map[string]any, previous acpUsageState) map[st
 	if used <= 0 {
 		return nil
 	}
-	total := claudeSDKContextWindowTokens(payload)
+	total := claudeSDKContextWindowTokens(payload, contextModel)
 	if total <= 0 {
-		total = claudeSDKContextWindowTokens(usage)
+		total = claudeSDKContextWindowTokens(usage, contextModel)
 	}
-	if total <= 0 && previous.contextKnown {
+	if total <= 0 && claudeSDKCanReusePreviousContextWindow(previous, contextModel) {
 		total = previous.contextWindowTokens
 	}
 	if total <= 0 {
@@ -1622,6 +1793,15 @@ func claudeSDKUsageUpdate(payload map[string]any, previous acpUsageState) map[st
 			"totalTokens": total,
 		},
 	}
+}
+
+func claudeSDKCanReusePreviousContextWindow(previous acpUsageState, contextModel string) bool {
+	if !previous.contextKnown || previous.contextWindowTokens <= 0 {
+		return false
+	}
+	contextModel = claudeSDKCanonicalModel(contextModel)
+	previousModel := claudeSDKCanonicalModel(previous.contextModel)
+	return previousModel == "" || contextModel == "" || previousModel == contextModel
 }
 
 func claudeSDKUsageTokens(usage map[string]any) int64 {
@@ -1647,7 +1827,7 @@ func claudeSDKUsageTokens(usage map[string]any) int64 {
 	return input + output + cacheRead + cacheCreate
 }
 
-func claudeSDKContextWindowTokens(payload map[string]any) int64 {
+func claudeSDKContextWindowTokens(payload map[string]any, contextModel string) int64 {
 	if len(payload) == 0 {
 		return 0
 	}
@@ -1665,37 +1845,53 @@ func claudeSDKContextWindowTokens(payload map[string]any) int64 {
 	); ok {
 		return total
 	}
-	if total := claudeSDKContextWindowTokensFromValue(payload["modelUsage"]); total > 0 {
+	if total := claudeSDKContextWindowTokensFromValue(payload["modelUsage"], contextModel); total > 0 {
 		return total
 	}
 	return 0
 }
 
-func claudeSDKContextWindowTokensFromValue(value any) int64 {
+func claudeSDKContextWindowTokensFromValue(value any, contextModel string) int64 {
 	switch typed := value.(type) {
 	case []any:
 		for _, item := range typed {
-			if total := claudeSDKContextWindowTokensFromValue(item); total > 0 {
+			if total := claudeSDKContextWindowTokensFromValue(item, contextModel); total > 0 {
 				return total
 			}
 		}
 	case []map[string]any:
 		for _, item := range typed {
-			if total := claudeSDKContextWindowTokens(item); total > 0 {
+			if total := claudeSDKContextWindowTokens(item, contextModel); total > 0 {
 				return total
 			}
 		}
 	case map[string]any:
-		if total := claudeSDKContextWindowTokens(typed); total > 0 {
+		if total := claudeSDKContextWindowTokens(typed, contextModel); total > 0 {
 			return total
 		}
-		for _, item := range typed {
-			if total := claudeSDKContextWindowTokensFromValue(item); total > 0 {
-				return total
+		normalizedModel := strings.ToLower(strings.TrimSpace(claudeSDKCanonicalModel(contextModel)))
+		keys := sortedPayloadKeys(typed)
+		for _, key := range keys {
+			if normalizedModel != "" && claudeSDKModelKeyMatchesNormalized(key, normalizedModel) {
+				if total := claudeSDKContextWindowTokensFromValue(typed[key], contextModel); total > 0 {
+					return total
+				}
+			}
+		}
+		for _, key := range keys {
+			if normalizedModel == "" || !claudeSDKModelKeyMatchesNormalized(key, normalizedModel) {
+				if total := claudeSDKContextWindowTokensFromValue(typed[key], contextModel); total > 0 {
+					return total
+				}
 			}
 		}
 	}
 	return 0
+}
+
+func claudeSDKModelKeyMatchesNormalized(key string, normalizedModel string) bool {
+	key = strings.ToLower(strings.TrimSpace(key))
+	return key != "" && (key == normalizedModel || strings.Contains(key, normalizedModel))
 }
 
 func (s *claudeSDKAdapterSession) send(request claudeSDKSidecarRequest) error {
@@ -1970,6 +2166,9 @@ func claudeSDKRuntimeContext(session Session, adapterSession *claudeSDKAdapterSe
 			CapabilityPlanMode,
 			CapabilityInterrupt,
 			"review",
+			// Goal set/clear/display only — no CapabilityGoalPause: Claude
+			// Code's goal has no paused state to control.
+			"goal",
 		},
 	}
 	if providerConfig := providerRuntimeConfig(session, session.Provider); len(providerConfig) > 0 {

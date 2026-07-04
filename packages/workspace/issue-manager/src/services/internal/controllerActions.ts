@@ -193,6 +193,35 @@ function resolveIssueManagerMovedTaskOrder(input: {
   ];
 }
 
+/**
+ * Resolves the execution directory (project path) to run a task/breakdown in.
+ *
+ * The user's explicit per-issue selection (`selectedExecutionDirectory`)
+ * always wins. Otherwise this falls back to the same remembered "default
+ * project" that ad-hoc new agent-GUI sessions use, so a task run/breakdown
+ * launched without the user ever touching the execution-directory picker
+ * still gets associated with a real project instead of silently landing in
+ * the agent runtime's internal session-storage directory (which then shows
+ * up as the session's project path in both the session window and the
+ * message center).
+ */
+async function resolveIssueManagerExecutionDirectory(input: {
+  feature: IssueManagerFeature;
+  selectedExecutionDirectory: string | null | undefined;
+}): Promise<string | null> {
+  const selected = input.selectedExecutionDirectory?.trim();
+  if (selected) {
+    return selected;
+  }
+  try {
+    const defaultSelection =
+      await input.feature.executionDirectoryPicker?.service?.getDefaultSelection?.();
+    return defaultSelection?.path?.trim() || null;
+  } catch {
+    return null;
+  }
+}
+
 export function createIssueManagerControllerActions(
   input: CreateIssueManagerControllerActionsInput
 ) {
@@ -672,12 +701,14 @@ export function createIssueManagerControllerActions(
 
       setIsRunningTask(true);
       try {
+        const executionDirectory = await resolveIssueManagerExecutionDirectory({
+          feature,
+          selectedExecutionDirectory: nodeState.selectedExecutionDirectory
+        });
         trackIssueManagerAnalytics(feature, {
           name: "issue_manager.task_run_initiated",
           params: {
-            hasExecutionDirectory: Boolean(
-              nodeState.selectedExecutionDirectory?.trim()
-            ),
+            hasExecutionDirectory: Boolean(executionDirectory),
             issueId: currentIssueDetail.issue.issueId,
             provider: runPlan.provider,
             taskId: currentTaskDetail?.task.taskId ?? null
@@ -687,7 +718,7 @@ export function createIssueManagerControllerActions(
           feature,
           issue: currentIssueDetail.issue,
           provider: runPlan.provider,
-          executionDirectory: nodeState.selectedExecutionDirectory,
+          executionDirectory,
           task: currentTaskDetail?.task,
           workspaceId
         });
@@ -739,6 +770,10 @@ export function createIssueManagerControllerActions(
 
       setIsRunningTask(true);
       try {
+        const executionDirectory = await resolveIssueManagerExecutionDirectory({
+          feature,
+          selectedExecutionDirectory: nodeState.selectedExecutionDirectory
+        });
         trackIssueManagerAnalytics(feature, {
           name: "issue_manager.issue_breakdown_initiated",
           params: {
@@ -747,11 +782,7 @@ export function createIssueManagerControllerActions(
           }
         });
         const result = await breakdownLauncher.startBreakdown({
-          ...(nodeState.selectedExecutionDirectory?.trim()
-            ? {
-                executionDirectory: nodeState.selectedExecutionDirectory.trim()
-              }
-            : {}),
+          ...(executionDirectory ? { executionDirectory } : {}),
           issueDetail: currentIssueDetail,
           provider: breakdownPlan.provider,
           workspaceId

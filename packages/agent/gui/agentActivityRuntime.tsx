@@ -8,6 +8,8 @@ import {
 import type {
   AgentActivityCancelSessionInput,
   AgentActivityCancelSessionResult,
+  AgentActivityGoalControlInput,
+  AgentActivityGoalControlResult,
   AgentActivityCreateSessionInput,
   AgentActivityDeleteSessionInput,
   AgentActivityDeleteSessionResult,
@@ -275,6 +277,9 @@ export interface AgentActivityRuntime {
   cancelSession(
     input: AgentActivityCancelSessionInput
   ): Promise<AgentActivityCancelSessionResult>;
+  goalControl(
+    input: AgentActivityGoalControlInput
+  ): Promise<AgentActivityGoalControlResult>;
   createSession(
     input: AgentActivityCreateSessionInput
   ): Promise<AgentActivitySession>;

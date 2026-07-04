@@ -1260,6 +1260,93 @@ describe("AgentInteractivePromptSurface", () => {
     ).toBeNull();
   });
 
+  it("shows read-only options for a compact multi-select ask-user prompt instead of hiding them", () => {
+    const onSubmit = vi.fn();
+    render(
+      <AgentInteractivePromptSurface
+        prompt={{
+          kind: "ask-user",
+          requestId: "ask-req-multi",
+          title: "Plan topic",
+          questions: [
+            {
+              id: "areas",
+              header: "Areas",
+              question: "Which areas need review?",
+              options: [
+                { label: "Backend", description: "API surface" },
+                { label: "Frontend", description: "UI surface" }
+              ],
+              multiSelect: true,
+              answer: null
+            }
+          ]
+        }}
+        variant="compact"
+        isSubmitting={false}
+        onSubmit={onSubmit}
+        labels={labels}
+      />
+    );
+
+    // Multi-select can't be answered with a single click here, but the
+    // options must still be visible (not silently dropped) as read-only
+    // context — the message-center card regression this guards against.
+    expect(screen.getByText("Backend")).toBeTruthy();
+    expect(screen.getByText("API surface")).toBeTruthy();
+    expect(screen.getByText("Frontend")).toBeTruthy();
+    expect(screen.queryByRole("button", { name: /Backend/ })).toBeNull();
+    expect(
+      screen
+        .getByText("Backend")
+        .closest(".agent-gui-conversation__interactive-option-display")
+    ).toBeTruthy();
+    expect(onSubmit).not.toHaveBeenCalled();
+  });
+
+  it("shows read-only options for the current compact multi-question ask-user prompt", () => {
+    render(
+      <AgentInteractivePromptSurface
+        prompt={{
+          kind: "ask-user",
+          requestId: "ask-req-multi-question",
+          title: "Rollout plan",
+          questions: [
+            {
+              id: "scope",
+              header: "Scope",
+              question: "Which scope should we use?",
+              options: [
+                { label: "Small", description: "Minimal change" },
+                { label: "Large", description: "Broader cleanup" }
+              ],
+              multiSelect: false,
+              answer: null
+            },
+            {
+              id: "details",
+              header: "Details",
+              question: "Anything else to include?",
+              options: [],
+              multiSelect: false,
+              answer: null
+            }
+          ]
+        }}
+        variant="compact"
+        isSubmitting={false}
+        onSubmit={vi.fn()}
+        labels={labels}
+      />
+    );
+
+    // Multiple questions also defer answering to the full conversation, but
+    // the first question's options should still surface as read-only.
+    expect(screen.getByText("Small")).toBeTruthy();
+    expect(screen.getByText("Large")).toBeTruthy();
+    expect(screen.queryByRole("button", { name: /Small/ })).toBeNull();
+  });
+
   it("offers only the implement decision for a compact plan-implementation prompt", () => {
     const onSubmit = vi.fn();
     render(

@@ -372,6 +372,25 @@ export interface AgentActivityCancelSessionInput {
   signal?: AbortSignal;
 }
 
+export type AgentActivityGoalControlAction =
+  | "pause"
+  | "resume"
+  | "clear"
+  | "set";
+
+export interface AgentActivityGoalControlInput {
+  workspaceId: string;
+  agentSessionId: string;
+  action: AgentActivityGoalControlAction;
+  objective?: string;
+  signal?: AbortSignal;
+}
+
+export interface AgentActivityGoalControlResult {
+  session: AgentActivitySession;
+  goal?: Record<string, unknown> | null;
+}
+
 export interface AgentActivitySubmitInteractiveInput {
   workspaceId: string;
   agentSessionId: string;

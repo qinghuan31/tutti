@@ -331,6 +331,10 @@ func (stubAgentSessionService) Cancel(context.Context, string, string) (agentser
 	return agentservice.CancelSessionResult{}, nil
 }
 
+func (stubAgentSessionService) GoalControl(context.Context, string, string, string, string) (agentservice.GoalControlSessionResult, error) {
+	return agentservice.GoalControlSessionResult{}, nil
+}
+
 func (stubAgentSessionService) SendInput(context.Context, string, string, agentservice.SendInput) (agentservice.SendInputResult, error) {
 	return agentservice.SendInputResult{}, nil
 }

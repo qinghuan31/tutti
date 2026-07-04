@@ -3,6 +3,7 @@ import {
   normalizeAgentActivityDisplayStatus,
   type AgentActivityAdapter,
   type AgentActivityCancelSessionResult,
+  type AgentActivityGoalControlResult,
   type AgentActivityController,
   type AgentActivityMessage,
   type AgentActivityMessagePage,
@@ -603,6 +604,15 @@ export class WorkspaceAgentActivityService implements IWorkspaceAgentActivitySer
   ): Promise<AgentActivityCancelSessionResult> {
     const entry = this.controllerEntry(input.workspaceId);
     const result = await entry.adapter.cancelSession(input);
+    this.upsertAuthoritativeSession(result.session);
+    return result;
+  }
+
+  async goalControl(
+    input: Parameters<AgentActivityAdapter["goalControl"]>[0]
+  ): Promise<AgentActivityGoalControlResult> {
+    const entry = this.controllerEntry(input.workspaceId);
+    const result = await entry.adapter.goalControl(input);
     this.upsertAuthoritativeSession(result.session);
     return result;
   }

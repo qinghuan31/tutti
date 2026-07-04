@@ -2368,6 +2368,40 @@ paths:
           $ref: "#/components/responses/WorkspaceOperationError"
         "503":
           $ref: "#/components/responses/ServiceUnavailableError"
+  /v1/workspaces/{workspaceID}/agent-sessions/{agentSessionID}/goal:
+    parameters:
+      - $ref: "#/components/parameters/WorkspaceID"
+      - $ref: "#/components/parameters/AgentSessionID"
+    post:
+      operationId: goalControlWorkspaceAgentSession
+      tags:
+        - agent-session
+      summary: Perform a goal control action on one workspace agent session
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/WorkspaceAgentSessionGoalControlRequest"
+      responses:
+        "200":
+          description: Workspace agent session goal updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WorkspaceAgentSessionGoalControlResponse"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "400":
+          $ref: "#/components/responses/InvalidRequestError"
+        "404":
+          $ref: "#/components/responses/WorkspaceNotFoundError"
+        "405":
+          $ref: "#/components/responses/MethodNotAllowedError"
+        "502":
+          $ref: "#/components/responses/WorkspaceOperationError"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailableError"
   /v1/workspaces/{workspaceID}/agent-sessions/{agentSessionID}/input:
     parameters:
       - $ref: "#/components/parameters/WorkspaceID"
@@ -6799,6 +6833,32 @@ components:
       properties:
         visible:
           type: boolean
+    WorkspaceAgentSessionGoalControlRequest:
+      type: object
+      additionalProperties: false
+      required:
+        - action
+      properties:
+        action:
+          type: string
+          enum:
+            - pause
+            - resume
+            - clear
+            - set
+        objective:
+          type: string
+    WorkspaceAgentSessionGoalControlResponse:
+      type: object
+      additionalProperties: false
+      required:
+        - session
+      properties:
+        session:
+          $ref: "#/components/schemas/WorkspaceAgentSession"
+        goal:
+          type: object
+          additionalProperties: true
     CreateWorkspaceAgentSessionRequest:
       type: object
       additionalProperties: false

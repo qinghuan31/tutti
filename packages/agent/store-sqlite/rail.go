@@ -1,4 +1,4 @@
-package workspace
+package storesqlite
 
 import (
 	"context"
@@ -10,46 +10,42 @@ import (
 	"strings"
 )
 
+// Rail section classification buckets sessions in the conversation rail:
+// sessions rooted in a known project path land in that project's section,
+// everything else in the shared conversations section.
 const (
-	agentSessionRailSectionKindConversations = "conversations"
-	agentSessionRailSectionKindProject       = "project"
-	agentSessionRailSectionKeyConversations  = "conversations"
+	RailSectionKindConversations = "conversations"
+	RailSectionKindProject       = "project"
+	RailSectionKeyConversations  = "conversations"
 )
 
-type agentSessionRailSection struct {
+// RailSection identifies the rail section a session is classified into.
+type RailSection struct {
 	Kind        string
 	ProjectPath string
 	Key         string
 }
 
 type existingAgentSessionRailSection struct {
-	Section agentSessionRailSection
+	Section RailSection
 	Found   bool
 	Valid   bool
 }
 
-type agentSessionRailProject struct {
-	Path string
-}
-
-type agentSessionRailProjectQueryer interface {
-	QueryContext(context.Context, string, ...any) (*sql.Rows, error)
-}
-
-func classifyAgentSessionRailSectionTx(
+func (s *Store) classifyAgentSessionRailSectionTx(
 	ctx context.Context,
 	tx *sql.Tx,
 	cwd string,
 	runtimeContext map[string]any,
-) (agentSessionRailSection, error) {
-	projects, err := listAgentSessionRailProjects(ctx, tx)
+) (RailSection, error) {
+	projects, err := s.listRailProjectPaths(ctx, tx)
 	if err != nil {
-		return agentSessionRailSection{}, err
+		return RailSection{}, err
 	}
-	return classifyAgentSessionRailSection(cwd, runtimeContext, projects), nil
+	return ClassifyRailSection(cwd, runtimeContext, projects), nil
 }
 
-func resolveAgentSessionRailSectionTx(
+func (s *Store) resolveAgentSessionRailSectionTx(
 	ctx context.Context,
 	tx *sql.Tx,
 	workspaceID string,
@@ -58,15 +54,15 @@ func resolveAgentSessionRailSectionTx(
 	existingCWD string,
 	finalCWD string,
 	runtimeContext map[string]any,
-) (agentSessionRailSection, error) {
+) (RailSection, error) {
 	existingRail, err := getExistingAgentSessionRailSectionTx(ctx, tx, workspaceID, agentSessionID)
 	if err != nil {
-		return agentSessionRailSection{}, err
+		return RailSection{}, err
 	}
 	if hasExisting && existingRail.Found && existingRail.Valid && strings.TrimSpace(existingCWD) == strings.TrimSpace(finalCWD) {
 		return existingRail.Section, nil
 	}
-	return classifyAgentSessionRailSectionTx(ctx, tx, finalCWD, runtimeContext)
+	return s.classifyAgentSessionRailSectionTx(ctx, tx, finalCWD, runtimeContext)
 }
 
 func getExistingAgentSessionRailSectionTx(
@@ -80,7 +76,7 @@ SELECT rail_section_kind, rail_project_path, rail_section_key
 FROM workspace_agent_sessions
 WHERE workspace_id = ? AND agent_session_id = ?
 `, workspaceID, agentSessionID)
-	var section agentSessionRailSection
+	var section RailSection
 	if err := row.Scan(&section.Kind, &section.ProjectPath, &section.Key); err != nil {
 		if err == sql.ErrNoRows {
 			return existingAgentSessionRailSection{}, nil
@@ -95,18 +91,24 @@ WHERE workspace_id = ? AND agent_session_id = ?
 	}, nil
 }
 
-func classifyAgentSessionRailSection(
+// ClassifyRailSection classifies a session working directory against the
+// given project root paths. Project paths are normalized and matched
+// longest-first; sessions marked as external imports without a project, or
+// living in scratch date directories, always classify as conversations
+// unless the cwd is itself a project root.
+func ClassifyRailSection(
 	cwd string,
 	runtimeContext map[string]any,
-	projects []agentSessionRailProject,
-) agentSessionRailSection {
-	normalizedCWD := normalizeAgentSessionRailPath(cwd)
+	projectPaths []string,
+) RailSection {
+	projects := normalizeRailProjectPaths(projectPaths)
+	normalizedCWD := NormalizeProjectPath(cwd)
 	for _, project := range projects {
-		if project.Path == normalizedCWD {
-			return agentSessionRailSection{
-				Kind:        agentSessionRailSectionKindProject,
-				ProjectPath: project.Path,
-				Key:         agentSessionRailSectionKeyForProject(project.Path),
+		if project == normalizedCWD {
+			return RailSection{
+				Kind:        RailSectionKindProject,
+				ProjectPath: project,
+				Key:         RailSectionKeyForProject(project),
 			}
 		}
 	}
@@ -114,56 +116,45 @@ func classifyAgentSessionRailSection(
 		return conversationsAgentSessionRailSection()
 	}
 	for _, project := range projects {
-		if agentSessionRailPathContains(project.Path, normalizedCWD) {
-			return agentSessionRailSection{
-				Kind:        agentSessionRailSectionKindProject,
-				ProjectPath: project.Path,
-				Key:         agentSessionRailSectionKeyForProject(project.Path),
+		if agentSessionRailPathContains(project, normalizedCWD) {
+			return RailSection{
+				Kind:        RailSectionKindProject,
+				ProjectPath: project,
+				Key:         RailSectionKeyForProject(project),
 			}
 		}
 	}
 	return conversationsAgentSessionRailSection()
 }
 
-func listAgentSessionRailProjects(
-	ctx context.Context,
-	queryer agentSessionRailProjectQueryer,
-) ([]agentSessionRailProject, error) {
-	rows, err := queryer.QueryContext(ctx, `
-SELECT path
-FROM user_projects
-WHERE TRIM(path) != ''
-ORDER BY length(path) DESC, path ASC
-`)
-	if err != nil {
-		return nil, fmt.Errorf("list user projects for workspace agent session rail classification: %w", err)
+func (s *Store) listRailProjectPaths(ctx context.Context, q Querier) ([]string, error) {
+	if s.opts.ProjectPaths == nil {
+		return nil, nil
 	}
-	defer rows.Close()
-
-	projects := make([]agentSessionRailProject, 0)
-	for rows.Next() {
-		var project agentSessionRailProject
-		if err := rows.Scan(&project.Path); err != nil {
-			return nil, fmt.Errorf("scan user project for workspace agent session rail classification: %w", err)
-		}
-		project.Path = normalizeAgentSessionRailPath(project.Path)
-		if project.Path != "" {
-			projects = append(projects, project)
-		}
-	}
-	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("iterate user projects for workspace agent session rail classification: %w", err)
-	}
-	sort.SliceStable(projects, func(left, right int) bool {
-		if len(projects[left].Path) == len(projects[right].Path) {
-			return projects[left].Path < projects[right].Path
-		}
-		return len(projects[left].Path) > len(projects[right].Path)
-	})
-	return projects, nil
+	return s.opts.ProjectPaths.ProjectPaths(ctx, q)
 }
 
-func normalizeAgentSessionRailPath(path string) string {
+func normalizeRailProjectPaths(paths []string) []string {
+	projects := make([]string, 0, len(paths))
+	for _, path := range paths {
+		path = NormalizeProjectPath(path)
+		if path != "" {
+			projects = append(projects, path)
+		}
+	}
+	sort.SliceStable(projects, func(left, right int) bool {
+		if len(projects[left]) == len(projects[right]) {
+			return projects[left] < projects[right]
+		}
+		return len(projects[left]) > len(projects[right])
+	})
+	return projects
+}
+
+// NormalizeProjectPath canonicalizes a project or session path the same way
+// rail classification does: absolute, symlink-resolved for existing
+// directories, and cleaned.
+func NormalizeProjectPath(path string) string {
 	path = strings.TrimSpace(path)
 	if path == "" {
 		return ""
@@ -181,8 +172,8 @@ func normalizeAgentSessionRailPath(path string) string {
 }
 
 func agentSessionRailPathContains(parent string, child string) bool {
-	parent = normalizeAgentSessionRailPath(parent)
-	child = normalizeAgentSessionRailPath(child)
+	parent = NormalizeProjectPath(parent)
+	child = NormalizeProjectPath(child)
 	if parent == "" || child == "" {
 		return false
 	}
@@ -216,13 +207,13 @@ func isAgentSessionScratchCWD(cwd string) bool {
 	if err != nil {
 		return false
 	}
-	home = normalizeAgentSessionRailPath(home)
-	cwd = normalizeAgentSessionRailPath(cwd)
+	home = NormalizeProjectPath(home)
+	cwd = NormalizeProjectPath(cwd)
 	if home == "" || cwd == "" {
 		return false
 	}
 	for _, providerDir := range []string{"Codex", "Tutti"} {
-		root := normalizeAgentSessionRailPath(filepath.Join(home, "Documents", providerDir))
+		root := NormalizeProjectPath(filepath.Join(home, "Documents", providerDir))
 		rel, err := filepath.Rel(root, cwd)
 		if err != nil || rel == "." || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
 			continue
@@ -250,37 +241,40 @@ func isAgentSessionRailDateSegment(value string) bool {
 	return true
 }
 
-func conversationsAgentSessionRailSection() agentSessionRailSection {
-	return agentSessionRailSection{
-		Kind: agentSessionRailSectionKindConversations,
-		Key:  agentSessionRailSectionKeyConversations,
+func conversationsAgentSessionRailSection() RailSection {
+	return RailSection{
+		Kind: RailSectionKindConversations,
+		Key:  RailSectionKeyConversations,
 	}
 }
 
-func agentSessionRailSectionKeyForProject(projectPath string) string {
-	projectPath = normalizeAgentSessionRailPath(projectPath)
+// RailSectionKeyForProject returns the section key sessions classified into
+// the given project are stored under, matching the SectionKey accepted by
+// ListSessionSection.
+func RailSectionKeyForProject(projectPath string) string {
+	projectPath = NormalizeProjectPath(projectPath)
 	if projectPath == "" {
-		return agentSessionRailSectionKeyConversations
+		return RailSectionKeyConversations
 	}
 	return "project:" + projectPath
 }
 
-func normalizeAgentSessionRailSection(section agentSessionRailSection) agentSessionRailSection {
+func normalizeAgentSessionRailSection(section RailSection) RailSection {
 	section.Kind = strings.TrimSpace(section.Kind)
-	section.ProjectPath = normalizeAgentSessionRailPath(section.ProjectPath)
+	section.ProjectPath = NormalizeProjectPath(section.ProjectPath)
 	section.Key = strings.TrimSpace(section.Key)
-	if section.Kind == agentSessionRailSectionKindConversations {
+	if section.Kind == RailSectionKindConversations {
 		section.ProjectPath = ""
 	}
 	return section
 }
 
-func isValidAgentSessionRailSection(section agentSessionRailSection) bool {
+func isValidAgentSessionRailSection(section RailSection) bool {
 	switch section.Kind {
-	case agentSessionRailSectionKindConversations:
-		return section.ProjectPath == "" && section.Key == agentSessionRailSectionKeyConversations
-	case agentSessionRailSectionKindProject:
-		return section.ProjectPath != "" && section.Key == agentSessionRailSectionKeyForProject(section.ProjectPath)
+	case RailSectionKindConversations:
+		return section.ProjectPath == "" && section.Key == RailSectionKeyConversations
+	case RailSectionKindProject:
+		return section.ProjectPath != "" && section.Key == RailSectionKeyForProject(section.ProjectPath)
 	default:
 		return false
 	}

@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	activityshared "github.com/tutti-os/tutti/packages/agentactivity/daemon/activity/events"
+	activityshared "github.com/tutti-os/tutti/packages/agent/daemon/activity/events"
 )
 
 // TestRealCodexAppServerTurn drives the adapter against the locally

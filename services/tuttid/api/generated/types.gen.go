@@ -1150,6 +1150,30 @@ func (e WorkspaceAgentSessionCancelResultReason) Valid() bool {
 	}
 }
 
+// Defines values for WorkspaceAgentSessionGoalControlRequestAction.
+const (
+	Clear  WorkspaceAgentSessionGoalControlRequestAction = "clear"
+	Pause  WorkspaceAgentSessionGoalControlRequestAction = "pause"
+	Resume WorkspaceAgentSessionGoalControlRequestAction = "resume"
+	Set    WorkspaceAgentSessionGoalControlRequestAction = "set"
+)
+
+// Valid indicates whether the value is a known member of the WorkspaceAgentSessionGoalControlRequestAction enum.
+func (e WorkspaceAgentSessionGoalControlRequestAction) Valid() bool {
+	switch e {
+	case Clear:
+		return true
+	case Pause:
+		return true
+	case Resume:
+		return true
+	case Set:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for WorkspaceAgentSessionSectionKind.
 const (
 	Conversations WorkspaceAgentSessionSectionKind = "conversations"
@@ -3372,6 +3396,21 @@ type WorkspaceAgentSessionGitBranchesResponse struct {
 	CurrentBranch *string  `json:"currentBranch,omitempty"`
 }
 
+// WorkspaceAgentSessionGoalControlRequest defines model for WorkspaceAgentSessionGoalControlRequest.
+type WorkspaceAgentSessionGoalControlRequest struct {
+	Action    WorkspaceAgentSessionGoalControlRequestAction `json:"action"`
+	Objective *string                                       `json:"objective,omitempty"`
+}
+
+// WorkspaceAgentSessionGoalControlRequestAction defines model for WorkspaceAgentSessionGoalControlRequest.Action.
+type WorkspaceAgentSessionGoalControlRequestAction string
+
+// WorkspaceAgentSessionGoalControlResponse defines model for WorkspaceAgentSessionGoalControlResponse.
+type WorkspaceAgentSessionGoalControlResponse struct {
+	Goal    *map[string]interface{} `json:"goal,omitempty"`
+	Session WorkspaceAgentSession   `json:"session"`
+}
+
 // WorkspaceAgentSessionListResponse defines model for WorkspaceAgentSessionListResponse.
 type WorkspaceAgentSessionListResponse struct {
 	Sessions    []WorkspaceAgentSession `json:"sessions"`
@@ -4195,6 +4234,9 @@ type ImportWorkspaceExternalAgentSessionsJSONRequestBody = ImportExternalAgentSe
 
 // ScanWorkspaceExternalAgentSessionImportsJSONRequestBody defines body for ScanWorkspaceExternalAgentSessionImports for application/json ContentType.
 type ScanWorkspaceExternalAgentSessionImportsJSONRequestBody = ExternalAgentImportScanRequest
+
+// GoalControlWorkspaceAgentSessionJSONRequestBody defines body for GoalControlWorkspaceAgentSession for application/json ContentType.
+type GoalControlWorkspaceAgentSessionJSONRequestBody = WorkspaceAgentSessionGoalControlRequest
 
 // SendWorkspaceAgentSessionInputJSONRequestBody defines body for SendWorkspaceAgentSessionInput for application/json ContentType.
 type SendWorkspaceAgentSessionInputJSONRequestBody = SendWorkspaceAgentSessionInputRequest

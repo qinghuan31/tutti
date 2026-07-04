@@ -17,7 +17,7 @@ import (
 	managedcredentialsbiz "github.com/tutti-os/tutti/services/tuttid/biz/managedcredentials"
 	workspacedata "github.com/tutti-os/tutti/services/tuttid/data/workspace"
 
-	"github.com/tutti-os/tutti/packages/agentactivity/daemon/httpx"
+	"github.com/tutti-os/tutti/packages/agent/daemon/httpx"
 )
 
 const GrantCodeTTL = 5 * time.Hour

@@ -6,7 +6,7 @@ import (
 	"reflect"
 	"testing"
 
-	activityshared "github.com/tutti-os/tutti/packages/agentactivity/daemon/activity/events"
+	activityshared "github.com/tutti-os/tutti/packages/agent/daemon/activity/events"
 )
 
 func TestStoreTracksRoomsAndClonesState(t *testing.T) {

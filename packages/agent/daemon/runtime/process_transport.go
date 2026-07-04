@@ -13,7 +13,7 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/tutti-os/tutti/packages/agentactivity/daemon/runtimecmd"
+	"github.com/tutti-os/tutti/packages/agent/daemon/runtimecmd"
 )
 
 type localProcessTransport struct{}

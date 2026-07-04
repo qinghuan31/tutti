@@ -12,14 +12,6 @@ const schemaMigrationWorkspacesV1 = "workspaces_v1"
 const schemaMigrationWorkspacesV2 = "workspaces_v2"
 const schemaMigrationWorkspacesV3 = "workspaces_v3"
 const schemaMigrationWorkspacesV4 = "workspaces_v4"
-const schemaMigrationWorkspaceAgentActivityV1 = "workspace_agent_activity_v1"
-const schemaMigrationWorkspaceAgentActivityV2 = "workspace_agent_activity_v2"
-const schemaMigrationWorkspaceAgentActivityV3 = "workspace_agent_activity_v3"
-const schemaMigrationWorkspaceAgentActivityV4 = "workspace_agent_activity_v4"
-const schemaMigrationWorkspaceAgentActivityV5 = "workspace_agent_activity_v5"
-const schemaMigrationWorkspaceAgentActivityV6 = "workspace_agent_activity_v6"
-const schemaMigrationWorkspaceAgentActivityRailV1 = "workspace_agent_activity_rail_v1"
-const schemaMigrationAgentTargetsV1 = "agent_targets_v1"
 const schemaMigrationWorkspaceIssuesV1 = "workspace_issues_v1"
 const schemaMigrationWorkspaceIssuesV2 = "workspace_issues_v2"
 const schemaMigrationWorkspaceIssuesV3 = "workspace_issues_v3"
@@ -104,34 +96,6 @@ INSERT OR IGNORE INTO tuttid_schema_migrations (id, applied_at_unix_ms)
 		return err
 	}
 
-	if err := s.applyWorkspaceAgentActivityV1(ctx); err != nil {
-		return err
-	}
-
-	if err := s.applyWorkspaceAgentActivityV2(ctx); err != nil {
-		return err
-	}
-
-	if err := s.applyWorkspaceAgentActivityV3(ctx); err != nil {
-		return err
-	}
-
-	if err := s.applyWorkspaceAgentActivityV4(ctx); err != nil {
-		return err
-	}
-
-	if err := s.applyWorkspaceAgentActivityV5(ctx); err != nil {
-		return err
-	}
-
-	if err := s.applyWorkspaceAgentActivityV6(ctx); err != nil {
-		return err
-	}
-
-	if err := s.applyAgentTargetsV1(ctx); err != nil {
-		return err
-	}
-
 	if err := s.applyDesktopPreferencesV1(ctx); err != nil {
 		return err
 	}
@@ -185,7 +149,10 @@ INSERT OR IGNORE INTO tuttid_schema_migrations (id, applied_at_unix_ms)
 		return err
 	}
 
-	if err := s.applyWorkspaceAgentActivityRailV1(ctx); err != nil {
+	// Agent activity and agent target migrations live in the embedded agent
+	// store. They must run after user_projects_v1: the rail section backfill
+	// reads project paths through userProjectPathsQuerier.
+	if err := s.agentStore().Migrate(ctx); err != nil {
 		return err
 	}
 

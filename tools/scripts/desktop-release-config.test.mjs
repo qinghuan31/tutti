@@ -78,7 +78,10 @@ test("desktop release workflow publishes rc tags as prereleases and keeps stable
     workflow,
     /make_latest:\s+\${{\s*needs\.resolve\.outputs\.release_make_latest\s*==\s*'true'\s*}}/
   );
-  assert.match(workflow, /release_channel:\s+\${{\s*steps\.release\.outputs\.release_channel\s*}}/);
+  assert.match(
+    workflow,
+    /release_channel:\s+\${{\s*steps\.release\.outputs\.release_channel\s*}}/
+  );
   assert.match(workflow, /patch_beta_release\)\s*\n\s*strategy=patch_beta/);
 });
 
@@ -245,10 +248,7 @@ test("desktop release workflow generates summaries and stable changelog metadata
   assert.match(workflow, /secrets\.AGNES_API_KEY/);
   assert.match(workflow, /Upload desktop release summary artifact/);
   assert.match(workflow, /Update release notes with summary/);
-  assert.match(
-    workflow,
-    /apps\/desktop\/scripts\/upsert-release-summary\.mjs/
-  );
+  assert.match(workflow, /apps\/desktop\/scripts\/upsert-release-summary\.mjs/);
   assert.match(workflow, /Update desktop release changelog metadata/);
   assert.match(
     workflow,
@@ -258,13 +258,13 @@ test("desktop release workflow generates summaries and stable changelog metadata
     workflow,
     /grep -Eq "\(404\|NoSuchKey\|Not Found\)" changelog-download\.err/
   );
-  assert.match(
-    workflow,
-    /"schemaVersion":"tutti\.desktop\.changelog\.v1"/
-  );
+  assert.match(workflow, /"schemaVersion":"tutti\.desktop\.changelog\.v1"/);
   assert.match(workflow, /"\$\{s3_root\}\/changelog\.json"/);
   assert.match(workflow, /Download release summary/);
-  assert.match(workflow, /RELEASE_SUMMARY_PATH:\s+release-summary\/release-summary\.json/);
+  assert.match(
+    workflow,
+    /RELEASE_SUMMARY_PATH:\s+release-summary\/release-summary\.json/
+  );
 });
 
 test("desktop release workflow keeps GitHub release draft until assets are ready", async () => {

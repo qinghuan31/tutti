@@ -3,8 +3,8 @@ package agentruntime
 import (
 	"testing"
 
-	agentsessionstore "github.com/tutti-os/tutti/packages/agentactivity/daemon/activity"
-	activityshared "github.com/tutti-os/tutti/packages/agentactivity/daemon/activity/events"
+	agentsessionstore "github.com/tutti-os/tutti/packages/agent/daemon/activity"
+	activityshared "github.com/tutti-os/tutti/packages/agent/daemon/activity/events"
 )
 
 func TestReportableActivityEventsReportsOnlyCompletedAssistantSnapshots(t *testing.T) {

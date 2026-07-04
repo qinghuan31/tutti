@@ -213,7 +213,11 @@ export function resolveDesktopRelease({
     if (strategy.endsWith("_rc")) {
       releaseVersion = resolveNextPrereleaseVersion(bumpedVersion, tags, "rc");
     } else if (strategy.endsWith("_beta")) {
-      releaseVersion = resolveNextPrereleaseVersion(bumpedVersion, tags, "beta");
+      releaseVersion = resolveNextPrereleaseVersion(
+        bumpedVersion,
+        tags,
+        "beta"
+      );
     } else {
       releaseVersion = bumpedVersion;
     }

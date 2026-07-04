@@ -1530,6 +1530,17 @@ function fakeAdapter(
       }
     }),
     submitInteractive: async () => ({}),
+    goalControl: async (input) => ({
+      goal: null,
+      session: {
+        workspaceId: input.workspaceId,
+        agentSessionId: input.agentSessionId,
+        provider: "codex",
+        cwd: "",
+        title: "",
+        status: "ready"
+      }
+    }),
     deleteSession: async () => ({ removed: true })
   };
 }

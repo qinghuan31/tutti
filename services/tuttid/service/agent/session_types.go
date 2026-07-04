@@ -2,6 +2,7 @@ package agent
 
 import (
 	"context"
+	"sync"
 	"time"
 
 	agentactivitybiz "github.com/tutti-os/tutti/services/tuttid/biz/agentactivity"
@@ -12,26 +13,30 @@ import (
 )
 
 type Service struct {
-	Runtime                      RuntimeController
-	AnalyticsReporter            reporterservice.Reporter
-	AvailabilityChecker          ProviderAvailabilityChecker
-	ModelCatalog                 AgentModelCatalog
-	AgentTargetStore             AgentTargetStore
-	SessionReader                SessionReader
-	UserProjectReader            UserProjectReader
-	MessageReader                MessageReader
-	ExternalImportStore          agentactivitybiz.Repository
-	SessionDirectoryAllocator    SessionDirectoryAllocator
-	PromptAttachmentStore        PromptAttachmentStore
-	RuntimePreparer              agentsidecarservice.Preparer
-	CapabilityLister             ComposerCapabilityLister
-	ProviderAvailabilityCacheTTL time.Duration
-	CapabilityCatalogCacheTTL    time.Duration
-	LiveModelCacheTTL            time.Duration
-	skillOptionsCache            *composerSkillOptionsCache
-	providerAvailabilityCache    *providerAvailabilityCache
-	capabilityCatalogCache       *composerCapabilityCatalogCache
-	liveModelCache               *composerLiveModelCache
+	Runtime                       RuntimeController
+	AnalyticsReporter             reporterservice.Reporter
+	AvailabilityChecker           ProviderAvailabilityChecker
+	ModelCatalog                  AgentModelCatalog
+	AgentTargetStore              AgentTargetStore
+	SessionReader                 SessionReader
+	UserProjectReader             UserProjectReader
+	MessageReader                 MessageReader
+	ExternalImportStore           agentactivitybiz.Repository
+	SessionDirectoryAllocator     SessionDirectoryAllocator
+	PromptAttachmentStore         PromptAttachmentStore
+	RuntimePreparer               agentsidecarservice.Preparer
+	CapabilityLister              ComposerCapabilityLister
+	ProviderAvailabilityCacheTTL  time.Duration
+	CapabilityCatalogCacheTTL     time.Duration
+	LiveModelCacheTTL             time.Duration
+	LiveModelDiscoveryDeleteDelay time.Duration
+	skillOptionsCache             *composerSkillOptionsCache
+	providerAvailabilityCache     *providerAvailabilityCache
+	capabilityCatalogCache        *composerCapabilityCatalogCache
+	liveModelCache                *composerLiveModelCache
+	claudeStartupLock             *claudeStartupSerializer
+	liveModelDiscoveryMu          sync.Mutex
+	liveModelDiscoveryAttempted   map[string]struct{}
 }
 
 type StaleTurnResumeReconciler interface {
@@ -40,6 +45,7 @@ type StaleTurnResumeReconciler interface {
 
 type RuntimeController interface {
 	Cancel(context.Context, RuntimeCancelInput) (RuntimeCancelResult, error)
+	GoalControl(context.Context, RuntimeGoalControlInput) (RuntimeGoalControlResult, error)
 	CanResume(RuntimeResumeInput) bool
 	Close(context.Context, RuntimeCloseInput) error
 	Exec(context.Context, RuntimeExecInput) (RuntimeExecResult, error)
@@ -334,6 +340,18 @@ type RuntimeCancelInput struct {
 type RuntimeCancelResult struct {
 	AgentSessionID string
 	Canceled       bool
+}
+
+type RuntimeGoalControlInput struct {
+	WorkspaceID    string
+	AgentSessionID string
+	Action         string
+	Objective      string
+}
+
+type RuntimeGoalControlResult struct {
+	AgentSessionID string
+	Goal           map[string]any
 }
 
 type RuntimeCloseInput struct {

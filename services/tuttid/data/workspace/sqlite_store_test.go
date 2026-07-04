@@ -12,7 +12,7 @@ import (
 	"testing"
 	"time"
 
-	agentsessionstore "github.com/tutti-os/tutti/packages/agentactivity/daemon/activity"
+	agentsessionstore "github.com/tutti-os/tutti/packages/agent/daemon/activity"
 	agentactivitybiz "github.com/tutti-os/tutti/services/tuttid/biz/agentactivity"
 	agenttargetbiz "github.com/tutti-os/tutti/services/tuttid/biz/agenttarget"
 	userprojectbiz "github.com/tutti-os/tutti/services/tuttid/biz/userproject"
@@ -1003,9 +1003,11 @@ CREATE TABLE user_projects (
 CREATE TABLE workspace_agent_sessions (
   workspace_id TEXT NOT NULL,
   agent_session_id TEXT NOT NULL,
+  provider TEXT NOT NULL DEFAULT '',
   runtime_context_json TEXT NOT NULL DEFAULT '{}',
   cwd TEXT NOT NULL DEFAULT '',
   deleted_at_unix_ms INTEGER NOT NULL DEFAULT 0,
+  created_at_unix_ms INTEGER NOT NULL DEFAULT 0,
   updated_at_unix_ms INTEGER NOT NULL,
   PRIMARY KEY (workspace_id, agent_session_id)
 );
@@ -1028,8 +1030,8 @@ VALUES
 		t.Fatalf("insert legacy agent sessions error = %v", err)
 	}
 
-	if err := store.applyWorkspaceAgentActivityRailV1(ctx); err != nil {
-		t.Fatalf("applyWorkspaceAgentActivityRailV1() error = %v", err)
+	if err := store.Migrate(ctx); err != nil {
+		t.Fatalf("Migrate() error = %v", err)
 	}
 
 	projectRail := getTestAgentSessionRailSection(t, store, "ws-agent-rail-migration", "session-project")

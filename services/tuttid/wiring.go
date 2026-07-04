@@ -9,7 +9,7 @@ import (
 	"net/http"
 	"time"
 
-	agentdaemon "github.com/tutti-os/tutti/packages/agentactivity/daemon"
+	agentdaemon "github.com/tutti-os/tutti/packages/agent/daemon"
 	workspaceissues "github.com/tutti-os/tutti/packages/workspace/issues"
 	tuttiapi "github.com/tutti-os/tutti/services/tuttid/api"
 	workspacedata "github.com/tutti-os/tutti/services/tuttid/data/workspace"

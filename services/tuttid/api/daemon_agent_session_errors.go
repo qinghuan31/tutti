@@ -217,6 +217,24 @@ func writeCancelWorkspaceAgentSessionError(err error) tuttigenerated.CancelWorks
 	}
 }
 
+func writeGoalControlWorkspaceAgentSessionError(err error) tuttigenerated.GoalControlWorkspaceAgentSessionResponseObject {
+	protocolErr := apierrors.Classify(err)
+	switch protocolErr.Code {
+	case tuttigenerated.WorkspaceNotFound:
+		return tuttigenerated.GoalControlWorkspaceAgentSession404JSONResponse{
+			WorkspaceNotFoundErrorJSONResponse: workspaceNotFoundError(protocolErr),
+		}
+	case tuttigenerated.InvalidRequest:
+		return tuttigenerated.GoalControlWorkspaceAgentSession400JSONResponse{
+			InvalidRequestErrorJSONResponse: invalidRequestError(protocolErr),
+		}
+	default:
+		return tuttigenerated.GoalControlWorkspaceAgentSession502JSONResponse{
+			WorkspaceOperationErrorJSONResponse: workspaceOperationError(protocolErr),
+		}
+	}
+}
+
 func writeSendWorkspaceAgentSessionInputError(err error) tuttigenerated.SendWorkspaceAgentSessionInputResponseObject {
 	protocolErr := apierrors.Classify(err)
 	switch protocolErr.Code {
