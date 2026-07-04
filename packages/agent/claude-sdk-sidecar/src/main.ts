@@ -3377,6 +3377,15 @@ function contextWindowTokensFromModelUsage(value: unknown): number {
       return tokens;
     }
   }
+  for (const nested of Object.values(record)) {
+    if (typeof nested !== "object" || nested === null) {
+      continue;
+    }
+    const tokens = contextWindowTokensFromModelUsage(nested);
+    if (tokens > 0) {
+      return tokens;
+    }
+  }
   return 0;
 }
 

@@ -1665,10 +1665,32 @@ func claudeSDKContextWindowTokens(payload map[string]any) int64 {
 	); ok {
 		return total
 	}
-	modelUsage, _ := payload["modelUsage"].([]any)
-	for _, item := range modelUsage {
-		if candidate, ok := item.(map[string]any); ok {
-			if total := claudeSDKContextWindowTokens(candidate); total > 0 {
+	if total := claudeSDKContextWindowTokensFromValue(payload["modelUsage"]); total > 0 {
+		return total
+	}
+	return 0
+}
+
+func claudeSDKContextWindowTokensFromValue(value any) int64 {
+	switch typed := value.(type) {
+	case []any:
+		for _, item := range typed {
+			if total := claudeSDKContextWindowTokensFromValue(item); total > 0 {
+				return total
+			}
+		}
+	case []map[string]any:
+		for _, item := range typed {
+			if total := claudeSDKContextWindowTokens(item); total > 0 {
+				return total
+			}
+		}
+	case map[string]any:
+		if total := claudeSDKContextWindowTokens(typed); total > 0 {
+			return total
+		}
+		for _, item := range typed {
+			if total := claudeSDKContextWindowTokensFromValue(item); total > 0 {
 				return total
 			}
 		}

@@ -279,6 +279,48 @@ test("session start emits SDK model config options from initialization", async (
   }
 });
 
+test("context usage prefers result modelUsage window over SDK maxTokens", async () => {
+  const events: Array<{ type: string; payload?: Record<string, unknown> }> = [];
+  const restoreSink = withSidecarEventSinkForTest((event) =>
+    events.push(event)
+  );
+  try {
+    const session = new SessionRuntime(
+      "provider-session-1",
+      "/repo",
+      {},
+      false,
+      false,
+      {
+        model: "sonnet",
+        permissionModeId: "default",
+        planMode: false,
+        effort: "",
+        speed: ""
+      },
+      sidecarClaudeOptionsFromPayload({}),
+      undefined,
+      ({ prompt }) => fakeContextUsageQuery(prompt)
+    );
+
+    await session.start();
+    session.exec("turn-1", "hi");
+    await waitForEvent(events, "turn_completed");
+
+    const usage = events.find(
+      (event) =>
+        event.type === "usage_updated" && isRecord(event.payload?.contextWindow)
+    );
+    const contextWindow = isRecord(usage?.payload?.contextWindow)
+      ? usage.payload.contextWindow
+      : undefined;
+    assert.equal(contextWindow?.usedTokens, 36_092);
+    assert.equal(contextWindow?.totalTokens, 1_000_000);
+  } finally {
+    restoreSink();
+  }
+});
+
 test("late compact boundary still attaches to slash compact turn", async () => {
   const events: Array<{ type: string; payload?: Record<string, unknown> }> = [];
   const restoreSink = withSidecarEventSinkForTest((event) =>
@@ -1247,6 +1289,57 @@ function fakeSimpleResultQuery(
     },
     close() {}
   } as AsyncIterable<SDKMessage>;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function fakeContextUsageQuery(
+  prompt: AsyncIterable<SDKUserMessage>
+): AsyncIterable<SDKMessage> & {
+  getContextUsage: () => Promise<unknown>;
+  close: () => void;
+} {
+  return {
+    async *[Symbol.asyncIterator]() {
+      const firstPrompt = await prompt[Symbol.asyncIterator]().next();
+      const promptMessage = firstPrompt.value as SDKUserMessage & {
+        uuid?: string;
+      };
+      yield {
+        ...promptMessage,
+        uuid: promptMessage.uuid,
+        type: "user",
+        parent_tool_use_id: null,
+        session_id: "provider-session-1"
+      } as SDKMessage;
+      yield {
+        type: "result",
+        subtype: "success",
+        modelUsage: {
+          "claude-sonnet-5": {
+            inputTokens: 12,
+            outputTokens: 3,
+            cacheReadInputTokens: 0,
+            cacheCreationInputTokens: 0,
+            webSearchRequests: 0,
+            costUSD: 0,
+            contextWindow: 1_000_000,
+            maxOutputTokens: 64_000
+          }
+        }
+      } as unknown as SDKMessage;
+    },
+    async getContextUsage() {
+      return {
+        totalTokens: 36_092,
+        maxTokens: 200_000,
+        rawMaxTokens: 1_000_000
+      };
+    },
+    close() {}
+  };
 }
 
 function fakeEarlyConsolidatedAssistantQuery(

@@ -43,6 +43,36 @@ Use this shape for new entries:
 
 ## Current Entries
 
+### Claude SDK context window shows 200k for 1M models
+
+- Symptom:
+  Claude Code GUI usage shows a 200k context window for a model that should have
+  1M context, such as Claude Sonnet 5.
+- Quick checks:
+  Inspect the session runtime context for `usage.contextWindow.totalTokens`,
+  then trace the Claude SDK sidecar `usage_updated` payload and daemon
+  `agent_session.claude_sdk.usage_update` log. If the payload keys include
+  `modelUsage` but `raw_total_tokens` is `0`, the daemon did not parse the
+  model-usage context window.
+- Root cause:
+  AgentGUI only renders `runtimeContext.usage`; the total comes from the daemon
+  and Claude SDK sidecar. Claude SDK result messages expose model usage as a
+  map keyed by model id, for example
+  `modelUsage["claude-sonnet-5"].contextWindow`. If either sidecar or daemon
+  only parses array-shaped `modelUsage`, the context-window total is missing and
+  daemon normalization falls back to 200k.
+- Fix:
+  Parse `modelUsage` recursively as both arrays and maps before using fallback
+  context-window values. Do not hard-code alias-to-model mappings in Tutti.
+- Validation:
+  Add sidecar and daemon coverage with map-shaped `modelUsage` carrying
+  `contextWindow: 1_000_000`, then run the Claude SDK sidecar tests, daemon Go
+  tests, and sidecar typecheck.
+- References:
+  [main.ts](../../packages/agent/claude-sdk-sidecar/src/main.ts)
+  [main.test.ts](../../packages/agent/claude-sdk-sidecar/src/main.test.ts)
+  [claude_sdk_adapter.go](../../packages/agent/daemon/runtime/claude_sdk_adapter.go)
+
 ### Codex npm install misses the platform package
 
 - Symptom:
