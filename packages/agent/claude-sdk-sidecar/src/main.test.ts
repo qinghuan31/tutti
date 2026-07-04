@@ -457,6 +457,7 @@ test("bypass permission mode allows ordinary tools without approval", async () =
             { command: "rm -rf /repo/*" },
             {
               signal: new AbortController().signal,
+              requestId: "request-bash",
               toolUseID: "toolu-bash"
             }
           );
@@ -517,6 +518,7 @@ test("bypass permission mode still surfaces AskUserQuestion", async () => {
             },
             {
               signal: new AbortController().signal,
+              requestId: "request-ask",
               toolUseID: "toolu-ask"
             }
           );
@@ -2340,6 +2342,7 @@ function fakeNestedApprovalQuery(
         { command: "ls" },
         {
           signal: new AbortController().signal,
+          requestId: "request-nested-bash",
           toolUseID: "toolu-nested-bash"
         }
       );
