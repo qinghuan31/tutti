@@ -1033,6 +1033,89 @@ func TestClaudeCodeSDKAdapterReaderKeepsDrainingAfterTurnTerminal(t *testing.T) 
 	}
 }
 
+// TestClaudeCodeSDKAdapterDropsUntrackedTurnTerminalEvent reproduces the
+// Rkyo8B report: the same agent session shows both a completion and a
+// failure toast simultaneously. The sidecar can settle a turn (e.g. a
+// queued/steered turn discarded via its own turnQueue) that never went
+// through Exec()/ExecAsync() and therefore never had a waiter registered.
+// Forwarding that stray terminal event unconditionally used to publish a
+// second, contradictory outcome-carrying activity event for the session
+// alongside the real turn's own completion. The dispatcher must drop
+// terminal events for turns it never tracked instead of forwarding them.
+func TestClaudeCodeSDKAdapterDropsUntrackedTurnTerminalEvent(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	adapter := NewClaudeCodeSDKAdapter(nil)
+	session := standardTestSession(ProviderClaudeCode)
+	conn := newBlockingClaudeSDKConnection()
+	defer func() { _ = conn.Close() }()
+	adapter.storeSession(session.AgentSessionID, &claudeSDKAdapterSession{
+		conn:              conn,
+		reader:            &claudeSDKLineReader{conn: conn},
+		session:           session,
+		providerSessionID: "provider-session-1",
+		pendingRequests:   make(map[string]*pendingACPRequest),
+		pendingResponses:  make(map[string]chan claudeSDKSidecarEvent),
+		turns:             make(map[string]*claudeSDKTurnWaiter),
+		liveState:         newClaudeSDKLiveState(),
+	})
+	sessionEvents := make(chan []activityshared.Event, 4)
+	adapter.SetSessionEventSink(func(agentSessionID string, events []activityshared.Event) {
+		if agentSessionID == session.AgentSessionID {
+			sessionEvents <- events
+		}
+	})
+
+	done := make(chan error, 1)
+	go func() {
+		_, err := adapter.Exec(ctx, session, []PromptContentBlock{{Type: "text", Text: "open the site"}}, "open the site", "turn-real", nil, nil)
+		done <- err
+	}()
+	waitForClaudeSDKSentRequest(t, conn, "exec")
+	conn.pushEvent(claudeSDKSidecarEvent{
+		Type:    "turn_completed",
+		Payload: map[string]any{"turnId": "turn-real", "stopReason": "end_turn"},
+	})
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Fatalf("Exec: %v", err)
+		}
+	case <-ctx.Done():
+		t.Fatal("timed out waiting for Exec completion")
+	}
+
+	// A different, never-Exec'd turn (e.g. discarded from the sidecar's own
+	// turnQueue) settles as failed. No waiter was ever registered for it, so
+	// this must be dropped rather than published as a stray outcome event.
+	conn.pushEvent(claudeSDKSidecarEvent{
+		Type:    "turn_failed",
+		Payload: map[string]any{"turnId": "turn-queued-orphan", "error": "browser tool call failed"},
+	})
+	// Follow it with a normal, trackable event on a fresh turn to prove the
+	// reader keeps draining and the orphan didn't wedge or crash dispatch.
+	conn.pushEvent(claudeSDKSidecarEvent{
+		Type:    "assistant_completed",
+		Payload: map[string]any{"turnId": "turn-real", "content": "done"},
+	})
+
+	select {
+	case events := <-sessionEvents:
+		if len(events) != 1 || events[0].Type != activityshared.EventMessageAppended {
+			t.Fatalf("events = %#v, want only the trailing assistant message (orphan turn_failed must be dropped)", events)
+		}
+	case <-ctx.Done():
+		t.Fatal("timed out waiting for post-orphan event")
+	}
+
+	select {
+	case unexpected := <-sessionEvents:
+		t.Fatalf("unexpected extra session events published for orphan turn: %#v", unexpected)
+	case <-time.After(50 * time.Millisecond):
+	}
+}
+
 func TestClaudeCodeSDKAdapterRoundTripUsesReaderDispatcherAfterExec(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()

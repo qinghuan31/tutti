@@ -264,6 +264,40 @@ func TestCallToolRestartsAfterProcessExit(t *testing.T) {
 	}
 }
 
+// TestCallToolRecoversAfterUserClosesBrowserWindow reproduces the case where
+// the user manually closes the automated browser window: chrome-devtools-mcp
+// stays connected (no process exit, so isClosed() never trips) but has zero
+// open pages, and returns "The selected page has been closed..." for any
+// page-scoped tool call. CallTool must self-heal by opening a fresh page and
+// retrying, rather than surfacing that error forever.
+func TestCallToolRecoversAfterUserClosesBrowserWindow(t *testing.T) {
+	transport := &pageGoneOnceTransport{}
+	svc := newTestService(transport)
+	ctx := context.Background()
+
+	res, err := svc.CallTool(ctx, "ws-1", "", "navigate_page", map[string]any{"url": "https://example.org"})
+	if err != nil {
+		t.Fatalf("CallTool: %v", err)
+	}
+	if !strings.Contains(res.Text, "Successfully navigated") {
+		t.Fatalf("unexpected result text: %q", res.Text)
+	}
+	if transport.startCnt != 1 {
+		t.Fatalf("start count = %d, want 1 (self-heal must not restart the subprocess)", transport.startCnt)
+	}
+
+	sent := transport.conn.toolNames()
+	want := []string{"navigate_page", "new_page", "navigate_page"}
+	if len(sent) != len(want) {
+		t.Fatalf("tool calls = %#v, want %#v", sent, want)
+	}
+	for i, name := range want {
+		if sent[i] != name {
+			t.Fatalf("tool calls = %#v, want %#v", sent, want)
+		}
+	}
+}
+
 func waitUntilBrowserSessionClosed(t *testing.T, svc *Service, workspaceID string) {
 	t.Helper()
 	timeout := time.After(2 * time.Second)
@@ -410,6 +444,77 @@ func (c *slowToolConn) Send(data []byte) error {
 			"content": []map[string]any{{"type": "text", "text": "slow ok"}},
 		}})
 	}
+	return nil
+}
+
+// pageGoneOnceTransport starts a single conn whose first navigate_page call
+// fails with the "selected page has been closed" error chrome-devtools-mcp
+// returns after the user closes the browser window out of band; a subsequent
+// new_page call, and any navigate_page call after that, succeed.
+type pageGoneOnceTransport struct {
+	mu       sync.Mutex
+	startCnt int
+	conn     *pageGoneOnceConn
+}
+
+func (t *pageGoneOnceTransport) Start(_ context.Context, _ agentruntime.ProcessSpec) (agentruntime.ProcessConnection, error) {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	t.startCnt++
+	t.conn = newPageGoneOnceConn()
+	return t.conn, nil
+}
+
+type pageGoneOnceConn struct {
+	*scriptedConn
+	mu             sync.Mutex
+	navigateCalls  int
+	toolNamesCalls []string
+}
+
+func newPageGoneOnceConn() *pageGoneOnceConn {
+	return &pageGoneOnceConn{scriptedConn: newScriptedConn()}
+}
+
+func (c *pageGoneOnceConn) toolNames() []string {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return append([]string(nil), c.toolNamesCalls...)
+}
+
+func (c *pageGoneOnceConn) Send(data []byte) error {
+	var msg map[string]any
+	if err := json.Unmarshal(data, &msg); err != nil {
+		return err
+	}
+	method, _ := msg["method"].(string)
+	id := msg["id"]
+	if method != "tools/call" {
+		return c.scriptedConn.Send(data)
+	}
+	params, _ := msg["params"].(map[string]any)
+	name, _ := params["name"].(string)
+	c.mu.Lock()
+	c.toolNamesCalls = append(c.toolNamesCalls, name)
+	c.mu.Unlock()
+
+	if name == "navigate_page" {
+		c.mu.Lock()
+		c.navigateCalls++
+		first := c.navigateCalls == 1
+		c.mu.Unlock()
+		if first {
+			c.push(map[string]any{"jsonrpc": "2.0", "id": id, "result": map[string]any{
+				"isError": true,
+				"content": []map[string]any{{"type": "text", "text": "Error: The selected page has been closed. Call list_pages to see open pages."}},
+			}})
+			return nil
+		}
+	}
+	c.push(map[string]any{"jsonrpc": "2.0", "id": id, "result": map[string]any{
+		"isError": false,
+		"content": []map[string]any{{"type": "text", "text": "Successfully navigated to https://example.org"}},
+	}})
 	return nil
 }
 

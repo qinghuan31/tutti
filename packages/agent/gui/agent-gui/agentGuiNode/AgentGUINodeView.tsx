@@ -2827,6 +2827,7 @@ const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
             submitBottomDockInteractivePrompt
           }
           onGoalControl={goalControl}
+          goalPauseSupported={viewModel.goalPauseSupported}
         />
       ) : null}
     </main>
@@ -3244,6 +3245,7 @@ interface AgentGUIBottomDockPaneProps {
   onContinueInNewConversation: AgentGUINodeViewProps["actions"]["continueInNewConversation"];
   onSubmitBottomDockInteractivePrompt: AgentGUINodeViewProps["actions"]["submitInteractivePrompt"];
   onGoalControl: AgentGUINodeViewProps["actions"]["goalControl"];
+  goalPauseSupported: boolean;
 }
 
 const AgentGUIBottomDockPane = memo(function AgentGUIBottomDockPane({
@@ -3261,7 +3263,8 @@ const AgentGUIBottomDockPane = memo(function AgentGUIBottomDockPane({
   onRetryActivation,
   onContinueInNewConversation,
   onSubmitBottomDockInteractivePrompt,
-  onGoalControl
+  onGoalControl,
+  goalPauseSupported
 }: AgentGUIBottomDockPaneProps): React.JSX.Element {
   "use memo";
   const state = useSnapshot(store) as AgentGUIBottomDockStoreSnapshot;
@@ -3335,8 +3338,12 @@ const AgentGUIBottomDockPane = memo(function AgentGUIBottomDockPane({
           timeUsedSeconds={goalTimeUsedSeconds ?? undefined}
           labels={goalBannerLabels}
           onEditObjective={(objective) => onGoalControl("set", objective)}
-          onPauseGoal={() => onGoalControl("pause")}
-          onResumeGoal={() => onGoalControl("resume")}
+          onPauseGoal={
+            goalPauseSupported ? () => onGoalControl("pause") : undefined
+          }
+          onResumeGoal={
+            goalPauseSupported ? () => onGoalControl("resume") : undefined
+          }
           onClearGoal={() => onGoalControl("clear")}
         />
       ) : null}

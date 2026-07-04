@@ -2297,7 +2297,10 @@ describe("AgentComposer", () => {
     ).not.toBeInTheDocument();
   });
 
-  it("keeps the compact context button enabled while a session is running", async () => {
+  it("keeps the compact context button enabled while showStopButton is true but no turn is actively executing", async () => {
+    // showStopButton alone (e.g. pending approval / interrupting, with
+    // isSendingTurn false) must NOT disable compact -- that overly broad
+    // gate was the bug fixed by 0e736412 and must not be reintroduced.
     const onSubmit = vi.fn();
     render(
       <AgentComposer
@@ -2340,6 +2343,102 @@ describe("AgentComposer", () => {
     expect(compactButton).not.toBeDisabled();
     fireEvent.click(compactButton);
     expect(onSubmit).toHaveBeenCalledWith(textPromptContent("/compact"));
+  });
+
+  it("disables the compact context button while a turn is actively running (isSendingTurn=true)", async () => {
+    const onSubmit = vi.fn();
+    render(
+      <AgentComposer
+        workspaceId="workspace-1"
+        currentUserId="user-1"
+        provider="codex"
+        usage={{ usedTokens: 50_000, totalTokens: 200_000, percentUsed: 25 }}
+        draftContent={createDraft("")}
+        availableCommands={[] satisfies readonly AgentHostAgentSessionCommand[]}
+        disabled={false}
+        submitDisabled={false}
+        placeholder="placeholder"
+        composerSettings={createComposerSettings()}
+        queuedPrompts={[]}
+        drainingQueuedPromptId={null}
+        canQueueWhileBusy={false}
+        showStopButton={true}
+        activePrompt={null}
+        isInterrupting={false}
+        isSendingTurn={true}
+        isSubmittingPrompt={false}
+        compactSupported={true}
+        hasCompactableContext={true}
+        labels={createLabels()}
+        workspaceUserProjectI18n={workspaceUserProjectI18n}
+        onDraftContentChange={vi.fn()}
+        onSettingsChange={vi.fn()}
+        onSubmit={onSubmit}
+        onSendQueuedPromptNext={vi.fn()}
+        onRemoveQueuedPrompt={vi.fn()}
+        onEditQueuedPrompt={vi.fn()}
+        onInterruptCurrentTurn={vi.fn()}
+        onSubmitInteractivePrompt={vi.fn()}
+      />
+    );
+
+    await openUsagePopoverByHover(screen.getByTestId("agent-gui-usage-chip"));
+    const compactButton = screen.getByTestId("agent-gui-compact-button");
+    expect(compactButton).toBeInTheDocument();
+    expect(compactButton).toBeDisabled();
+    fireEvent.click(compactButton);
+    expect(onSubmit).not.toHaveBeenCalled();
+  });
+
+  it("re-enables the compact context button once the turn settles", async () => {
+    const onSubmit = vi.fn();
+    const renderComposer = (
+      isSendingTurn: boolean,
+      showStopButton: boolean
+    ) => (
+      <AgentComposer
+        workspaceId="workspace-1"
+        currentUserId="user-1"
+        provider="codex"
+        usage={{ usedTokens: 50_000, totalTokens: 200_000, percentUsed: 25 }}
+        draftContent={createDraft("")}
+        availableCommands={[] satisfies readonly AgentHostAgentSessionCommand[]}
+        disabled={false}
+        submitDisabled={false}
+        placeholder="placeholder"
+        composerSettings={createComposerSettings()}
+        queuedPrompts={[]}
+        drainingQueuedPromptId={null}
+        canQueueWhileBusy={false}
+        showStopButton={showStopButton}
+        activePrompt={null}
+        isInterrupting={false}
+        isSendingTurn={isSendingTurn}
+        isSubmittingPrompt={false}
+        compactSupported={true}
+        hasCompactableContext={true}
+        labels={createLabels()}
+        workspaceUserProjectI18n={workspaceUserProjectI18n}
+        onDraftContentChange={vi.fn()}
+        onSettingsChange={vi.fn()}
+        onSubmit={onSubmit}
+        onSendQueuedPromptNext={vi.fn()}
+        onRemoveQueuedPrompt={vi.fn()}
+        onEditQueuedPrompt={vi.fn()}
+        onInterruptCurrentTurn={vi.fn()}
+        onSubmitInteractivePrompt={vi.fn()}
+      />
+    );
+
+    const { rerender } = render(renderComposer(true, true));
+
+    await openUsagePopoverByHover(screen.getByTestId("agent-gui-usage-chip"));
+    expect(screen.getByTestId("agent-gui-compact-button")).toBeDisabled();
+
+    rerender(renderComposer(false, false));
+
+    await openUsagePopoverByHover(screen.getByTestId("agent-gui-usage-chip"));
+    expect(screen.getByTestId("agent-gui-compact-button")).not.toBeDisabled();
   });
 
   it("shows the compact context button disabled when no user message has been sent", async () => {
@@ -2510,6 +2609,46 @@ describe("AgentComposer", () => {
         '[data-slot="select-content"] [data-value="__tutti_workspace_reference_add__"]'
       )
     ).toBeNull();
+  });
+
+  it("shows a hover tooltip explaining the mention (@) button", async () => {
+    render(
+      <AgentComposer
+        workspaceId="workspace-1"
+        currentUserId="user-1"
+        provider="codex"
+        draftContent={createDraft("")}
+        availableCommands={[] satisfies readonly AgentHostAgentSessionCommand[]}
+        disabled={false}
+        submitDisabled={false}
+        placeholder="placeholder"
+        composerSettings={createComposerSettings()}
+        queuedPrompts={[]}
+        drainingQueuedPromptId={null}
+        canQueueWhileBusy={false}
+        showStopButton={false}
+        activePrompt={null}
+        isInterrupting={false}
+        isSendingTurn={false}
+        isSubmittingPrompt={false}
+        labels={createLabels()}
+        workspaceUserProjectI18n={workspaceUserProjectI18n}
+        onDraftContentChange={vi.fn()}
+        onSettingsChange={vi.fn()}
+        onSubmit={vi.fn()}
+        onSendQueuedPromptNext={vi.fn()}
+        onRemoveQueuedPrompt={vi.fn()}
+        onEditQueuedPrompt={vi.fn()}
+        onInterruptCurrentTurn={vi.fn()}
+        onSubmitInteractivePrompt={vi.fn()}
+      />
+    );
+
+    const mentionButton = screen.getByRole("button", { name: "提及上下文" });
+    expect(screen.queryByRole("tooltip")).toBeNull();
+    fireEvent.pointerMove(mentionButton, { pointerType: "mouse" });
+
+    expect(await screen.findByRole("tooltip")).toHaveTextContent("提及上下文");
   });
 
   it("hides the project row for locked dock composers in existing conversations", () => {
@@ -3680,6 +3819,63 @@ describe("AgentComposer", () => {
 
     expect(draftContent.prompt).toBe("@");
     expect(onDraftContentChange).not.toHaveBeenCalled();
+  });
+
+  it("cancels an empty-result @ search on Enter instead of sending, then sends on the next Enter", () => {
+    // A non-empty query (rather than a bare "@") puts the mention search in
+    // "results" mode, matching the reported scenario: the user typed @ plus
+    // some text and the search resolved to zero matches. No providers are
+    // wired up in this test, so it deterministically has no results.
+    let draftContent = createDraft("@doesnotexist12345");
+    const onDraftContentChange = vi.fn((nextDraft: AgentComposerDraft) => {
+      draftContent = nextDraft;
+    });
+    const onSubmit = vi.fn();
+
+    render(
+      <AgentComposer
+        workspaceId="workspace-1"
+        currentUserId="user-1"
+        provider="codex"
+        draftContent={draftContent}
+        availableCommands={[] satisfies readonly AgentHostAgentSessionCommand[]}
+        disabled={false}
+        submitDisabled={false}
+        placeholder="placeholder"
+        composerSettings={createComposerSettings()}
+        queuedPrompts={[]}
+        drainingQueuedPromptId={null}
+        canQueueWhileBusy={false}
+        showStopButton={false}
+        activePrompt={null}
+        isInterrupting={false}
+        isSendingTurn={false}
+        isSubmittingPrompt={false}
+        labels={createLabels()}
+        workspaceUserProjectI18n={workspaceUserProjectI18n}
+        onDraftContentChange={onDraftContentChange}
+        onSettingsChange={vi.fn()}
+        onSubmit={onSubmit}
+        onSendQueuedPromptNext={vi.fn()}
+        onRemoveQueuedPrompt={vi.fn()}
+        onEditQueuedPrompt={vi.fn()}
+        onInterruptCurrentTurn={vi.fn()}
+        onSubmitInteractivePrompt={vi.fn()}
+      />
+    );
+
+    const textbox = screen.getByPlaceholderText("placeholder");
+
+    // The first Enter should dismiss the empty panel rather than send — the
+    // typed "@doesnotexist12345" text stays untouched.
+    fireEvent.keyDown(textbox, { key: "Enter" });
+    expect(onSubmit).not.toHaveBeenCalled();
+    expect(draftContent.prompt).toBe("@doesnotexist12345");
+
+    // With the search cancelled, the next Enter behaves as if there were no
+    // active @ context and sends the message normally.
+    fireEvent.keyDown(textbox, { key: "Enter" });
+    expect(onSubmit).toHaveBeenCalled();
   });
 
   it("opens the mention palette from the @ footer button", async () => {

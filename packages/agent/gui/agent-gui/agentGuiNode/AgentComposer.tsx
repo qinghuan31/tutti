@@ -1788,7 +1788,16 @@ export function AgentComposer({
       return makeAtPanelKeyDown({
         close: closeFileMentionPalette,
         commitSelection: () => {
-          createFileMentionPaletteAdapter().commitHighlighted();
+          // No highlighted/committable entry (e.g. the search has zero
+          // results): Enter has nothing to select, so treat it as
+          // dismissing the empty panel instead of a silent no-op. This
+          // matches Escape's behavior and mirrors the "clear the active
+          // mention context" contract — a second Enter afterwards then
+          // falls through to the normal submit handler.
+          const result = createFileMentionPaletteAdapter().commitHighlighted();
+          if (result.type === "none") {
+            closeFileMentionPalette();
+          }
         },
         cycleFilter: cycleFileMentionFilter,
         moveSelection: moveFileMentionSelection,
@@ -3345,34 +3354,42 @@ export function AgentComposer({
                     </Tooltip>
                   </TooltipProvider>
                 )}
-                <button
-                  type="button"
-                  aria-label={labels.mentionPalette}
-                  title={labels.mentionPalette}
-                  disabled={composerControlsHardDisabled || inputDisabled}
-                  className={cn(
-                    styles.composerMenuTrigger,
-                    styles.composerReferenceTrigger,
-                    "group w-auto justify-center text-[var(--agent-gui-text-secondary)] disabled:pointer-events-none disabled:opacity-50 [&_svg]:shrink-0"
-                  )}
-                  onMouseDown={(event) => event.preventDefault()}
-                  onClick={handleMentionPaletteButton}
-                >
-                  <span
-                    aria-hidden
-                    className="inline-block size-3.5 bg-[var(--text-secondary)] transition-colors group-hover:bg-[var(--text-primary)] group-focus-visible:bg-[var(--text-primary)]"
-                    style={{
-                      WebkitMaskImage: `url("${atLinedIconUrl}")`,
-                      WebkitMaskPosition: "center",
-                      WebkitMaskRepeat: "no-repeat",
-                      WebkitMaskSize: "contain",
-                      maskImage: `url("${atLinedIconUrl}")`,
-                      maskPosition: "center",
-                      maskRepeat: "no-repeat",
-                      maskSize: "contain"
-                    }}
-                  />
-                </button>
+                <TooltipProvider delayDuration={120}>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <button
+                        type="button"
+                        aria-label={labels.mentionPalette}
+                        disabled={composerControlsHardDisabled || inputDisabled}
+                        className={cn(
+                          styles.composerMenuTrigger,
+                          styles.composerReferenceTrigger,
+                          "group w-auto justify-center text-[var(--agent-gui-text-secondary)] disabled:pointer-events-none disabled:opacity-50 [&_svg]:shrink-0"
+                        )}
+                        onMouseDown={(event) => event.preventDefault()}
+                        onClick={handleMentionPaletteButton}
+                      >
+                        <span
+                          aria-hidden
+                          className="inline-block size-3.5 bg-[var(--text-secondary)] transition-colors group-hover:bg-[var(--text-primary)] group-focus-visible:bg-[var(--text-primary)]"
+                          style={{
+                            WebkitMaskImage: `url("${atLinedIconUrl}")`,
+                            WebkitMaskPosition: "center",
+                            WebkitMaskRepeat: "no-repeat",
+                            WebkitMaskSize: "contain",
+                            maskImage: `url("${atLinedIconUrl}")`,
+                            maskPosition: "center",
+                            maskRepeat: "no-repeat",
+                            maskSize: "contain"
+                          }}
+                        />
+                      </button>
+                    </TooltipTrigger>
+                    <TooltipContent side="top">
+                      {labels.mentionPalette}
+                    </TooltipContent>
+                  </Tooltip>
+                </TooltipProvider>
               </div>
               {showProviderSelect && selectedProviderSwitchTarget ? (
                 <Select
@@ -3511,8 +3528,16 @@ export function AgentComposer({
                   totalTokens={usage.totalTokens}
                   tooltipsEnabled={!previewMode}
                   compactSupported={compactSupported ?? false}
+                  // Only guard against compacting mid-turn: isSendingTurn is
+                  // the narrow "a turn is actively executing right now"
+                  // signal. showStopButton alone (e.g. pending approval or
+                  // interrupting, with isSendingTurn false) must keep this
+                  // enabled -- that broader gate was the bug fixed by
+                  // 0e736412 and should not be reintroduced.
                   compactDisabled={
-                    !hasCompactableContext || composerControlsHardDisabled
+                    !hasCompactableContext ||
+                    composerControlsHardDisabled ||
+                    isSendingTurn
                   }
                   onCompact={() => onSubmit(textPromptContent("/compact"))}
                   labels={{
