@@ -1,4 +1,4 @@
-package workspace
+package storesqlite
 
 import (
 	"context"
@@ -10,7 +10,6 @@ import (
 	"time"
 
 	agentactivityprojection "github.com/tutti-os/tutti/packages/agent/daemon/activity/projection"
-	agentactivitybiz "github.com/tutti-os/tutti/services/tuttid/biz/agentactivity"
 )
 
 func incrementAgentSessionMessageVersion(ctx context.Context, tx *sql.Tx, workspaceID, agentSessionID string) (uint64, error) {
@@ -40,12 +39,12 @@ func upsertAgentMessageTx(
 	workspaceID string,
 	agentSessionID string,
 	version uint64,
-	input agentactivitybiz.MessageUpdate,
+	input MessageUpdate,
 	now int64,
-) (agentactivitybiz.Message, bool, error) {
+) (Message, bool, error) {
 	existing, ok, err := getAgentMessageForUpdate(ctx, tx, workspaceID, agentSessionID, input.MessageID)
 	if err != nil {
-		return agentactivitybiz.Message{}, false, err
+		return Message{}, false, err
 	}
 	message, accepted := agentactivityprojection.ProjectMessageUpdate(
 		messageProjectionSnapshot(existing),
@@ -66,11 +65,11 @@ func upsertAgentMessageTx(
 		now,
 	)
 	if !accepted {
-		return agentactivitybiz.Message{}, false, nil
+		return Message{}, false, nil
 	}
 	payloadJSON, err := json.Marshal(message.Payload)
 	if err != nil {
-		return agentactivitybiz.Message{}, false, fmt.Errorf("encode workspace agent message payload: %w", err)
+		return Message{}, false, fmt.Errorf("encode workspace agent message payload: %w", err)
 	}
 	_, err = tx.ExecContext(ctx, `
 INSERT INTO workspace_agent_messages (
@@ -95,14 +94,14 @@ ON CONFLICT(workspace_id, agent_session_id, message_id) DO UPDATE SET
 		message.OccurredAtUnixMS, message.StartedAtUnixMS, message.CompletedAtUnixMS,
 		message.CreatedAtUnixMS, message.UpdatedAtUnixMS)
 	if err != nil {
-		return agentactivitybiz.Message{}, false, fmt.Errorf("upsert workspace agent message: %w", err)
+		return Message{}, false, fmt.Errorf("upsert workspace agent message: %w", err)
 	}
 	acceptedMessage, ok, err := getAgentMessageForUpdate(ctx, tx, workspaceID, agentSessionID, input.MessageID)
 	if err != nil {
-		return agentactivitybiz.Message{}, false, err
+		return Message{}, false, err
 	}
 	if !ok {
-		return agentactivitybiz.Message{}, false, fmt.Errorf("read accepted workspace agent message: %w", sql.ErrNoRows)
+		return Message{}, false, fmt.Errorf("read accepted workspace agent message: %w", sql.ErrNoRows)
 	}
 	return acceptedMessage, true, nil
 }
@@ -113,7 +112,7 @@ func getAgentMessageForUpdate(
 	workspaceID string,
 	agentSessionID string,
 	messageID string,
-) (agentactivitybiz.Message, bool, error) {
+) (Message, bool, error) {
 	row := tx.QueryRowContext(ctx, `
 SELECT id, agent_session_id, message_id, version, turn_id, role, kind, status,
        payload_json, occurred_at_unix_ms, started_at_unix_ms, completed_at_unix_ms,
@@ -124,14 +123,14 @@ WHERE workspace_id = ? AND agent_session_id = ? AND message_id = ? AND deleted_a
 	message, err := scanAgentMessage(row)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			return agentactivitybiz.Message{}, false, nil
+			return Message{}, false, nil
 		}
-		return agentactivitybiz.Message{}, false, fmt.Errorf("get workspace agent message: %w", err)
+		return Message{}, false, fmt.Errorf("get workspace agent message: %w", err)
 	}
 	return message, true, nil
 }
 
-func messageProjectionSnapshot(message agentactivitybiz.Message) agentactivityprojection.MessageSnapshot {
+func messageProjectionSnapshot(message Message) agentactivityprojection.MessageSnapshot {
 	return agentactivityprojection.MessageSnapshot{
 		ID:                message.ID,
 		AgentSessionID:    strings.TrimSpace(message.AgentSessionID),
@@ -150,8 +149,8 @@ func messageProjectionSnapshot(message agentactivitybiz.Message) agentactivitypr
 	}
 }
 
-func scanAgentMessage(scanner rowScanner) (agentactivitybiz.Message, error) {
-	var message agentactivitybiz.Message
+func scanAgentMessage(scanner rowScanner) (Message, error) {
+	var message Message
 	var payloadJSON string
 	err := scanner.Scan(
 		&message.ID,
@@ -170,14 +169,14 @@ func scanAgentMessage(scanner rowScanner) (agentactivitybiz.Message, error) {
 		&message.UpdatedAtUnixMS,
 	)
 	if err != nil {
-		return agentactivitybiz.Message{}, fmt.Errorf("scan workspace agent message row: %w", err)
+		return Message{}, fmt.Errorf("scan workspace agent message row: %w", err)
 	}
 	if strings.TrimSpace(payloadJSON) == "" {
 		message.Payload = map[string]any{}
 		return message, nil
 	}
 	if err := json.Unmarshal([]byte(payloadJSON), &message.Payload); err != nil {
-		return agentactivitybiz.Message{}, fmt.Errorf(
+		return Message{}, fmt.Errorf(
 			"decode workspace agent message payload id=%d message_id=%q version=%d turn_id=%q role=%q kind=%q status=%q: %w",
 			message.ID,
 			message.MessageID,

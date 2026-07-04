@@ -124,8 +124,9 @@ VALUES ('ws-legacy-targets', 'session-1', 'runtime', ?, 'codex', 'ready', ?, ?);
 		t.Fatalf("insert legacy agent session fixture: %v", err)
 	}
 
-	if err := store.seedSystemAgentTargets(ctx, now+1); err != nil {
-		t.Fatalf("seedSystemAgentTargets() error = %v", err)
+	// Seeding and legacy target ID reconciliation run on every Migrate.
+	if err := store.Migrate(ctx); err != nil {
+		t.Fatalf("Migrate() error = %v", err)
 	}
 
 	if _, err := store.GetAgentTarget(ctx, legacyIDLocalCodex); !errors.Is(err, ErrAgentTargetNotFound) {

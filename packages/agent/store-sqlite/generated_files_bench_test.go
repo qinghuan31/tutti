@@ -1,32 +1,24 @@
-package workspace
+package storesqlite
 
 import (
 	"context"
 	"fmt"
-	"path/filepath"
 	"testing"
-
-	agentsessionstore "github.com/tutti-os/tutti/packages/agent/daemon/activity"
-	agentactivitybiz "github.com/tutti-os/tutti/services/tuttid/biz/agentactivity"
-	workspacebiz "github.com/tutti-os/tutti/services/tuttid/biz/workspace"
 )
 
-func BenchmarkSQLiteStoreListWorkspaceGeneratedFiles(b *testing.B) {
-	store := openBenchmarkSQLiteStore(b)
+func BenchmarkStoreListWorkspaceGeneratedFiles(b *testing.B) {
+	store := New(openTestDB(b), testOptions(&staticProjectPaths{}))
 	ctx := context.Background()
-	const workspaceID = "ws-agent-generated-files-bench"
-	if err := store.Create(ctx, workspacebiz.Summary{
-		ID:   workspaceID,
-		Name: "Workspace Agent Generated Files Bench",
-	}); err != nil {
-		b.Fatalf("Create() error = %v", err)
+	if err := store.Migrate(ctx); err != nil {
+		b.Fatalf("Migrate() error = %v", err)
 	}
+	const workspaceID = "ws-agent-generated-files-bench"
 	seedGeneratedFileBenchmarkMessages(b, ctx, store, workspaceID, 100, 50)
 
 	b.Run("empty-query-limit-30", func(b *testing.B) {
 		b.ReportAllocs()
 		for i := 0; i < b.N; i++ {
-			_, ok, err := store.ListWorkspaceGeneratedFiles(ctx, agentactivitybiz.ListWorkspaceGeneratedFilesInput{
+			_, ok, err := store.ListWorkspaceGeneratedFiles(ctx, ListWorkspaceGeneratedFilesInput{
 				WorkspaceID: workspaceID,
 				Limit:       30,
 			})
@@ -39,7 +31,7 @@ func BenchmarkSQLiteStoreListWorkspaceGeneratedFiles(b *testing.B) {
 	b.Run("miss-query-limit-30", func(b *testing.B) {
 		b.ReportAllocs()
 		for i := 0; i < b.N; i++ {
-			_, ok, err := store.ListWorkspaceGeneratedFiles(ctx, agentactivitybiz.ListWorkspaceGeneratedFilesInput{
+			_, ok, err := store.ListWorkspaceGeneratedFiles(ctx, ListWorkspaceGeneratedFilesInput{
 				WorkspaceID: workspaceID,
 				Query:       "definitely-no-match",
 				Limit:       30,
@@ -51,26 +43,10 @@ func BenchmarkSQLiteStoreListWorkspaceGeneratedFiles(b *testing.B) {
 	})
 }
 
-func openBenchmarkSQLiteStore(b *testing.B) *SQLiteStore {
-	b.Helper()
-	dbPath := filepath.Join(b.TempDir(), "tuttid.db")
-	store, err := OpenSQLiteStore(dbPath)
-	if err != nil {
-		b.Fatalf("OpenSQLiteStore() error = %v", err)
-	}
-	b.Cleanup(func() {
-		_ = store.Close()
-	})
-	if err := store.Migrate(context.Background()); err != nil {
-		b.Fatalf("Migrate() error = %v", err)
-	}
-	return store
-}
-
 func seedGeneratedFileBenchmarkMessages(
 	b *testing.B,
 	ctx context.Context,
-	store *SQLiteStore,
+	store *Store,
 	workspaceID string,
 	sessionCount int,
 	messagesPerSession int,
@@ -78,10 +54,10 @@ func seedGeneratedFileBenchmarkMessages(
 	b.Helper()
 	for sessionIndex := 0; sessionIndex < sessionCount; sessionIndex++ {
 		sessionID := fmt.Sprintf("session-%03d", sessionIndex)
-		if _, err := store.ReportSessionState(ctx, agentactivitybiz.SessionStateReport{
+		if _, err := store.ReportSessionState(ctx, SessionStateReport{
 			WorkspaceID:      workspaceID,
 			AgentSessionID:   sessionID,
-			Origin:           agentsessionstore.WorkspaceAgentSessionOriginRuntime,
+			Origin:           "runtime",
 			Provider:         "codex",
 			Cwd:              fmt.Sprintf("/workspace/project-%02d", sessionIndex%10),
 			Status:           "completed",
@@ -90,11 +66,11 @@ func seedGeneratedFileBenchmarkMessages(
 			b.Fatalf("ReportSessionState(%s) error = %v", sessionID, err)
 		}
 		for messageIndex := 0; messageIndex < messagesPerSession; messageIndex++ {
-			if _, err := store.ReportSessionMessages(ctx, agentactivitybiz.SessionMessageReport{
+			if _, err := store.ReportSessionMessages(ctx, SessionMessageReport{
 				WorkspaceID:    workspaceID,
 				AgentSessionID: sessionID,
-				Origin:         agentsessionstore.WorkspaceAgentSessionOriginRuntime,
-				Messages: []agentactivitybiz.MessageUpdate{{
+				Origin:         "runtime",
+				Messages: []MessageUpdate{{
 					MessageID: fmt.Sprintf("message-%03d-%03d", sessionIndex, messageIndex),
 					Role:      "assistant",
 					Kind:      "tool_call",

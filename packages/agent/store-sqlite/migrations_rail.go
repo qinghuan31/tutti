@@ -1,12 +1,11 @@
-package workspace
+package storesqlite
 
 import (
 	"context"
 	"fmt"
-	"time"
 )
 
-func (s *SQLiteStore) applyWorkspaceAgentActivityRailV1(ctx context.Context) error {
+func (s *Store) applyWorkspaceAgentActivityRailV1(ctx context.Context) error {
 	applied, err := s.hasMigration(ctx, schemaMigrationWorkspaceAgentActivityRailV1)
 	if err != nil {
 		return err
@@ -55,27 +54,21 @@ CREATE INDEX IF NOT EXISTS idx_workspace_agent_sessions_rail_section_page
 		return err
 	}
 
-	now := unixMs(time.Now().UTC())
-	if _, err := s.db.ExecContext(ctx, `
-INSERT INTO tuttid_schema_migrations (id, applied_at_unix_ms)
-  VALUES (?, ?);
-`, schemaMigrationWorkspaceAgentActivityRailV1, now); err != nil {
-		return fmt.Errorf("record workspace agent activity rail migration: %w", err)
-	}
-	return nil
+	return s.recordMigration(ctx, schemaMigrationWorkspaceAgentActivityRailV1)
 }
 
-func (s *SQLiteStore) backfillAgentSessionRailSections(ctx context.Context) error {
-	projects, err := listAgentSessionRailProjects(ctx, s.db)
+func (s *Store) backfillAgentSessionRailSections(ctx context.Context) error {
+	projects, err := s.listRailProjectPaths(ctx, s.db)
 	if err != nil {
 		return err
 	}
+	projects = normalizeRailProjectPaths(projects)
 
 	rows, err := s.db.QueryContext(ctx, `
 SELECT workspace_id, agent_session_id, cwd, runtime_context_json
 FROM workspace_agent_sessions
 WHERE rail_section_key = ?
-`, agentSessionRailSectionKeyConversations)
+`, RailSectionKeyConversations)
 	if err != nil {
 		return fmt.Errorf("list workspace agent sessions for rail section backfill: %w", err)
 	}
@@ -84,7 +77,7 @@ WHERE rail_section_key = ?
 	type railBackfill struct {
 		WorkspaceID    string
 		AgentSessionID string
-		Section        agentSessionRailSection
+		Section        RailSection
 	}
 	backfills := make([]railBackfill, 0)
 	for rows.Next() {
@@ -99,8 +92,8 @@ WHERE rail_section_key = ?
 		if err != nil {
 			return fmt.Errorf("decode workspace agent session runtime context for rail section backfill: %w", err)
 		}
-		section := classifyAgentSessionRailSection(cwd, runtimeContext, projects)
-		if section.Kind != agentSessionRailSectionKindProject {
+		section := ClassifyRailSection(cwd, runtimeContext, projects)
+		if section.Kind != RailSectionKindProject {
 			continue
 		}
 		backfills = append(backfills, railBackfill{
@@ -126,7 +119,7 @@ WHERE workspace_id = ?
   AND agent_session_id = ?
   AND rail_section_key = ?
 `, backfill.Section.Kind, backfill.Section.ProjectPath, backfill.Section.Key,
-			backfill.WorkspaceID, backfill.AgentSessionID, agentSessionRailSectionKeyConversations)
+			backfill.WorkspaceID, backfill.AgentSessionID, RailSectionKeyConversations)
 		if err != nil {
 			return fmt.Errorf("backfill workspace agent session rail section for %s/%s: %w", backfill.WorkspaceID, backfill.AgentSessionID, err)
 		}

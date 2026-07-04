@@ -1,13 +1,12 @@
-package workspace
+package storesqlite
 
 import (
 	"strings"
 
 	agentactivityprojection "github.com/tutti-os/tutti/packages/agent/daemon/activity/projection"
-	agentactivitybiz "github.com/tutti-os/tutti/services/tuttid/biz/agentactivity"
 )
 
-func sessionStateReportApplied(input agentactivitybiz.SessionStateReport, session agentactivityprojection.SessionSnapshot) bool {
+func sessionStateReportApplied(input SessionStateReport, session agentactivityprojection.SessionSnapshot) bool {
 	if input.OccurredAtUnixMS > 0 &&
 		session.LastEventUnixMS > 0 &&
 		input.OccurredAtUnixMS < session.LastEventUnixMS {
@@ -22,8 +21,8 @@ func sessionStateReportApplied(input agentactivitybiz.SessionStateReport, sessio
 	return true
 }
 
-func projectionSessionToBiz(session agentactivityprojection.SessionSnapshot) agentactivitybiz.Session {
-	return agentactivitybiz.Session{
+func projectionSessionToDTO(session agentactivityprojection.SessionSnapshot) Session {
+	return Session{
 		ID:                session.AgentSessionID,
 		WorkspaceID:       session.WorkspaceID,
 		Origin:            session.Origin,

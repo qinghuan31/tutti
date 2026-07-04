@@ -1,17 +1,17 @@
-package workspace
+package storesqlite
 
 import (
 	"context"
 	"fmt"
+	"sort"
 	"time"
-
-	agenttargetbiz "github.com/tutti-os/tutti/services/tuttid/biz/agenttarget"
 )
 
-const legacyIDLocalCodex = "local-codex"
-const legacyIDLocalClaudeCode = "local-claude-code"
+// systemTargetSource marks host-seeded targets; legacy ID reconciliation
+// only rewrites rows with this source.
+const systemTargetSource = "system"
 
-func (s *SQLiteStore) applyAgentTargetsV1(ctx context.Context) error {
+func (s *Store) applyAgentTargetsV1(ctx context.Context) error {
 	applied, err := s.hasMigration(ctx, schemaMigrationAgentTargetsV1)
 	if err != nil {
 		return err
@@ -34,24 +34,32 @@ CREATE TABLE IF NOT EXISTS agent_targets (
 );
 CREATE INDEX IF NOT EXISTS idx_agent_targets_display
   ON agent_targets(enabled DESC, sort_order ASC, name ASC, id ASC);
-INSERT INTO tuttid_schema_migrations (id, applied_at_unix_ms)
-  VALUES (?, ?);
-`, schemaMigrationAgentTargetsV1, now); err != nil {
+`); err != nil {
 			return fmt.Errorf("migrate workspace database for agent targets: %w", err)
+		}
+		if err := s.recordMigration(ctx, schemaMigrationAgentTargetsV1); err != nil {
+			return err
 		}
 	}
 
 	return s.seedSystemAgentTargets(ctx, now)
 }
 
-func (s *SQLiteStore) seedSystemAgentTargets(ctx context.Context, now int64) error {
-	if err := s.reconcileLegacySystemAgentTargetID(ctx, legacyIDLocalCodex, agenttargetbiz.IDLocalCodex, now); err != nil {
-		return err
+func (s *Store) seedSystemAgentTargets(ctx context.Context, now int64) error {
+	legacyIDs := make([]string, 0, len(s.opts.LegacySystemTargetIDRenames))
+	for legacyID := range s.opts.LegacySystemTargetIDRenames {
+		legacyIDs = append(legacyIDs, legacyID)
 	}
-	if err := s.reconcileLegacySystemAgentTargetID(ctx, legacyIDLocalClaudeCode, agenttargetbiz.IDLocalClaudeCode, now); err != nil {
-		return err
+	sort.Strings(legacyIDs)
+	for _, legacyID := range legacyIDs {
+		if err := s.reconcileLegacySystemAgentTargetID(ctx, legacyID, s.opts.LegacySystemTargetIDRenames[legacyID], now); err != nil {
+			return err
+		}
 	}
-	for _, target := range agenttargetbiz.DefaultSystemTargets(now) {
+	if s.opts.SeedSystemTargets == nil {
+		return nil
+	}
+	for _, target := range s.opts.SeedSystemTargets(now) {
 		if _, err := s.db.ExecContext(ctx, `
 INSERT OR IGNORE INTO agent_targets (
   id,
@@ -73,7 +81,7 @@ VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 	return nil
 }
 
-func (s *SQLiteStore) reconcileLegacySystemAgentTargetID(ctx context.Context, legacyID string, currentID string, now int64) error {
+func (s *Store) reconcileLegacySystemAgentTargetID(ctx context.Context, legacyID string, currentID string, now int64) error {
 	if _, err := s.db.ExecContext(ctx, `
 UPDATE workspace_agent_sessions
 SET agent_target_id = ?
@@ -87,14 +95,14 @@ SET id = ?, updated_at_ms = ?
 WHERE id = ?
   AND source = ?
   AND NOT EXISTS (SELECT 1 FROM agent_targets WHERE id = ?)
-`, currentID, now, legacyID, agenttargetbiz.SourceSystem, currentID); err != nil {
+`, currentID, now, legacyID, systemTargetSource, currentID); err != nil {
 		return fmt.Errorf("reconcile legacy system agent target id %q: %w", legacyID, err)
 	}
 	if _, err := s.db.ExecContext(ctx, `
 DELETE FROM agent_targets
 WHERE id = ?
   AND source = ?
-`, legacyID, agenttargetbiz.SourceSystem); err != nil {
+`, legacyID, systemTargetSource); err != nil {
 		return fmt.Errorf("delete legacy system agent target %q: %w", legacyID, err)
 	}
 	return nil
