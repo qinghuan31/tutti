@@ -54,13 +54,35 @@ func (c *Client) ReportSessionState(ctx context.Context, input ReportSessionStat
 		url.PathEscape(workspaceID),
 		url.PathEscape(agentSessionID),
 	)
+	// Metadata resolution: explicit input fields win, then the source, then
+	// (for the state document) the state itself. Existing non-empty values
+	// are left byte-identical in place; resolution only fills empty slots, so
+	// callers that carry no metadata anywhere produce an unchanged request.
+	agentTargetID := firstNonEmptyString(input.AgentTargetID, input.Source.AgentTargetID, input.State.AgentTargetID)
+	deviceID := firstNonEmptyString(input.DeviceID, input.Source.DeviceID, input.State.DeviceID)
+	source := input.Source
+	if agentTargetID != "" && strings.TrimSpace(source.AgentTargetID) == "" {
+		source.AgentTargetID = agentTargetID
+	}
+	if deviceID != "" && strings.TrimSpace(source.DeviceID) == "" {
+		source.DeviceID = deviceID
+	}
+	state := sanitizeSessionStateUpdateForUpstream(input.State)
+	if agentTargetID != "" && strings.TrimSpace(state.AgentTargetID) == "" {
+		state.AgentTargetID = agentTargetID
+	}
+	if deviceID != "" && strings.TrimSpace(state.DeviceID) == "" {
+		state.DeviceID = deviceID
+	}
 	requestBody, err := marshalRequestBody(reportSessionStateRequest{
 		WorkspaceID:    workspaceID,
 		AgentSessionID: agentSessionID,
+		AgentTargetID:  agentTargetID,
+		DeviceID:       deviceID,
 		SessionOrigin:  sessionOriginCanonicalRequestValue(input.SessionOrigin),
 		Connector:      input.Connector,
-		Source:         &input.Source,
-		State:          sanitizeSessionStateUpdateForUpstream(input.State),
+		Source:         &source,
+		State:          state,
 	})
 	if err != nil {
 		return ReportSessionStateReply{}, fmt.Errorf("prepare agent session state request: %w", err)
@@ -89,11 +111,24 @@ func (c *Client) ReportSessionMessages(ctx context.Context, input ReportSessionM
 		url.PathEscape(workspaceID),
 		url.PathEscape(agentSessionID),
 	)
+	// Metadata resolution mirrors ReportSessionState: explicit input fields
+	// win, then the source; only empty slots are filled.
+	agentTargetID := firstNonEmptyString(input.AgentTargetID, input.Source.AgentTargetID)
+	deviceID := firstNonEmptyString(input.DeviceID, input.Source.DeviceID)
+	source := input.Source
+	if agentTargetID != "" && strings.TrimSpace(source.AgentTargetID) == "" {
+		source.AgentTargetID = agentTargetID
+	}
+	if deviceID != "" && strings.TrimSpace(source.DeviceID) == "" {
+		source.DeviceID = deviceID
+	}
 	requestBatches, err := marshalReportSessionMessagesRequestsForUpload(reportSessionMessagesRequest{
 		WorkspaceID:   workspaceID,
+		AgentTargetID: agentTargetID,
+		DeviceID:      deviceID,
 		SessionOrigin: sessionOriginCanonicalRequestValue(input.SessionOrigin),
 		Connector:     input.Connector,
-		Source:        &input.Source,
+		Source:        &source,
 		Updates:       sanitizeSessionMessageUpdatesForUpstream(input.Updates),
 	})
 	if err != nil {
@@ -173,6 +208,9 @@ func (c *Client) ListAgentsWithFilter(ctx context.Context, input ListAgentsInput
 	if userID := strings.TrimSpace(input.UserID); userID != "" {
 		query.Set("user_id", userID)
 	}
+	if deviceID := strings.TrimSpace(input.DeviceID); deviceID != "" {
+		query.Set("device_id", deviceID)
+	}
 	if encoded := query.Encode(); encoded != "" {
 		endpoint += "?" + encoded
 	}
@@ -224,6 +262,9 @@ func (c *Client) ListSessionMessages(ctx context.Context, input ListSessionMessa
 	}
 	if origin := sessionOriginCanonicalQueryValue(input.SessionOrigin); origin != "" {
 		query.Set("session_origin", origin)
+	}
+	if deviceID := strings.TrimSpace(input.DeviceID); deviceID != "" {
+		query.Set("device_id", deviceID)
 	}
 
 	endpoint := fmt.Sprintf(
@@ -510,6 +551,8 @@ func marshalReportSessionMessagesRequestsForUpload(req reportSessionMessagesRequ
 
 	base := reportSessionMessagesRequest{
 		WorkspaceID:   req.WorkspaceID,
+		AgentTargetID: req.AgentTargetID,
+		DeviceID:      req.DeviceID,
 		SessionOrigin: req.SessionOrigin,
 		Connector:     req.Connector,
 		Source:        req.Source,
@@ -975,6 +1018,8 @@ type reportActivityRequest struct {
 type reportSessionStateRequest struct {
 	WorkspaceID    string                           `json:"roomId,omitempty"`
 	AgentSessionID string                           `json:"agentSessionId,omitempty"`
+	AgentTargetID  string                           `json:"agentTargetId,omitempty"`
+	DeviceID       string                           `json:"deviceId,omitempty"`
 	SessionOrigin  string                           `json:"sessionOrigin,omitempty"`
 	Source         *EventSource                     `json:"source,omitempty"`
 	Connector      *ConnectorInfo                   `json:"connector,omitempty"`
@@ -983,6 +1028,8 @@ type reportSessionStateRequest struct {
 
 type reportSessionMessagesRequest struct {
 	WorkspaceID   string                               `json:"roomId,omitempty"`
+	AgentTargetID string                               `json:"agentTargetId,omitempty"`
+	DeviceID      string                               `json:"deviceId,omitempty"`
 	SessionOrigin string                               `json:"sessionOrigin,omitempty"`
 	Source        *EventSource                         `json:"source,omitempty"`
 	Connector     *ConnectorInfo                       `json:"connector,omitempty"`

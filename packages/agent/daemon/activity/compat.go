@@ -185,6 +185,7 @@ func sessionStateUpdateFromPatch(patch WorkspaceAgentStatePatch) WorkspaceAgentS
 	}
 	out := WorkspaceAgentSessionStateUpdate{
 		AgentTargetID:      strings.TrimSpace(patch.AgentTargetID),
+		DeviceID:           strings.TrimSpace(patch.DeviceID),
 		Provider:           strings.TrimSpace(patch.Provider),
 		ProviderSessionID:  strings.TrimSpace(patch.ProviderSessionID),
 		Model:              strings.TrimSpace(patch.Model),
