@@ -1,6 +1,10 @@
 import { createDecorator } from "@tutti-os/infra/di";
 import type {
   DesktopComputerUseActionResult,
+  DesktopComputerUsePermissionGrantStatus,
+  DesktopComputerUsePermissionPane,
+  DesktopComputerUseRestartDriverInput,
+  DesktopComputerUseRestartDriverResult,
   DesktopComputerUseStatus,
   DesktopDeveloperLogKind
 } from "@shared/contracts/ipc";
@@ -49,6 +53,19 @@ export interface IWorkspaceSettingsService {
   installComputerUse(): Promise<DesktopComputerUseActionResult>;
   uninstallComputerUse(): Promise<DesktopComputerUseActionResult>;
   grantComputerUsePermissions(): Promise<DesktopComputerUseActionResult>;
+  startComputerUsePermissionGrant(): Promise<DesktopComputerUsePermissionGrantStatus>;
+  getComputerUsePermissionGrantStatus(): Promise<DesktopComputerUsePermissionGrantStatus | null>;
+  logComputerUsePermissionDiagnostic(input: {
+    details?: Record<string, unknown>;
+    event: string;
+    level?: "debug" | "error" | "info" | "warn";
+  }): void;
+  openComputerUsePermissionSettings(
+    pane: DesktopComputerUsePermissionPane
+  ): Promise<void>;
+  restartComputerUseDriver(
+    input?: DesktopComputerUseRestartDriverInput
+  ): Promise<DesktopComputerUseRestartDriverResult>;
   closePanel(): void;
   openPanel(
     workspace: WorkspaceSettingsWorkspaceInput,

@@ -1,3 +1,4 @@
+import { resolveAgentGuiWorkbenchSessionTitle } from "@tutti-os/agent-gui/workbench/sessionTitle";
 import type { NotificationService } from "@tutti-os/ui-notifications";
 import type { CompositeNotificationMessage } from "@renderer/lib/compositeNotificationService";
 import type { DesktopI18nKey, I18nParams } from "@shared/i18n";
@@ -38,7 +39,7 @@ export interface WorkspaceAgentOutcomeNotificationControllerInput {
   translate(key: DesktopI18nKey, params?: I18nParams): string;
   workspaceAgentActivityService: Pick<
     IWorkspaceAgentActivityService,
-    "onSessionEvent"
+    "getSnapshot" | "onSessionEvent"
   >;
   workspaceId: string;
 }
@@ -68,10 +69,15 @@ export function createWorkspaceAgentOutcomeNotificationController(
         event,
         userTitleCache
       );
+      const resolvedConversationTitle =
+        conversationTitle ||
+        resolveWorkspaceAgentOutcomeConversationTitle(event, {
+          workspaceAgentActivityService: input.workspaceAgentActivityService
+        });
       const notification =
         buildWorkspaceAgentOutcomeNotificationFromSessionEvent(
           event,
-          conversationTitle
+          resolvedConversationTitle
         );
       if (!notification) {
         return;
@@ -93,6 +99,40 @@ export function createWorkspaceAgentOutcomeNotificationController(
       unsubscribe();
     }
   };
+}
+
+function resolveWorkspaceAgentOutcomeConversationTitle(
+  event: unknown,
+  input: {
+    workspaceAgentActivityService: Pick<
+      IWorkspaceAgentActivityService,
+      "getSnapshot"
+    >;
+  }
+): string {
+  const source = recordValue(event);
+  if (stringValue(source?.eventType) !== "state_patch") {
+    return "";
+  }
+  const data = recordValue(source?.data);
+  if (!data) {
+    return "";
+  }
+  const workspaceId = stringValue(data.workspaceId);
+  const agentSessionId = stringValue(data.agentSessionId);
+  const provider = stringValue(data.provider);
+  if (!workspaceId || !agentSessionId || !provider) {
+    return "";
+  }
+  const snapshot = input.workspaceAgentActivityService.getSnapshot(workspaceId);
+  return (
+    resolveAgentGuiWorkbenchSessionTitle({
+      agentSessionId,
+      fallbackTitle: stringValue(data.title),
+      provider,
+      snapshot
+    }).title ?? ""
+  );
 }
 
 export function buildWorkspaceAgentOutcomeNotificationFromSessionEvent(

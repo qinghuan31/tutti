@@ -598,15 +598,14 @@ delimited by ---`, and the composer skill picker may show partial or
   must be persisted as session metadata rather than inferred later from
   user-project prefix matching.
 - Fix:
-  Treat exact user-project path matches as explicit user intent, then call the
-  host no-project resolver before parent project matching. The desktop resolver
-  should recognize generated `$HOME/Documents/tutti/session-<uuid>` cwd values
-  while allowing explicit registered projects to override them. External import
-  should mark home-cwd sessions and known provider scratch cwd shapes as
-  no-project in `runtimeContext`, skip them when registering user-project paths,
-  and let Agent GUI preserve that no-project mode during later project
-  re-resolution. Keep the project field derived in the Agent GUI view-model
-  rather than writing it back into the conversation store.
+  Persist Agent GUI rail grouping in daemon-owned
+  `workspace_agent_sessions.rail_section_*` fields from the shared
+  `services/tuttid/data/workspace` classifier. Migration and session-state
+  upsert should both use that classifier, matching exact user projects first,
+  then preserving no-project/provider scratch cwd shapes as conversations, then
+  applying longest parent-project matches. Do not rederive historical rail
+  assignment from the current user-project list during read pagination; keep
+  existing rail fields stable when a session's final cwd has not changed.
 - Validation:
   Run
   `pnpm --filter @tutti-os/agent-gui test -- agent-gui/agentGuiNode/model/agentGuiConversationModel.spec.ts`,

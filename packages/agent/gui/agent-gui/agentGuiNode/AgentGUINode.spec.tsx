@@ -918,6 +918,91 @@ describe("AgentGUINode", () => {
     expect(screen.getByText("暂未接入用量")).toBeInTheDocument();
   });
 
+  it("keeps the rail config entry visible for legacy single-provider docks", () => {
+    mockViewModel = createViewModel({
+      conversationScope: "single-provider",
+      conversationFilter: { kind: "all" }
+    });
+
+    renderAgentGUINode();
+
+    expect(
+      screen.getByTitle("agentHost.agentGui.agentConfig")
+    ).toBeInTheDocument();
+  });
+
+  it("hides the rail config entry for the unified All provider filter", () => {
+    mockViewModel = createViewModel({
+      conversationScope: "multi-provider",
+      conversationFilter: { kind: "all" },
+      providerTargets: [
+        createLocalAgentGUIProviderTarget("codex"),
+        createLocalAgentGUIProviderTarget("claude-code")
+      ]
+    });
+
+    renderAgentGUINode();
+
+    expect(screen.queryByTitle("agentHost.agentGui.agentConfig")).toBeNull();
+  });
+
+  it("renders rail config usage from the unified provider filter target", async () => {
+    const onAgentProbeDemandChange = vi.fn();
+    const codexTarget = createLocalAgentGUIProviderTarget("codex");
+    const claudeTarget = createLocalAgentGUIProviderTarget("claude-code");
+    mockViewModel = createViewModel({
+      conversationScope: "multi-provider",
+      conversationFilter: {
+        kind: "agentTarget",
+        agentTargetId: claudeTarget.agentTargetId ?? ""
+      },
+      selectedProviderTarget: codexTarget,
+      providerTargets: [codexTarget, claudeTarget]
+    });
+
+    renderAgentGUINode({
+      onAgentProbeDemandChange,
+      workspaceAgentProbes: {
+        isLoadingAvailability: false,
+        isLoadingUsage: false,
+        snapshot: {
+          workspaceId: "workspace-1",
+          capturedAtUnixMs: 1,
+          providers: [
+            {
+              provider: "codex",
+              availability: { status: "available", detailsVisible: false },
+              usage: {
+                capturedAtUnixMs: 1,
+                quotas: [{ quotaType: "session", percentRemaining: 11 }]
+              }
+            },
+            {
+              provider: "claude-code",
+              availability: { status: "available", detailsVisible: false },
+              usage: {
+                capturedAtUnixMs: 1,
+                quotas: [{ quotaType: "session", percentRemaining: 42 }]
+              }
+            }
+          ]
+        }
+      }
+    });
+
+    expect(onAgentProbeDemandChange).toHaveBeenCalledWith(
+      "claude-code",
+      "agent-gui:agent-gui-1:rail"
+    );
+
+    fireEvent.click(screen.getByTitle("agentHost.agentGui.agentConfig"));
+
+    await waitFor(() => {
+      expect(screen.getByText("42% left")).toBeInTheDocument();
+    });
+    expect(screen.queryByText("11% left")).toBeNull();
+  });
+
   it("requests a fresh agent probe when the title info entry opens", () => {
     const onAgentProbeRefreshRequest = vi.fn();
 
@@ -1691,6 +1776,31 @@ describe("AgentGUINode", () => {
     expect(
       document.querySelector(".agent-gui-node__timeline-centered")
     ).toContainElement(emptyHeading);
+  });
+
+  it("renders the empty hero icon from the selected provider target", () => {
+    mockViewModel = createViewModel({
+      data: {
+        provider: "codex",
+        lastActiveAgentSessionId: null,
+        conversationRailWidthPx: null
+      },
+      selectedProviderTarget: createLocalAgentGUIProviderTarget("claude-code"),
+      providerTargets: [
+        createLocalAgentGUIProviderTarget("codex"),
+        createLocalAgentGUIProviderTarget("claude-code")
+      ]
+    });
+
+    renderAgentGUINode();
+
+    const iconEffect = document.querySelector(
+      ".agent-gui-node__empty-hero-icon-effect"
+    );
+    expect(iconEffect).toHaveAttribute(
+      "src",
+      MANAGED_AGENT_ICON_URLS["claude-code"]
+    );
   });
 
   it("resolves provider-specific hero icon artwork", () => {
@@ -2615,6 +2725,56 @@ describe("AgentGUINode", () => {
 
     renderAgentGUINode({
       managedAgentsState: null
+    });
+
+    expect(getComposerEditor()).not.toHaveAttribute("aria-disabled", "true");
+    expect(screen.queryByTestId("agent-gui-provider-setup-notice")).toBeNull();
+    expect(
+      screen.getByRole("button", { name: "agentHost.agentGui.send" })
+    ).not.toBeDisabled();
+  });
+
+  it("checks empty-home provider readiness against the selected provider target before legacy node provider", () => {
+    mockViewModel = createViewModel({
+      data: {
+        provider: "claude-code",
+        agentTargetId: "local:claude-code",
+        lastActiveAgentSessionId: null,
+        conversationRailWidthPx: null
+      },
+      selectedProviderTarget: {
+        ...createLocalAgentGUIProviderTarget("claude-code"),
+        agentTargetId: "local:claude-code"
+      },
+      activeConversation: null,
+      activeConversationId: null,
+      draftPrompt: "hello",
+      canQueueWhileBusy: true,
+      providerReadinessGate: null
+    });
+
+    renderAgentGUINode({
+      state: {
+        provider: "codex",
+        agentTargetId: "local:claude-code",
+        lastActiveAgentSessionId: null,
+        conversationRailWidthPx: null
+      },
+      managedAgentsState: createManagedAgentsState({
+        readyAgentIds: ["claude-code"],
+        items: [
+          createManagedAgentsStateItem({
+            toolId: "codex-cli",
+            agentId: "codex",
+            hostDetected: true
+          }),
+          createManagedAgentsStateItem({
+            toolId: "claude-code-cli",
+            agentId: "claude-code",
+            hostDetected: true
+          })
+        ]
+      })
     });
 
     expect(getComposerEditor()).not.toHaveAttribute("aria-disabled", "true");
@@ -4363,7 +4523,8 @@ describe("AgentGUINode", () => {
     });
     renderAgentGUINode();
 
-    pasteComposerText("@read");
+    pasteComposerText("@");
+    pasteComposerText("read");
     const palette = await screen.findByRole("listbox", {
       name: "agentHost.agentGui.fileMentionPalette"
     });
@@ -4772,7 +4933,8 @@ describe("AgentGUINode", () => {
     );
     renderAgentGUINode();
 
-    pasteComposerText("@read");
+    pasteComposerText("@");
+    pasteComposerText("read");
     const palette = await screen.findByRole("listbox", {
       name: "agentHost.agentGui.fileMentionPalette"
     });
@@ -5355,6 +5517,28 @@ describe("AgentGUINode", () => {
     expect(mockSearchWorkspaceFileManagerEntries).not.toHaveBeenCalledWith(
       expect.objectContaining({
         query: "b.com"
+      })
+    );
+    expect(
+      screen.queryByRole("listbox", {
+        name: "agentHost.agentGui.fileMentionPalette"
+      })
+    ).toBeNull();
+  });
+
+  it("does not open the mention panel after pasting a complete at query", async () => {
+    mockViewModel = createViewModel({
+      activeConversationId: "session-1",
+      draftPrompt: ""
+    });
+    renderAgentGUINode();
+
+    pasteComposerText("@read");
+
+    await waitFor(() => expect(getComposerEditor()).toHaveTextContent("@read"));
+    expect(mockSearchWorkspaceFileManagerEntries).not.toHaveBeenCalledWith(
+      expect.objectContaining({
+        query: "read"
       })
     );
     expect(
@@ -6928,6 +7112,7 @@ function createViewModel(
     ...overrides,
     conversationScope: overrides.conversationScope ?? "single-provider",
     conversationFilter: overrides.conversationFilter ?? { kind: "all" },
+    providerReadinessGate: overrides.providerReadinessGate ?? null,
     listError: overrides.listError ?? null
   };
 }

@@ -397,10 +397,10 @@ export function nodeComposerOverridesForProvider(
   data: AgentGUINodeData
 ): AgentSessionComposerSettings | null {
   const agentTargetId = normalizeOptionalText(data.agentTargetId);
+  if (agentTargetId) {
+    return data.composerOverridesByAgentTargetId?.[agentTargetId] ?? null;
+  }
   return (
-    (agentTargetId
-      ? data.composerOverridesByAgentTargetId?.[agentTargetId]
-      : null) ??
     data.composerOverridesByProvider?.[data.provider] ??
     data.composerOverrides ??
     null
@@ -584,10 +584,17 @@ export function readNodeDefaultDraftSettings(input: {
   defaultSpeed?: AgentSessionSpeed | null;
   drafts: Record<string, AgentSessionComposerSettings>;
 }): AgentSessionComposerSettings {
+  const agentTargetId = normalizeOptionalText(input.data.agentTargetId);
+  if (agentTargetId) {
+    return (
+      input.drafts[nodeDefaultDraftKey(input.data.provider, agentTargetId)] ??
+      buildNodeDefaultComposerSettings(input.data, {
+        defaultReasoningEffort: input.defaultReasoningEffort,
+        defaultSpeed: input.defaultSpeed
+      })
+    );
+  }
   return (
-    input.drafts[
-      nodeDefaultDraftKey(input.data.provider, input.data.agentTargetId)
-    ] ??
     input.drafts[nodeDefaultDraftKey(input.data.provider)] ??
     input.drafts[NODE_DEFAULT_DRAFT_KEY] ??
     buildNodeDefaultComposerSettings(input.data, {

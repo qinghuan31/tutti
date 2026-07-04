@@ -7,6 +7,7 @@ import {
   useState,
   type CSSProperties,
   type KeyboardEvent,
+  type MutableRefObject,
   type ReactNode,
   type JSX
 } from "react";
@@ -163,6 +164,7 @@ export function RichTextTriggerEditor({
   const lastSerializedValueRef = useRef(normalizedValue);
   const lastFocusSignalRef = useRef(focusSignal);
   const mentionHydrationRequestRef = useRef(0);
+  const suppressPastedAtQueryRef = useRef(false);
   const containerRef = useRef<HTMLDivElement | null>(null);
   const registry = useMemo(
     () => createRichTextTriggerRegistry(triggerProviders),
@@ -335,6 +337,10 @@ export function RichTextTriggerEditor({
 
     const updateQueryState = () => {
       const nextQuery = findEditorAtQuery(editor, activeTriggerConfigs);
+      if (shouldSuppressPastedAtQuery(nextQuery, suppressPastedAtQueryRef)) {
+        setQuery(null);
+        return;
+      }
       setQuery(nextQuery);
     };
 
@@ -655,6 +661,16 @@ export function RichTextTriggerEditor({
   return (
     <div
       className={cn("relative min-w-0 w-full", className)}
+      onPasteCapture={(event) => {
+        const pastedText = event.clipboardData.getData("text/plain");
+        suppressPastedAtQueryRef.current =
+          pastedText.includes("@") && !pastedText.endsWith("@");
+        if (suppressPastedAtQueryRef.current) {
+          window.setTimeout(() => {
+            suppressPastedAtQueryRef.current = false;
+          }, 0);
+        }
+      }}
       ref={containerRef}
     >
       <div className="w-full min-w-0" onKeyDownCapture={handleKeyDown}>
@@ -736,6 +752,17 @@ export function RichTextTriggerEditor({
         </ViewportMenuSurface>
       ) : null}
     </div>
+  );
+}
+
+function shouldSuppressPastedAtQuery(
+  query: RichTextEditorTriggerQueryState | null,
+  suppressPastedAtQueryRef: MutableRefObject<boolean>
+): boolean {
+  return Boolean(
+    suppressPastedAtQueryRef.current &&
+    query?.trigger === "@" &&
+    query.keyword.length > 0
   );
 }
 

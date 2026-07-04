@@ -6,6 +6,34 @@ import {
   type DesktopAgentGUIProvider
 } from "../desktopAgentGUINodeState.ts";
 
+export function resolveDesktopAgentGUIProviderForAgentTarget(
+  agentTargetId: string | null,
+  providerTargets:
+    | readonly {
+        agentTargetId?: string | null;
+        provider: DesktopAgentGUIProvider;
+      }[]
+    | undefined,
+  fallbackProvider: DesktopAgentGUIProvider
+): DesktopAgentGUIProvider {
+  if (!agentTargetId) {
+    return fallbackProvider;
+  }
+  const target = providerTargets?.find(
+    (candidate) => candidate.agentTargetId === agentTargetId
+  );
+  if (target) {
+    return target.provider;
+  }
+  if (agentTargetId === "local:codex") {
+    return "codex";
+  }
+  if (agentTargetId === "local:claude-code") {
+    return "claude-code";
+  }
+  return fallbackProvider;
+}
+
 export function withDesktopAgentGUIProviderComposerDefaults(
   state: DesktopAgentGUINodeState,
   provider: DesktopAgentGUIProvider,

@@ -2,8 +2,14 @@ import { describe, expect, it } from "vitest";
 import {
   attrsToMentionItem,
   formatAgentMentionMarkdown,
-  parseAgentMentionMarkdown
+  mentionItemToAttrs,
+  parseAgentMentionMarkdown,
+  parseMentionItemFromHref
 } from "./agentFileMentionExtension";
+import {
+  registerAgentCustomMentionKind,
+  resetAgentCustomMentionKindsForTests
+} from "../../../shared/agentCustomMentionKinds";
 import { createRichTextMentionHref } from "@tutti-os/ui-rich-text/core";
 
 describe("parseAgentMentionMarkdown", () => {
@@ -65,6 +71,70 @@ describe("parseAgentMentionMarkdown", () => {
         name: "Session"
       }
     });
+  });
+
+  it("parses registered custom mention kinds into custom items", () => {
+    registerAgentCustomMentionKind({
+      kind: "external-note",
+      present: (mention) => ({
+        name: mention.label,
+        summary: mention.scope?.preview?.trim() || undefined,
+        workspaceId: mention.scope?.spaceId?.trim() || undefined
+      })
+    });
+    try {
+      expect(
+        parseAgentMentionMarkdown(
+          "[@两条外部笔记](mention://external-note/note-a?ids=note-a%2Cnote-b&preview=hello&spaceId=space-1)"
+        )
+      ).toMatchObject({
+        item: {
+          kind: "custom",
+          customKind: "external-note",
+          workspaceId: "space-1",
+          targetId: "note-a",
+          summary: "hello",
+          name: "两条外部笔记"
+        }
+      });
+    } finally {
+      resetAgentCustomMentionKindsForTests();
+    }
+  });
+
+  it("rejects unregistered custom mention kinds", () => {
+    expect(
+      parseAgentMentionMarkdown(
+        "[@两条外部笔记](mention://external-note/note-a?spaceId=space-1)"
+      )
+    ).toBeNull();
+  });
+
+  it("round-trips custom items through attrs", () => {
+    registerAgentCustomMentionKind({
+      kind: "external-note",
+      present: (mention) => ({
+        name: mention.label,
+        summary: mention.scope?.preview?.trim() || undefined,
+        workspaceId: mention.scope?.spaceId?.trim() || undefined
+      })
+    });
+    try {
+      const href =
+        "mention://external-note/note-a?ids=note-a%2Cnote-b&preview=hello&spaceId=space-1";
+      const parsed = parseMentionItemFromHref({
+        name: "两条外部笔记",
+        href
+      });
+      expect(parsed).not.toBeNull();
+      expect(attrsToMentionItem(mentionItemToAttrs(parsed!))).toEqual(parsed);
+      // markdown 序列化走 default 分支(canonical href round-trip 无损)。
+      expect(formatAgentMentionMarkdown(parsed!)).toContain(
+        "mention://external-note/note-a"
+      );
+    } finally {
+      resetAgentCustomMentionKindsForTests();
+    }
   });
 
   it("accepts workspace app mention hrefs without an @ prefix", () => {

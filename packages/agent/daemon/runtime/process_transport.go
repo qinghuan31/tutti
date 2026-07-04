@@ -5,6 +5,7 @@ import (
 	"errors"
 	"io"
 	"log/slog"
+	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
@@ -110,6 +111,8 @@ func logProcessStartEnvDiagnostics(spec ProcessSpec, env []string, resolvedComma
 		"path_contains_app_npm_bin", diag["path_contains_app_npm_bin"],
 		"workspace_env_present", diag["workspace_env_present"],
 		"agent_session_env_present", diag["agent_session_env_present"],
+		"proxy_env_present", diag["proxy_env_present"],
+		"proxy_source", diag["proxy_source"],
 	)
 }
 
@@ -118,6 +121,7 @@ func processStartEnvDiagnostics(spec ProcessSpec, env []string) map[string]any {
 	pathDirs := filepath.SplitList(pathValue)
 	appNodeBin := filepath.Dir(envValueFromList(env, "TUTTI_APP_NODE"))
 	appNPMBin := filepath.Dir(envValueFromList(env, "TUTTI_APP_NPM"))
+	proxyPresent, proxySource := proxyDiagnostics(spec, env)
 	return map[string]any{
 		"path_override_count":        envKeyCount(spec.Env, "PATH"),
 		"path_entry_count":           len(pathDirs),
@@ -127,7 +131,37 @@ func processStartEnvDiagnostics(spec ProcessSpec, env []string) map[string]any {
 		"path_contains_app_npm_bin":  appNPMBin != "." && pathContainsDir(pathDirs, appNPMBin),
 		"workspace_env_present":      envHasKey(env, "TUTTI_WORKSPACE_ID"),
 		"agent_session_env_present":  envHasKey(env, "TUTTI_AGENT_SESSION_ID"),
+		"proxy_env_present":          proxyPresent,
+		"proxy_source":               proxySource,
 	}
+}
+
+// proxyEnvKeys are checked case-insensitively; envValueFromList uses EqualFold
+// so lowercase shell-style spellings match too.
+var proxyEnvKeys = []string{"HTTPS_PROXY", "HTTP_PROXY", "ALL_PROXY"}
+
+// proxyDiagnostics reports whether the spawned agent sees a proxy and where it
+// came from: "env" when the daemon process env or session overrides carry one
+// (user shell/session explicit), "system" when only the injected macOS system
+// proxy supplies it, "none" otherwise.
+func proxyDiagnostics(spec ProcessSpec, env []string) (bool, string) {
+	present := false
+	for _, key := range proxyEnvKeys {
+		if envHasKey(env, key) {
+			present = true
+			break
+		}
+	}
+	if !present {
+		return false, "none"
+	}
+	processEnv := os.Environ()
+	for _, key := range proxyEnvKeys {
+		if envHasKey(spec.Env, key) || envHasKey(processEnv, key) {
+			return true, "env"
+		}
+	}
+	return true, "system"
 }
 
 func commandNameForLog(command []string) string {

@@ -146,6 +146,10 @@ test("mention palette rows keep trailing controls visible when text is narrow", 
   );
   assert.match(
     stylesheet,
+    /\.rich-text-at-mention-row__open-references\s*\{[^}]*color:\s*var\(--text-secondary\);/s
+  );
+  assert.match(
+    stylesheet,
     /\.rich-text-at-mention-row__navigate-into\s*\{[^}]*width:\s*24px;[^}]*flex:\s*0 0 24px;/s
   );
   assert.match(

@@ -26,6 +26,7 @@ export async function completeDesktopLoginCallbackUrl(
   }
 
   const requestUrl = new URL("/oauth/complete", localServerOrigin);
+  // oxlint-disable-next-line no-restricted-globals -- posts to the local login-bridge origin, not outbound
   const response = await fetch(requestUrl, {
     method: "POST",
     headers: {

@@ -11,6 +11,7 @@ import {
   resolveAgentMentionFileVisualKind
 } from "../../shared/mentionFilePresentation";
 import { managedAgentRoundedIconUrl } from "../../../shared/managedAgentIcons";
+import { getAgentCustomMentionKind } from "../../../shared/agentCustomMentionKinds";
 import { AGENT_RICH_TEXT_CARET_ANCHOR } from "./agentRichTextCaretAnchor";
 
 type AgentMentionNodeViewKind =
@@ -20,7 +21,8 @@ type AgentMentionNodeViewKind =
   | "workspace-app"
   | "workspace-reference"
   | "workspace-app-factory"
-  | "workspace-issue";
+  | "workspace-issue"
+  | "custom";
 
 function parseFileCountAttr(value: unknown): number {
   const parsed =
@@ -30,6 +32,8 @@ function parseFileCountAttr(value: unknown): number {
 
 interface AgentMentionNodeViewModel {
   ariaLabel: string;
+  /** 宿主注册的自定义 mention kind(kind === "custom" 专用)。 */
+  customKind?: string;
   directoryPath: string;
   entryKind: string;
   href: string;
@@ -65,6 +69,9 @@ function normalizeKind(value: string): AgentMentionNodeViewKind {
   }
   if (value === "agent-target") {
     return "agent-target";
+  }
+  if (value === "custom") {
+    return "custom";
   }
   return "file";
 }
@@ -216,6 +223,20 @@ function mentionViewModel(
         managedAgentRoundedIconUrl(agentProviderId),
       kind,
       label: name
+    };
+  }
+
+  if (kind === "custom") {
+    return {
+      ariaLabel:
+        `${t("agentHost.agentGui.mentionKindReference")} ${name}`.trim(),
+      customKind: attrString(attrs, "customKind").trim(),
+      directoryPath: "",
+      entryKind: "",
+      href,
+      kind,
+      label: name,
+      summary: attrString(attrs, "preview").trim() || undefined
     };
   }
 
@@ -502,6 +523,80 @@ export function AgentMentionNodeView(props: NodeViewProps): JSX.Element {
           <TruncatingPillLabel tooltip={mention.label}>
             {mention.label}
           </TruncatingPillLabel>
+        </span>
+      </NodeViewWrapper>
+    );
+  }
+
+  if (mention.kind === "custom") {
+    // 宿主注册的自定义 mention:优先用注册的 renderChip,缺省用通用双行卡
+    // (第一行 name,第二行 summary)。点击经编辑器的 link click 委托
+    // (data-agent-mention-href)上抛 onLinkAction,由宿主二次解析 href。
+    const definition = getAgentCustomMentionKind(mention.customKind ?? "");
+    const removeAction = isEditable ? (
+      <button
+        aria-label={removeActionAriaLabel}
+        className="inline-flex size-4 shrink-0 items-center justify-center rounded-sm text-[var(--text-secondary)] opacity-0 transition-opacity hover:bg-transparency-block hover:text-[var(--text-primary)] focus-visible:opacity-100 group-hover:opacity-100"
+        type="button"
+        onMouseDown={handleRemove}
+      >
+        <CloseIcon className="size-3.5" />
+      </button>
+    ) : null;
+    if (definition?.renderChip) {
+      return (
+        <NodeViewWrapper
+          as="span"
+          aria-label={mention.ariaLabel}
+          className={`agent-rich-text-mention-node inline-grid max-w-[min(100%,var(--agent-mention-max-width,20rem))] align-middle ${
+            selected ? "is-selected" : ""
+          }`}
+          contentEditable={false}
+          data-agent-file-mention="true"
+          data-agent-mention-href={mention.href}
+          data-agent-mention-kind={mention.customKind || mention.kind}
+        >
+          {definition.renderChip({
+            href: mention.href,
+            name: mention.label,
+            summary: mention.summary,
+            isEditable,
+            removeAction
+          })}
+        </NodeViewWrapper>
+      );
+    }
+    return (
+      <NodeViewWrapper
+        as="span"
+        aria-label={mention.ariaLabel}
+        className={`agent-rich-text-mention-node inline-grid max-w-[min(100%,var(--agent-mention-max-width,20rem))] align-middle ${
+          selected ? "is-selected" : ""
+        }`}
+        contentEditable={false}
+        data-agent-file-mention="true"
+        data-agent-mention-href={mention.href}
+        data-agent-mention-kind={mention.customKind || mention.kind}
+      >
+        <span
+          className="group relative grid max-w-full cursor-pointer gap-0.5 overflow-hidden rounded-[8px] border border-[var(--border-primary,rgba(0,0,0,0.08))] bg-block px-2.5 py-1.5 text-left align-middle"
+          data-slot="mention-card"
+        >
+          <span className="flex min-w-0 items-center gap-1">
+            <span
+              aria-hidden="true"
+              className="tsh-agent-object-token__kind-icon size-3.5 shrink-0"
+            />
+            <span className="truncate text-[13px] font-medium leading-[130%]">
+              {mention.label}
+            </span>
+            {removeAction}
+          </span>
+          {mention.summary ? (
+            <span className="truncate text-[12px] font-normal leading-[130%] text-[var(--text-tertiary)]">
+              {mention.summary}
+            </span>
+          ) : null}
         </span>
       </NodeViewWrapper>
     );

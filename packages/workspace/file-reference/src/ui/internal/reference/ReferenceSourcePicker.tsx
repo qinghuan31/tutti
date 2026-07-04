@@ -6,6 +6,7 @@ import {
   useState,
   type CSSProperties,
   type JSX,
+  type KeyboardEvent as ReactKeyboardEvent,
   type MouseEvent,
   type ReactNode,
   type RefObject
@@ -204,6 +205,28 @@ export function ReferenceSourcePicker({
     onCommit: view.setSearchQuery,
     value: view.searchQuery
   });
+  useEffect(() => {
+    if (!open) {
+      return;
+    }
+    const handleEscapeKeyDown = (event: KeyboardEvent): void => {
+      if (event.key !== "Escape") {
+        return;
+      }
+      event.preventDefault();
+      event.stopPropagation();
+      event.stopImmediatePropagation();
+      onClose();
+    };
+    document.addEventListener("keydown", handleEscapeKeyDown, {
+      capture: true
+    });
+    return () => {
+      document.removeEventListener("keydown", handleEscapeKeyDown, {
+        capture: true
+      });
+    };
+  }, [onClose, open]);
 
   // 三栏可拖拽 + 双击自动适配:layoutRef 量整体宽度,content/panel ref 用于双击适配。
   const layoutRef = useRef<HTMLDivElement | null>(null);
@@ -355,12 +378,23 @@ export function ReferenceSourcePicker({
       middlePanelRef.current,
       56
     );
+  const handleReferencePickerKeyDownCapture = (
+    event: ReactKeyboardEvent<HTMLDivElement>
+  ): void => {
+    if (event.key !== "Escape") {
+      return;
+    }
+    event.preventDefault();
+    event.stopPropagation();
+    onClose();
+  };
 
   const dialog = (
     <div
       className="nodrag fixed inset-0 grid place-items-center bg-[var(--backdrop)] px-3 py-4 backdrop-blur-md [-webkit-app-region:no-drag] sm:px-6 sm:py-8"
       style={{ zIndex: "var(--z-panel)" }}
       onClick={onClose}
+      onKeyDownCapture={handleReferencePickerKeyDownCapture}
     >
       <Card
         aria-labelledby={titleId}

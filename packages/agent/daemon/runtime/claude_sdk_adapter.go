@@ -31,6 +31,7 @@ const (
 	claudeSDKSidecarAdapterName    = "claude-agent-sdk"
 	claudeSDKSidecarDefaultNodeArg = "--experimental-strip-types"
 	claudeSDKDefaultContextWindow  = int64(200000)
+	claudeSDKAuthRefreshLogPrefix  = "CLAUDE_CODE_AUTH_REFRESH_DEBUG"
 )
 
 type ClaudeCodeSDKAdapter struct {
@@ -1769,6 +1770,7 @@ func (r *claudeSDKLineReader) next(ctx context.Context) (claudeSDKSidecarEvent, 
 			return claudeSDKSidecarEvent{}, err
 		}
 		if len(frame.Stderr) > 0 {
+			logClaudeSDKSidecarDebugStderr(frame.Stderr)
 			continue
 		}
 		if frame.ExitCode != nil {
@@ -1777,6 +1779,23 @@ func (r *claudeSDKLineReader) next(ctx context.Context) (claudeSDKSidecarEvent, 
 		if len(frame.Stdout) > 0 {
 			r.buffer += string(frame.Stdout)
 		}
+	}
+}
+
+func logClaudeSDKSidecarDebugStderr(content []byte) {
+	for _, line := range strings.Split(string(content), "\n") {
+		line = strings.TrimSpace(line)
+		if !strings.HasPrefix(line, claudeSDKAuthRefreshLogPrefix) {
+			continue
+		}
+		payloadJSON := strings.TrimSpace(strings.TrimPrefix(line, claudeSDKAuthRefreshLogPrefix))
+		if payloadJSON == "" {
+			payloadJSON = "{}"
+		}
+		slog.Warn(claudeSDKAuthRefreshLogPrefix,
+			"event", "agent_session.claude_sdk.auth_refresh_debug",
+			"payload_json", payloadJSON,
+		)
 	}
 }
 

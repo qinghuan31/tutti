@@ -21,6 +21,8 @@ import type {
 import type { WorkspaceLinkAction } from "../../actions/workspaceLinkActions";
 import type {
   AgentGUINodeData,
+  AgentGUIProvider,
+  AgentGUIProviderReadinessGate,
   AgentGUIProviderTarget,
   NodeFrame,
   Point
@@ -54,6 +56,7 @@ import {
   resolveAgentGUIDockConversationTitle,
   resolveAgentGUIProviderDisplayLabel
 } from "./model/agentGuiProviderIdentity";
+import { agentGUIProviderTargetRefsEqual } from "../../providerTargets";
 import {
   buildDockAgentProbeTooltipLines,
   findWorkspaceAgentProbeForDockProvider,
@@ -186,6 +189,9 @@ export interface AgentGUINodeProps {
   onAgentProviderLogin?: (provider: AgentProvider) => void;
   providerTargets?: readonly AgentGUIProviderTarget[];
   providerTargetsLoading?: boolean;
+  providerReadinessGates?: Partial<
+    Record<AgentGUIProvider, AgentGUIProviderReadinessGate | null>
+  > | null;
   defaultProviderTargetId?: string | null;
   conversationScope?: AgentGUIConversationScope;
   onWorkspaceFileReferencesAdded?: (input: {
@@ -415,6 +421,29 @@ function normalizeSlashStatusModelName(
   );
 }
 
+function resolveAgentGUIRailStatusProvider(input: {
+  activeProvider: AgentProvider;
+  conversationFilter: ReturnType<
+    typeof useAgentGUINodeController
+  >["viewModel"]["conversationFilter"];
+  conversationScope: AgentGUIConversationScope;
+  providerTargets: readonly AgentGUIProviderTarget[];
+}): AgentProvider | null {
+  if (input.conversationScope !== "multi-provider") {
+    return input.activeProvider as AgentProvider;
+  }
+  const filter = input.conversationFilter;
+  if (filter.kind !== "agentTarget") {
+    return null;
+  }
+  const target = input.providerTargets.find(
+    (candidate) =>
+      candidate.disabled !== true &&
+      (candidate.agentTargetId?.trim() ?? "") === filter.agentTargetId
+  );
+  return target ? (target.provider as AgentProvider) : null;
+}
+
 function agentGuiStateEquals(
   left: AgentGUINodeData,
   right: AgentGUINodeData
@@ -423,6 +452,11 @@ function agentGuiStateEquals(
     left === right ||
     (left.provider === right.provider &&
       (left.agentTargetId ?? null) === (right.agentTargetId ?? null) &&
+      (left.providerTargetId ?? null) === (right.providerTargetId ?? null) &&
+      agentGUIProviderTargetRefsEqual(
+        left.providerTargetRef,
+        right.providerTargetRef
+      ) &&
       left.lastActiveAgentSessionId === right.lastActiveAgentSessionId &&
       left.conversationRailWidthPx === right.conversationRailWidthPx &&
       left.conversationRailCollapsed === right.conversationRailCollapsed &&
@@ -536,6 +570,7 @@ function areAgentGUINodePropsEqual(
     previous.onAgentProviderLogin === next.onAgentProviderLogin &&
     previous.providerTargets === next.providerTargets &&
     previous.providerTargetsLoading === next.providerTargetsLoading &&
+    previous.providerReadinessGates === next.providerReadinessGates &&
     previous.defaultProviderTargetId === next.defaultProviderTargetId &&
     previous.conversationScope === next.conversationScope &&
     previous.onClose === next.onClose &&
@@ -548,11 +583,14 @@ function areAgentGUINodePropsEqual(
     previous.onMinimize === next.onMinimize &&
     previous.onToggleMaximize === next.onToggleMaximize &&
     previous.onShowMessage === next.onShowMessage &&
-    workspaceAgentProbeRenderStateEqualsForProvider(
-      previous.workspaceAgentProbes,
-      next.workspaceAgentProbes,
-      previous.state.provider
-    ) &&
+    (previous.conversationScope === "multi-provider" ||
+    next.conversationScope === "multi-provider"
+      ? previous.workspaceAgentProbes === next.workspaceAgentProbes
+      : workspaceAgentProbeRenderStateEqualsForProvider(
+          previous.workspaceAgentProbes,
+          next.workspaceAgentProbes,
+          previous.state.provider
+        )) &&
     previous.onAgentProbeDemandChange === next.onAgentProbeDemandChange &&
     previous.onAgentProbeRefreshRequest === next.onAgentProbeRefreshRequest &&
     previous.managedAgentsState === next.managedAgentsState &&
@@ -596,6 +634,7 @@ export const AgentGUINode = memo(function AgentGUINode({
   onAgentProviderLogin,
   providerTargets,
   providerTargetsLoading = false,
+  providerReadinessGates = null,
   defaultProviderTargetId = null,
   conversationScope = "single-provider",
   onWorkspaceFileReferencesAdded,
@@ -769,6 +808,7 @@ export const AgentGUINode = memo(function AgentGUINode({
     prefillPromptRequest,
     providerTargets,
     providerTargetsLoading,
+    providerReadinessGates,
     defaultProviderTargetId,
     previewMode,
     onDataChange: handleDataChange,
@@ -804,6 +844,10 @@ export const AgentGUINode = memo(function AgentGUINode({
   const fallbackAgentTitle = t("sidebar.fallbackAgentLabel");
   const activeProvider =
     viewModel.activeConversation?.provider ?? state.provider;
+  const activeReadinessProvider =
+    viewModel.activeConversationId !== null
+      ? activeProvider
+      : viewModel.selectedProviderTarget.provider;
   const selectedProviderTargetLabel =
     viewModel.selectedProviderTarget?.label ??
     resolveAgentGUIProviderDisplayLabel(state.provider, fallbackAgentTitle);
@@ -874,6 +918,50 @@ export const AgentGUINode = memo(function AgentGUINode({
         }
       ),
       installRequiredAction: t("agentHost.agentGui.installRequiredAction"),
+      providerGateCheckingTitle: t(
+        "agentHost.agentGui.providerGateCheckingTitle"
+      ),
+      providerGateCheckingDescription: t(
+        "agentHost.agentGui.providerGateCheckingDescription",
+        { provider: displayProviderLabel }
+      ),
+      providerGateInstallTitle: t(
+        "agentHost.agentGui.providerGateInstallTitle",
+        { provider: displayProviderLabel }
+      ),
+      providerGateInstallDescription: t(
+        "agentHost.agentGui.providerGateInstallDescription",
+        { provider: displayProviderLabel }
+      ),
+      providerGateInstallAction: t(
+        "agentHost.agentGui.providerGateInstallAction"
+      ),
+      providerGateLoginTitle: t("agentHost.agentGui.providerGateLoginTitle", {
+        provider: displayProviderLabel
+      }),
+      providerGateLoginDescription: t(
+        "agentHost.agentGui.providerGateLoginDescription",
+        { provider: displayProviderLabel }
+      ),
+      providerGateLoginAction: t("agentHost.agentGui.providerGateLoginAction"),
+      providerGateUnavailableTitle: t(
+        "agentHost.agentGui.providerGateUnavailableTitle",
+        { provider: displayProviderLabel }
+      ),
+      providerGateUnavailableDescription: t(
+        "agentHost.agentGui.providerGateUnavailableDescription",
+        { provider: displayProviderLabel }
+      ),
+      providerGateRetryAction: t("agentHost.agentGui.providerGateRetryAction"),
+      providerGatePendingInstall: t(
+        "agentHost.agentGui.providerGatePendingInstall"
+      ),
+      providerGatePendingLogin: t(
+        "agentHost.agentGui.providerGatePendingLogin"
+      ),
+      providerGatePendingRefresh: t(
+        "agentHost.agentGui.providerGatePendingRefresh"
+      ),
       collaboratorSessionReadOnlyPlaceholder: t(
         "agentHost.agentGui.collaboratorSessionReadOnlyPlaceholder"
       ),
@@ -1327,8 +1415,10 @@ export const AgentGUINode = memo(function AgentGUINode({
       fileMentionEmpty: t("agentHost.agentGui.fileMentionEmpty"),
       fileMentionError: t("agentHost.agentGui.fileMentionError"),
       fileMentionTabHint: t("agentHost.agentGui.fileMentionTabHint"),
+      mentionPalette: t("agentHost.agentGui.mentionPalette"),
       removeMention: t("common.remove"),
       addReference: t("agentHost.agentGui.addReference"),
+      addContent: t("agentHost.agentGui.addContent"),
       referenceWorkspaceFiles: t("agentHost.issue.referenceWorkspaceFiles")
     }),
     [displayProviderLabel, fallbackAgentTitle, t]
@@ -1354,6 +1444,21 @@ export const AgentGUINode = memo(function AgentGUINode({
     agentGuiDockIconUrls[activeProvider as keyof typeof agentGuiDockIconUrls] ??
     null;
   const activeProbeProvider = activeProvider as AgentProvider;
+  const railStatusProvider = useMemo(
+    () =>
+      resolveAgentGUIRailStatusProvider({
+        activeProvider: activeProbeProvider,
+        conversationFilter: viewModel.conversationFilter,
+        conversationScope: viewModel.conversationScope,
+        providerTargets: viewModel.providerTargets
+      }),
+    [
+      activeProbeProvider,
+      viewModel.conversationFilter,
+      viewModel.conversationScope,
+      viewModel.providerTargets
+    ]
+  );
   const activeAgentProbe = useMemo(
     () =>
       findWorkspaceAgentProbeForDockProvider(
@@ -1362,9 +1467,20 @@ export const AgentGUINode = memo(function AgentGUINode({
       ),
     [activeProbeProvider, workspaceAgentProbes?.snapshot]
   );
+  const railAgentProbe = useMemo(
+    () =>
+      railStatusProvider
+        ? findWorkspaceAgentProbeForDockProvider(
+            workspaceAgentProbes?.snapshot ?? null,
+            railStatusProvider
+          )
+        : null,
+    [railStatusProvider, workspaceAgentProbes?.snapshot]
+  );
   const isActiveAgentProviderReady = useMemo(() => {
-    const managedAgent =
-      getAgentHostManagedToolchainAgentByName(activeProbeProvider);
+    const managedAgent = getAgentHostManagedToolchainAgentByName(
+      activeReadinessProvider
+    );
     if (!managedAgent) {
       return true;
     }
@@ -1377,7 +1493,7 @@ export const AgentGUINode = memo(function AgentGUINode({
         managedAgentsState
       ) === "installed"
     );
-  }, [activeProbeProvider, managedAgentsState]);
+  }, [activeReadinessProvider, managedAgentsState]);
   const runtimeSlashStatusQuotas = useMemo(
     () =>
       slashStatusQuotasFromRuntimeUsage(
@@ -1403,6 +1519,16 @@ export const AgentGUINode = memo(function AgentGUINode({
       viewModel.composerSettings.draftSettings.model,
       viewModel.composerSettings.selectedModelValue
     ]
+  );
+  const railSlashStatusQuotaSource =
+    railStatusProvider &&
+    railAgentProbe?.usage?.quotas &&
+    railAgentProbe.usage.quotas.length > 0
+      ? railAgentProbe.usage.quotas
+      : [];
+  const railSlashStatusLimits = useMemo(
+    () => slashStatusLimitsFromQuotas(railSlashStatusQuotaSource, null, t),
+    [railSlashStatusQuotaSource, t]
   );
   const agentProbeLines = useMemo(() => {
     return buildDockAgentProbeTooltipLines(
@@ -1431,6 +1557,27 @@ export const AgentGUINode = memo(function AgentGUINode({
       onAgentProbeDemandChange(null, probeSourceId);
     };
   }, [activeProbeProvider, nodeId, onAgentProbeDemandChange, previewMode]);
+  useEffect(() => {
+    if (
+      previewMode ||
+      !onAgentProbeDemandChange ||
+      !railStatusProvider ||
+      railStatusProvider === activeProbeProvider
+    ) {
+      return;
+    }
+    const probeSourceId = `agent-gui:${nodeId}:rail`;
+    onAgentProbeDemandChange(railStatusProvider, probeSourceId);
+    return () => {
+      onAgentProbeDemandChange(null, probeSourceId);
+    };
+  }, [
+    activeProbeProvider,
+    nodeId,
+    onAgentProbeDemandChange,
+    previewMode,
+    railStatusProvider
+  ]);
   const handleAgentProbeInfoOpen = useCallback(() => {
     if (previewMode || !onAgentProbeRefreshRequest) {
       return;
@@ -1529,6 +1676,8 @@ export const AgentGUINode = memo(function AgentGUINode({
             slashStatusLimitsLoading={
               workspaceAgentProbes?.isLoadingUsage ?? false
             }
+            railConfigProvider={railStatusProvider}
+            railSlashStatusLimits={railSlashStatusLimits}
             previewMode={previewMode}
             onLinkAction={handleLinkAction}
             capabilityMenuState={capabilityMenuState}

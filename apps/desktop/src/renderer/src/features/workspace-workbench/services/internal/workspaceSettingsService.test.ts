@@ -992,17 +992,72 @@ test("WorkspaceSettingsService keeps reporter clock separate from App Center inj
   ]);
 });
 
+test("WorkspaceSettingsService passes driver restarts through to the client", async () => {
+  let restartCalls = 0;
+  const restartResult = {
+    result: { success: true, output: "" },
+    status: {
+      installed: true,
+      permissions: {
+        accessibility: true,
+        screenRecording: true,
+        screenRecordingCapturable: true,
+        source: "driver-daemon" as const
+      },
+      authorization: "authorized" as const
+    }
+  };
+  const service = new WorkspaceSettingsService(
+    {
+      client: createWorkspaceSettingsClient({
+        restartComputerUseDriver: async () => {
+          restartCalls += 1;
+          return restartResult;
+        }
+      })
+    },
+    createDesktopPreferencesService({
+      state: createPreferencesState({})
+    }),
+    createNotificationRecorder().service
+  );
+
+  assert.deepEqual(await service.restartComputerUseDriver(), restartResult);
+  assert.equal(restartCalls, 1);
+});
+
 function createWorkspaceSettingsClient(
   overrides: Partial<DesktopWorkspaceSettingsClient>
 ): DesktopWorkspaceSettingsClient {
   return {
     checkComputerUseStatus: async () => ({
       installed: false,
-      permissions: null
+      permissions: null,
+      authorization: "unknown",
+      reason: "not-installed"
     }),
     installComputerUse: async () => ({ success: false, output: "" }),
     uninstallComputerUse: async () => ({ success: false, output: "" }),
     grantComputerUsePermissions: async () => ({ success: false, output: "" }),
+    startComputerUsePermissionGrant: async () => ({
+      id: "computer-use-permission-grant",
+      running: false,
+      startedAtUnixMs: 0,
+      elapsedMs: 0,
+      result: { success: false, output: "" }
+    }),
+    getComputerUsePermissionGrantStatus: async () => null,
+    logComputerUsePermissionDiagnostic: async () => {},
+    openComputerUsePermissionSettings: async () => undefined,
+    restartComputerUseDriver: async () => ({
+      result: { success: false, output: "" },
+      status: {
+        installed: false,
+        permissions: null,
+        authorization: "unknown",
+        reason: "not-installed"
+      }
+    }),
     clearLogs: async () => ({
       clearedFiles: 0,
       clearedPaths: [],

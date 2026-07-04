@@ -62,7 +62,11 @@ export const desktopIpcChannels = {
     checkStatus: "computerUse:checkStatus",
     install: "computerUse:install",
     uninstall: "computerUse:uninstall",
-    grantPermissions: "computerUse:grantPermissions"
+    grantPermissions: "computerUse:grantPermissions",
+    startPermissionGrant: "computerUse:startPermissionGrant",
+    getPermissionGrantStatus: "computerUse:getPermissionGrantStatus",
+    openPermissionSettings: "computerUse:openPermissionSettings",
+    restartDriver: "computerUse:restartDriver"
   },
   appContext: {
     agentStatusBroadcast: "workspace-app-context:agent-status-broadcast",
@@ -669,9 +673,46 @@ export interface DesktopComputerUsePermissionsStatus {
   source: DesktopComputerUsePermissionStatusSource;
 }
 
+export type DesktopComputerUseAuthorizationState =
+  | "authorized"
+  | "needs-authorization"
+  | "unknown";
+
+export type DesktopComputerUseStatusReason =
+  | "driver-daemon-not-running"
+  | "not-installed"
+  | "permission-missing"
+  | "screen-recording-not-capturable"
+  | "status-command-failed"
+  | "status-unparseable";
+
 export interface DesktopComputerUseStatus {
   installed: boolean;
   permissions: DesktopComputerUsePermissionsStatus | null;
+  authorization: DesktopComputerUseAuthorizationState;
+  reason?: DesktopComputerUseStatusReason;
+  diagnosticMessage?: string;
+}
+
+export function desktopComputerUseStatusesEqual(
+  left: DesktopComputerUseStatus | null,
+  right: DesktopComputerUseStatus | null
+): boolean {
+  return (
+    left === right ||
+    (left !== null &&
+      right !== null &&
+      left.installed === right.installed &&
+      left.authorization === right.authorization &&
+      left.reason === right.reason &&
+      left.diagnosticMessage === right.diagnosticMessage &&
+      left.permissions?.accessibility === right.permissions?.accessibility &&
+      left.permissions?.screenRecording ===
+        right.permissions?.screenRecording &&
+      left.permissions?.screenRecordingCapturable ===
+        right.permissions?.screenRecordingCapturable &&
+      left.permissions?.source === right.permissions?.source)
+  );
 }
 
 export interface DesktopComputerUseActionResult {
@@ -679,11 +720,42 @@ export interface DesktopComputerUseActionResult {
   output: string;
 }
 
+export type DesktopComputerUsePermissionPane =
+  | "accessibility"
+  | "screen-recording"
+  | "privacy";
+
+export interface DesktopComputerUsePermissionGrantStatus {
+  id: "computer-use-permission-grant";
+  running: boolean;
+  startedAtUnixMs: number;
+  elapsedMs: number;
+  result?: DesktopComputerUseActionResult;
+}
+
+export interface DesktopComputerUseRestartDriverInput {
+  // Restart even while a permission grant is still confirming. Used by the
+  // wizard's explicit re-check, where the user has finished granting.
+  force?: boolean;
+}
+
+export interface DesktopComputerUseRestartDriverResult {
+  result: DesktopComputerUseActionResult;
+  status: DesktopComputerUseStatus;
+}
+
 export interface DesktopInvokePayloadByChannel {
   [desktopIpcChannels.computerUse.checkStatus]: undefined;
   [desktopIpcChannels.computerUse.install]: undefined;
   [desktopIpcChannels.computerUse.uninstall]: undefined;
   [desktopIpcChannels.computerUse.grantPermissions]: undefined;
+  [desktopIpcChannels.computerUse.startPermissionGrant]: undefined;
+  [desktopIpcChannels.computerUse.getPermissionGrantStatus]: undefined;
+  [desktopIpcChannels.computerUse
+    .openPermissionSettings]: DesktopComputerUsePermissionPane;
+  [desktopIpcChannels.computerUse.restartDriver]:
+    | DesktopComputerUseRestartDriverInput
+    | undefined;
   [desktopIpcChannels.appContext.get]: undefined;
   [desktopIpcChannels.appExternal.atQuery]: TuttiExternalAtQueryInput;
   [desktopIpcChannels.appExternal.filesOpen]: TuttiExternalFileOpenInput;
@@ -809,6 +881,13 @@ export interface DesktopInvokeResultByChannel {
   [desktopIpcChannels.computerUse.uninstall]: DesktopComputerUseActionResult;
   [desktopIpcChannels.computerUse
     .grantPermissions]: DesktopComputerUseActionResult;
+  [desktopIpcChannels.computerUse
+    .startPermissionGrant]: DesktopComputerUsePermissionGrantStatus;
+  [desktopIpcChannels.computerUse
+    .getPermissionGrantStatus]: DesktopComputerUsePermissionGrantStatus | null;
+  [desktopIpcChannels.computerUse.openPermissionSettings]: void;
+  [desktopIpcChannels.computerUse
+    .restartDriver]: DesktopComputerUseRestartDriverResult;
   [desktopIpcChannels.appContext.get]: DesktopWorkspaceAppContext;
   [desktopIpcChannels.appExternal.atQuery]: TuttiExternalAtQueryResult[];
   [desktopIpcChannels.appExternal.filesOpen]: void;

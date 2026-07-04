@@ -767,6 +767,7 @@
   min-width: max-content;
   flex: 0 0 auto;
   padding-inline: 8px;
+  color: var(--text-secondary);
   font-size: 12px;
   font-weight: 600;
   line-height: 24px;

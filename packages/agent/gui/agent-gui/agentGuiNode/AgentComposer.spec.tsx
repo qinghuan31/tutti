@@ -89,18 +89,81 @@ function createImageDataTransfer(file: File): DataTransfer {
   return createFileDataTransfer([file]);
 }
 
-vi.mock("../../app/renderer/components/ui/popover", () => ({
-  Popover: ({ children }: { children?: React.ReactNode }) => <>{children}</>,
-  PopoverAnchor: ({ children }: { children?: React.ReactNode }) => (
-    <div>{children}</div>
-  ),
-  PopoverTrigger: ({ children }: { children?: React.ReactNode }) => (
-    <>{children}</>
-  ),
-  PopoverContent: ({ children }: { children?: React.ReactNode }) => (
-    <div data-testid="agent-gui-usage-popover">{children}</div>
-  )
-}));
+async function openUsagePopoverByHover(usageChip: HTMLElement): Promise<void> {
+  vi.useFakeTimers();
+  fireEvent.pointerOver(usageChip, { pointerType: "mouse" });
+  await act(async () => {
+    await vi.advanceTimersByTimeAsync(120);
+  });
+}
+
+vi.mock("../../app/renderer/components/ui/popover", async () => {
+  const React = await import("react");
+  interface MockPopoverContextValue {
+    onOpenChange?: (open: boolean) => void;
+    open: boolean;
+  }
+  const MockPopoverContext = React.createContext<MockPopoverContextValue>({
+    open: false
+  });
+  type MockPopoverRootProps = {
+    children?: React.ReactNode;
+    onOpenChange?: (open: boolean) => void;
+    open?: boolean;
+  };
+  type MockPopoverTriggerProps = {
+    asChild?: boolean;
+    children?: React.ReactNode;
+  };
+  type MockPopoverContentProps = React.ComponentProps<"div"> & {
+    align?: string;
+    onOpenAutoFocus?: (event: Event) => void;
+    side?: string;
+  };
+  return {
+    Popover: ({
+      children,
+      onOpenChange,
+      open = false
+    }: MockPopoverRootProps) => (
+      <MockPopoverContext.Provider value={{ onOpenChange, open }}>
+        {children}
+      </MockPopoverContext.Provider>
+    ),
+    PopoverAnchor: ({ children }: { children?: React.ReactNode }) => (
+      <>{children}</>
+    ),
+    PopoverTrigger: ({ children }: MockPopoverTriggerProps) => {
+      const { onOpenChange, open } = React.useContext(MockPopoverContext);
+      if (React.isValidElement<React.HTMLAttributes<HTMLElement>>(children)) {
+        const existingOnClick = children.props.onClick;
+        return React.cloneElement(children, {
+          onClick: (event: React.MouseEvent<HTMLElement>) => {
+            existingOnClick?.(event);
+            onOpenChange?.(!open);
+          }
+        });
+      }
+      return <>{children}</>;
+    },
+    PopoverContent: React.forwardRef<HTMLDivElement, MockPopoverContentProps>(
+      (
+        {
+          align: _align,
+          children,
+          onOpenAutoFocus: _onOpenAutoFocus,
+          side: _side,
+          ...props
+        },
+        ref
+      ) => (
+        <div ref={ref} {...props}>
+          {children}
+        </div>
+      )
+    )
+  };
+});
 
 vi.mock("./agentRichText/AgentRichTextEditor", async () => {
   const React = await import("react");
@@ -160,6 +223,9 @@ vi.mock("./agentRichText/AgentRichTextEditor", async () => {
           focusAtEnd: mockEditorFocusAtEnd,
           getPromptTextBeforeSelection() {
             return value;
+          },
+          openMentionPalette() {
+            onChange(`${value}@`);
           },
           insertWorkspaceReferences(
             items: ReadonlyArray<{ displayName?: string; path: string }>
@@ -1912,6 +1978,8 @@ describe("AgentComposer", () => {
       await vi.advanceTimersByTimeAsync(1);
     });
     expect(screen.getByTestId("agent-gui-usage-popover")).toBeVisible();
+    fireEvent.click(usageChip);
+    expect(screen.getByTestId("agent-gui-usage-popover")).toBeVisible();
     expect(screen.getByTestId("agent-gui-usage-popover")).toHaveTextContent(
       "上下文用量"
     );
@@ -2052,9 +2120,8 @@ describe("AgentComposer", () => {
       />
     );
 
-    // Open the usage popover before asserting/clicking the compact button
     const usageChip = screen.getByTestId("agent-gui-usage-chip");
-    fireEvent.click(usageChip);
+    await openUsagePopoverByHover(usageChip);
 
     const compactButton = screen.queryByTestId("agent-gui-compact-button");
     expect(compactButton).toBeInTheDocument();
@@ -2062,6 +2129,60 @@ describe("AgentComposer", () => {
     expect(compactButton).toHaveAttribute("data-size", "sm");
     expect(compactButton).toHaveClass("h-7");
     fireEvent.click(compactButton!);
+    expect(onSubmit).toHaveBeenCalledWith(textPromptContent("/compact"));
+  });
+
+  it("keeps the usage popover mounted when focus moves from the usage chip to the compact button", async () => {
+    const onSubmit = vi.fn();
+    render(
+      <AgentComposer
+        workspaceId="workspace-1"
+        currentUserId="user-1"
+        provider="codex"
+        usage={{ usedTokens: 50_000, totalTokens: 200_000, percentUsed: 25 }}
+        draftContent={createDraft("")}
+        availableCommands={[] satisfies readonly AgentHostAgentSessionCommand[]}
+        disabled={false}
+        submitDisabled={false}
+        placeholder="placeholder"
+        composerSettings={createComposerSettings()}
+        queuedPrompts={[]}
+        drainingQueuedPromptId={null}
+        canQueueWhileBusy={false}
+        showStopButton={false}
+        activePrompt={null}
+        isInterrupting={false}
+        isSendingTurn={false}
+        isSubmittingPrompt={false}
+        compactSupported={true}
+        hasCompactableContext={true}
+        labels={createLabels()}
+        workspaceUserProjectI18n={workspaceUserProjectI18n}
+        onDraftContentChange={vi.fn()}
+        onSettingsChange={vi.fn()}
+        onSubmit={onSubmit}
+        onSendQueuedPromptNext={vi.fn()}
+        onRemoveQueuedPrompt={vi.fn()}
+        onEditQueuedPrompt={vi.fn()}
+        onInterruptCurrentTurn={vi.fn()}
+        onSubmitInteractivePrompt={vi.fn()}
+      />
+    );
+
+    const usageChip = screen.getByTestId("agent-gui-usage-chip");
+    await openUsagePopoverByHover(usageChip);
+    fireEvent.focus(usageChip);
+    const compactButton = screen.getByTestId("agent-gui-compact-button");
+
+    fireEvent.pointerOut(usageChip, { pointerType: "mouse" });
+    fireEvent.blur(usageChip, { relatedTarget: compactButton });
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(140);
+    });
+
+    expect(screen.getByTestId("agent-gui-compact-button")).toBe(compactButton);
+    fireEvent.click(compactButton);
     expect(onSubmit).toHaveBeenCalledWith(textPromptContent("/compact"));
   });
 
@@ -2106,7 +2227,7 @@ describe("AgentComposer", () => {
     ).not.toBeInTheDocument();
   });
 
-  it("keeps the compact context button enabled while a session is running", () => {
+  it("keeps the compact context button enabled while a session is running", async () => {
     const onSubmit = vi.fn();
     render(
       <AgentComposer
@@ -2143,7 +2264,7 @@ describe("AgentComposer", () => {
       />
     );
 
-    fireEvent.click(screen.getByTestId("agent-gui-usage-chip"));
+    await openUsagePopoverByHover(screen.getByTestId("agent-gui-usage-chip"));
     const compactButton = screen.getByTestId("agent-gui-compact-button");
     expect(compactButton).toBeInTheDocument();
     expect(compactButton).not.toBeDisabled();
@@ -2151,7 +2272,7 @@ describe("AgentComposer", () => {
     expect(onSubmit).toHaveBeenCalledWith(textPromptContent("/compact"));
   });
 
-  it("shows the compact context button disabled when no user message has been sent", () => {
+  it("shows the compact context button disabled when no user message has been sent", async () => {
     const onSubmit = vi.fn();
     render(
       <AgentComposer
@@ -2188,14 +2309,14 @@ describe("AgentComposer", () => {
       />
     );
 
-    fireEvent.click(screen.getByTestId("agent-gui-usage-chip"));
+    await openUsagePopoverByHover(screen.getByTestId("agent-gui-usage-chip"));
     const compactButton = screen.getByTestId("agent-gui-compact-button");
     expect(compactButton).toBeDisabled();
     fireEvent.click(compactButton);
     expect(onSubmit).not.toHaveBeenCalled();
   });
 
-  it("shows the compact context button disabled when the composer is blocked (read-only)", () => {
+  it("shows the compact context button disabled when the composer is blocked (read-only)", async () => {
     const onSubmit = vi.fn();
     render(
       <AgentComposer
@@ -2232,7 +2353,7 @@ describe("AgentComposer", () => {
       />
     );
 
-    fireEvent.click(screen.getByTestId("agent-gui-usage-chip"));
+    await openUsagePopoverByHover(screen.getByTestId("agent-gui-usage-chip"));
     const compactButton = screen.getByTestId("agent-gui-compact-button");
     expect(compactButton).toBeDisabled();
     fireEvent.click(compactButton);
@@ -2278,8 +2399,14 @@ describe("AgentComposer", () => {
     const referenceDropdown = screen.getByRole("combobox", {
       name: "引用空间文件"
     });
-    expect(footerLeft?.firstElementChild).toBe(referenceDropdown);
-    expect(referenceDropdown).toHaveAttribute("data-slot", "select-trigger");
+    const referenceCluster = footerLeft?.firstElementChild;
+    expect(referenceCluster).not.toBeNull();
+    expect(referenceCluster).toHaveClass("gap-1");
+    expect(referenceCluster?.firstElementChild).toBe(referenceDropdown);
+    expect(referenceCluster).toContainElement(
+      screen.getByRole("button", { name: "提及上下文" })
+    );
+    expect(referenceDropdown).toHaveAttribute("role", "combobox");
     expect(referenceDropdown).toHaveClass(
       "agent-gui-node__composer-reference-trigger"
     );
@@ -3385,6 +3512,149 @@ describe("AgentComposer", () => {
     expect(draftContent.prompt).not.toMatch(/^@/);
   });
 
+  it("keeps the active @ trigger after canceling references from a mention row", async () => {
+    let draftContent = createDraft("@");
+    const onDraftContentChange = vi.fn((nextDraft: AgentComposerDraft) => {
+      draftContent = nextDraft;
+    });
+    const onRequestWorkspaceReferences = vi.fn(async () => ({
+      files: [],
+      mentionItems: []
+    }));
+
+    render(
+      <AgentComposer
+        workspaceId="workspace-1"
+        currentUserId="user-1"
+        provider="codex"
+        draftContent={draftContent}
+        availableCommands={[] satisfies readonly AgentHostAgentSessionCommand[]}
+        disabled={false}
+        submitDisabled={false}
+        placeholder="placeholder"
+        composerSettings={createComposerSettings()}
+        queuedPrompts={[]}
+        drainingQueuedPromptId={null}
+        canQueueWhileBusy={false}
+        showStopButton={false}
+        activePrompt={null}
+        isInterrupting={false}
+        isSendingTurn={false}
+        isSubmittingPrompt={false}
+        labels={createLabels()}
+        workspaceUserProjectI18n={workspaceUserProjectI18n}
+        onDraftContentChange={onDraftContentChange}
+        onSettingsChange={vi.fn()}
+        onSubmit={vi.fn()}
+        onSendQueuedPromptNext={vi.fn()}
+        onRemoveQueuedPrompt={vi.fn()}
+        onEditQueuedPrompt={vi.fn()}
+        onInterruptCurrentTurn={vi.fn()}
+        onSubmitInteractivePrompt={vi.fn()}
+        onRequestWorkspaceReferences={onRequestWorkspaceReferences}
+      />
+    );
+
+    fireEvent.click(await screen.findByTestId("mock-open-references"));
+
+    await waitFor(() =>
+      expect(onRequestWorkspaceReferences).toHaveBeenCalled()
+    );
+    expect(draftContent.prompt).toBe("@");
+    expect(screen.getByTestId("mock-open-references")).toBeInTheDocument();
+  });
+
+  it("lets the reference picker own Escape while the mention palette stays open", async () => {
+    let draftContent = createDraft("@");
+    const onDraftContentChange = vi.fn((nextDraft: AgentComposerDraft) => {
+      draftContent = nextDraft;
+    });
+
+    render(
+      <AgentComposer
+        workspaceId="workspace-1"
+        currentUserId="user-1"
+        provider="codex"
+        draftContent={draftContent}
+        availableCommands={[] satisfies readonly AgentHostAgentSessionCommand[]}
+        disabled={false}
+        submitDisabled={false}
+        placeholder="placeholder"
+        composerSettings={createComposerSettings()}
+        queuedPrompts={[]}
+        drainingQueuedPromptId={null}
+        canQueueWhileBusy={false}
+        showStopButton={false}
+        activePrompt={null}
+        isInterrupting={false}
+        isSendingTurn={false}
+        isSubmittingPrompt={false}
+        labels={createLabels()}
+        workspaceReferencePickerOpen
+        workspaceUserProjectI18n={workspaceUserProjectI18n}
+        onDraftContentChange={onDraftContentChange}
+        onSettingsChange={vi.fn()}
+        onSubmit={vi.fn()}
+        onSendQueuedPromptNext={vi.fn()}
+        onRemoveQueuedPrompt={vi.fn()}
+        onEditQueuedPrompt={vi.fn()}
+        onInterruptCurrentTurn={vi.fn()}
+        onSubmitInteractivePrompt={vi.fn()}
+        onRequestWorkspaceReferences={vi.fn()}
+      />
+    );
+
+    fireEvent.keyDown(screen.getByPlaceholderText("placeholder"), {
+      key: "Escape"
+    });
+
+    expect(draftContent.prompt).toBe("@");
+    expect(onDraftContentChange).not.toHaveBeenCalled();
+  });
+
+  it("opens the mention palette from the @ footer button", async () => {
+    let draftContent = createDraft("");
+    const onDraftContentChange = vi.fn((nextDraft: AgentComposerDraft) => {
+      draftContent = nextDraft;
+    });
+
+    render(
+      <AgentComposer
+        workspaceId="workspace-1"
+        currentUserId="user-1"
+        provider="codex"
+        draftContent={draftContent}
+        availableCommands={[] satisfies readonly AgentHostAgentSessionCommand[]}
+        disabled={false}
+        submitDisabled={false}
+        placeholder="placeholder"
+        composerSettings={createComposerSettings()}
+        queuedPrompts={[]}
+        drainingQueuedPromptId={null}
+        canQueueWhileBusy={false}
+        showStopButton={false}
+        activePrompt={null}
+        isInterrupting={false}
+        isSendingTurn={false}
+        isSubmittingPrompt={false}
+        labels={createLabels()}
+        workspaceUserProjectI18n={workspaceUserProjectI18n}
+        onDraftContentChange={onDraftContentChange}
+        onSettingsChange={vi.fn()}
+        onSubmit={vi.fn()}
+        onSendQueuedPromptNext={vi.fn()}
+        onRemoveQueuedPrompt={vi.fn()}
+        onEditQueuedPrompt={vi.fn()}
+        onInterruptCurrentTurn={vi.fn()}
+        onSubmitInteractivePrompt={vi.fn()}
+      />
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "提及上下文" }));
+
+    await waitFor(() => expect(draftContent.prompt).toBe("@"));
+  });
+
   it("renders controlled text and image draft content", () => {
     const onSubmit = vi.fn();
     const draftContent = createDraft("describe this", [
@@ -4037,8 +4307,10 @@ function createLabels(): Parameters<typeof AgentComposer>[0]["labels"] {
     fileMentionEmpty: "空",
     fileMentionError: "错误",
     fileMentionTabHint: "Tab 提示",
+    mentionPalette: "提及上下文",
     removeMention: "移除引用",
     addReference: "添加引用",
+    addContent: "添加文件等内容",
     referenceWorkspaceFiles: "引用空间文件",
     providerSwitchLabel: "切换 Provider",
     reviewPicker: {

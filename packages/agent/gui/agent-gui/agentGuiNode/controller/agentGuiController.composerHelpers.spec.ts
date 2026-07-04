@@ -57,7 +57,7 @@ describe("target-keyed composer defaults", () => {
     }
   };
 
-  it("prefers target composer overrides and falls back to provider overrides", () => {
+  it("isolates target composer overrides from provider defaults", () => {
     expect(buildNodeDefaultComposerSettings(baseNodeData).model).toBe(
       "target-model"
     );
@@ -65,6 +65,12 @@ describe("target-keyed composer defaults", () => {
       buildNodeDefaultComposerSettings({
         ...baseNodeData,
         agentTargetId: "other-target"
+      }).model
+    ).toBeNull();
+    expect(
+      buildNodeDefaultComposerSettings({
+        ...baseNodeData,
+        agentTargetId: null
       }).model
     ).toBe("provider-model");
   });
@@ -124,5 +130,42 @@ describe("target-keyed composer defaults", () => {
         }
       }).model
     ).toBe("target-draft-model");
+  });
+
+  it("does not read provider or global draft settings for target-backed composers", () => {
+    expect(
+      readNodeDefaultDraftSettings({
+        data: {
+          ...baseNodeData,
+          composerOverrides: {
+            model: "legacy-generic-model",
+            permissionModeId: "full-access"
+          }
+        },
+        drafts: {
+          "__agent_gui_node_defaults__:codex": {
+            model: "provider-draft-model",
+            reasoningEffort: null,
+            speed: null,
+            planMode: false,
+            browserUse: true,
+            computerUse: true,
+            permissionModeId: "auto"
+          },
+          __agent_gui_node_defaults__: {
+            model: "global-draft-model",
+            reasoningEffort: null,
+            speed: null,
+            planMode: false,
+            browserUse: true,
+            computerUse: true,
+            permissionModeId: "full-access"
+          }
+        }
+      })
+    ).toMatchObject({
+      model: "target-model",
+      permissionModeId: null
+    });
   });
 });
