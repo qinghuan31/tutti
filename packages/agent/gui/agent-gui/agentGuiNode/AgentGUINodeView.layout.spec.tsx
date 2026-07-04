@@ -2867,6 +2867,12 @@ function createNoopAgentActivityRuntime(): AgentActivityRuntime {
   const snapshot = createEmptyAgentActivitySnapshot();
   return {
     promptContentUploadSupport: { file: true, image: true },
+    async goalControl(input) {
+      return {
+        session: createRuntimeSession(input.workspaceId, input.agentSessionId),
+        goal: null
+      };
+    },
     async cancelSession(input) {
       return {
         session: createRuntimeSession(input.workspaceId, input.agentSessionId),
@@ -3069,6 +3075,7 @@ function createActions(): AgentGUINodeViewProps["actions"] {
     createConversation: vi.fn(),
     selectConversation: vi.fn(),
     submitPrompt: vi.fn(),
+    goalControl: vi.fn(),
     submitGuidancePrompt: vi.fn(),
     loadOlderConversationMessages: vi.fn(),
     showPromptImagesUnsupported: vi.fn(),
@@ -3410,14 +3417,18 @@ function createLabels(): AgentGUIViewLabels {
     retryActivation: "retryActivation",
     continueInNewConversation: "continueInNewConversation",
     goalLabel: "goalLabel",
-    goalStatusActive: "goalStatusActive",
-    goalStatusPaused: "goalStatusPaused",
-    goalStatusBlocked: "goalStatusBlocked",
-    goalStatusUsageLimited: "goalStatusUsageLimited",
-    goalStatusBudgetLimited: "goalStatusBudgetLimited",
-    goalStatusComplete: "goalStatusComplete",
+    goalTitleActive: "goalTitleActive",
+    goalTitlePaused: "goalTitlePaused",
+    goalTitleBlocked: "goalTitleBlocked",
+    goalTitleUsageLimited: "goalTitleUsageLimited",
+    goalTitleBudgetLimited: "goalTitleBudgetLimited",
+    goalTitleComplete: "goalTitleComplete",
     goalBudgetUsage: (used: number, budget: number) => `${used}/${budget}`,
     goalClearHint: "goalClearHint",
+    goalEditAction: "goalEditAction",
+    goalPauseAction: "goalPauseAction",
+    goalResumeAction: "goalResumeAction",
+    goalClearAction: "goalClearAction",
     processing: "processing",
     turnSummary: "turnSummary",
     userMessageLocator: "userMessageLocator",

@@ -102,6 +102,30 @@ type PromptContentAdapter interface {
 	ValidatePromptContent(Session, []PromptContentBlock) error
 }
 
+// GoalControlAction is a direct goal operation invoked from the GUI (banner
+// buttons) without going through the prompt pipeline.
+type GoalControlAction string
+
+const (
+	GoalControlPause  GoalControlAction = "pause"
+	GoalControlResume GoalControlAction = "resume"
+	GoalControlClear  GoalControlAction = "clear"
+	GoalControlSet    GoalControlAction = "set"
+)
+
+// GoalControlAdapter executes goal operations as thread-level calls without
+// opening a turn, so they keep working while another turn holds the session's
+// turn slot.
+type GoalControlAdapter interface {
+	// GoalControl performs a direct goal action (UI buttons). It returns the
+	// session events to apply/publish and the fresh goal snapshot (nil after
+	// clear).
+	GoalControl(ctx context.Context, session Session, action GoalControlAction, objective string) (events []activityshared.Event, goal map[string]any, err error)
+	// ExecGoalControl handles a typed "/goal …" prompt while a turn is
+	// active. handled reports whether the prompt was a goal command.
+	ExecGoalControl(ctx context.Context, session Session, content []PromptContentBlock, displayPrompt string, turnID string) (events []activityshared.Event, handled bool, err error)
+}
+
 type PermissionModeAdapter interface {
 	ApplyPermissionMode(context.Context, Session) error
 }

@@ -15,8 +15,14 @@ import {
 } from "../../apps/desktop/scripts/upsert-release-summary.mjs";
 
 test("desktop release summary classifies commit messages for human sections", () => {
-  assert.equal(classifyCommit("abc1234 feat(update): add channel picker"), "功能变更");
-  assert.equal(classifyCommit("abc1234 fix(release): avoid rc latest"), "问题修复");
+  assert.equal(
+    classifyCommit("abc1234 feat(update): add channel picker"),
+    "功能变更"
+  );
+  assert.equal(
+    classifyCommit("abc1234 fix(release): avoid rc latest"),
+    "问题修复"
+  );
   assert.equal(
     classifyCommit("abc1234 chore(release): update desktop workflow"),
     "发布与更新"
@@ -26,8 +32,14 @@ test("desktop release summary classifies commit messages for human sections", ()
 test("desktop release summary maps technical headings to user-facing sections", () => {
   assert.equal(normalizeSectionTitle("核心功能与架构", "zh"), "功能变更");
   assert.equal(normalizeSectionTitle("后端与服务端改进", "zh"), "体验优化");
-  assert.equal(normalizeSectionTitle("Core Features & Architecture", "en"), "Feature Updates");
-  assert.equal(normalizeSectionTitle("Backend & Service Enhancements", "en"), "Experience Improvements");
+  assert.equal(
+    normalizeSectionTitle("Core Features & Architecture", "en"),
+    "Feature Updates"
+  );
+  assert.equal(
+    normalizeSectionTitle("Backend & Service Enhancements", "en"),
+    "Experience Improvements"
+  );
 });
 
 test("desktop release summary resolves channel from version shape", () => {
@@ -66,7 +78,9 @@ test("desktop release summary upserts a managed GitHub release section", () => {
     summary: {
       zh: {
         headline: "本次版本聚焦发布链路稳定性。",
-        sections: [{ title: "发布与更新", items: ["稳定包入口只指向正式版。"] }],
+        sections: [
+          { title: "发布与更新", items: ["稳定包入口只指向正式版。"] }
+        ],
         qaFocus: ["验证下载入口。"]
       },
       en: {

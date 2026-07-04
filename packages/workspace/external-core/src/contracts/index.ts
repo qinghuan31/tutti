@@ -257,6 +257,9 @@ export interface TuttiExternalBridge {
     getContext(): Promise<unknown>;
     subscribe(listener: (context: unknown) => void): () => void;
   };
+  activity: {
+    reportActive(): Promise<void>;
+  };
   browser: {
     openUrl(input: TuttiExternalBrowserOpenUrlInput): Promise<void>;
   };

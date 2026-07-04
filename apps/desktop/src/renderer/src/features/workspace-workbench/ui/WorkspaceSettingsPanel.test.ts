@@ -267,7 +267,10 @@ test("workspace settings general panel does not expose update preferences", () =
   const appearanceSectionStart = source.indexOf(
     "function WorkspaceAppearanceSettingsSection"
   );
-  const generalSection = source.slice(generalSectionStart, appearanceSectionStart);
+  const generalSection = source.slice(
+    generalSectionStart,
+    appearanceSectionStart
+  );
 
   assert.ok(generalSectionStart >= 0);
   assert.ok(appearanceSectionStart > generalSectionStart);
@@ -426,10 +429,7 @@ test("workspace settings release channel control lives in developer settings", (
   assert.ok(developerSectionStart >= 0);
   assert.ok(controlStart > developerSectionStart);
   assert.ok(agentSectionStart > controlStart);
-  assert.doesNotMatch(
-    generalSection,
-    /releaseChannelLabel/
-  );
+  assert.doesNotMatch(generalSection, /releaseChannelLabel/);
   assert.match(developerSection, /<ReleaseChannelControl/);
 });
 

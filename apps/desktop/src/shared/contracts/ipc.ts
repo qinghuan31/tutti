@@ -78,6 +78,7 @@ export const desktopIpcChannels = {
     openUrl: "workspace-app:open-url"
   },
   appExternal: {
+    activityReportActive: "workspace-app-activity:report-active",
     atQuery: "workspace-app-at:query",
     filesOpen: "workspace-app-files:open",
     filesSelect: "workspace-app-files:select",
@@ -757,6 +758,7 @@ export interface DesktopInvokePayloadByChannel {
     | DesktopComputerUseRestartDriverInput
     | undefined;
   [desktopIpcChannels.appContext.get]: undefined;
+  [desktopIpcChannels.appExternal.activityReportActive]: undefined;
   [desktopIpcChannels.appExternal.atQuery]: TuttiExternalAtQueryInput;
   [desktopIpcChannels.appExternal.filesOpen]: TuttiExternalFileOpenInput;
   [desktopIpcChannels.appExternal.filesSelect]: TuttiExternalFileSelectInput;
@@ -889,6 +891,7 @@ export interface DesktopInvokeResultByChannel {
   [desktopIpcChannels.computerUse
     .restartDriver]: DesktopComputerUseRestartDriverResult;
   [desktopIpcChannels.appContext.get]: DesktopWorkspaceAppContext;
+  [desktopIpcChannels.appExternal.activityReportActive]: void;
   [desktopIpcChannels.appExternal.atQuery]: TuttiExternalAtQueryResult[];
   [desktopIpcChannels.appExternal.filesOpen]: void;
   [desktopIpcChannels.appExternal.filesSelect]: TuttiExternalFileSelectResult;

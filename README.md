@@ -245,9 +245,9 @@ No. Tutti is useful for coding, design, content, app workflows, and any work whe
 
 Download Tutti · Local — coming soon.
 
-<!-- TODO: waitlist link for Tutti · Cloud -->
+<!-- TODO: waitlist link for Tutti · VM -->
 
-Join the waitlist for Tutti · Cloud — coming soon.
+Join the waitlist for Tutti · VM — coming soon.
 
 ### Build from source
 

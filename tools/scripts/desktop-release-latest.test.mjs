@@ -82,7 +82,10 @@ test("desktop release latest metadata exposes CloudFront URLs for every asset", 
 test("desktop release latest metadata rejects prerelease tags", async () => {
   const dir = await mkdtemp(path.join(tmpdir(), "desktop-release-latest-"));
   try {
-    await writeFile(path.join(dir, "Tutti-1.2.3-rc.1-mac-universal.dmg"), "uni");
+    await writeFile(
+      path.join(dir, "Tutti-1.2.3-rc.1-mac-universal.dmg"),
+      "uni"
+    );
 
     await assert.rejects(
       () =>
@@ -102,7 +105,10 @@ test("desktop release latest metadata rejects prerelease tags", async () => {
 test("desktop release latest metadata supports rc channel tags", async () => {
   const dir = await mkdtemp(path.join(tmpdir(), "desktop-release-latest-"));
   try {
-    await writeFile(path.join(dir, "Tutti-1.2.3-rc.1-mac-universal.dmg"), "uni");
+    await writeFile(
+      path.join(dir, "Tutti-1.2.3-rc.1-mac-universal.dmg"),
+      "uni"
+    );
 
     const latest = await buildDesktopReleaseLatest({
       assetDirPath: dir,

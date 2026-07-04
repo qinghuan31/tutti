@@ -67,6 +67,27 @@ func TestServiceCreatesAndListsSessions(t *testing.T) {
 
 func TestServiceCreateResolvesProviderFromAgentTarget(t *testing.T) {
 	runtime := newFakeRuntime()
+	// Service.Create validates the Claude composer model via a hidden live
+	// discovery session (composer_live_model_discovery.go); without a
+	// populated RuntimeContext the poll loop never sees model options and
+	// spins until the test's own timeout kills it. Supply one immediately so
+	// discovery resolves on its first check, matching the pattern used by
+	// TestServiceCreateDiscoversClaudeModelsBeforeStartingInvalidModel below.
+	runtime.startHook = func(input RuntimeStartInput, session RuntimeSession) RuntimeSession {
+		if input.Visible != nil && !*input.Visible {
+			session.RuntimeContext = map[string]any{
+				"configOptions": []any{
+					map[string]any{
+						"id": "model",
+						"options": []any{
+							map[string]any{"value": "default", "name": "Default"},
+						},
+					},
+				},
+			}
+		}
+		return session
+	}
 	service := NewService(runtime)
 	service.AgentTargetStore = fakeAgentTargetStore{
 		targets: map[string]agenttargetbiz.Target{
@@ -84,6 +105,12 @@ func TestServiceCreateResolvesProviderFromAgentTarget(t *testing.T) {
 	session, err := service.Create(context.Background(), "ws-1", CreateSessionInput{
 		AgentSessionID: "target-session-1",
 		AgentTargetID:  agenttargetbiz.IDLocalClaudeCode,
+		// Pin the model explicitly so resolveCreateSessionModel never falls
+		// through to composerDefaultModel's readClaudeCodeConfiguredDefaultModel,
+		// which reads the *real* local Claude Code CLI config file on the
+		// machine running the test — making the test's behavior depend on
+		// whatever model happens to be configured on the developer's machine.
+		Model:          stringPointer("default"),
 		InitialContent: TextPromptContent("hello target"),
 		ProviderTargetRef: map[string]any{
 			"kind":     "local_cli",
@@ -97,16 +124,29 @@ func TestServiceCreateResolvesProviderFromAgentTarget(t *testing.T) {
 	if session.Provider != "claude-code" || session.AgentTargetID != agenttargetbiz.IDLocalClaudeCode {
 		t.Fatalf("session provider/target = %q/%q, want claude-code/%s", session.Provider, session.AgentTargetID, agenttargetbiz.IDLocalClaudeCode)
 	}
-	if len(runtime.startCalls) != 1 {
-		t.Fatalf("start calls = %d, want 1", len(runtime.startCalls))
+	// Service.Create's Claude composer model validation runs a hidden
+	// (Visible=false) discovery session start in addition to the real,
+	// user-facing session start — assert against the visible one specifically
+	// rather than assuming index/count, so this doesn't re-break if discovery
+	// internals change again.
+	var visibleStart *RuntimeStartInput
+	for i := range runtime.startCalls {
+		call := runtime.startCalls[i]
+		if call.Visible == nil || *call.Visible {
+			visibleStart = &runtime.startCalls[i]
+			break
+		}
 	}
-	if got := runtime.startCalls[0].Provider; got != "claude-code" {
+	if visibleStart == nil {
+		t.Fatalf("start calls = %#v, want one visible (user-facing) start call", runtime.startCalls)
+	}
+	if got := visibleStart.Provider; got != "claude-code" {
 		t.Fatalf("runtime provider = %q, want claude-code", got)
 	}
-	if got := runtime.startCalls[0].AgentTargetID; got != agenttargetbiz.IDLocalClaudeCode {
+	if got := visibleStart.AgentTargetID; got != agenttargetbiz.IDLocalClaudeCode {
 		t.Fatalf("runtime agent target id = %q, want %s", got, agenttargetbiz.IDLocalClaudeCode)
 	}
-	ref := runtime.startCalls[0].ProviderTargetRef
+	ref := visibleStart.ProviderTargetRef
 	if ref["kind"] != agenttargetbiz.LaunchRefTypeLocalCLI ||
 		ref["provider"] != "claude-code" ||
 		ref["targetId"] != agenttargetbiz.IDLocalClaudeCode {
@@ -4920,6 +4960,10 @@ func (f *fakeRuntime) Cancel(_ context.Context, input RuntimeCancelInput) (Runti
 		return f.cancelResult, nil
 	}
 	return RuntimeCancelResult{AgentSessionID: input.AgentSessionID, Canceled: true}, nil
+}
+
+func (*fakeRuntime) GoalControl(_ context.Context, input RuntimeGoalControlInput) (RuntimeGoalControlResult, error) {
+	return RuntimeGoalControlResult{AgentSessionID: input.AgentSessionID}, nil
 }
 
 func (f *fakeRuntime) Close(_ context.Context, input RuntimeCloseInput) error {

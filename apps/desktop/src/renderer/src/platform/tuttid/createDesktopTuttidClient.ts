@@ -648,6 +648,17 @@ export function createDesktopTuttidClient(
         agentSessionID
       );
     },
+    async goalControlWorkspaceAgentSession(
+      workspaceID,
+      agentSessionID,
+      request
+    ) {
+      return (await resolveClient()).goalControlWorkspaceAgentSession(
+        workspaceID,
+        agentSessionID,
+        request
+      );
+    },
     async sendWorkspaceAgentSessionInput(workspaceID, agentSessionID, request) {
       return (await resolveClient()).sendWorkspaceAgentSessionInput(
         workspaceID,

@@ -447,10 +447,7 @@ async function migrateInitializedDesktopPreferences(
   const normalizedAgentDockLayout = normalizeDesktopAgentDockLayout(
     preferences.agentDockLayout
   );
-  if (
-    preferences.updateChannel !== "rc" ||
-    defaultUpdateChannel !== "stable"
-  ) {
+  if (preferences.updateChannel !== "rc" || defaultUpdateChannel !== "stable") {
     if (
       preferences.minimizeAnimation === normalizedMinimizeAnimation &&
       preferences.agentConversationDetailMode ===

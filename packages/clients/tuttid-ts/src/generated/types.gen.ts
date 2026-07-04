@@ -1357,6 +1357,18 @@ export type UpdateWorkspaceAgentSessionVisibilityRequest = {
   visible: boolean;
 };
 
+export type WorkspaceAgentSessionGoalControlRequest = {
+  action: "pause" | "resume" | "clear" | "set";
+  objective?: string;
+};
+
+export type WorkspaceAgentSessionGoalControlResponse = {
+  session: WorkspaceAgentSession;
+  goal?: {
+    [key: string]: unknown;
+  };
+};
+
 export type CreateWorkspaceAgentSessionRequest = {
   agentSessionId: string;
   /**
@@ -5807,6 +5819,56 @@ export type CancelWorkspaceAgentSessionResponses = {
 
 export type CancelWorkspaceAgentSessionResponse =
   CancelWorkspaceAgentSessionResponses[keyof CancelWorkspaceAgentSessionResponses];
+
+export type GoalControlWorkspaceAgentSessionData = {
+  body: WorkspaceAgentSessionGoalControlRequest;
+  path: {
+    workspaceID: string;
+    agentSessionID: string;
+  };
+  query?: never;
+  url: "/v1/workspaces/{workspaceID}/agent-sessions/{agentSessionID}/goal";
+};
+
+export type GoalControlWorkspaceAgentSessionErrors = {
+  /**
+   * Request payload or parameters are invalid
+   */
+  400: ApiErrorResponse;
+  /**
+   * Bearer token is missing or invalid
+   */
+  401: ApiErrorResponse;
+  /**
+   * Workspace id was not found
+   */
+  404: ApiErrorResponse;
+  /**
+   * HTTP method is not supported on this route
+   */
+  405: ApiErrorResponse;
+  /**
+   * Workspace operation failed in an upstream adapter or command
+   */
+  502: ApiErrorResponse;
+  /**
+   * Required daemon service dependency is unavailable
+   */
+  503: ApiErrorResponse;
+};
+
+export type GoalControlWorkspaceAgentSessionError =
+  GoalControlWorkspaceAgentSessionErrors[keyof GoalControlWorkspaceAgentSessionErrors];
+
+export type GoalControlWorkspaceAgentSessionResponses = {
+  /**
+   * Workspace agent session goal updated
+   */
+  200: WorkspaceAgentSessionGoalControlResponse;
+};
+
+export type GoalControlWorkspaceAgentSessionResponse =
+  GoalControlWorkspaceAgentSessionResponses[keyof GoalControlWorkspaceAgentSessionResponses];
 
 export type SendWorkspaceAgentSessionInputData = {
   body: SendWorkspaceAgentSessionInputRequest;

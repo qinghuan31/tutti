@@ -63,6 +63,7 @@ import {
   dispatchWorkspaceAppOpenUrl,
   installWorkspaceAppWindowOpenHandler
 } from "./workspaceAppWindowOpen.ts";
+import { reportWorkspaceAppUserActive } from "./workspaceAppActivityAnalytics.ts";
 import {
   normalizeWorkspaceAppDiagnosticLogRecord,
   WorkspaceAppFrontendLogWriter,
@@ -147,6 +148,21 @@ export function registerWorkspaceAppContextIpc(
       preferences.getLocale(),
       workspaceAppGuestContexts.get(event.sender.id)
     )
+  );
+  registerDesktopIpcHandler(
+    desktopIpcChannels.appExternal.activityReportActive,
+    async (event) => {
+      const context = requireWorkspaceAppGuestContext(event.sender);
+      try {
+        await reportWorkspaceAppUserActive(endpoint, context);
+      } catch (error: unknown) {
+        logger?.warn("workspace app user active analytics failed", {
+          appId: context.appID,
+          error: error instanceof Error ? error.message : String(error),
+          workspaceId: context.workspaceID
+        });
+      }
+    }
   );
   registerDesktopIpcHandler(
     desktopIpcChannels.appExternal.atQuery,

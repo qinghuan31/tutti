@@ -267,6 +267,7 @@ export function createDesktopAgentActivityRuntime(
       }
       return result;
     },
+    goalControl: (input) => workspaceAgentActivityService.goalControl(input),
     createSession: (input) =>
       workspaceAgentActivityService.createSession(input),
     deleteSession: (input) =>

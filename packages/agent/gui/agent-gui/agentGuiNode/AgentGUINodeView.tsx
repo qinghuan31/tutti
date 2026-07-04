@@ -11,6 +11,7 @@ import {
   useRef,
   useState
 } from "react";
+import type { AgentActivityGoalControlAction } from "@tutti-os/agent-activity-core";
 import { useSnapshot } from "valtio";
 import { proxy } from "valtio/vanilla";
 import {
@@ -350,14 +351,18 @@ export interface AgentGUIViewLabels {
   retryActivation: string;
   continueInNewConversation: string;
   goalLabel: string;
-  goalStatusActive: string;
-  goalStatusPaused: string;
-  goalStatusBlocked: string;
-  goalStatusUsageLimited: string;
-  goalStatusBudgetLimited: string;
-  goalStatusComplete: string;
+  goalTitleActive: string;
+  goalTitlePaused: string;
+  goalTitleBlocked: string;
+  goalTitleUsageLimited: string;
+  goalTitleBudgetLimited: string;
+  goalTitleComplete: string;
   goalBudgetUsage: (used: number, budget: number) => string;
   goalClearHint: string;
+  goalEditAction: string;
+  goalPauseAction: string;
+  goalResumeAction: string;
+  goalClearAction: string;
   processing: string;
   turnSummary: string;
   userMessageLocator: string;
@@ -510,6 +515,10 @@ interface AgentGUINodeViewProps {
     submitPrompt: (
       content: AgentPromptContentBlock[],
       displayPrompt?: string
+    ) => void;
+    goalControl: (
+      action: AgentActivityGoalControlAction,
+      objective?: string
     ) => void;
     submitGuidancePrompt: (
       content: AgentPromptContentBlock[],
@@ -1904,26 +1913,32 @@ const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
   );
   const goalBannerLabels = useMemo<AgentGoalBannerLabels>(
     () => ({
-      goalLabel: labels.goalLabel,
-      statusActive: labels.goalStatusActive,
-      statusPaused: labels.goalStatusPaused,
-      statusBlocked: labels.goalStatusBlocked,
-      statusUsageLimited: labels.goalStatusUsageLimited,
-      statusBudgetLimited: labels.goalStatusBudgetLimited,
-      statusComplete: labels.goalStatusComplete,
+      titleActive: labels.goalTitleActive,
+      titlePaused: labels.goalTitlePaused,
+      titleBlocked: labels.goalTitleBlocked,
+      titleUsageLimited: labels.goalTitleUsageLimited,
+      titleBudgetLimited: labels.goalTitleBudgetLimited,
+      titleComplete: labels.goalTitleComplete,
       budgetUsage: labels.goalBudgetUsage,
-      clearHint: labels.goalClearHint
+      clearHint: labels.goalClearHint,
+      editAction: labels.goalEditAction,
+      pauseAction: labels.goalPauseAction,
+      resumeAction: labels.goalResumeAction,
+      clearAction: labels.goalClearAction
     }),
     [
-      labels.goalLabel,
-      labels.goalStatusActive,
-      labels.goalStatusPaused,
-      labels.goalStatusBlocked,
-      labels.goalStatusUsageLimited,
-      labels.goalStatusBudgetLimited,
-      labels.goalStatusComplete,
+      labels.goalTitleActive,
+      labels.goalTitlePaused,
+      labels.goalTitleBlocked,
+      labels.goalTitleUsageLimited,
+      labels.goalTitleBudgetLimited,
+      labels.goalTitleComplete,
       labels.goalBudgetUsage,
-      labels.goalClearHint
+      labels.goalClearHint,
+      labels.goalEditAction,
+      labels.goalPauseAction,
+      labels.goalResumeAction,
+      labels.goalClearAction
     ]
   );
   const interactivePromptLabels = useMemo(
@@ -2220,6 +2235,7 @@ const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
     actions.updateComposerSettings
   );
   const submitPrompt = useStableEventCallback(actions.submitPrompt);
+  const goalControl = useStableEventCallback(actions.goalControl);
   const submitGuidancePrompt = useStableEventCallback(
     actions.submitGuidancePrompt
   );
@@ -2808,6 +2824,7 @@ const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
           onSubmitBottomDockInteractivePrompt={
             submitBottomDockInteractivePrompt
           }
+          onGoalControl={goalControl}
         />
       ) : null}
     </main>
@@ -3224,6 +3241,7 @@ interface AgentGUIBottomDockPaneProps {
   onRetryActivation: AgentGUINodeViewProps["actions"]["retryActivation"];
   onContinueInNewConversation: AgentGUINodeViewProps["actions"]["continueInNewConversation"];
   onSubmitBottomDockInteractivePrompt: AgentGUINodeViewProps["actions"]["submitInteractivePrompt"];
+  onGoalControl: AgentGUINodeViewProps["actions"]["goalControl"];
 }
 
 const AgentGUIBottomDockPane = memo(function AgentGUIBottomDockPane({
@@ -3240,7 +3258,8 @@ const AgentGUIBottomDockPane = memo(function AgentGUIBottomDockPane({
   onAuthLogin,
   onRetryActivation,
   onContinueInNewConversation,
-  onSubmitBottomDockInteractivePrompt
+  onSubmitBottomDockInteractivePrompt,
+  onGoalControl
 }: AgentGUIBottomDockPaneProps): React.JSX.Element {
   "use memo";
   const state = useSnapshot(store) as AgentGUIBottomDockStoreSnapshot;
@@ -3259,6 +3278,7 @@ const AgentGUIBottomDockPane = memo(function AgentGUIBottomDockPane({
   const goalStatus = goal ? stringValue(goal.status) : "";
   const goalTokenBudget = goal ? numberValue(goal.tokenBudget) : null;
   const goalTokensUsed = goal ? numberValue(goal.tokensUsed) : null;
+  const goalTimeUsedSeconds = goal ? numberValue(goal.timeUsedSeconds) : null;
   const showGoalBanner = isGoalBannerVisible(goalObjective, goalStatus);
 
   return (
@@ -3310,7 +3330,12 @@ const AgentGUIBottomDockPane = memo(function AgentGUIBottomDockPane({
           status={goalStatus}
           tokenBudget={goalTokenBudget ?? undefined}
           tokensUsed={goalTokensUsed ?? undefined}
+          timeUsedSeconds={goalTimeUsedSeconds ?? undefined}
           labels={goalBannerLabels}
+          onEditObjective={(objective) => onGoalControl("set", objective)}
+          onPauseGoal={() => onGoalControl("pause")}
+          onResumeGoal={() => onGoalControl("resume")}
+          onClearGoal={() => onGoalControl("clear")}
         />
       ) : null}
       {bottomDockReplacementPrompt ? (

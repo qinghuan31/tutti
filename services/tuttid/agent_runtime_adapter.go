@@ -31,6 +31,22 @@ func (a agentRuntimeAdapter) Cancel(ctx context.Context, input agentservice.Runt
 	}, nil
 }
 
+func (a agentRuntimeAdapter) GoalControl(ctx context.Context, input agentservice.RuntimeGoalControlInput) (agentservice.RuntimeGoalControlResult, error) {
+	result, err := a.controller.GoalControl(ctx, agentruntime.GoalControlInput{
+		RoomID:         input.WorkspaceID,
+		AgentSessionID: input.AgentSessionID,
+		Action:         agentruntime.GoalControlAction(input.Action),
+		Objective:      input.Objective,
+	})
+	if err != nil {
+		return agentservice.RuntimeGoalControlResult{}, mapAgentRuntimeError(err)
+	}
+	return agentservice.RuntimeGoalControlResult{
+		AgentSessionID: result.AgentSessionID,
+		Goal:           result.Goal,
+	}, nil
+}
+
 func agentRuntimeSessionSettings(settings agentservice.ComposerSettings) *agentruntime.SessionSettings {
 	result := &agentruntime.SessionSettings{
 		Model:                  settings.Model,

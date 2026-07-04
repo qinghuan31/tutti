@@ -91,7 +91,11 @@ function parseStableCore(version) {
 function resolvePreviousTag({ channel, tag, version }) {
   const tags = listReleaseTags().filter((candidate) => candidate !== tag);
   if (channel === "stable") {
-    return tags.find((candidate) => !isPrereleaseVersion(normalizeVersion(candidate))) ?? "";
+    return (
+      tags.find(
+        (candidate) => !isPrereleaseVersion(normalizeVersion(candidate))
+      ) ?? ""
+    );
   }
 
   const stableCore = parseStableCore(version);
@@ -103,7 +107,9 @@ function resolvePreviousTag({ channel, tag, version }) {
         isPrereleaseVersion(candidateVersion)
       );
     }) ??
-    tags.find((candidate) => !isPrereleaseVersion(normalizeVersion(candidate))) ??
+    tags.find(
+      (candidate) => !isPrereleaseVersion(normalizeVersion(candidate))
+    ) ??
     ""
   );
 }
@@ -138,7 +144,10 @@ function collectReleaseInput({ compareFrom, target }) {
 function stripConventionalPrefix(message) {
   return message
     .replace(/^[0-9a-f]{7,}\s+/iu, "")
-    .replace(/^(feat|fix|perf|refactor|docs|test|chore|ci)(\([^)]+\))?!?:\s*/iu, "")
+    .replace(
+      /^(feat|fix|perf|refactor|docs|test|chore|ci)(\([^)]+\))?!?:\s*/iu,
+      ""
+    )
     .trim();
 }
 
@@ -152,7 +161,11 @@ function classifyCommit(message) {
   if (/^[0-9a-f]{7,}\s+(perf|refactor)(\(|:|!)/iu.test(message)) {
     return "体验优化";
   }
-  if (/release|download|updat|installer|dmg|s3|github action|workflow/iu.test(message)) {
+  if (
+    /release|download|updat|installer|dmg|s3|github action|workflow/iu.test(
+      message
+    )
+  ) {
     return "发布与更新";
   }
   return "体验优化";
@@ -198,7 +211,9 @@ function localizeSectionsToEnglish(sections) {
   return sections.map((section) => ({
     title: titleMap.get(section.title) ?? section.title,
     items: section.items.map((item) =>
-      item.replace(/。$/u, ".").replace(/^整理本次桌面端发布内容/u, "Summarized this desktop release")
+      item
+        .replace(/。$/u, ".")
+        .replace(/^整理本次桌面端发布内容/u, "Summarized this desktop release")
     )
   }));
 }
@@ -213,7 +228,9 @@ function normalizeSectionTitle(title, language) {
       return "Bug Fixes";
     }
     if (
-      /release|update|download|install|installer|channel|stable|beta/i.test(value) ||
+      /release|update|download|install|installer|channel|stable|beta/i.test(
+        value
+      ) ||
       /\brc\b/i.test(value)
     ) {
       return "Release and Updates";
@@ -351,7 +368,8 @@ async function buildAgnesSummary(input, apiKey) {
   }
   const data = await response.json();
   const content = data?.choices?.[0]?.message?.content;
-  const parsed = typeof content === "string" ? extractJsonObject(content) : null;
+  const parsed =
+    typeof content === "string" ? extractJsonObject(content) : null;
   if (!parsed) {
     throw new Error("Agnes response did not contain JSON");
   }
@@ -422,7 +440,12 @@ async function main() {
   const summary = await buildReleaseSummary({
     ...input,
     apiKey: readOption(args, "api-key", "AGNES_API_KEY"),
-    channel: readOption(args, "channel", "RELEASE_CHANNEL", input.channel ?? ""),
+    channel: readOption(
+      args,
+      "channel",
+      "RELEASE_CHANNEL",
+      input.channel ?? ""
+    ),
     compareFrom: readOption(
       args,
       "compare-from",

@@ -53,7 +53,10 @@ test("desktop release changelog rejects invalid existing json", () => {
 });
 
 test("desktop release changelog upserts versions and keeps newest first", () => {
-  const first = upsertChangelogEntry("", createSummary("1.2.3", "2026-07-03T12:00:00.000Z"));
+  const first = upsertChangelogEntry(
+    "",
+    createSummary("1.2.3", "2026-07-03T12:00:00.000Z")
+  );
   const second = upsertChangelogEntry(
     first,
     createSummary("1.2.4", "2026-07-04T12:00:00.000Z")
@@ -67,5 +70,8 @@ test("desktop release changelog upserts versions and keeps newest first", () => 
     replaced.entries.map((entry) => entry.version),
     ["1.2.3", "1.2.4"]
   );
-  assert.equal(replaced.entries[0]?.zh.headline, "本次版本聚焦发布链路稳定性。");
+  assert.equal(
+    replaced.entries[0]?.zh.headline,
+    "本次版本聚焦发布链路稳定性。"
+  );
 });
