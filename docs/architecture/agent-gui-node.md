@@ -456,11 +456,12 @@ before `LIMIT` and `hasMore` calculation; frontend filtering after an unscoped
 page is not equivalent and can leave sections with fewer visible rows but a
 stale Show more affordance.
 AgentGUI must not refetch section first pages merely because a user activates a
-conversation or an existing conversation summary receives detail/status/time
-updates. Those updates should refresh already-rendered row props locally while
-preserving backend section membership. First-page section refetches are reserved
-for workspace, rail filter, user project, or session membership changes; Show
-more continues to use the section page endpoint.
+conversation, the active detail provider changes, or an existing conversation
+summary receives detail/status/time updates. Those updates should refresh
+already-rendered row props locally while preserving backend section membership.
+First-page section refetches are reserved for workspace, rail filter, user
+project, or session membership changes; Show more continues to use the section
+page endpoint.
 Conversation-list read-state metadata is notification-style UI state. Historical
 imports that carry `runtimeContext.imported === true` should remain visible in
 the rail, but they must not seed unread completion lamps as though they just

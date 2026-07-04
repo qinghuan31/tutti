@@ -1281,7 +1281,7 @@ describe("AgentGUINodeView layout persistence", () => {
     ).toBeInTheDocument();
   });
 
-  it("does not refetch runtime rail sections when an existing conversation summary updates", async () => {
+  it("does not refetch runtime rail sections when an existing conversation summary or active provider updates", async () => {
     const listSessionSections = vi.fn<
       NonNullable<AgentActivityRuntime["listSessionSections"]>
     >(async (input) => ({
@@ -1318,8 +1318,14 @@ describe("AgentGUINodeView layout persistence", () => {
       title: "Initial title",
       updatedAtUnixMs: 100
     };
+    const baseViewModel = createViewModel();
     const viewModel = {
-      ...createViewModel(),
+      ...baseViewModel,
+      data: {
+        ...baseViewModel.data,
+        provider: "claude-code" as const
+      },
+      selectedProviderTarget: createLocalAgentGUIProviderTarget("claude-code"),
       conversations: [initialConversation]
     };
     const labels = createLabels();
@@ -1345,9 +1351,14 @@ describe("AgentGUINodeView layout persistence", () => {
     rendered.rerender(
       buildAgentGUINodeViewElement({
         activityRuntime,
-        labels,
+        labels: { ...labels },
         viewModel: {
           ...viewModel,
+          data: {
+            ...viewModel.data,
+            provider: "codex" as const
+          },
+          selectedProviderTarget: createLocalAgentGUIProviderTarget("codex"),
           activeConversation: updatedConversation,
           activeConversationId: updatedConversation.id,
           conversations: [updatedConversation]

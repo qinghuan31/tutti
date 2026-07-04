@@ -169,6 +169,8 @@ const AGENT_GUI_STICK_TO_BOTTOM_THRESHOLD_PX = 24;
 const AGENT_GUI_TOP_HISTORY_PREFETCH_THRESHOLD_PX = 240;
 const AGENT_GUI_TOP_MASK_SCROLL_EPSILON_PX = 1;
 const AGENT_GUI_CONVERSATION_RAIL_SECTION_PAGE_SIZE = 5;
+const AGENT_GUI_CONVERSATION_RAIL_PROJECTION_PROVIDER: AgentGUIProvider =
+  "codex";
 
 const AGENT_GUI_TIMELINE_SCROLL_AREA_CONTENT_STYLE: CSSProperties = {
   width: "100%",
@@ -1432,7 +1434,6 @@ export function AgentGUINodeView({
         >
           <AgentGUIConversationRailStorePane
             conversations={viewModel.conversations}
-            provider={viewModel.data.provider}
             store={conversationRailStore}
             storeState={conversationRailStoreState}
             userProjects={viewModel.userProjects}
@@ -3329,7 +3330,6 @@ const AgentGUIBottomDockPane = memo(function AgentGUIBottomDockPane({
 
 interface AgentGUIConversationRailPaneProps {
   conversations: AgentGUINodeViewModel["conversations"];
-  provider: AgentGUINodeViewModel["data"]["provider"];
   workspaceId: string;
   userProjects: AgentGUINodeViewModel["userProjects"];
   activeConversationId: string | null;
@@ -3402,7 +3402,7 @@ type OpenclawGatewayViewModel =
 
 type AgentGUIConversationRailDataProps = Pick<
   AgentGUIConversationRailPaneProps,
-  "conversations" | "provider" | "userProjects" | "workspaceId"
+  "conversations" | "userProjects" | "workspaceId"
 >;
 
 type AgentGUIConversationRailStoreSnapshot = Omit<
@@ -3475,7 +3475,6 @@ function agentGUIConversationRailStoreSnapshotsEqual(
 
 interface AgentGUIConversationRailStorePaneProps {
   conversations: AgentGUINodeViewModel["conversations"];
-  provider: AgentGUINodeViewModel["data"]["provider"];
   store: AgentGUIConversationRailStore;
   storeState: AgentGUIConversationRailStoreSnapshot;
   userProjects: AgentGUINodeViewModel["userProjects"];
@@ -3485,7 +3484,6 @@ interface AgentGUIConversationRailStorePaneProps {
 const AgentGUIConversationRailStorePane = memo(
   function AgentGUIConversationRailStorePane({
     conversations,
-    provider,
     store,
     storeState: _storeState,
     userProjects,
@@ -3497,7 +3495,6 @@ const AgentGUIConversationRailStorePane = memo(
       <AgentGUIConversationRailPane
         {...state}
         conversations={conversations}
-        provider={provider}
         userProjects={userProjects}
         workspaceId={workspaceId}
       />
@@ -3689,7 +3686,6 @@ function projectRuntimeSectionsToConversationSections(input: {
     typeof buildAgentGUIConversationSummaries
   >[0]["conversationFilter"];
   labels: Pick<AgentGUIViewLabels, "sectionPinned" | "sectionConversations">;
-  provider: AgentGUIProvider;
   sections: readonly AgentActivityRuntimeSessionSection[];
   workspaceId: string;
 }): ConversationSection[] {
@@ -3708,7 +3704,7 @@ function projectRuntimeSectionsToConversationSections(input: {
       : null;
     const conversations = buildAgentGUIConversationSummaries({
       conversationFilter: input.conversationFilter,
-      provider: input.provider,
+      provider: AGENT_GUI_CONVERSATION_RAIL_PROJECTION_PROVIDER,
       snapshot: {
         composerOptionsByProvider: {},
         presences: [],
@@ -4009,7 +4005,6 @@ interface AgentGUIConversationRailInput {
   conversations: AgentGUINodeViewModel["conversations"];
   labels: AgentGUIViewLabels;
   previewMode: boolean;
-  provider: AgentGUIProvider;
   userProjects: AgentGUINodeViewModel["userProjects"];
   workspaceId: string;
 }
@@ -4020,7 +4015,6 @@ function useAgentGUIConversationRail({
   conversations,
   labels,
   previewMode,
-  provider,
   userProjects,
   workspaceId
 }: AgentGUIConversationRailInput): {
@@ -4060,6 +4054,13 @@ function useAgentGUIConversationRail({
     () => JSON.stringify(userProjectPaths),
     [userProjectPaths]
   );
+  const sectionProjectionLabels = useMemo(
+    () => ({
+      sectionConversations: labels.sectionConversations,
+      sectionPinned: labels.sectionPinned
+    }),
+    [labels.sectionConversations, labels.sectionPinned]
+  );
 
   useEffect(() => {
     pagingRequestSequenceRef.current += 1;
@@ -4076,7 +4077,7 @@ function useAgentGUIConversationRail({
       }
       pagingAbortControllersRef.current.clear();
     };
-  }, [conversationFilter, provider, userProjectPathKey, workspaceId]);
+  }, [conversationFilter, userProjectPathKey, workspaceId]);
 
   const conversationMembershipKey = useMemo(
     () =>
@@ -4110,8 +4111,7 @@ function useAgentGUIConversationRail({
         }
         const sections = projectRuntimeSectionsToConversationSections({
           conversationFilter,
-          labels,
-          provider,
+          labels: sectionProjectionLabels,
           sections: page.sections,
           workspaceId: page.workspaceId
         });
@@ -4145,10 +4145,9 @@ function useAgentGUIConversationRail({
   }, [
     conversationFilter,
     conversationMembershipKey,
-    labels,
-    provider,
     runtimeListSessionSections,
     runtimeSectionsEnabled,
+    sectionProjectionLabels,
     sectionAgentTargetId,
     userProjectPathKey,
     workspaceId
@@ -4210,7 +4209,7 @@ function useAgentGUIConversationRail({
           }
           const pageConversations = buildAgentGUIConversationSummaries({
             conversationFilter,
-            provider,
+            provider: AGENT_GUI_CONVERSATION_RAIL_PROJECTION_PROVIDER,
             snapshot: {
               composerOptionsByProvider: {},
               presences: [],
@@ -4280,7 +4279,6 @@ function useAgentGUIConversationRail({
       conversationFilter,
       conversationQuery,
       previewMode,
-      provider,
       runtimeListSessionSectionPage,
       sectionAgentTargetId,
       sectionPageStates,
@@ -4299,7 +4297,6 @@ function useAgentGUIConversationRail({
 const AgentGUIConversationRailPane = memo(
   function AgentGUIConversationRailPane({
     conversations,
-    provider,
     workspaceId,
     userProjects,
     activeConversationId,
@@ -4370,7 +4367,6 @@ const AgentGUIConversationRailPane = memo(
       conversations,
       labels,
       previewMode,
-      provider,
       userProjects,
       workspaceId
     });

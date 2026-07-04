@@ -103,6 +103,7 @@ must include `agentTargetId`; hosts and the daemon apply it before section
 pagination so `hasMore` describes the target-filtered rail, not the unfiltered
 workspace history.
 Activating a conversation must not by itself call `listSessionSections` again.
+Likewise, active detail provider changes should not reload section first pages.
 AgentGUI may merge updated props for already-rendered rows from the activity
 snapshot, but section first-page reloads should be tied to workspace, rail
 filter, user project, or session membership changes.
