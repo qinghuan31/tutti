@@ -6,7 +6,7 @@ import (
 	"strings"
 	"time"
 
-	agentsessionstore "github.com/tutti-os/tutti/packages/agentactivity/daemon/activity"
+	agentsessionstore "github.com/tutti-os/tutti/packages/agent/daemon/activity"
 	agentactivitybiz "github.com/tutti-os/tutti/services/tuttid/biz/agentactivity"
 	reporterservice "github.com/tutti-os/tutti/services/tuttid/service/reporter"
 	agentnoderesult "github.com/tutti-os/tutti/services/tuttid/service/reporter/events/agent/node_result"

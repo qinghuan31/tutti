@@ -31,7 +31,7 @@ test("agent provider dock state source resolves dynamic login state", () => {
     source.getEntryState(workspaceAgentGuiDockEntryId("claude-code")),
     {
       hoverActions: [
-        { id: "login", label: "login" },
+        { id: "login", label: "install" },
         { id: "refresh", label: "refresh" }
       ],
       diagnostics: createExpectedDiagnostics({
@@ -48,7 +48,7 @@ test("agent provider dock state source resolves dynamic login state", () => {
       order: 0,
       state: {
         kind: "disabled",
-        reason: "login required"
+        reason: "install required"
       },
       visibility: "always"
     }
@@ -203,7 +203,7 @@ test("agent provider dock state source reads latest service snapshot without rec
     source.getEntryState(workspaceAgentGuiDockEntryId("claude-code")),
     {
       hoverActions: [
-        { id: "login", label: "login" },
+        { id: "login", label: "install" },
         { id: "refresh", label: "refresh" }
       ],
       diagnostics: createExpectedDiagnostics({
@@ -220,7 +220,7 @@ test("agent provider dock state source reads latest service snapshot without rec
       order: 0,
       state: {
         kind: "disabled",
-        reason: "login required"
+        reason: "install required"
       },
       visibility: "always"
     }

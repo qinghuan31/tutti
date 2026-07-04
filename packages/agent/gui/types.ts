@@ -90,6 +90,7 @@ export interface AgentGUIProviderTarget {
 
 export type AgentGUIProviderReadinessGateStatus =
   | "checking"
+  | "coming_soon"
   | "not_installed"
   | "auth_required"
   | "unavailable";

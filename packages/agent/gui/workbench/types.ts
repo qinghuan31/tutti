@@ -15,8 +15,10 @@ export const agentGuiWorkbenchPrefillPromptActivationType =
   "agent-gui:prefill-prompt";
 
 export interface AgentGuiWorkbenchPrefillPromptPayload {
+  agentTargetId?: string | null;
   autoSubmit?: boolean;
   draftPrompt: string;
+  provider?: AgentGuiWorkbenchProvider;
   userProjectPath?: string | null;
 }
 

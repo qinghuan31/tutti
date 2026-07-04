@@ -4,8 +4,8 @@ import (
 	"context"
 	"strings"
 
-	agentdaemon "github.com/tutti-os/tutti/packages/agentactivity/daemon"
-	agentsessionstore "github.com/tutti-os/tutti/packages/agentactivity/daemon/activity"
+	agentdaemon "github.com/tutti-os/tutti/packages/agent/daemon"
+	agentsessionstore "github.com/tutti-os/tutti/packages/agent/daemon/activity"
 	agentstatusservice "github.com/tutti-os/tutti/services/tuttid/service/agentstatus"
 )
 

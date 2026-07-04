@@ -10,6 +10,10 @@ import {
   manageAgentHermesUrl,
   manageAgentTuttiUrl,
   manageAgentOpenclawUrl,
+  providerRailClaudeCodeColorfulUrl,
+  providerRailCodexColorfulUrl,
+  providerRailHermesColorfulUrl,
+  providerRailTuttiUrl,
   tuttiDocRoundedUrl,
   openclawRoundedUrl
 } from "../managedAgentIconAssets";
@@ -22,6 +26,14 @@ export const MANAGED_AGENT_ICON_URLS: Record<string, string> = {
   hermes: manageAgentHermesUrl,
   tutti: manageAgentTuttiUrl,
   openclaw: manageAgentOpenclawUrl
+};
+
+/** Colorful provider rail icons used by AgentGUI's left provider filter. */
+export const MANAGED_AGENT_PROVIDER_RAIL_ICON_URLS: Record<string, string> = {
+  "claude-code": providerRailClaudeCodeColorfulUrl,
+  codex: providerRailCodexColorfulUrl,
+  hermes: providerRailHermesColorfulUrl,
+  tutti: providerRailTuttiUrl
 };
 
 /** Rounded avatars for Room status / room activity panel only. */

@@ -10,7 +10,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/tutti-os/tutti/packages/agentactivity/daemon/httpx"
+	"github.com/tutti-os/tutti/packages/agent/daemon/httpx"
 )
 
 const (

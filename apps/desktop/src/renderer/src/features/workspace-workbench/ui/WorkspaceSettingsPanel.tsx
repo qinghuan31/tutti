@@ -75,7 +75,6 @@ import {
 } from "../../../../../shared/i18n/index.ts";
 import {
   type DesktopAgentProvider,
-  desktopAgentDockLayouts,
   desktopAgentConversationDetailModes,
   desktopAppCatalogChannels,
   desktopBrowserUseConnectionModes,
@@ -88,7 +87,6 @@ import {
   normalizeDesktopFileExtension,
   type DesktopAppCatalogChannel,
   type DesktopAgentConversationDetailMode,
-  type DesktopAgentDockLayout,
   type DesktopBrowserUseConnectionMode,
   type DesktopDockPlacement,
   type DesktopFileDefaultOpener,
@@ -459,11 +457,7 @@ export function WorkspaceSettingsPanel({
                   analyticsDebugPreferenceState.available
                 }
                 analyticsDebugEnabled={analyticsDebugPreferenceState.enabled}
-                agentDockLayout={desktopPreferencesState.agentDockLayout}
                 appCatalogChannel={desktopPreferencesState.appCatalogChannel}
-                changingAgentDockLayout={
-                  desktopPreferencesState.changingAgentDockLayout
-                }
                 changingAppCatalogChannel={
                   desktopPreferencesState.changingAppCatalogChannel
                 }
@@ -485,9 +479,6 @@ export function WorkspaceSettingsPanel({
                 }}
                 onAnalyticsDebugEnabledChange={(enabled) => {
                   analyticsDebugPreferenceService.setEnabled(enabled);
-                }}
-                onAgentDockLayoutChange={(layout) => {
-                  void settingsService.changeAgentDockLayout(layout);
                 }}
                 onClearConversationHistory={() => {
                   if (
@@ -1523,9 +1514,7 @@ function ManagedModelProviderFields({
 function WorkspaceDeveloperSettingsSection({
   analyticsDebugAvailable,
   analyticsDebugEnabled,
-  agentDockLayout,
   appCatalogChannel,
-  changingAgentDockLayout,
   changingAppCatalogChannel,
   changingUpdateChannel,
   developerLogs,
@@ -1535,7 +1524,6 @@ function WorkspaceDeveloperSettingsSection({
   tuttiAgentSwitchEnabled,
   updateChannel,
   onAnalyticsDebugEnabledChange,
-  onAgentDockLayoutChange,
   onAppCatalogChannelChange,
   onClearConversationHistory,
   onClearLogs,
@@ -1548,9 +1536,7 @@ function WorkspaceDeveloperSettingsSection({
 }: {
   analyticsDebugAvailable: boolean;
   analyticsDebugEnabled: boolean;
-  agentDockLayout: DesktopAgentDockLayout;
   appCatalogChannel: DesktopAppCatalogChannel;
-  changingAgentDockLayout: DesktopAgentDockLayout | null;
   changingAppCatalogChannel: DesktopAppCatalogChannel | null;
   changingUpdateChannel: DesktopUpdateChannel | null;
   developerLogs: WorkspaceSettingsDeveloperLogsSnapshotState;
@@ -1560,7 +1546,6 @@ function WorkspaceDeveloperSettingsSection({
   tuttiAgentSwitchEnabled: boolean;
   updateChannel: DesktopUpdateChannel;
   onAnalyticsDebugEnabledChange: (enabled: boolean) => void;
-  onAgentDockLayoutChange: (layout: DesktopAgentDockLayout) => void;
   onAppCatalogChannelChange: (channel: DesktopAppCatalogChannel) => void;
   onClearConversationHistory: () => void;
   onClearLogs: () => void;
@@ -1578,8 +1563,6 @@ function WorkspaceDeveloperSettingsSection({
   const [newExtension, setNewExtension] = useState("");
   const [newOpener, setNewOpener] =
     useState<DesktopFileDefaultOpener>("fileViewer");
-  const isUpdatingAgentDockLayout = changingAgentDockLayout !== null;
-  const pendingAgentDockLayout = changingAgentDockLayout ?? agentDockLayout;
   const normalizedNewExtension = normalizeDesktopFileExtension(newExtension);
   const fileDefaultOpeners = Object.entries(fileDefaultOpenersByExtension).sort(
     ([left], [right]) => left.localeCompare(right)
@@ -1617,49 +1600,6 @@ function WorkspaceDeveloperSettingsSection({
         updateChannel={updateChannel}
         onUpdateChannelChange={onUpdateChannelChange}
       />
-
-      <div className="flex w-full items-center justify-between gap-4 max-[560px]:flex-col max-[560px]:items-stretch">
-        <div className="flex min-w-0 flex-1 flex-col gap-1 max-[560px]:w-full">
-          <strong className="text-[13px] font-semibold text-[var(--text-primary)]">
-            {t("workspace.settings.general.agentDockLayoutLabel")}
-          </strong>
-          <p className="m-0 text-[13px] leading-[1.3] text-[var(--text-secondary)]">
-            {t("workspace.settings.general.agentDockLayoutDescription")}
-          </p>
-        </div>
-        <div className="w-[220px] min-w-[220px] max-[560px]:w-full max-[560px]:min-w-0">
-          <Select
-            disabled={isUpdatingAgentDockLayout}
-            value={pendingAgentDockLayout}
-            onValueChange={(value) =>
-              onAgentDockLayoutChange(value as DesktopAgentDockLayout)
-            }
-          >
-            <SelectTrigger
-              aria-label={t("workspace.settings.general.agentDockLayoutLabel")}
-              className={workspaceSettingsSelectTriggerClass}
-            >
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent
-              className={workspaceSettingsSelectContentClass}
-              style={{ zIndex: "var(--z-panel-popover)" }}
-            >
-              {desktopAgentDockLayouts.map((layout) => (
-                <SelectItem key={layout} value={layout}>
-                  {layout === "legacySplit"
-                    ? t(
-                        "workspace.settings.general.agentDockLayoutOptions.legacySplit"
-                      )
-                    : t(
-                        "workspace.settings.general.agentDockLayoutOptions.unified"
-                      )}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
-      </div>
 
       <div className="flex w-full items-center justify-between gap-4 max-[560px]:flex-col max-[560px]:items-stretch">
         <div className="flex min-w-0 flex-1 flex-col gap-1 max-[560px]:w-full">

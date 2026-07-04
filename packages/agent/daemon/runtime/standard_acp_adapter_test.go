@@ -15,8 +15,8 @@ import (
 	"testing"
 	"time"
 
-	agentsessionstore "github.com/tutti-os/tutti/packages/agentactivity/daemon/activity"
-	activityshared "github.com/tutti-os/tutti/packages/agentactivity/daemon/activity/events"
+	agentsessionstore "github.com/tutti-os/tutti/packages/agent/daemon/activity"
+	activityshared "github.com/tutti-os/tutti/packages/agent/daemon/activity/events"
 )
 
 func TestGeminiAdapterStartCreatesStandardACPSession(t *testing.T) {
@@ -2424,6 +2424,34 @@ func TestClaudeCodeAdapterExecRoutesWorkspaceReferenceMention(t *testing.T) {
 	}
 	if texts[len(texts)-1] != tuttiMentionRoutingReminder {
 		t.Fatalf("routing prompt = %q, want reference skill routing", texts[len(texts)-1])
+	}
+}
+
+func TestClaudeCodeAdapterExecRoutesAgentTargetMention(t *testing.T) {
+	t.Parallel()
+
+	transport := newStandardACPTransport("Claude Agent", "claude-agent-target-routing")
+	adapter := NewClaudeCodeAdapter(transport)
+	session := standardTestSession(ProviderClaudeCode)
+	session.PermissionModeID = "default"
+	if _, err := adapter.Start(context.Background(), session); err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+	prompt := "让 [@Claude Code](mention://agent-target/local:claude-code?workspaceId=workspace-1) 来 review"
+
+	if _, err := adapter.Exec(context.Background(), session, textPrompt(prompt), "", "turn-agent-target", func([]activityshared.Event) {}, nil); err != nil {
+		t.Fatalf("Exec: %v", err)
+	}
+
+	texts := promptTexts(t, transport.conn.lastPromptParamsSnapshot)
+	if len(texts) < 2 {
+		t.Fatalf("prompt texts = %#v, want user prompt plus internal routing", texts)
+	}
+	if texts[0] != prompt {
+		t.Fatalf("user prompt text = %q, want unmodified prompt %q", texts[0], prompt)
+	}
+	if texts[len(texts)-1] != tuttiMentionRoutingReminder {
+		t.Fatalf("routing prompt = %q, want agent target routing", texts[len(texts)-1])
 	}
 }
 

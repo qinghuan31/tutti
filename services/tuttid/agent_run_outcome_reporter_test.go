@@ -3,7 +3,7 @@ package main
 import (
 	"testing"
 
-	agentsessionstore "github.com/tutti-os/tutti/packages/agentactivity/daemon/activity"
+	agentsessionstore "github.com/tutti-os/tutti/packages/agent/daemon/activity"
 )
 
 func TestMessageLooksLikeAuthFailureMatchesRealClaude401(t *testing.T) {

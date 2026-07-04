@@ -14,7 +14,7 @@ const (
 	DesktopAgentConversationDetailModeGeneral = "general"
 
 	DefaultDesktopAppCatalogChannel           = "production"
-	DefaultDesktopAgentDockLayout             = DesktopAgentDockLayoutLegacySplit
+	DefaultDesktopAgentDockLayout             = DesktopAgentDockLayoutUnified
 	DefaultDesktopAgentConversationDetailMode = DesktopAgentConversationDetailModeCoding
 	DefaultDesktopDefaultAgentProvider        = agentproviderbiz.Codex
 	DefaultDesktopDockIconStyle               = "default"

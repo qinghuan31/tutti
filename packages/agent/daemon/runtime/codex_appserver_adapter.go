@@ -14,7 +14,7 @@ import (
 	"sync/atomic"
 	"time"
 
-	activityshared "github.com/tutti-os/tutti/packages/agentactivity/daemon/activity/events"
+	activityshared "github.com/tutti-os/tutti/packages/agent/daemon/activity/events"
 )
 
 // Codex app-server JSON-RPC methods used by the adapter. The app-server

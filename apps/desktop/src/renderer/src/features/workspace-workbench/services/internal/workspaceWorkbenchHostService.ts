@@ -5,10 +5,7 @@ import {
   workspaceWorkbenchDesktopI18nKeys,
   type WorkspaceWorkbenchDesktopI18nRuntime
 } from "@shared/i18n";
-import type {
-  DesktopAgentDockLayout,
-  DesktopDockIconStyle
-} from "@shared/preferences";
+import type { DesktopDockIconStyle } from "@shared/preferences";
 import type { DesktopThemeAppearance } from "@shared/theme";
 import type {
   WorkbenchHostCloseDialogRequest,
@@ -123,7 +120,6 @@ import {
   IAgentsService,
   type IAgentsService as AgentsService
 } from "../../../workspace-agent/services/agentsService.interface.ts";
-
 const workspaceDockNativePreviewMaxWidthPx = 260;
 const workspaceDockNativePreviewMaxHeightPx = 170;
 const workspaceDockNativePreviewTimeoutMs = 2_500;
@@ -735,7 +731,6 @@ export class WorkspaceWorkbenchHostService implements IWorkspaceWorkbenchHostSer
 
   createHostInput(input: {
     appI18n: I18nRuntime<string>;
-    agentDockLayout: DesktopAgentDockLayout;
     confirmCloseGuard: (
       request: WorkbenchHostCloseDialogRequest
     ) => Promise<boolean> | boolean;
@@ -758,7 +753,6 @@ export class WorkspaceWorkbenchHostService implements IWorkspaceWorkbenchHostSer
     const cached = this.cachedHostInputs.get(input.workspaceId);
     if (
       cached &&
-      cached.agentDockLayout === input.agentDockLayout &&
       cached.appI18n === input.appI18n &&
       cached.defaultAgentProvider === input.defaultAgentProvider &&
       cached.defaultProviderTargetId === input.defaultProviderTargetId &&
@@ -802,7 +796,6 @@ export class WorkspaceWorkbenchHostService implements IWorkspaceWorkbenchHostSer
       createWorkspaceWorkbenchContributionRegistryResult({
         context: {
           appI18n: input.appI18n,
-          agentDockLayout: input.agentDockLayout,
           appCenterService: this.dependencies.appCenterService,
           browserApi: this.dependencies.browserApi,
           browserService: this.dependencies.browserService,
@@ -898,7 +891,6 @@ export class WorkspaceWorkbenchHostService implements IWorkspaceWorkbenchHostSer
     };
     const cachedHostInput: CachedWorkspaceWorkbenchHostInput = {
       appI18n: input.appI18n,
-      agentDockLayout: input.agentDockLayout,
       baseHostInput,
       capabilitySettingsRequestRef,
       confirmCloseGuardRef,
@@ -1294,7 +1286,6 @@ function cloneWorkspaceUserProjectServiceSnapshot(
 }
 
 interface CachedWorkspaceWorkbenchHostInput {
-  agentDockLayout: DesktopAgentDockLayout;
   appI18n: I18nRuntime<string>;
   baseHostInput: WorkspaceWorkbenchHostInput;
   capabilitySettingsRequestRef: {

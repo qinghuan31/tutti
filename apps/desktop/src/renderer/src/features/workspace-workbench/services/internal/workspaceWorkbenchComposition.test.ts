@@ -173,6 +173,7 @@ test("workspace agent GUI draft launches prefill prompts without binding session
   assert.deepEqual(descriptor.activation, {
     payload: {
       draftPrompt: "Review this issue",
+      provider: "codex",
       userProjectPath: "/workspace/app"
     },
     type: "agent-gui:prefill-prompt"

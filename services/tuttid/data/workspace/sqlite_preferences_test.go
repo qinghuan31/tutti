@@ -34,8 +34,8 @@ func TestSQLiteStoreGetDesktopPreferencesDefaultsWhenUnset(t *testing.T) {
 	if preferences.AgentConversationDetailMode != "coding" {
 		t.Fatalf("GetDesktopPreferences() agentConversationDetailMode = %q, want coding", preferences.AgentConversationDetailMode)
 	}
-	if preferences.AgentDockLayout != "legacySplit" {
-		t.Fatalf("GetDesktopPreferences() agentDockLayout = %q, want legacySplit", preferences.AgentDockLayout)
+	if preferences.AgentDockLayout != "unified" {
+		t.Fatalf("GetDesktopPreferences() agentDockLayout = %q, want unified", preferences.AgentDockLayout)
 	}
 	if preferences.ThemeSource != "dark" {
 		t.Fatalf("GetDesktopPreferences() themeSource = %q, want dark", preferences.ThemeSource)
@@ -236,7 +236,7 @@ INSERT INTO desktop_preferences (
 	if preferences.AgentConversationDetailMode != "coding" {
 		t.Fatalf("GetDesktopPreferences() agentConversationDetailMode = %q, want coding", preferences.AgentConversationDetailMode)
 	}
-	if preferences.AgentDockLayout != "legacySplit" {
-		t.Fatalf("GetDesktopPreferences() agentDockLayout = %q, want legacySplit", preferences.AgentDockLayout)
+	if preferences.AgentDockLayout != "unified" {
+		t.Fatalf("GetDesktopPreferences() agentDockLayout = %q, want unified", preferences.AgentDockLayout)
 	}
 }

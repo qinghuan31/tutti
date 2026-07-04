@@ -28,6 +28,7 @@ import {
 } from "@tutti-os/agent-gui/workbench/contribution";
 import type { IWorkspaceAppCenterService } from "@renderer/features/workspace-app-center";
 import type { WorkspaceLinkAction } from "@contexts/workspace/presentation/renderer/actions/workspaceLinkActions";
+import { requestWorkspaceAgentGuiLaunch } from "../services/workspaceAgentGuiLaunchCoordinator.ts";
 import {
   workbenchFocusInputActivationType,
   type WorkbenchDockPreviewCache,
@@ -47,6 +48,7 @@ import {
   areDesktopAgentGUIWorkbenchStatesEqual,
   desktopAgentGUIProviderFromInstanceId,
   desktopAgentGUIPrefillPromptActivationType,
+  normalizeDesktopAgentGUIProvider,
   normalizeDesktopAgentGUINodeState,
   normalizeDesktopAgentGUIWorkbenchState,
   projectDesktopAgentGUIWorkbenchState,
@@ -466,18 +468,13 @@ function DesktopAgentGUIWorkbenchBodyImpl({
   );
   const providerReadinessGates = useMemo(
     () =>
-      desktopPreferencesState.agentDockLayout === "unified" && !previewMode
-        ? projectDesktopAgentProviderReadinessGates({
+      previewMode
+        ? null
+        : projectDesktopAgentProviderReadinessGates({
             snapshot: providerStatusSnapshot,
             onAction: handleProviderReadinessGateAction
-          })
-        : null,
-    [
-      desktopPreferencesState.agentDockLayout,
-      handleProviderReadinessGateAction,
-      previewMode,
-      providerStatusSnapshot
-    ]
+          }),
+    [handleProviderReadinessGateAction, previewMode, providerStatusSnapshot]
   );
   const rawWorkbenchStateSource = useMemo(
     () => context.externalNodeState ?? context.node.data.runtimeNodeState,
@@ -811,9 +808,34 @@ function DesktopAgentGUIWorkbenchBodyImpl({
       nodeId: context.node.id
     });
     if (request) {
+      if (request.agentTargetId || request.provider) {
+        handleUpdateNode((current) => ({
+          ...current,
+          agentTargetId: request.agentTargetId ?? current.agentTargetId ?? null,
+          lastActiveAgentSessionId: null,
+          provider: request.provider ?? current.provider,
+          providerTargetId: null,
+          providerTargetRef: null
+        }));
+      } else {
+        handleUpdateNode((current) =>
+          current.lastActiveAgentSessionId === null
+            ? current
+            : {
+                ...current,
+                lastActiveAgentSessionId: null
+              }
+        );
+      }
       setPrefillPromptRequest(request);
     }
-  }, [context.activation, context.host, context.node.id, previewMode]);
+  }, [
+    context.activation,
+    context.host,
+    context.node.id,
+    handleUpdateNode,
+    previewMode
+  ]);
 
   useEffect(() => {
     if (previewMode) {
@@ -1065,11 +1087,6 @@ function DesktopAgentGUIWorkbenchBodyImpl({
         providerTargetsLoading={providerTargetsLoading}
         providerReadinessGates={providerReadinessGates}
         defaultProviderTargetId={defaultProviderTargetId}
-        conversationScope={
-          desktopPreferencesState.agentDockLayout === "unified"
-            ? "multi-provider"
-            : "single-provider"
-        }
         workspaceAgentProbes={workspaceAgentProbes}
         onAgentProbeDemandChange={
           previewMode ? undefined : handleAgentProbeDemandChange
@@ -1087,6 +1104,20 @@ function DesktopAgentGUIWorkbenchBodyImpl({
         }
         onClose={DESKTOP_AGENT_GUI_NOOP}
         onLinkAction={previewMode ? undefined : onLinkAction}
+        onHandoffConversation={
+          previewMode
+            ? undefined
+            : async (request) => {
+                await requestWorkspaceAgentGuiLaunch({
+                  agentTargetId: request.agentTargetId,
+                  draftPrompt: request.draftPrompt,
+                  openInNewWindow: true,
+                  provider: normalizeDesktopAgentGUIProvider(request.provider),
+                  userProjectPath: request.userProjectPath,
+                  workspaceId
+                });
+              }
+        }
         onResize={DESKTOP_AGENT_GUI_NOOP}
         onShowMessage={DESKTOP_AGENT_GUI_NOOP}
         onUpdateNode={handleUpdateNode}

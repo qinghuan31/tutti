@@ -19,7 +19,7 @@ func (s *SQLiteStore) applyDesktopPreferencesV1(ctx context.Context) error {
 	_, err = s.db.ExecContext(ctx, `
 CREATE TABLE IF NOT EXISTS desktop_preferences (
   id TEXT PRIMARY KEY,
-  agent_dock_layout TEXT NOT NULL DEFAULT 'legacySplit',
+  agent_dock_layout TEXT NOT NULL DEFAULT 'unified',
   dock_icon_style TEXT NOT NULL DEFAULT 'flat',
   dock_placement TEXT NOT NULL DEFAULT 'bottom',
   default_agent_provider TEXT NOT NULL DEFAULT 'codex',
@@ -67,7 +67,7 @@ func (s *SQLiteStore) applyDesktopPreferencesAgentDockLayoutV1(ctx context.Conte
 	if !hasAgentDockLayout {
 		if _, err := s.db.ExecContext(ctx, `
 ALTER TABLE desktop_preferences
-  ADD COLUMN agent_dock_layout TEXT NOT NULL DEFAULT 'legacySplit';`); err != nil {
+  ADD COLUMN agent_dock_layout TEXT NOT NULL DEFAULT 'unified';`); err != nil {
 			return fmt.Errorf("migrate workspace database for desktop agent dock layout: %w", err)
 		}
 	}

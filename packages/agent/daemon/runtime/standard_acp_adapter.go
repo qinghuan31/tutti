@@ -15,7 +15,7 @@ import (
 	"sync"
 	"time"
 
-	activityshared "github.com/tutti-os/tutti/packages/agentactivity/daemon/activity/events"
+	activityshared "github.com/tutti-os/tutti/packages/agent/daemon/activity/events"
 )
 
 type standardACPConfig struct {
@@ -1259,6 +1259,8 @@ func skillForMentionURI(uri string) string {
 	case strings.HasPrefix(uri, "mention://workspace-reference/"):
 		return "reference"
 	case strings.HasPrefix(uri, "mention://agent-session/"):
+		return "tutti-cli"
+	case strings.HasPrefix(uri, "mention://agent-target/"):
 		return "tutti-cli"
 	default:
 		return ""

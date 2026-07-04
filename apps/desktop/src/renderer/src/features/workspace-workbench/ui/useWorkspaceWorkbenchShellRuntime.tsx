@@ -130,8 +130,13 @@ export function useWorkspaceWorkbenchShellRuntime({
     readonly AgentGUIProviderTarget[] | undefined
   >(undefined);
   const agentGuiProviderTargetsLoading = agentGuiProviderTargets === undefined;
+  // An empty daemon /agents target list means "no service-backed targets are
+  // available yet", not "hide the Codex/Claude AgentGUI rail tiles".
   const resolvedAgentGuiProviderTargets = useMemo(
-    () => agentGuiProviderTargets ?? [],
+    () =>
+      agentGuiProviderTargets && agentGuiProviderTargets.length > 0
+        ? agentGuiProviderTargets
+        : undefined,
     [agentGuiProviderTargets]
   );
   const reporterService = useService(IReporterService);
@@ -164,7 +169,6 @@ export function useWorkspaceWorkbenchShellRuntime({
       createWorkspaceWorkbenchShellRuntimeController({
         hostInput: {
           appI18n,
-          agentDockLayout: desktopPreferencesState.agentDockLayout,
           appCenterRevision: appCenterState.revision,
           createHostInput: (hostInput) =>
             workbenchHostService.createHostInput(hostInput),
@@ -297,7 +301,6 @@ export function useWorkspaceWorkbenchShellRuntime({
   useEffect(() => {
     shellRuntimeController.updateHostInput({
       appI18n,
-      agentDockLayout: desktopPreferencesState.agentDockLayout,
       appCenterRevision: appCenterState.revision,
       createHostInput: (hostInput) =>
         workbenchHostService.createHostInput(hostInput),
@@ -318,7 +321,6 @@ export function useWorkspaceWorkbenchShellRuntime({
     appCenterState.revision,
     agentGuiProviderTargetsLoading,
     resolvedAgentGuiProviderTargets,
-    desktopPreferencesState.agentDockLayout,
     desktopPreferencesState.defaultAgentProvider,
     desktopPreferencesState.dockIconStyle,
     desktopPreferencesState.theme.appearance,

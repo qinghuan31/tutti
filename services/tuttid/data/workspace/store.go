@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 
+	agentstore "github.com/tutti-os/tutti/packages/agent/store-sqlite"
 	agentactivitybiz "github.com/tutti-os/tutti/services/tuttid/biz/agentactivity"
 	agenttargetbiz "github.com/tutti-os/tutti/services/tuttid/biz/agenttarget"
 	managedcredentialsbiz "github.com/tutti-os/tutti/services/tuttid/biz/managedcredentials"
@@ -16,7 +17,10 @@ var ErrWorkspaceNotFound = errors.New("workspace not found")
 var ErrWorkbenchSnapshotNotFound = errors.New("workspace workbench snapshot not found")
 var ErrWorkspaceAppNotFound = errors.New("workspace app not found")
 var ErrWorkspaceAppFactoryJobNotFound = errors.New("workspace app factory job not found")
-var ErrAgentTargetNotFound = errors.New("agent target not found")
+
+// ErrAgentTargetNotFound aliases the embedded agent store's sentinel so
+// existing errors.Is checks keep working across the delegation boundary.
+var ErrAgentTargetNotFound = agentstore.ErrAgentTargetNotFound
 
 type CatalogStore interface {
 	Create(context.Context, workspacebiz.Summary) error

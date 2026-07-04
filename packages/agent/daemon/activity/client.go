@@ -16,8 +16,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/tutti-os/tutti/packages/agentactivity/daemon/httpx"
-	controlplanehttp "github.com/tutti-os/tutti/packages/agentactivity/daemon/internal/httpclient"
+	"github.com/tutti-os/tutti/packages/agent/daemon/httpx"
+	controlplanehttp "github.com/tutti-os/tutti/packages/agent/daemon/internal/httpclient"
 )
 
 func NewClient(cfg Config) *Client {

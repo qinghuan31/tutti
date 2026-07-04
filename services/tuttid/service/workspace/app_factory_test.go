@@ -10,7 +10,7 @@ import (
 	"strings"
 	"testing"
 
-	agentsessionstore "github.com/tutti-os/tutti/packages/agentactivity/daemon/activity"
+	agentsessionstore "github.com/tutti-os/tutti/packages/agent/daemon/activity"
 	workspacefiles "github.com/tutti-os/tutti/packages/workspace/files"
 	agentactivitybiz "github.com/tutti-os/tutti/services/tuttid/biz/agentactivity"
 	agenttargetbiz "github.com/tutti-os/tutti/services/tuttid/biz/agenttarget"

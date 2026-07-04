@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	agentruntime "github.com/tutti-os/tutti/packages/agentactivity/daemon/runtime"
+	agentruntime "github.com/tutti-os/tutti/packages/agent/daemon/runtime"
 	agentservice "github.com/tutti-os/tutti/services/tuttid/service/agent"
 )
 

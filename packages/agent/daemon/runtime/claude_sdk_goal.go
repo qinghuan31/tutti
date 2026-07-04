@@ -7,7 +7,7 @@ import (
 	"strings"
 	"time"
 
-	activityshared "github.com/tutti-os/tutti/packages/agentactivity/daemon/activity/events"
+	activityshared "github.com/tutti-os/tutti/packages/agent/daemon/activity/events"
 )
 
 // claudeSDKGoalCommandTimeout bounds the sidecar ack round-trip for /goal

@@ -837,7 +837,7 @@ function ComposerModelOptionTooltip({
           {option.tooltip.title}
         </span>
         {option.tooltip.description ? (
-          <span className="mt-1.5 block text-[13px] leading-[1.35]">
+          <span className="mt-1.5 block text-[13px] leading-[1.35] text-[var(--text-tertiary)]">
             {option.tooltip.description}
           </span>
         ) : null}

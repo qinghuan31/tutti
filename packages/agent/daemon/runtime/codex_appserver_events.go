@@ -9,8 +9,8 @@ import (
 	"log/slog"
 	"strings"
 
-	activityshared "github.com/tutti-os/tutti/packages/agentactivity/daemon/activity/events"
-	"github.com/tutti-os/tutti/packages/agentactivity/daemon/runtime/codexproto"
+	activityshared "github.com/tutti-os/tutti/packages/agent/daemon/activity/events"
+	"github.com/tutti-os/tutti/packages/agent/daemon/runtime/codexproto"
 )
 
 // handleAppServerMessage routes codex app-server server->client traffic.

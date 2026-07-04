@@ -47,13 +47,20 @@ Use this shape for new entries:
 
 - Symptom:
   Claude Code GUI usage shows a 200k context window for a model that should have
-  1M context, such as Claude Sonnet 5.
+  1M context, such as Claude Sonnet 5. The inverse can also happen after a model
+  switch: a 200k model such as Haiku keeps showing the prior 1M total.
 - Quick checks:
   Inspect the session runtime context for `usage.contextWindow.totalTokens`,
   then trace the Claude SDK sidecar `usage_updated` payload and daemon
   `agent_session.claude_sdk.usage_update` log. If the payload keys include
   `modelUsage` but `raw_total_tokens` is `0`, the daemon did not parse the
-  model-usage context window.
+  model-usage context window. If `previous_context_model` and
+  `current_context_model` differ but `current_total_tokens` equals
+  `previous_total_tokens`, daemon usage normalization reused a stale context
+  window across models. If switching models without sending a message makes the
+  usage entry disappear, inspect whether a forced session-control reload
+  returned `runtimeContext` without `usage` and replaced the active control
+  state.
 - Root cause:
   AgentGUI only renders `runtimeContext.usage`; the total comes from the daemon
   and Claude SDK sidecar. Claude SDK result messages expose model usage as a
@@ -63,11 +70,19 @@ Use this shape for new entries:
   daemon normalization falls back to 200k.
 - Fix:
   Parse `modelUsage` recursively as both arrays and maps before using fallback
-  context-window values. Do not hard-code alias-to-model mappings in Tutti.
+  context-window values. Track the model associated with a cached context
+  window, and only reuse the previous total for the same model or when the model
+  is unknown. Treat `runtimeContext.usage` as incremental telemetry in AgentGUI
+  reload races: a full session-control snapshot that omits usage should not
+  clear the previous usage display. Do not hard-code alias-to-model mappings in
+  Tutti.
 - Validation:
   Add sidecar and daemon coverage with map-shaped `modelUsage` carrying
-  `contextWindow: 1_000_000`, then run the Claude SDK sidecar tests, daemon Go
-  tests, and sidecar typecheck.
+  `contextWindow: 1_000_000`, plus daemon coverage for Haiku -> Sonnet5 -> Haiku
+  usage updates where the last payload lacks `totalTokens`. Add AgentGUI
+  coverage for session-control reloads that omit `runtimeContext.usage`. Then
+  run the Claude SDK sidecar tests, daemon Go tests, AgentGUI tests, and
+  typechecks.
 - References:
   [main.ts](../../packages/agent/claude-sdk-sidecar/src/main.ts)
   [main.test.ts](../../packages/agent/claude-sdk-sidecar/src/main.test.ts)
@@ -1932,3 +1947,52 @@ target app`. Compare `/Applications/Tutti.app/Contents/Info.plist` with the
   Claude SDK sidecar process env includes `IS_SANDBOX=1`. Add callback coverage
   proving bypass mode allows an ordinary Bash request without
   `approval_requested`, while `AskUserQuestion` still surfaces user input.
+
+### Claude Code logs out after sending a message (invalid_grant, credentials wiped)
+
+- Symptom:
+  Inside the desktop app, sending a message around the OAuth token expiry window
+  leaves Claude Code in a "Not logged in · Please run /login" state. The keychain
+  entry (`Claude Code-credentials`) has empty `accessToken`/`refreshToken` and
+  `expiresAt: 0`, while the plaintext `~/.claude/.credentials.json` may still hold
+  a valid token. The Claude CLI alone does not reproduce it.
+- Quick checks:
+  Capture `/v1/oauth/token` traffic (mitmproxy). A failure may show `Client
+disconnected` immediately before later refresh attempts return `400
+invalid_grant`. Daemon logs may also show an extra `claude-code` process start
+  with `cwd=/`, `hasModel=false`, and a different `agent_session_id` from the
+  real conversation session; that shape is the hidden live-model discovery
+  session.
+- Root cause:
+  Composer-options loading spawned a hidden, `visible:false` Claude live-model
+  discovery session that shares the on-disk credential store with the real
+  conversation session and deleted it as soon as the model list was read. When
+  it performs an OAuth refresh near expiry, the server can rotate the refresh
+  token even if the local client disconnects before receiving or persisting the
+  response. The real session later refreshes with the now-consumed refresh
+  token, gets `400 invalid_grant`, and Claude Code wipes the stored credentials.
+  Because `fallbackStorage` prefers the (now empty) keychain entry over the
+  still-valid plaintext file, the user is locked out.
+- Fix:
+  Cold composer options must always have a static Claude fallback (`default`,
+  `opus`, `sonnet`, `haiku`, plus any configured custom model) so the UI never
+  depends on live discovery. A cold-start live discovery may run at most once per
+  provider/workspace/cwd cache key, but it must be hidden, serialized with other
+  Claude startups, and deleted only after a delayed grace period rather than
+  immediately after the model list appears. Successful discovery updates the
+  daemon live-model cache; later composer-options calls prefer cached models or
+  model options reported by a real running Claude session over the static
+  fallback. Claude Create model validation should only use cached live-model
+  options; it must not start discovery. If the daemon exits before the delayed
+  cleanup timer fires, later persisted-session reads must delete the stale
+  hidden discovery session instead of restoring it as a real conversation.
+- Validation:
+  Add daemon service tests for Create cache-only validation, SendInput waiting
+  on the Claude startup slot before runtime exec, static Claude cold-start model
+  options, reusing model options from a running Claude session, cold-start
+  discovery running once, delayed hidden discovery cleanup, and stale persisted
+  hidden discovery cleanup after restart. Run targeted agent service Go tests
+  plus the daemon Go lint/test/build lanes.
+- References:
+  [composer_live_model_discovery.go](../../services/tuttid/service/agent/composer_live_model_discovery.go)
+  [model_validation.go](../../services/tuttid/service/agent/model_validation.go)

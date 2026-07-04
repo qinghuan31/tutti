@@ -463,15 +463,6 @@ export const en = {
         },
         agentConversationDetailModeSaveFailed:
           "We couldn't update the work mode right now.",
-        agentDockLayoutDescription:
-          "Choose whether Codex and Claude Code appear as separate dock icons or one Agent icon.",
-        agentDockLayoutLabel: "Agent dock",
-        agentDockLayoutOptions: {
-          legacySplit: "Separate icons",
-          unified: "One Agent icon"
-        },
-        agentDockLayoutSaveFailed:
-          "We couldn't update the Agent dock right now.",
         computerUseLabel: "Computer use",
         computerUseDescription:
           "Allows the agent to control your Mac desktop — take screenshots, click, type, and more.",
@@ -839,6 +830,11 @@ export const en = {
         unsaved: "Unsaved changes",
         unsupportedFallback:
           "Preview is not supported yet. Opening with your local app."
+      },
+      filesLaunch: {
+        openFailedDescription:
+          "This session's original working directory could no longer be found on this computer.",
+        openFailedTitle: "Couldn't open folder"
       },
       agentProviders: {
         checking: "Checking local CLI status...",

@@ -43,7 +43,6 @@ import type {
   AgentGUIPrefillPromptRequest,
   AgentGUIRememberComposerDefaultsInput
 } from "./controller/useAgentGUINodeController";
-import type { AgentGUIConversationScope } from "./model/agentGuiNodeTypes";
 import {
   AgentGUINodeView,
   type AgentGUIViewLabels,
@@ -51,7 +50,6 @@ import {
   type AgentWorkspaceReferenceInitialTargetResolver
 } from "./AgentGUINodeView";
 import {
-  formatAgentGUIConversationPlainTitle,
   normalizeAgentGUIProviderIdentity,
   resolveAgentGUIDockConversationTitle,
   resolveAgentGUIProviderDisplayLabel
@@ -59,8 +57,7 @@ import {
 import { agentGUIProviderTargetRefsEqual } from "../../providerTargets";
 import {
   buildDockAgentProbeTooltipLines,
-  findWorkspaceAgentProbeForDockProvider,
-  workspaceAgentProbeRenderStateEqualsForProvider
+  findWorkspaceAgentProbeForDockProvider
 } from "../workspaceDesktop/view/desktopDockAgentProbeTooltipModel";
 import { AgentProbeInfoPopover } from "../workspaceDesktop/view/AgentProbeInfoPopover";
 import type { AgentComposerProps } from "./AgentComposer";
@@ -87,7 +84,6 @@ import type {
   AgentComposerGitBranchLoader,
   AgentComposerSlashStatusLimit
 } from "./AgentComposer";
-import { agentGuiDockIconUrls } from "../../dockIcons";
 
 const workspaceFileReferenceLocaleKeyByPickerKey: Record<string, string> = {
   "actions.cancel": "common.cancel",
@@ -182,6 +178,12 @@ export interface AgentGUINodeProps {
   height: number;
   desktopSize: DesktopSize;
   onLinkAction?: (action: WorkspaceLinkAction) => void;
+  onHandoffConversation?: (input: {
+    agentTargetId?: string | null;
+    draftPrompt: string;
+    provider: AgentProvider;
+    userProjectPath?: string | null;
+  }) => void | Promise<void>;
   capabilityMenuState?: AgentComposerCapabilityMenuState;
   onCapabilitySettingsRequest?: (
     capability: AgentComposerCapabilitySettingsTarget
@@ -193,7 +195,6 @@ export interface AgentGUINodeProps {
     Record<AgentGUIProvider, AgentGUIProviderReadinessGate | null>
   > | null;
   defaultProviderTargetId?: string | null;
-  conversationScope?: AgentGUIConversationScope;
   onWorkspaceFileReferencesAdded?: (input: {
     provider: AgentProvider;
     references: readonly WorkspaceFileReference[];
@@ -422,16 +423,11 @@ function normalizeSlashStatusModelName(
 }
 
 function resolveAgentGUIRailStatusProvider(input: {
-  activeProvider: AgentProvider;
   conversationFilter: ReturnType<
     typeof useAgentGUINodeController
   >["viewModel"]["conversationFilter"];
-  conversationScope: AgentGUIConversationScope;
   providerTargets: readonly AgentGUIProviderTarget[];
 }): AgentProvider | null {
-  if (input.conversationScope !== "multi-provider") {
-    return input.activeProvider as AgentProvider;
-  }
   const filter = input.conversationFilter;
   if (filter.kind !== "agentTarget") {
     return null;
@@ -566,13 +562,13 @@ function areAgentGUINodePropsEqual(
     previous.desktopSize.width === next.desktopSize.width &&
     previous.desktopSize.height === next.desktopSize.height &&
     previous.onLinkAction === next.onLinkAction &&
+    previous.onHandoffConversation === next.onHandoffConversation &&
     previous.onCapabilitySettingsRequest === next.onCapabilitySettingsRequest &&
     previous.onAgentProviderLogin === next.onAgentProviderLogin &&
     previous.providerTargets === next.providerTargets &&
     previous.providerTargetsLoading === next.providerTargetsLoading &&
     previous.providerReadinessGates === next.providerReadinessGates &&
     previous.defaultProviderTargetId === next.defaultProviderTargetId &&
-    previous.conversationScope === next.conversationScope &&
     previous.onClose === next.onClose &&
     previous.onResize === next.onResize &&
     previous.onUpdateNode === next.onUpdateNode &&
@@ -583,14 +579,7 @@ function areAgentGUINodePropsEqual(
     previous.onMinimize === next.onMinimize &&
     previous.onToggleMaximize === next.onToggleMaximize &&
     previous.onShowMessage === next.onShowMessage &&
-    (previous.conversationScope === "multi-provider" ||
-    next.conversationScope === "multi-provider"
-      ? previous.workspaceAgentProbes === next.workspaceAgentProbes
-      : workspaceAgentProbeRenderStateEqualsForProvider(
-          previous.workspaceAgentProbes,
-          next.workspaceAgentProbes,
-          previous.state.provider
-        )) &&
+    previous.workspaceAgentProbes === next.workspaceAgentProbes &&
     previous.onAgentProbeDemandChange === next.onAgentProbeDemandChange &&
     previous.onAgentProbeRefreshRequest === next.onAgentProbeRefreshRequest &&
     previous.managedAgentsState === next.managedAgentsState &&
@@ -629,6 +618,7 @@ export const AgentGUINode = memo(function AgentGUINode({
   height,
   desktopSize,
   onLinkAction,
+  onHandoffConversation,
   capabilityMenuState,
   onCapabilitySettingsRequest,
   onAgentProviderLogin,
@@ -636,7 +626,6 @@ export const AgentGUINode = memo(function AgentGUINode({
   providerTargetsLoading = false,
   providerReadinessGates = null,
   defaultProviderTargetId = null,
-  conversationScope = "single-provider",
   onWorkspaceFileReferencesAdded,
   onOpenConversationWindow,
   onClose,
@@ -803,7 +792,6 @@ export const AgentGUINode = memo(function AgentGUINode({
     workspacePath,
     avoidGroupingEdits: agentSettings.avoidGroupingEdits,
     data: state,
-    conversationScope,
     openSessionRequest,
     prefillPromptRequest,
     providerTargets,
@@ -854,18 +842,8 @@ export const AgentGUINode = memo(function AgentGUINode({
   const displayProviderLabel = viewModel.activeConversation
     ? resolveAgentGUIProviderDisplayLabel(activeProvider, fallbackAgentTitle)
     : selectedProviderTargetLabel;
-  const windowAgentTitle = viewModel.activeConversation
-    ? (getAgentHostManagedToolchainAgentByName(activeProvider)?.label ??
-      displayProviderLabel)
-    : displayProviderLabel;
   const activeConversationDockTitle = viewModel.activeConversation
     ? resolveAgentGUIDockConversationTitle(viewModel.activeConversation)
-    : null;
-  const activeConversationWindowTitle = viewModel.activeConversation
-    ? formatAgentGUIConversationPlainTitle(viewModel.activeConversation, {
-        fallbackAgentLabel: fallbackAgentTitle,
-        language: locale
-      })
     : null;
   useEffect(() => {
     if (previewMode || !viewModel.activeConversation) {
@@ -925,6 +903,9 @@ export const AgentGUINode = memo(function AgentGUINode({
         "agentHost.agentGui.providerGateCheckingDescription",
         { provider: displayProviderLabel }
       ),
+      providerGateCheckingAgentsDescription: t(
+        "agentHost.agentGui.providerGateCheckingAgentsDescription"
+      ),
       providerGateInstallTitle: t(
         "agentHost.agentGui.providerGateInstallTitle",
         { provider: displayProviderLabel }
@@ -944,6 +925,17 @@ export const AgentGUINode = memo(function AgentGUINode({
         { provider: displayProviderLabel }
       ),
       providerGateLoginAction: t("agentHost.agentGui.providerGateLoginAction"),
+      providerGateComingSoonTitle: t(
+        "agentHost.agentGui.providerGateComingSoonTitle",
+        { provider: displayProviderLabel }
+      ),
+      providerGateComingSoonDescription: t(
+        "agentHost.agentGui.providerGateComingSoonDescription",
+        { provider: displayProviderLabel }
+      ),
+      providerGateComingSoonAction: t(
+        "agentHost.agentGui.providerGateComingSoonAction"
+      ),
       providerGateUnavailableTitle: t(
         "agentHost.agentGui.providerGateUnavailableTitle",
         { provider: displayProviderLabel }
@@ -1074,7 +1066,16 @@ export const AgentGUINode = memo(function AgentGUINode({
       planImplementationSkip: t("agentHost.agentGui.planImplementationSkip"),
       noRunningResponse: t("agentHost.agentGui.noRunningResponse"),
       empty: t("agentHost.agentGui.empty", { provider: displayProviderLabel }),
+      emptyForProvider: (provider: string) =>
+        t("agentHost.agentGui.empty", {
+          provider: resolveAgentGUIProviderDisplayLabel(
+            provider,
+            fallbackAgentTitle
+          )
+        }),
       emptyProvider: displayProviderLabel,
+      emptyProviderForProvider: (provider: string) =>
+        resolveAgentGUIProviderDisplayLabel(provider, fallbackAgentTitle),
       conversations: t("agentHost.agentGui.conversations"),
       newConversation: t("agentHost.agentGui.newConversation"),
       agentConfig: t("agentHost.agentGui.agentConfig"),
@@ -1088,11 +1089,13 @@ export const AgentGUINode = memo(function AgentGUINode({
       conversationFilterClaudeCode: t(
         "agentHost.agentGui.conversationFilterClaudeCode"
       ),
+      conversationFilterTutti: t("agentHost.agentGui.conversationFilterTutti"),
       providerSwitchLabel: t("agentHost.agentGui.providerSwitchLabel"),
       startConversation: t("agentHost.agentGui.startConversation"),
       selectConversation: t("agentHost.agentGui.selectConversation"),
       loadingConversations: t("agentHost.agentGui.loadingConversations"),
       loadingConversation: t("agentHost.agentGui.loadingConversation"),
+      scrollToBottom: t("agentHost.agentGui.scrollToBottom"),
       searchNoConversations: t("agentHost.agentGui.searchNoConversations"),
       conversationUnavailable: t("agentHost.agentGui.conversationUnavailable"),
       fallbackAgentTitle,
@@ -1423,7 +1426,9 @@ export const AgentGUINode = memo(function AgentGUINode({
       removeMention: t("common.remove"),
       addReference: t("agentHost.agentGui.addReference"),
       addContent: t("agentHost.agentGui.addContent"),
-      referenceWorkspaceFiles: t("agentHost.issue.referenceWorkspaceFiles")
+      referenceWorkspaceFiles: t("agentHost.issue.referenceWorkspaceFiles"),
+      handoffConversation: t("agentHost.agentGui.handoffConversation"),
+      handoffConversationMenu: t("agentHost.agentGui.handoffConversationMenu")
     }),
     [displayProviderLabel, fallbackAgentTitle, t]
   );
@@ -1436,32 +1441,15 @@ export const AgentGUINode = memo(function AgentGUINode({
     }),
     [t]
   );
-  const collapsedWindowConversationTitle = isConversationRailCollapsed
-    ? activeConversationDockTitle
-    : null;
-  const windowTitle =
-    collapsedWindowConversationTitle ||
-    (isConversationRailCollapsed ? activeConversationWindowTitle : null) ||
-    windowAgentTitle ||
-    title;
-  const windowTitleIconUrl =
-    agentGuiDockIconUrls[activeProvider as keyof typeof agentGuiDockIconUrls] ??
-    null;
+  const windowTitle = title;
   const activeProbeProvider = activeProvider as AgentProvider;
   const railStatusProvider = useMemo(
     () =>
       resolveAgentGUIRailStatusProvider({
-        activeProvider: activeProbeProvider,
         conversationFilter: viewModel.conversationFilter,
-        conversationScope: viewModel.conversationScope,
         providerTargets: viewModel.providerTargets
       }),
-    [
-      activeProbeProvider,
-      viewModel.conversationFilter,
-      viewModel.conversationScope,
-      viewModel.providerTargets
-    ]
+    [viewModel.conversationFilter, viewModel.providerTargets]
   );
   const activeAgentProbe = useMemo(
     () =>
@@ -1594,18 +1582,7 @@ export const AgentGUINode = memo(function AgentGUINode({
       nodeId={nodeId}
       kind="agentGui"
       title={windowTitle}
-      titleIcon={
-        windowTitleIconUrl ? (
-          <img
-            src={windowTitleIconUrl}
-            alt=""
-            draggable={false}
-            aria-hidden="true"
-            className="size-4 rounded-[4px]"
-            data-agent-gui-window-provider-icon="true"
-          />
-        ) : null
-      }
+      titleIcon={null}
       position={position}
       width={width}
       height={height}
@@ -1684,6 +1661,7 @@ export const AgentGUINode = memo(function AgentGUINode({
             railSlashStatusLimits={railSlashStatusLimits}
             previewMode={previewMode}
             onLinkAction={handleLinkAction}
+            onHandoffConversation={onHandoffConversation}
             capabilityMenuState={capabilityMenuState}
             onCapabilitySettingsRequest={onCapabilitySettingsRequest}
             onAgentProviderLogin={

@@ -1,7 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
   agentGuiWorkbenchPrefillPromptActivationType,
-  agentGuiWorkbenchDockEntryIdForLayout,
   agentGuiWorkbenchDockEntryId,
   agentGuiWorkbenchDockIdentityFromIdentifier,
   agentGuiWorkbenchInstanceId,
@@ -76,20 +75,8 @@ describe("agent gui workbench launch contract", () => {
     expect(descriptor.provider).toBe("codex");
   });
 
-  it("parses the future unified dock identity separately from legacy provider dock ids", () => {
+  it("parses the unified dock identity separately from legacy provider dock ids", () => {
     expect(agentGuiWorkbenchUnifiedDockEntryId()).toBe("agent-gui:unified");
-    expect(
-      agentGuiWorkbenchDockEntryIdForLayout({
-        dockLayout: "legacySplit",
-        provider: "claude-code"
-      })
-    ).toBe("agent-gui:claude-code");
-    expect(
-      agentGuiWorkbenchDockEntryIdForLayout({
-        dockLayout: "unified",
-        provider: "claude-code"
-      })
-    ).toBe("agent-gui:unified");
     expect(
       agentGuiWorkbenchDockIdentityFromIdentifier("agent-gui:unified")
     ).toEqual({ kind: "unifiedAggregate" });
@@ -166,6 +153,7 @@ describe("agent gui workbench launch contract", () => {
   it("creates draft prompt launch requests for provider dock entries", () => {
     expect(
       createAgentGuiWorkbenchDraftLaunchRequest({
+        agentTargetId: "local:codex",
         draftPrompt: "Review this issue",
         provider: "codex",
         userProjectPath: "/Users/example/project"
@@ -173,6 +161,7 @@ describe("agent gui workbench launch contract", () => {
     ).toEqual({
       dockEntryId: "agent-gui",
       payload: {
+        agentTargetId: "local:codex",
         draftPrompt: "Review this issue",
         provider: "codex",
         userProjectPath: "/Users/example/project"
@@ -186,6 +175,7 @@ describe("agent gui workbench launch contract", () => {
     expect(
       createAgentGuiWorkbenchLaunchDescriptor(
         createAgentGuiWorkbenchDraftLaunchRequest({
+          agentTargetId: "local:codex",
           draftPrompt: "Review this issue",
           provider: "codex"
         })
@@ -193,7 +183,9 @@ describe("agent gui workbench launch contract", () => {
     ).toMatchObject({
       activation: {
         payload: {
-          draftPrompt: "Review this issue"
+          agentTargetId: "local:codex",
+          draftPrompt: "Review this issue",
+          provider: "codex"
         },
         type: agentGuiWorkbenchPrefillPromptActivationType
       },
@@ -203,6 +195,35 @@ describe("agent gui workbench launch contract", () => {
       reuseExistingSessionNode: true,
       targetAgentSessionId: null
     });
+  });
+
+  it("launches draft prompts into new windows when requested", () => {
+    const descriptor = createAgentGuiWorkbenchLaunchDescriptor(
+      createAgentGuiWorkbenchDraftLaunchRequest({
+        agentTargetId: "local:codex",
+        draftPrompt: "Review this issue",
+        openInNewWindow: true,
+        provider: "codex"
+      })
+    );
+
+    expect(descriptor).toMatchObject({
+      activation: {
+        payload: {
+          agentTargetId: "local:codex",
+          draftPrompt: "Review this issue",
+          provider: "codex"
+        },
+        type: agentGuiWorkbenchPrefillPromptActivationType
+      },
+      dockEntryId: "agent-gui",
+      openInNewWindow: true,
+      provider: "codex",
+      reuseDockEntryNode: true,
+      reuseExistingSessionNode: false,
+      targetAgentSessionId: null
+    });
+    expect(descriptor.instanceId).toContain("agent-gui:codex:panel:");
   });
 
   it("does not reuse a shared unified aggregate dock node for provider-specific draft prompts", () => {

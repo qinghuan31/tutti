@@ -220,8 +220,8 @@ func TestServicePutNormalizesAgentDockLayout(t *testing.T) {
 		input string
 		want  string
 	}{
-		{name: "empty", input: "", want: "legacySplit"},
-		{name: "invalid", input: "stacked", want: "legacySplit"},
+		{name: "empty", input: "", want: "unified"},
+		{name: "invalid", input: "stacked", want: "unified"},
 		{name: "legacy", input: "legacySplit", want: "legacySplit"},
 		{name: "unified", input: "unified", want: "unified"},
 	} {

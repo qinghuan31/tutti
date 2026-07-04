@@ -1089,6 +1089,67 @@ describe("AgentComposer", () => {
     );
   });
 
+  it("fires handoff when the only menu option is selected", async () => {
+    const onHandoffConversation = vi.fn();
+    const codexTarget = {
+      targetId: "local:codex",
+      agentTargetId: "local:codex",
+      provider: "codex" as const,
+      ref: { kind: "local-provider", provider: "codex" as const },
+      label: "Codex"
+    };
+    const claudeTarget = {
+      targetId: "local:claude-code",
+      agentTargetId: "local:claude-code",
+      provider: "claude-code" as const,
+      ref: { kind: "local-provider", provider: "claude-code" as const },
+      label: "Claude Code"
+    };
+
+    render(
+      <AgentComposer
+        workspaceId="workspace-1"
+        currentUserId="user-1"
+        provider="codex"
+        selectedProviderTarget={codexTarget}
+        providerTargets={[codexTarget, claudeTarget]}
+        providerSelectReadonly
+        onHandoffConversation={onHandoffConversation}
+        draftContent={createDraft("")}
+        availableCommands={[] satisfies readonly AgentHostAgentSessionCommand[]}
+        disabled={false}
+        submitDisabled={false}
+        placeholder="placeholder"
+        composerSettings={createComposerSettings()}
+        queuedPrompts={[]}
+        drainingQueuedPromptId={null}
+        canQueueWhileBusy={false}
+        showStopButton={false}
+        activePrompt={null}
+        isInterrupting={false}
+        isSendingTurn={false}
+        isSubmittingPrompt={false}
+        labels={createLabels()}
+        workspaceUserProjectI18n={workspaceUserProjectI18n}
+        onDraftContentChange={vi.fn()}
+        onSettingsChange={vi.fn()}
+        onSubmit={vi.fn()}
+        onSendQueuedPromptNext={vi.fn()}
+        onRemoveQueuedPrompt={vi.fn()}
+        onEditQueuedPrompt={vi.fn()}
+        onInterruptCurrentTurn={vi.fn()}
+        onSubmitInteractivePrompt={vi.fn()}
+      />
+    );
+
+    fireEvent.keyDown(screen.getByRole("combobox", { name: "Handoff" }), {
+      key: "ArrowDown"
+    });
+    fireEvent.click(await screen.findByRole("option", { name: "Claude Code" }));
+
+    expect(onHandoffConversation).toHaveBeenCalledWith(claudeTarget);
+  });
+
   it("matches the browser-use slash capability by its English alias", async () => {
     render(
       <AgentComposer
@@ -4578,6 +4639,8 @@ function createLabels(): Parameters<typeof AgentComposer>[0]["labels"] {
     addReference: "添加引用",
     addContent: "添加文件等内容",
     referenceWorkspaceFiles: "引用空间文件",
+    handoffConversation: "Handoff",
+    handoffConversationMenu: "选择 Agent",
     providerSwitchLabel: "切换 Provider",
     reviewPicker: {
       title: "代码审查",

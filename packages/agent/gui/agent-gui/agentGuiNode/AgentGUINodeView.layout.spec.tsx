@@ -14,13 +14,20 @@ import type { WorkspaceAgentSessionDetailViewModel } from "../../shared/workspac
 import type { AgentPromptContentBlock } from "../../shared/contracts/dto";
 import type { AgentGUINodeViewModel } from "./model/agentGuiNodeTypes";
 import { AgentGUINodeView, type AgentGUIViewLabels } from "./AgentGUINodeView";
-import { createLocalAgentGUIProviderTarget } from "../../providerTargets";
+import {
+  createLocalAgentGUIProviderTarget,
+  createLocalAgentGUIProviderTargets
+} from "../../providerTargets";
 import {
   AgentActivityRuntimeProvider,
   type AgentActivityRuntime,
   type AgentActivityRuntimeSessionSection,
   type AgentActivityRuntimeSessionSectionsResult
 } from "../../agentActivityRuntime";
+import {
+  MANAGED_AGENT_ICON_URLS,
+  MANAGED_AGENT_PROVIDER_RAIL_ICON_URLS
+} from "../../shared/managedAgentIcons";
 
 const conversationFlowMock = vi.hoisted(() => ({
   calls: [] as Array<{ conversation: unknown; labels: unknown }>
@@ -41,9 +48,7 @@ const composerMock = vi.hoisted(() => ({
       content: AgentPromptContentBlock[],
       displayPrompt?: string
     ) => void;
-    onProviderSelect?: AgentGUINodeViewProps["actions"]["selectProvider"];
-    providerSelectReadonly?: boolean;
-    providerTargets?: AgentGUINodeViewModel["providerTargets"];
+    provider?: string;
     showStopButton?: boolean;
     usage?: AgentGUINodeViewModel["usage"];
   }>
@@ -61,6 +66,32 @@ const statusDotMock = vi.hoisted(() => ({
   }>
 }));
 
+function ensurePointerCaptureApi(): void {
+  const elementPrototype = Element.prototype as Element & {
+    hasPointerCapture?: (pointerId: number) => boolean;
+    releasePointerCapture?: (pointerId: number) => void;
+    setPointerCapture?: (pointerId: number) => void;
+  };
+  if (!elementPrototype.hasPointerCapture) {
+    Object.defineProperty(elementPrototype, "hasPointerCapture", {
+      configurable: true,
+      value: () => false
+    });
+  }
+  if (!elementPrototype.releasePointerCapture) {
+    Object.defineProperty(elementPrototype, "releasePointerCapture", {
+      configurable: true,
+      value: () => {}
+    });
+  }
+  if (!elementPrototype.setPointerCapture) {
+    Object.defineProperty(elementPrototype, "setPointerCapture", {
+      configurable: true,
+      value: () => {}
+    });
+  }
+}
+
 vi.mock("./AgentSessionChrome", () => ({
   AgentSessionChrome: () => <div data-testid="agent-session-chrome" />
 }));
@@ -76,9 +107,7 @@ vi.mock("./AgentComposer", () => ({
       content: AgentPromptContentBlock[],
       displayPrompt?: string
     ) => void;
-    onProviderSelect?: AgentGUINodeViewProps["actions"]["selectProvider"];
-    providerSelectReadonly?: boolean;
-    providerTargets?: AgentGUINodeViewModel["providerTargets"];
+    provider?: string;
     showStopButton?: boolean;
     usage?: AgentGUINodeViewModel["usage"];
   }) => {
@@ -88,10 +117,8 @@ vi.mock("./AgentComposer", () => ({
       compactSupported: props.compactSupported,
       hasActiveConversation: props.hasActiveConversation,
       isSendingTurn: props.isSendingTurn,
-      onProviderSelect: props.onProviderSelect,
-      providerSelectReadonly: props.providerSelectReadonly,
+      provider: props.provider,
       onSubmit: props.onSubmit,
-      providerTargets: props.providerTargets,
       showStopButton: props.showStopButton,
       usage: props.usage
     });
@@ -160,7 +187,7 @@ describe("AgentGUINodeView layout persistence", () => {
     expect(onConversationRailWidthChanged).not.toHaveBeenCalled();
   });
 
-  it("only renders the provider filter for multi-provider conversation scope", () => {
+  it("always renders the provider filter rail", () => {
     const providerTargets = [
       createLocalAgentGUIProviderTarget("codex"),
       createLocalAgentGUIProviderTarget("claude-code")
@@ -169,18 +196,47 @@ describe("AgentGUINodeView layout persistence", () => {
       viewModel: createViewModel({ providerTargets })
     });
 
-    expect(container.querySelector('[role="tablist"]')).toBeNull();
+    const providerRailPanel = container.querySelector(
+      ".agent-gui-node__provider-rail-panel"
+    );
+    expect(providerRailPanel).not.toBeNull();
+    expect(providerRailPanel).toContainElement(
+      container.querySelector('[role="tablist"]')
+    );
+    expect(
+      container
+        .querySelector(".agent-gui-node__rail")
+        ?.querySelector('[role="tablist"]')
+    ).toBeNull();
+
+    const layout = container.querySelector<HTMLElement>(
+      ".agent-gui-node__layout"
+    );
+    expect(
+      layout?.style.getPropertyValue("--agent-gui-provider-rail-width")
+    ).toBe("52px");
 
     rerender(
       buildAgentGUINodeViewElement({
+        conversationRailCollapsed: true,
         viewModel: createViewModel({
-          conversationScope: "multi-provider",
           providerTargets
         })
       })
     );
 
-    expect(container.querySelector('[role="tablist"]')).not.toBeNull();
+    expect(
+      container.querySelector(".agent-gui-node__provider-rail-panel")
+    ).not.toBeNull();
+    expect(
+      container.querySelector(".agent-gui-node__provider-rail-panel")
+    ).toHaveAttribute("aria-hidden", "true");
+    expect(
+      layout?.style.getPropertyValue("--agent-gui-provider-rail-width")
+    ).toBe("0px");
+    expect(layout?.style.gridTemplateColumns).toBe(
+      "var(--agent-gui-provider-rail-width) var(--agent-gui-conversation-rail-width) minmax(var(--agent-gui-detail-min-width), 1fr)"
+    );
   });
 
   it("ignores rail pointer moves that do not come from the resize handle drag", () => {
@@ -195,6 +251,39 @@ describe("AgentGUINodeView layout persistence", () => {
     expect(onConversationRailWidthChanged).not.toHaveBeenCalled();
   });
 
+  it("renders the provider rail as fixed-size icon-only tiles", () => {
+    const css = readFileSync(resolve("app/renderer/agentactivity.css"), "utf8");
+
+    expect(css).toMatch(
+      /\.agent-gui-node__provider-rail-tile\s*\{[^}]*grid-template-rows:\s*32px;[^}]*gap:\s*0;[^}]*padding:\s*0;/s
+    );
+    expect(css).toMatch(
+      /\.agent-gui-node__provider-rail-tile\s*\+\s*\.agent-gui-node__provider-rail-tile\s*\{[^}]*margin-top:\s*12px;/s
+    );
+    expect(css).toMatch(
+      /\.agent-gui-node__provider-rail-avatar\s*\{[^}]*border-radius:\s*8px;/s
+    );
+    expect(css).not.toMatch(
+      /\.agent-gui-node__provider-rail-tile\[data-selected="true"\]\s+\.agent-gui-node__provider-rail-avatar\s*\{[^}]*border-radius:/s
+    );
+    expect(css).not.toMatch(/\.agent-gui-node__provider-rail-tile-label/);
+    expect(css).not.toMatch(
+      /\.agent-gui-node__provider-rail-tile\s*\{[^}]*grid-template-rows:\s*32px\s+(?:auto|28px);/s
+    );
+    expect(css).toMatch(
+      /\.agent-gui-node__provider-rail-tile:disabled\s*\{[^}]*opacity:\s*0\.3;/s
+    );
+    expect(css).not.toMatch(
+      /\.agent-gui-node__provider-rail-tile\[data-disabled="true"\][^{]*\{[^}]*opacity:/s
+    );
+    expect(css).toMatch(
+      /\.agent-gui-node__empty-hero-launchpad-icon\s+\.agent-gui-node__provider-rail-launchpad-item\[data-provider-active="false"\]\s*\{[^}]*opacity:\s*0\.5;/s
+    );
+    expect(css).toMatch(
+      /\.agent-gui-node__empty-provider-gate-action:disabled\s*\{[^}]*background:\s*var\(--fill-tertiary\);[^}]*color:\s*var\(--text-disabled\);[^}]*opacity:\s*0\.65;/s
+    );
+  });
+
   it("sets the controlled rail width on the grid layout", () => {
     const onConversationRailWidthChanged = vi.fn();
 
@@ -203,10 +292,17 @@ describe("AgentGUINodeView layout persistence", () => {
       onConversationRailWidthChanged
     });
 
-    const layout = container.querySelector(".agent-gui-node__layout");
+    const layout = container.querySelector<HTMLElement>(
+      ".agent-gui-node__layout"
+    );
     expect(layout).toHaveStyle({
       "--agent-gui-conversation-rail-width": "320px"
     });
+    expect(
+      layout?.style.getPropertyValue(
+        "--agent-gui-conversation-rail-content-width"
+      )
+    ).toBe("320px");
     expect(onConversationRailWidthChanged).not.toHaveBeenCalled();
   });
 
@@ -299,19 +395,85 @@ describe("AgentGUINodeView layout persistence", () => {
   it("collapses the conversation rail and hides the resize handle when collapsed", () => {
     const onConversationRailWidthChanged = vi.fn();
 
-    renderAgentGUINodeView({
+    const { container } = renderAgentGUINodeView({
       conversationRailCollapsed: true,
       onConversationRailWidthChanged
     });
 
+    const layout = container.querySelector<HTMLElement>(
+      ".agent-gui-node__layout"
+    );
+    const railPanel = container.querySelector(".agent-gui-node__rail-panel");
     const resizeHandle = screen.getByTestId(
       "agent-gui-conversation-rail-resize-handle"
     );
+    expect(
+      layout?.style.getPropertyValue("--agent-gui-conversation-rail-width")
+    ).toBe("0px");
+    expect(
+      layout?.style.getPropertyValue(
+        "--agent-gui-conversation-rail-content-width"
+      )
+    ).toBe("240px");
+    expect(layout?.style.gridTemplateColumns).toBe(
+      "var(--agent-gui-provider-rail-width) var(--agent-gui-conversation-rail-width) minmax(var(--agent-gui-detail-min-width), 1fr)"
+    );
+    expect(railPanel).not.toBeNull();
+    expect(railPanel).toHaveAttribute("aria-hidden", "true");
+    expect(railPanel).toHaveClass("agent-gui-node__rail-panel--collapsed");
     expect(resizeHandle).toHaveAttribute("aria-hidden", "true");
     expect(resizeHandle).toHaveClass("pointer-events-none");
     expect(resizeHandle).toHaveClass("opacity-0");
     expect(onConversationRailWidthChanged).not.toHaveBeenCalled();
   });
+
+  it("keeps rail collapse and expand layout tracks transitionable", () => {
+    const css = readFileSync(resolve("app/renderer/agentactivity.css"), "utf8");
+
+    expect(css).toMatch(
+      /\.agent-gui-node__layout\s*\{[^}]*transition:\s*grid-template-columns 180ms cubic-bezier\(0\.22,\s*1,\s*0\.36,\s*1\);/s
+    );
+    expect(css).toMatch(
+      /\.agent-gui-workbench-header\[data-agent-gui-workbench-header-collapsed="true"\]\s*\{[^}]*grid-template-columns:\s*minmax\(0,\s*0px\)\s+minmax\(0,\s*1fr\);/s
+    );
+    expect(css).toMatch(
+      /\.agent-gui-node__provider-rail-panel\s*\{[^}]*transition:\s*width 180ms cubic-bezier\(0\.22,\s*1,\s*0\.36,\s*1\);/s
+    );
+    expect(css).toMatch(
+      /\.agent-gui-node__rail\s*\{[^}]*width:\s*var\(\s*--agent-gui-conversation-rail-content-width,\s*var\(--agent-gui-conversation-rail-width\)\s*\);/s
+    );
+    expect(css).toMatch(
+      /\.agent-gui-node__rail-panel--collapsed\s*\{[^}]*overflow:\s*hidden;[^}]*pointer-events:\s*none;/s
+    );
+    expect(css).toMatch(
+      /\.agent-gui-node__provider-rail\s*\{[^}]*width:\s*52px;[^}]*flex:\s*1\s+1\s+auto;/s
+    );
+    expect(css).not.toMatch(
+      /data-agent-gui-workbench-header-collapsed="false"[\s\S]*?\.agent-gui-node__rail-toolbar[\s\S]*?padding-top:\s*var\(--agent-gui-workbench-header-height\);/
+    );
+    expect(css).toMatch(
+      /\.workbench-window:has\(\[data-agent-gui-workbench-header="true"\]\)\s+\.agent-gui-node__rail-toolbar,\s*\.workbench-window:has\(\[data-agent-gui-workbench-header="true"\]\)\s+\.agent-gui-node__provider-rail-panel\s*\{[^}]*padding-top:\s*var\(--agent-gui-workbench-header-height\);/s
+    );
+  });
+
+  it("keeps the active conversation content visible when the rail is collapsed", () => {
+    const conversation = createConversationSummary("session-1");
+
+    renderAgentGUINodeView({
+      conversationRailCollapsed: true,
+      viewModel: {
+        ...createViewModel(),
+        activeConversation: conversation,
+        activeConversationId: conversation.id,
+        conversations: [conversation],
+        conversationDetail: createConversationDetail()
+      }
+    });
+
+    expect(screen.getByTestId("agent-conversation-flow")).toBeInTheDocument();
+    expect(screen.getByTestId("agent-composer")).toBeInTheDocument();
+  });
+
   it("switches the conversation filter from the avatar rail tile", () => {
     const actions = createActions();
     const claudeTarget = createLocalAgentGUIProviderTarget("claude-code");
@@ -319,7 +481,6 @@ describe("AgentGUINodeView layout persistence", () => {
       actions,
       viewModel: {
         ...createViewModel(),
-        conversationScope: "multi-provider",
         providerTargets: [
           createLocalAgentGUIProviderTarget("codex"),
           claudeTarget
@@ -334,7 +495,135 @@ describe("AgentGUINodeView layout persistence", () => {
       providerTargetId: claudeTarget.targetId
     });
     expect(actions.updateConversationFilter).not.toHaveBeenCalled();
-    expect(actions.selectProvider).not.toHaveBeenCalled();
+    expect(actions.selectHomeComposerAgentTarget).not.toHaveBeenCalled();
+  });
+
+  it("keeps unavailable provider rail targets disabled and non-selectable", () => {
+    const actions = createActions();
+    const tuttiTarget = {
+      ...createLocalAgentGUIProviderTarget("nexight"),
+      disabled: true
+    };
+    const hermesTarget = {
+      ...createLocalAgentGUIProviderTarget("hermes"),
+      disabled: true
+    };
+    const openclawTarget = {
+      ...createLocalAgentGUIProviderTarget("openclaw"),
+      disabled: true
+    };
+    renderAgentGUINodeView({
+      actions,
+      viewModel: {
+        ...createViewModel(),
+        providerTargets: [
+          createLocalAgentGUIProviderTarget("codex"),
+          createLocalAgentGUIProviderTarget("claude-code"),
+          tuttiTarget,
+          hermesTarget,
+          openclawTarget
+        ]
+      }
+    });
+
+    const tuttiTile = screen.getByRole("tab", { name: "Tutti" });
+    const hermesTile = screen.getByRole("tab", { name: "Hermes" });
+    const openclawTile = screen.getByRole("tab", { name: "OpenClaw" });
+
+    expect(tuttiTile).toHaveAttribute("data-disabled", "true");
+    expect(hermesTile).toHaveAttribute("data-disabled", "true");
+    expect(openclawTile).toHaveAttribute("data-disabled", "true");
+    expect(tuttiTile).toBeDisabled();
+    expect(hermesTile).toBeDisabled();
+    expect(openclawTile).toBeDisabled();
+
+    fireEvent.click(tuttiTile);
+    fireEvent.click(hermesTile);
+    fireEvent.click(openclawTile);
+
+    expect(actions.selectConversationFilterTarget).not.toHaveBeenCalled();
+    expect(actions.updateConversationFilter).not.toHaveBeenCalled();
+    expect(actions.selectHomeComposerAgentTarget).not.toHaveBeenCalled();
+  });
+
+  it("orders provider rail tiles as Codex, Claude Code, Tutti, Hermes, OpenClaw without visible provider labels", () => {
+    renderAgentGUINodeView({
+      viewModel: {
+        ...createViewModel(),
+        providerTargets: [
+          {
+            ...createLocalAgentGUIProviderTarget("nexight"),
+            disabled: true
+          },
+          createLocalAgentGUIProviderTarget("claude-code"),
+          {
+            ...createLocalAgentGUIProviderTarget("hermes"),
+            disabled: true
+          },
+          createLocalAgentGUIProviderTarget("codex")
+        ]
+      }
+    });
+
+    expect(
+      screen
+        .getAllByRole("tab")
+        .map(
+          (tab) =>
+            tab.getAttribute("aria-label") ??
+            tab.textContent?.replace(/\s+/gu, " ").trim()
+        )
+    ).toEqual(["All", "Codex", "Claude Code", "Tutti", "Hermes", "OpenClaw"]);
+    expect(screen.getByRole("tab", { name: "All" })).toHaveTextContent("");
+    expect(screen.getByRole("tab", { name: "Codex" })).toHaveTextContent("");
+    expect(screen.getByRole("tab", { name: "Claude Code" })).toHaveTextContent(
+      ""
+    );
+    expect(screen.getByRole("tab", { name: "Tutti" })).toHaveTextContent("");
+    expect(screen.getByRole("tab", { name: "Hermes" })).toHaveTextContent("");
+    expect(screen.getByRole("tab", { name: "OpenClaw" })).toHaveTextContent("");
+
+    expect(
+      screen
+        .getByRole("tab", { name: "Claude Code" })
+        .querySelector("img")
+        ?.getAttribute("src")
+    ).toBe(MANAGED_AGENT_PROVIDER_RAIL_ICON_URLS["claude-code"]);
+    expect(
+      screen
+        .getByRole("tab", { name: "Tutti" })
+        .querySelector("img")
+        ?.getAttribute("src")
+    ).toBe(MANAGED_AGENT_PROVIDER_RAIL_ICON_URLS.tutti);
+  });
+
+  it("shows provider names in tooltips for unlabeled provider rail icons", async () => {
+    const source = readFileSync(
+      resolve("agent-gui/agentGuiNode/AgentGUINodeView.tsx"),
+      "utf8"
+    );
+    expect(source).toMatch(
+      /<TooltipContent\s+side="right"\s+sideOffset=\{-4\}>/
+    );
+
+    renderAgentGUINodeView({
+      viewModel: {
+        ...createViewModel(),
+        providerTargets: [
+          createLocalAgentGUIProviderTarget("codex"),
+          createLocalAgentGUIProviderTarget("claude-code")
+        ]
+      }
+    });
+
+    const codexTile = screen.getByRole("tab", { name: "Codex" });
+    expect(codexTile).toHaveTextContent("");
+
+    fireEvent.pointerEnter(codexTile);
+    fireEvent.mouseOver(codexTile);
+    fireEvent.focus(codexTile);
+
+    expect(await screen.findAllByText("Codex")).not.toHaveLength(0);
   });
 
   it("switches Codex into an agent-target conversation filter", () => {
@@ -345,7 +634,6 @@ describe("AgentGUINodeView layout persistence", () => {
       actions,
       viewModel: {
         ...createViewModel(),
-        conversationScope: "multi-provider",
         conversationFilter: {
           kind: "agentTarget",
           agentTargetId: claudeTarget.agentTargetId ?? ""
@@ -362,7 +650,7 @@ describe("AgentGUINodeView layout persistence", () => {
       providerTargetId: codexTarget.targetId
     });
     expect(actions.updateConversationFilter).not.toHaveBeenCalled();
-    expect(actions.selectProvider).not.toHaveBeenCalled();
+    expect(actions.selectHomeComposerAgentTarget).not.toHaveBeenCalled();
   });
 
   it("highlights All from the conversation filter without constraining target", () => {
@@ -370,7 +658,6 @@ describe("AgentGUINodeView layout persistence", () => {
     renderAgentGUINodeView({
       viewModel: {
         ...createViewModel(),
-        conversationScope: "multi-provider",
         conversationFilter: { kind: "all" },
         selectedProviderTarget: claudeTarget,
         providerTargets: [
@@ -395,7 +682,6 @@ describe("AgentGUINodeView layout persistence", () => {
     renderAgentGUINodeView({
       viewModel: {
         ...createViewModel(),
-        conversationScope: "multi-provider",
         conversationFilter: {
           kind: "agentTarget",
           agentTargetId: codexTarget.agentTargetId ?? ""
@@ -422,7 +708,6 @@ describe("AgentGUINodeView layout persistence", () => {
     renderAgentGUINodeView({
       viewModel: {
         ...createViewModel(),
-        conversationScope: "multi-provider",
         conversationFilter: { kind: "all" },
         selectedProviderTarget: createLocalAgentGUIProviderTarget("codex"),
         providerTargets: [
@@ -442,6 +727,194 @@ describe("AgentGUINodeView layout persistence", () => {
     );
   });
 
+  it("renders the All tile launchpad icons in provider rail order", () => {
+    renderAgentGUINodeView({
+      viewModel: {
+        ...createViewModel(),
+        conversationFilter: { kind: "all" },
+        providerTargets: [
+          createLocalAgentGUIProviderTarget("claude-code"),
+          createLocalAgentGUIProviderTarget("codex")
+        ]
+      }
+    });
+
+    const allTile = screen.getByRole("tab", { name: "All" });
+    const launchpadItems = Array.from(
+      allTile.querySelectorAll(".agent-gui-node__provider-rail-launchpad-item")
+    );
+    expect(
+      launchpadItems.map((item) =>
+        item.querySelector("img")?.getAttribute("src")
+      )
+    ).toEqual([
+      MANAGED_AGENT_PROVIDER_RAIL_ICON_URLS.codex,
+      MANAGED_AGENT_PROVIDER_RAIL_ICON_URLS["claude-code"],
+      MANAGED_AGENT_PROVIDER_RAIL_ICON_URLS.tutti,
+      MANAGED_AGENT_PROVIDER_RAIL_ICON_URLS.hermes
+    ]);
+  });
+
+  it("keeps the selected All tile as a launchpad grid", () => {
+    renderAgentGUINodeView({
+      viewModel: {
+        ...createViewModel(),
+        conversationFilter: { kind: "all" },
+        providerTargets: [
+          createLocalAgentGUIProviderTarget("claude-code"),
+          createLocalAgentGUIProviderTarget("codex")
+        ]
+      }
+    });
+
+    const allTile = screen.getByRole("tab", { name: "All" });
+    const launchpadIcon = allTile.querySelector(
+      ".agent-gui-node__provider-rail-launchpad-icon"
+    );
+    expect(launchpadIcon).not.toBeNull();
+    expect(launchpadIcon).not.toHaveAttribute("data-scrollable");
+    expect(launchpadIcon?.children).toHaveLength(4);
+  });
+
+  it("renders the empty hero icon area with the All tile launchpad grid", () => {
+    const { container } = renderAgentGUINodeView({
+      viewModel: {
+        ...createViewModel(),
+        conversationFilter: { kind: "all" },
+        providerTargets: [
+          createLocalAgentGUIProviderTarget("claude-code"),
+          createLocalAgentGUIProviderTarget("codex")
+        ]
+      }
+    });
+
+    const heroIconGrid = container.querySelector(
+      ".agent-gui-node__empty-hero-launchpad-icon .agent-gui-node__provider-rail-launchpad-icon"
+    );
+    expect(heroIconGrid).not.toBeNull();
+    expect(heroIconGrid?.children).toHaveLength(4);
+    expect(
+      Array.from(
+        heroIconGrid?.querySelectorAll(
+          ".agent-gui-node__provider-rail-launchpad-item"
+        ) ?? []
+      ).map((item) => item.querySelector("img")?.getAttribute("src"))
+    ).toEqual([
+      MANAGED_AGENT_PROVIDER_RAIL_ICON_URLS.codex,
+      MANAGED_AGENT_PROVIDER_RAIL_ICON_URLS["claude-code"],
+      MANAGED_AGENT_PROVIDER_RAIL_ICON_URLS.tutti,
+      MANAGED_AGENT_PROVIDER_RAIL_ICON_URLS.hermes
+    ]);
+    expect(
+      Array.from(
+        heroIconGrid?.querySelectorAll(
+          ".agent-gui-node__provider-rail-launchpad-item"
+        ) ?? []
+      ).map((item) => item.getAttribute("data-provider-active"))
+    ).toEqual(["true", "false", "false", "false"]);
+  });
+
+  it("remounts the empty hero icon when switching provider targets", () => {
+    const codexTarget = createLocalAgentGUIProviderTarget("codex");
+    const claudeTarget = createLocalAgentGUIProviderTarget("claude-code");
+    const { container, rerender } = renderAgentGUINodeView({
+      viewModel: {
+        ...createViewModel(),
+        conversationFilter: {
+          kind: "agentTarget",
+          agentTargetId: codexTarget.agentTargetId ?? ""
+        },
+        selectedProviderTarget: codexTarget,
+        providerTargets: [codexTarget, claudeTarget]
+      }
+    });
+
+    const initialIcon = container.querySelector<HTMLImageElement>(
+      ".agent-gui-node__empty-hero-icon-effect"
+    );
+    expect(initialIcon).not.toBeNull();
+    expect(initialIcon?.getAttribute("src")).toBe(
+      MANAGED_AGENT_ICON_URLS.codex
+    );
+
+    rerender(
+      buildAgentGUINodeViewElement({
+        viewModel: createViewModel({
+          conversationFilter: {
+            kind: "agentTarget",
+            agentTargetId: claudeTarget.agentTargetId ?? ""
+          },
+          selectedProviderTarget: claudeTarget,
+          providerTargets: [codexTarget, claudeTarget]
+        })
+      })
+    );
+
+    const nextIcon = container.querySelector<HTMLImageElement>(
+      ".agent-gui-node__empty-hero-icon-effect"
+    );
+    expect(nextIcon).not.toBeNull();
+    expect(nextIcon).not.toBe(initialIcon);
+    expect(nextIcon?.getAttribute("src")).toBe(
+      MANAGED_AGENT_ICON_URLS["claude-code"]
+    );
+  });
+
+  it("dims disabled provider options in the empty hero provider select", async () => {
+    const actions = createActions();
+    const disabledTuttiTarget = {
+      ...createLocalAgentGUIProviderTarget("nexight"),
+      disabled: true
+    };
+    const disabledHermesTarget = {
+      ...createLocalAgentGUIProviderTarget("hermes"),
+      disabled: true
+    };
+    renderAgentGUINodeView({
+      actions,
+      viewModel: {
+        ...createViewModel(),
+        selectedProviderTarget: createLocalAgentGUIProviderTarget("codex"),
+        providerTargets: [
+          createLocalAgentGUIProviderTarget("codex"),
+          createLocalAgentGUIProviderTarget("claude-code"),
+          disabledTuttiTarget,
+          disabledHermesTarget
+        ]
+      },
+      labels: {
+        ...createLabels(),
+        empty: "What can Codex help you with?",
+        emptyProvider: "Codex",
+        providerSwitchLabel: "Switch provider",
+        handoffConversation: "Handoff",
+        handoffConversationMenu: "Choose agent"
+      }
+    });
+
+    ensurePointerCaptureApi();
+
+    const providerSelect = screen.getByRole("combobox", {
+      name: "Switch provider"
+    });
+    fireEvent.keyDown(providerSelect, { key: "ArrowDown" });
+
+    const tuttiOption = await screen.findByRole("option", {
+      name: "Tutti Agent"
+    });
+    const hermesOption = screen.getByRole("option", { name: "Hermes" });
+
+    expect(tuttiOption).toHaveAttribute("data-disabled");
+    expect(tuttiOption).toHaveClass("opacity-30");
+    expect(tuttiOption.querySelector("img")).toHaveClass("grayscale");
+    expect(hermesOption).toHaveAttribute("data-disabled");
+    expect(hermesOption).toHaveClass("opacity-30");
+
+    fireEvent.click(tuttiOption);
+
+    expect(actions.selectHomeComposerAgentTarget).not.toHaveBeenCalled();
+  });
+
   it("selects the All tile for daemon local Codex targets", () => {
     const daemonCodexTarget = {
       ...createLocalAgentGUIProviderTarget("codex"),
@@ -451,7 +924,6 @@ describe("AgentGUINodeView layout persistence", () => {
     renderAgentGUINodeView({
       viewModel: {
         ...createViewModel(),
-        conversationScope: "multi-provider",
         conversationFilter: { kind: "all" },
         selectedProviderTarget: daemonCodexTarget,
         providerTargets: [
@@ -474,11 +946,10 @@ describe("AgentGUINodeView layout persistence", () => {
     );
   });
 
-  it("shows provider target loading placeholders without local fallback tiles", () => {
+  it("shows provider target loading placeholders without static catalog tiles", () => {
     renderAgentGUINodeView({
       viewModel: {
         ...createViewModel(),
-        conversationScope: "multi-provider",
         providerTargets: [],
         providerTargetsLoading: true
       }
@@ -491,11 +962,10 @@ describe("AgentGUINodeView layout persistence", () => {
     expect(screen.getAllByRole("tab")).toHaveLength(4);
   });
 
-  it("does not synthesize provider rail tiles when provider targets are explicitly empty", () => {
+  it("synthesizes local provider rail tiles when provider targets load empty", () => {
     renderAgentGUINodeView({
       viewModel: {
         ...createViewModel(),
-        conversationScope: "multi-provider",
         providerTargets: [],
         providerTargetsLoading: false
       }
@@ -503,8 +973,33 @@ describe("AgentGUINodeView layout persistence", () => {
 
     expect(screen.getByRole("tablist")).toHaveAttribute("aria-busy", "false");
     expect(screen.getByRole("tab", { name: "All" })).toBeInTheDocument();
-    expect(screen.queryByRole("tab", { name: "Codex" })).toBeNull();
-    expect(screen.getAllByRole("tab")).toHaveLength(1);
+    expect(screen.getByRole("tab", { name: "Codex" })).toBeInTheDocument();
+    expect(
+      screen.getByRole("tab", { name: "Claude Code" })
+    ).toBeInTheDocument();
+    expect(screen.getByRole("tab", { name: "Tutti" })).toBeInTheDocument();
+    expect(screen.getByRole("tab", { name: "Hermes" })).toBeInTheDocument();
+    expect(screen.getByRole("tab", { name: "OpenClaw" })).toBeInTheDocument();
+    expect(screen.getByRole("tab", { name: "Tutti" })).toBeDisabled();
+    expect(screen.getByRole("tab", { name: "Hermes" })).toBeDisabled();
+    expect(screen.getByRole("tab", { name: "OpenClaw" })).toBeDisabled();
+    expect(
+      screen.getAllByRole("tab").map((tab) => tab.getAttribute("aria-label"))
+    ).toEqual(["All", "Codex", "Claude Code", "Tutti", "Hermes", "OpenClaw"]);
+  });
+
+  it("keeps the provider rail to the default agent tiles for static provider catalogs", () => {
+    renderAgentGUINodeView({
+      viewModel: {
+        ...createViewModel(),
+        providerTargets: createLocalAgentGUIProviderTargets(),
+        providerTargetsLoading: false
+      }
+    });
+
+    expect(
+      screen.getAllByRole("tab").map((tab) => tab.getAttribute("aria-label"))
+    ).toEqual(["All", "Codex", "Claude Code", "Tutti", "Hermes", "OpenClaw"]);
   });
 
   it("falls back to All for avatar rail targets without an agent target id", () => {
@@ -522,7 +1017,6 @@ describe("AgentGUINodeView layout persistence", () => {
       actions,
       viewModel: {
         ...createViewModel(),
-        conversationScope: "multi-provider",
         conversationFilter: { kind: "all" },
         selectedProviderTarget: sharedGeminiTarget,
         providerTargets: [
@@ -543,30 +1037,7 @@ describe("AgentGUINodeView layout persistence", () => {
       providerTargetId: "shared-agent:gemini-1"
     });
     expect(actions.updateConversationFilter).not.toHaveBeenCalled();
-    expect(actions.selectProvider).not.toHaveBeenCalled();
-  });
-
-  it("hides provider switching options from the single-provider composer", () => {
-    const actions = createActions();
-    const codexTarget = createLocalAgentGUIProviderTarget("codex");
-    const providerTargets = [
-      codexTarget,
-      createLocalAgentGUIProviderTarget("claude-code")
-    ];
-    renderAgentGUINodeView({
-      actions,
-      viewModel: {
-        ...createViewModel(),
-        selectedProviderTarget: codexTarget,
-        providerTargets
-      }
-    });
-
-    expect(composerMock.calls.at(-1)).toMatchObject({
-      onProviderSelect: undefined,
-      providerSelectReadonly: true,
-      providerTargets: [codexTarget]
-    });
+    expect(actions.selectHomeComposerAgentTarget).not.toHaveBeenCalled();
   });
 
   it("passes provider switching options into the multi-provider composer", () => {
@@ -577,41 +1048,99 @@ describe("AgentGUINodeView layout persistence", () => {
     ];
     renderAgentGUINodeView({
       actions,
+      labels: {
+        ...createLabels(),
+        empty: "What can Codex help you with?",
+        emptyProvider: "Codex"
+      },
       viewModel: {
         ...createViewModel(),
-        conversationScope: "multi-provider",
         providerTargets
       }
     });
 
+    const trigger = screen.getByRole("combobox", { name: "Switch provider" });
+
+    expect(trigger).toHaveClass("agent-gui-node__empty-hero-provider-select");
+    expect(trigger).toHaveTextContent("Codex");
+  });
+
+  it("renders provider switching options in the localized title", () => {
+    const providerTargets = [
+      createLocalAgentGUIProviderTarget("codex"),
+      createLocalAgentGUIProviderTarget("claude-code")
+    ];
+    renderAgentGUINodeView({
+      labels: {
+        ...createLabels(),
+        empty: "需要 Codex 帮你做些什么？",
+        emptyProvider: "Codex",
+        providerSwitchLabel: "切换 Provider",
+        handoffConversation: "Handoff",
+        handoffConversationMenu: "选择 Agent"
+      },
+      viewModel: {
+        ...createViewModel(),
+        providerTargets
+      }
+    });
+
+    const trigger = screen.getByRole("combobox", { name: "切换 Provider" });
+
+    expect(trigger).toHaveClass("agent-gui-node__empty-hero-provider-select");
+    expect(trigger).toHaveTextContent("Codex");
+  });
+
+  it("renders the composer from the selected provider target", () => {
+    const providerTargets = [
+      createLocalAgentGUIProviderTarget("codex"),
+      createLocalAgentGUIProviderTarget("claude-code")
+    ];
+    const selectedProviderTarget =
+      createLocalAgentGUIProviderTarget("claude-code");
+    renderAgentGUINodeView({
+      viewModel: {
+        ...createViewModel(),
+        data: {
+          provider: "codex",
+          agentTargetId: "local:codex",
+          lastActiveAgentSessionId: null,
+          conversationRailWidthPx: null
+        },
+        providerTargets,
+        selectedProviderTarget
+      }
+    });
+
     expect(composerMock.calls.at(-1)).toMatchObject({
-      onProviderSelect: actions.selectProvider,
-      providerSelectReadonly: false,
-      providerTargets
+      provider: "claude-code"
     });
   });
 
-  it("renders the composer provider select read-only for an active session", () => {
+  it("hides provider switching in the title for an active session", () => {
     const providerTargets = [
       createLocalAgentGUIProviderTarget("codex"),
       createLocalAgentGUIProviderTarget("claude-code")
     ];
     const conversation = createConversationSummary("session-1");
     renderAgentGUINodeView({
+      labels: {
+        ...createLabels(),
+        empty: "What can Codex help you with?",
+        emptyProvider: "Codex"
+      },
       viewModel: {
         ...createViewModel(),
         activeConversation: conversation,
         activeConversationId: conversation.id,
-        conversationScope: "multi-provider",
         conversations: [conversation],
         providerTargets
       }
     });
 
-    expect(composerMock.calls.at(-1)).toMatchObject({
-      providerSelectReadonly: true,
-      providerTargets
-    });
+    expect(
+      screen.queryByRole("combobox", { name: "Switch provider" })
+    ).not.toBeInTheDocument();
   });
 
   it("tells the composer whether there is an active conversation, so it knows when to defer clearing the draft on submit (Feishu UUl2Oc)", () => {
@@ -1492,7 +2021,6 @@ describe("AgentGUINodeView layout persistence", () => {
       },
       viewModel: {
         ...createViewModel(),
-        conversationScope: "multi-provider",
         conversationFilter: { kind: "agentTarget", agentTargetId },
         selectedProviderTarget: claudeTarget,
         providerTargets: [
@@ -2421,6 +2949,45 @@ describe("AgentGUINodeView layout persistence", () => {
       "agent-gui-node__timeline--scrolled-from-top"
     );
   });
+
+  it("shows a scroll-to-bottom action when the timeline is away from bottom", () => {
+    const activeConversation = createConversationSummary("session-1");
+    renderAgentGUINodeView({
+      viewModel: {
+        ...createViewModel(),
+        conversations: [activeConversation],
+        activeConversation,
+        activeConversationId: activeConversation.id,
+        conversationDetail: createConversationDetail()
+      }
+    });
+
+    const timeline = screen.getByTestId("agent-gui-timeline") as HTMLElement;
+    Object.defineProperty(timeline, "scrollHeight", {
+      configurable: true,
+      get: () => 1000
+    });
+    Object.defineProperty(timeline, "clientHeight", {
+      configurable: true,
+      get: () => 400
+    });
+    const scrollTo = vi.spyOn(timeline, "scrollTo");
+
+    timeline.scrollTop = 240;
+    fireEvent.scroll(timeline);
+
+    const button = screen.getByTestId("agent-gui-scroll-to-bottom");
+    expect(button).toHaveAccessibleName("scrollToBottom");
+
+    fireEvent.click(button);
+
+    expect(scrollTo).toHaveBeenCalledWith({
+      top: 600,
+      behavior: "smooth"
+    });
+    expect(screen.queryByTestId("agent-gui-scroll-to-bottom")).toBeNull();
+  });
+
   it("renders older-message loading above the transcript", () => {
     const activeConversation = createConversationSummary("session-1");
     renderAgentGUINodeView({
@@ -2767,11 +3334,37 @@ describe("AgentGUINodeView provider readiness gate", () => {
       screen.getByTestId("agent-gui-provider-readiness-gate")
     ).toHaveTextContent("providerGateLoginTitle");
 
-    fireEvent.click(
-      screen.getByTestId("agent-gui-provider-readiness-gate-action")
+    const action = screen.getByTestId(
+      "agent-gui-provider-readiness-gate-action"
     );
+    expect(action).toHaveTextContent("providerGateLoginAction");
+    expect(action.querySelector("svg")).toBeNull();
+
+    fireEvent.click(action);
 
     expect(onAction).toHaveBeenCalledWith("codex", "login");
+  });
+
+  it("renders the aggregate agents checking gate when the All tab is active", () => {
+    renderAgentGUINodeView({
+      viewModel: createViewModel({
+        conversationFilter: { kind: "all" },
+        providerReadinessGate: {
+          status: "checking"
+        }
+      })
+    });
+
+    const gate = screen.getByTestId("agent-gui-provider-readiness-gate");
+
+    expect(gate).toHaveTextContent("providerGateCheckingTitle");
+    expect(gate).toHaveTextContent("providerGateCheckingAgentsDescription");
+    expect(
+      gate.querySelector(".agent-gui-node__empty-hero-launchpad-icon")
+    ).not.toBeNull();
+    expect(
+      gate.querySelector("img.agent-gui-node__empty-hero-icon-effect")
+    ).toBeNull();
   });
 
   it("disables the gate action while an action is pending", () => {
@@ -3138,7 +3731,7 @@ function createActions(): AgentGUINodeViewProps["actions"] {
     interruptCurrentTurn: vi.fn(),
     updateDraftContent: vi.fn(),
     updateComposerSettings: vi.fn(),
-    selectProvider: vi.fn(),
+    selectHomeComposerAgentTarget: vi.fn(),
     sendQueuedPromptNext: vi.fn(),
     removeQueuedPrompt: vi.fn(),
     editQueuedPrompt: vi.fn(),
@@ -3168,7 +3761,6 @@ function createViewModel(
     selectedProviderTarget: createLocalAgentGUIProviderTarget("codex"),
     providerTargets: [createLocalAgentGUIProviderTarget("codex")],
     providerTargetsLoading: false,
-    conversationScope: "single-provider",
     conversationFilter: { kind: "all" },
     conversations: [],
     userProjects: [],
@@ -3245,7 +3837,8 @@ function createViewModel(
 }
 
 function createConversationSummary(
-  id: string
+  id: string,
+  overrides: Partial<AgentGUINodeViewModel["conversations"][number]> = {}
 ): AgentGUINodeViewModel["conversations"][number] {
   return {
     id,
@@ -3253,7 +3846,8 @@ function createConversationSummary(
     title: id,
     status: "ready",
     cwd: "/workspace",
-    updatedAtUnixMs: Date.now()
+    updatedAtUnixMs: Date.now(),
+    ...overrides
   };
 }
 
@@ -3335,12 +3929,17 @@ function createLabels(): AgentGUIViewLabels {
     installRequiredAction: "installRequiredAction",
     providerGateCheckingTitle: "providerGateCheckingTitle",
     providerGateCheckingDescription: "providerGateCheckingDescription",
+    providerGateCheckingAgentsDescription:
+      "providerGateCheckingAgentsDescription",
     providerGateInstallTitle: "providerGateInstallTitle",
     providerGateInstallDescription: "providerGateInstallDescription",
     providerGateInstallAction: "providerGateInstallAction",
     providerGateLoginTitle: "providerGateLoginTitle",
     providerGateLoginDescription: "providerGateLoginDescription",
     providerGateLoginAction: "providerGateLoginAction",
+    providerGateComingSoonTitle: "providerGateComingSoonTitle",
+    providerGateComingSoonDescription: "providerGateComingSoonDescription",
+    providerGateComingSoonAction: "providerGateComingSoonAction",
     providerGateUnavailableTitle: "providerGateUnavailableTitle",
     providerGateUnavailableDescription: "providerGateUnavailableDescription",
     providerGateRetryAction: "providerGateRetryAction",
@@ -3429,11 +4028,13 @@ function createLabels(): AgentGUIViewLabels {
     conversationFilterAll: "All",
     conversationFilterCodex: "Codex",
     conversationFilterClaudeCode: "Claude Code",
+    conversationFilterTutti: "Tutti",
     providerSwitchLabel: "Switch provider",
     startConversation: "startConversation",
     selectConversation: "selectConversation",
     loadingConversations: "loadingConversations",
     loadingConversation: "loadingConversation",
+    scrollToBottom: "scrollToBottom",
     searchNoConversations: "searchNoConversations",
     conversationUnavailable: "conversationUnavailable",
     fallbackAgentTitle: "Agent",
@@ -3600,6 +4201,8 @@ function createLabels(): AgentGUIViewLabels {
     addReference: "addReference",
     addContent: "addContent",
     referenceWorkspaceFiles: "referenceWorkspaceFiles",
+    handoffConversation: "Handoff",
+    handoffConversationMenu: "Choose agent",
     syncPending: "syncPending",
     syncSynced: "syncSynced",
     syncFailed: "syncFailed"

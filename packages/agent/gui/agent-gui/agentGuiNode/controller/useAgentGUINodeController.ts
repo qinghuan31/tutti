@@ -87,7 +87,6 @@ import type {
 } from "../../../host/agentHostApi";
 import type {
   AgentComposerDraft,
-  AgentGUIConversationScope,
   AgentGUIComposerSettingOption,
   AgentGUIComposerSettingsVM,
   AgentGUIProviderSkillOption,
@@ -189,6 +188,7 @@ import {
   resolveEffectiveComposerSettings,
   sameComposerSettings
 } from "./agentGuiController.composerHelpers";
+import { mergeAgentSessionControlStateSnapshot } from "./agentGuiController.sessionHelpers";
 import {
   PLAN_IMPLEMENTATION_ACTION_FEEDBACK,
   PLAN_IMPLEMENTATION_ACTION_IMPLEMENT,
@@ -2471,6 +2471,30 @@ function modelSelectionFromComposerOptions(
   };
 }
 
+function configOptionCurrentValue(
+  runtimeContext: Record<string, unknown> | null | undefined,
+  ids: readonly string[]
+): string | null {
+  const rawConfigOptions = Array.isArray(runtimeContext?.configOptions)
+    ? runtimeContext.configOptions
+    : [];
+  const idSet = new Set(ids);
+  for (const rawOption of rawConfigOptions) {
+    const option = recordValue(rawOption);
+    if (!option) {
+      continue;
+    }
+    const id = normalizeOptionalText(option.id as string | null | undefined);
+    if (!id || !idSet.has(id)) {
+      continue;
+    }
+    return normalizeOptionalText(
+      (option.currentValue ?? option.current_value) as string | null | undefined
+    );
+  }
+  return null;
+}
+
 function reasoningSelectionFromComposerOptions(
   options: AgentActivityComposerOptions | null,
   currentValue: AgentSessionReasoningEffort | null
@@ -3571,7 +3595,6 @@ interface UseAgentGUINodeControllerInput {
   workspacePath: string;
   avoidGroupingEdits: boolean;
   data: AgentGUINodeData;
-  conversationScope?: AgentGUIConversationScope;
   providerTargets?: readonly AgentGUIProviderTarget[];
   providerTargetsLoading?: boolean;
   providerReadinessGates?: Partial<
@@ -3599,8 +3622,10 @@ export interface AgentGUIOpenSessionRequest {
 }
 
 export interface AgentGUIPrefillPromptRequest {
+  agentTargetId?: string | null;
   autoSubmit?: boolean;
   draftPrompt: string;
+  provider?: AgentGUIProvider;
   sequence: number;
   userProjectPath?: string | null;
 }
@@ -3612,7 +3637,6 @@ export function useAgentGUINodeController({
   workspacePath,
   avoidGroupingEdits,
   data,
-  conversationScope = "single-provider",
   providerTargets,
   providerTargetsLoading = false,
   providerReadinessGates = null,
@@ -3631,29 +3655,41 @@ export function useAgentGUINodeController({
   const normalizedExplicitProviderTargets = useMemo(
     () =>
       normalizeAgentGUIProviderTargets(providerTargets, {
-        fallbackToLocal: false
+        includeDisabledPlaceholders: true,
+        useStaticCatalog: false
       }),
     [providerTargets]
   );
-  const normalizedProviderTargets = useMemo(
-    () =>
-      providerTargetsLoading
-        ? []
-        : providerTargets === undefined
-          ? normalizeAgentGUIProviderTargets(null)
-          : normalizedExplicitProviderTargets,
-    [normalizedExplicitProviderTargets, providerTargets, providerTargetsLoading]
-  );
-  const shouldFallbackToLocalProviderTargets =
-    providerTargets === undefined && !providerTargetsLoading;
+  const normalizedProviderTargets = useMemo(() => {
+    if (providerTargetsLoading) {
+      return [];
+    }
+    if (
+      providerTargets === undefined ||
+      normalizedExplicitProviderTargets.length === 0
+    ) {
+      return normalizeAgentGUIProviderTargets(null, {
+        includeDisabledPlaceholders: true
+      });
+    }
+    return normalizedExplicitProviderTargets;
+  }, [
+    normalizedExplicitProviderTargets,
+    providerTargets,
+    providerTargetsLoading
+  ]);
+  const shouldUseStaticProviderTargets =
+    !providerTargetsLoading &&
+    (providerTargets === undefined ||
+      normalizedExplicitProviderTargets.length === 0);
   const selectedProviderTarget = useMemo(() => {
     const resolved = resolveAgentGUIProviderTarget({
       agentTargetId: data.agentTargetId,
       defaultProviderTargetId,
-      fallbackToLocal: shouldFallbackToLocalProviderTargets,
       provider: data.provider,
       providerTargetId: data.providerTargetId,
-      providerTargets: normalizedProviderTargets
+      providerTargets: normalizedProviderTargets,
+      useStaticCatalog: shouldUseStaticProviderTargets
     });
     return (
       resolved ?? {
@@ -3673,7 +3709,7 @@ export function useAgentGUINodeController({
     data.providerTargetId,
     defaultProviderTargetId,
     normalizedProviderTargets,
-    shouldFallbackToLocalProviderTargets
+    shouldUseStaticProviderTargets
   ]);
   const selectedProviderTargetIsExplicit = useMemo(
     () =>
@@ -3786,16 +3822,6 @@ export function useAgentGUINodeController({
     );
   const conversationFilterRef = useRef(conversationFilter);
   conversationFilterRef.current = conversationFilter;
-  const canUseConversationTargetFilter = conversationScope === "multi-provider";
-  const queryConversationFilter = canUseConversationTargetFilter
-    ? conversationFilter
-    : null;
-  useEffect(() => {
-    if (canUseConversationTargetFilter || conversationFilter.kind === "all") {
-      return;
-    }
-    setConversationFilter({ kind: "all" });
-  }, [canUseConversationTargetFilter, conversationFilter]);
   const conversationListQuery =
     useMemo<AgentGUIConversationListQuery | null>(() => {
       const userId = currentUserId?.trim() ?? "";
@@ -3804,15 +3830,13 @@ export function useAgentGUINodeController({
         return null;
       }
       return {
-        ...(queryConversationFilter
-          ? { conversationFilter: queryConversationFilter }
-          : {}),
+        conversationFilter,
         workspaceId,
         userId,
         provider: data.provider,
         sessionOrigin: AGENT_GUI_RUNTIME_SESSION_ORIGIN
       };
-    }, [currentUserId, data.provider, queryConversationFilter, workspaceId]);
+    }, [currentUserId, data.provider, conversationFilter, workspaceId]);
   const conversationListState = useAgentGuiConversationList(
     conversationListQuery
   );
@@ -5570,9 +5594,9 @@ export function useAgentGUINodeController({
           ...sessionStateSnapshotCauseBySessionIdRef.current,
           [agentSessionId]: cause ? { source: cause.source } : undefined
         };
-        setAgentSessionViewControlState(
+        updateAgentSessionViewControlState(
           sessionViewRef(agentSessionId),
-          snapshot
+          (current) => mergeAgentSessionControlStateSnapshot(current, snapshot)
         );
       } catch (error) {
         if (
@@ -7542,13 +7566,13 @@ export function useAgentGUINodeController({
       // Starting a new conversation from a target tab should compose for that
       // tab's target, not for whatever target the node last remembered.
       const filter = conversationFilterRef.current;
-      if (canUseConversationTargetFilter && filter.kind === "agentTarget") {
+      if (filter.kind === "agentTarget") {
         const filterTarget = resolveAgentGUIProviderTarget({
           agentTargetId: filter.agentTargetId,
           defaultProviderTargetId,
-          fallbackToLocal: false,
           provider: dataRef.current.provider,
-          providerTargets: normalizedProviderTargets
+          providerTargets: normalizedProviderTargets,
+          useStaticCatalog: false
         });
         if (
           filterTarget &&
@@ -7563,7 +7587,6 @@ export function useAgentGUINodeController({
     [
       activation,
       agentActivityRuntime,
-      canUseConversationTargetFilter,
       defaultProviderTargetId,
       loadDraftComposerOptions,
       normalizedProviderTargets,
@@ -7615,13 +7638,14 @@ export function useAgentGUINodeController({
     setActiveConversationId(null);
     setIsLoadingMessages(false);
     setDetailError(null);
-    const targetData = selectedComposerTargetDataRef.current;
+    const selectedTargetData = selectedComposerTargetDataRef.current;
+    const targetProvider =
+      prefillPromptRequest.provider ?? selectedTargetData.provider;
+    const targetAgentTargetId =
+      prefillPromptRequest.agentTargetId ?? selectedTargetData.agentTargetId;
     setDraftBySessionId((current) => ({
       ...current,
-      [nodeDefaultDraftContentKey(
-        targetData.provider,
-        targetData.agentTargetId
-      )]: {
+      [nodeDefaultDraftContentKey(targetProvider, targetAgentTargetId)]: {
         ...emptyAgentComposerDraft(),
         prompt: draftPrompt
       }
@@ -8668,12 +8692,16 @@ export function useAgentGUINodeController({
           const queuedUpdate =
             queuedComposerSettingsUpdatesRef.current[agentSessionId] ?? null;
           const optimisticSettings = queuedUpdate?.sessionSettingsPatch ?? null;
-          const nextAppliedSettings = optimisticSettings
-            ? {
-                ...result.settings,
-                ...optimisticSettings
-              }
-            : result.settings;
+          const pendingClaudeModelRefreshSettings =
+            dataRef.current.provider === "claude-code" &&
+            sessionSettingsPatch.model !== undefined
+              ? { model: sessionSettingsPatch.model }
+              : null;
+          const nextAppliedSettings = {
+            ...result.settings,
+            ...(pendingClaudeModelRefreshSettings ?? {}),
+            ...(optimisticSettings ?? {})
+          };
           updateAgentSessionViewControlState(
             sessionViewRef(agentSessionId),
             (existing) =>
@@ -9739,9 +9767,9 @@ export function useAgentGUINodeController({
     const sessionTarget = resolveAgentGUIProviderTarget({
       agentTargetId: summaryAgentTargetId,
       defaultProviderTargetId,
-      fallbackToLocal: shouldFallbackToLocalProviderTargets,
       provider: summary.provider,
-      providerTargets: normalizedProviderTargets
+      providerTargets: normalizedProviderTargets,
+      useStaticCatalog: shouldUseStaticProviderTargets
     });
     if (!sessionTarget || sessionTarget.provider !== summary.provider) {
       return;
@@ -9791,7 +9819,7 @@ export function useAgentGUINodeController({
     normalizedProviderTargets,
     previewMode,
     providerTargetsLoading,
-    shouldFallbackToLocalProviderTargets
+    shouldUseStaticProviderTargets
   ]);
   const visibleConversationsRef = useRef<AgentGUIConversationSummary[] | null>(
     null
@@ -10218,7 +10246,12 @@ export function useAgentGUINodeController({
   const draftSettings = activeConversationId
     ? (sessionSettings ?? defaultConversationDraftSettings)
     : homeComposerSettings;
-  const draftModel = normalizeOptionalText(draftSettings.model);
+  const liveConfigModel =
+    activeConversationId !== null
+      ? configOptionCurrentValue(activeSessionRuntimeContext, ["model"])
+      : null;
+  const draftModel =
+    liveConfigModel ?? normalizeOptionalText(draftSettings.model);
   const draftReasoningEffort = normalizeOptionalText(
     draftSettings.reasoningEffort
   ) as AgentSessionReasoningEffort | null;
@@ -10626,15 +10659,11 @@ export function useAgentGUINodeController({
 
   const updateConversationFilter = useCallback(
     (filter: AgentGUIConversationFilter) => {
-      if (!canUseConversationTargetFilter) {
-        setConversationFilter({ kind: "all" });
-        return;
-      }
       setConversationFilter(normalizeAgentGUIConversationFilter(filter));
     },
-    [canUseConversationTargetFilter]
+    []
   );
-  const selectProvider = useCallback(
+  const selectHomeComposerAgentTarget = useCallback(
     (input: {
       provider: AgentGUIProvider;
       providerTargetId?: string | null;
@@ -10645,15 +10674,12 @@ export function useAgentGUINodeController({
       const nextProvider = input.provider;
       const nextTarget = resolveAgentGUIProviderTarget({
         defaultProviderTargetId,
-        fallbackToLocal: shouldFallbackToLocalProviderTargets,
         provider: nextProvider,
         providerTargetId: input.providerTargetId,
-        providerTargets: normalizedProviderTargets
+        providerTargets: normalizedProviderTargets,
+        useStaticCatalog: shouldUseStaticProviderTargets
       });
       if (!nextTarget) {
-        return;
-      }
-      if (nextTarget.disabled === true) {
         return;
       }
       const nextTargetIsExplicit = normalizedExplicitProviderTargets.some(
@@ -10708,7 +10734,9 @@ export function useAgentGUINodeController({
         dataRef.current = nextData;
         return nextData;
       });
-      loadComposerOptionsForTarget(nextTargetData, { force: true });
+      if (nextTarget.disabled !== true) {
+        loadComposerOptionsForTarget(nextTargetData, { force: true });
+      }
     },
     [
       activation,
@@ -10718,7 +10746,7 @@ export function useAgentGUINodeController({
       normalizedProviderTargets,
       persistActiveConversation,
       previewMode,
-      shouldFallbackToLocalProviderTargets
+      shouldUseStaticProviderTargets
     ]
   );
   const selectConversationFilterTarget = useCallback(
@@ -10726,16 +10754,12 @@ export function useAgentGUINodeController({
       provider: AgentGUIProvider;
       providerTargetId?: string | null;
     }) => {
-      if (!canUseConversationTargetFilter) {
-        setConversationFilter({ kind: "all" });
-        return;
-      }
       const nextTarget = resolveAgentGUIProviderTarget({
         defaultProviderTargetId,
-        fallbackToLocal: shouldFallbackToLocalProviderTargets,
         provider: input.provider,
         providerTargetId: input.providerTargetId,
-        providerTargets: normalizedProviderTargets
+        providerTargets: normalizedProviderTargets,
+        useStaticCatalog: shouldUseStaticProviderTargets
       });
       if (!nextTarget || nextTarget.disabled === true) {
         reportAgentGUIConversationFilterTargetUnresolved({
@@ -10748,29 +10772,32 @@ export function useAgentGUINodeController({
         });
         return;
       }
-      // Keep the home composer chip in sync with the selected tab; an active
-      // conversation keeps owning the chip (it shows the session's target).
-      if (activeConversationIdRef.current === null) {
-        setHomeComposerTargetOverride(nextTarget);
-      }
       const agentTargetId = nextTarget.agentTargetId?.trim() ?? "";
       const nextFilter = agentTargetId
         ? { kind: "agentTarget" as const, agentTargetId }
         : { kind: "all" as const };
       setConversationFilter(nextFilter);
+      // Keep the home composer chip in sync with the selected tab. Active
+      // conversations keep owning their target and must not be unactivated by a
+      // rail filter click.
+      if (activeConversationIdRef.current === null) {
+        selectHomeComposerAgentTarget(input);
+      }
     },
     [
       agentActivityRuntime,
-      canUseConversationTargetFilter,
       defaultProviderTargetId,
       normalizedProviderTargets,
-      shouldFallbackToLocalProviderTargets,
+      selectHomeComposerAgentTarget,
+      shouldUseStaticProviderTargets,
       workspaceId
     ]
   );
   const stableCreateConversation =
     useStableControllerEventCallback(createConversation);
-  const stableSelectProvider = useStableControllerEventCallback(selectProvider);
+  const stableSelectHomeComposerAgentTarget = useStableControllerEventCallback(
+    selectHomeComposerAgentTarget
+  );
   const stableSelectConversationFilterTarget = useStableControllerEventCallback(
     selectConversationFilterTarget
   );
@@ -10851,7 +10878,7 @@ export function useAgentGUINodeController({
     () => ({
       updateConversationFilter: stableUpdateConversationFilter,
       selectConversationFilterTarget: stableSelectConversationFilterTarget,
-      selectProvider: stableSelectProvider,
+      selectHomeComposerAgentTarget: stableSelectHomeComposerAgentTarget,
       createConversation: stableCreateConversation,
       selectConversation: stableSelectConversation,
       submitPrompt: stableSubmitPrompt,
@@ -10902,7 +10929,7 @@ export function useAgentGUINodeController({
       stableRetryOpenclawGateway,
       stableSelectConversation,
       stableSelectConversationFilterTarget,
-      stableSelectProvider,
+      stableSelectHomeComposerAgentTarget,
       stableSendQueuedPromptNext,
       stableSubmitGuidancePrompt,
       stableShowPromptImagesUnsupported,
@@ -10928,7 +10955,6 @@ export function useAgentGUINodeController({
         selectedProviderTarget: effectiveSelectedProviderTarget,
         providerTargets: normalizedProviderTargets,
         providerTargetsLoading,
-        conversationScope,
         conversationFilter,
         conversations: visibleConversations,
         userProjects,
@@ -10997,7 +11023,6 @@ export function useAgentGUINodeController({
       canSubmit,
       canQueueWhileBusy,
       conversation,
-      conversationScope,
       conversationFilter,
       conversationDetail,
       controllerActions,
