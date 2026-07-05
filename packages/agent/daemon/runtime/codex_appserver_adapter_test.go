@@ -73,6 +73,7 @@ type scriptedAppServerConnection struct {
 	childNicknames               map[string]string // thread/read agentNickname responses by threadId
 	turnStartEntered             chan struct{}
 	turnStartRelease             chan struct{}
+	threadName                   string
 	commandApproval              bool
 	userInputRequest             bool
 	reviewInline                 bool          // stream review output as inline reasoning/command items
@@ -445,8 +446,14 @@ func (c *scriptedAppServerConnection) Send(data []byte) error {
 					map[string]any{"step": "Run tests", "status": "inProgress"},
 				},
 			})
+			c.mu.Lock()
+			threadName := c.threadName
+			c.mu.Unlock()
+			if threadName == "" {
+				threadName = "Inspect repository structure"
+			}
 			c.notify(appServerNotifyThreadNameUpdated, map[string]any{
-				"threadId": "codex-thread-1", "threadName": "Inspect repository structure",
+				"threadId": "codex-thread-1", "threadName": threadName,
 			})
 			if hold {
 				continue
@@ -856,6 +863,26 @@ func TestCodexAppServerAdapterExecRoutesAgentTargetMention(t *testing.T) {
 	userContent := firstUserMessageContent(t, events)
 	if userContent != prompt || strings.Contains(userContent, "system-reminder") {
 		t.Fatalf("user activity content = %q, want original prompt only", userContent)
+	}
+}
+
+func TestCodexAppServerAdapterDoesNotProjectInternalMentionRoutingTitle(t *testing.T) {
+	t.Parallel()
+
+	adapter, transport, session := startedAppServerAdapter(t)
+	transport.conn.mu.Lock()
+	transport.conn.threadName = tuttiMentionRoutingReminder
+	transport.conn.mu.Unlock()
+
+	events, err := adapter.Exec(context.Background(), session, textPrompt("inspect repo"), "", "turn-internal-title", nil, nil)
+	if err != nil {
+		t.Fatalf("Exec: %v", err)
+	}
+
+	for _, event := range events {
+		if event.Type == activityshared.EventSessionUpdated && event.Payload.Title == tuttiMentionRoutingReminder {
+			t.Fatalf("events = %#v, want internal mention routing title excluded from title updates", events)
+		}
 	}
 }
 
@@ -1861,6 +1888,56 @@ func TestCodexAppServerAdapterExecSteersActiveTurn(t *testing.T) {
 	// arrive for a steered turn id.
 	if steered, ok := messages[0].Payload.Metadata["steered"].(bool); !ok || !steered {
 		t.Fatalf("steer message metadata = %#v, want steered=true", messages[0].Payload.Metadata)
+	}
+
+	transport.conn.completePendingTurn()
+	select {
+	case <-execDone:
+	case <-time.After(5 * time.Second):
+		t.Fatalf("original Exec did not finish")
+	}
+}
+
+func TestCodexAppServerAdapterSteerRoutesAgentTargetMention(t *testing.T) {
+	t.Parallel()
+
+	adapter, transport, session := startedAppServerAdapter(t)
+	transport.conn.holdTurn = true
+
+	execDone := make(chan struct{})
+	go func() {
+		_, _ = adapter.Exec(context.Background(), session, textPrompt("long task"), "", "turn-local-1", nil, nil)
+		close(execDone)
+	}()
+	waitForCondition(t, func() bool {
+		return adapter.sessionActiveTurnID(session.AgentSessionID) == "turn-1"
+	})
+
+	prompt := "让 [@Codex](mention://agent-target/local:codex?workspaceId=workspace-1) 来看下"
+	events, err := adapter.Exec(context.Background(), session, textPrompt(prompt), "", "turn-agent-target-steer", nil, nil)
+	if err != nil {
+		t.Fatalf("steer Exec: %v", err)
+	}
+	steer := appServerRequestParams(t, transport.conn, appServerMethodTurnSteer)
+	if asString(steer["expectedTurnId"]) != "turn-1" {
+		t.Fatalf("turn/steer params = %#v", steer)
+	}
+	input, _ := steer["input"].([]any)
+	if len(input) != 2 {
+		t.Fatalf("turn/steer input = %#v, want user prompt plus internal routing prompt", steer["input"])
+	}
+	first, _ := input[0].(map[string]any)
+	if asString(first["text"]) != prompt {
+		t.Fatalf("turn/steer user text = %q, want %q", asString(first["text"]), prompt)
+	}
+	last, _ := input[len(input)-1].(map[string]any)
+	if asString(last["text"]) != tuttiMentionRoutingReminder {
+		t.Fatalf("turn/steer routing text = %q, want %q", asString(last["text"]), tuttiMentionRoutingReminder)
+	}
+
+	userContent := firstUserMessageContent(t, events)
+	if userContent != prompt || strings.Contains(userContent, "system-reminder") {
+		t.Fatalf("user activity content = %q, want original prompt only", userContent)
 	}
 
 	transport.conn.completePendingTurn()

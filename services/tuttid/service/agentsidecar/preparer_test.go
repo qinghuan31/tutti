@@ -204,7 +204,9 @@ func TestDefaultPreparerCodexWritesInstructionsSkillManifestAndEnv(t *testing.T)
 		t.Fatalf("tutti skill missing: %v", err)
 	}
 	if !strings.Contains(string(skill), "`tutti <scope> --help`") ||
-		!strings.Contains(string(skill), "this skill's `command-guide.md`") {
+		!strings.Contains(string(skill), "this skill's `command-guide.md`") ||
+		!strings.Contains(string(skill), "mention://agent-target") ||
+		!strings.Contains(string(skill), "not launch-only") {
 		t.Fatalf("skill content = %q", string(skill))
 	}
 	commandGuideReference, err := os.ReadFile(filepath.Join(codexHome, "skills", "tutti-cli", commandGuideReferencePath))
@@ -857,6 +859,7 @@ func TestDefaultPreparerClaudeCodeUsesSessionScopedSystemPrompt(t *testing.T) {
 		!strings.Contains(string(systemPrompt), "`mention://workspace-app/<appId>?workspaceId=...`") ||
 		!strings.Contains(string(systemPrompt), "`mention://workspace-reference/<id>?source=...&workspaceId=...`") ||
 		!strings.Contains(string(systemPrompt), "`mention://agent-session/<sessionId>?workspaceId=...`") ||
+		!strings.Contains(string(systemPrompt), "`mention://agent-target/<targetId>?workspaceId=...`") ||
 		!strings.Contains(string(systemPrompt), "Provider Skill tool exists -> call exact visible name for matching `$...` skill") ||
 		!strings.Contains(string(systemPrompt), "Skill missing/fails -> read matching materialized `SKILL.md`") ||
 		!strings.Contains(string(systemPrompt), "Claude Code mention routing") ||
@@ -873,7 +876,8 @@ func TestDefaultPreparerClaudeCodeUsesSessionScopedSystemPrompt(t *testing.T) {
 		!strings.Contains(string(systemPrompt), "issue get --issue-id <issue-id> --json") ||
 		!strings.Contains(string(systemPrompt), "Claude Code `Monitor` tool is disabled") ||
 		!strings.Contains(string(systemPrompt), "bounded shell/script") ||
-		!strings.Contains(string(systemPrompt), "agent session-summary --session-id <session-id> --json") {
+		!strings.Contains(string(systemPrompt), "agent session-summary --session-id <session-id> --json") ||
+		!strings.Contains(string(systemPrompt), "this is not launch-only") {
 		t.Fatalf("claude system prompt content = %q, want mention handoff fallback guidance", string(systemPrompt))
 	}
 	if !strings.Contains(string(systemPrompt), "# Host App Context") ||
@@ -892,6 +896,7 @@ func TestDefaultPreparerClaudeCodeUsesSessionScopedSystemPrompt(t *testing.T) {
 		!strings.Contains(string(systemPrompt), "Provider Skill tool exists -> call exact visible name for matching `$...` skill") ||
 		!strings.Contains(string(systemPrompt), "Skill missing/fails -> read matching materialized `SKILL.md`") ||
 		!strings.Contains(string(systemPrompt), "`mention://...` = internal data. Not URL/path.") ||
+		!strings.Contains(string(systemPrompt), "`mention://agent-target/<targetId>?workspaceId=...`") ||
 		!strings.Contains(string(systemPrompt), "agent session-summary --session-id <session-id> --json") ||
 		!strings.Contains(string(systemPrompt), "issue get --issue-id <issue-id> --json") {
 		t.Fatalf("claude system prompt content = %q, want strict Tutti mention routing", string(systemPrompt))
@@ -931,6 +936,8 @@ func TestDefaultPreparerClaudeCodeUsesSessionScopedSystemPrompt(t *testing.T) {
 	if !strings.Contains(string(pluginSkill), "`tutti <scope> --help`") ||
 		!strings.Contains(string(pluginSkill), "this skill's `command-guide.md`") ||
 		!strings.Contains(string(pluginSkill), "mention://agent-session") ||
+		!strings.Contains(string(pluginSkill), "mention://agent-target") ||
+		!strings.Contains(string(pluginSkill), "not launch-only") ||
 		!strings.Contains(string(pluginSkill), "## Route First") ||
 		!strings.Contains(string(pluginSkill), "## Call Protocol") ||
 		!strings.Contains(string(pluginSkill), "invoke `$issue-manager`") ||
