@@ -1,6 +1,6 @@
 ---
 name: tutti-agent-workspace-app
-description: "Build or evolve a complex agent-enabled Tutti workspace app repository. Use for Tutti apps with web/server/shared monorepos, local agent runtimes, Codex or Claude provider detection, run-scoped MCP tool gateways, app-owned package builders, Tutti CLI/reference surfaces, web-first debugging, i18n harnesses, and production package validation. For simple package creation or repair, use tutti-workspace-app-factory instead."
+description: "Build or evolve a complex agent-enabled Tutti workspace app repository. Use for Tutti apps with web/server/shared monorepos, @tutti-os/agent-acp-kit local agent runtimes, Codex or Claude provider detection, run-scoped MCP tool gateways, app-owned package builders, Tutti CLI/reference surfaces, web-first debugging, i18n harnesses, and production package validation. For simple package creation or repair, use tutti-workspace-app-factory instead."
 ---
 
 # Tutti Agent Workspace App
@@ -15,7 +15,7 @@ Use this skill for:
 
 - New agent-enabled Tutti app repositories.
 - Existing web/server apps being converted into maintainable Tutti app repos.
-- Apps that need local Codex or Claude runtime execution.
+- Apps that need `@tutti-os/agent-acp-kit` for local Codex or Claude runtime execution.
 - App-specific MCP or command gateways that expose domain tools to local agents.
 - Multi-package `pnpm` workspaces with `apps/web`, `apps/server`, and `packages/shared`.
 - App-owned packaging, smoke tests, i18n enforcement, and CLI/reference endpoints.
@@ -28,7 +28,7 @@ Use `$tutti-workspace-app-factory` instead for a small standalone package, packa
 Read only the references needed for the task:
 
 - `references/app-architecture.md` for repository layout, web/server/shared boundaries, and dependency choices.
-- `references/local-agent-runtime.md` when implementing local agent providers, provider detection, stream event mapping, or run-scoped MCP tools.
+- `references/agent-acp-kit.md` when implementing local agent providers, provider detection, ACP event mapping, or run-scoped MCP tools.
 - `references/package-builder.md` when adding `scripts/package-tutti-app.mjs`, `bootstrap.sh`, Tutti CLI output docs, or package validation.
 - `references/github-actions-release.md` when creating or changing `.github/workflows/publish-tutti-app.yml`, `.github/workflows/publish-tutti-app-staging.yml`, release variables, or catalog publishing.
 - `references/i18n-and-web-debugging.md` when changing UI copy, language handling, web-first debug flow, or smoke/e2e checks.
@@ -41,9 +41,9 @@ Also read `$tutti-workspace-app-factory` before changing final package files or 
 2. Choose the smallest architecture that can stay maintainable: do not add local agents, WebSocket, MCP, CLI, or background workers unless the product needs them.
 3. Define shared contracts before wiring web/server calls. Keep domain DTOs, WebSocket messages, CLI-visible shapes, and runtime profile types in `packages/shared`.
 4. Build the web UI as the primary development surface. Keep the server as local API/static host and app orchestration layer.
-5. If agents are needed, add provider detection, a runtime provider abstraction, event normalization, and a run-scoped tool gateway.
+5. If agents are needed, add `@tutti-os/agent-acp-kit`, provider detection, runtime provider abstraction, event normalization, and a run-scoped tool gateway.
    The main app flow must offer at least Claude Code and Codex as provider options when they are detected as available. Pick one available provider as the default; do not hard-code a single provider.
-   For apps that must run both locally and in cloud/managed Tutti, follow `references/local-agent-runtime.md` exactly: managed credentials come from request headers on the server, never from browser JSB fallback or request body fields.
+   For apps that must run both locally and in cloud/managed Tutti, follow `references/agent-acp-kit.md` exactly: managed credentials come from request headers on the server, never from browser JSB fallback or request body fields.
 6. Add package generation only after the local dev app runs. Package the built web assets, bundled server, `tutti.app.json`, optional `tutti.cli.json`, executable `bootstrap.sh`, assets, locales, and package-local `AGENTS.md`.
 7. If the user asks to connect to the Tutti app ecosystem, treat ecosystem integration as required: expose app capabilities through `tutti.cli.json`, make the app callable by other Tutti apps and agents, and use `TUTTI_CLI` for any calls to other installed Tutti apps.
 8. For GitHub-hosted app repositories that should publish releases, add staging and production release workflows after the package builder is stable.
@@ -53,10 +53,10 @@ Also read `$tutti-workspace-app-factory` before changing final package files or 
 
 When adapting an existing local-first agent app for cloud/managed Tutti, the app must keep the local path working while removing app-owned credential plumbing:
 
-1. Keep managed-agent context handling in server code and derive it from request headers.
-2. In server-side detect/model endpoints, pass only server-derived context into provider detection.
-3. In server-side run creation, derive the run cwd and managed invocation context from request headers.
-4. Pass only the derived cwd and managed invocation context into the local runtime provider.
+1. Upgrade `@tutti-os/agent-acp-kit` to a version that exports managed-agent header context helpers.
+2. In server-side detect/model endpoints, call `createManagedAgentDetectContextFromHeaders(req.headers)` and pass the returned context to `localAgentRuntime.detect(...)`.
+3. In server-side run creation, call `createManagedAgentRunContextFromHeaders(req.headers, { providerId, runId })`.
+4. Pass only `cwd: runContext.cwd` and `managedAgentInvocation: runContext.managedAgentInvocation` into `localAgentRuntime.run(...)`.
 5. Delete browser JSB credential fallback code.
 6. Delete request body credential fields and client-side credential forwarding.
 7. Never persist managed credentials.

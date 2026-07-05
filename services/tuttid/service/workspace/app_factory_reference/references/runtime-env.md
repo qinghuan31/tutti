@@ -27,7 +27,7 @@ Tutti keeps the managed runtime baseline outside app packages under daemon-owned
 
 tuttid may preload the managed runtime during daemon startup or an explicit runtime-preparation workflow, but listing App Center apps does not preload runtimes as a side effect. If the runtime is still missing when an installed app starts, Tutti reports the app as `preparing` while it resolves or downloads the runtime, then moves to `starting` only when `bootstrap.sh` is about to launch.
 
-Default newly generated apps to a small Node server, using Node built-ins when they are enough. Use Python only when adapting an existing Python project or when the user explicitly requests Python. Agent-enabled apps must use a Node server because provider detection, streaming, and run-scoped tool gateways belong in the app host process. Avoid startup-time dependency installation. If build or install steps are necessary, put them in executable `prepare.sh`, not `bootstrap.sh`. `prepare.sh` may use the managed runtime variables for dependency installation and build commands. `bootstrap.sh` should only launch the already prepared app server.
+Default newly generated apps to a small Node server, using Node built-ins when they are enough. Use Python only when adapting an existing Python project or when the user explicitly requests Python. Agent-enabled apps must use a Node server because `@tutti-os/agent-acp-kit` is Node-only. Avoid startup-time dependency installation. If build or install steps are necessary, put them in executable `prepare.sh`, not `bootstrap.sh`. `prepare.sh` may use the managed runtime variables for dependency installation and build commands. `bootstrap.sh` should only launch the already prepared app server.
 
 ## Browser External Context
 
@@ -56,7 +56,7 @@ function subscribeHostLocale(listener) {
 }
 ```
 
-`subscribe` replays the latest context after registration, so apps do not need host-injected DOM events for initial locale delivery. Provider lists, default provider, and agent composer options are not part of browser external context. Agent-enabled apps should expose an app-owned backend endpoint for those choices; use `TUTTI_CLI` only for non-agent Tutti platform or app-to-app capabilities. The context is optional so generated apps continue to run in a normal browser during development.
+`subscribe` replays the latest context after registration, so apps do not need host-injected DOM events for initial locale delivery. Provider lists, default provider, and agent composer options are not part of browser external context. Agent-enabled apps should expose an app-owned backend endpoint backed by `@tutti-os/agent-acp-kit` detection for those choices; use `TUTTI_CLI` only for non-agent Tutti platform or app-to-app capabilities. The context is optional so generated apps continue to run in a normal browser during development.
 
 For theme, use CSS media queries and `matchMedia`:
 

@@ -325,53 +325,38 @@ func TestAppFactoryServiceCreateUsesDraftDirAndReferenceContext(t *testing.T) {
 		t.Fatalf("app factory skill missing manifest reference: %#v", appFactorySkill.Files)
 	}
 	runtimeEnvReference := appFactorySkill.Files["references/runtime-env.md"]
-	if !strings.Contains(runtimeEnvReference, "Agent-enabled apps should expose an app-owned backend endpoint") {
-		t.Fatalf("runtime env reference should route agent provider choices through an app-owned backend endpoint:\n%s", runtimeEnvReference)
+	if !strings.Contains(runtimeEnvReference, "@tutti-os/agent-acp-kit` detection") {
+		t.Fatalf("runtime env reference should route agent provider choices through app-owned agent-acp-kit detection:\n%s", runtimeEnvReference)
 	}
 	tuttiCLIReference := appFactorySkill.Files["references/tutti-cli-commands.md"]
-	if !strings.Contains(tuttiCLIReference, "references/local-agent-runtime.md") {
-		t.Fatalf("tutti CLI reference should point agent execution to local agent runtime guidance:\n%s", tuttiCLIReference)
+	if !strings.Contains(tuttiCLIReference, "@tutti-os/agent-acp-kit") {
+		t.Fatalf("tutti CLI reference should point agent execution to agent-acp-kit:\n%s", tuttiCLIReference)
 	}
 	if strings.Contains(tuttiCLIReference, "node:child_process") {
 		t.Fatalf("tutti CLI reference should not lead with child_process examples:\n%s", tuttiCLIReference)
-	}
-	legacyAgentPackageName := strings.Join([]string{"agent", "acp", "kit"}, "-")
-	for path, contents := range appFactorySkill.Files {
-		if strings.Contains(contents, legacyAgentPackageName) {
-			t.Fatalf("app factory skill file %s should not mention the removed local agent package:\n%s", path, contents)
-		}
 	}
 	agentWorkspaceAppSkill := sessions.createInput.ExtraSkills[1]
 	if agentWorkspaceAppSkill.Name != "tutti-agent-workspace-app" {
 		t.Fatalf("CreateSession second extra skill name = %q, want tutti-agent-workspace-app", agentWorkspaceAppSkill.Name)
 	}
-	if !strings.Contains(agentWorkspaceAppSkill.Files["SKILL.md"], "references/local-agent-runtime.md") {
-		t.Fatalf("agent workspace app skill missing local agent runtime guidance: %q", agentWorkspaceAppSkill.Files["SKILL.md"])
+	if !strings.Contains(agentWorkspaceAppSkill.Files["SKILL.md"], "@tutti-os/agent-acp-kit") {
+		t.Fatalf("agent workspace app skill missing agent-acp-kit guidance: %q", agentWorkspaceAppSkill.Files["SKILL.md"])
 	}
-	legacyAgentReferencePath := "references/" + legacyAgentPackageName + ".md"
-	if _, ok := agentWorkspaceAppSkill.Files[legacyAgentReferencePath]; ok {
-		t.Fatalf("agent workspace app skill should not include removed local agent package reference: %#v", agentWorkspaceAppSkill.Files)
-	}
-	localAgentReference, ok := agentWorkspaceAppSkill.Files["references/local-agent-runtime.md"]
+	agentACPReference, ok := agentWorkspaceAppSkill.Files["references/agent-acp-kit.md"]
 	if !ok {
-		t.Fatalf("agent workspace app skill missing local agent runtime reference: %#v", agentWorkspaceAppSkill.Files)
+		t.Fatalf("agent workspace app skill missing agent-acp-kit reference: %#v", agentWorkspaceAppSkill.Files)
 	}
 	for _, want := range []string{
+		"Do not hand-roll provider detection",
 		"Claude Code and Codex",
-		"agentRuntime.detect",
-		"server-owned interfaces",
+		"localAgentRuntime.detect",
 	} {
-		if !strings.Contains(localAgentReference, want) {
-			t.Fatalf("local agent runtime reference missing %q:\n%s", want, localAgentReference)
+		if !strings.Contains(agentACPReference, want) {
+			t.Fatalf("agent-acp-kit reference missing %q:\n%s", want, agentACPReference)
 		}
 	}
-	if strings.Contains(localAgentReference, `command: "pnpm"`) {
-		t.Fatalf("local agent runtime reference should not use bare pnpm in packaged MCP examples:\n%s", localAgentReference)
-	}
-	for path, contents := range agentWorkspaceAppSkill.Files {
-		if strings.Contains(contents, legacyAgentPackageName) {
-			t.Fatalf("agent workspace app skill file %s should not mention the removed local agent package:\n%s", path, contents)
-		}
+	if strings.Contains(agentACPReference, `command: "pnpm"`) {
+		t.Fatalf("agent-acp-kit reference should not use bare pnpm in packaged MCP examples:\n%s", agentACPReference)
 	}
 	packageBuilderReference := agentWorkspaceAppSkill.Files["references/package-builder.md"]
 	if strings.Contains(packageBuilderReference, `TUTTI_APP_PORT:-`) {
@@ -488,7 +473,7 @@ func TestAppFactoryServiceCreateUsesDraftDirAndReferenceContext(t *testing.T) {
 	}
 	for _, want := range []string{
 		"Default new apps to a Node server",
-		"provider detection and run execution server-owned",
+		"@tutti-os/agent-acp-kit",
 		"TUTTI_CLI agent/codex/session polling",
 		"Claude Code and Codex provider options",
 	} {
@@ -496,11 +481,8 @@ func TestAppFactoryServiceCreateUsesDraftDirAndReferenceContext(t *testing.T) {
 			t.Fatalf("context constraints missing %q: %#v", want, mentionContext.Constraints)
 		}
 	}
-	if strings.Contains(constraints, legacyAgentPackageName) {
-		t.Fatalf("context constraints should not mention the removed local agent package: %#v", mentionContext.Constraints)
-	}
 	if strings.Contains(constraints, "AI-generated user-facing content") {
-		t.Fatalf("context constraints should not force non-agent AI integrations onto agent runtime guidance: %#v", mentionContext.Constraints)
+		t.Fatalf("context constraints should not force non-agent AI integrations onto agent-acp-kit: %#v", mentionContext.Constraints)
 	}
 
 	secondJob, err := service.Create(ctx, "ws-1", CreateAppFactoryJobInput{
