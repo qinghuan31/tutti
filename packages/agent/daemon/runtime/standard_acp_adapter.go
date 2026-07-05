@@ -54,14 +54,17 @@ type standardACPConfig struct {
 }
 
 type standardACPAdapter struct {
-	config      standardACPConfig
-	transport   ProcessTransport
-	host        HostMetadata
-	mu          sync.Mutex
-	sessions    map[string]*standardACPSession
-	commandSink CommandSnapshotSink
-	eventSink   SessionEventSink
-	configSink  ConfigOptionsUpdateSink
+	config         standardACPConfig
+	transport      ProcessTransport
+	host           HostMetadata
+	preparer       ProviderLaunchPreparer
+	mu             sync.Mutex
+	sessions       map[string]*standardACPSession
+	commandSink    CommandSnapshotSink
+	eventSink      SessionEventSink
+	configSink     ConfigOptionsUpdateSink
+	lifecycleMu    sync.Mutex
+	lifecycleLocks map[string]*standardACPSessionLock
 }
 
 type standardACPSession struct {
@@ -75,6 +78,11 @@ type standardACPSession struct {
 	backgroundAgents map[string]standardACPBackgroundAgent
 	recentTurnID     string
 	recentTurnExpiry time.Time
+}
+
+type standardACPSessionLock struct {
+	mu   sync.Mutex
+	refs int
 }
 
 type pendingACPApproval = pendingACPRequest
@@ -589,7 +597,45 @@ func (a *standardACPAdapter) SetSessionEventSink(sink SessionEventSink) {
 	a.mu.Unlock()
 }
 
+func (a *standardACPAdapter) SetProviderLaunchPreparer(preparer ProviderLaunchPreparer) {
+	if a == nil {
+		return
+	}
+	a.preparer = preparer
+}
+
+func (a *standardACPAdapter) lockSessionLifecycle(agentSessionID string) func() {
+	if a == nil {
+		return func() {}
+	}
+	key := strings.TrimSpace(agentSessionID)
+	a.lifecycleMu.Lock()
+	if a.lifecycleLocks == nil {
+		a.lifecycleLocks = make(map[string]*standardACPSessionLock)
+	}
+	lock := a.lifecycleLocks[key]
+	if lock == nil {
+		lock = &standardACPSessionLock{}
+		a.lifecycleLocks[key] = lock
+	}
+	lock.refs++
+	a.lifecycleMu.Unlock()
+
+	lock.mu.Lock()
+	return func() {
+		lock.mu.Unlock()
+		a.lifecycleMu.Lock()
+		lock.refs--
+		if lock.refs <= 0 && a.lifecycleLocks[key] == lock {
+			delete(a.lifecycleLocks, key)
+		}
+		a.lifecycleMu.Unlock()
+	}
+}
+
 func (a *standardACPAdapter) Start(ctx context.Context, session Session) ([]activityshared.Event, error) {
+	unlockLifecycle := a.lockSessionLifecycle(session.AgentSessionID)
+	defer unlockLifecycle()
 	a.logHermesStartupDiagnostics("start.enter", map[string]any{
 		"room_id":            session.RoomID,
 		"agent_session_id":   session.AgentSessionID,
@@ -608,12 +654,17 @@ func (a *standardACPAdapter) Start(ctx context.Context, session Session) ([]acti
 	}
 	started := false
 	keepSession := false
+	previousSession := a.getSession(session.AgentSessionID)
 	defer func() {
 		if !started {
 			_ = client.Close()
 		}
 		if !keepSession {
-			a.removeSession(session.AgentSessionID)
+			if previousSession != nil {
+				a.storeSession(session.AgentSessionID, previousSession)
+			} else {
+				a.removeSession(session.AgentSessionID)
+			}
 		}
 	}()
 	acpSession := &standardACPSession{
@@ -700,6 +751,7 @@ func (a *standardACPAdapter) Start(ctx context.Context, session Session) ([]acti
 
 	started = true
 	keepSession = true
+	a.closeReplacedSession(previousSession, client)
 	a.logHermesStartupDiagnostics("start.succeeded", map[string]any{
 		"room_id":             session.RoomID,
 		"agent_session_id":    session.AgentSessionID,
@@ -717,6 +769,8 @@ func (a *standardACPAdapter) Resume(ctx context.Context, session Session) error 
 	if strings.TrimSpace(session.ProviderSessionID) == "" {
 		return missingProviderSessionResumeError(session)
 	}
+	unlockLifecycle := a.lockSessionLifecycle(session.AgentSessionID)
+	defer unlockLifecycle()
 	client, initializeResult, err := a.startInitializedClient(ctx, session)
 	if err != nil {
 		return err
@@ -781,6 +835,7 @@ func (a *standardACPAdapter) Resume(ctx context.Context, session Session) error 
 	}
 	started = true
 	keepSession = true
+	a.closeReplacedSession(previousSession, client)
 	return nil
 }
 
@@ -798,6 +853,8 @@ func (a *standardACPAdapter) Close(ctx context.Context, session Session) error {
 		return nil
 	}
 	agentSessionID := strings.TrimSpace(session.AgentSessionID)
+	unlockLifecycle := a.lockSessionLifecycle(agentSessionID)
+	defer unlockLifecycle()
 	a.rejectPendingApprovals(agentSessionID, errPermissionRequestCanceled)
 	a.mu.Lock()
 	acpSession := a.sessions[agentSessionID]
@@ -831,6 +888,19 @@ func (a *standardACPAdapter) closeProviderSession(ctx context.Context, session S
 	}
 	a.logACPCloseDiagnostics("protocol_close.succeeded", session, acpSession, nil)
 	a.waitForACPClientDone(acpSession.client, acpCloseGraceTimeout)
+}
+
+func (a *standardACPAdapter) closeReplacedSession(previousSession *standardACPSession, currentClient *acpClient) {
+	if previousSession == nil || previousSession.client == nil || previousSession.client == currentClient {
+		return
+	}
+	if err := previousSession.client.Close(); err != nil {
+		slog.Warn("agent session ACP replaced client close failed",
+			"event", "agent_session.acp.replaced_client.close_failed",
+			"provider", a.config.provider,
+			"error", err.Error(),
+		)
+	}
 }
 
 func (*standardACPAdapter) waitForACPClientDone(client *acpClient, timeout time.Duration) {
@@ -893,15 +963,7 @@ func (a *standardACPAdapter) startInitializedClient(
 	if a.config.commandWithSettings != nil {
 		command = a.config.commandWithSettings(command, session)
 	}
-	processStartedAt := time.Now()
-	a.logHermesStartupDiagnostics("process_start.start", map[string]any{
-		"room_id":          session.RoomID,
-		"agent_session_id": session.AgentSessionID,
-		"cwd":              session.CWD,
-		"command":          command,
-		"direct_start":     a.config.provider == ProviderClaudeCode,
-	})
-	conn, err := a.transport.Start(ctx, ProcessSpec{
+	spec, cleanup, err := prepareProviderLaunch(ctx, a.preparer, session, ProcessSpec{
 		Provider:             a.config.provider,
 		AgentSessionID:       session.AgentSessionID,
 		RoomID:               session.RoomID,
@@ -912,6 +974,24 @@ func (a *standardACPAdapter) startInitializedClient(
 		DirectStart:          a.config.provider == ProviderClaudeCode,
 	})
 	if err != nil {
+		a.logHermesStartupDiagnostics("process_prepare.failed", map[string]any{
+			"room_id":          session.RoomID,
+			"agent_session_id": session.AgentSessionID,
+			"error":            err.Error(),
+		})
+		return nil, nil, err
+	}
+	processStartedAt := time.Now()
+	a.logHermesStartupDiagnostics("process_start.start", map[string]any{
+		"room_id":          session.RoomID,
+		"agent_session_id": session.AgentSessionID,
+		"cwd":              spec.CWD,
+		"command":          spec.Command,
+		"direct_start":     spec.DirectStart,
+	})
+	conn, err := a.transport.Start(ctx, spec)
+	if err != nil {
+		cleanupPreparedLaunch(cleanup)
 		a.logHermesStartupDiagnostics("process_start.failed", map[string]any{
 			"room_id":          session.RoomID,
 			"agent_session_id": session.AgentSessionID,
@@ -920,6 +1000,7 @@ func (a *standardACPAdapter) startInitializedClient(
 		})
 		return nil, nil, err
 	}
+	conn = wrapProviderLaunchCleanup(conn, cleanup)
 	a.logHermesStartupDiagnostics("process_start.succeeded", map[string]any{
 		"room_id":          session.RoomID,
 		"agent_session_id": session.AgentSessionID,
@@ -3736,6 +3817,20 @@ func appendTuttiMentionRoutingPrompt(content []map[string]any, skills []string) 
 	out = append(out, map[string]any{
 		"type": "text",
 		"text": routingPrompt,
+	})
+	return out
+}
+
+func appendTuttiMentionRoutingContent(content []PromptContentBlock, skills []string) []PromptContentBlock {
+	routingPrompt := strings.TrimSpace(tuttiMentionRoutingPrompt(skills))
+	if routingPrompt == "" {
+		return content
+	}
+	out := make([]PromptContentBlock, 0, len(content)+1)
+	out = append(out, content...)
+	out = append(out, PromptContentBlock{
+		Type: "text",
+		Text: routingPrompt,
 	})
 	return out
 }

@@ -1297,6 +1297,60 @@ func TestClaudeCodeSDKAdapterStartSendsInitialSettings(t *testing.T) {
 	}
 }
 
+func TestClaudeCodeSDKAdapterProviderLaunchPrepareMutatesSpecAndCleansUpOnClose(t *testing.T) {
+	conn := &scriptedClaudeSDKConnection{
+		frames: []ProcessFrame{{
+			Stdout: []byte(`{"type":"session_started","payload":{"providerSessionId":"provider-session-1"}}` + "\n"),
+		}},
+	}
+	transport := &recordingClaudeSDKTransport{conn: conn}
+	adapter := NewClaudeCodeSDKAdapter(transport)
+	cleanupCalls := 0
+	adapter.SetProviderLaunchPreparer(func(_ context.Context, input ProviderLaunchPrepareInput) (ProviderLaunchPrepareResult, error) {
+		if input.Provider != ProviderClaudeCode {
+			t.Fatalf("Provider = %q, want %q", input.Provider, ProviderClaudeCode)
+		}
+		if !input.DirectStart {
+			t.Fatal("DirectStart = false, want true for Claude SDK")
+		}
+		return ProviderLaunchPrepareResult{
+			Command: []string{"prepared-node", "sidecar.ts"},
+			Env:     append(append([]string(nil), input.Env...), "HOOK_ENV=1"),
+			CWD:     "/prepared/claude-sdk",
+			Cleanup: func(context.Context) error {
+				cleanupCalls++
+				return nil
+			},
+		}, nil
+	})
+	session := standardTestSession(ProviderClaudeCode)
+	session.Env = []string{"SESSION_ENV=1"}
+	session.ProviderSessionID = "provider-session-1"
+
+	if _, err := adapter.Start(context.Background(), session); err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+	if cleanupCalls != 0 {
+		t.Fatalf("cleanup calls before close = %d, want 0", cleanupCalls)
+	}
+	if !slices.Equal(transport.spec.Command, []string{"prepared-node", "sidecar.ts"}) {
+		t.Fatalf("Command = %#v", transport.spec.Command)
+	}
+	if transport.spec.CWD != "/prepared/claude-sdk" {
+		t.Fatalf("CWD = %q", transport.spec.CWD)
+	}
+	if !containsString(transport.spec.Env, "SESSION_ENV=1") || !containsString(transport.spec.Env, "HOOK_ENV=1") {
+		t.Fatalf("Env = %#v, want session and hook env", transport.spec.Env)
+	}
+
+	if err := adapter.Close(context.Background(), session); err != nil {
+		t.Fatalf("Close: %v", err)
+	}
+	if cleanupCalls != 1 {
+		t.Fatalf("cleanup calls after close = %d, want 1", cleanupCalls)
+	}
+}
+
 func TestClaudeSDKSidecarCommandUsesVendoredEntryWithManagedNodeEnv(t *testing.T) {
 	t.Setenv(claudeSDKSidecarCommandEnv, "")
 	t.Setenv(claudeSDKSidecarEntryPathEnv, "")

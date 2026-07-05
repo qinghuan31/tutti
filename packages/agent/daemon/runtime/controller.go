@@ -143,17 +143,16 @@ func NewDefaultControllerWithOptions(
 	options ControllerOptions,
 ) *Controller {
 	host := options.HostMetadata
-	return NewController(
-		[]Adapter{
-			newDefaultClaudeCodeAdapter(transport, host, options.ProviderCommandResolver),
-			NewCodexAppServerAdapterWithHostMetadata(transport, host),
-			NewNexightAdapterWithHostMetadata(transport, host),
-			NewGeminiAdapterWithHostMetadata(transport, host),
-			NewHermesAdapterWithHostMetadata(transport, host),
-			NewOpenClawAdapterWithHostMetadata(transport, host),
-		},
-		reporter,
-	)
+	adapters := []Adapter{
+		newDefaultClaudeCodeAdapter(transport, host, options.ProviderCommandResolver),
+		NewCodexAppServerAdapterWithHostMetadata(transport, host),
+		NewNexightAdapterWithHostMetadata(transport, host),
+		NewGeminiAdapterWithHostMetadata(transport, host),
+		NewHermesAdapterWithHostMetadata(transport, host),
+		NewOpenClawAdapterWithHostMetadata(transport, host),
+	}
+	setProviderLaunchPreparer(adapters, options.ProviderLaunchPreparer)
+	return NewController(adapters, reporter)
 }
 
 func newDefaultClaudeCodeAdapter(

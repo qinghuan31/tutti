@@ -27,12 +27,17 @@ type HostMetadata = agentruntime.HostMetadata
 type ProcessTransport = agentruntime.ProcessTransport
 type ProviderCommand = agentruntime.ProviderCommand
 type ProviderCommandResolver = agentruntime.ProviderCommandResolver
+type ProviderLaunchPrepareInput = agentruntime.ProviderLaunchPrepareInput
+type ProviderLaunchPrepareResult = agentruntime.ProviderLaunchPrepareResult
+type ProviderLaunchPreparer = agentruntime.ProviderLaunchPreparer
+type ProviderLaunchPreparerAdapter = agentruntime.ProviderLaunchPreparerAdapter
 
 type Config struct {
 	Reporter                ActivityReporter
 	ProcessTransport        ProcessTransport
 	HostMetadata            HostMetadata
 	ProviderCommandResolver ProviderCommandResolver
+	ProviderLaunchPreparer  ProviderLaunchPreparer
 	Adapters                []Adapter
 	LiveSessionReaper       LiveSessionReaperConfig
 }
@@ -53,6 +58,7 @@ type Runtime struct {
 func NewRuntime(config Config) (*Runtime, error) {
 	var controller *Controller
 	if len(config.Adapters) > 0 {
+		agentruntime.ApplyProviderLaunchPreparer(config.Adapters, config.ProviderLaunchPreparer)
 		controller = agentruntime.NewController(config.Adapters, config.Reporter)
 	} else {
 		if !hasCompleteHostMetadata(config.HostMetadata) {
@@ -67,6 +73,7 @@ func NewRuntime(config Config) (*Runtime, error) {
 			agentruntime.ControllerOptions{
 				HostMetadata:            config.HostMetadata,
 				ProviderCommandResolver: config.ProviderCommandResolver,
+				ProviderLaunchPreparer:  config.ProviderLaunchPreparer,
 			},
 		)
 	}

@@ -70,6 +70,26 @@ func TestNewRuntimeUsesCustomAdapters(t *testing.T) {
 	}
 }
 
+func TestNewRuntimeAppliesProviderLaunchPreparerToCustomAdapters(t *testing.T) {
+	t.Parallel()
+
+	adapter := &providerLaunchPreparerTestAdapter{
+		testAdapter: testAdapter{provider: "test-agent"},
+	}
+	_, err := NewRuntime(Config{
+		Adapters: []agentruntime.Adapter{adapter},
+		ProviderLaunchPreparer: func(context.Context, agentruntime.ProviderLaunchPrepareInput) (agentruntime.ProviderLaunchPrepareResult, error) {
+			return agentruntime.ProviderLaunchPrepareResult{}, nil
+		},
+	})
+	if err != nil {
+		t.Fatalf("NewRuntime() error = %v", err)
+	}
+	if adapter.preparer == nil {
+		t.Fatal("custom adapter did not receive ProviderLaunchPreparer")
+	}
+}
+
 func TestNewRuntimeCanDisableLiveSessionReaper(t *testing.T) {
 	t.Parallel()
 
@@ -105,6 +125,15 @@ func testHostMetadata() HostMetadata {
 
 type testAdapter struct {
 	provider string
+}
+
+type providerLaunchPreparerTestAdapter struct {
+	testAdapter
+	preparer agentruntime.ProviderLaunchPreparer
+}
+
+func (a *providerLaunchPreparerTestAdapter) SetProviderLaunchPreparer(preparer agentruntime.ProviderLaunchPreparer) {
+	a.preparer = preparer
 }
 
 func (a testAdapter) Provider() string {

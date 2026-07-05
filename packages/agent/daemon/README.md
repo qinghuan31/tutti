@@ -27,6 +27,18 @@ if err != nil {
 controller := runtime.Controller()
 ```
 
+Hosts that need to prepare a provider launch immediately before process spawn
+can set `ProviderLaunchPreparer`. The hook receives the provider, session,
+command, environment, cwd, and direct-start mode; it returns the command,
+environment, cwd, and optional cleanup function to use for `ProcessTransport`
+startup.
+
+Prepare errors fail session start before spawning a process. When prepare
+succeeds, cleanup runs after the provider process is closed, including process
+start or initialize failure, live-session close, idle release, and live process
+replacement. Cleanup failures are logged and do not replace the original close
+or start error.
+
 ## Package Ownership
 
 This package owns:

@@ -36,6 +36,7 @@ const (
 
 type ClaudeCodeSDKAdapter struct {
 	transport ProcessTransport
+	preparer  ProviderLaunchPreparer
 
 	mu          sync.Mutex
 	sessions    map[string]*claudeSDKAdapterSession
@@ -130,6 +131,13 @@ func (*ClaudeCodeSDKAdapter) Provider() string {
 	return ProviderClaudeCode
 }
 
+func (a *ClaudeCodeSDKAdapter) SetProviderLaunchPreparer(preparer ProviderLaunchPreparer) {
+	if a == nil {
+		return
+	}
+	a.preparer = preparer
+}
+
 func (a *ClaudeCodeSDKAdapter) Start(ctx context.Context, session Session) ([]activityshared.Event, error) {
 	if a == nil || a.transport == nil {
 		return nil, ErrSessionDisconnected
@@ -141,7 +149,7 @@ func (a *ClaudeCodeSDKAdapter) Start(ctx context.Context, session Session) ([]ac
 	if err != nil {
 		return nil, err
 	}
-	conn, err := a.transport.Start(ctx, ProcessSpec{
+	spec, cleanup, err := prepareProviderLaunch(ctx, a.preparer, session, ProcessSpec{
 		Provider:       ProviderClaudeCode,
 		AgentSessionID: session.AgentSessionID,
 		RoomID:         session.RoomID,
@@ -153,6 +161,12 @@ func (a *ClaudeCodeSDKAdapter) Start(ctx context.Context, session Session) ([]ac
 	if err != nil {
 		return nil, err
 	}
+	conn, err := a.transport.Start(ctx, spec)
+	if err != nil {
+		cleanupPreparedLaunch(cleanup)
+		return nil, err
+	}
+	conn = wrapProviderLaunchCleanup(conn, cleanup)
 	adapterSession := &claudeSDKAdapterSession{
 		conn:              conn,
 		reader:            &claudeSDKLineReader{conn: conn},

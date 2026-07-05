@@ -58,6 +58,100 @@ func TestGeminiAdapterStartCreatesStandardACPSession(t *testing.T) {
 	}
 }
 
+func TestStandardACPAdapterProviderLaunchPrepareMutatesSpecAndCleansUpOnClose(t *testing.T) {
+	t.Parallel()
+
+	transport := newStandardACPTransport("Gemini CLI", "gemini-session-1")
+	adapter := NewGeminiAdapter(transport)
+	cleanupCalls := 0
+	adapter.SetProviderLaunchPreparer(func(_ context.Context, input ProviderLaunchPrepareInput) (ProviderLaunchPrepareResult, error) {
+		if input.Provider != ProviderGemini {
+			t.Fatalf("Provider = %q, want %q", input.Provider, ProviderGemini)
+		}
+		if input.DirectStart {
+			t.Fatal("DirectStart = true, want false for Gemini")
+		}
+		return ProviderLaunchPrepareResult{
+			Command: []string{"prepared-gemini", "--acp"},
+			Env:     append(append([]string(nil), input.Env...), "HOOK_ENV=1"),
+			CWD:     "/prepared/gemini",
+			Cleanup: func(context.Context) error {
+				cleanupCalls++
+				return nil
+			},
+		}, nil
+	})
+	session := standardTestSession(ProviderGemini)
+	session.Env = []string{"SESSION_ENV=1"}
+
+	if _, err := adapter.Start(context.Background(), session); err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+	if cleanupCalls != 0 {
+		t.Fatalf("cleanup calls before close = %d, want 0", cleanupCalls)
+	}
+	transport.mu.Lock()
+	specs := append([]ProcessSpec(nil), transport.specs...)
+	transport.mu.Unlock()
+	if len(specs) != 1 {
+		t.Fatalf("transport starts = %d, want 1", len(specs))
+	}
+	spec := specs[0]
+	if !reflect.DeepEqual(spec.Command, []string{"prepared-gemini", "--acp"}) {
+		t.Fatalf("Command = %#v", spec.Command)
+	}
+	if spec.CWD != "/prepared/gemini" {
+		t.Fatalf("CWD = %q", spec.CWD)
+	}
+	if !reflect.DeepEqual(spec.Env[len(spec.Env)-2:], []string{"SESSION_ENV=1", "HOOK_ENV=1"}) {
+		t.Fatalf("Env tail = %#v", spec.Env)
+	}
+
+	if err := adapter.Close(context.Background(), session); err != nil {
+		t.Fatalf("Close: %v", err)
+	}
+	if cleanupCalls != 1 {
+		t.Fatalf("cleanup calls after close = %d, want 1", cleanupCalls)
+	}
+}
+
+func TestStandardACPAdapterConcurrentStartsLeaveSingleLiveProcess(t *testing.T) {
+	t.Parallel()
+
+	transport := &multiProcStandardACPTransport{
+		agentTitle: "Gemini CLI",
+		sessionID:  "gemini-session-1",
+	}
+	adapter := NewGeminiAdapter(transport)
+	session := standardTestSession(ProviderGemini)
+
+	var wg sync.WaitGroup
+	errs := make([]error, 2)
+	for i := range errs {
+		wg.Add(1)
+		go func(i int) {
+			defer wg.Done()
+			_, errs[i] = adapter.Start(context.Background(), session)
+		}(i)
+	}
+	wg.Wait()
+	for i, err := range errs {
+		if err != nil {
+			t.Fatalf("Start[%d]: %v", i, err)
+		}
+	}
+	spawned, live := transport.snapshot()
+	if spawned != 2 {
+		t.Fatalf("spawned processes = %d, want 2", spawned)
+	}
+	if len(live) != 1 {
+		t.Fatalf("live ACP processes = %d, want exactly 1", len(live))
+	}
+	if !adapter.HasLiveSession(session) {
+		t.Fatal("HasLiveSession = false, want true after concurrent starts")
+	}
+}
+
 func TestClaudeCodeAdapterStartUsesInjectedProviderCommand(t *testing.T) {
 	t.Parallel()
 
@@ -4045,6 +4139,14 @@ type standardACPTransport struct {
 	conn  *standardACPConnection
 }
 
+type multiProcStandardACPTransport struct {
+	mu         sync.Mutex
+	agentTitle string
+	sessionID  string
+	specs      []ProcessSpec
+	conns      []*standardACPConnection
+}
+
 func newStandardACPTransport(agentTitle string, sessionID string) *standardACPTransport {
 	return &standardACPTransport{
 		conn: &standardACPConnection{
@@ -4060,6 +4162,34 @@ func (t *standardACPTransport) Start(_ context.Context, spec ProcessSpec) (Proce
 	t.specs = append(t.specs, spec)
 	t.mu.Unlock()
 	return t.conn, nil
+}
+
+func (t *multiProcStandardACPTransport) Start(_ context.Context, spec ProcessSpec) (ProcessConnection, error) {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	conn := &standardACPConnection{
+		recv:       make(chan ProcessFrame, 32),
+		agentTitle: t.agentTitle,
+		sessionID:  t.sessionID,
+	}
+	t.specs = append(t.specs, spec)
+	t.conns = append(t.conns, conn)
+	return conn, nil
+}
+
+func (t *multiProcStandardACPTransport) snapshot() (spawned int, live []*standardACPConnection) {
+	t.mu.Lock()
+	conns := append([]*standardACPConnection(nil), t.conns...)
+	t.mu.Unlock()
+	for _, conn := range conns {
+		conn.mu.Lock()
+		closed := conn.isClosed
+		conn.mu.Unlock()
+		if !closed {
+			live = append(live, conn)
+		}
+	}
+	return len(conns), live
 }
 
 type standardACPConnection struct {

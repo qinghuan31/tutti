@@ -109,6 +109,7 @@ const defaultCodexAppServerGoalContinuationGraceWindow = 1500 * time.Millisecond
 type CodexAppServerAdapter struct {
 	transport   ProcessTransport
 	host        HostMetadata
+	preparer    ProviderLaunchPreparer
 	mu          sync.Mutex
 	sessions    map[string]*codexAppServerSession
 	commandSink CommandSnapshotSink
@@ -336,6 +337,13 @@ func (a *CodexAppServerAdapter) SetConfigOptionsUpdateSink(sink ConfigOptionsUpd
 	a.mu.Lock()
 	a.configSink = sink
 	a.mu.Unlock()
+}
+
+func (a *CodexAppServerAdapter) SetProviderLaunchPreparer(preparer ProviderLaunchPreparer) {
+	if a == nil {
+		return
+	}
+	a.preparer = preparer
 }
 
 func (*CodexAppServerAdapter) ValidatePromptContent(Session, []PromptContentBlock) error {
@@ -668,13 +676,8 @@ func (a *CodexAppServerAdapter) startInitializedClient(
 	if a == nil || a.transport == nil {
 		return nil, nil, errors.New("app-server process transport is unavailable")
 	}
-	trace.Log("process.start.begin", map[string]any{
-		"command": strings.Join([]string{codexAppServerCommand, codexAppServerSubcmd}, " "),
-		"cwd":     a.sessionCWD(session),
-	})
-	processStartedAt := time.Now()
 	spawnEnv := append(codexACPEnv(session, a.host), session.Env...)
-	conn, err := a.transport.Start(ctx, ProcessSpec{
+	spec, cleanup, err := prepareProviderLaunch(ctx, a.preparer, session, ProcessSpec{
 		Provider:       ProviderCodex,
 		AgentSessionID: session.AgentSessionID,
 		RoomID:         session.RoomID,
@@ -683,12 +686,26 @@ func (a *CodexAppServerAdapter) startInitializedClient(
 		Env:            spawnEnv,
 	})
 	if err != nil {
+		trace.Log("process.prepare.failed", map[string]any{
+			"error": err.Error(),
+		})
+		return nil, nil, err
+	}
+	trace.Log("process.start.begin", map[string]any{
+		"command": strings.Join(spec.Command, " "),
+		"cwd":     spec.CWD,
+	})
+	processStartedAt := time.Now()
+	conn, err := a.transport.Start(ctx, spec)
+	if err != nil {
+		cleanupPreparedLaunch(cleanup)
 		trace.Log("process.start.failed", map[string]any{
 			"duration_ms": time.Since(processStartedAt).Milliseconds(),
 			"error":       err.Error(),
 		})
 		return nil, nil, err
 	}
+	conn = wrapProviderLaunchCleanup(conn, cleanup)
 	trace.Log("process.start.succeeded", map[string]any{
 		"duration_ms": time.Since(processStartedAt).Milliseconds(),
 	})
@@ -727,7 +744,7 @@ func (a *CodexAppServerAdapter) startInitializedClient(
 
 	initializeResult, err := trace.TypedCall(acpStartCallTimeout, appServerMethodInitialize, func() (json.RawMessage, error) {
 		return client.Initialize(ctx, acpStartCallTimeout, map[string]any{
-			"clientInfo": codexClientInfoParams(a.host, spawnEnv),
+			"clientInfo": codexClientInfoParams(a.host, spec.Env),
 			"capabilities": map[string]any{
 				"experimentalApi": true,
 			},
