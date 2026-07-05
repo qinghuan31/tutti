@@ -8,7 +8,6 @@ import (
 	"strings"
 
 	agentsessionstore "github.com/tutti-os/tutti/packages/agentactivity/daemon/activity"
-	agentactivityprojection "github.com/tutti-os/tutti/packages/agentactivity/daemon/activity/projection"
 	agentactivitybiz "github.com/tutti-os/tutti/services/tuttid/biz/agentactivity"
 	workspacebiz "github.com/tutti-os/tutti/services/tuttid/biz/workspace"
 )
@@ -123,13 +122,16 @@ func (s *AppFactoryService) reconcileFromPersistedAgentSession(ctx context.Conte
 	if !ok {
 		return false, nil
 	}
-	status := normalizeFactoryAgentSessionStatus(
-		agentactivityprojection.CanonicalSessionStatus(session.Status, session.CurrentPhase),
-	)
-	if status == "" {
-		return s.reconcileCompletedAgentSessionMessages(ctx, workspaceID, job)
+	if status := normalizePersistedFactoryAgentSessionStatus(session.Status); status != "" {
+		return true, s.handleAgentSessionTerminalState(ctx, workspaceID, agentSessionID, status, session.LastError)
 	}
-	return true, s.handleAgentSessionTerminalState(ctx, workspaceID, agentSessionID, status, session.LastError)
+	if strings.ToLower(strings.TrimSpace(session.CurrentPhase)) == "failed" {
+		return true, s.handleAgentSessionTerminalState(ctx, workspaceID, agentSessionID, "failed", session.LastError)
+	}
+	if isPersistedFactoryAgentSessionActive(session.Status, session.CurrentPhase) {
+		return true, nil
+	}
+	return s.reconcileCompletedAgentSessionMessages(ctx, workspaceID, job)
 }
 
 func (s *AppFactoryService) reconcileCompletedAgentSessionMessages(ctx context.Context, workspaceID string, job workspacebiz.AppFactoryJob) (bool, error) {
@@ -152,15 +154,8 @@ func (s *AppFactoryService) agentSessionHasCompletedFactoryOutput(workspaceID st
 		switch normalizeFactoryAgentSessionStatus(session.Status) {
 		case "completed":
 			return true
-		case "canceled":
-			return false
-		case "failed":
-			return false
 		default:
-			if strings.ToLower(strings.TrimSpace(session.Status)) != "active" ||
-				strings.ToLower(strings.TrimSpace(session.CurrentPhase)) != "idle" {
-				return false
-			}
+			return false
 		}
 	}
 	page, ok := s.AgentMessageReader.ListSessionMessages(agentactivitybiz.ListSessionMessagesInput{
@@ -274,7 +269,7 @@ func isRecoverablePreValidationAgentFailure(job workspacebiz.AppFactoryJob) bool
 
 func normalizeFactoryAgentSessionStatus(status string) string {
 	switch strings.ToLower(strings.TrimSpace(status)) {
-	case "completed", "complete", "succeeded", "success":
+	case "completed", "complete", "ended", "succeeded", "success":
 		return "completed"
 	case "canceled":
 		return "canceled"
@@ -287,6 +282,19 @@ func normalizeFactoryAgentSessionStatus(status string) string {
 
 func normalizePersistedFactoryAgentSessionStatus(status string) string {
 	return normalizeFactoryAgentSessionStatus(status)
+}
+
+func isPersistedFactoryAgentSessionActive(status string, currentPhase string) bool {
+	switch strings.ToLower(strings.TrimSpace(status)) {
+	case "active", "created", "queued", "running", "working", "waiting":
+		return true
+	}
+	switch strings.ToLower(strings.TrimSpace(currentPhase)) {
+	case "idle", "working", "running", "streaming", "waiting", "waiting_approval", "awaiting_approval", "waiting_input":
+		return true
+	default:
+		return false
+	}
 }
 
 func factoryAgentTerminalStatus(state agentsessionstore.WorkspaceAgentSessionStateUpdate) string {

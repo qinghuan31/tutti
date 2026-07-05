@@ -793,7 +793,7 @@ printf '%s\n' "$TUTTI_APP_TOOLCHAIN_ROOT" > "$TUTTI_APP_DATA_DIR/toolchain-root.
 	}
 }
 
-func TestAppFactoryServiceReconcileIdleCompletedAgentSessionStartsValidation(t *testing.T) {
+func TestAppFactoryServiceReconcileIdleCompletedAgentSessionKeepsGenerating(t *testing.T) {
 	t.Parallel()
 
 	ctx := context.Background()
@@ -854,11 +854,11 @@ func TestAppFactoryServiceReconcileIdleCompletedAgentSessionStartsValidation(t *
 	if err != nil {
 		t.Fatalf("GetAppFactoryJob() error = %v", err)
 	}
-	if job.Status != workspacebiz.AppFactoryJobStatusFailed {
-		t.Fatalf("status = %q, want failed validation", job.Status)
+	if job.Status != workspacebiz.AppFactoryJobStatusGenerating {
+		t.Fatalf("status = %q, want generating", job.Status)
 	}
-	if strings.TrimSpace(job.ValidationResultJSON) == "" {
-		t.Fatal("validation result is empty, want failed validation result")
+	if strings.TrimSpace(job.ValidationResultJSON) != "" {
+		t.Fatalf("validation result = %q, want empty", job.ValidationResultJSON)
 	}
 }
 
@@ -890,7 +890,7 @@ func TestAppFactoryServiceReconcileRecoversPreValidationFailure(t *testing.T) {
 				appFactoryJobStoreKey("ws-1", "session-1"): {
 					ID:           "session-1",
 					WorkspaceID:  "ws-1",
-					Status:       "active",
+					Status:       "completed",
 					CurrentPhase: "idle",
 				},
 			},
