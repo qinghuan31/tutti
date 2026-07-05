@@ -67,7 +67,7 @@ func newBlockingSyncStateStore() *blockingSyncStateStore {
 	}
 }
 
-func (s *blockingSyncStateStore) LoadRoomSyncStates(_ context.Context, _ string) (map[string]WorkspaceAgentSyncState, error) {
+func (*blockingSyncStateStore) LoadRoomSyncStates(_ context.Context, _ string) (map[string]WorkspaceAgentSyncState, error) {
 	return nil, nil
 }
 

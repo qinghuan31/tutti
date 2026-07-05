@@ -890,7 +890,7 @@ func (*CodexAppServerAdapter) fetchRateLimitsNoHandler(
 // fetchGoal reads the thread's persisted goal. Best effort: any error means
 // the in-memory goal stays as-is. NoHandler: this runs in the background and
 // must not claim the message handler slot away from a streaming turn.
-func (a *CodexAppServerAdapter) fetchGoal(
+func (*CodexAppServerAdapter) fetchGoal(
 	ctx context.Context,
 	client *codexAppServerClient,
 	threadID string,

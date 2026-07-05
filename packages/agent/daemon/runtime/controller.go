@@ -1809,7 +1809,7 @@ func settledFallbackTurnEvents(session Session, turnID string) []activityshared.
 //     a concurrent event already moved past).
 //
 // Returns true when a reconciliation was performed.
-func (c *Controller) reconcileStuckTurnView(ctx context.Context, session Session, reason string) bool {
+func (c *Controller) reconcileStuckTurnView(_ context.Context, session Session, reason string) bool {
 	if c == nil || !sessionViewHasUnsettledTurn(session) {
 		return false
 	}

@@ -2577,7 +2577,7 @@ func TestCodexAppServerAdapterSlashGoalContinuesUntilTerminalGoal(t *testing.T) 
 
 	var sinkMu sync.Mutex
 	sinkEvents := []activityshared.Event{}
-	adapter.SetSessionEventSink(func(agentSessionID string, events []activityshared.Event) {
+	adapter.SetSessionEventSink(func(_ string, events []activityshared.Event) {
 		sinkMu.Lock()
 		defer sinkMu.Unlock()
 		sinkEvents = append(sinkEvents, events...)
@@ -2654,7 +2654,7 @@ func TestCodexAppServerAdapterUnownedTurnIgnoredWithoutGoal(t *testing.T) {
 	adapter, _, session := startedAppServerAdapter(t)
 	var sinkMu sync.Mutex
 	sinkEvents := []activityshared.Event{}
-	adapter.SetSessionEventSink(func(agentSessionID string, events []activityshared.Event) {
+	adapter.SetSessionEventSink(func(_ string, events []activityshared.Event) {
 		sinkMu.Lock()
 		defer sinkMu.Unlock()
 		sinkEvents = append(sinkEvents, events...)
@@ -3121,7 +3121,7 @@ func TestCodexAppServerAdapterGoalUpdateNotificationEmitsSessionEvent(t *testing
 	adapter, _, session := startedAppServerAdapter(t)
 	var sinkMu sync.Mutex
 	sinkEvents := []activityshared.Event{}
-	adapter.SetSessionEventSink(func(agentSessionID string, events []activityshared.Event) {
+	adapter.SetSessionEventSink(func(_ string, events []activityshared.Event) {
 		sinkMu.Lock()
 		defer sinkMu.Unlock()
 		sinkEvents = append(sinkEvents, events...)
