@@ -85,6 +85,10 @@ has a dedicated `agent-target` provider for first-party Agent targets:
   app-server providers. The reminder may be appended to the provider prompt, but
   it must not be persisted into renderer payloads, daemon activity events, or
   imported session messages.
+- The runtime reminder must not prescribe launch-only behavior. It only routes
+  the model to the visible Tutti skill/CLI surface; the requested action can be
+  starting a new agent session, inspecting active peers or historical sessions,
+  or another agent CLI workflow implied by the user's prompt.
 
 ---
 
