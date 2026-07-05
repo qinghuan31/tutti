@@ -46,13 +46,13 @@ import type {
 } from "../types.ts";
 
 export const agentGuiWorkbenchDefaultNodeFrame: WorkbenchFrame = {
-  height: 560,
-  width: 1040,
+  height: 708,
+  width: 1316,
   x: 140,
   y: 48
 };
 
-export const agentGuiWorkbenchDefaultUsableHeightRatio = 0.7;
+export const agentGuiWorkbenchDefaultUsableHeightRatio = 0.886;
 export const agentGuiWorkbenchCompactVisibleAreaRatio = 0.9;
 export const agentGuiWorkbenchNewWindowCascadeOffset = { x: 180, y: 88 };
 export const agentGuiWorkbenchProviderRailWidthPx = 52;

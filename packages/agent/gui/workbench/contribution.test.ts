@@ -550,9 +550,9 @@ describe("agent GUI workbench contribution copy", () => {
     expect(screen.queryByTestId("agent-gui-window-title-icon")).toBeNull();
   });
 
-  it("opens at the default width and 70 percent height when the workbench area can fit the default frame", () => {
+  it("opens at the enlarged default width and 88.6 percent height when the workbench area can fit the default frame", () => {
     const frame = resolveAgentGuiWorkbenchDefaultLaunchFrame({
-      frame: { height: 560, width: 1040, x: 140, y: 48 },
+      frame: { height: 708, width: 1316, x: 140, y: 48 },
       request: {
         layoutConstraints: {
           minHeight: 160,
@@ -566,15 +566,15 @@ describe("agent GUI workbench contribution copy", () => {
           surfacePadding: 0
         },
         surfaceSize: {
-          height: 900,
-          width: 1440
+          height: 960,
+          width: 1600
         }
       }
     });
 
     expect(frame).toEqual({
-      height: 538,
-      width: 1040,
+      height: 734,
+      width: 1316,
       x: 140,
       y: 48
     });
@@ -582,7 +582,7 @@ describe("agent GUI workbench contribution copy", () => {
 
   it("opens at 90 percent of the visible workbench area when the window cannot fit the default frame", () => {
     const frame = resolveAgentGuiWorkbenchDefaultLaunchFrame({
-      frame: { height: 560, width: 1040, x: 140, y: 48 },
+      frame: { height: 708, width: 1316, x: 140, y: 48 },
       request: {
         layoutConstraints: {
           minHeight: 160,
@@ -612,7 +612,7 @@ describe("agent GUI workbench contribution copy", () => {
 
   it("uses 90 percent of the visible height when the remaining workbench height is compact", () => {
     const frame = resolveAgentGuiWorkbenchDefaultLaunchFrame({
-      frame: { height: 560, width: 1040, x: 140, y: 48 },
+      frame: { height: 708, width: 1316, x: 140, y: 48 },
       request: {
         layoutConstraints: {
           minHeight: 160,
@@ -634,8 +634,8 @@ describe("agent GUI workbench contribution copy", () => {
 
     expect(frame).toEqual({
       height: 554,
-      width: 1040,
-      x: 200,
+      width: 1316,
+      x: 62,
       y: 83
     });
   });
