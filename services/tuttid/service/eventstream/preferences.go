@@ -290,6 +290,11 @@ func agentComposerDefaultsByProviderFromPayload(
 func agentComposerDefaultsByAgentTargetFromPayload(
 	payload desktopAgentComposerDefaultsByAgentTargetPayload,
 ) map[string]preferencesbiz.AgentComposerDefaults {
+	// A missing field decodes to nil so the service keeps the stored
+	// defaults; only an explicitly sent (possibly empty) map replaces them.
+	if payload == nil {
+		return nil
+	}
 	defaultsByAgentTarget := map[string]preferencesbiz.AgentComposerDefaults{}
 	for agentTargetID, defaults := range payload {
 		if agentTargetID == "" {

@@ -501,10 +501,12 @@ func setAgentComposerDefaultsFromGenerated(
 func agentComposerDefaultsByAgentTargetFromGenerated(
 	value *tuttigenerated.DesktopAgentComposerDefaultsByAgentTarget,
 ) map[string]preferencesbiz.AgentComposerDefaults {
-	result := map[string]preferencesbiz.AgentComposerDefaults{}
+	// A missing field decodes to nil so the service keeps the stored
+	// defaults; only an explicitly sent (possibly empty) map replaces them.
 	if value == nil {
-		return result
+		return nil
 	}
+	result := map[string]preferencesbiz.AgentComposerDefaults{}
 	for agentTargetID, defaults := range *value {
 		if strings.TrimSpace(agentTargetID) == "" {
 			continue

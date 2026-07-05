@@ -69,12 +69,20 @@ func (s Service) Put(ctx context.Context, input PutInput) (preferencesbiz.Deskto
 
 	windowSnapping := resolveWindowSnapping(stored, input.WindowSnapping)
 
+	// A nil agent-target map means the client did not send the field (e.g. an
+	// older build) — keep the stored defaults instead of wiping them. An
+	// explicit empty map still clears everything.
+	agentComposerDefaultsByAgentTarget := input.AgentComposerDefaultsByAgentTarget
+	if agentComposerDefaultsByAgentTarget == nil {
+		agentComposerDefaultsByAgentTarget = stored.AgentComposerDefaultsByAgentTarget
+	}
+
 	preferences, err := s.Store.PutDesktopPreferences(ctx, preferencesbiz.DesktopPreferences{
 		// The legacy provider-keyed defaults are frozen: client input is
 		// ignored so nothing writes the old field anymore; the stored value
 		// is only kept for downgrade compatibility.
 		AgentComposerDefaultsByProvider:             normalizeAgentComposerDefaultsByProvider(stored.AgentComposerDefaultsByProvider),
-		AgentComposerDefaultsByAgentTarget:          normalizeAgentComposerDefaultsByAgentTarget(input.AgentComposerDefaultsByAgentTarget),
+		AgentComposerDefaultsByAgentTarget:          normalizeAgentComposerDefaultsByAgentTarget(agentComposerDefaultsByAgentTarget),
 		AgentGUIConversationRailCollapsedByProvider: normalizeAgentGUIConversationRailCollapsedByProvider(input.AgentGUIConversationRailCollapsedByProvider),
 		AgentConversationDetailMode:                 preferencesbiz.NormalizeDesktopAgentConversationDetailMode(input.AgentConversationDetailMode),
 		AgentDockLayout:                             normalizeAgentDockLayout(input.AgentDockLayout),

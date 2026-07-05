@@ -533,3 +533,49 @@ func TestServicePutFreezesLegacyComposerDefaultsByProvider(t *testing.T) {
 		t.Fatalf("stored provider defaults = %#v, want frozen stored value", stored)
 	}
 }
+
+func TestServicePutKeepsAgentTargetDefaultsWhenFieldOmitted(t *testing.T) {
+	t.Parallel()
+
+	store := &preferencesStoreStub{
+		getResult: preferencesbiz.DesktopPreferences{
+			AgentComposerDefaultsByAgentTarget: map[string]preferencesbiz.AgentComposerDefaults{
+				"local:codex": {Model: "gpt-5"},
+			},
+			Initialized: true,
+		},
+	}
+	service := Service{Store: store}
+
+	basePut := PutInput{
+		AgentConversationDetailMode: "coding",
+		AgentDockLayout:             "unified",
+		DefaultAgentProvider:        "codex",
+		DockIconStyle:               "default",
+		DockPlacement:               "bottom",
+		Locale:                      "en",
+		MinimizeAnimation:           "scale",
+		SleepPreventionMode:         "never",
+		ThemeSource:                 "dark",
+		UpdateChannel:               "rc",
+		UpdatePolicy:                "auto",
+	}
+
+	// A nil map (field omitted by an older client) keeps the stored defaults.
+	if _, err := service.Put(context.Background(), basePut); err != nil {
+		t.Fatalf("Put() error = %v", err)
+	}
+	if store.putInput.AgentComposerDefaultsByAgentTarget["local:codex"].Model != "gpt-5" {
+		t.Fatalf("stored agent target defaults = %#v, want preserved on omitted field", store.putInput.AgentComposerDefaultsByAgentTarget)
+	}
+
+	// An explicitly sent empty map still clears everything.
+	clearedPut := basePut
+	clearedPut.AgentComposerDefaultsByAgentTarget = map[string]preferencesbiz.AgentComposerDefaults{}
+	if _, err := service.Put(context.Background(), clearedPut); err != nil {
+		t.Fatalf("Put() error = %v", err)
+	}
+	if len(store.putInput.AgentComposerDefaultsByAgentTarget) != 0 {
+		t.Fatalf("stored agent target defaults = %#v, want cleared by explicit empty map", store.putInput.AgentComposerDefaultsByAgentTarget)
+	}
+}
