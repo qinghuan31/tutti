@@ -102,5 +102,8 @@ function desktopAgentComposerDefaultsToComposerOverrides(
   if (defaults.reasoningEffort?.trim()) {
     composerOverrides.reasoningEffort = defaults.reasoningEffort.trim();
   }
+  if (defaults.speed?.trim()) {
+    composerOverrides.speed = defaults.speed.trim();
+  }
   return Object.keys(composerOverrides).length > 0 ? composerOverrides : null;
 }

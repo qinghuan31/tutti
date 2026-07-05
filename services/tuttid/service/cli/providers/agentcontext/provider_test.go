@@ -680,8 +680,8 @@ func TestStartCommandUsesComposerDefaults(t *testing.T) {
 		nil,
 		fakeDesktopPreferencesReader{preferences: preferencesbiz.DesktopPreferences{
 			AgentConversationDetailMode: preferencesbiz.DesktopAgentConversationDetailModeGeneral,
-			AgentComposerDefaultsByProvider: map[string]preferencesbiz.AgentComposerDefaults{
-				"codex": {
+			AgentComposerDefaultsByAgentTarget: map[string]preferencesbiz.AgentComposerDefaults{
+				"local:codex": {
 					Model:            "gpt-5.5",
 					PermissionModeID: "full-access",
 					ReasoningEffort:  "high",
@@ -831,8 +831,8 @@ func TestComposerOptionsCommandUsesComposerDefaultsFromPreferences(t *testing.T)
 		nil,
 		fakeDesktopPreferencesReader{
 			preferences: preferencesbiz.DesktopPreferences{
-				AgentComposerDefaultsByProvider: map[string]preferencesbiz.AgentComposerDefaults{
-					"codex": {
+				AgentComposerDefaultsByAgentTarget: map[string]preferencesbiz.AgentComposerDefaults{
+					"local:codex": {
 						Model:            "gpt-5",
 						PermissionModeID: "full-access",
 						ReasoningEffort:  "high",
@@ -1417,8 +1417,8 @@ func TestProviderStartCommandUsesComposerDefaults(t *testing.T) {
 		nil,
 		fakeDesktopPreferencesReader{preferences: preferencesbiz.DesktopPreferences{
 			AgentConversationDetailMode: preferencesbiz.DesktopAgentConversationDetailModeGeneral,
-			AgentComposerDefaultsByProvider: map[string]preferencesbiz.AgentComposerDefaults{
-				"codex": {
+			AgentComposerDefaultsByAgentTarget: map[string]preferencesbiz.AgentComposerDefaults{
+				"local:codex": {
 					Model:            "gpt-5.5",
 					PermissionModeID: "full-access",
 					ReasoningEffort:  "high",

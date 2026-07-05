@@ -14,6 +14,9 @@ export function desktopAgentComposerOverridesToDefaults(
   if (overrides.reasoningEffort?.trim()) {
     defaults.reasoningEffort = overrides.reasoningEffort.trim();
   }
+  if (overrides.speed?.trim()) {
+    defaults.speed = overrides.speed.trim();
+  }
   return Object.keys(defaults).length > 0 ? defaults : null;
 }
 
@@ -27,7 +30,9 @@ export function desktopAgentComposerDefaultsEqual(
     normalizedDesktopAgentComposerDefaultValue(left?.permissionModeId) ===
       normalizedDesktopAgentComposerDefaultValue(right?.permissionModeId) &&
     normalizedDesktopAgentComposerDefaultValue(left?.reasoningEffort) ===
-      normalizedDesktopAgentComposerDefaultValue(right?.reasoningEffort)
+      normalizedDesktopAgentComposerDefaultValue(right?.reasoningEffort) &&
+    normalizedDesktopAgentComposerDefaultValue(left?.speed) ===
+      normalizedDesktopAgentComposerDefaultValue(right?.speed)
   );
 }
 

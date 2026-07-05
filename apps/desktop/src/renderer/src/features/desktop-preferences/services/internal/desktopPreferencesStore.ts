@@ -1,5 +1,6 @@
 import type { DesktopLocale } from "@shared/i18n";
 import type {
+  DesktopAgentComposerDefaultsByAgentTarget,
   DesktopAgentComposerDefaultsByProvider,
   DesktopAgentGuiConversationRailCollapsedByProvider,
   DesktopAgentConversationDetailMode,
@@ -22,6 +23,7 @@ import type { DesktopPreferencesStoreState } from "../desktopPreferencesTypes.ts
 
 export function createDesktopPreferencesStore(input: {
   agentComposerDefaultsByProvider?: DesktopAgentComposerDefaultsByProvider;
+  agentComposerDefaultsByAgentTarget?: DesktopAgentComposerDefaultsByAgentTarget;
   agentGuiConversationRailCollapsedByProvider?: DesktopAgentGuiConversationRailCollapsedByProvider;
   agentConversationDetailMode: DesktopAgentConversationDetailMode;
   agentDockLayout: DesktopAgentDockLayout;
@@ -58,6 +60,8 @@ export function createDesktopPreferencesStore(input: {
     changingWorkbenchWindowSnapping: null,
     agentComposerDefaultsByProvider:
       input.agentComposerDefaultsByProvider ?? {},
+    agentComposerDefaultsByAgentTarget:
+      input.agentComposerDefaultsByAgentTarget ?? {},
     agentGuiConversationRailCollapsedByProvider:
       input.agentGuiConversationRailCollapsedByProvider ?? {},
     agentConversationDetailMode: input.agentConversationDetailMode,

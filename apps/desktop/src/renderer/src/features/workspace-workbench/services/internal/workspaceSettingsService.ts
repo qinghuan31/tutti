@@ -1170,6 +1170,7 @@ IWorkspaceAppCenterService(WorkspaceSettingsService, undefined, 4);
 
 const noopDesktopPreferencesStore: DesktopPreferencesReadableStoreState = {
   agentComposerDefaultsByProvider: {},
+  agentComposerDefaultsByAgentTarget: {},
   agentGuiConversationRailCollapsedByProvider: {},
   agentConversationDetailMode: "coding",
   agentDockLayout: "legacySplit",
@@ -1258,7 +1259,7 @@ const noopDesktopPreferences: DesktopPreferencesService = {
   setUpdatePolicy(policy) {
     return Promise.resolve(policy);
   },
-  rememberAgentComposerDefaults() {
+  rememberAgentComposerDefaultsForAgentTarget() {
     return Promise.resolve();
   },
   rememberAgentGuiConversationRailCollapsed() {

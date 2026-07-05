@@ -65,7 +65,6 @@ import { createDesktopAgentGeneratedFileMentionProvider } from "../services/inte
 import { composeDesktopAgentGuiContextMentionProviders } from "../services/internal/composeDesktopAgentGuiContextMentionProviders.ts";
 import { resolveDesktopWorkspaceAppIconEntries } from "../services/internal/desktopWorkspaceAppIcons.ts";
 import { wrapDesktopFileMentionProviderWithDockFiles } from "../services/internal/wrapDesktopFileMentionProviderWithDockFiles.ts";
-import { desktopAgentComposerDefaultsEqual } from "../services/internal/desktopAgentComposerDefaultsWriteGate.ts";
 import {
   logAgentComposerDefaultsDiagnostic,
   logAgentGUIConversationRailPreferenceDiagnostic,
@@ -510,9 +509,13 @@ function DesktopAgentGUIWorkbenchBodyImpl({
       ),
     [provider, providerTargets, workbenchAgentTargetId]
   );
-  const providerComposerDefaults =
-    desktopPreferencesState.agentComposerDefaultsByProvider[nodeProvider] ??
-    null;
+  // Remembered defaults are keyed by agent target id; the daemon overlays
+  // legacy provider-keyed entries onto local target ids at read time.
+  const providerComposerDefaults = workbenchAgentTargetId
+    ? (desktopPreferencesState.agentComposerDefaultsByAgentTarget[
+        workbenchAgentTargetId
+      ] ?? null)
+    : null;
   const hasExplicitConversationRailCollapsedState =
     hasDesktopAgentGUIConversationRailCollapsedState(rawWorkbenchStateSource);
   const preferredConversationRailCollapsed =
@@ -960,22 +963,17 @@ function DesktopAgentGUIWorkbenchBodyImpl({
   const handleRememberComposerDefaults = useCallback<
     NonNullable<AgentGUIProps["onRememberComposerDefaults"]>
   >(
-    ({ provider: defaultsProvider, defaults }) => {
-      if (previewMode) {
-        return;
-      }
-      const previousDefaults =
-        desktopPreferencesState.agentComposerDefaultsByProvider[
-          defaultsProvider
-        ] ?? null;
-      if (desktopAgentComposerDefaultsEqual(previousDefaults, defaults)) {
+    ({ agentTargetId, provider: defaultsProvider, defaults }) => {
+      // Remembered defaults are keyed strictly by agent target; targets
+      // without an agentTargetId (legacy refs) are not persisted.
+      if (previewMode || !agentTargetId || !defaults) {
         return;
       }
       void desktopPreferencesService
-        .rememberAgentComposerDefaults(defaultsProvider, defaults)
+        .rememberAgentComposerDefaultsForAgentTarget(agentTargetId, defaults)
         .then(() => {
           logAgentComposerDefaultsDiagnostic({
-            defaults: defaults ?? {},
+            defaults,
             event: "agent.gui.composer_defaults.remembered",
             provider: defaultsProvider,
             runtimeApi,
@@ -984,7 +982,7 @@ function DesktopAgentGUIWorkbenchBodyImpl({
         })
         .catch((error) => {
           logAgentComposerDefaultsDiagnostic({
-            defaults: defaults ?? {},
+            defaults,
             error,
             event: "agent.gui.composer_defaults.remember_failed",
             provider: defaultsProvider,
@@ -993,13 +991,7 @@ function DesktopAgentGUIWorkbenchBodyImpl({
           });
         });
     },
-    [
-      desktopPreferencesService,
-      desktopPreferencesState.agentComposerDefaultsByProvider,
-      previewMode,
-      runtimeApi,
-      workspaceId
-    ]
+    [desktopPreferencesService, previewMode, runtimeApi, workspaceId]
   );
 
   const frame = context.node.frame;

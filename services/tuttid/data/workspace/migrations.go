@@ -30,6 +30,7 @@ const schemaMigrationDesktopPreferencesDockPlacementV1 = "desktop_preferences_do
 const schemaMigrationDesktopPreferencesDockIconStyleV1 = "desktop_preferences_dock_icon_style_v1"
 const schemaMigrationDesktopPreferencesDefaultAgentProviderV1 = "desktop_preferences_default_agent_provider_v1"
 const schemaMigrationDesktopPreferencesAgentComposerDefaultsV1 = "desktop_preferences_agent_composer_defaults_v1"
+const schemaMigrationDesktopPreferencesAgentComposerDefaultsByAgentTargetV1 = "desktop_preferences_agent_composer_defaults_by_agent_target_v1"
 const schemaMigrationDesktopPreferencesAgentGUIConversationRailV1 = "desktop_preferences_agent_gui_conversation_rail_v1"
 const schemaMigrationDesktopPreferencesBrowserUseConnectionModeV1 = "desktop_preferences_browser_use_connection_mode_v1"
 const schemaMigrationDesktopPreferencesUpdateSettingsV1 = "desktop_preferences_update_settings_v1"
@@ -146,6 +147,9 @@ INSERT OR IGNORE INTO tuttid_schema_migrations (id, applied_at_unix_ms)
 		return err
 	}
 	if err := s.applyDesktopPreferencesAgentComposerDefaultsV1(ctx); err != nil {
+		return err
+	}
+	if err := s.applyDesktopPreferencesAgentComposerDefaultsByAgentTargetV1(ctx); err != nil {
 		return err
 	}
 	if err := s.applyDesktopPreferencesAgentGUIConversationRailV1(ctx); err != nil {

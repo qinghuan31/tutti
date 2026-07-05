@@ -35,6 +35,10 @@
         "openclaw": { "$ref": "#/$defs/agentComposerDefaults" }
       }
     },
+    "agentComposerDefaultsByAgentTarget": {
+      "type": "object",
+      "additionalProperties": { "$ref": "#/$defs/agentComposerDefaults" }
+    },
     "agentGuiConversationRailCollapsedByProvider": {
       "type": "object",
       "additionalProperties": false,
@@ -136,7 +140,8 @@
       "properties": {
         "model": { "type": "string" },
         "permissionModeId": { "type": "string" },
-        "reasoningEffort": { "type": "string" }
+        "reasoningEffort": { "type": "string" },
+        "speed": { "type": "string" }
       }
     }
   }

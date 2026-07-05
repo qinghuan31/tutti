@@ -45,33 +45,48 @@ export interface PreferencesDesktopPreferencesV1 {
       model?: string;
       permissionModeId?: string;
       reasoningEffort?: string;
+      speed?: string;
     };
     codex?: {
       model?: string;
       permissionModeId?: string;
       reasoningEffort?: string;
+      speed?: string;
     };
     nexight?: {
       model?: string;
       permissionModeId?: string;
       reasoningEffort?: string;
+      speed?: string;
     };
     gemini?: {
       model?: string;
       permissionModeId?: string;
       reasoningEffort?: string;
+      speed?: string;
     };
     hermes?: {
       model?: string;
       permissionModeId?: string;
       reasoningEffort?: string;
+      speed?: string;
     };
     openclaw?: {
       model?: string;
       permissionModeId?: string;
       reasoningEffort?: string;
+      speed?: string;
     };
   };
+  agentComposerDefaultsByAgentTarget?: Record<
+    string,
+    {
+      model?: string;
+      permissionModeId?: string;
+      reasoningEffort?: string;
+      speed?: string;
+    }
+  >;
   agentGuiConversationRailCollapsedByProvider: {
     "claude-code"?: boolean;
     codex?: boolean;

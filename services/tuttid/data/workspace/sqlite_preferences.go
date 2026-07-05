@@ -19,7 +19,7 @@ func (s *SQLiteStore) GetDesktopPreferences(ctx context.Context) (preferencesbiz
 	}
 
 	row := s.db.QueryRowContext(ctx, `
-SELECT default_agent_provider, agent_conversation_detail_mode, agent_dock_layout, dock_icon_style, dock_placement, locale, theme_source, sleep_prevention_mode, update_channel, update_policy, agent_composer_defaults_by_provider_json, agent_gui_conversation_rail_collapsed_by_provider_json, browser_use_connection_mode, file_default_openers_by_extension_json, app_catalog_channel, minimize_animation, show_app_developer_sources, workbench_window_snapping_enabled, workbench_window_snapping_shortcut_preset
+SELECT default_agent_provider, agent_conversation_detail_mode, agent_dock_layout, dock_icon_style, dock_placement, locale, theme_source, sleep_prevention_mode, update_channel, update_policy, agent_composer_defaults_by_provider_json, agent_composer_defaults_by_agent_target_json, agent_gui_conversation_rail_collapsed_by_provider_json, browser_use_connection_mode, file_default_openers_by_extension_json, app_catalog_channel, minimize_animation, show_app_developer_sources, workbench_window_snapping_enabled, workbench_window_snapping_shortcut_preset
 FROM desktop_preferences
 WHERE id = ?
 `, desktopPreferencesRowID)
@@ -41,9 +41,10 @@ WHERE id = ?
 	var updateChannel string
 	var updatePolicy string
 	var agentComposerDefaultsJSON string
+	var agentComposerDefaultsByAgentTargetJSON string
 	var agentGUIConversationRailCollapsedJSON string
 	var fileDefaultOpenersJSON string
-	if err := row.Scan(&defaultAgentProvider, &agentConversationDetailMode, &agentDockLayout, &dockIconStyle, &dockPlacement, &locale, &themeSource, &sleepPreventionMode, &updateChannel, &updatePolicy, &agentComposerDefaultsJSON, &agentGUIConversationRailCollapsedJSON, &browserUseConnectionMode, &fileDefaultOpenersJSON, &appCatalogChannel, &minimizeAnimation, &showAppDeveloperSources, &windowSnappingEnabled, &windowSnappingShortcutPreset); err != nil {
+	if err := row.Scan(&defaultAgentProvider, &agentConversationDetailMode, &agentDockLayout, &dockIconStyle, &dockPlacement, &locale, &themeSource, &sleepPreventionMode, &updateChannel, &updatePolicy, &agentComposerDefaultsJSON, &agentComposerDefaultsByAgentTargetJSON, &agentGUIConversationRailCollapsedJSON, &browserUseConnectionMode, &fileDefaultOpenersJSON, &appCatalogChannel, &minimizeAnimation, &showAppDeveloperSources, &windowSnappingEnabled, &windowSnappingShortcutPreset); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return preferencesbiz.DefaultDesktopPreferences(), nil
 		}
@@ -52,6 +53,10 @@ WHERE id = ?
 	agentComposerDefaults, err := decodeAgentComposerDefaultsByProvider(agentComposerDefaultsJSON)
 	if err != nil {
 		return preferencesbiz.DesktopPreferences{}, fmt.Errorf("decode desktop preferences agent composer defaults: %w", err)
+	}
+	agentComposerDefaultsByAgentTarget, err := decodeAgentComposerDefaultsByProvider(agentComposerDefaultsByAgentTargetJSON)
+	if err != nil {
+		return preferencesbiz.DesktopPreferences{}, fmt.Errorf("decode desktop preferences agent composer defaults by agent target: %w", err)
 	}
 	agentGUIConversationRailCollapsed, err := decodeAgentGUIConversationRailCollapsedByProvider(agentGUIConversationRailCollapsedJSON)
 	if err != nil {
@@ -64,6 +69,7 @@ WHERE id = ?
 
 	return preferencesbiz.DesktopPreferences{
 		AgentComposerDefaultsByProvider:             agentComposerDefaults,
+		AgentComposerDefaultsByAgentTarget:          agentComposerDefaultsByAgentTarget,
 		AgentGUIConversationRailCollapsedByProvider: agentGUIConversationRailCollapsed,
 		AgentConversationDetailMode:                 preferencesbiz.NormalizeDesktopAgentConversationDetailMode(agentConversationDetailMode),
 		AgentDockLayout:                             preferencesbiz.NormalizeDesktopAgentDockLayout(agentDockLayout),
@@ -96,6 +102,10 @@ func (s *SQLiteStore) PutDesktopPreferences(ctx context.Context, preferences pre
 	if err != nil {
 		return preferencesbiz.DesktopPreferences{}, fmt.Errorf("encode desktop preferences agent composer defaults: %w", err)
 	}
+	agentComposerDefaultsByAgentTargetJSON, err := encodeAgentComposerDefaultsByProvider(preferences.AgentComposerDefaultsByAgentTarget)
+	if err != nil {
+		return preferencesbiz.DesktopPreferences{}, fmt.Errorf("encode desktop preferences agent composer defaults by agent target: %w", err)
+	}
 	agentGUIConversationRailCollapsedJSON, err := encodeAgentGUIConversationRailCollapsedByProvider(preferences.AgentGUIConversationRailCollapsedByProvider)
 	if err != nil {
 		return preferencesbiz.DesktopPreferences{}, fmt.Errorf("encode desktop preferences agent gui conversation rail: %w", err)
@@ -118,6 +128,7 @@ INSERT INTO desktop_preferences (
   update_channel,
   update_policy,
   agent_composer_defaults_by_provider_json,
+  agent_composer_defaults_by_agent_target_json,
   agent_gui_conversation_rail_collapsed_by_provider_json,
   file_default_openers_by_extension_json,
   app_catalog_channel,
@@ -128,7 +139,7 @@ INSERT INTO desktop_preferences (
   workbench_window_snapping_shortcut_preset,
   updated_at_unix_ms
 )
-VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 ON CONFLICT(id) DO UPDATE SET
   default_agent_provider = excluded.default_agent_provider,
   agent_conversation_detail_mode = excluded.agent_conversation_detail_mode,
@@ -141,6 +152,7 @@ ON CONFLICT(id) DO UPDATE SET
   update_channel = excluded.update_channel,
   update_policy = excluded.update_policy,
   agent_composer_defaults_by_provider_json = excluded.agent_composer_defaults_by_provider_json,
+  agent_composer_defaults_by_agent_target_json = excluded.agent_composer_defaults_by_agent_target_json,
   agent_gui_conversation_rail_collapsed_by_provider_json = excluded.agent_gui_conversation_rail_collapsed_by_provider_json,
   file_default_openers_by_extension_json = excluded.file_default_openers_by_extension_json,
   app_catalog_channel = excluded.app_catalog_channel,
@@ -150,13 +162,14 @@ ON CONFLICT(id) DO UPDATE SET
   workbench_window_snapping_enabled = excluded.workbench_window_snapping_enabled,
   workbench_window_snapping_shortcut_preset = excluded.workbench_window_snapping_shortcut_preset,
   updated_at_unix_ms = excluded.updated_at_unix_ms
-`, desktopPreferencesRowID, preferences.DefaultAgentProvider, preferencesbiz.NormalizeDesktopAgentConversationDetailMode(preferences.AgentConversationDetailMode), preferencesbiz.NormalizeDesktopAgentDockLayout(preferences.AgentDockLayout), preferences.DockIconStyle, preferences.DockPlacement, preferences.Locale, preferences.ThemeSource, preferences.SleepPreventionMode, preferences.UpdateChannel, preferences.UpdatePolicy, agentComposerDefaultsJSON, agentGUIConversationRailCollapsedJSON, fileDefaultOpenersJSON, preferences.AppCatalogChannel, preferences.BrowserUseConnectionMode, preferences.MinimizeAnimation, preferences.ShowAppDeveloperSources, preferences.WindowSnappingEnabled, preferences.WindowSnappingShortcutPreset, now)
+`, desktopPreferencesRowID, preferences.DefaultAgentProvider, preferencesbiz.NormalizeDesktopAgentConversationDetailMode(preferences.AgentConversationDetailMode), preferencesbiz.NormalizeDesktopAgentDockLayout(preferences.AgentDockLayout), preferences.DockIconStyle, preferences.DockPlacement, preferences.Locale, preferences.ThemeSource, preferences.SleepPreventionMode, preferences.UpdateChannel, preferences.UpdatePolicy, agentComposerDefaultsJSON, agentComposerDefaultsByAgentTargetJSON, agentGUIConversationRailCollapsedJSON, fileDefaultOpenersJSON, preferences.AppCatalogChannel, preferences.BrowserUseConnectionMode, preferences.MinimizeAnimation, preferences.ShowAppDeveloperSources, preferences.WindowSnappingEnabled, preferences.WindowSnappingShortcutPreset, now)
 	if err != nil {
 		return preferencesbiz.DesktopPreferences{}, fmt.Errorf("put desktop preferences: %w", err)
 	}
 
 	return preferencesbiz.DesktopPreferences{
 		AgentComposerDefaultsByProvider:             preferences.AgentComposerDefaultsByProvider,
+		AgentComposerDefaultsByAgentTarget:          preferences.AgentComposerDefaultsByAgentTarget,
 		AgentGUIConversationRailCollapsedByProvider: preferences.AgentGUIConversationRailCollapsedByProvider,
 		AgentConversationDetailMode:                 preferencesbiz.NormalizeDesktopAgentConversationDetailMode(preferences.AgentConversationDetailMode),
 		AgentDockLayout:                             preferencesbiz.NormalizeDesktopAgentDockLayout(preferences.AgentDockLayout),

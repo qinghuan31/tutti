@@ -272,6 +272,7 @@ export type DesktopAppCatalogChannel = "production" | "staging";
 
 export type DesktopPreferences = {
   agentComposerDefaultsByProvider: DesktopAgentComposerDefaultsByProvider;
+  agentComposerDefaultsByAgentTarget?: DesktopAgentComposerDefaultsByAgentTarget;
   agentGuiConversationRailCollapsedByProvider: DesktopAgentGuiConversationRailCollapsedByProvider;
   agentConversationDetailMode: DesktopAgentConversationDetailMode;
   agentDockLayout: DesktopAgentDockLayout;
@@ -304,6 +305,7 @@ export type DesktopAgentComposerDefaults = {
   model?: string;
   permissionModeId?: string;
   reasoningEffort?: string;
+  speed?: string;
 };
 
 export type DesktopAgentConversationDetailMode = "coding" | "general";
@@ -317,6 +319,10 @@ export type DesktopAgentComposerDefaultsByProvider = {
   gemini?: DesktopAgentComposerDefaults;
   hermes?: DesktopAgentComposerDefaults;
   openclaw?: DesktopAgentComposerDefaults;
+};
+
+export type DesktopAgentComposerDefaultsByAgentTarget = {
+  [key: string]: DesktopAgentComposerDefaults;
 };
 
 export type DesktopAgentGuiConversationRailCollapsedByProvider = {

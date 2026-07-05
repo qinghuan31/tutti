@@ -267,34 +267,50 @@ interface AgentGUIComposerTargetData {
   targetId: string;
 }
 
+// Patch semantics: a missing field was not touched by this switch, null
+// clears the remembered value, a string replaces it.
 export interface AgentGUIComposerDefaults {
-  model?: string;
-  permissionModeId?: string;
-  reasoningEffort?: string;
+  model?: string | null;
+  permissionModeId?: string | null;
+  reasoningEffort?: string | null;
+  speed?: string | null;
 }
 
 export interface AgentGUIRememberComposerDefaultsInput {
+  agentTargetId: string | null;
   provider: AgentGUINodeData["provider"];
   defaults: AgentGUIComposerDefaults | null;
 }
 
-function composerDefaultsFromSettings(
-  settings: AgentSessionComposerSettings
+const rememberComposerDefaultsFields = [
+  "model",
+  "permissionModeId",
+  "reasoningEffort",
+  "speed"
+] as const;
+
+// Builds the remember patch for one user switch. Only fields present in
+// `touched` are recorded: an explicit user clear (touched value empty)
+// becomes a null tombstone, while a value that sanitization dropped
+// (touched value set, final value empty) is skipped so the remembered
+// default survives transient invalid states.
+function composerDefaultsPatchFromSettings(
+  touched: Partial<AgentSessionComposerSettings>,
+  finalSettings: AgentSessionComposerSettings
 ): AgentGUIComposerDefaults | null {
-  const defaults: AgentGUIComposerDefaults = {};
-  const model = normalizeOptionalText(settings.model);
-  const permissionModeId = normalizeOptionalText(settings.permissionModeId);
-  const reasoningEffort = normalizeOptionalText(settings.reasoningEffort);
-  if (model) {
-    defaults.model = model;
+  const patch: AgentGUIComposerDefaults = {};
+  for (const field of rememberComposerDefaultsFields) {
+    if (touched[field] === undefined) {
+      continue;
+    }
+    const touchedValue = normalizeOptionalText(touched[field]);
+    const finalValue = normalizeOptionalText(finalSettings[field]);
+    if (touchedValue !== null && finalValue === null) {
+      continue;
+    }
+    patch[field] = finalValue;
   }
-  if (permissionModeId) {
-    defaults.permissionModeId = permissionModeId;
-  }
-  if (reasoningEffort) {
-    defaults.reasoningEffort = reasoningEffort;
-  }
-  return Object.keys(defaults).length > 0 ? defaults : null;
+  return Object.keys(patch).length > 0 ? patch : null;
 }
 
 function composerTargetDataFromProviderTarget(input: {
@@ -8719,8 +8735,12 @@ export function useAgentGUINodeController({
           )
         );
         void onRememberComposerDefaultsRef.current?.({
+          agentTargetId: targetData.agentTargetId,
           provider: targetData.provider,
-          defaults: composerDefaultsFromSettings(targetSafeMerged)
+          defaults: composerDefaultsPatchFromSettings(
+            supportedNextSettings,
+            targetSafeMerged
+          )
         });
         void agentActivityRuntime.trackDraftComposerSettingsChange?.({
           workspaceId,
@@ -8830,6 +8850,56 @@ export function useAgentGUINodeController({
                 }
               : existing
         );
+        // A switch inside an active session also becomes the remembered
+        // default for this agent target. Only the fields the user changed
+        // are passed; the consumer merges them field-wise so untouched
+        // remembered fields stay intact, and explicit clears propagate as
+        // null tombstones.
+        void onRememberComposerDefaultsRef.current?.({
+          agentTargetId: normalizeOptionalText(dataRef.current.agentTargetId),
+          provider: dataRef.current.provider,
+          defaults: composerDefaultsPatchFromSettings(
+            sessionSettingsPatch,
+            sessionSettingsPatch
+          )
+        });
+        // The node-level default drafts take precedence over the remembered
+        // preferences on the read path, so sync the durable fields into them
+        // as well or this node's next composer would keep showing its stale
+        // draft.
+        const durableNodeDefaultsPatch: Partial<AgentSessionComposerSettings> =
+          {};
+        for (const field of rememberComposerDefaultsFields) {
+          if (sessionSettingsPatch[field] !== undefined) {
+            durableNodeDefaultsPatch[field] = sessionSettingsPatch[field];
+          }
+        }
+        if (Object.keys(durableNodeDefaultsPatch).length > 0) {
+          const defaultDraftKey = nodeDefaultDraftKey(
+            dataRef.current.provider,
+            dataRef.current.agentTargetId
+          );
+          const storedNodeDefaults = readNodeDefaultDraftSettings({
+            data: dataRef.current,
+            defaultReasoningEffort,
+            drafts: draftSettingsBySessionIdRef.current
+          });
+          const nextNodeDefaults = {
+            ...storedNodeDefaults,
+            ...durableNodeDefaultsPatch
+          };
+          draftSettingsBySessionIdRef.current = {
+            ...draftSettingsBySessionIdRef.current,
+            [defaultDraftKey]: nextNodeDefaults
+          };
+          setDraftSettingsBySessionId((current) => ({
+            ...current,
+            [defaultDraftKey]: nextNodeDefaults
+          }));
+          onDataChangeRef.current((current) =>
+            nodeDataFromComposerSettings(current, nextNodeDefaults)
+          );
+        }
         if (updatingSessionSettingsIdsRef.current[agentSessionId]) {
           const queuedUpdate =
             queuedComposerSettingsUpdatesRef.current[agentSessionId];
@@ -10015,10 +10085,9 @@ export function useAgentGUINodeController({
         targetSafeNodeDefaultSettings
       )
     );
-    void onRememberComposerDefaultsRef.current?.({
-      provider: selectedComposerTargetData.provider,
-      defaults: composerDefaultsFromSettings(targetSafeNodeDefaultSettings)
-    });
+    // Deliberately no onRememberComposerDefaults here: this sync only
+    // reconciles drafts with target capabilities. The remembered defaults
+    // must only change on explicit user switches, never via sanitization.
   }, [
     activeConversationId,
     providerComposerOptions,

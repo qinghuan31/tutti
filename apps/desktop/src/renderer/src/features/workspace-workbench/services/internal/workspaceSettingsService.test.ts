@@ -1117,7 +1117,7 @@ function createDesktopPreferencesService(input: {
   return {
     _serviceBrand: undefined,
     store: input.state,
-    rememberAgentComposerDefaults: async () => {},
+    rememberAgentComposerDefaultsForAgentTarget: async () => {},
     rememberAgentGuiConversationRailCollapsed: async () => {},
     setAppCatalogChannel:
       input.onSetAppCatalogChannel ?? (async (channel) => channel),
@@ -1155,6 +1155,7 @@ function createPreferencesState(
 ): DesktopPreferencesReadableStoreState {
   return {
     agentComposerDefaultsByProvider: {},
+    agentComposerDefaultsByAgentTarget: {},
     agentGuiConversationRailCollapsedByProvider: {},
     agentConversationDetailMode: "coding",
     agentDockLayout: "legacySplit",

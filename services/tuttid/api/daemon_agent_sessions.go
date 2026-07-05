@@ -9,7 +9,6 @@ import (
 	tuttigenerated "github.com/tutti-os/tutti/services/tuttid/api/generated"
 	"github.com/tutti-os/tutti/services/tuttid/apierrors"
 	agentactivitybiz "github.com/tutti-os/tutti/services/tuttid/biz/agentactivity"
-	agentproviderbiz "github.com/tutti-os/tutti/services/tuttid/biz/agentprovider"
 	preferencesbiz "github.com/tutti-os/tutti/services/tuttid/biz/preferences"
 	agentservice "github.com/tutti-os/tutti/services/tuttid/service/agent"
 )
@@ -497,11 +496,14 @@ func (api DaemonAPI) composerDefaultsForProvider(ctx context.Context, provider s
 	if err != nil {
 		return agentservice.ComposerSettings{}
 	}
-	defaults := preferences.AgentComposerDefaultsByProvider[agentproviderbiz.Normalize(provider)]
+	// Legacy provider-keyed defaults were copied onto local agent target ids
+	// by a one-time sqlite data migration, so this lookup covers old data too.
+	defaults := preferences.AgentComposerDefaultsByAgentTarget[preferencesbiz.LocalAgentTargetIDForProvider(provider)]
 	return agentservice.ComposerSettings{
 		Model:            defaults.Model,
 		PermissionModeID: defaults.PermissionModeID,
 		ReasoningEffort:  defaults.ReasoningEffort,
+		Speed:            defaults.Speed,
 	}
 }
 

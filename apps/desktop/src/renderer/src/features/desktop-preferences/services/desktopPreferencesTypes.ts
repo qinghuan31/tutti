@@ -1,5 +1,6 @@
 import type { DesktopLocale } from "@shared/i18n";
 import type {
+  DesktopAgentComposerDefaultsByAgentTarget,
   DesktopAgentComposerDefaultsByProvider,
   DesktopAgentGuiConversationRailCollapsedByProvider,
   DesktopAgentConversationDetailMode,
@@ -35,6 +36,7 @@ export interface DesktopPreferencesStoreState {
   changingUpdatePolicy: DesktopUpdatePolicy | null;
   changingWorkbenchWindowSnapping: DesktopWorkbenchWindowSnapping | null;
   agentComposerDefaultsByProvider: DesktopAgentComposerDefaultsByProvider;
+  agentComposerDefaultsByAgentTarget: DesktopAgentComposerDefaultsByAgentTarget;
   agentGuiConversationRailCollapsedByProvider: DesktopAgentGuiConversationRailCollapsedByProvider;
   agentConversationDetailMode: DesktopAgentConversationDetailMode;
   agentDockLayout: DesktopAgentDockLayout;
@@ -71,6 +73,7 @@ export interface DesktopPreferencesReadableStoreState {
   readonly changingUpdatePolicy: DesktopUpdatePolicy | null;
   readonly changingWorkbenchWindowSnapping: DesktopWorkbenchWindowSnapping | null;
   readonly agentComposerDefaultsByProvider: DesktopAgentComposerDefaultsByProvider;
+  readonly agentComposerDefaultsByAgentTarget: DesktopAgentComposerDefaultsByAgentTarget;
   readonly agentGuiConversationRailCollapsedByProvider: DesktopAgentGuiConversationRailCollapsedByProvider;
   readonly agentConversationDetailMode: DesktopAgentConversationDetailMode;
   readonly agentDockLayout: DesktopAgentDockLayout;

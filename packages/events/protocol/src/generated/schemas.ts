@@ -41,6 +41,9 @@ export const preferencesDesktopPreferencesSchema = {
             },
             reasoningEffort: {
               type: "string"
+            },
+            speed: {
+              type: "string"
             }
           }
         },
@@ -55,6 +58,9 @@ export const preferencesDesktopPreferencesSchema = {
               type: "string"
             },
             reasoningEffort: {
+              type: "string"
+            },
+            speed: {
               type: "string"
             }
           }
@@ -71,6 +77,9 @@ export const preferencesDesktopPreferencesSchema = {
             },
             reasoningEffort: {
               type: "string"
+            },
+            speed: {
+              type: "string"
             }
           }
         },
@@ -85,6 +94,9 @@ export const preferencesDesktopPreferencesSchema = {
               type: "string"
             },
             reasoningEffort: {
+              type: "string"
+            },
+            speed: {
               type: "string"
             }
           }
@@ -101,6 +113,9 @@ export const preferencesDesktopPreferencesSchema = {
             },
             reasoningEffort: {
               type: "string"
+            },
+            speed: {
+              type: "string"
             }
           }
         },
@@ -116,7 +131,31 @@ export const preferencesDesktopPreferencesSchema = {
             },
             reasoningEffort: {
               type: "string"
+            },
+            speed: {
+              type: "string"
             }
+          }
+        }
+      }
+    },
+    agentComposerDefaultsByAgentTarget: {
+      type: "object",
+      additionalProperties: {
+        type: "object",
+        additionalProperties: false,
+        properties: {
+          model: {
+            type: "string"
+          },
+          permissionModeId: {
+            type: "string"
+          },
+          reasoningEffort: {
+            type: "string"
+          },
+          speed: {
+            type: "string"
           }
         }
       }
@@ -234,6 +273,9 @@ export const preferencesDesktopPreferencesSchema = {
           type: "string"
         },
         reasoningEffort: {
+          type: "string"
+        },
+        speed: {
           type: "string"
         }
       }
@@ -1004,6 +1046,9 @@ export const preferencesDesktopUpdateRequestedPayloadSchema = {
                 },
                 reasoningEffort: {
                   type: "string"
+                },
+                speed: {
+                  type: "string"
                 }
               }
             },
@@ -1018,6 +1063,9 @@ export const preferencesDesktopUpdateRequestedPayloadSchema = {
                   type: "string"
                 },
                 reasoningEffort: {
+                  type: "string"
+                },
+                speed: {
                   type: "string"
                 }
               }
@@ -1034,6 +1082,9 @@ export const preferencesDesktopUpdateRequestedPayloadSchema = {
                 },
                 reasoningEffort: {
                   type: "string"
+                },
+                speed: {
+                  type: "string"
                 }
               }
             },
@@ -1048,6 +1099,9 @@ export const preferencesDesktopUpdateRequestedPayloadSchema = {
                   type: "string"
                 },
                 reasoningEffort: {
+                  type: "string"
+                },
+                speed: {
                   type: "string"
                 }
               }
@@ -1064,6 +1118,9 @@ export const preferencesDesktopUpdateRequestedPayloadSchema = {
                 },
                 reasoningEffort: {
                   type: "string"
+                },
+                speed: {
+                  type: "string"
                 }
               }
             },
@@ -1079,7 +1136,31 @@ export const preferencesDesktopUpdateRequestedPayloadSchema = {
                 },
                 reasoningEffort: {
                   type: "string"
+                },
+                speed: {
+                  type: "string"
                 }
+              }
+            }
+          }
+        },
+        agentComposerDefaultsByAgentTarget: {
+          type: "object",
+          additionalProperties: {
+            type: "object",
+            additionalProperties: false,
+            properties: {
+              model: {
+                type: "string"
+              },
+              permissionModeId: {
+                type: "string"
+              },
+              reasoningEffort: {
+                type: "string"
+              },
+              speed: {
+                type: "string"
               }
             }
           }
@@ -1204,6 +1285,9 @@ export const preferencesDesktopUpdateRequestedPayloadSchema = {
               type: "string"
             },
             reasoningEffort: {
+              type: "string"
+            },
+            speed: {
               type: "string"
             }
           }
@@ -1262,6 +1346,9 @@ export const preferencesDesktopUpdatedPayloadSchema = {
                 },
                 reasoningEffort: {
                   type: "string"
+                },
+                speed: {
+                  type: "string"
                 }
               }
             },
@@ -1276,6 +1363,9 @@ export const preferencesDesktopUpdatedPayloadSchema = {
                   type: "string"
                 },
                 reasoningEffort: {
+                  type: "string"
+                },
+                speed: {
                   type: "string"
                 }
               }
@@ -1292,6 +1382,9 @@ export const preferencesDesktopUpdatedPayloadSchema = {
                 },
                 reasoningEffort: {
                   type: "string"
+                },
+                speed: {
+                  type: "string"
                 }
               }
             },
@@ -1306,6 +1399,9 @@ export const preferencesDesktopUpdatedPayloadSchema = {
                   type: "string"
                 },
                 reasoningEffort: {
+                  type: "string"
+                },
+                speed: {
                   type: "string"
                 }
               }
@@ -1322,6 +1418,9 @@ export const preferencesDesktopUpdatedPayloadSchema = {
                 },
                 reasoningEffort: {
                   type: "string"
+                },
+                speed: {
+                  type: "string"
                 }
               }
             },
@@ -1337,7 +1436,31 @@ export const preferencesDesktopUpdatedPayloadSchema = {
                 },
                 reasoningEffort: {
                   type: "string"
+                },
+                speed: {
+                  type: "string"
                 }
+              }
+            }
+          }
+        },
+        agentComposerDefaultsByAgentTarget: {
+          type: "object",
+          additionalProperties: {
+            type: "object",
+            additionalProperties: false,
+            properties: {
+              model: {
+                type: "string"
+              },
+              permissionModeId: {
+                type: "string"
+              },
+              reasoningEffort: {
+                type: "string"
+              },
+              speed: {
+                type: "string"
               }
             }
           }
@@ -1462,6 +1585,9 @@ export const preferencesDesktopUpdatedPayloadSchema = {
               type: "string"
             },
             reasoningEffort: {
+              type: "string"
+            },
+            speed: {
               type: "string"
             }
           }

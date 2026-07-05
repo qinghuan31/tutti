@@ -33,6 +33,7 @@ const (
 
 type DesktopPreferences struct {
 	AgentComposerDefaultsByProvider             map[string]AgentComposerDefaults
+	AgentComposerDefaultsByAgentTarget          map[string]AgentComposerDefaults
 	AgentGUIConversationRailCollapsedByProvider map[string]bool
 	AgentConversationDetailMode                 string
 	AgentDockLayout                             string
@@ -58,11 +59,27 @@ type AgentComposerDefaults struct {
 	Model            string
 	PermissionModeID string
 	ReasoningEffort  string
+	Speed            string
+}
+
+func (d AgentComposerDefaults) IsZero() bool {
+	return d.Model == "" && d.PermissionModeID == "" && d.ReasoningEffort == "" && d.Speed == ""
+}
+
+// LocalAgentTargetIDForProvider maps a provider to the id of its built-in
+// local agent target (see biz/agenttarget.IDLocalCodex and friends).
+func LocalAgentTargetIDForProvider(provider string) string {
+	normalized := agentproviderbiz.Normalize(provider)
+	if normalized == "" {
+		return ""
+	}
+	return "local:" + normalized
 }
 
 func DefaultDesktopPreferences() DesktopPreferences {
 	return DesktopPreferences{
 		AgentComposerDefaultsByProvider:             map[string]AgentComposerDefaults{},
+		AgentComposerDefaultsByAgentTarget:          map[string]AgentComposerDefaults{},
 		AgentGUIConversationRailCollapsedByProvider: map[string]bool{},
 		AgentConversationDetailMode:                 DefaultDesktopAgentConversationDetailMode,
 		AgentDockLayout:                             DefaultDesktopAgentDockLayout,

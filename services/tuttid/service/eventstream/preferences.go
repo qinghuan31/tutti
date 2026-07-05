@@ -28,6 +28,9 @@ func (p DesktopPreferencesPublisher) PublishDesktopPreferencesUpdated(ctx contex
 			AgentComposerDefaultsByProvider: desktopAgentComposerDefaultsByProviderPayloadFromBiz(
 				preferences.AgentComposerDefaultsByProvider,
 			),
+			AgentComposerDefaultsByAgentTarget: desktopAgentComposerDefaultsByAgentTargetPayloadFromBiz(
+				preferences.AgentComposerDefaultsByAgentTarget,
+			),
 			AgentGUIConversationRailCollapsedByProvider: agentGUIConversationRailCollapsedByProviderPayloadFromBiz(
 				preferences.AgentGUIConversationRailCollapsedByProvider,
 			),
@@ -73,6 +76,7 @@ func NewPreferencesDesktopUpdateRequestedHandler(mutator PreferencesMutator) Int
 
 		_, err = mutator.Put(ctx, preferencesservice.PutInput{
 			AgentComposerDefaultsByProvider:             decoded.AgentComposerDefaultsByProvider,
+			AgentComposerDefaultsByAgentTarget:          decoded.AgentComposerDefaultsByAgentTarget,
 			AgentGUIConversationRailCollapsedByProvider: decoded.AgentGUIConversationRailCollapsedByProvider,
 			AgentConversationDetailMode:                 decoded.AgentConversationDetailMode,
 			AgentDockLayout:                             decoded.AgentDockLayout,
@@ -100,6 +104,7 @@ func NewPreferencesDesktopUpdateRequestedHandler(mutator PreferencesMutator) Int
 
 type decodedDesktopPreferencesMutationPayload struct {
 	AgentComposerDefaultsByProvider             map[string]preferencesbiz.AgentComposerDefaults
+	AgentComposerDefaultsByAgentTarget          map[string]preferencesbiz.AgentComposerDefaults
 	AgentGUIConversationRailCollapsedByProvider map[string]bool
 	AgentConversationDetailMode                 string
 	AgentDockLayout                             string
@@ -135,6 +140,9 @@ func decodeDesktopPreferencesMutationPayload(payload []byte) (decodedDesktopPref
 	return decodedDesktopPreferencesMutationPayload{
 		AgentComposerDefaultsByProvider: agentComposerDefaultsByProviderFromPayload(
 			decoded.Preferences.AgentComposerDefaultsByProvider,
+		),
+		AgentComposerDefaultsByAgentTarget: agentComposerDefaultsByAgentTargetFromPayload(
+			decoded.Preferences.AgentComposerDefaultsByAgentTarget,
 		),
 		AgentGUIConversationRailCollapsedByProvider: agentGUIConversationRailCollapsedByProviderFromPayload(
 			decoded.Preferences.AgentGUIConversationRailCollapsedByProvider,
@@ -228,19 +236,41 @@ func desktopAgentComposerDefaultsByProviderPayloadFromBiz(
 		if normalizedProvider == "" {
 			continue
 		}
-		normalizedDefaults := desktopAgentComposerDefaultsPayload{
-			Model:            defaults.Model,
-			PermissionModeID: defaults.PermissionModeID,
-			ReasoningEffort:  defaults.ReasoningEffort,
-		}
-		if normalizedDefaults.Model == "" &&
-			normalizedDefaults.PermissionModeID == "" &&
-			normalizedDefaults.ReasoningEffort == "" {
+		normalizedDefaults := desktopAgentComposerDefaultsPayloadFromBiz(defaults)
+		if normalizedDefaults.isZero() {
 			continue
 		}
 		payload[normalizedProvider] = normalizedDefaults
 	}
 	return payload
+}
+
+func desktopAgentComposerDefaultsByAgentTargetPayloadFromBiz(
+	defaultsByAgentTarget map[string]preferencesbiz.AgentComposerDefaults,
+) desktopAgentComposerDefaultsByAgentTargetPayload {
+	payload := desktopAgentComposerDefaultsByAgentTargetPayload{}
+	for agentTargetID, defaults := range defaultsByAgentTarget {
+		if agentTargetID == "" {
+			continue
+		}
+		normalizedDefaults := desktopAgentComposerDefaultsPayloadFromBiz(defaults)
+		if normalizedDefaults.isZero() {
+			continue
+		}
+		payload[agentTargetID] = normalizedDefaults
+	}
+	return payload
+}
+
+func desktopAgentComposerDefaultsPayloadFromBiz(
+	defaults preferencesbiz.AgentComposerDefaults,
+) desktopAgentComposerDefaultsPayload {
+	return desktopAgentComposerDefaultsPayload{
+		Model:            defaults.Model,
+		PermissionModeID: defaults.PermissionModeID,
+		ReasoningEffort:  defaults.ReasoningEffort,
+		Speed:            defaults.Speed,
+	}
 }
 
 func agentComposerDefaultsByProviderFromPayload(
@@ -252,11 +282,31 @@ func agentComposerDefaultsByProviderFromPayload(
 		if normalizedProvider == "" {
 			continue
 		}
-		defaultsByProvider[normalizedProvider] = preferencesbiz.AgentComposerDefaults{
-			Model:            defaults.Model,
-			PermissionModeID: defaults.PermissionModeID,
-			ReasoningEffort:  defaults.ReasoningEffort,
-		}
+		defaultsByProvider[normalizedProvider] = agentComposerDefaultsFromPayload(defaults)
 	}
 	return defaultsByProvider
+}
+
+func agentComposerDefaultsByAgentTargetFromPayload(
+	payload desktopAgentComposerDefaultsByAgentTargetPayload,
+) map[string]preferencesbiz.AgentComposerDefaults {
+	defaultsByAgentTarget := map[string]preferencesbiz.AgentComposerDefaults{}
+	for agentTargetID, defaults := range payload {
+		if agentTargetID == "" {
+			continue
+		}
+		defaultsByAgentTarget[agentTargetID] = agentComposerDefaultsFromPayload(defaults)
+	}
+	return defaultsByAgentTarget
+}
+
+func agentComposerDefaultsFromPayload(
+	defaults desktopAgentComposerDefaultsPayload,
+) preferencesbiz.AgentComposerDefaults {
+	return preferencesbiz.AgentComposerDefaults{
+		Model:            defaults.Model,
+		PermissionModeID: defaults.PermissionModeID,
+		ReasoningEffort:  defaults.ReasoningEffort,
+		Speed:            defaults.Speed,
+	}
 }

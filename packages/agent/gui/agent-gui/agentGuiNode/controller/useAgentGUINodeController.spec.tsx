@@ -1130,10 +1130,9 @@ describe("useAgentGUINodeController", () => {
       permissionModeId: null,
       reasoningEffort: "high"
     });
-    expect(onRememberComposerDefaults).toHaveBeenCalledWith({
-      provider: "claude-code",
-      defaults: { reasoningEffort: "high" }
-    });
+    // Sanitization must never rewrite the remembered defaults; only explicit
+    // user switches do.
+    expect(onRememberComposerDefaults).not.toHaveBeenCalled();
   });
 
   it("keeps provider filters disabled for single-provider conversation scope", async () => {
@@ -9715,7 +9714,7 @@ describe("useAgentGUINodeController", () => {
     ).toEqual([]);
   });
 
-  it("updates the active session without syncing next-conversation defaults", async () => {
+  it("updates the active session and remembers the switched fields as target defaults", async () => {
     let resolveUpdateSettings:
       | ((value: {
           settings: {
@@ -9897,8 +9896,25 @@ describe("useAgentGUINodeController", () => {
         permissionModeId: "auto"
       });
     });
-    expect(onDataChange).not.toHaveBeenCalled();
-    expect(onRememberComposerDefaults).not.toHaveBeenCalled();
+    // The switch is also remembered as the target default, but only the
+    // durable fields the user actually changed (planMode is task-scoped).
+    expect(onRememberComposerDefaults).toHaveBeenCalledTimes(1);
+    expect(onRememberComposerDefaults).toHaveBeenCalledWith({
+      agentTargetId: null,
+      provider: "codex",
+      defaults: { model: "gpt-5.1", reasoningEffort: "high" }
+    });
+    // The durable fields also sync into the node default drafts so this
+    // node's next composer picks them up (node drafts win over the
+    // remembered preferences on the read path).
+    expect(onDataChange).toHaveBeenCalled();
+    const updatedData = onDataChange.mock.calls
+      .map(([updater]) => updater(agentGuiData("session-1")))
+      .at(-1);
+    expect(updatedData?.composerOverrides).toMatchObject({
+      model: "gpt-5.1",
+      reasoningEffort: "high"
+    });
   });
 
   it("queues later active session settings updates while an earlier request is still in flight", async () => {
@@ -10080,7 +10096,7 @@ describe("useAgentGUINodeController", () => {
     });
   });
 
-  it("does not update node defaults when an active session settings update fails", async () => {
+  it("records node defaults at switch time even when the active session settings update fails", async () => {
     const updateSettings = vi.fn(async () => {
       throw new Error("Claude Code custom models require a new session");
     });
@@ -10161,7 +10177,26 @@ describe("useAgentGUINodeController", () => {
         permissionModeId: "default"
       });
     });
-    expect(onDataChange).not.toHaveBeenCalled();
+    // The switch itself is the user's choice: it is recorded into the node
+    // defaults at switch time even though this session rejected it (the
+    // error literally asks for a new session, which should use the model).
+    expect(onDataChange).toHaveBeenCalled();
+    const updatedData = onDataChange.mock.calls
+      .map(([updater]) =>
+        updater(
+          agentGuiData("session-1", "claude-code", {
+            composerOverrides: {
+              model: "sonnet",
+              reasoningEffort: "medium"
+            }
+          })
+        )
+      )
+      .at(-1);
+    expect(updatedData?.composerOverrides).toMatchObject({
+      model: "MiniMax-M2.7",
+      reasoningEffort: "medium"
+    });
   });
 
   it("shows a warning tip when an active session settings update requires a new session", async () => {
@@ -10989,12 +11024,14 @@ describe("useAgentGUINodeController", () => {
       permissionModeId: "full-access"
     });
     expect(onDataChange).toHaveBeenCalled();
+    // Only the fields touched by this switch are remembered (patch
+    // semantics); the untouched reasoningEffort is not re-recorded.
     expect(onRememberComposerDefaults).toHaveBeenCalledWith({
+      agentTargetId: "local:codex",
       provider: "codex",
       defaults: {
         model: "gpt-5",
-        permissionModeId: "full-access",
-        reasoningEffort: "high"
+        permissionModeId: "full-access"
       }
     });
   });

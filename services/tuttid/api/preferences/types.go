@@ -12,6 +12,7 @@ func GeneratedDesktopPreferencesFromBiz(value preferencesbiz.DesktopPreferences)
 	}
 	return tuttigenerated.DesktopPreferences{
 		AgentComposerDefaultsByProvider:             generatedAgentComposerDefaultsByProvider(value.AgentComposerDefaultsByProvider),
+		AgentComposerDefaultsByAgentTarget:          generatedAgentComposerDefaultsByAgentTarget(value.AgentComposerDefaultsByAgentTarget),
 		AgentGuiConversationRailCollapsedByProvider: generatedAgentGUIConversationRailCollapsedByProvider(value.AgentGUIConversationRailCollapsedByProvider),
 		AgentConversationDetailMode:                 tuttigenerated.DesktopAgentConversationDetailMode(preferencesbiz.NormalizeDesktopAgentConversationDetailMode(value.AgentConversationDetailMode)),
 		AgentDockLayout:                             tuttigenerated.DesktopAgentDockLayout(preferencesbiz.NormalizeDesktopAgentDockLayout(value.AgentDockLayout)),
@@ -81,13 +82,26 @@ func generatedAgentComposerDefaultsByProvider(value map[string]preferencesbiz.Ag
 	}
 }
 
+func generatedAgentComposerDefaultsByAgentTarget(value map[string]preferencesbiz.AgentComposerDefaults) *tuttigenerated.DesktopAgentComposerDefaultsByAgentTarget {
+	result := tuttigenerated.DesktopAgentComposerDefaultsByAgentTarget{}
+	for agentTargetID, defaults := range value {
+		generated := generatedAgentComposerDefaultsPointer(defaults)
+		if agentTargetID == "" || generated == nil {
+			continue
+		}
+		result[agentTargetID] = *generated
+	}
+	return &result
+}
+
 func generatedAgentComposerDefaultsPointer(value preferencesbiz.AgentComposerDefaults) *tuttigenerated.DesktopAgentComposerDefaults {
 	generated := tuttigenerated.DesktopAgentComposerDefaults{
 		Model:            optionalStringPointer(value.Model),
 		PermissionModeId: optionalStringPointer(value.PermissionModeID),
 		ReasoningEffort:  optionalStringPointer(value.ReasoningEffort),
+		Speed:            optionalStringPointer(value.Speed),
 	}
-	if generated.Model == nil && generated.PermissionModeId == nil && generated.ReasoningEffort == nil {
+	if generated.Model == nil && generated.PermissionModeId == nil && generated.ReasoningEffort == nil && generated.Speed == nil {
 		return nil
 	}
 	return &generated

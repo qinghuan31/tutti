@@ -397,6 +397,9 @@ func (api DaemonAPI) PutDesktopPreferences(ctx context.Context, request tuttigen
 		AgentComposerDefaultsByProvider: agentComposerDefaultsByProviderFromGenerated(
 			request.Body.Preferences.AgentComposerDefaultsByProvider,
 		),
+		AgentComposerDefaultsByAgentTarget: agentComposerDefaultsByAgentTargetFromGenerated(
+			request.Body.Preferences.AgentComposerDefaultsByAgentTarget,
+		),
 		AgentGUIConversationRailCollapsedByProvider: agentGUIConversationRailCollapsedByProviderFromGenerated(
 			request.Body.Preferences.AgentGuiConversationRailCollapsedByProvider,
 		),
@@ -492,9 +495,32 @@ func setAgentComposerDefaultsFromGenerated(
 	if value == nil {
 		return
 	}
-	result[provider] = preferencesbiz.AgentComposerDefaults{
+	result[provider] = agentComposerDefaultsFromGenerated(*value)
+}
+
+func agentComposerDefaultsByAgentTargetFromGenerated(
+	value *tuttigenerated.DesktopAgentComposerDefaultsByAgentTarget,
+) map[string]preferencesbiz.AgentComposerDefaults {
+	result := map[string]preferencesbiz.AgentComposerDefaults{}
+	if value == nil {
+		return result
+	}
+	for agentTargetID, defaults := range *value {
+		if strings.TrimSpace(agentTargetID) == "" {
+			continue
+		}
+		result[strings.TrimSpace(agentTargetID)] = agentComposerDefaultsFromGenerated(defaults)
+	}
+	return result
+}
+
+func agentComposerDefaultsFromGenerated(
+	value tuttigenerated.DesktopAgentComposerDefaults,
+) preferencesbiz.AgentComposerDefaults {
+	return preferencesbiz.AgentComposerDefaults{
 		Model:            optionalStringValue(value.Model),
 		PermissionModeID: optionalStringValue(value.PermissionModeId),
 		ReasoningEffort:  optionalStringValue(value.ReasoningEffort),
+		Speed:            optionalStringValue(value.Speed),
 	}
 }
