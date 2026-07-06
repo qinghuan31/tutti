@@ -1,3 +1,8 @@
+import {
+  deriveSubmitAvailability,
+  isLiveTurnLifecyclePhase,
+  runtimeContextHasLiveBackgroundAgents
+} from "@tutti-os/agent-activity-core";
 import type {
   AgentActivityRuntime,
   AgentQueuedPromptQueueSnapshot,
@@ -456,23 +461,18 @@ function sessionCanReceiveInput(session: AgentActivitySession): boolean {
   if (sessionLooksBusy(session)) {
     return false;
   }
+  // The turn lifecycle is the source of truth (ADR 0008): when the record
+  // carries one, derive availability locally instead of trusting the wire
+  // submitAvailability — a dropped or stale patch can leave the wire copy
+  // contradicting the lifecycle, which would strand the queue forever.
+  const derived = deriveSubmitAvailability(session);
+  if (derived) {
+    return derived.state === "available";
+  }
+  // Records without a lifecycle (non-migrated providers, fresh sessions)
+  // keep the wire value as the only signal.
   const submitState = session.submitAvailability?.state;
-  if (!submitState || submitState === "available") {
-    return true;
-  }
-  // The turn lifecycle is the source of truth (ADR 0008): sessionLooksBusy
-  // already proved the lifecycle holds no live turn, so a leftover
-  // blocked(active_turn) submit availability is stale — after the turn
-  // settles no further event arrives to refresh it, and waiting on it would
-  // strand the queued prompts forever. Other blocked reasons still hold.
-  if (
-    submitState === "blocked" &&
-    session.submitAvailability?.reason === "active_turn" &&
-    Boolean(session.turnLifecycle?.phase)
-  ) {
-    return true;
-  }
-  return false;
+  return !submitState || submitState === "available";
 }
 
 function sessionLooksBusy(session: AgentActivitySession): boolean {
@@ -497,44 +497,22 @@ function sessionLooksBusy(session: AgentActivitySession): boolean {
     currentPhase === "submitted" ||
     currentPhase === "running" ||
     currentPhase === "working" ||
-    currentPhase === "waiting"
+    currentPhase === "waiting" ||
+    Boolean(lifecycle?.activeTurnId)
   );
 }
 
-// Mirrors Go submitAvailabilityForAuthoritySession (runtime/controller.go)
-// for diagnostics only: derive availability from lifecycle + backgroundAgents
-// and report it next to the wire value so field logs show where they diverge.
+// Diagnostic probe (temporary instrumentation): report the wire
+// submitAvailability next to the locally derived value so field logs show
+// where they diverge. Decisions use deriveSubmitAvailability directly.
 function describeSessionAvailabilityProbe(
   session: AgentActivitySession
 ): DesktopQueuedPromptAvailabilityProbe {
-  const backgroundAgents = backgroundAgentsProbe(session);
-  let derivedState: string | null = null;
-  let derivedReason: string | null = null;
-  const lifecycle = session.turnLifecycle;
-  if (lifecycle?.phase || lifecycle?.activeTurnId) {
-    if (isWaitingTurnLifecyclePhase(lifecycle.phase)) {
-      derivedState = "blocked";
-      derivedReason = "waiting";
-    } else if (
-      Boolean(lifecycle.activeTurnId) ||
-      isLiveTurnLifecyclePhase(lifecycle.phase)
-    ) {
-      derivedState = "blocked";
-      derivedReason = "active_turn";
-    } else if (
-      (backgroundAgents.count ?? 0) > 0 ||
-      (backgroundAgents.liveItemCount ?? 0) > 0
-    ) {
-      derivedState = "blocked";
-      derivedReason = "background_agent";
-    } else {
-      derivedState = "available";
-    }
-  }
+  const derived = deriveSubmitAvailability(session);
   return {
-    backgroundAgents,
-    derivedReason,
-    derivedState,
+    backgroundAgents: backgroundAgentsProbe(session),
+    derivedReason: derived?.reason ?? null,
+    derivedState: derived?.state ?? null,
     wireReason: session.submitAvailability?.reason ?? null,
     wireState: session.submitAvailability?.state ?? null
   };
@@ -560,50 +538,16 @@ function backgroundAgentsProbe(
   const liveItemCount =
     items === null
       ? null
-      : items.filter((item) => {
-          const status =
-            item && typeof item === "object"
-              ? normalizeActivityToken((item as { status?: unknown }).status)
-              : "";
-          // Mirror Go claudeSDKBackgroundAgentStatusIsTerminal: absent status
-          // counts as running.
-          return !(
-            status === "completed" ||
-            status === "failed" ||
-            status === "cancelled" ||
-            status === "canceled" ||
-            status === "stopped"
-          );
-        }).length;
+      : items.filter(
+          (item) =>
+            !!item &&
+            typeof item === "object" &&
+            Object.keys(item).length > 0 &&
+            runtimeContextHasLiveBackgroundAgents({
+              backgroundAgents: { count: 0, items: [item] }
+            })
+        ).length;
   return { present: true, count, liveItemCount };
-}
-
-function isWaitingTurnLifecyclePhase(phase: unknown): boolean {
-  switch (normalizeActivityToken(phase)) {
-    case "waiting":
-    case "waiting_approval":
-    case "waiting_input":
-    case "awaiting_approval":
-      return true;
-    default:
-      return false;
-  }
-}
-
-function isLiveTurnLifecyclePhase(phase: unknown): boolean {
-  switch (normalizeActivityToken(phase)) {
-    case "submitted":
-    case "running":
-    case "waiting_approval":
-    case "waiting_input":
-    case "working":
-    case "streaming":
-    case "waiting":
-    case "awaiting_approval":
-      return true;
-    default:
-      return false;
-  }
 }
 
 function sessionActivityVersion(
