@@ -199,6 +199,29 @@ Use this shape for new entries:
   [bootstrap.ts](../../apps/desktop/src/main/bootstrap.ts)
   [defaults.ts](../../apps/desktop/src/main/defaults.ts)
 
+### GitHub Actions pnpm setup fails with ERR_PNPM_BAD_PM_VERSION
+
+- Symptom:
+  GitHub Actions jobs fail in the `pnpm/action-setup` step with
+  `ERR_PNPM_BAD_PM_VERSION` or "Multiple versions of pnpm specified" after
+  `package.json` gains an integrity-pinned `packageManager` value such as
+  `pnpm@10.11.0+sha512...`.
+- Quick checks:
+  Inspect every workflow that uses `pnpm/action-setup`. If the workflow passes
+  `with.version` while the root `package.json` also declares `packageManager`,
+  the action sees two pnpm targets.
+- Root cause:
+  `pnpm/action-setup` reads `packageManager` from `package.json` by default.
+  Passing a separate `version` input duplicates the same version source, and an
+  integrity-pinned `packageManager` string makes the mismatch explicit.
+- Fix:
+  Keep `package.json` as the single pnpm version source. Remove the
+  `with.version` input from `pnpm/action-setup` steps instead of weakening the
+  root `packageManager` integrity pin.
+- Validation:
+  Search workflows for `pnpm/action-setup` and confirm no step still passes a
+  `version` input. Push a new commit to rerun the PR checks.
+
 ### macOS updates fail from a mounted DMG
 
 - Symptom:
