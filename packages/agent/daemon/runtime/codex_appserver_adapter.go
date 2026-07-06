@@ -109,11 +109,6 @@ const defaultCodexAppServerGoalContinuationGraceWindow = 100 * time.Millisecond
 // fails with ErrSessionActiveTurn until the daemon restarts.
 const defaultCodexAppServerTurnSteerTimeout = 10 * time.Second
 
-// defaultCodexAppServerTurnCompletionIdleFallbackWindow bounds how long the
-// app-server adapter waits after a completed item and follow-up metadata before
-// synthesizing a terminal turn when Codex never sends turn/completed.
-const defaultCodexAppServerTurnCompletionIdleFallbackWindow = 15 * time.Second
-
 // startupModelSteadyRetryCount is how many 30s-spaced model/list retries follow
 // the initial fast ramp before the background refresh gives up (~18 minutes
 // total), bounding the goroutine while covering realistic transient outages.
@@ -146,10 +141,6 @@ type CodexAppServerAdapter struct {
 	// back to the default. Overridable in tests to drive the timeout without
 	// real delays.
 	turnSteerTimeout time.Duration
-	// turnCompletionIdleFallbackWindow bounds the idle wait after a completed
-	// item before locally settling a Codex turn whose app-server stream omitted
-	// turn/completed. Zero falls back to the default.
-	turnCompletionIdleFallbackWindow time.Duration
 }
 
 type codexAppServerSessionLock struct {
@@ -235,8 +226,6 @@ type codexAppServerActiveTurn struct {
 
 	cancelRequested     bool
 	cancelInterruptSent bool
-	idleFallbackSeq     uint64
-	idleFallbackArmed   bool
 	// forceCanceled is set (under the adapter mutex) when Cancel force-closed
 	// the app-server process because codex did not honor turn/interrupt. It
 	// makes the turn's terminal classification surface as canceled, not failed.
@@ -1269,93 +1258,6 @@ func (a *CodexAppServerAdapter) markTurnSettleEmits(appTurn *codexAppServerActiv
 	a.mu.Lock()
 	appTurn.settleEmits = true
 	a.mu.Unlock()
-}
-
-func (a *CodexAppServerAdapter) noteActiveTurnNotification(
-	agentSessionID string,
-	method string,
-) (*codexAppServerActiveTurn, uint64, bool) {
-	if a == nil {
-		return nil, 0, false
-	}
-	a.mu.Lock()
-	defer a.mu.Unlock()
-	appSession := a.sessions[strings.TrimSpace(agentSessionID)]
-	if appSession == nil || appSession.activeTurn == nil || appSession.activeTurn.phase.terminal() {
-		return nil, 0, false
-	}
-	activeTurn := appSession.activeTurn
-	activeTurn.idleFallbackSeq++
-	switch method {
-	case appServerNotifyTurnCompleted, appServerNotifyTurnStarted:
-		activeTurn.idleFallbackArmed = false
-	case appServerNotifyItemCompleted:
-		activeTurn.idleFallbackArmed = true
-	case appServerNotifyItemStarted,
-		appServerNotifyAgentMessageDelta,
-		appServerNotifyReasoningDelta,
-		appServerNotifyReasoningSummary,
-		appServerNotifyReasoningSummaryPart:
-		activeTurn.idleFallbackArmed = false
-	}
-	return activeTurn, activeTurn.idleFallbackSeq, activeTurn.idleFallbackArmed
-}
-
-func (a *CodexAppServerAdapter) armTurnCompletionIdleFallback(
-	agentSessionID string,
-	appTurn *codexAppServerActiveTurn,
-	sequence uint64,
-) {
-	if a == nil || appTurn == nil {
-		return
-	}
-	window := a.turnCompletionIdleFallbackWindow
-	if window <= 0 {
-		window = defaultCodexAppServerTurnCompletionIdleFallbackWindow
-	}
-	go func() {
-		timer := time.NewTimer(window)
-		defer timer.Stop()
-		select {
-		case <-appTurn.terminated:
-			return
-		case <-timer.C:
-		}
-		var providerTurnID string
-		a.mu.Lock()
-		appSession := a.sessions[strings.TrimSpace(agentSessionID)]
-		if appSession == nil ||
-			appSession.activeTurn != appTurn ||
-			appTurn.phase.terminal() ||
-			appTurn.idleFallbackSeq != sequence ||
-			!appTurn.idleFallbackArmed ||
-			appTurn.cancelRequested ||
-			len(appSession.pendingRequests) > 0 {
-			a.mu.Unlock()
-			return
-		}
-		providerTurnID = strings.TrimSpace(appSession.activeTurnID)
-		if providerTurnID == "" {
-			a.mu.Unlock()
-			return
-		}
-		a.mu.Unlock()
-		if appTurn.ctx != nil && appTurn.ctx.Err() != nil {
-			return
-		}
-		slog.Warn("agent session app-server settling idle turn without turn/completed",
-			"event", "agent_session.app_server.turn_completion_idle_fallback",
-			"agent_session_id", agentSessionID,
-			"provider_turn_id", providerTurnID,
-			"turn_id", appTurn.turnID,
-			"idle_ms", window.Milliseconds(),
-		)
-		a.completeActiveTurn(agentSessionID, map[string]any{
-			"id":     providerTurnID,
-			"status": "completed",
-			"items":  []any{},
-		})
-	}()
 }
 
 // finalizeSettledTurn produces the settled turn's terminal events from the

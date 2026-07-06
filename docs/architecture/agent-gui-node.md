@@ -1025,13 +1025,6 @@ turn's active-turn submit block unless another tracked foreground turn is still
 active. Do not preserve an untracked synthetic/live lifecycle over the finishing
 turn: that leaves `submitAvailability.blocked(active_turn)` without real work
 and makes the composer stay loading after the provider has completed.
-For Codex app-server sessions, a completed transcript item is not itself a turn
-terminal signal. The runtime must normally wait for `turn/completed`, but if the
-provider stream emits `item/completed` and only metadata updates afterward, the
-daemon adapter owns any bounded idle fallback that locally settles the active
-turn. AgentGUI, queued prompts, and Message Center must keep treating
-`submitAvailability` and active-turn fields as authoritative instead of
-clearing loading state from visible transcript completion.
 
 Preview-mode AgentGUI surfaces are read-only for this runtime: they may render an
 existing queue if injected into the same context, but they must not enqueue,

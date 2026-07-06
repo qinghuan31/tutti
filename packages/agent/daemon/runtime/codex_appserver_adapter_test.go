@@ -68,7 +68,6 @@ type scriptedAppServerConnection struct {
 	turnStatus                   string // completed (default) | failed | interrupted
 	turnError                    map[string]any
 	holdTurn                     bool              // do not finish the turn until released
-	omitTurnCompleted            bool              // stream output but never send turn/completed
 	ignoreInterrupt              bool              // ack turn/interrupt but never complete the turn (wedged codex)
 	hangInterrupt                bool              // never even acknowledge the turn/interrupt RPC (fully wedged codex)
 	hangSteer                    bool              // never even acknowledge the turn/steer RPC (steer races the running turn's own completion)
@@ -314,7 +313,6 @@ func (c *scriptedAppServerConnection) Send(data []byte) error {
 		case appServerMethodTurnStart:
 			c.mu.Lock()
 			hold := c.holdTurn
-			omitTurnCompleted := c.omitTurnCompleted
 			approval := c.commandApproval
 			userInput := c.userInputRequest
 			emitPlan := c.emitPlanItem
@@ -461,9 +459,6 @@ func (c *scriptedAppServerConnection) Send(data []byte) error {
 				"threadId": "codex-thread-1", "threadName": threadName,
 			})
 			if hold {
-				continue
-			}
-			if omitTurnCompleted {
 				continue
 			}
 			c.completePendingTurn()
@@ -1287,30 +1282,6 @@ func TestCodexAppServerAdapterExecStreamsTurn(t *testing.T) {
 	}
 	if total, _ := acpInt64Value(contextWindow["totalTokens"]); total != 272000 {
 		t.Fatalf("usage totalTokens = %#v", usage)
-	}
-}
-
-func TestCodexAppServerAdapterExecSettlesAfterIdleCompletedItemWithoutTurnCompleted(t *testing.T) {
-	t.Parallel()
-
-	adapter, transport, session := startedAppServerAdapter(t)
-	adapter.turnCompletionIdleFallbackWindow = 10 * time.Millisecond
-	transport.conn.omitTurnCompleted = true
-
-	events, err := adapter.Exec(context.Background(), session, []PromptContentBlock{{
-		Type: "text",
-		Text: "inspect the repo",
-	}}, "", "turn-local-1", nil, nil)
-	if err != nil {
-		t.Fatalf("Exec: %v", err)
-	}
-
-	completed := eventsOfType(events, activityshared.EventTurnCompleted)
-	if len(completed) != 1 {
-		t.Fatalf("turn completed events = %d, want idle fallback completion; events=%#v", len(completed), events)
-	}
-	if adapter.hasLiveSessionWork(session.AgentSessionID) {
-		t.Fatal("hasLiveSessionWork = true, want fallback-settled turn to clear active work")
 	}
 }
 

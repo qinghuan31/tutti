@@ -1010,43 +1010,6 @@ delimited by ---`, and the composer skill picker may show partial or
   tests for failed Agent calls with prompt-only payloads. Run the focused Go and
   GUI specs for those paths.
 
-### Codex app-server turn stays loading after the reply is visible
-
-- Symptom:
-  AgentGUI shows the assistant reply and completed tool rows, but the composer
-  remains loading or disabled with `submitAvailability.reason = active_turn`.
-  Runtime logs can keep reporting `session_status=working` for the same turn
-  even though the stream only emits metadata updates such as token usage, rate
-  limits, plan updates, or thread-name updates.
-- Quick checks:
-  Compare `tuttid.log` app-server notifications with
-  `agent.activity.reconcile.trace`. If the last non-metadata app-server event is
-  `item/completed` and there is no matching `turn/completed`, the active turn is
-  still live from the runtime's point of view. Confirm this is different from
-  the metadata-only usage/config update case: those updates must not write
-  turn lifecycle or submit availability.
-- Root cause:
-  The Codex app-server protocol uses `turn/completed` as the authoritative
-  terminal signal. Transcript `item/completed` proves one item ended, not that
-  the foreground turn ended. When the provider omits `turn/completed`, the
-  daemon's active turn never settles and AgentGUI correctly keeps the composer
-  blocked by `active_turn`.
-- Fix:
-  Keep the fix in the Codex app-server runtime adapter. After an active
-  foreground turn receives `item/completed`, allow a bounded idle fallback to
-  synthesize a completed turn only if no new item, assistant delta, reasoning
-  delta, turn start/completion, pending app-server request, cancel, or active
-  turn change arrives during the window. Do not add renderer-side exceptions
-  that infer turn completion from visible transcript rows.
-- Validation:
-  Add adapter coverage where app-server streams normal output and then omits
-  `turn/completed`; the test must observe one terminal turn event and no live
-  session work. Also keep coverage for normal streaming turns so the fallback
-  does not duplicate `turn/completed`.
-- References:
-  [codex_appserver_adapter.go](../../packages/agent/daemon/runtime/codex_appserver_adapter.go)
-  [codex_appserver_events.go](../../packages/agent/daemon/runtime/codex_appserver_events.go)
-
 ### Claude SDK subagent events overwrite or complete the parent turn
 
 - Symptom:
