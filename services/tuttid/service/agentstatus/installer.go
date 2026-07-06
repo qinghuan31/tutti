@@ -432,6 +432,13 @@ func (s Service) executeInstaller(
 		}
 		result, err := s.runCodexCLILatestInstaller(installCtx, spec, existingCLIPath)
 		return runResult(result, err)
+	case InstallerKindManagedNPMPackage:
+		existingCLIPath := ""
+		if runtime != nil {
+			existingCLIPath = strings.TrimSpace(runtime.CLIPath)
+		}
+		result, err := s.runManagedNPMPackageInstaller(installCtx, provider, *spec.ManagedNPM, existingCLIPath)
+		return runResult(result, err)
 	case InstallerKindExternalAgentRegistryNPM:
 		result, err := s.runExternalAgentRegistryNPMInstaller(installCtx, provider, spec)
 		if err == nil && result.ExitCode == 0 {
@@ -470,6 +477,13 @@ func installerLockCommand(spec InstallerSpec) string {
 			strings.TrimSpace(spec.RegistryNPM.AgentID),
 			strings.TrimSpace(spec.RegistryNPM.Package),
 			strings.TrimSpace(spec.RegistryNPM.PrefixDir),
+		}, ":")
+	}
+	if spec.Kind == InstallerKindManagedNPMPackage && spec.ManagedNPM != nil {
+		return strings.Join([]string{
+			string(spec.Kind),
+			strings.TrimSpace(spec.ManagedNPM.PackageName),
+			strings.TrimSpace(spec.ManagedNPM.PackageVersion),
 		}, ":")
 	}
 	return ""

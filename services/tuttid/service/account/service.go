@@ -19,6 +19,14 @@ type Service struct {
 	AccountBaseURL string
 	AppCallbackURL string
 	AuthLoginURL   string
+	// OnLoginCompleted runs after the desktop account login bridge has completed
+	// and the account auth.json is available. It must be best-effort: login status
+	// polling should not block on downstream provider credential bootstrap.
+	OnLoginCompleted func(context.Context)
+	// OnLogoutCompleted runs after the desktop account auth state has been
+	// cleared. It should avoid long-running work; downstream providers should
+	// clear local readiness markers before starting background network cleanup.
+	OnLogoutCompleted func(context.Context)
 
 	mu       sync.Mutex
 	client   *authbridge.Client
@@ -73,7 +81,17 @@ func (s *Service) LoginStatus(attemptID string) (authbridge.LoginStatus, error) 
 		delete(s.attempts, attempt.ID)
 		s.mu.Unlock()
 	}
+	if status.Status == "completed" {
+		s.notifyLoginCompleted()
+	}
 	return status, nil
+}
+
+func (s *Service) notifyLoginCompleted() {
+	if s.OnLoginCompleted == nil {
+		return
+	}
+	go s.OnLoginCompleted(context.Background())
 }
 
 func (s *Service) GetUserInfo(ctx context.Context) (*authbridge.UserInfo, error) {
@@ -89,7 +107,18 @@ func (s *Service) Logout(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	return client.Logout(ctx)
+	if err := client.Logout(ctx); err != nil {
+		return err
+	}
+	s.notifyLogoutCompleted()
+	return nil
+}
+
+func (s *Service) notifyLogoutCompleted() {
+	if s.OnLogoutCompleted == nil {
+		return
+	}
+	s.OnLogoutCompleted(context.Background())
 }
 
 func (s *Service) authClient() (*authbridge.Client, error) {

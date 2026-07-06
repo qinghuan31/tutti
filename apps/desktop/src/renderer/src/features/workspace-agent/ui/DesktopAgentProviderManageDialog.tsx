@@ -24,6 +24,7 @@ import type { DesktopI18nKey } from "@shared/i18n";
 import { useDesktopPreferencesService } from "@renderer/features/desktop-preferences";
 import { useTranslation, type TranslateFn } from "@renderer/i18n";
 import { cn } from "@renderer/lib/format";
+import { useAccountService } from "../../workspace-workbench/ui/useAccountService.ts";
 import type {
   AgentProviderStatusPendingAction,
   AgentProviderStatusSnapshot,
@@ -93,6 +94,7 @@ export function DesktopAgentProviderManageDialog({
   workspaceId
 }: DesktopAgentProviderManageDialogProps) {
   const { t } = useTranslation();
+  const { service: accountService } = useAccountService();
   const { state: desktopPreferencesState } = useDesktopPreferencesService();
   const hiddenProviders = useMemo<ReadonlySet<WorkspaceAgentProvider>>(
     () =>
@@ -201,14 +203,18 @@ export function DesktopAgentProviderManageDialog({
       }
 
       try {
-        await agentProviderStatusService.runAction(
-          row.provider,
-          row.primaryActionId,
-          {
-            workbenchHost,
-            workspaceId
-          }
-        );
+        if (row.provider === "tutti-agent" && row.primaryActionId === "login") {
+          await accountService.startLogin();
+        } else {
+          await agentProviderStatusService.runAction(
+            row.provider,
+            row.primaryActionId,
+            {
+              workbenchHost,
+              workspaceId
+            }
+          );
+        }
       } catch {
         // The status service owns user-facing error notifications.
       } finally {
@@ -222,7 +228,13 @@ export function DesktopAgentProviderManageDialog({
         );
       }
     },
-    [agentProviderStatusService, onOpenChange, workbenchHost, workspaceId]
+    [
+      accountService,
+      agentProviderStatusService,
+      onOpenChange,
+      workbenchHost,
+      workspaceId
+    ]
   );
 
   return (

@@ -3,9 +3,9 @@
 ## Purpose
 
 Tutti Agent should feel immediately available when a user opens the desktop app.
-The current integration exposes `tutti-agent` as a provider, but the readiness
-flow still depends on a generic npm shell installer and on user-driven setup
-actions. This note describes the intended implementation for:
+The integration exposes `tutti-agent` as a provider, installs it through the
+daemon-managed npm installer, and can start setup before the user explicitly
+opens the provider. This note describes the intended architecture for:
 
 - a Codex-like managed npm installer for `@tutti-os/tutti-agent`;
 - proactive installation when the app opens;
@@ -21,7 +21,8 @@ as a first-party provider:
 - binary: `tutti-agent`
 - adapter command: `tutti-agent app-server`
 - auth marker: `~/.tutti-agent/auth.json`
-- install command: `npm install -g @tutti-os/tutti-agent`
+- installer: `InstallerKindManagedNPMPackage` for `@tutti-os/tutti-agent`
+  with `--include=optional`
 
 Desktop reads provider status through `DesktopAgentProviderStatusService`.
 When the daemon reports `not_installed`, the status includes an `install`
@@ -45,8 +46,8 @@ install anything. Installation starts only when the install action is run.
 
 ### Problem
 
-`tutti-agent` currently uses `InstallerKindShellCommand` with a bare global npm
-command. This is weaker than the Codex installer:
+`tutti-agent` must not use `InstallerKindShellCommand` with a bare global npm
+command. That shape is weaker than the Codex installer:
 
 - the launcher can be installed into a global npm prefix that the daemon binary
   resolver does not search;
@@ -60,8 +61,8 @@ command. This is weaker than the Codex installer:
 
 ### Direction
 
-Generalize the Codex npm installer instead of copying a second one-off
-implementation. Add a reusable managed npm installer spec, for example:
+Use the reusable managed npm installer instead of a one-off shell command. The
+installer spec is:
 
 ```go
 type ManagedNPMPackageInstallerSpec struct {
@@ -73,7 +74,7 @@ type ManagedNPMPackageInstallerSpec struct {
 }
 ```
 
-and a corresponding `InstallerKindManagedNPMPackage`.
+with `InstallerKindManagedNPMPackage`.
 
 `codexCLIInstallerSpec()` can become a thin wrapper over this generic installer:
 
@@ -85,7 +86,7 @@ managedNPMPackageInstallerSpec(ManagedNPMPackageInstallerSpec{
 })
 ```
 
-`tutti-agent` should then use:
+`tutti-agent` uses:
 
 ```go
 managedNPMPackageInstallerSpec(ManagedNPMPackageInstallerSpec{
@@ -316,10 +317,26 @@ i18n layer. Do not hardcode Chinese or English UI strings in component code.
 On login completion:
 
 - call `accountService.refreshUserInfo()` through the existing service flow;
+- let daemon account service trigger the best-effort Tutti Agent auth bootstrap
+  callback once `LoginStatus` observes `completed`;
+- the callback exchanges the desktop account session for a `tutti_llm` token
+  bundle and runs `tutti-agent login --with-tutti-llm-tokens`, which writes
+  `~/.tutti-agent/auth.json`;
 - refresh `tutti-agent` provider status;
-- let `TuttiAgentPreparer` bootstrap `~/.tutti-agent/auth.json` on the next
-  runtime prepare, or add a targeted daemon-side "prepare auth" action only if
-  product requires immediate provider readiness before session launch.
+- keep `TuttiAgentPreparer`'s runtime-prepare bootstrap as a fallback for cases
+  where login completed before the callback was wired or the first bootstrap
+  failed.
+
+On logout completion:
+
+- let daemon account service trigger best-effort Tutti Agent auth cleanup;
+- remove `~/.tutti-agent/auth.json` synchronously before the logout response is
+  surfaced to the renderer, because the auth marker must not keep provider
+  readiness in the ready state after the host account is gone;
+- use the removed auth payload to revoke the LLM refresh token in the
+  background via `/auth/v1/llm-token/revoke`;
+- refresh `tutti-agent` provider status when the renderer account state enters
+  or leaves `completed`, or when the persisted account user appears/disappears.
 
 ## Rollout Order
 

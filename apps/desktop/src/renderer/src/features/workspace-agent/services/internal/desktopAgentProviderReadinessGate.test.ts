@@ -27,7 +27,7 @@ test("projectDesktopAgentProviderReadinessGates maps provider availability to Ag
   assert.equal(gates.codex?.status, "not_installed");
   assert.equal(gates.codex?.pendingAction, "install");
   assert.equal(gates["claude-code"]?.status, "auth_required");
-  assert.equal(gates["tutti-agent"], null);
+  assert.equal(gates["tutti-agent"]?.status, "auth_required");
   assert.equal(gates.gemini, null);
   assert.equal(gates.openclaw?.status, "unavailable");
 });

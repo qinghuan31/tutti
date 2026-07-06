@@ -202,6 +202,65 @@ func TestRunCodexCLILatestInstallerUsesManagedRuntimeNPMWhenUserNPMMissing(t *te
 	}
 }
 
+func TestRunManagedNPMPackageInstallerInstallsTuttiAgentWithManagedRuntime(t *testing.T) {
+	home := t.TempDir()
+	runtimeRoot := fakeManagedRuntimeRoot(t)
+	managedNPM := filepath.Join(runtimeRoot, "node", "bin", npmBinaryNameForTest())
+	managedNode := filepath.Join(runtimeRoot, "node", "bin", nodeBinaryNameForTest())
+	managedNodeBinDir := filepath.Dir(managedNode)
+
+	service := probeTestService(home)
+	service.HTTPClient = agentNPMRegistryProbeHTTPClient(nil)
+	service.Environ = func() []string {
+		return []string{"PATH=/usr/bin:/bin", agentNPMRegistryEnv + "=https://registry.example.test"}
+	}
+	service.ManagedRuntime = staticManagedRuntimeResolver{
+		runtime: managedruntime.ResolvedRuntime{
+			Root:    runtimeRoot,
+			Node:    managedNode,
+			NPM:     managedNPM,
+			BinDirs: []string{managedNodeBinDir},
+			EnvOverrides: []string{
+				"TUTTI_APP_RUNTIME_ROOT=" + runtimeRoot,
+				"TUTTI_APP_NODE=" + managedNode,
+				"TUTTI_APP_NPM=" + managedNPM,
+				"PATH=" + managedNodeBinDir + string(os.PathListSeparator) + "/usr/bin" + string(os.PathListSeparator) + "/bin",
+			},
+		},
+	}
+	service.IsExecutableFile = isTestExecutableUnderHome(home)
+
+	var command InstallCommandInput
+	service.InstallCommand = func(_ context.Context, input InstallCommandInput) (InstallCommandResult, error) {
+		command = input
+		return InstallCommandResult{ExitCode: 0, Stdout: "installed"}, nil
+	}
+
+	if _, err := service.runManagedNPMPackageInstaller(context.Background(), "tutti-agent", ManagedNPMPackageInstallerSpec{
+		PackageName:     "@tutti-os/tutti-agent",
+		BinaryName:      "tutti-agent",
+		IncludeOptional: true,
+	}, ""); err != nil {
+		t.Fatalf("runManagedNPMPackageInstaller() error = %v", err)
+	}
+	if !strings.Contains(command.Command, managedNPM) ||
+		!strings.Contains(command.Command, "install") ||
+		!strings.Contains(command.Command, "@tutti-os/tutti-agent") ||
+		!strings.Contains(command.Command, "--include=optional") ||
+		!strings.Contains(command.Command, "--prefix") {
+		t.Fatalf("Command = %q, want managed runtime npm install", command.Command)
+	}
+	if !slices.Contains(command.Env, "TUTTI_APP_NPM="+managedNPM) {
+		t.Fatalf("Env = %#v, want managed runtime npm marker", command.Env)
+	}
+	if !slices.Contains(command.Env, "TUTTI_APP_NODE="+managedNode) {
+		t.Fatalf("Env = %#v, want managed runtime node marker", command.Env)
+	}
+	if !slices.Contains(command.Env, "npm_config_registry=https://registry.example.test") {
+		t.Fatalf("Env = %#v, want selected npm registry", command.Env)
+	}
+}
+
 type staticManagedRuntimeResolver struct {
 	runtime managedruntime.ResolvedRuntime
 }

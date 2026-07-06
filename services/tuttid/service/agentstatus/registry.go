@@ -120,12 +120,8 @@ func DefaultRegistry() Registry {
 			AdapterCommand:     []string{"tutti-agent", "app-server"},
 			AuthStatusCommand:  []string{"login", "status"},
 			AuthMarkerPaths:    []string{"~/.tutti-agent/auth.json"},
-			Install: InstallerSpec{
-				Kind:           InstallerKindShellCommand,
-				DisplayCommand: "npm install -g @tutti-os/tutti-agent",
-				ShellCommand:   "npm install -g @tutti-os/tutti-agent",
-			},
-			LoginArgs: []string{"login"},
+			Install:            tuttiAgentInstallerSpec(),
+			LoginArgs:          []string{"login"},
 		},
 		agentprovider.Cursor: {
 			Provider: agentprovider.Cursor,
@@ -209,5 +205,17 @@ func codexCLIInstallerSpec() InstallerSpec {
 		Kind:           InstallerKindCodexCLILatest,
 		DisplayCommand: "npm install -g @openai/codex --include=optional",
 		CodexCLI:       &CodexCLILatestInstallerSpec{},
+	}
+}
+
+func tuttiAgentInstallerSpec() InstallerSpec {
+	return InstallerSpec{
+		Kind:           InstallerKindManagedNPMPackage,
+		DisplayCommand: "npm install -g @tutti-os/tutti-agent --include=optional",
+		ManagedNPM: &ManagedNPMPackageInstallerSpec{
+			PackageName:     "@tutti-os/tutti-agent",
+			BinaryName:      "tutti-agent",
+			IncludeOptional: true,
+		},
 	}
 }

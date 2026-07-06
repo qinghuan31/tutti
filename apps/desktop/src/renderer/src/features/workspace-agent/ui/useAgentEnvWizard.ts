@@ -24,6 +24,7 @@ import {
   useAgentEnvWizardState,
   type WizardReportState
 } from "../services/internal/agentEnvWizardStore.ts";
+import { useAccountService } from "../../workspace-workbench/ui/useAccountService.ts";
 
 function useStatusSnapshot(service: IAgentProviderStatusService) {
   return useSyncExternalStore(
@@ -92,6 +93,7 @@ export function useAgentEnvWizard(input: {
 } {
   const { service, workspaceId, workbenchHost } = input;
   const { t } = useTranslation();
+  const { service: accountService } = useAccountService();
   const request = useAgentEnvPanelRequest();
   const snapshot = useStatusSnapshot(service);
   const wizard = useAgentEnvWizardState();
@@ -106,13 +108,28 @@ export function useAgentEnvWizard(input: {
     [snapshot.statuses, provider]
   );
 
+  const runProviderAction = useCallback(
+    async (actionId: "install" | "login") => {
+      if (provider === "tutti-agent" && actionId === "login") {
+        await accountService.startLogin();
+        return;
+      }
+      await service.runAction(provider, actionId, {
+        workbenchHost,
+        workspaceId
+      });
+    },
+    [accountService, service, provider, workbenchHost, workspaceId]
+  );
+
   const attachParams = useMemo(
     () => ({
       service,
       provider,
       focus: request.focus,
       requestSequence: request.requestSequence,
-      context: { workspaceId, workbenchHost }
+      context: { workspaceId, workbenchHost },
+      runAction: runProviderAction
     }),
     [
       service,
@@ -120,7 +137,8 @@ export function useAgentEnvWizard(input: {
       request.focus,
       request.requestSequence,
       workspaceId,
-      workbenchHost
+      workbenchHost,
+      runProviderAction
     ]
   );
 
@@ -179,16 +197,11 @@ export function useAgentEnvWizard(input: {
         restartAgentEnvWizardDetection(attachParams);
         return;
       }
-      void service
-        .runAction(provider, actionId, {
-          workbenchHost,
-          workspaceId
-        })
-        .catch((err) =>
-          logDetachedActionError(`runAction(${actionId})`, provider, err)
-        );
+      void runProviderAction(actionId).catch((err) =>
+        logDetachedActionError(`runAction(${actionId})`, provider, err)
+      );
     },
-    [attachParams, service, provider, workbenchHost, workspaceId]
+    [attachParams, provider, runProviderAction]
   );
   const confirmReport = useCallback(() => {
     service.setDiagnosticsConsent(true);

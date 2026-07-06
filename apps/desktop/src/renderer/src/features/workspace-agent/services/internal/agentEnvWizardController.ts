@@ -53,6 +53,7 @@ export interface AttachAgentEnvWizardParams {
   focus: AgentEnvPanelFocus | null;
   requestSequence: number;
   context: { workspaceId: string; workbenchHost?: unknown };
+  runAction?: (action: "install" | "login") => Promise<void> | void;
   scheduler?: Scheduler;
 }
 
@@ -146,11 +147,17 @@ export function attachAgentEnvWizard(
       });
       if (action) {
         markWizardAutoStarted(params.requestSequence);
-        void params.service
-          .runAction(params.provider, action, params.context)
-          .catch((err) =>
-            logDetachedActionError(`auto-start ${action}`, params.provider, err)
-          );
+        const runAction =
+          params.runAction ??
+          ((actionId: "install" | "login") =>
+            params.service.runAction(
+              params.provider,
+              actionId,
+              params.context
+            ));
+        void Promise.resolve(runAction(action)).catch((err) =>
+          logDetachedActionError(`auto-start ${action}`, params.provider, err)
+        );
       }
     }
 

@@ -139,6 +139,28 @@ test("auto-start fires runAction exactly once across multiple service ticks", ()
   });
 });
 
+test("auto-start delegates through injected runAction when provided", () => {
+  resetAgentEnvWizardStoreForTests();
+  const service = new FakeService({
+    ...missingCliStatus(),
+    provider: "tutti-agent"
+  } as AgentProviderStatus);
+  const routedActions: string[] = [];
+  const detach = attachAgentEnvWizard(
+    params(service, {
+      provider: "tutti-agent",
+      focus: "auth",
+      runAction: (action) => {
+        routedActions.push(action);
+      }
+    })
+  );
+  service.emit();
+  detach();
+  assert.deepEqual(routedActions, ["login"]);
+  assert.equal(service.runActionCalls.length, 0);
+});
+
 test("auto-start does not fire when already ready", () => {
   resetAgentEnvWizardStoreForTests();
   const service = new FakeService(readyStatus());

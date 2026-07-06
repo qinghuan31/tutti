@@ -270,7 +270,9 @@ function DesktopAgentGUIWorkbenchBodyImpl({
   const { i18n, locale } = useTranslation();
   const { service: desktopPreferencesService, state: desktopPreferencesState } =
     useDesktopPreferencesService();
-  const { service: accountService } = useAccountService();
+  const { service: accountService, state: accountState } = useAccountService();
+  const previousAccountLoginStatusRef = useRef<string | null>(null);
+  const previousAccountUserIdRef = useRef<string | null>(null);
   const [computerUseStatus, setComputerUseStatus] =
     useState<DesktopComputerUseStatus | null>(null);
   const appCenterState = useSnapshot(appCenterService.store);
@@ -467,6 +469,23 @@ function DesktopAgentGUIWorkbenchBodyImpl({
     },
     [accountService, agentProviderStatusService, context.host, workspaceId]
   );
+  const accountUserId = accountState.user?.user_id ?? null;
+  useEffect(() => {
+    const previousLoginStatus = previousAccountLoginStatusRef.current;
+    const previousUserId = previousAccountUserIdRef.current;
+    previousAccountLoginStatusRef.current = accountState.loginStatus;
+    previousAccountUserIdRef.current = accountUserId;
+    const loginCompletedChanged =
+      previousLoginStatus === "completed" ||
+      accountState.loginStatus === "completed";
+    const signedInUserChanged =
+      previousUserId !== accountUserId &&
+      (previousUserId !== null || accountUserId !== null);
+    if (!loginCompletedChanged && !signedInUserChanged) {
+      return;
+    }
+    void agentProviderStatusService?.refresh(["tutti-agent"]);
+  }, [accountState.loginStatus, accountUserId, agentProviderStatusService]);
   const handleProviderReadinessGateAction = useCallback(
     (
       actionProvider: AgentGUIProvider,

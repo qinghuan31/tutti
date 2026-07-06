@@ -6,10 +6,15 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"net/http"
+	"net/http/httptest"
 	"net/url"
+	"os"
 	"path/filepath"
+	"sync/atomic"
 	"testing"
 	"time"
+
+	authbridge "github.com/tutti-os/tutti/packages/auth/bridge-go"
 )
 
 func TestNewServiceReadsLocalAuthOverrides(t *testing.T) {
@@ -55,8 +60,121 @@ func TestStartLoginOutlivesRequestContext(t *testing.T) {
 	_, _ = http.Post(state.LocalServerOrigin+"/oauth/complete", "application/json", bytes.NewReader(body))
 }
 
+func TestLoginStatusCompletedTriggersCallbackOnce(t *testing.T) {
+	account := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch r.URL.Path {
+		case "/auth/v1/redeem_desktop_transfer_code":
+			_, _ = w.Write([]byte(`{"code":0,"data":{"sessionId":"session-1"}}`))
+		case "/user/v1/user_info":
+			_, _ = w.Write([]byte(`{"code":0,"data":{"userId":"user-1","email":"user@example.com"}}`))
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer account.Close()
+
+	service := NewService(filepath.Join(t.TempDir(), "auth.json"))
+	service.AccountBaseURL = account.URL
+	service.AuthLoginURL = account.URL + "/auth/login"
+	var callbackCount atomic.Int32
+	done := make(chan struct{}, 1)
+	service.OnLoginCompleted = func(context.Context) {
+		callbackCount.Add(1)
+		done <- struct{}{}
+	}
+
+	started, err := service.StartLogin(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	rawState := loginStateParam(t, started.LoginURL)
+	state := decodeLoginState(t, started.LoginURL)
+	body, _ := json.Marshal(map[string]string{
+		"state":         rawState,
+		"transfer_code": "transfer-1",
+	})
+	completeResp, err := http.Post(state.LocalServerOrigin+"/oauth/complete", "application/json", bytes.NewReader(body))
+	if err != nil {
+		t.Fatal(err)
+	}
+	_ = completeResp.Body.Close()
+
+	status, err := waitForCompletedLoginStatus(service, started.AttemptID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if status.User == nil || status.User.UserID != "user-1" {
+		t.Fatalf("status user = %#v, want user-1", status.User)
+	}
+	select {
+	case <-done:
+	case <-time.After(time.Second):
+		t.Fatal("OnLoginCompleted was not called")
+	}
+	if _, err := service.LoginStatus(started.AttemptID); err != ErrAttemptNotFound {
+		t.Fatalf("second LoginStatus error = %v, want ErrAttemptNotFound", err)
+	}
+	if got := callbackCount.Load(); got != 1 {
+		t.Fatalf("callback count = %d, want 1", got)
+	}
+}
+
+func TestLogoutTriggersCallbackAfterAuthCleared(t *testing.T) {
+	account := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch r.URL.Path {
+		case "/auth/v1/logout-web-session":
+			_, _ = w.Write([]byte(`{"code":0}`))
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer account.Close()
+
+	authPath := filepath.Join(t.TempDir(), "auth.json")
+	if err := os.MkdirAll(filepath.Dir(authPath), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(authPath, []byte(`{"session_id":"session-1","cookie":"session_id=session-1","user":{"user_id":"user-1"}}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	service := NewService(authPath)
+	service.AccountBaseURL = account.URL
+	var callbackCount atomic.Int32
+	done := make(chan struct{}, 1)
+	service.OnLogoutCompleted = func(context.Context) {
+		callbackCount.Add(1)
+		done <- struct{}{}
+	}
+
+	if err := service.Logout(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(authPath); !os.IsNotExist(err) {
+		t.Fatalf("auth json stat error = %v, want not exist", err)
+	}
+	select {
+	case <-done:
+	case <-time.After(time.Second):
+		t.Fatal("OnLogoutCompleted was not called")
+	}
+	if got := callbackCount.Load(); got != 1 {
+		t.Fatalf("callback count = %d, want 1", got)
+	}
+}
+
 type testLoginState struct {
 	LocalServerOrigin string `json:"localServerOrigin"`
+}
+
+func loginStateParam(t *testing.T, loginURL string) string {
+	t.Helper()
+	u, err := url.Parse(loginURL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return u.Query().Get("state")
 }
 
 func decodeLoginState(t *testing.T, loginURL string) testLoginState {
@@ -74,4 +192,18 @@ func decodeLoginState(t *testing.T, loginURL string) testLoginState {
 		t.Fatal(err)
 	}
 	return state
+}
+
+func waitForCompletedLoginStatus(service *Service, attemptID string) (authbridge.LoginStatus, error) {
+	for index := 0; index < 50; index += 1 {
+		status, err := service.LoginStatus(attemptID)
+		if err != nil {
+			return authbridge.LoginStatus{}, err
+		}
+		if status.Status == "completed" {
+			return status, nil
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	return authbridge.LoginStatus{}, context.DeadlineExceeded
 }
