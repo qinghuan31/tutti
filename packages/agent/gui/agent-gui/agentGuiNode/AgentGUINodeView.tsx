@@ -221,9 +221,14 @@ function agentGUIProviderIconPresentation(
   iconUrl?: string | null
 ): AgentGUIProviderIconPresentation {
   const normalizedProvider = normalizeManagedAgentProvider(provider);
+  const providerRailIconUrl =
+    MANAGED_AGENT_PROVIDER_RAIL_ICON_URLS[normalizedProvider] ?? null;
   return {
     provider: normalizedProvider,
-    iconUrl: iconUrl?.trim() || resolveAgentGUIHeroIconUrl(normalizedProvider)
+    iconUrl:
+      (normalizedProvider === "cursor" ? providerRailIconUrl : null) ||
+      iconUrl?.trim() ||
+      resolveAgentGUIHeroIconUrl(normalizedProvider)
   };
 }
 

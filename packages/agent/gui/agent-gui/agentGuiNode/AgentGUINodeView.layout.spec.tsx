@@ -1174,6 +1174,10 @@ describe("AgentGUINodeView layout persistence", () => {
       },
       viewModel: {
         ...createViewModel(),
+        conversationFilter: {
+          kind: "agentTarget",
+          agentTargetId: providerTargets[1]!.agentTargetId ?? ""
+        },
         selectedProviderTarget: providerTargets[1]!,
         providerTargets
       }
@@ -1188,6 +1192,39 @@ describe("AgentGUINodeView layout persistence", () => {
       (await screen.findByRole("option", { name: "Cursor" })).querySelector(
         "img"
       )
+    ).toHaveAttribute("src", MANAGED_AGENT_PROVIDER_RAIL_ICON_URLS.cursor);
+  });
+
+  it("uses Cursor colorful artwork in the empty hero icon", () => {
+    const providerTargets = [
+      createLocalAgentGUIProviderTarget("codex"),
+      {
+        ...createLocalAgentGUIProviderTarget("cursor"),
+        iconUrl: "app://old-cursor-target-icon.png"
+      }
+    ];
+    renderAgentGUINodeView({
+      labels: {
+        ...createLabels(),
+        empty: "What can Cursor help you with?",
+        emptyProvider: "Cursor",
+        providerSwitchLabel: "Switch provider",
+        handoffConversation: "Handoff",
+        handoffConversationMenu: "Choose agent"
+      },
+      viewModel: {
+        ...createViewModel(),
+        conversationFilter: {
+          kind: "agentTarget",
+          agentTargetId: providerTargets[1]!.agentTargetId ?? ""
+        },
+        selectedProviderTarget: providerTargets[1]!,
+        providerTargets
+      }
+    });
+
+    expect(
+      document.querySelector(".agent-gui-node__empty-hero-icon-effect")
     ).toHaveAttribute("src", MANAGED_AGENT_PROVIDER_RAIL_ICON_URLS.cursor);
   });
 

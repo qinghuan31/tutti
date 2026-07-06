@@ -3320,13 +3320,13 @@ aside.workspace-agents-status-panel
   width: 100%;
   min-height: 72px;
   border: 1px solid var(--line-2);
-  border-radius: 14px;
+  border-radius: 8px;
   background: var(--background-fronted);
   color: var(--text-primary);
   font: inherit;
   font-size: 13px;
   line-height: 1.5;
-  padding: 12px 14px;
+  padding: 12px;
   resize: vertical;
 }
 
@@ -3405,7 +3405,8 @@ aside.workspace-agents-status-panel
   gap: 8px;
 }
 
-.agent-gui-conversation__interactive-prompt-actions button {
+.agent-gui-conversation__interactive-prompt-actions
+  button:not([data-slot="button"]) {
   min-height: 30px;
   border: 1px solid var(--line-2);
   border-radius: 999px;
@@ -3417,7 +3418,8 @@ aside.workspace-agents-status-panel
   padding: 6px 12px;
 }
 
-.agent-gui-conversation__interactive-prompt-actions button:disabled {
+.agent-gui-conversation__interactive-prompt-actions
+  button:not([data-slot="button"]):disabled {
   cursor: not-allowed;
   background: var(--transparency-block);
   color: var(--text-disabled);
