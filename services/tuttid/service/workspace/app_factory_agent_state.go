@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	agentsessionstore "github.com/tutti-os/tutti/packages/agentactivity/daemon/activity"
+	activityshared "github.com/tutti-os/tutti/packages/agentactivity/daemon/activity/events"
 	agentactivitybiz "github.com/tutti-os/tutti/services/tuttid/biz/agentactivity"
 	workspacebiz "github.com/tutti-os/tutti/services/tuttid/biz/workspace"
 )
@@ -38,8 +39,12 @@ func (s *AppFactoryService) ObserveAgentSessionState(_ context.Context, input ag
 	}
 	workspaceID := strings.TrimSpace(input.WorkspaceID)
 	agentSessionID := strings.TrimSpace(input.AgentSessionID)
+	if workspaceID == "" || agentSessionID == "" {
+		return
+	}
+	s.trackAgentSessionTurnLifecycle(workspaceID, agentSessionID, input.State.TurnLifecycle)
 	status := factoryAgentTerminalStatus(input.State)
-	if workspaceID == "" || agentSessionID == "" || status == "" {
+	if status == "" {
 		return
 	}
 	lastError := strings.TrimSpace(input.State.LastError)
@@ -123,6 +128,17 @@ func (s *AppFactoryService) reconcileFromPersistedAgentSession(ctx context.Conte
 		return false, nil
 	}
 	if status := normalizePersistedFactoryAgentSessionStatus(session.Status); status != "" {
+		if status == "completed" && s.agentSessionHasLiveTurn(workspaceID, agentSessionID) {
+			// The persisted session status says "completed", but a
+			// TurnLifecycle snapshot we observed independently (see
+			// trackAgentSessionTurnLifecycle) says a turn is still live for
+			// this session. Trust the snapshot: it is copied verbatim from
+			// the provider (ADR 0008) rather than folded/re-derived from
+			// discrete events, so it is immune to the false-"completed"
+			// class of bug this guard exists for. Leave the job alone; a
+			// later reconcile pass will pick up the real terminal state.
+			return true, nil
+		}
 		return true, s.handleAgentSessionTerminalState(ctx, workspaceID, agentSessionID, status, session.LastError)
 	}
 	if strings.ToLower(strings.TrimSpace(session.CurrentPhase)) == "failed" {
@@ -142,8 +158,74 @@ func (s *AppFactoryService) reconcileCompletedAgentSessionMessages(ctx context.C
 	return true, s.handleAgentSessionTerminalState(ctx, workspaceID, agentSessionID, "completed", "")
 }
 
+// trackAgentSessionTurnLifecycle records whether an agent session currently
+// has a live turn in flight, using the ADR 0008 TurnLifecycle snapshot
+// (packages/agent/daemon/activity/events/turn_lifecycle_snapshot.go) that
+// accompanies every session state report. It exists to close a gap PR #774
+// only partly covered: a single codex turn commonly emits several
+// role=assistant/kind=text/status=completed message segments before it
+// actually finishes -- e.g. a short plan-announcement sentence ("I'll follow
+// the app-factory skill; let me read its docs first...") streamed seconds
+// before the agent's first tool call in the very same turn. PR #774 stopped
+// treating tagged system-notice messages as a completion signal, but a plain
+// narration segment like that is not a system notice, and the persisted
+// session's own folded/derived Status can still misreport "completed" for
+// it (see agentSessionHasCompletedFactoryOutput below, and the "天气查询"
+// diagnostic bundle this guard was written from: job
+// e6e70f6a-802e-4ac5-9275-ea6272f32b97 was failed at the exact millisecond
+// its first narration message completed, while the codex session's own
+// TurnLifecycle kept reporting phase "running" for the same turn ID for
+// another 44+ seconds). The TurnLifecycle snapshot is copied verbatim by
+// design (never re-derived from discrete events), so cross-checking it here
+// catches this whole class of premature completion regardless of which
+// message shape triggers it.
+func (s *AppFactoryService) trackAgentSessionTurnLifecycle(workspaceID string, agentSessionID string, lifecycle *agentsessionstore.WorkspaceAgentTurnLifecycle) {
+	if s == nil {
+		return
+	}
+	key := agentSessionTurnTrackerKey(workspaceID, agentSessionID)
+	if agentSessionTurnLifecycleIsLive(lifecycle) {
+		s.liveTurnAgentSessions.Store(key, struct{}{})
+		return
+	}
+	s.liveTurnAgentSessions.Delete(key)
+}
+
+// agentSessionHasLiveTurn reports whether the last TurnLifecycle snapshot
+// observed for this agent session (via ObserveAgentSessionState) says a turn
+// is still running. See trackAgentSessionTurnLifecycle for why this is
+// tracked independently of the message- and session-status-based completion
+// heuristics below.
+func (s *AppFactoryService) agentSessionHasLiveTurn(workspaceID string, agentSessionID string) bool {
+	if s == nil {
+		return false
+	}
+	_, ok := s.liveTurnAgentSessions.Load(agentSessionTurnTrackerKey(workspaceID, agentSessionID))
+	return ok
+}
+
+func agentSessionTurnTrackerKey(workspaceID string, agentSessionID string) string {
+	return strings.TrimSpace(workspaceID) + "\x00" + strings.TrimSpace(agentSessionID)
+}
+
+func agentSessionTurnLifecycleIsLive(lifecycle *agentsessionstore.WorkspaceAgentTurnLifecycle) bool {
+	if lifecycle == nil {
+		return false
+	}
+	if lifecycle.ActiveTurnID == nil || strings.TrimSpace(*lifecycle.ActiveTurnID) == "" {
+		return false
+	}
+	if lifecycle.Outcome != nil && strings.TrimSpace(*lifecycle.Outcome) != "" {
+		return false
+	}
+	return activityshared.TurnLifecyclePhaseIsLive(lifecycle.Phase)
+}
+
 func (s *AppFactoryService) agentSessionHasCompletedFactoryOutput(workspaceID string, agentSessionID string) bool {
 	if s == nil || s.AgentMessageReader == nil {
+		return false
+	}
+	if s.agentSessionHasLiveTurn(workspaceID, agentSessionID) {
 		return false
 	}
 	if s.AgentSessionReader != nil {
