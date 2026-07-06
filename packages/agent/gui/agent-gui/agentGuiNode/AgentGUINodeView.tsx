@@ -3661,9 +3661,6 @@ function stabilizeConversationSectionItems(
   const stable = next.map((item, index) => {
     const previousItem = previous[index];
     if (previousItem && conversationSummariesRenderEqual(previousItem, item)) {
-      if (previousItem !== item) {
-        changed = true;
-      }
       return previousItem;
     }
     changed = true;
