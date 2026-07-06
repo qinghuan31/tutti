@@ -12,17 +12,11 @@ const schemaMigrationWorkspacesV1 = "workspaces_v1"
 const schemaMigrationWorkspacesV2 = "workspaces_v2"
 const schemaMigrationWorkspacesV3 = "workspaces_v3"
 const schemaMigrationWorkspacesV4 = "workspaces_v4"
-const schemaMigrationWorkspaceAgentActivityV1 = "workspace_agent_activity_v1"
-const schemaMigrationWorkspaceAgentActivityV2 = "workspace_agent_activity_v2"
-const schemaMigrationWorkspaceAgentActivityV3 = "workspace_agent_activity_v3"
-const schemaMigrationWorkspaceAgentActivityV4 = "workspace_agent_activity_v4"
-const schemaMigrationWorkspaceAgentActivityV5 = "workspace_agent_activity_v5"
-const schemaMigrationWorkspaceAgentActivityRailV1 = "workspace_agent_activity_rail_v1"
-const schemaMigrationAgentTargetsV1 = "agent_targets_v1"
 const schemaMigrationWorkspaceIssuesV1 = "workspace_issues_v1"
 const schemaMigrationWorkspaceIssuesV2 = "workspace_issues_v2"
 const schemaMigrationWorkspaceIssuesV3 = "workspace_issues_v3"
 const schemaMigrationWorkspaceIssuesV4 = "workspace_issues_v4"
+const schemaMigrationWorkspaceIssuesV5 = "workspace_issues_v5"
 const schemaMigrationDesktopPreferencesV1 = "desktop_preferences_v1"
 const schemaMigrationDesktopPreferencesAgentDockLayoutV1 = "desktop_preferences_agent_dock_layout_v1"
 const schemaMigrationDesktopPreferencesSleepPreventionModeV1 = "desktop_preferences_sleep_prevention_mode_v1"
@@ -30,6 +24,7 @@ const schemaMigrationDesktopPreferencesDockPlacementV1 = "desktop_preferences_do
 const schemaMigrationDesktopPreferencesDockIconStyleV1 = "desktop_preferences_dock_icon_style_v1"
 const schemaMigrationDesktopPreferencesDefaultAgentProviderV1 = "desktop_preferences_default_agent_provider_v1"
 const schemaMigrationDesktopPreferencesAgentComposerDefaultsV1 = "desktop_preferences_agent_composer_defaults_v1"
+const schemaMigrationDesktopPreferencesAgentComposerDefaultsByAgentTargetV1 = "desktop_preferences_agent_composer_defaults_by_agent_target_v1"
 const schemaMigrationDesktopPreferencesAgentGUIConversationRailV1 = "desktop_preferences_agent_gui_conversation_rail_v1"
 const schemaMigrationDesktopPreferencesBrowserUseConnectionModeV1 = "desktop_preferences_browser_use_connection_mode_v1"
 const schemaMigrationDesktopPreferencesUpdateSettingsV1 = "desktop_preferences_update_settings_v1"
@@ -39,6 +34,7 @@ const schemaMigrationDesktopPreferencesMinimizeAnimationV1 = "desktop_preference
 const schemaMigrationDesktopPreferencesWindowSnappingV1 = "desktop_preferences_window_snapping_v1"
 const schemaMigrationDesktopPreferencesShowAppDeveloperSourcesV1 = "desktop_preferences_show_app_developer_sources_v1"
 const schemaMigrationDesktopPreferencesAgentConversationDetailModeV1 = "desktop_preferences_agent_conversation_detail_mode_v1"
+const schemaMigrationDesktopPreferencesEnableCursorAgentV1 = "desktop_preferences_enable_cursor_agent_v1"
 const schemaMigrationUserProjectsV1 = "user_projects_v1"
 const schemaMigrationWorkspaceAppsV1 = "workspace_apps_v1"
 const schemaMigrationWorkspaceAppsV2 = "workspace_apps_v2"
@@ -46,6 +42,7 @@ const schemaMigrationWorkspaceAppsV3 = "workspace_apps_v3"
 const schemaMigrationManagedCredentialsV1 = "managed_credentials_v1"
 const schemaMigrationAppFactoryJobsV1 = "app_factory_jobs_v1"
 const schemaMigrationAppFactoryJobsV2 = "app_factory_jobs_v2"
+const schemaMigrationAppFactoryJobsV3 = "app_factory_jobs_v3"
 
 func (s *SQLiteStore) Migrate(ctx context.Context) error {
 	if s == nil || s.db == nil {
@@ -103,27 +100,7 @@ INSERT OR IGNORE INTO tuttid_schema_migrations (id, applied_at_unix_ms)
 		return err
 	}
 
-	if err := s.applyWorkspaceAgentActivityV1(ctx); err != nil {
-		return err
-	}
-
-	if err := s.applyWorkspaceAgentActivityV2(ctx); err != nil {
-		return err
-	}
-
-	if err := s.applyWorkspaceAgentActivityV3(ctx); err != nil {
-		return err
-	}
-
-	if err := s.applyWorkspaceAgentActivityV4(ctx); err != nil {
-		return err
-	}
-
-	if err := s.applyWorkspaceAgentActivityV5(ctx); err != nil {
-		return err
-	}
-
-	if err := s.applyAgentTargetsV1(ctx); err != nil {
+	if err := s.applyWorkspaceIssuesV5(ctx); err != nil {
 		return err
 	}
 
@@ -146,6 +123,9 @@ INSERT OR IGNORE INTO tuttid_schema_migrations (id, applied_at_unix_ms)
 		return err
 	}
 	if err := s.applyDesktopPreferencesAgentComposerDefaultsV1(ctx); err != nil {
+		return err
+	}
+	if err := s.applyDesktopPreferencesAgentComposerDefaultsByAgentTargetV1(ctx); err != nil {
 		return err
 	}
 	if err := s.applyDesktopPreferencesAgentGUIConversationRailV1(ctx); err != nil {
@@ -175,12 +155,18 @@ INSERT OR IGNORE INTO tuttid_schema_migrations (id, applied_at_unix_ms)
 	if err := s.applyDesktopPreferencesAgentConversationDetailModeV1(ctx); err != nil {
 		return err
 	}
+	if err := s.applyDesktopPreferencesEnableCursorAgentV1(ctx); err != nil {
+		return err
+	}
 
 	if err := s.applyUserProjectsV1(ctx); err != nil {
 		return err
 	}
 
-	if err := s.applyWorkspaceAgentActivityRailV1(ctx); err != nil {
+	// Agent activity and agent target migrations live in the embedded agent
+	// store. They must run after user_projects_v1: the rail section backfill
+	// reads project paths through userProjectPathsQuerier.
+	if err := s.agentStore().Migrate(ctx); err != nil {
 		return err
 	}
 
@@ -199,7 +185,10 @@ INSERT OR IGNORE INTO tuttid_schema_migrations (id, applied_at_unix_ms)
 	if err := s.applyAppFactoryJobsV1(ctx); err != nil {
 		return err
 	}
-	return s.applyAppFactoryJobsV2(ctx)
+	if err := s.applyAppFactoryJobsV2(ctx); err != nil {
+		return err
+	}
+	return s.applyAppFactoryJobsV3(ctx)
 }
 
 func (s *SQLiteStore) applyWorkspacesV2(ctx context.Context) error {
@@ -426,6 +415,7 @@ CREATE TABLE IF NOT EXISTS workspace_issue_runs (
   workspace_id TEXT NOT NULL,
   requester_user_id TEXT NOT NULL DEFAULT '',
   agent_user_id TEXT NOT NULL DEFAULT '',
+  agent_target_id TEXT NOT NULL DEFAULT '',
   agent_session_id TEXT NOT NULL DEFAULT '',
   agent_provider TEXT NOT NULL DEFAULT '',
   status TEXT NOT NULL,
@@ -507,6 +497,7 @@ CREATE TABLE workspace_issue_runs (
   workspace_id TEXT NOT NULL,
   requester_user_id TEXT NOT NULL DEFAULT '',
   agent_user_id TEXT NOT NULL DEFAULT '',
+  agent_target_id TEXT NOT NULL DEFAULT '',
   agent_session_id TEXT NOT NULL DEFAULT '',
   agent_provider TEXT NOT NULL DEFAULT '',
   status TEXT NOT NULL,
@@ -526,14 +517,15 @@ CREATE INDEX idx_workspace_issue_runs_task_created
 
 INSERT INTO workspace_issue_runs (
   id, run_id, task_id, issue_id, workspace_id, requester_user_id, agent_user_id,
-  agent_session_id, agent_provider, status, summary, error_message, output_dir,
-  execution_directory, created_at_unix_ms, started_at_unix_ms, completed_at_unix_ms,
-  updated_at_unix_ms
+  agent_target_id, agent_session_id, agent_provider, status, summary,
+  error_message, output_dir, execution_directory, created_at_unix_ms,
+  started_at_unix_ms, completed_at_unix_ms, updated_at_unix_ms
 )
 SELECT
   id, run_id, task_id, issue_id, workspace_id, requester_user_id, agent_user_id,
-  agent_session_id, agent_provider, status, summary, error_message, output_dir,
-  '', created_at_unix_ms, started_at_unix_ms, completed_at_unix_ms, updated_at_unix_ms
+  '', agent_session_id, agent_provider, status, summary, error_message,
+  output_dir, '', created_at_unix_ms, started_at_unix_ms, completed_at_unix_ms,
+  updated_at_unix_ms
 FROM workspace_issue_runs_v1;
 
 CREATE TABLE workspace_issue_run_outputs (

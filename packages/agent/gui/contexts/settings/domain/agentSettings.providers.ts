@@ -1,6 +1,7 @@
 export const AGENT_PROVIDERS = [
   "claude-code",
   "codex",
+  "cursor",
   "nexight",
   "opencode",
   "gemini",

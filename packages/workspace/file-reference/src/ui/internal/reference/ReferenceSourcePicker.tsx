@@ -2122,6 +2122,20 @@ function ReferenceNodeIcon({
   node: ReferenceNode;
 }): JSX.Element {
   const entry = useMemo(() => referenceNodeToWorkspaceFileEntry(node), [node]);
+
+  if (node.kind === "folder") {
+    return (
+      <span
+        className={cn(
+          "grid flex-none place-items-center text-[var(--rich-text-folder)]",
+          frameClassName
+        )}
+      >
+        <FolderFilledIcon className={iconClassName} />
+      </span>
+    );
+  }
+
   return (
     <WorkspaceFileEntryIcon
       entry={entry}

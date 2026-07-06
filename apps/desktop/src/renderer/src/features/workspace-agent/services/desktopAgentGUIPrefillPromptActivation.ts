@@ -1,12 +1,16 @@
 import type { WorkbenchHostActivation } from "@tutti-os/workbench-surface";
 import {
   desktopAgentGUIPrefillPromptActivationType,
+  isDesktopAgentGUIProvider,
+  type DesktopAgentGUIProvider,
   type DesktopAgentGUIPrefillPromptPayload
 } from "../desktopAgentGUINodeState.ts";
 
 export interface DesktopAgentGUIPrefillPromptRequest {
+  agentTargetId?: string | null;
   autoSubmit?: boolean;
   draftPrompt: string;
+  provider?: DesktopAgentGUIProvider;
   sequence: number;
   userProjectPath?: string;
 }
@@ -55,7 +59,13 @@ export function resolveDesktopAgentGUIPrefillPromptActivation(
   return {
     draftPrompt,
     sequence: activation.sequence,
+    ...(activation.payload.agentTargetId?.trim()
+      ? { agentTargetId: activation.payload.agentTargetId.trim() }
+      : {}),
     ...(activation.payload.autoSubmit ? { autoSubmit: true } : {}),
+    ...(isDesktopAgentGUIProvider(activation.payload.provider)
+      ? { provider: activation.payload.provider }
+      : {}),
     ...(activation.payload.userProjectPath?.trim()
       ? { userProjectPath: activation.payload.userProjectPath.trim() }
       : {})

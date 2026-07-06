@@ -3,6 +3,7 @@ import type { AgentProvider } from "./agentSettings";
 export const AGENT_PROVIDER_LABEL: Record<AgentProvider, string> = {
   "claude-code": "Claude Code",
   codex: "Codex",
+  cursor: "Cursor",
   nexight: "Nexight",
   opencode: "OpenCode",
   gemini: "Gemini CLI",
@@ -24,6 +25,10 @@ export const AGENT_PROVIDER_CAPABILITIES: Record<
     experimental: false
   },
   codex: {
+    runtimeObservation: "jsonl",
+    experimental: false
+  },
+  cursor: {
     runtimeObservation: "jsonl",
     experimental: false
   },

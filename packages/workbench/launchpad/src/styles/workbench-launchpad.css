@@ -1,27 +1,38 @@
 .workspace-launchpad-dock-icon {
-  --workspace-launchpad-dock-icon-bg: var(--transparency-block);
   --workspace-launchpad-dock-icon-border: var(--line-1);
   box-sizing: border-box;
   display: grid;
+  place-items: center;
   width: 44px;
   height: 44px;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 2px;
   padding: 3px;
   border: 1px solid var(--workspace-launchpad-dock-icon-border);
   border-radius: 8px;
-  background: var(--workspace-launchpad-dock-icon-bg);
+  background: var(--background-fronted);
 }
 
 .desktop-dock__slot[data-wallpaper-tone="dark"] .workspace-launchpad-dock-icon {
-  --workspace-launchpad-dock-icon-bg: rgb(255 255 255 / 18%);
   --workspace-launchpad-dock-icon-border: rgb(255 255 255 / 15%);
 }
 
 .desktop-dock__slot[data-wallpaper-tone="light"]
   .workspace-launchpad-dock-icon {
-  --workspace-launchpad-dock-icon-bg: rgb(0 0 0 / 10%);
   --workspace-launchpad-dock-icon-border: rgb(0 0 0 / 10%);
+}
+
+.workspace-launchpad-dock-icon__label {
+  display: block;
+  color: var(--text-primary);
+  font-family: "Lexend Variable", "Lexend", var(--font-sans-system);
+  font-size: 14px;
+  font-weight: 700;
+  line-height: 1;
+}
+
+.workspace-launchpad-dock-icon--tiles {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 2px;
+  place-items: stretch;
 }
 
 .workspace-launchpad-dock-icon__tile {
@@ -37,6 +48,7 @@
   display: block;
   width: 100%;
   height: 100%;
+  border-radius: 999px;
   object-fit: contain;
   object-position: center;
 }

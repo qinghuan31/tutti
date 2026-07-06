@@ -7,7 +7,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	agentsessionstore "github.com/tutti-os/tutti/packages/agentactivity/daemon/activity"
+	agentsessionstore "github.com/tutti-os/tutti/packages/agent/daemon/activity"
 )
 
 func TestWorkspaceAgentMessageFunctionalFlow(t *testing.T) {

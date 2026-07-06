@@ -32,6 +32,7 @@ const AGENT_MESSAGE_LOCATOR_BOTTOM_SAFE_INSET_MAX_PX = 48;
 const AGENT_MESSAGE_LOCATOR_NATIVE_SMOOTH_MAX_DISTANCE_PX = 720;
 const AGENT_MESSAGE_LOCATOR_FAST_SCROLL_SPEED_PX_PER_MS = 8;
 const AGENT_MESSAGE_LOCATOR_FAST_SCROLL_MIN_DURATION_MS = 120;
+const AGENT_MESSAGE_LOCATOR_FAST_SCROLL_MAX_DURATION_MS = 320;
 const agentMessageLocatorScrollAnimations = new WeakMap<HTMLElement, number>();
 
 interface AgentTranscriptTurnGroup {
@@ -883,7 +884,10 @@ function animateMessageLocatorScroll(
   const delta = targetScrollTop - startScrollTop;
   const durationMs = Math.max(
     AGENT_MESSAGE_LOCATOR_FAST_SCROLL_MIN_DURATION_MS,
-    distance / AGENT_MESSAGE_LOCATOR_FAST_SCROLL_SPEED_PX_PER_MS
+    Math.min(
+      AGENT_MESSAGE_LOCATOR_FAST_SCROLL_MAX_DURATION_MS,
+      distance / AGENT_MESSAGE_LOCATOR_FAST_SCROLL_SPEED_PX_PER_MS
+    )
   );
   const startedAt = performance.now();
 

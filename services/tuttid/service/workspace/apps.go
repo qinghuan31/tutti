@@ -11,7 +11,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/tutti-os/tutti/packages/agentactivity/daemon/httpx"
+	"github.com/tutti-os/tutti/packages/agent/daemon/httpx"
 	workspacefiles "github.com/tutti-os/tutti/packages/workspace/files"
 	workspacebiz "github.com/tutti-os/tutti/services/tuttid/biz/workspace"
 	builtinapps "github.com/tutti-os/tutti/services/tuttid/builtin-apps"

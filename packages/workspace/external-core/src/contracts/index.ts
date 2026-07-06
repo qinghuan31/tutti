@@ -166,6 +166,7 @@ export type TuttiExternalWorkspaceFeature =
 export const tuttiExternalWorkspaceAgentProviders = [
   "claude-code",
   "codex",
+  "cursor",
   "nexight",
   "hermes",
   "gemini",

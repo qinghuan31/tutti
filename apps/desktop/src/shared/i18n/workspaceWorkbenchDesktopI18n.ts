@@ -95,6 +95,7 @@ export const workspaceWorkbenchDesktopI18nKeys = {
     manageConfigMissing: "agentProviders.manageConfigMissing",
     manageProviderClaudeCode: "agentProviders.manageProviderClaudeCode",
     manageProviderCodex: "agentProviders.manageProviderCodex",
+    manageProviderCursor: "agentProviders.manageProviderCursor",
     manageProviderGemini: "agentProviders.manageProviderGemini",
     manageProviderHermes: "agentProviders.manageProviderHermes",
     manageProviderOpenClaw: "agentProviders.manageProviderOpenClaw",

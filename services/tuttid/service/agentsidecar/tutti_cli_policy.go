@@ -72,7 +72,8 @@ Claude Code mention routing:
 - If the current user turn contains ` + "`mention://workspace-issue/<issueId>?workspaceId=...`" + `, first use $issue-manager. Call the exact visible Skill tool when available and successful; if no exact visible Skill tool is available or it fails, fall back to that materialized skill file before any Bash, WebFetch, browser, MCP lookup, file search, or raw CLI commands.
 - If the current user turn contains ` + "`mention://workspace-app/<appId>?workspaceId=...`" + `, first use $workspace-app. Call the exact visible Skill tool when available and successful; if no exact visible Skill tool is available or it fails, fall back to that materialized skill file before any Bash, WebFetch, browser, MCP lookup, file search, or raw CLI commands.
 - If the current user turn contains ` + "`mention://workspace-reference/<id>?source=...&workspaceId=...`" + `, first use $reference. Call the exact visible Skill tool when available and successful; if no exact visible Skill tool is available or it fails, fall back to that materialized skill file before any Bash, WebFetch, browser, MCP lookup, file search, or raw CLI commands.
-- If the current user turn contains ` + "`mention://agent-session/<sessionId>?workspaceId=...`" + `, first use $tutti-cli. Call the exact visible Skill tool when available and successful; if no exact visible Skill tool is available or it fails, fall back to that materialized skill file before any Bash, WebFetch, browser, MCP lookup, file search, or raw CLI commands.`)
+- If the current user turn contains ` + "`mention://agent-session/<sessionId>?workspaceId=...`" + `, first use $tutti-cli. Call the exact visible Skill tool when available and successful; if no exact visible Skill tool is available or it fails, fall back to that materialized skill file before any Bash, WebFetch, browser, MCP lookup, file search, or raw CLI commands.
+- If the current user turn contains ` + "`mention://agent-target/<targetId>?workspaceId=...`" + `, first use $tutti-cli. Call the exact visible Skill tool when available and successful; if no exact visible Skill tool is available or it fails, fall back to that materialized skill file before any Bash, WebFetch, browser, MCP lookup, file search, or raw CLI commands. Choose ` + "`agent`" + `, ` + "`codex`" + `, or ` + "`claude`" + ` CLI workflow from the user's prompt; this is not launch-only.`)
 	default:
 		return ""
 	}
@@ -84,7 +85,7 @@ func providerSpecificExecutionEnvironment(provider string) string {
 		return "- Codex: `tutti-dev` needs localhost/IPC. When running `tutti-dev` from a sandboxed exec tool, set `sandbox_permissions=require_escalated`. If `tutti-dev` reports `daemon is not reachable from this agent execution environment`, rerun once with `sandbox_permissions=require_escalated`.\n"
 	case "claude", "claude-code":
 		return "- Claude Code `Monitor` tool is disabled. Poll async Tutti jobs with one bounded shell/script.\n- Claude Code: run `tutti-dev` only from a shell environment that can reach localhost/IPC. If the provider runtime cannot reach the local Tutti daemon, report that limitation; do not invent Codex `sandbox_permissions`.\n"
-	case "gemini", "gemini-cli", "hermes", "hermes-agent", "nexight", "tutti", "openclaw", "open-claw":
+	case "cursor", "cursor-agent", "gemini", "gemini-cli", "hermes", "hermes-agent", "nexight", "tutti", "openclaw", "open-claw":
 		return "- This provider must run `tutti-dev` from an execution environment with localhost/IPC access. If the daemon is unreachable from the provider runtime, report that limitation instead of retrying with provider-specific sandbox flags.\n"
 	default:
 		return ""

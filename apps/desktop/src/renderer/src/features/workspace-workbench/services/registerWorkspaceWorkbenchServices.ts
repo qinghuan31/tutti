@@ -27,6 +27,8 @@ import { IWorkspaceSettingsService } from "./workspaceSettingsService.interface"
 
 export interface WorkspaceWorkbenchServiceRegistrationInput {
   browserApi?: DesktopBrowserApi;
+  isAgentProviderHidden?: (provider: string) => boolean;
+  subscribeAgentProviderVisibility?: (listener: () => void) => () => void;
   computerUseApi: DesktopComputerUseApi;
   developerApi: DesktopDeveloperApi;
   dockPreviewCacheApi: DesktopDockPreviewCacheApi;
@@ -66,6 +68,9 @@ export function registerWorkspaceWorkbenchServices(
     new SyncDescriptor(WorkspaceWorkbenchHostService, [
       {
         browserApi: input.browserApi,
+        isAgentProviderHidden: input.isAgentProviderHidden,
+        subscribeAgentProviderVisibility:
+          input.subscribeAgentProviderVisibility,
         computerUseApi: input.computerUseApi,
         dockPreviewCacheApi: input.dockPreviewCacheApi,
         eventStreamClient: input.eventStreamClient,

@@ -84,6 +84,8 @@ func TestTuttiCLIPolicyUsesPreparedCLICommandForAgentLauncherFallback(t *testing
 		"tutti-dev claude start --prompt <task> --show --json",
 		"tutti-dev agent session-summary",
 		"tutti-dev agent turn-resources",
+		"`mention://agent-target/<targetId>?workspaceId=...`",
+		"not launch-only",
 		"--image <localPath>",
 		"tutti-dev app open --app-id <appId> --json",
 		"Ask for task prompt, not model.",
@@ -385,6 +387,8 @@ func TestRenderProviderSkillBundleIncludesClaudeRoutingForAlias(t *testing.T) {
 	}
 	if bundle.RecommendedSystemPrompt == nil ||
 		!strings.Contains(bundle.RecommendedSystemPrompt.Content, "Claude Code mention routing") ||
+		!strings.Contains(bundle.RecommendedSystemPrompt.Content, "mention://agent-target/<targetId>?workspaceId=...") ||
+		!strings.Contains(bundle.RecommendedSystemPrompt.Content, "this is not launch-only") ||
 		!strings.Contains(bundle.RecommendedSystemPrompt.Content, `Skill(skill="tutti-cli:workspace-app")`) ||
 		!strings.Contains(bundle.RecommendedSystemPrompt.Content, "Do not call a plain skill name that is not visible") ||
 		!strings.Contains(bundle.RecommendedSystemPrompt.Content, "Do not pass arguments to Skill") ||

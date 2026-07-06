@@ -14,7 +14,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/tutti-os/tutti/packages/agentactivity/daemon/httpx"
+	"github.com/tutti-os/tutti/packages/agent/daemon/httpx"
 	workspacebiz "github.com/tutti-os/tutti/services/tuttid/biz/workspace"
 )
 

@@ -42,10 +42,10 @@ export interface AgentGuiWorkbenchHeaderProps extends HTMLAttributes<HTMLElement
   copy: AgentGuiWorkbenchHeaderCopy;
   defaultActions?: ReactNode;
   displayMode?: WorkbenchDisplayMode;
-  iconUrl?: string;
   isConversationRailAutoCollapsed: boolean;
   isConversationRailCollapsed: boolean;
   conversationRailWidthPx?: number | null;
+  providerRailWidthPx?: number | null;
   conversationTitle?: string | null;
   onCreateConversation?: () => void;
   onToggleConversationRail: (nextCollapsed: boolean) => void;
@@ -61,10 +61,10 @@ export function AgentGuiWorkbenchHeader({
   copy,
   defaultActions: _defaultActions,
   displayMode,
-  iconUrl,
   isConversationRailAutoCollapsed,
   isConversationRailCollapsed,
   conversationRailWidthPx,
+  providerRailWidthPx,
   conversationTitle,
   onCreateConversation,
   onToggleConversationRail,
@@ -92,7 +92,13 @@ export function AgentGuiWorkbenchHeader({
     ...(typeof conversationRailWidthPx === "number" &&
     Number.isFinite(conversationRailWidthPx)
       ? {
-          "--agent-gui-workbench-header-rail-width": `${Math.round(conversationRailWidthPx)}px`
+          "--agent-gui-workbench-header-rail-width": `${Math.round(
+            conversationRailWidthPx +
+              (typeof providerRailWidthPx === "number" &&
+              Number.isFinite(providerRailWidthPx)
+                ? providerRailWidthPx
+                : 0)
+          )}px`
         }
       : {})
   } as CSSProperties;
@@ -146,17 +152,6 @@ export function AgentGuiWorkbenchHeader({
         {
           className: "agent-gui-workbench-header__agent-brand"
         },
-        iconUrl
-          ? createElement("img", {
-              alt: "",
-              "aria-hidden": true,
-              className: "agent-gui-workbench-header__agent-icon",
-              "data-agent-gui-workbench-header-icon": "true",
-              "data-testid": "agent-gui-window-title-icon",
-              draggable: false,
-              src: iconUrl
-            })
-          : null,
         createElement(
           "span",
           {

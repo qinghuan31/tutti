@@ -12,7 +12,7 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/tutti-os/tutti/packages/agentactivity/daemon/runtimecmd"
+	"github.com/tutti-os/tutti/packages/agent/daemon/runtimecmd"
 )
 
 // NewTransport clones the default transport and makes it proxy-aware.

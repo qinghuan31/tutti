@@ -63,6 +63,7 @@ test("tuttid event stream client dispatches typed topic events", async () => {
           minimizeAnimation: "scale",
           sleepPreventionMode: "never",
           showAppDeveloperSources: false,
+          enableCursorAgent: false,
           themeSource: "dark",
           updateChannel: "rc",
           updatePolicy: "prompt"
@@ -94,6 +95,7 @@ test("tuttid event stream client dispatches typed topic events", async () => {
           minimizeAnimation: "scale",
           sleepPreventionMode: "never",
           showAppDeveloperSources: false,
+          enableCursorAgent: false,
           themeSource: "dark",
           updateChannel: "rc",
           updatePolicy: "prompt"
@@ -176,6 +178,7 @@ test("tuttid event stream client sends and filters scoped subscriptions", async 
           minimizeAnimation: "scale",
           sleepPreventionMode: "never",
           showAppDeveloperSources: false,
+          enableCursorAgent: false,
           themeSource: "dark",
           updateChannel: "rc",
           updatePolicy: "prompt"
@@ -207,6 +210,7 @@ test("tuttid event stream client sends and filters scoped subscriptions", async 
           minimizeAnimation: "scale",
           sleepPreventionMode: "never",
           showAppDeveloperSources: false,
+          enableCursorAgent: false,
           themeSource: "light",
           updateChannel: "rc",
           updatePolicy: "prompt"
@@ -239,6 +243,7 @@ test("tuttid event stream client sends and filters scoped subscriptions", async 
           minimizeAnimation: "scale",
           sleepPreventionMode: "never",
           showAppDeveloperSources: false,
+          enableCursorAgent: false,
           themeSource: "light",
           updateChannel: "rc",
           updatePolicy: "prompt"
@@ -325,6 +330,7 @@ test("tuttid event stream client can opt out of a default scope", async () => {
           minimizeAnimation: "scale",
           sleepPreventionMode: "never",
           showAppDeveloperSources: false,
+          enableCursorAgent: false,
           themeSource: "dark",
           updateChannel: "rc",
           updatePolicy: "prompt"
@@ -382,6 +388,7 @@ test("tuttid event stream client publishes typed intents after connect", async (
         minimizeAnimation: "scale",
         sleepPreventionMode: "never",
         showAppDeveloperSources: false,
+        enableCursorAgent: false,
         themeSource: "dark",
         updateChannel: "rc",
         updatePolicy: "prompt"
@@ -409,6 +416,7 @@ test("tuttid event stream client publishes typed intents after connect", async (
           minimizeAnimation: "scale",
           sleepPreventionMode: "never",
           showAppDeveloperSources: false,
+          enableCursorAgent: false,
           themeSource: "dark",
           updateChannel: "rc",
           updatePolicy: "prompt"
@@ -484,6 +492,7 @@ test("tuttid event stream client fails handshake on unexpected pre-ready frames"
             minimizeAnimation: "scale",
             sleepPreventionMode: "never",
             showAppDeveloperSources: false,
+            enableCursorAgent: false,
             themeSource: "dark",
             updateChannel: "rc",
             updatePolicy: "prompt"
@@ -660,6 +669,7 @@ test("tuttid event stream client tears down a failed handshake before retrying",
         minimizeAnimation: "scale",
         sleepPreventionMode: "never",
         showAppDeveloperSources: false,
+        enableCursorAgent: false,
         themeSource: "light",
         updateChannel: "rc",
         updatePolicy: "prompt"

@@ -91,7 +91,11 @@ async function listDeveloperLogsAgentSessions(
 
   const sessions = sessionPages.flatMap((page) =>
     page.sessions.flatMap((session) => {
-      if (session.provider !== "codex" && session.provider !== "claude-code") {
+      if (
+        session.provider !== "codex" &&
+        session.provider !== "claude-code" &&
+        session.provider !== "cursor"
+      ) {
         return [];
       }
       const providerSessionID = session.providerSessionId?.trim() ?? "";

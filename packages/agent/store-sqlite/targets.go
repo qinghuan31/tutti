@@ -1,4 +1,4 @@
-package workspace
+package storesqlite
 
 import (
 	"context"
@@ -7,11 +7,38 @@ import (
 	"fmt"
 	"log/slog"
 	"time"
-
-	agenttargetbiz "github.com/tutti-os/tutti/services/tuttid/biz/agenttarget"
 )
 
-func (s *SQLiteStore) ListAgentTargets(ctx context.Context) ([]agenttargetbiz.Target, error) {
+// ErrAgentTargetNotFound is returned when a target ID has no row.
+var ErrAgentTargetNotFound = errors.New("agent target not found")
+
+// Target is the stored representation of an agent target. Validation and
+// canonicalization semantics belong to the host via Options.NormalizeTarget.
+type Target struct {
+	ID              string
+	Provider        string
+	LaunchRefJSON   string
+	Name            string
+	IconKey         string
+	Enabled         bool
+	Source          string
+	SortOrder       int
+	CreatedAtUnixMS int64
+	UpdatedAtUnixMS int64
+}
+
+func (s *Store) normalizeTarget(target Target) (Target, error) {
+	if s.opts.NormalizeTarget == nil {
+		return target, nil
+	}
+	return s.opts.NormalizeTarget(target)
+}
+
+func (s *Store) isSkippableTargetRowError(err error) bool {
+	return s.opts.IsSkippableTargetError != nil && s.opts.IsSkippableTargetError(err)
+}
+
+func (s *Store) ListAgentTargets(ctx context.Context) ([]Target, error) {
 	if s == nil || s.db == nil {
 		return nil, errors.New("workspace database is not initialized")
 	}
@@ -26,11 +53,11 @@ ORDER BY sort_order ASC, name ASC, id ASC
 	}
 	defer rows.Close()
 
-	var result []agenttargetbiz.Target
+	var result []Target
 	for rows.Next() {
-		target, err := scanAgentTarget(rows)
+		target, err := s.scanAgentTarget(rows)
 		if err != nil {
-			if isSkippableAgentTargetRowError(err) {
+			if s.isSkippableTargetRowError(err) {
 				slog.Warn("skipping invalid agent target row", "error", err)
 				continue
 			}
@@ -44,9 +71,9 @@ ORDER BY sort_order ASC, name ASC, id ASC
 	return result, nil
 }
 
-func (s *SQLiteStore) GetAgentTarget(ctx context.Context, id string) (agenttargetbiz.Target, error) {
+func (s *Store) GetAgentTarget(ctx context.Context, id string) (Target, error) {
 	if s == nil || s.db == nil {
-		return agenttargetbiz.Target{}, errors.New("workspace database is not initialized")
+		return Target{}, errors.New("workspace database is not initialized")
 	}
 
 	row := s.db.QueryRowContext(ctx, `
@@ -54,23 +81,23 @@ SELECT id, provider, launch_ref_json, name, icon_key, enabled, source, sort_orde
 FROM agent_targets
 WHERE id = ?
 `, id)
-	target, err := scanAgentTarget(row)
+	target, err := s.scanAgentTarget(row)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			return agenttargetbiz.Target{}, ErrAgentTargetNotFound
+			return Target{}, ErrAgentTargetNotFound
 		}
-		return agenttargetbiz.Target{}, err
+		return Target{}, err
 	}
 	return target, nil
 }
 
-func (s *SQLiteStore) PutAgentTarget(ctx context.Context, target agenttargetbiz.Target) (agenttargetbiz.Target, error) {
+func (s *Store) PutAgentTarget(ctx context.Context, target Target) (Target, error) {
 	if s == nil || s.db == nil {
-		return agenttargetbiz.Target{}, errors.New("workspace database is not initialized")
+		return Target{}, errors.New("workspace database is not initialized")
 	}
-	normalized, err := agenttargetbiz.NormalizeTarget(target)
+	normalized, err := s.normalizeTarget(target)
 	if err != nil {
-		return agenttargetbiz.Target{}, err
+		return Target{}, err
 	}
 	now := unixMs(time.Now().UTC())
 	if normalized.CreatedAtUnixMS <= 0 {
@@ -102,12 +129,12 @@ ON CONFLICT(id) DO UPDATE SET
   sort_order = excluded.sort_order,
   updated_at_ms = excluded.updated_at_ms
 `, normalized.ID, normalized.Provider, normalized.LaunchRefJSON, normalized.Name, normalized.IconKey, normalized.Enabled, normalized.Source, normalized.SortOrder, normalized.CreatedAtUnixMS, normalized.UpdatedAtUnixMS); err != nil {
-		return agenttargetbiz.Target{}, fmt.Errorf("put agent target: %w", err)
+		return Target{}, fmt.Errorf("put agent target: %w", err)
 	}
 	return s.GetAgentTarget(ctx, normalized.ID)
 }
 
-func (s *SQLiteStore) DeleteAgentTarget(ctx context.Context, id string) error {
+func (s *Store) DeleteAgentTarget(ctx context.Context, id string) error {
 	if s == nil || s.db == nil {
 		return errors.New("workspace database is not initialized")
 	}
@@ -120,12 +147,8 @@ WHERE id = ?
 	return nil
 }
 
-type agentTargetScanner interface {
-	Scan(dest ...any) error
-}
-
-func scanAgentTarget(scanner agentTargetScanner) (agenttargetbiz.Target, error) {
-	var target agenttargetbiz.Target
+func (s *Store) scanAgentTarget(scanner rowScanner) (Target, error) {
+	var target Target
 	var iconKey sql.NullString
 	if err := scanner.Scan(
 		&target.ID,
@@ -139,19 +162,14 @@ func scanAgentTarget(scanner agentTargetScanner) (agenttargetbiz.Target, error) 
 		&target.CreatedAtUnixMS,
 		&target.UpdatedAtUnixMS,
 	); err != nil {
-		return agenttargetbiz.Target{}, fmt.Errorf("scan agent target: %w", err)
+		return Target{}, fmt.Errorf("scan agent target: %w", err)
 	}
 	if iconKey.Valid {
 		target.IconKey = iconKey.String
 	}
-	normalized, err := agenttargetbiz.NormalizeTarget(target)
+	normalized, err := s.normalizeTarget(target)
 	if err != nil {
-		return agenttargetbiz.Target{}, err
+		return Target{}, err
 	}
 	return normalized, nil
-}
-
-func isSkippableAgentTargetRowError(err error) bool {
-	return errors.Is(err, agenttargetbiz.ErrInvalidTarget) ||
-		errors.Is(err, agenttargetbiz.ErrInvalidLaunchRef)
 }

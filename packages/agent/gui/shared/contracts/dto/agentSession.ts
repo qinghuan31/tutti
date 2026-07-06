@@ -3,6 +3,7 @@ import type { AgentHostWorkspaceAgentStatePatch } from "./agentHost";
 export type AgentHostAgentSessionProvider =
   | "claude-code"
   | "codex"
+  | "cursor"
   | "nexight"
   | "gemini"
   | "hermes"

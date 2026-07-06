@@ -6,7 +6,7 @@ import (
 	"sync"
 	"time"
 
-	agentruntime "github.com/tutti-os/tutti/packages/agentactivity/daemon/runtime"
+	agentruntime "github.com/tutti-os/tutti/packages/agent/daemon/runtime"
 	preferencesbiz "github.com/tutti-os/tutti/services/tuttid/biz/preferences"
 	managedruntime "github.com/tutti-os/tutti/services/tuttid/service/managedruntime"
 )

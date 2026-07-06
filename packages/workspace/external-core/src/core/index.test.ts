@@ -366,6 +366,7 @@ test("keeps the workspace agent provider set explicit", () => {
   assert.deepEqual(tuttiExternalWorkspaceAgentProviders, [
     "claude-code",
     "codex",
+    "cursor",
     "nexight",
     "hermes",
     "gemini",

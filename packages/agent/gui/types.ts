@@ -66,7 +66,13 @@ export interface AgentGUINodeData {
 
 export type AgentGUIProvider = Extract<
   AgentProvider,
-  "claude-code" | "codex" | "nexight" | "gemini" | "hermes" | "openclaw"
+  | "claude-code"
+  | "codex"
+  | "cursor"
+  | "nexight"
+  | "gemini"
+  | "hermes"
+  | "openclaw"
 >;
 
 export interface AgentGUIProviderTargetRef {
@@ -90,6 +96,7 @@ export interface AgentGUIProviderTarget {
 
 export type AgentGUIProviderReadinessGateStatus =
   | "checking"
+  | "coming_soon"
   | "not_installed"
   | "auth_required"
   | "unavailable";
@@ -202,6 +209,7 @@ export interface RoomIssueNodeData {
   selectedProvider:
     | "codex"
     | "claude-code"
+    | "cursor"
     | "nexight"
     | "gemini"
     | "openclaw"

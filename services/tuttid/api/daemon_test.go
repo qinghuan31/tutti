@@ -1358,8 +1358,8 @@ func TestDaemonAPIGeneratedRoutesGetAgentProviderComposerOptionsUsesPreferencesD
 		PreferencesService: stubPreferencesService{
 			getFn: func(context.Context) (preferencesbiz.DesktopPreferences, error) {
 				return preferencesbiz.DesktopPreferences{
-					AgentComposerDefaultsByProvider: map[string]preferencesbiz.AgentComposerDefaults{
-						"codex": {
+					AgentComposerDefaultsByAgentTarget: map[string]preferencesbiz.AgentComposerDefaults{
+						"local:codex": {
 							Model:            "gpt-5",
 							PermissionModeID: "full-access",
 							ReasoningEffort:  "high",
@@ -1789,8 +1789,8 @@ func TestDaemonAPIGeneratedRoutesListAgentTargets(t *testing.T) {
 
 	var response tuttigenerated.ListAgentTargetsResponse
 	decodeGeneratedRouteResponse(t, recorder, &response)
-	if len(response.Targets) != 2 {
-		t.Fatalf("targets len = %d, want 2", len(response.Targets))
+	if len(response.Targets) != 3 {
+		t.Fatalf("targets len = %d, want 3", len(response.Targets))
 	}
 	if response.Targets[0].Id != agenttargetbiz.IDLocalCodex ||
 		response.Targets[0].Provider != tuttigenerated.AgentTargetProviderCodex ||
@@ -1803,6 +1803,12 @@ func TestDaemonAPIGeneratedRoutesListAgentTargets(t *testing.T) {
 		response.Targets[1].LaunchRef.Type != tuttigenerated.LocalCli ||
 		response.Targets[1].LaunchRef.Provider != tuttigenerated.AgentTargetProviderClaudeCode {
 		t.Fatalf("second target = %#v, want local claude-code", response.Targets[1])
+	}
+	if response.Targets[2].Id != agenttargetbiz.IDLocalCursor ||
+		response.Targets[2].Provider != tuttigenerated.AgentTargetProviderCursor ||
+		response.Targets[2].LaunchRef.Type != tuttigenerated.LocalCli ||
+		response.Targets[2].LaunchRef.Provider != tuttigenerated.AgentTargetProviderCursor {
+		t.Fatalf("third target = %#v, want local cursor", response.Targets[2])
 	}
 }
 

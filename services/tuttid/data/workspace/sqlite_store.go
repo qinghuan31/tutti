@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	agentstore "github.com/tutti-os/tutti/packages/agent/store-sqlite"
 	workspaceissues "github.com/tutti-os/tutti/packages/workspace/issues"
 	workspacebiz "github.com/tutti-os/tutti/services/tuttid/biz/workspace"
 	tuttitypes "github.com/tutti-os/tutti/services/tuttid/types"
@@ -19,7 +20,8 @@ import (
 const defaultSQLiteBusyTimeoutMillisec = 5000
 
 type SQLiteStore struct {
-	db *sql.DB
+	db    *sql.DB
+	agent *agentstore.Store
 }
 
 func OpenSQLiteStore(dbPath string) (*SQLiteStore, error) {
@@ -38,6 +40,7 @@ func OpenSQLiteStore(dbPath string) (*SQLiteStore, error) {
 
 	db.SetMaxOpenConns(1)
 	store := &SQLiteStore{db: db}
+	store.agent = store.newAgentStore()
 
 	if _, err := db.Exec(fmt.Sprintf("PRAGMA busy_timeout = %d", defaultSQLiteBusyTimeoutMillisec)); err != nil {
 		_ = store.Close()
@@ -121,7 +124,18 @@ func (s *SQLiteStore) Delete(ctx context.Context, workspaceID string) error {
 		return errors.New("workspace id is required")
 	}
 
-	result, err := s.db.ExecContext(ctx, `
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("begin delete workspace: %w", err)
+	}
+	committed := false
+	defer func() {
+		if !committed {
+			_ = tx.Rollback()
+		}
+	}()
+
+	result, err := tx.ExecContext(ctx, `
 DELETE FROM workspaces
 WHERE id = ?
 `, workspaceID)
@@ -136,6 +150,18 @@ WHERE id = ?
 	if rowsAffected == 0 {
 		return ErrWorkspaceNotFound
 	}
+
+	// Agent activity tables no longer carry a foreign key into workspaces on
+	// fresh schemas; cascade the deletion explicitly through the agent store
+	// inside the same transaction so a failure leaves no orphaned agent rows.
+	if _, err := s.agentStore().ClearSessionsTx(ctx, tx, workspaceID); err != nil {
+		return fmt.Errorf("clear agent sessions for deleted workspace: %w", err)
+	}
+
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("commit delete workspace: %w", err)
+	}
+	committed = true
 
 	return nil
 }

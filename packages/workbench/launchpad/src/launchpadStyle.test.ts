@@ -11,15 +11,34 @@ const css = readFileSync(
 test("launchpad dock icon adapts to wallpaper tone", () => {
   assert.match(
     css,
-    /\.workspace-launchpad-dock-icon\s*{[^}]*--workspace-launchpad-dock-icon-bg:\s*var\(--transparency-block\);[^}]*--workspace-launchpad-dock-icon-border:\s*var\(--line-1\);[^}]*background:\s*var\(--workspace-launchpad-dock-icon-bg\);/s
+    /\.workspace-launchpad-dock-icon\s*{[^}]*--workspace-launchpad-dock-icon-border:\s*var\(--line-1\);[^}]*place-items:\s*center;[^}]*background:\s*var\(--background-fronted\);/s
   );
   assert.match(
     css,
-    /\.desktop-dock__slot\[data-wallpaper-tone="dark"\]\s+\.workspace-launchpad-dock-icon\s*{[^}]*--workspace-launchpad-dock-icon-bg:\s*rgb\(255 255 255 \/ 18%\);[^}]*--workspace-launchpad-dock-icon-border:\s*rgb\(255 255 255 \/ 15%\);/s
+    /\.desktop-dock__slot\[data-wallpaper-tone="dark"\]\s+\.workspace-launchpad-dock-icon\s*{[^}]*--workspace-launchpad-dock-icon-border:\s*rgb\(255 255 255 \/ 15%\);/s
   );
   assert.match(
     css,
-    /\.desktop-dock__slot\[data-wallpaper-tone="light"\]\s+\.workspace-launchpad-dock-icon\s*{[^}]*--workspace-launchpad-dock-icon-bg:\s*rgb\(0 0 0 \/ 10%\);[^}]*--workspace-launchpad-dock-icon-border:\s*rgb\(0 0 0 \/ 10%\);/s
+    /\.desktop-dock__slot\[data-wallpaper-tone="light"\]\s+\.workspace-launchpad-dock-icon\s*{[^}]*--workspace-launchpad-dock-icon-border:\s*rgb\(0 0 0 \/ 10%\);/s
+  );
+  assert.doesNotMatch(
+    css,
+    /--workspace-launchpad-dock-icon-bg|\.workspace-launchpad-dock-icon__label\s*{[^}]*color:\s*var\(--white-stationary\)|\.workspace-launchpad-dock-icon__label\s*{[^}]*color:\s*rgb\(0 0 0 \/ 72%\)/s
+  );
+});
+
+test("launchpad dock icon renders ALL instead of a tile grid", () => {
+  assert.match(
+    css,
+    /\.workspace-launchpad-dock-icon__label\s*{[^}]*color:\s*var\(--text-primary\);[^}]*font-family:\s*"Lexend Variable",\s*"Lexend",\s*var\(--font-sans-system\);[^}]*font-size:\s*14px;[^}]*font-weight:\s*700;[^}]*line-height:\s*1;/s
+  );
+  assert.match(
+    css,
+    /\.workspace-launchpad-dock-icon--tiles\s*{[^}]*grid-template-columns:\s*repeat\(2, minmax\(0, 1fr\)\);[^}]*gap:\s*2px;[^}]*place-items:\s*stretch;/s
+  );
+  assert.match(
+    css,
+    /\.workspace-launchpad-dock-icon__tile\s*>\s*img\s*{[^}]*border-radius:\s*999px;/s
   );
 });
 

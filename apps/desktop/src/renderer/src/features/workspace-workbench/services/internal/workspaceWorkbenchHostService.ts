@@ -1,14 +1,14 @@
 import type { ReactNode } from "react";
-import type { AgentGUIProviderTarget } from "@tutti-os/agent-gui";
+import type {
+  AgentGUIProvider,
+  AgentGUIProviderTarget
+} from "@tutti-os/agent-gui";
 import type { I18nRuntime } from "@tutti-os/ui-i18n-runtime";
 import {
   workspaceWorkbenchDesktopI18nKeys,
   type WorkspaceWorkbenchDesktopI18nRuntime
 } from "@shared/i18n";
-import type {
-  DesktopAgentDockLayout,
-  DesktopDockIconStyle
-} from "@shared/preferences";
+import type { DesktopDockIconStyle } from "@shared/preferences";
 import type { DesktopThemeAppearance } from "@shared/theme";
 import type {
   WorkbenchHostCloseDialogRequest,
@@ -123,7 +123,6 @@ import {
   IAgentsService,
   type IAgentsService as AgentsService
 } from "../../../workspace-agent/services/agentsService.interface.ts";
-
 const workspaceDockNativePreviewMaxWidthPx = 260;
 const workspaceDockNativePreviewMaxHeightPx = 170;
 const workspaceDockNativePreviewTimeoutMs = 2_500;
@@ -131,6 +130,8 @@ const workspaceDockNativePreviewTimeoutMs = 2_500;
 export interface WorkspaceWorkbenchHostServiceDependencies {
   agentProviderStatusService: AgentProviderStatusService;
   agentsService: AgentsService;
+  isAgentProviderHidden?: (provider: string) => boolean;
+  subscribeAgentProviderVisibility?: (listener: () => void) => () => void;
   appCenterService: IWorkspaceAppCenterService;
   browserApi?: DesktopBrowserApi;
   browserService: WorkspaceBrowserService;
@@ -162,6 +163,8 @@ export interface WorkspaceWorkbenchHostServiceDependencies {
 
 export interface WorkspaceWorkbenchHostExternalDependencies {
   browserApi?: DesktopBrowserApi;
+  isAgentProviderHidden?: (provider: string) => boolean;
+  subscribeAgentProviderVisibility?: (listener: () => void) => () => void;
   computerUseApi: DesktopComputerUseApi;
   dockPreviewCacheApi: DesktopDockPreviewCacheApi;
   eventStreamClient?: TuttidEventStreamClient;
@@ -232,6 +235,9 @@ export class WorkspaceWorkbenchHostService implements IWorkspaceWorkbenchHostSer
     this.dependencies = {
       agentProviderStatusService,
       agentsService,
+      isAgentProviderHidden: externalDependencies.isAgentProviderHidden,
+      subscribeAgentProviderVisibility:
+        externalDependencies.subscribeAgentProviderVisibility,
       appCenterService,
       browserApi: externalDependencies.browserApi,
       browserService: createWorkspaceBrowserService({
@@ -258,6 +264,11 @@ export class WorkspaceWorkbenchHostService implements IWorkspaceWorkbenchHostSer
     };
     this.dependencies.repository.subscribe(() => {
       this.notifyWallpaperListeners();
+    });
+    // Provider visibility changes (e.g. the Cursor feature gate) invalidate the
+    // cached agent target list so the next load reflects the new gate.
+    this.dependencies.subscribeAgentProviderVisibility?.(() => {
+      this.agentGuiProviderTargetsPromise = null;
     });
     this.subscribeWorkbenchNodeLaunchRequests();
     void this.loadCustomWallpaper();
@@ -735,7 +746,6 @@ export class WorkspaceWorkbenchHostService implements IWorkspaceWorkbenchHostSer
 
   createHostInput(input: {
     appI18n: I18nRuntime<string>;
-    agentDockLayout: DesktopAgentDockLayout;
     confirmCloseGuard: (
       request: WorkbenchHostCloseDialogRequest
     ) => Promise<boolean> | boolean;
@@ -750,6 +760,7 @@ export class WorkspaceWorkbenchHostService implements IWorkspaceWorkbenchHostSer
     ) => void;
     providerTargets?: readonly AgentGUIProviderTarget[];
     providerTargetsLoading?: boolean;
+    comingSoonAgentProviders?: readonly AgentGUIProvider[];
     renderFilesNodeBody: (
       context: WorkspaceWorkbenchBodyRendererContext
     ) => ReactNode;
@@ -758,7 +769,6 @@ export class WorkspaceWorkbenchHostService implements IWorkspaceWorkbenchHostSer
     const cached = this.cachedHostInputs.get(input.workspaceId);
     if (
       cached &&
-      cached.agentDockLayout === input.agentDockLayout &&
       cached.appI18n === input.appI18n &&
       cached.defaultAgentProvider === input.defaultAgentProvider &&
       cached.defaultProviderTargetId === input.defaultProviderTargetId &&
@@ -766,6 +776,7 @@ export class WorkspaceWorkbenchHostService implements IWorkspaceWorkbenchHostSer
       cached.i18n === input.i18n &&
       cached.providerTargets === input.providerTargets &&
       cached.providerTargetsLoading === input.providerTargetsLoading &&
+      cached.comingSoonAgentProviders === input.comingSoonAgentProviders &&
       cached.themeAppearance === input.themeAppearance
     ) {
       cached.capabilitySettingsRequestRef.current =
@@ -802,7 +813,6 @@ export class WorkspaceWorkbenchHostService implements IWorkspaceWorkbenchHostSer
       createWorkspaceWorkbenchContributionRegistryResult({
         context: {
           appI18n: input.appI18n,
-          agentDockLayout: input.agentDockLayout,
           appCenterService: this.dependencies.appCenterService,
           browserApi: this.dependencies.browserApi,
           browserService: this.dependencies.browserService,
@@ -827,6 +837,7 @@ export class WorkspaceWorkbenchHostService implements IWorkspaceWorkbenchHostSer
           },
           providerTargets: input.providerTargets,
           providerTargetsLoading: input.providerTargetsLoading,
+          comingSoonAgentProviders: input.comingSoonAgentProviders,
           agentProviderStatusService:
             this.dependencies.agentProviderStatusService,
           eventStreamClient: this.dependencies.eventStreamClient,
@@ -866,6 +877,9 @@ export class WorkspaceWorkbenchHostService implements IWorkspaceWorkbenchHostSer
         agentProviderStatusService:
           this.dependencies.agentProviderStatusService,
         i18n: input.i18n,
+        isAgentProviderHidden: this.dependencies.isAgentProviderHidden,
+        subscribeAgentProviderVisibility:
+          this.dependencies.subscribeAgentProviderVisibility,
         workspaceAgentActivityService:
           this.dependencies.workspaceAgentActivityService,
         workspaceId: input.workspaceId
@@ -898,7 +912,6 @@ export class WorkspaceWorkbenchHostService implements IWorkspaceWorkbenchHostSer
     };
     const cachedHostInput: CachedWorkspaceWorkbenchHostInput = {
       appI18n: input.appI18n,
-      agentDockLayout: input.agentDockLayout,
       baseHostInput,
       capabilitySettingsRequestRef,
       confirmCloseGuardRef,
@@ -909,6 +922,7 @@ export class WorkspaceWorkbenchHostService implements IWorkspaceWorkbenchHostSer
       i18n: input.i18n,
       providerTargets: input.providerTargets,
       providerTargetsLoading: input.providerTargetsLoading,
+      comingSoonAgentProviders: input.comingSoonAgentProviders,
       renderFilesNodeBodyRef,
       themeAppearance: input.themeAppearance
     };
@@ -1294,7 +1308,6 @@ function cloneWorkspaceUserProjectServiceSnapshot(
 }
 
 interface CachedWorkspaceWorkbenchHostInput {
-  agentDockLayout: DesktopAgentDockLayout;
   appI18n: I18nRuntime<string>;
   baseHostInput: WorkspaceWorkbenchHostInput;
   capabilitySettingsRequestRef: {
@@ -1317,6 +1330,7 @@ interface CachedWorkspaceWorkbenchHostInput {
   i18n: WorkspaceWorkbenchDesktopI18nRuntime;
   providerTargets?: readonly AgentGUIProviderTarget[];
   providerTargetsLoading?: boolean;
+  comingSoonAgentProviders?: readonly AgentGUIProvider[];
   renderFilesNodeBodyRef: {
     current: (context: WorkspaceWorkbenchBodyRendererContext) => ReactNode;
   };

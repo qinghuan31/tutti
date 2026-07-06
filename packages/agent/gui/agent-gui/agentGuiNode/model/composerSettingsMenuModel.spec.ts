@@ -248,6 +248,72 @@ describe("buildComposerModelMenuModel", () => {
     });
   });
 
+  it("collapses the model list to the latest version per family when enabled", () => {
+    const menu = buildComposerModelMenuModel(
+      vm({
+        modelListCollapsedToLatest: true,
+        selectedModelValue: "claude-sonnet-5[thinking=true]",
+        draftSettings: {
+          model: "claude-sonnet-5[thinking=true]",
+          reasoningEffort: "high",
+          speed: "standard",
+          planMode: false,
+          permissionModeId: "preset"
+        },
+        availableModels: [
+          { value: "default[]", label: "Auto" },
+          {
+            value: "claude-sonnet-4.6[thinking=true]",
+            label: "claude-sonnet-4.6"
+          },
+          {
+            value: "claude-sonnet-4.7[thinking=true]",
+            label: "claude-sonnet-4.7"
+          },
+          { value: "claude-sonnet-5[thinking=true]", label: "claude-sonnet-5" },
+          { value: "gpt-5.2[fast=false]", label: "gpt-5.2" },
+          { value: "gpt-5.3-codex[fast=false]", label: "gpt-5.3-codex" }
+        ]
+      }),
+      labels
+    );
+
+    expect(menu.model.options.map((option) => option.value)).toEqual([
+      "default[]",
+      "claude-sonnet-5[thinking=true]",
+      "gpt-5.3-codex[fast=false]"
+    ]);
+  });
+
+  it("keeps a selected older version visible after the family collapses", () => {
+    const menu = buildComposerModelMenuModel(
+      vm({
+        modelListCollapsedToLatest: true,
+        selectedModelValue: "claude-sonnet-4.6[thinking=true]",
+        draftSettings: {
+          model: "claude-sonnet-4.6[thinking=true]",
+          reasoningEffort: "high",
+          speed: "standard",
+          planMode: false,
+          permissionModeId: "preset"
+        },
+        availableModels: [
+          {
+            value: "claude-sonnet-4.6[thinking=true]",
+            label: "claude-sonnet-4.6"
+          },
+          { value: "claude-sonnet-5[thinking=true]", label: "claude-sonnet-5" }
+        ]
+      }),
+      labels
+    );
+
+    const values = menu.model.options.map((option) => option.value);
+    expect(values).toContain("claude-sonnet-5[thinking=true]");
+    expect(values).toContain("claude-sonnet-4.6[thinking=true]");
+    expect(menu.model.selectedValue).toBe("claude-sonnet-4.6[thinking=true]");
+  });
+
   it("normalizes GPT casing while capitalizing each label segment", () => {
     expect(formatModelDisplayLabel("gpt-5.5")).toBe("GPT-5.5");
     expect(formatModelDisplayLabel("gpt-5.3-codex")).toBe("GPT-5.3-Codex");

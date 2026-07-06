@@ -7,7 +7,7 @@ import (
 	"strings"
 	"time"
 
-	activityshared "github.com/tutti-os/tutti/packages/agentactivity/daemon/activity/events"
+	activityshared "github.com/tutti-os/tutti/packages/agent/daemon/activity/events"
 )
 
 // claudeSDKGoalCommandTimeout bounds the sidecar ack round-trip for /goal
@@ -247,7 +247,7 @@ func (a *ClaudeCodeSDKAdapter) applyLocalGoal(adapterSession *claudeSDKAdapterSe
 	adapterSession.liveState.goal = clonePayload(goal)
 }
 
-func (a *ClaudeCodeSDKAdapter) goalMirrorEvents(session Session, updateType string) []activityshared.Event {
+func (*ClaudeCodeSDKAdapter) goalMirrorEvents(session Session, updateType string) []activityshared.Event {
 	if event, ok := acpGoalUpdatedEvent(session, updateType); ok {
 		return []activityshared.Event{event}
 	}

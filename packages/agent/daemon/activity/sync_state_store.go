@@ -11,11 +11,26 @@ import (
 	"sync"
 )
 
+// FileAgentSyncStateStore is a file-backed SyncStateStore and
+// MessageCursorStore. Each room is stored as one JSON document under the root
+// directory (file name derived from the roomID scope identifier: tutti side =
+// workspace ID, external daemons (tsh) = control-plane room ID; workspace ≡
+// room, one-to-one), tracking per-session sync status, pending report counts,
+// failure counters, last error, and message sync cursors. Writes are atomic
+// (temp file + rename) and guarded by a process-wide mutex, so a single store
+// instance is safe for concurrent use.
 type FileAgentSyncStateStore struct {
 	root string
 	mu   sync.Mutex
 }
 
+var (
+	_ SyncStateStore     = (*FileAgentSyncStateStore)(nil)
+	_ MessageCursorStore = (*FileAgentSyncStateStore)(nil)
+)
+
+// NewFileAgentSyncStateStore returns a FileAgentSyncStateStore rooted at the
+// given directory. The directory is created lazily on first write.
 func NewFileAgentSyncStateStore(root string) *FileAgentSyncStateStore {
 	return &FileAgentSyncStateStore{root: strings.TrimSpace(root)}
 }
@@ -76,8 +91,61 @@ func (s *FileAgentSyncStateStore) DeleteAgentSyncState(_ context.Context, roomID
 	})
 }
 
+func (s *FileAgentSyncStateStore) LoadRoomMessageCursors(_ context.Context, roomID string) (map[string]uint64, error) {
+	path, err := s.roomPath(roomID)
+	if err != nil {
+		return nil, err
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil, nil
+		}
+		return nil, err
+	}
+	var doc fileAgentSyncStateDocument
+	if err := json.Unmarshal(raw, &doc); err != nil {
+		return nil, err
+	}
+	out := make(map[string]uint64, len(doc.Cursors))
+	for agentSessionID, cursor := range doc.Cursors {
+		agentSessionID = strings.TrimSpace(agentSessionID)
+		if agentSessionID == "" || cursor == 0 {
+			continue
+		}
+		out[agentSessionID] = cursor
+	}
+	return out, nil
+}
+
+func (s *FileAgentSyncStateStore) SaveMessageCursor(_ context.Context, roomID string, agentSessionID string, version uint64) error {
+	agentSessionID = strings.TrimSpace(agentSessionID)
+	if agentSessionID == "" {
+		return nil
+	}
+	return s.updateRoom(roomID, func(doc *fileAgentSyncStateDocument) {
+		if doc.Cursors == nil {
+			doc.Cursors = make(map[string]uint64)
+		}
+		doc.Cursors[agentSessionID] = version
+	})
+}
+
+func (s *FileAgentSyncStateStore) DeleteMessageCursor(_ context.Context, roomID string, agentSessionID string) error {
+	agentSessionID = strings.TrimSpace(agentSessionID)
+	if agentSessionID == "" {
+		return nil
+	}
+	return s.updateRoom(roomID, func(doc *fileAgentSyncStateDocument) {
+		delete(doc.Cursors, agentSessionID)
+	})
+}
+
 type fileAgentSyncStateDocument struct {
 	Sessions map[string]WorkspaceAgentSyncState `json:"sessions"`
+	Cursors  map[string]uint64                  `json:"cursors,omitempty"`
 }
 
 func (s *FileAgentSyncStateStore) updateRoom(roomID string, update func(*fileAgentSyncStateDocument)) error {

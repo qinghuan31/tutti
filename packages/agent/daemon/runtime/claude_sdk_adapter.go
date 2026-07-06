@@ -15,7 +15,7 @@ import (
 	"strings"
 	"sync"
 
-	activityshared "github.com/tutti-os/tutti/packages/agentactivity/daemon/activity/events"
+	activityshared "github.com/tutti-os/tutti/packages/agent/daemon/activity/events"
 )
 
 const (
@@ -31,11 +31,13 @@ const (
 	claudeSDKSidecarAdapterName    = "claude-agent-sdk"
 	claudeSDKSidecarDefaultNodeArg = "--experimental-strip-types"
 	claudeSDKDefaultContextWindow  = int64(200000)
+	claudeSDK1MContextWindow       = int64(1000000)
 	claudeSDKAuthRefreshLogPrefix  = "CLAUDE_CODE_AUTH_REFRESH_DEBUG"
 )
 
 type ClaudeCodeSDKAdapter struct {
 	transport ProcessTransport
+	preparer  ProviderLaunchPreparer
 
 	mu          sync.Mutex
 	sessions    map[string]*claudeSDKAdapterSession
@@ -130,6 +132,13 @@ func (*ClaudeCodeSDKAdapter) Provider() string {
 	return ProviderClaudeCode
 }
 
+func (a *ClaudeCodeSDKAdapter) SetProviderLaunchPreparer(preparer ProviderLaunchPreparer) {
+	if a == nil {
+		return
+	}
+	a.preparer = preparer
+}
+
 func (a *ClaudeCodeSDKAdapter) Start(ctx context.Context, session Session) ([]activityshared.Event, error) {
 	if a == nil || a.transport == nil {
 		return nil, ErrSessionDisconnected
@@ -141,7 +150,7 @@ func (a *ClaudeCodeSDKAdapter) Start(ctx context.Context, session Session) ([]ac
 	if err != nil {
 		return nil, err
 	}
-	conn, err := a.transport.Start(ctx, ProcessSpec{
+	spec, cleanup, err := prepareProviderLaunch(ctx, a.preparer, session, ProcessSpec{
 		Provider:       ProviderClaudeCode,
 		AgentSessionID: session.AgentSessionID,
 		RoomID:         session.RoomID,
@@ -153,6 +162,12 @@ func (a *ClaudeCodeSDKAdapter) Start(ctx context.Context, session Session) ([]ac
 	if err != nil {
 		return nil, err
 	}
+	conn, err := a.transport.Start(ctx, spec)
+	if err != nil {
+		cleanupPreparedLaunch(cleanup)
+		return nil, err
+	}
+	conn = wrapProviderLaunchCleanup(conn, cleanup)
 	adapterSession := &claudeSDKAdapterSession{
 		conn:              conn,
 		reader:            &claudeSDKLineReader{conn: conn},
@@ -1551,7 +1566,7 @@ func (s *claudeSDKAdapterSession) applyUsageUpdated(payload map[string]any) bool
 	contextModel := s.currentUsageModel(payload)
 	update := claudeSDKUsageUpdate(payload, previous, contextModel)
 	if len(update) == 0 {
-		s.logUsageUpdate(payload, update, previous, acpUsageState{}, false, "empty_normalized_update")
+		s.logUsageUpdate(payload, update, previous, acpUsageState{}, contextModel, false, "empty_normalized_update")
 		return false
 	}
 	if usage, ok := acpUsageValue(update); ok {
@@ -1559,10 +1574,10 @@ func (s *claudeSDKAdapterSession) applyUsageUpdated(payload map[string]any) bool
 			usage.contextModel = contextModel
 		}
 		s.liveState.usage = mergeACPUsageState(previous, usage)
-		s.logUsageUpdate(payload, update, previous, s.liveState.usage, true, "")
+		s.logUsageUpdate(payload, update, previous, s.liveState.usage, contextModel, true, "")
 		return true
 	}
-	s.logUsageUpdate(payload, update, previous, acpUsageState{}, false, "invalid_normalized_update")
+	s.logUsageUpdate(payload, update, previous, acpUsageState{}, contextModel, false, "invalid_normalized_update")
 	return false
 }
 
@@ -1571,6 +1586,7 @@ func (s *claudeSDKAdapterSession) logUsageUpdate(
 	update map[string]any,
 	previous acpUsageState,
 	current acpUsageState,
+	contextModel string,
 	applied bool,
 	reason string,
 ) {
@@ -1599,7 +1615,6 @@ func (s *claudeSDKAdapterSession) logUsageUpdate(
 		rawContextSource = contextWindow
 	}
 	rawUsed, _ := firstACPInt64(rawContextSource, "usedTokens", "used_tokens", "used", "totalTokens", "total_tokens", "total")
-	contextModel := s.currentUsageModel(payload)
 	rawTotal := claudeSDKContextWindowTokens(payload, contextModel)
 	if rawTotal <= 0 {
 		rawTotal = claudeSDKContextWindowTokens(usageSource, contextModel)
@@ -1755,7 +1770,7 @@ func claudeSDKUsageUpdate(payload map[string]any, previous acpUsageState, contex
 				total = previous.contextWindowTokens
 			}
 			if total <= 0 {
-				total = claudeSDKDefaultContextWindow
+				total = claudeSDKAssumedContextWindow(contextModel)
 			}
 			contextWindow = clonePayload(contextWindow)
 			contextWindow["totalTokens"] = total
@@ -1784,7 +1799,7 @@ func claudeSDKUsageUpdate(payload map[string]any, previous acpUsageState, contex
 		total = previous.contextWindowTokens
 	}
 	if total <= 0 {
-		total = claudeSDKDefaultContextWindow
+		total = claudeSDKAssumedContextWindow(contextModel)
 	}
 	return map[string]any{
 		"sessionUpdate": "usage_update",
@@ -1793,6 +1808,26 @@ func claudeSDKUsageUpdate(payload map[string]any, previous acpUsageState, contex
 			"totalTokens": total,
 		},
 	}
+}
+
+// claudeSDKAssumedContextWindow picks the context-window size to assume when
+// the Claude Agent SDK hasn't yet reported an authoritative per-model window
+// for this turn (claudeSDKContextWindowTokens returns 0, e.g. every streamed
+// usage delta before the turn's final "result" message carries modelUsage)
+// and there's no matching previously-known window to carry forward
+// (claudeSDKCanReusePreviousContextWindow). Model IDs/aliases across the
+// Claude Code ecosystem mark 1M-context variants with a "[1m]" suffix (see
+// claudeCodeACPModelAliases's "sonnet[1m]" and
+// claudeCodeLegacyACPModelCandidates's "opus[1m]" in standard_acp_adapter.go,
+// and user-configured aliases such as "claude-fable-5[1m]"). Honor that
+// convention here too, so a brand-new session/turn on a 1M-context model
+// doesn't render the usage popover against the base 200k denominator for the
+// entire duration of the turn.
+func claudeSDKAssumedContextWindow(contextModel string) int64 {
+	if strings.Contains(strings.ToLower(claudeSDKCanonicalModel(contextModel)), "[1m]") {
+		return claudeSDK1MContextWindow
+	}
+	return claudeSDKDefaultContextWindow
 }
 
 func claudeSDKCanReusePreviousContextWindow(previous acpUsageState, contextModel string) bool {
@@ -1869,30 +1904,29 @@ func claudeSDKContextWindowTokensFromValue(value any, contextModel string) int64
 		if total := claudeSDKContextWindowTokens(typed, contextModel); total > 0 {
 			return total
 		}
-		for _, key := range sortedPayloadKeys(typed) {
-			if !claudeSDKModelUsageKeyMatches(key, contextModel) {
-				continue
-			}
-			if total := claudeSDKContextWindowTokensFromValue(typed[key], contextModel); total > 0 {
-				return total
+		normalizedModel := strings.ToLower(strings.TrimSpace(claudeSDKCanonicalModel(contextModel)))
+		keys := sortedPayloadKeys(typed)
+		for _, key := range keys {
+			if normalizedModel != "" && claudeSDKModelKeyMatchesNormalized(key, normalizedModel) {
+				if total := claudeSDKContextWindowTokensFromValue(typed[key], contextModel); total > 0 {
+					return total
+				}
 			}
 		}
-		for _, key := range sortedPayloadKeys(typed) {
-			if total := claudeSDKContextWindowTokensFromValue(typed[key], contextModel); total > 0 {
-				return total
+		for _, key := range keys {
+			if normalizedModel == "" || !claudeSDKModelKeyMatchesNormalized(key, normalizedModel) {
+				if total := claudeSDKContextWindowTokensFromValue(typed[key], contextModel); total > 0 {
+					return total
+				}
 			}
 		}
 	}
 	return 0
 }
 
-func claudeSDKModelUsageKeyMatches(key string, contextModel string) bool {
+func claudeSDKModelKeyMatchesNormalized(key string, normalizedModel string) bool {
 	key = strings.ToLower(strings.TrimSpace(key))
-	contextModel = strings.ToLower(strings.TrimSpace(claudeSDKCanonicalModel(contextModel)))
-	if key == "" || contextModel == "" {
-		return false
-	}
-	return key == contextModel || strings.Contains(key, contextModel)
+	return key != "" && (key == normalizedModel || strings.Contains(key, normalizedModel))
 }
 
 func (s *claudeSDKAdapterSession) send(request claudeSDKSidecarRequest) error {

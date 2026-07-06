@@ -1,6 +1,7 @@
 import type { AgentActivityUsage } from "@tutti-os/agent-activity-core";
 import type {
   AgentGUINodeData,
+  AgentGUIProvider,
   AgentGUIProviderReadinessGate,
   AgentGUIProviderTarget
 } from "../../../types";
@@ -22,8 +23,6 @@ import type {
 import type { AgentConversationVM } from "../../../shared/agentConversation/contracts/agentConversationVM";
 import type { WorkspaceAgentSessionDetailViewModel } from "../../../shared/workspaceAgentSessionDetailViewModel";
 import type { AgentPromptContentBlock } from "../../../shared/contracts/dto";
-
-export type AgentGUIConversationScope = "single-provider" | "multi-provider";
 
 export interface AgentGUISessionChrome {
   auth: {
@@ -146,6 +145,10 @@ export interface AgentGUIComposerSettingsVM {
   permissionConfig?: AgentSessionPermissionConfig | null;
   selectedProjectPath?: string | null;
   projectLocked?: boolean;
+  // Collapse the model list to the latest version per model family (providers
+  // whose live lists span many vendors and versions, e.g. Cursor). The
+  // currently selected model always stays visible even if older.
+  modelListCollapsedToLatest?: boolean;
   availableModels: AgentGUIComposerSettingOption[];
   availableReasoningEfforts: AgentGUIComposerSettingOption[];
   availableSpeeds: AgentGUIComposerSettingOption[];
@@ -168,7 +171,8 @@ export interface AgentGUINodeViewModel {
   selectedProviderTarget: AgentGUIProviderTarget;
   providerTargets: readonly AgentGUIProviderTarget[];
   providerTargetsLoading: boolean;
-  conversationScope: AgentGUIConversationScope;
+  /** Providers gated by the host (feature-gated) — rail renders coming-soon placeholders. */
+  comingSoonProviders: readonly AgentGUIProvider[];
   conversationFilter: AgentGUIConversationFilter;
   conversations: AgentGUIConversationSummary[];
   userProjects: AgentGUIConversationUserProject[];

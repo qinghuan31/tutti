@@ -42,14 +42,68 @@ type AgentModelLister interface {
 	ListModels(context.Context) (AgentModelListResult, error)
 }
 
+// agentModelCatalogSpec declares how one provider's model list is fetched and
+// cached. Adding a provider to the catalog means adding one entry to
+// agentModelCatalogSpecs (and a lister field on CachedAgentModelCatalog for
+// test injection).
+type agentModelCatalogSpec struct {
+	// source labels the catalog origin surfaced to the GUI (e.g. "codex-cli").
+	source string
+	// ttl caches a successful, non-fallback list.
+	ttl time.Duration
+	// errTTL caches a failed fetch (avoids hammering a broken CLI).
+	errTTL time.Duration
+	// fallbackTTL caches a fallback list when the lister flags one; zero
+	// means fallback results use the normal ttl.
+	fallbackTTL time.Duration
+	// lister picks the injected lister off the catalog, falling back to the
+	// default CLI-backed implementation.
+	lister func(*CachedAgentModelCatalog) AgentModelLister
+	// configuredDefaultModel reads the user's CLI-configured default model;
+	// it is marked (or appended) as the default option.
+	configuredDefaultModel func() string
+	// missingDefaultDescription describes a configured default model that the
+	// lister did not return.
+	missingDefaultDescription string
+}
+
+var agentModelCatalogSpecs = map[string]agentModelCatalogSpec{
+	agentprovider.Codex: {
+		source: "codex-cli",
+		ttl:    codexModelCacheTTL,
+		errTTL: codexModelErrorCacheTTL,
+		lister: func(c *CachedAgentModelCatalog) AgentModelLister {
+			if c.Codex != nil {
+				return c.Codex
+			}
+			return CodexCLIModelLister{}
+		},
+		configuredDefaultModel:    readCodexConfiguredDefaultModel,
+		missingDefaultDescription: "Codex configured custom model",
+	},
+	agentprovider.Gemini: {
+		source:      "gemini-cli",
+		ttl:         geminiModelCacheTTL,
+		errTTL:      geminiModelFallbackTTL,
+		fallbackTTL: geminiModelFallbackTTL,
+		lister: func(c *CachedAgentModelCatalog) AgentModelLister {
+			if c.Gemini != nil {
+				return c.Gemini
+			}
+			return GeminiCLIModelLister{}
+		},
+		configuredDefaultModel:    readGeminiConfiguredDefaultModel,
+		missingDefaultDescription: "Gemini configured custom model",
+	},
+}
+
 type CachedAgentModelCatalog struct {
 	Codex  AgentModelLister
 	Gemini AgentModelLister
 	Now    func() time.Time
 
-	mu          sync.Mutex
-	codexCache  *agentModelCatalogCacheEntry
-	geminiCache *agentModelCatalogCacheEntry
+	mu    sync.Mutex
+	cache map[string]*agentModelCatalogCacheEntry
 }
 
 type agentModelCatalogCacheEntry struct {
@@ -59,120 +113,69 @@ type agentModelCatalogCacheEntry struct {
 }
 
 func NewAgentModelCatalog() *CachedAgentModelCatalog {
-	return &CachedAgentModelCatalog{
-		Codex:  CodexCLIModelLister{},
-		Gemini: GeminiCLIModelLister{},
-	}
+	return &CachedAgentModelCatalog{}
 }
 
 func (c *CachedAgentModelCatalog) ListModels(ctx context.Context, provider string) (AgentModelCatalogResult, error) {
 	provider = agentprovider.Normalize(provider)
-	switch provider {
-	case agentprovider.Codex:
-		return c.listCodexModels(ctx)
-	case agentprovider.Gemini:
-		return c.listGeminiModels(ctx)
-	default:
+	spec, ok := agentModelCatalogSpecs[provider]
+	if !ok {
 		return AgentModelCatalogResult{}, ErrInvalidArgument
 	}
-}
-
-func (c *CachedAgentModelCatalog) listCodexModels(ctx context.Context) (AgentModelCatalogResult, error) {
 	now := c.now()
-	if cached := c.readCodexCache(now); cached != nil {
+	if cached := c.readCache(provider, now); cached != nil {
 		return cached.result, cached.err
 	}
-	lister := c.Codex
-	if lister == nil {
-		lister = CodexCLIModelLister{}
-	}
-	listResult, err := lister.ListModels(ctx)
+	listResult, err := spec.lister(c).ListModels(ctx)
 	result := AgentModelCatalogResult{
-		Provider:  agentprovider.Codex,
-		Source:    "codex-cli",
+		Provider:  provider,
+		Source:    spec.source,
 		FetchedAt: now,
 		Models: applyConfiguredDefaultModel(
 			listResult.Models,
-			readCodexConfiguredDefaultModel(),
-			"Codex configured custom model",
+			spec.configuredDefaultModel(),
+			spec.missingDefaultDescription,
 		),
 	}
-	c.writeCodexCache(now, result, err)
+	c.writeCache(provider, spec, now, result, listResult.IsFallback, err)
 	return cloneAgentModelCatalogResult(result), err
 }
 
-func (c *CachedAgentModelCatalog) listGeminiModels(ctx context.Context) (AgentModelCatalogResult, error) {
-	now := c.now()
-	if cached := c.readGeminiCache(now); cached != nil {
-		return cached.result, cached.err
-	}
-	lister := c.Gemini
-	if lister == nil {
-		lister = GeminiCLIModelLister{}
-	}
-	listResult, err := lister.ListModels(ctx)
-	result := AgentModelCatalogResult{
-		Provider:  agentprovider.Gemini,
-		Source:    "gemini-cli",
-		FetchedAt: now,
-		Models: applyConfiguredDefaultModel(
-			listResult.Models,
-			readGeminiConfiguredDefaultModel(),
-			"Gemini configured custom model",
-		),
-	}
-	c.writeGeminiCache(now, result, listResult.IsFallback, err)
-	return cloneAgentModelCatalogResult(result), err
-}
-
-func (c *CachedAgentModelCatalog) readCodexCache(now time.Time) *agentModelCatalogCacheEntry {
+func (c *CachedAgentModelCatalog) readCache(provider string, now time.Time) *agentModelCatalogCacheEntry {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	if c.codexCache == nil || now.UnixMilli() > c.codexCache.expiresAtMS {
-		c.codexCache = nil
+	entry := c.cache[provider]
+	if entry == nil || now.UnixMilli() > entry.expiresAtMS {
+		delete(c.cache, provider)
 		return nil
 	}
 	return &agentModelCatalogCacheEntry{
-		result: cloneAgentModelCatalogResult(c.codexCache.result),
-		err:    c.codexCache.err,
+		result: cloneAgentModelCatalogResult(entry.result),
+		err:    entry.err,
 	}
 }
 
-func (c *CachedAgentModelCatalog) writeCodexCache(now time.Time, result AgentModelCatalogResult, err error) {
-	ttl := codexModelCacheTTL
-	if err != nil {
-		ttl = codexModelErrorCacheTTL
+func (c *CachedAgentModelCatalog) writeCache(
+	provider string,
+	spec agentModelCatalogSpec,
+	now time.Time,
+	result AgentModelCatalogResult,
+	isFallback bool,
+	err error,
+) {
+	ttl := spec.ttl
+	switch {
+	case err != nil:
+		ttl = spec.errTTL
+	case isFallback && spec.fallbackTTL > 0:
+		ttl = spec.fallbackTTL
 	}
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	c.codexCache = &agentModelCatalogCacheEntry{
-		result:      cloneAgentModelCatalogResult(result),
-		err:         err,
-		expiresAtMS: now.Add(ttl).UnixMilli(),
+	if c.cache == nil {
+		c.cache = make(map[string]*agentModelCatalogCacheEntry)
 	}
-}
-
-func (c *CachedAgentModelCatalog) readGeminiCache(now time.Time) *agentModelCatalogCacheEntry {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	if c.geminiCache == nil || now.UnixMilli() > c.geminiCache.expiresAtMS {
-		c.geminiCache = nil
-		return nil
-	}
-	return &agentModelCatalogCacheEntry{
-		result: cloneAgentModelCatalogResult(c.geminiCache.result),
-		err:    c.geminiCache.err,
-	}
-}
-
-func (c *CachedAgentModelCatalog) writeGeminiCache(now time.Time, result AgentModelCatalogResult, isFallback bool, err error) {
-	ttl := geminiModelCacheTTL
-	if isFallback || err != nil {
-		ttl = geminiModelFallbackTTL
-	}
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	c.geminiCache = &agentModelCatalogCacheEntry{
+	c.cache[provider] = &agentModelCatalogCacheEntry{
 		result:      cloneAgentModelCatalogResult(result),
 		err:         err,
 		expiresAtMS: now.Add(ttl).UnixMilli(),

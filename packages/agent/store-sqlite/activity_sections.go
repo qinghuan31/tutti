@@ -1,4 +1,4 @@
-package workspace
+package storesqlite
 
 import (
 	"context"
@@ -6,22 +6,20 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
-
-	agentactivitybiz "github.com/tutti-os/tutti/services/tuttid/biz/agentactivity"
 )
 
-func (s *SQLiteStore) ListSessionSection(
+func (s *Store) ListSessionSection(
 	ctx context.Context,
-	input agentactivitybiz.ListSessionSectionInput,
-) (agentactivitybiz.SessionSectionPage, bool, error) {
+	input ListSessionSectionInput,
+) (SessionSectionPage, bool, error) {
 	if s == nil || s.db == nil {
-		return agentactivitybiz.SessionSectionPage{}, false, errors.New("workspace database is not initialized")
+		return SessionSectionPage{}, false, errors.New("workspace database is not initialized")
 	}
 	workspaceID := strings.TrimSpace(input.WorkspaceID)
 	sectionKey := strings.TrimSpace(input.SectionKey)
 	agentTargetID := strings.TrimSpace(input.AgentTargetID)
 	if workspaceID == "" || sectionKey == "" {
-		return agentactivitybiz.SessionSectionPage{}, false, nil
+		return SessionSectionPage{}, false, nil
 	}
 	limit := input.Limit
 	queryLimit := 0
@@ -39,6 +37,7 @@ WHERE workspace_id = ?
   AND rail_section_key = ?
   AND (? = '' OR agent_target_id = ?)
   AND deleted_at_unix_ms = 0
+  AND json_extract(runtime_context_json, '$.visible') IS NOT 0
   AND (? = '' OR updated_at_unix_ms < ? OR (updated_at_unix_ms = ? AND agent_session_id > ?))
 ORDER BY updated_at_unix_ms DESC, agent_session_id ASC`
 	args := []any{
@@ -57,20 +56,20 @@ ORDER BY updated_at_unix_ms DESC, agent_session_id ASC`
 	}
 	rows, err := s.db.QueryContext(ctx, query, args...)
 	if err != nil {
-		return agentactivitybiz.SessionSectionPage{}, false, fmt.Errorf("list workspace agent session section: %w", err)
+		return SessionSectionPage{}, false, fmt.Errorf("list workspace agent session section: %w", err)
 	}
 	defer rows.Close()
 
-	sessions := make([]agentactivitybiz.Session, 0)
+	sessions := make([]Session, 0)
 	for rows.Next() {
 		session, err := scanAgentSession(rows)
 		if err != nil {
-			return agentactivitybiz.SessionSectionPage{}, false, err
+			return SessionSectionPage{}, false, err
 		}
 		sessions = append(sessions, session)
 	}
 	if err := rows.Err(); err != nil {
-		return agentactivitybiz.SessionSectionPage{}, false, fmt.Errorf("iterate workspace agent session section: %w", err)
+		return SessionSectionPage{}, false, fmt.Errorf("iterate workspace agent session section: %w", err)
 	}
 
 	hasMore := false
@@ -83,7 +82,7 @@ ORDER BY updated_at_unix_ms DESC, agent_session_id ASC`
 		last := sessions[len(sessions)-1]
 		nextCursor = strconv.FormatInt(last.UpdatedAtUnixMS, 10) + "|" + strings.TrimSpace(last.ID)
 	}
-	return agentactivitybiz.SessionSectionPage{
+	return SessionSectionPage{
 		WorkspaceID: workspaceID,
 		SectionKey:  sectionKey,
 		Sessions:    sessions,

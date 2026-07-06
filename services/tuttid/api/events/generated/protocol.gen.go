@@ -6,7 +6,7 @@ import "encoding/json"
 
 const (
 	BusinessEventProtocolVersion = 1
-	BusinessEventCatalogRevision = "sha256:00e7c0e227c0387c"
+	BusinessEventCatalogRevision = "sha256:c8cc9d6c0d853a47"
 )
 
 type Topic string
@@ -64,36 +64,55 @@ type PreferencesDesktopPreferences struct {
 			Model            *string `json:"model,omitempty"`
 			PermissionModeId *string `json:"permissionModeId,omitempty"`
 			ReasoningEffort  *string `json:"reasoningEffort,omitempty"`
+			Speed            *string `json:"speed,omitempty"`
 		} `json:"claude-code,omitempty"`
 		Codex *struct {
 			Model            *string `json:"model,omitempty"`
 			PermissionModeId *string `json:"permissionModeId,omitempty"`
 			ReasoningEffort  *string `json:"reasoningEffort,omitempty"`
+			Speed            *string `json:"speed,omitempty"`
 		} `json:"codex,omitempty"`
+		Cursor *struct {
+			Model            *string `json:"model,omitempty"`
+			PermissionModeId *string `json:"permissionModeId,omitempty"`
+			ReasoningEffort  *string `json:"reasoningEffort,omitempty"`
+			Speed            *string `json:"speed,omitempty"`
+		} `json:"cursor,omitempty"`
 		Nexight *struct {
 			Model            *string `json:"model,omitempty"`
 			PermissionModeId *string `json:"permissionModeId,omitempty"`
 			ReasoningEffort  *string `json:"reasoningEffort,omitempty"`
+			Speed            *string `json:"speed,omitempty"`
 		} `json:"nexight,omitempty"`
 		Gemini *struct {
 			Model            *string `json:"model,omitempty"`
 			PermissionModeId *string `json:"permissionModeId,omitempty"`
 			ReasoningEffort  *string `json:"reasoningEffort,omitempty"`
+			Speed            *string `json:"speed,omitempty"`
 		} `json:"gemini,omitempty"`
 		Hermes *struct {
 			Model            *string `json:"model,omitempty"`
 			PermissionModeId *string `json:"permissionModeId,omitempty"`
 			ReasoningEffort  *string `json:"reasoningEffort,omitempty"`
+			Speed            *string `json:"speed,omitempty"`
 		} `json:"hermes,omitempty"`
 		Openclaw *struct {
 			Model            *string `json:"model,omitempty"`
 			PermissionModeId *string `json:"permissionModeId,omitempty"`
 			ReasoningEffort  *string `json:"reasoningEffort,omitempty"`
+			Speed            *string `json:"speed,omitempty"`
 		} `json:"openclaw,omitempty"`
 	} `json:"agentComposerDefaultsByProvider"`
+	AgentComposerDefaultsByAgentTarget *map[string]struct {
+		Model            *string `json:"model,omitempty"`
+		PermissionModeId *string `json:"permissionModeId,omitempty"`
+		ReasoningEffort  *string `json:"reasoningEffort,omitempty"`
+		Speed            *string `json:"speed,omitempty"`
+	} `json:"agentComposerDefaultsByAgentTarget,omitempty"`
 	AgentGuiConversationRailCollapsedByProvider struct {
 		ClaudeCode *bool `json:"claude-code,omitempty"`
 		Codex      *bool `json:"codex,omitempty"`
+		Cursor     *bool `json:"cursor,omitempty"`
 		Nexight    *bool `json:"nexight,omitempty"`
 		Gemini     *bool `json:"gemini,omitempty"`
 		Hermes     *bool `json:"hermes,omitempty"`
@@ -111,6 +130,7 @@ type PreferencesDesktopPreferences struct {
 	MinimizeAnimation             string            `json:"minimizeAnimation"`
 	SleepPreventionMode           string            `json:"sleepPreventionMode"`
 	ShowAppDeveloperSources       bool              `json:"showAppDeveloperSources"`
+	EnableCursorAgent             bool              `json:"enableCursorAgent"`
 	ThemeSource                   string            `json:"themeSource"`
 	UpdateChannel                 string            `json:"updateChannel"`
 	UpdatePolicy                  string            `json:"updatePolicy"`
@@ -128,6 +148,7 @@ type WorkspaceWorkspaceAppFactoryJob struct {
 	AppId            *string         `json:"appId"`
 	DisplayName      string          `json:"displayName"`
 	Description      *string         `json:"description"`
+	AgentTargetId    *string         `json:"agentTargetId"`
 	Provider         *string         `json:"provider"`
 	Model            *string         `json:"model"`
 	ReasoningEffort  *string         `json:"reasoningEffort"`

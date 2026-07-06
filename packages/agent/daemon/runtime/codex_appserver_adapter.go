@@ -14,7 +14,7 @@ import (
 	"sync/atomic"
 	"time"
 
-	activityshared "github.com/tutti-os/tutti/packages/agentactivity/daemon/activity/events"
+	activityshared "github.com/tutti-os/tutti/packages/agent/daemon/activity/events"
 )
 
 // Codex app-server JSON-RPC methods used by the adapter. The app-server
@@ -96,6 +96,11 @@ const codexAppServerAuthRequiredMessage = "Codex requires authentication. " +
 // honor turn/interrupt gracefully before force-closing the app-server process.
 const defaultCodexAppServerCancelGraceWindow = 3 * time.Second
 
+// startupModelSteadyRetryCount is how many 30s-spaced model/list retries follow
+// the initial fast ramp before the background refresh gives up (~18 minutes
+// total), bounding the goroutine while covering realistic transient outages.
+const startupModelSteadyRetryCount = 36
+
 // defaultCodexAppServerGoalContinuationGraceWindow is how long the adapter
 // waits after a goal turn settles for codex to auto-start the next turn
 // before nudging it with a thread/goal/set re-send.
@@ -104,6 +109,7 @@ const defaultCodexAppServerGoalContinuationGraceWindow = 1500 * time.Millisecond
 type CodexAppServerAdapter struct {
 	transport   ProcessTransport
 	host        HostMetadata
+	preparer    ProviderLaunchPreparer
 	mu          sync.Mutex
 	sessions    map[string]*codexAppServerSession
 	commandSink CommandSnapshotSink
@@ -118,6 +124,11 @@ type CodexAppServerAdapter struct {
 	// cancelGraceWindow bounds the graceful-interrupt wait in Cancel before the
 	// process is force-closed. Zero falls back to the default.
 	cancelGraceWindow time.Duration
+	// startupModelRetryBackoffs is the wait schedule between background model/list
+	// refetches when the initial probe came back empty; the slice length bounds
+	// the number of retries. Nil falls back to defaultStartupModelRetryBackoffs.
+	// Overridable in tests to drive the loop without real delays.
+	startupModelRetryBackoffs []time.Duration
 	// goalContinuationGraceWindow is how long a settled goal turn waits for
 	// codex to auto-start the next turn before the adapter nudges it. Zero
 	// falls back to the default.
@@ -326,6 +337,13 @@ func (a *CodexAppServerAdapter) SetConfigOptionsUpdateSink(sink ConfigOptionsUpd
 	a.mu.Lock()
 	a.configSink = sink
 	a.mu.Unlock()
+}
+
+func (a *CodexAppServerAdapter) SetProviderLaunchPreparer(preparer ProviderLaunchPreparer) {
+	if a == nil {
+		return
+	}
+	a.preparer = preparer
 }
 
 func (*CodexAppServerAdapter) ValidatePromptContent(Session, []PromptContentBlock) error {
@@ -658,13 +676,8 @@ func (a *CodexAppServerAdapter) startInitializedClient(
 	if a == nil || a.transport == nil {
 		return nil, nil, errors.New("app-server process transport is unavailable")
 	}
-	trace.Log("process.start.begin", map[string]any{
-		"command": strings.Join([]string{codexAppServerCommand, codexAppServerSubcmd}, " "),
-		"cwd":     a.sessionCWD(session),
-	})
-	processStartedAt := time.Now()
 	spawnEnv := append(codexACPEnv(session, a.host), session.Env...)
-	conn, err := a.transport.Start(ctx, ProcessSpec{
+	spec, cleanup, err := prepareProviderLaunch(ctx, a.preparer, session, ProcessSpec{
 		Provider:       ProviderCodex,
 		AgentSessionID: session.AgentSessionID,
 		RoomID:         session.RoomID,
@@ -673,12 +686,26 @@ func (a *CodexAppServerAdapter) startInitializedClient(
 		Env:            spawnEnv,
 	})
 	if err != nil {
+		trace.Log("process.prepare.failed", map[string]any{
+			"error": err.Error(),
+		})
+		return nil, nil, err
+	}
+	trace.Log("process.start.begin", map[string]any{
+		"command": strings.Join(spec.Command, " "),
+		"cwd":     spec.CWD,
+	})
+	processStartedAt := time.Now()
+	conn, err := a.transport.Start(ctx, spec)
+	if err != nil {
+		cleanupPreparedLaunch(cleanup)
 		trace.Log("process.start.failed", map[string]any{
 			"duration_ms": time.Since(processStartedAt).Milliseconds(),
 			"error":       err.Error(),
 		})
 		return nil, nil, err
 	}
+	conn = wrapProviderLaunchCleanup(conn, cleanup)
 	trace.Log("process.start.succeeded", map[string]any{
 		"duration_ms": time.Since(processStartedAt).Milliseconds(),
 	})
@@ -717,7 +744,7 @@ func (a *CodexAppServerAdapter) startInitializedClient(
 
 	initializeResult, err := trace.TypedCall(acpStartCallTimeout, appServerMethodInitialize, func() (json.RawMessage, error) {
 		return client.Initialize(ctx, acpStartCallTimeout, map[string]any{
-			"clientInfo": codexClientInfoParams(a.host, spawnEnv),
+			"clientInfo": codexClientInfoParams(a.host, spec.Env),
 			"capabilities": map[string]any{
 				"experimentalApi": true,
 			},
@@ -863,7 +890,7 @@ func (*CodexAppServerAdapter) fetchRateLimitsNoHandler(
 // fetchGoal reads the thread's persisted goal. Best effort: any error means
 // the in-memory goal stays as-is. NoHandler: this runs in the background and
 // must not claim the message handler slot away from a streaming turn.
-func (a *CodexAppServerAdapter) fetchGoal(
+func (*CodexAppServerAdapter) fetchGoal(
 	ctx context.Context,
 	client *codexAppServerClient,
 	threadID string,
@@ -1074,39 +1101,116 @@ func (a *CodexAppServerAdapter) refreshStartupMetadataAsync(
 				})
 			}
 		}()
-		appSession := a.getSession(agentSessionID)
-		if appSession == nil || appSession.client == nil {
-			return
-		}
 		ctx := context.Background()
-		updated := false
-		if fetchModels {
-			models := a.fetchModelsNoHandler(ctx, appSession.client, trace)
-			if a.applyStartupModels(agentSessionID, session, threadResult, models) {
-				updated = true
+		if fetchRateLimits {
+			if appSession := a.getSession(agentSessionID); appSession != nil && appSession.client != nil {
+				rateLimits := a.fetchRateLimitsNoHandler(ctx, appSession.client, trace)
+				if a.applyRateLimits(agentSessionID, rateLimits) {
+					a.emitStartupMetadataRefreshEvent(session, agentSessionID)
+				}
 			}
 		}
-		if fetchRateLimits {
-			rateLimits := a.fetchRateLimitsNoHandler(ctx, appSession.client, trace)
-			if a.applyRateLimits(agentSessionID, rateLimits) {
-				updated = true
+		if fetchModels {
+			// fetchModels re-resolves the session each attempt so the loop keeps
+			// working against a live client and stops once the session is gone.
+			fetch := func(ctx context.Context) []map[string]any {
+				appSession := a.getSession(agentSessionID)
+				if appSession == nil || appSession.client == nil {
+					return nil
+				}
+				return a.fetchModelsNoHandler(ctx, appSession.client, trace)
+			}
+			sleep := func(ctx context.Context, d time.Duration) bool {
+				return sleepWithContext(ctx, d) == nil
+			}
+			if a.retryStartupModels(ctx, agentSessionID, session, threadResult, fetch, sleep) {
+				a.emitStartupMetadataRefreshEvent(session, agentSessionID)
 			}
 		}
 		// The goal lives in codex's thread state; restore it after start or
 		// resume so the banner survives daemon restarts and adopted
 		// continuation turns find the goal status they gate on.
-		if goal := a.fetchGoal(ctx, appSession.client, appSession.threadID, trace); len(goal) > 0 {
-			a.applyGoalUpdate(agentSessionID, goal)
-			updated = true
-		}
-		if updated {
-			a.emitSessionEvents(agentSessionID, []activityshared.Event{
-				newSessionActivityEvent(session, EventSessionUpdated, SessionStatusReady, map[string]any{
-					"appServerMetadataRefresh": true,
-				}),
-			})
+		if appSession := a.getSession(agentSessionID); appSession != nil && appSession.client != nil {
+			if goal := a.fetchGoal(ctx, appSession.client, appSession.threadID, trace); len(goal) > 0 {
+				a.applyGoalUpdate(agentSessionID, goal)
+				a.emitStartupMetadataRefreshEvent(session, agentSessionID)
+			}
 		}
 	}()
+}
+
+// retryStartupModels re-fetches the codex model/list until it returns a
+// non-empty list (and the startup state resolves to "ready"), the session is
+// torn down, the context is canceled, or the bounded backoff budget is
+// exhausted. A single transient empty/slow response therefore no longer pins
+// the composer's model options at "loading" forever — the previous code fetched
+// exactly once and silently left the state stuck on failure.
+func (a *CodexAppServerAdapter) retryStartupModels(
+	ctx context.Context,
+	agentSessionID string,
+	session Session,
+	threadResult json.RawMessage,
+	fetch func(context.Context) []map[string]any,
+	sleep func(context.Context, time.Duration) bool,
+) bool {
+	if a == nil || fetch == nil {
+		return false
+	}
+	backoffs := a.startupModelRetryBackoffs
+	if backoffs == nil {
+		backoffs = defaultStartupModelRetryBackoffs()
+	}
+	for attempt := 0; attempt <= len(backoffs); attempt++ {
+		if a.getSession(agentSessionID) == nil {
+			return false
+		}
+		models := fetch(ctx)
+		if a.applyStartupModels(agentSessionID, session, threadResult, models) {
+			if attempt > 0 {
+				slog.Info("agent session app-server model list resolved after retry",
+					"agent_session_id", agentSessionID,
+					"attempts", attempt+1,
+				)
+			}
+			return true
+		}
+		if attempt == len(backoffs) {
+			break
+		}
+		if sleep != nil && !sleep(ctx, backoffs[attempt]) {
+			return false
+		}
+	}
+	slog.Warn("agent session app-server model list never resolved",
+		"agent_session_id", agentSessionID,
+		"attempts", len(backoffs)+1,
+	)
+	return false
+}
+
+func (a *CodexAppServerAdapter) emitStartupMetadataRefreshEvent(session Session, agentSessionID string) {
+	a.emitSessionEvents(agentSessionID, []activityshared.Event{
+		newSessionActivityEvent(session, EventSessionUpdated, SessionStatusReady, map[string]any{
+			"appServerMetadataRefresh": true,
+		}),
+	})
+}
+
+// defaultStartupModelRetryBackoffs ramps quickly then settles at a steady 30s
+// cadence, giving codex time to recover from transient hiccups (rate limits,
+// a still-materializing platform package, a slow first model/list) while
+// keeping the background goroutine bounded.
+func defaultStartupModelRetryBackoffs() []time.Duration {
+	backoffs := []time.Duration{
+		time.Second,
+		2 * time.Second,
+		5 * time.Second,
+		10 * time.Second,
+	}
+	for i := 0; i < startupModelSteadyRetryCount; i++ {
+		backoffs = append(backoffs, 30*time.Second)
+	}
+	return backoffs
 }
 
 func (a *CodexAppServerAdapter) applyStartupModels(
@@ -1325,6 +1429,11 @@ func (a *CodexAppServerAdapter) execBlocking(
 	}
 	session.ProviderSessionID = appSession.threadID
 	explicitDisplayPrompt, visibleText := explicitAndVisiblePromptText(content, displayPrompt)
+	mentionRoutingApplied, mentionRoutingSkills := tuttiMentionRoutingSkills(visibleText)
+	providerContent := content
+	if mentionRoutingApplied {
+		providerContent = appendTuttiMentionRoutingContent(providerContent, mentionRoutingSkills)
+	}
 
 	if activeTurnID := a.sessionActiveTurnID(session.AgentSessionID); activeTurnID != "" {
 		if command, args := splitSlashCommand(visibleText); command == appServerSlashGoal {
@@ -1333,7 +1442,7 @@ func (a *CodexAppServerAdapter) execBlocking(
 			// instead of executing the RPC.
 			return a.execGoalControlCommand(ctx, appSession, session, args, turnID, content, explicitDisplayPrompt, visibleText, emit)
 		}
-		return a.steerActiveTurn(ctx, appSession, session, content, explicitDisplayPrompt, visibleText, turnID, activeTurnID, emit)
+		return a.steerActiveTurn(ctx, appSession, session, content, providerContent, explicitDisplayPrompt, visibleText, turnID, activeTurnID, emit)
 	}
 
 	normalizer := newACPTurnNormalizer()
@@ -1422,8 +1531,8 @@ func (a *CodexAppServerAdapter) execBlocking(
 	a.markTurnSettleEmits(appTurn)
 
 	trace := newCodexAppServerTurnTrace(session, turnID, execMetadataFromContext(ctx))
-	turnParams := appServerTurnStartParams(session, appSession.threadID, content, appSession.planModeMask, appSession.defaultModeMask, appSession.defaultModel)
-	trace.Log("turn.start.params", codexAppServerTraceTurnStartParams(session, turnParams, content))
+	turnParams := appServerTurnStartParams(session, appSession.threadID, providerContent, appSession.planModeMask, appSession.defaultModeMask, appSession.defaultModel)
+	trace.Log("turn.start.params", codexAppServerTraceTurnStartParams(session, turnParams, providerContent))
 	turnStartedAt := time.Now()
 	result, err := appSession.client.TurnStart(ctx, turnParams,
 		func(ctx context.Context, message acpMessage) error {
@@ -1576,6 +1685,7 @@ func (*CodexAppServerAdapter) steerActiveTurn(
 	appSession *codexAppServerSession,
 	session Session,
 	content []PromptContentBlock,
+	providerContent []PromptContentBlock,
 	explicitDisplayPrompt string,
 	displayPrompt string,
 	turnID string,
@@ -1585,7 +1695,7 @@ func (*CodexAppServerAdapter) steerActiveTurn(
 	_, err := appSession.client.TurnSteerNoHandler(ctx, map[string]any{
 		"threadId":       appSession.threadID,
 		"expectedTurnId": activeTurnID,
-		"input":          appServerUserInput(content),
+		"input":          appServerUserInput(providerContent),
 	})
 	if err != nil {
 		return nil, err

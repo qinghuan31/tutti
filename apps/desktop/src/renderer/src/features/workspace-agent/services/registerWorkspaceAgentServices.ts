@@ -32,6 +32,7 @@ export interface WorkspaceAgentServiceRegistrationInput {
     "logRendererDiagnostic" | "logTerminalDiagnostic"
   >;
   resolveAgentIconUrl?: (provider: string) => string;
+  isAgentTargetProviderGated?: (provider: string) => boolean;
   terminalCommandRunner: AgentProviderTerminalCommandRunner;
   workspaceUserProjectService?: IWorkspaceUserProjectService;
 }
@@ -62,6 +63,7 @@ export function registerWorkspaceAgentServices(
   bindDesktopManagedAgentProviderVisibilityRefresh(agentProviderStatusService);
   const agentsService = new DesktopAgentsService({
     resolveAgentIconUrl: input.resolveAgentIconUrl,
+    isAgentTargetProviderGated: input.isAgentTargetProviderGated,
     tuttidClient: input.tuttidClient
   });
   registry.registerInstance(IAgentsService, agentsService);

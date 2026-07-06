@@ -22,6 +22,7 @@ interface CreateDesktopAgentHostWorkspaceAgentsApiInput {
 const desktopAgentGUIPresenceProviders = [
   "claude-code",
   "codex",
+  "cursor",
   "nexight",
   "gemini",
   "hermes",

@@ -10,14 +10,18 @@ test("resolveDesktopAgentGUIPrefillPromptActivation extracts valid prefill reque
   assert.deepEqual(
     resolveDesktopAgentGUIPrefillPromptActivation({
       payload: {
+        agentTargetId: " local:codex ",
         draftPrompt: " Review this issue ",
+        provider: "codex",
         userProjectPath: " /workspace/app/ "
       },
       sequence: 7,
       type: desktopAgentGUIPrefillPromptActivationType
     }),
     {
+      agentTargetId: "local:codex",
       draftPrompt: "Review this issue",
+      provider: "codex",
       sequence: 7,
       userProjectPath: "/workspace/app/"
     }

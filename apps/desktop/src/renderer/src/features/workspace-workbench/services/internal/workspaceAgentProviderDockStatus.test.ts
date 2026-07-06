@@ -98,7 +98,7 @@ test("agent provider dock status shows loading while install is pending", () => 
   });
 });
 
-test("agent provider dock status shows login reason with login and refresh actions for auth required providers", () => {
+test("agent provider dock status shows connect and refresh actions for auth required providers", () => {
   const props = resolveAgentProviderDockStatusProps({
     copy,
     isLoading: false,
@@ -113,12 +113,42 @@ test("agent provider dock status shows login reason with login and refresh actio
 
   assert.deepEqual(props, {
     hoverActions: [
-      { id: "login", label: "login" },
+      { id: "login", label: "Connect" },
       { id: "refresh", label: "refresh" }
     ],
     state: {
       kind: "disabled",
-      reason: "login required"
+      reason: "Connect local agent to continue"
+    }
+  });
+});
+
+test("agent provider dock status shows loading while login connect is pending", () => {
+  const props = resolveAgentProviderDockStatusProps({
+    copy,
+    isLoading: false,
+    pendingActionIds: new Set(["login"]),
+    status: createStatus({
+      actions: [
+        { id: "login", kind: "terminal_command" },
+        { id: "refresh", kind: "refresh" }
+      ],
+      availability: "auth_required"
+    })
+  });
+
+  assert.deepEqual(props, {
+    hoverActions: [
+      {
+        disabled: true,
+        id: "login",
+        label: "Connect"
+      },
+      { id: "refresh", label: "refresh" }
+    ],
+    state: {
+      kind: "loading",
+      reason: "Connecting..."
     }
   });
 });

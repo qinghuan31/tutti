@@ -3,6 +3,7 @@ package agentruntime
 import (
 	"context"
 	"errors"
+	"reflect"
 	"sync"
 	"testing"
 )
@@ -79,6 +80,122 @@ func connClosed(conn *scriptedAppServerConnection) bool {
 	conn.mu.Lock()
 	defer conn.mu.Unlock()
 	return conn.closeCount > 0
+}
+
+func TestCodexAppServerAdapterProviderLaunchPrepareMutatesSpecAndCleansUpOnClose(t *testing.T) {
+	t.Parallel()
+
+	transport := newScriptedAppServerTransport()
+	adapter := NewCodexAppServerAdapter(transport)
+	cleanupCalls := 0
+	adapter.SetProviderLaunchPreparer(func(_ context.Context, input ProviderLaunchPrepareInput) (ProviderLaunchPrepareResult, error) {
+		if input.Provider != ProviderCodex {
+			t.Fatalf("Provider = %q, want %q", input.Provider, ProviderCodex)
+		}
+		if input.DirectStart {
+			t.Fatal("DirectStart = true, want false for codex app-server")
+		}
+		if input.Session.AgentSessionID != "agent-session-1" {
+			t.Fatalf("Session.AgentSessionID = %q", input.Session.AgentSessionID)
+		}
+		return ProviderLaunchPrepareResult{
+			Command: []string{"prepared-codex", "app-server"},
+			Env:     append(append([]string(nil), input.Env...), "HOOK_ENV=1"),
+			CWD:     "/prepared/workspace",
+			Cleanup: func(context.Context) error {
+				cleanupCalls++
+				return nil
+			},
+		}, nil
+	})
+
+	session := testAppServerSession()
+	session.Env = []string{"SESSION_ENV=1"}
+	if _, err := adapter.Start(context.Background(), session); err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+	if cleanupCalls != 0 {
+		t.Fatalf("cleanup calls before close = %d, want 0", cleanupCalls)
+	}
+	transport.mu.Lock()
+	specs := append([]ProcessSpec(nil), transport.specs...)
+	transport.mu.Unlock()
+	if len(specs) != 1 {
+		t.Fatalf("transport starts = %d, want 1", len(specs))
+	}
+	spec := specs[0]
+	if !reflect.DeepEqual(spec.Command, []string{"prepared-codex", "app-server"}) {
+		t.Fatalf("Command = %#v", spec.Command)
+	}
+	if spec.CWD != "/prepared/workspace" {
+		t.Fatalf("CWD = %q", spec.CWD)
+	}
+	if !reflect.DeepEqual(spec.Env[len(spec.Env)-2:], []string{"SESSION_ENV=1", "HOOK_ENV=1"}) {
+		t.Fatalf("Env tail = %#v", spec.Env)
+	}
+
+	if err := adapter.Close(context.Background(), session); err != nil {
+		t.Fatalf("Close: %v", err)
+	}
+	if cleanupCalls != 1 {
+		t.Fatalf("cleanup calls after close = %d, want 1", cleanupCalls)
+	}
+}
+
+func TestCodexAppServerAdapterProviderLaunchPrepareFailureDoesNotSpawn(t *testing.T) {
+	t.Parallel()
+
+	transport := &multiProcAppServerTransport{}
+	adapter := NewCodexAppServerAdapter(transport)
+	prepareErr := errors.New("prepare failed")
+	adapter.SetProviderLaunchPreparer(func(context.Context, ProviderLaunchPrepareInput) (ProviderLaunchPrepareResult, error) {
+		return ProviderLaunchPrepareResult{}, prepareErr
+	})
+
+	if _, err := adapter.Start(context.Background(), testAppServerSession()); !errors.Is(err, prepareErr) {
+		t.Fatalf("Start error = %v, want %v", err, prepareErr)
+	}
+	spawned, _ := transport.snapshot()
+	if spawned != 0 {
+		t.Fatalf("spawned processes = %d, want 0", spawned)
+	}
+}
+
+func TestCodexAppServerAdapterProviderLaunchCleanupRunsOnProcessStartFailure(t *testing.T) {
+	t.Parallel()
+
+	transport := &multiProcAppServerTransport{}
+	startErr := errors.New("process start failed")
+	transport.setStartErr(startErr)
+	adapter := NewCodexAppServerAdapter(transport)
+	cleanupCalls := 0
+	cleanupSawCanceledContext := false
+	adapter.SetProviderLaunchPreparer(func(_ context.Context, input ProviderLaunchPrepareInput) (ProviderLaunchPrepareResult, error) {
+		return ProviderLaunchPrepareResult{
+			Command: input.Command,
+			Env:     input.Env,
+			CWD:     input.CWD,
+			Cleanup: func(ctx context.Context) error {
+				if ctx.Err() != nil {
+					cleanupSawCanceledContext = true
+				}
+				cleanupCalls++
+				return nil
+			},
+		}, nil
+	})
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	if _, err := adapter.Start(ctx, testAppServerSession()); !errors.Is(err, startErr) {
+		t.Fatalf("Start error = %v, want %v", err, startErr)
+	}
+	if cleanupCalls != 1 {
+		t.Fatalf("cleanup calls = %d, want 1", cleanupCalls)
+	}
+	if cleanupSawCanceledContext {
+		t.Fatal("cleanup received canceled launch context")
+	}
 }
 
 // --- single-live-process invariant tests ---

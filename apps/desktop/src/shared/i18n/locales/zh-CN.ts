@@ -442,14 +442,6 @@ export const zhCN = {
           generalDescription: "同样强大，技术细节更少。"
         },
         agentConversationDetailModeSaveFailed: "暂时无法更新工作模式。",
-        agentDockLayoutDescription:
-          "选择 Codex 和 Claude Code 在 Dock 中显示为两个独立图标，还是合并为一个 Agent 图标。",
-        agentDockLayoutLabel: "Agent Dock",
-        agentDockLayoutOptions: {
-          legacySplit: "独立图标",
-          unified: "一个 Agent 图标"
-        },
-        agentDockLayoutSaveFailed: "暂时无法更新 Agent Dock。",
         computerUseLabel: "电脑控制",
         computerUseDescription:
           "让 Agent 控制你的 Mac 桌面——截图、点击、键盘输入等",
@@ -708,6 +700,10 @@ export const zhCN = {
         conversationHistoryClearFailed: "暂时无法清除对话历史。",
         daemonLogLabel: "Daemon 日志",
         desktopLogLabel: "Desktop 日志",
+        enableCursorAgentDescription:
+          "在应用内展示 Cursor Agent。Cursor 支持处于预览阶段，默认关闭。",
+        enableCursorAgentLabel: "启用 Cursor Agent",
+        enableCursorAgentSaveFailed: "暂时无法更新 Cursor Agent 设置。",
         exportLogs: "导出日志",
         exportLogsDialogTitle: "导出日志",
         exportLogsFileType: "Zip 压缩包",
@@ -802,6 +798,10 @@ export const zhCN = {
         unsaved: "有未保存更改",
         unsupportedFallback: "暂时不支持预览，使用本地软件打开。"
       },
+      filesLaunch: {
+        openFailedDescription: "这个会话原本的工作目录在本机上已经找不到了。",
+        openFailedTitle: "无法打开文件夹"
+      },
       agentProviders: {
         checking: "正在检测本地 CLI 状态...",
         comingSoon: "敬请期待",
@@ -829,6 +829,7 @@ export const zhCN = {
         manageConfigMissing: "未检测到本机配置",
         manageProviderClaudeCode: "Claude Code",
         manageProviderCodex: "Codex",
+        manageProviderCursor: "Cursor",
         manageProviderGemini: "Gemini CLI",
         manageProviderHermes: "Hermes",
         manageProviderOpenClaw: "OpenClaw",

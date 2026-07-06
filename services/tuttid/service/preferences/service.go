@@ -20,7 +20,11 @@ type Service struct {
 }
 
 type PutInput struct {
+	// AgentComposerDefaultsByProvider is accepted for wire compatibility but
+	// ignored on write: the legacy provider-keyed defaults are frozen after
+	// the one-time migration onto AgentComposerDefaultsByAgentTarget.
 	AgentComposerDefaultsByProvider             map[string]preferencesbiz.AgentComposerDefaults
+	AgentComposerDefaultsByAgentTarget          map[string]preferencesbiz.AgentComposerDefaults
 	AgentGUIConversationRailCollapsedByProvider map[string]bool
 	AgentConversationDetailMode                 string
 	AgentDockLayout                             string
@@ -29,6 +33,7 @@ type PutInput struct {
 	DefaultAgentProvider                        string
 	DockIconStyle                               string
 	DockPlacement                               string
+	EnableCursorAgent                           bool
 	FileDefaultOpenersByExtension               map[string]string
 	Locale                                      string
 	MinimizeAnimation                           string
@@ -58,13 +63,27 @@ func (s Service) Put(ctx context.Context, input PutInput) (preferencesbiz.Deskto
 		return preferencesbiz.DesktopPreferences{}, errors.New("desktop preferences store is not configured")
 	}
 
-	windowSnapping, err := s.resolveWindowSnapping(ctx, input.WindowSnapping)
+	stored, err := s.Store.GetDesktopPreferences(ctx)
 	if err != nil {
 		return preferencesbiz.DesktopPreferences{}, err
 	}
 
+	windowSnapping := resolveWindowSnapping(stored, input.WindowSnapping)
+
+	// A nil agent-target map means the client did not send the field (e.g. an
+	// older build) — keep the stored defaults instead of wiping them. An
+	// explicit empty map still clears everything.
+	agentComposerDefaultsByAgentTarget := input.AgentComposerDefaultsByAgentTarget
+	if agentComposerDefaultsByAgentTarget == nil {
+		agentComposerDefaultsByAgentTarget = stored.AgentComposerDefaultsByAgentTarget
+	}
+
 	preferences, err := s.Store.PutDesktopPreferences(ctx, preferencesbiz.DesktopPreferences{
-		AgentComposerDefaultsByProvider:             normalizeAgentComposerDefaultsByProvider(input.AgentComposerDefaultsByProvider),
+		// The legacy provider-keyed defaults are frozen: client input is
+		// ignored so nothing writes the old field anymore; the stored value
+		// is only kept for downgrade compatibility.
+		AgentComposerDefaultsByProvider:             normalizeAgentComposerDefaultsByProvider(stored.AgentComposerDefaultsByProvider),
+		AgentComposerDefaultsByAgentTarget:          normalizeAgentComposerDefaultsByAgentTarget(agentComposerDefaultsByAgentTarget),
 		AgentGUIConversationRailCollapsedByProvider: normalizeAgentGUIConversationRailCollapsedByProvider(input.AgentGUIConversationRailCollapsedByProvider),
 		AgentConversationDetailMode:                 preferencesbiz.NormalizeDesktopAgentConversationDetailMode(input.AgentConversationDetailMode),
 		AgentDockLayout:                             normalizeAgentDockLayout(input.AgentDockLayout),
@@ -73,6 +92,7 @@ func (s Service) Put(ctx context.Context, input PutInput) (preferencesbiz.Deskto
 		DefaultAgentProvider:                        agentproviderbiz.Normalize(input.DefaultAgentProvider),
 		DockIconStyle:                               strings.TrimSpace(input.DockIconStyle),
 		DockPlacement:                               strings.TrimSpace(input.DockPlacement),
+		EnableCursorAgent:                           input.EnableCursorAgent,
 		FileDefaultOpenersByExtension:               normalizeFileDefaultOpenersByExtension(input.FileDefaultOpenersByExtension),
 		Initialized:                                 true,
 		Locale:                                      strings.TrimSpace(input.Locale),
@@ -94,22 +114,18 @@ func (s Service) Put(ctx context.Context, input PutInput) (preferencesbiz.Deskto
 	return preferences, nil
 }
 
-func (s Service) resolveWindowSnapping(ctx context.Context, input *DesktopWindowSnappingInput) (DesktopWindowSnappingInput, error) {
+func resolveWindowSnapping(stored preferencesbiz.DesktopPreferences, input *DesktopWindowSnappingInput) DesktopWindowSnappingInput {
 	if input != nil {
 		return DesktopWindowSnappingInput{
 			Enabled:        input.Enabled,
 			ShortcutPreset: normalizeWindowSnappingShortcutPreset(input.ShortcutPreset),
-		}, nil
+		}
 	}
 
-	preferences, err := s.Store.GetDesktopPreferences(ctx)
-	if err != nil {
-		return DesktopWindowSnappingInput{}, err
-	}
 	return DesktopWindowSnappingInput{
-		Enabled:        preferences.WindowSnappingEnabled,
-		ShortcutPreset: normalizeWindowSnappingShortcutPreset(preferences.WindowSnappingShortcutPreset),
-	}, nil
+		Enabled:        stored.WindowSnappingEnabled,
+		ShortcutPreset: normalizeWindowSnappingShortcutPreset(stored.WindowSnappingShortcutPreset),
+	}
 }
 
 func normalizeAgentDockLayout(value string) string {
@@ -190,17 +206,36 @@ func normalizeAgentComposerDefaultsByProvider(input map[string]preferencesbiz.Ag
 		if normalizedProvider == "" {
 			continue
 		}
-		normalizedDefaults := preferencesbiz.AgentComposerDefaults{
-			Model:            strings.TrimSpace(defaults.Model),
-			PermissionModeID: strings.TrimSpace(defaults.PermissionModeID),
-			ReasoningEffort:  strings.TrimSpace(defaults.ReasoningEffort),
-		}
-		if normalizedDefaults.Model == "" &&
-			normalizedDefaults.PermissionModeID == "" &&
-			normalizedDefaults.ReasoningEffort == "" {
+		normalizedDefaults := normalizeAgentComposerDefaults(defaults)
+		if normalizedDefaults.IsZero() {
 			continue
 		}
 		result[normalizedProvider] = normalizedDefaults
 	}
 	return result
+}
+
+func normalizeAgentComposerDefaultsByAgentTarget(input map[string]preferencesbiz.AgentComposerDefaults) map[string]preferencesbiz.AgentComposerDefaults {
+	result := map[string]preferencesbiz.AgentComposerDefaults{}
+	for agentTargetID, defaults := range input {
+		normalizedAgentTargetID := strings.TrimSpace(agentTargetID)
+		if normalizedAgentTargetID == "" {
+			continue
+		}
+		normalizedDefaults := normalizeAgentComposerDefaults(defaults)
+		if normalizedDefaults.IsZero() {
+			continue
+		}
+		result[normalizedAgentTargetID] = normalizedDefaults
+	}
+	return result
+}
+
+func normalizeAgentComposerDefaults(defaults preferencesbiz.AgentComposerDefaults) preferencesbiz.AgentComposerDefaults {
+	return preferencesbiz.AgentComposerDefaults{
+		Model:            strings.TrimSpace(defaults.Model),
+		PermissionModeID: strings.TrimSpace(defaults.PermissionModeID),
+		ReasoningEffort:  strings.TrimSpace(defaults.ReasoningEffort),
+		Speed:            strings.TrimSpace(defaults.Speed),
+	}
 }

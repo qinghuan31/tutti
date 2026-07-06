@@ -1,4 +1,4 @@
-module github.com/tutti-os/tutti/packages/agentactivity/daemon
+module github.com/tutti-os/tutti/packages/agent/daemon
 
 go 1.24.3
 

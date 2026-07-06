@@ -12,8 +12,8 @@ import (
 	"sync"
 	"time"
 
-	agentsessionstore "github.com/tutti-os/tutti/packages/agentactivity/daemon/activity"
-	activityshared "github.com/tutti-os/tutti/packages/agentactivity/daemon/activity/events"
+	agentsessionstore "github.com/tutti-os/tutti/packages/agent/daemon/activity"
+	activityshared "github.com/tutti-os/tutti/packages/agent/daemon/activity/events"
 )
 
 var (
@@ -143,17 +143,17 @@ func NewDefaultControllerWithOptions(
 	options ControllerOptions,
 ) *Controller {
 	host := options.HostMetadata
-	return NewController(
-		[]Adapter{
-			newDefaultClaudeCodeAdapter(transport, host, options.ProviderCommandResolver),
-			NewCodexAppServerAdapterWithHostMetadata(transport, host),
-			NewNexightAdapterWithHostMetadata(transport, host),
-			NewGeminiAdapterWithHostMetadata(transport, host),
-			NewHermesAdapterWithHostMetadata(transport, host),
-			NewOpenClawAdapterWithHostMetadata(transport, host),
-		},
-		reporter,
-	)
+	adapters := []Adapter{
+		newDefaultClaudeCodeAdapter(transport, host, options.ProviderCommandResolver),
+		NewCodexAppServerAdapterWithHostMetadata(transport, host),
+		NewCursorAdapterWithHostMetadata(transport, host),
+		NewNexightAdapterWithHostMetadata(transport, host),
+		NewGeminiAdapterWithHostMetadata(transport, host),
+		NewHermesAdapterWithHostMetadata(transport, host),
+		NewOpenClawAdapterWithHostMetadata(transport, host),
+	}
+	setProviderLaunchPreparer(adapters, options.ProviderLaunchPreparer)
+	return NewController(adapters, reporter)
 }
 
 func newDefaultClaudeCodeAdapter(
@@ -424,6 +424,8 @@ func defaultPermissionModeIDForProvider(provider string) string {
 		return "default"
 	case ProviderCodex, ProviderNexight:
 		return "auto"
+	case ProviderCursor:
+		return "agent"
 	case ProviderGemini, ProviderHermes:
 		return "yolo"
 	default:
@@ -463,6 +465,8 @@ func permissionModeIDAllowedForProvider(provider string, mode string) bool {
 		case "read-only", "auto", "full-access":
 			return true
 		}
+	case ProviderCursor:
+		return cursorACPModeID(mode) != ""
 	case ProviderGemini, ProviderHermes:
 		return strings.TrimSpace(mode) == "yolo"
 	}
@@ -931,6 +935,14 @@ func isResumeRecreatableError(err error) bool {
 // agent session, clearing the stale provider session id so the adapter mints a
 // fresh one. The new provider session id is captured from the started events and
 // persisted via the session report, keeping the conversation continuable.
+//
+// The freshly started provider session has no memory of anything said before
+// this point (e.g. an externally-imported conversation whose rollout only
+// ever existed on another device, or local history retention pruning it) even
+// though the transcript keeps showing the old messages joined seamlessly with
+// new ones. Without an explicit notice this looks to the user like the agent
+// silently forgot the conversation, so a visible system notice is appended
+// alongside the started events.
 func (c *Controller) recreateAdapterSession(ctx context.Context, session Session, adapter Adapter) error {
 	fresh := session
 	fresh.ProviderSessionID = ""
@@ -944,6 +956,9 @@ func (c *Controller) recreateAdapterSession(ctx context.Context, session Session
 	fresh = applySessionEvents(fresh, events)
 	fresh.Status = SessionStatusReady
 	fresh.UpdatedAtUnixMS = unixMS(now())
+	if notice, ok := sessionRecreatedNoticeEvent(fresh); ok {
+		events = append(events, notice)
+	}
 	c.store(fresh)
 	c.publish(fresh, events)
 	c.publishPendingConfigOptionsUpdates(fresh)
@@ -952,6 +967,22 @@ func (c *Controller) recreateAdapterSession(ctx context.Context, session Session
 	}
 	c.enqueueSessionReport(ctx, fresh, events)
 	return nil
+}
+
+// sessionRecreatedNoticeEvent builds the visible system notice that
+// accompanies a recreated provider session (see recreateAdapterSession). It
+// reuses the same synthetic "agent_system_notice" message shape the ACP
+// adapters already use for compaction/goal/transport notices
+// (acpSystemNoticeEvent), so it renders through the existing generic notice
+// card with no GUI changes required.
+func sessionRecreatedNoticeEvent(session Session) (activityshared.Event, bool) {
+	return acpSystemNoticeEvent(session, "", map[string]any{
+		"sessionUpdate": "system_notice",
+		"kind":          "agent_system_notice",
+		"noticeKind":    "warning",
+		"title":         "Conversation history could not be restored",
+		"detail":        "The assistant could not resume this conversation's earlier messages locally (for example, if it was imported from another device or the local session data is no longer available), so this reply is starting fresh without that context.",
+	}, "system_notice", true)
 }
 
 func (c *Controller) ValidatePromptContent(_ context.Context, input ExecInput) error {
@@ -1759,6 +1790,25 @@ func (c *Controller) finishTurn(session Session, turnID string) {
 	c.mu.Unlock()
 }
 
+// sessionViewHasUnsettledTurn reports whether the GUI-facing session view still
+// presents an active or blocked turn. It is used to detect a desync where the
+// runtime has already finished a turn but the persisted/streamed view never
+// settled (composer stays blocked, stop button stays inert).
+func sessionViewHasUnsettledTurn(session Session) bool {
+	if sa := session.SubmitAvailability; sa != nil && strings.TrimSpace(sa.State) == "blocked" {
+		return true
+	}
+	if tl := session.TurnLifecycle; tl != nil {
+		if tl.ActiveTurnID != nil && strings.TrimSpace(*tl.ActiveTurnID) != "" {
+			return true
+		}
+		if phase := strings.TrimSpace(tl.Phase); phase != "" && phase != "settled" {
+			return true
+		}
+	}
+	return false
+}
+
 // settledFallbackTurnEvents builds the controller-origin settled snapshot the
 // finishTurn fallback publishes when the adapter never settled the turn it
 // owns (for example a submission absorbed by steering).
@@ -1774,6 +1824,59 @@ func settledFallbackTurnEvents(session Session, turnID string) []activityshared.
 		Outcome: string(activityshared.TurnOutcomeCompleted),
 	})
 	return []activityshared.Event{event}
+}
+
+// reconcileStuckTurnView force settles a session whose GUI-facing view still
+// shows an active/blocked turn even though the runtime holds no active turn for
+// it. It synthesizes a settle event and pushes it through the same atomic
+// apply -> store -> publish -> report pipeline as every other reconciliation
+// path (applySessionEventsByAgentSessionID), so:
+//   - a snapshot-authority session (ADR 0008, session.LifecycleAuthority) is
+//     settled via the same controller-origin stamped snapshot finishTurn's
+//     fallback uses, honoring "copy, never merge" instead of hand-writing
+//     TurnLifecycle directly; and
+//   - the settle is applied to whatever session is CURRENT at the time of the
+//     atomic read, not the possibly-stale snapshot captured earlier in Cancel
+//     (a direct c.store of the stale snapshot could otherwise resurrect state
+//     a concurrent event already moved past).
+//
+// Returns true when a reconciliation was performed.
+func (c *Controller) reconcileStuckTurnView(_ context.Context, session Session, reason string) bool {
+	if c == nil || !sessionViewHasUnsettledTurn(session) {
+		return false
+	}
+	turnID := ""
+	if tl := session.TurnLifecycle; tl != nil && tl.ActiveTurnID != nil {
+		turnID = strings.TrimSpace(*tl.ActiveTurnID)
+	}
+	if turnID == "" {
+		return false
+	}
+	var events []activityshared.Event
+	if session.LifecycleAuthority {
+		events = settledFallbackTurnEvents(session, turnID)
+	} else {
+		event := newTurnActivityEvent(session, EventTurnCompleted, turnID, SessionStatusReady, "", "", map[string]any{
+			"reconciled": "cancel-no-active-turn",
+		})
+		if event.Type != "" {
+			events = []activityshared.Event{event}
+		}
+	}
+	if len(events) == 0 {
+		return false
+	}
+	c.applySessionEventsByAgentSessionID(session.AgentSessionID, events)
+	slog.Info("agent session cancel reconciled stuck turn view",
+		"event", "agent_session.cancel.reconciled_stuck_turn",
+		"room_id", session.RoomID,
+		"agent_session_id", session.AgentSessionID,
+		"provider", session.Provider,
+		"turn_id", turnID,
+		"lifecycle_authority", session.LifecycleAuthority,
+		"reason", reason,
+	)
+	return true
 }
 
 func (c *Controller) Cancel(ctx context.Context, input CancelInput) (CancelResult, error) {
@@ -1840,6 +1943,12 @@ func (c *Controller) Cancel(ctx context.Context, input CancelInput) (CancelResul
 			"status", session.Status,
 			"reason", reason,
 		)
+		// The runtime holds no active turn, yet the GUI-facing view may still
+		// show a blocked composer / running turn if a prior turn-completed
+		// update failed to reach the persisted session state. Pressing stop is
+		// the user's recovery gesture, so reconcile the stale view by force
+		// settling the turn here instead of leaving it stuck forever.
+		c.reconcileStuckTurnView(ctx, session, reason)
 		return CancelResult{AgentSessionID: session.AgentSessionID, Canceled: false}, nil
 	}
 	if active.cancel != nil {
