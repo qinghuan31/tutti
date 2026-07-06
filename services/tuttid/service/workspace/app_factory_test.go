@@ -2115,3 +2115,132 @@ func TestAppFactoryServiceObserveAgentSessionMessagesIgnoresSystemNoticeForCompl
 		t.Fatalf("published updates = %d, want 0", len(publisher.published))
 	}
 }
+
+// TestAppFactoryServiceIgnoresCompletedTextMidLiveTurn reproduces the
+// "天气查询" false-failure sequence found in diagnostic bundle
+// tutti-logs-20260706-092357.zip: job e6e70f6a-802e-4ac5-9275-ea6272f32b97
+// went generating -> preparing -> validating -> failed within 1ms of its
+// *first* assistant message completing (tuttid.log 09:23:32.658+08:00 ->
+// 09:23:32.659+08:00), with the exact failureReason PR #774 fixed ("read app
+// manifest: ... no such file or directory" -- validation ran before the
+// agent had written any files).
+//
+// Unlike PR #774's "答案之书" case, the triggering message here was not a
+// system notice: it was the codex agent's ordinary opening narration ("我会
+// 按 `$tutti-workspace-app-factory` 的流程来做...先读它的本地说明，然后检查
+// 当前草稿目录的结构再实现。"), a plain role=assistant/kind=text/
+// status=completed message with no payload.kind tag at all, sent ~2.5s
+// before its first tool call in the very same turn (turnId
+// 596f2132-32e5-4bfb-8e13-e4a60063ac5a in the exported agent session). PR
+// #774's payload.kind=="agent_system_notice" exclusion does not, and cannot,
+// catch this: the message carries no such tag, so
+// isCompletedAssistantTextMessage still reports it as a completed answer
+// and agentSessionHasCompletedFactoryOutput still trusted the (racy)
+// persisted session status.
+//
+// This asserts the additional TurnLifecycle-based guard: an ADR 0008
+// TurnLifecycle snapshot (copied verbatim from the provider, never
+// re-derived from discrete events) reported via ObserveAgentSessionState is
+// tracked independently and, while it still says the turn is live, blocks
+// the message-triggered completion path regardless of which message shape
+// triggered it -- then gets out of the way once the turn genuinely settles.
+func TestAppFactoryServiceIgnoresCompletedTextMidLiveTurn(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	store := newAppFactoryStoreStub()
+	draftDir := t.TempDir()
+	if err := store.PutAppFactoryJob(ctx, workspacebiz.AppFactoryJob{
+		AgentSessionID: "session-1",
+		AppID:          "app_1",
+		DraftDir:       draftDir,
+		JobID:          "job-1",
+		Status:         workspacebiz.AppFactoryJobStatusGenerating,
+		WorkspaceID:    "ws-1",
+	}); err != nil {
+		t.Fatalf("PutAppFactoryJob() error = %v", err)
+	}
+	publisher := &workspaceAppFactoryPublisherStub{}
+	service := AppFactoryService{
+		Store:     store,
+		AppStore:  newAppStoreStub(),
+		Publisher: publisher,
+		// Even if the persisted session's canonical status momentarily
+		// reads "completed" (the same suspected upstream race PR #774
+		// called out), the observer must not act on it while the turn's
+		// own TurnLifecycle snapshot still says the turn is running.
+		AgentSessionReader: factoryAgentSessionReaderStub{
+			sessions: map[string]agentservice.PersistedSession{
+				appFactoryJobStoreKey("ws-1", "session-1"): {
+					ID:          "session-1",
+					WorkspaceID: "ws-1",
+					Status:      "completed",
+				},
+			},
+		},
+		AgentMessageReader: factoryAgentMessageReaderStub{},
+	}
+
+	activeTurnID := "596f2132-32e5-4bfb-8e13-e4a60063ac5a"
+	service.ObserveAgentSessionState(ctx, agentsessionstore.ReportSessionStateInput{
+		WorkspaceID:    "ws-1",
+		AgentSessionID: "session-1",
+		State: agentsessionstore.WorkspaceAgentSessionStateUpdate{
+			LifecycleStatus: "active",
+			CurrentPhase:    "working",
+			TurnLifecycle: &agentsessionstore.WorkspaceAgentTurnLifecycle{
+				ActiveTurnID: &activeTurnID,
+				Phase:        "running",
+			},
+		},
+	}, agentsessionstore.ReportSessionStateReply{Accepted: true, StateApplied: true})
+
+	// The agent's ordinary opening narration completes mid-turn. This is the
+	// same call ObserveAgentSessionMessages's goroutine would make; calling
+	// it directly keeps the test synchronous.
+	if err := service.handleAgentSessionCompletedMessage(ctx, "ws-1", "session-1"); err != nil {
+		t.Fatalf("handleAgentSessionCompletedMessage() error = %v", err)
+	}
+
+	job, err := store.GetAppFactoryJob(ctx, "ws-1", "job-1")
+	if err != nil {
+		t.Fatalf("GetAppFactoryJob() error = %v", err)
+	}
+	if job.Status != workspacebiz.AppFactoryJobStatusGenerating {
+		t.Fatalf("status = %q, want generating (job must not fail on interim narration mid-turn)", job.Status)
+	}
+	if strings.TrimSpace(job.FailureReason) != "" {
+		t.Fatalf("failure reason = %q, want empty", job.FailureReason)
+	}
+	if len(publisher.published) != 0 {
+		t.Fatalf("published updates = %d, want 0", len(publisher.published))
+	}
+
+	// Once the turn genuinely settles (TurnLifecycle reports a real
+	// outcome), the same completed-session-status signal must be trusted
+	// again so the job does not get stuck forever.
+	service.ObserveAgentSessionState(ctx, agentsessionstore.ReportSessionStateInput{
+		WorkspaceID:    "ws-1",
+		AgentSessionID: "session-1",
+		State: agentsessionstore.WorkspaceAgentSessionStateUpdate{
+			LifecycleStatus: "active",
+			CurrentPhase:    "idle",
+			TurnLifecycle: &agentsessionstore.WorkspaceAgentTurnLifecycle{
+				ActiveTurnID: &activeTurnID,
+				Phase:        "settled",
+				Outcome:      stringPtr("completed"),
+			},
+		},
+	}, agentsessionstore.ReportSessionStateReply{Accepted: true, StateApplied: true})
+
+	if err := service.handleAgentSessionCompletedMessage(ctx, "ws-1", "session-1"); err != nil {
+		t.Fatalf("handleAgentSessionCompletedMessage() error = %v", err)
+	}
+	job, err = store.GetAppFactoryJob(ctx, "ws-1", "job-1")
+	if err != nil {
+		t.Fatalf("GetAppFactoryJob() error = %v", err)
+	}
+	if job.Status != workspacebiz.AppFactoryJobStatusFailed {
+		t.Fatalf("status = %q, want failed once the turn genuinely settles (validation runs and fails against the still-empty draft)", job.Status)
+	}
+}
