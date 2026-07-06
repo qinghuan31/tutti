@@ -12,7 +12,7 @@ import (
 	"strings"
 	"sync"
 
-	agentruntime "github.com/tutti-os/tutti/packages/agentactivity/daemon/runtime"
+	agentruntime "github.com/tutti-os/tutti/packages/agent/daemon/runtime"
 )
 
 // mcpClient is a minimal newline-delimited JSON-RPC 2.0 client for an MCP

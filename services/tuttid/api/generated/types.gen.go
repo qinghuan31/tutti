@@ -395,6 +395,7 @@ func (e AgentTargetLaunchRefType) Valid() bool {
 const (
 	AgentTargetProviderClaudeCode AgentTargetProvider = "claude-code"
 	AgentTargetProviderCodex      AgentTargetProvider = "codex"
+	AgentTargetProviderCursor     AgentTargetProvider = "cursor"
 )
 
 // Valid indicates whether the value is a known member of the AgentTargetProvider enum.
@@ -403,6 +404,8 @@ func (e AgentTargetProvider) Valid() bool {
 	case AgentTargetProviderClaudeCode:
 		return true
 	case AgentTargetProviderCodex:
+		return true
+	case AgentTargetProviderCursor:
 		return true
 	default:
 		return false
@@ -1082,6 +1085,7 @@ func (e WorkbenchSnapshotNodeDisplayMode) Valid() bool {
 const (
 	WorkspaceAgentProviderClaudeCode WorkspaceAgentProvider = "claude-code"
 	WorkspaceAgentProviderCodex      WorkspaceAgentProvider = "codex"
+	WorkspaceAgentProviderCursor     WorkspaceAgentProvider = "cursor"
 	WorkspaceAgentProviderGemini     WorkspaceAgentProvider = "gemini"
 	WorkspaceAgentProviderHermes     WorkspaceAgentProvider = "hermes"
 	WorkspaceAgentProviderNexight    WorkspaceAgentProvider = "nexight"
@@ -1094,6 +1098,8 @@ func (e WorkspaceAgentProvider) Valid() bool {
 	case WorkspaceAgentProviderClaudeCode:
 		return true
 	case WorkspaceAgentProviderCodex:
+		return true
+	case WorkspaceAgentProviderCursor:
 		return true
 	case WorkspaceAgentProviderGemini:
 		return true
@@ -2373,8 +2379,10 @@ type CreateIssueManagerIssueRequest struct {
 
 // CreateIssueManagerRunRequest defines model for CreateIssueManagerRunRequest.
 type CreateIssueManagerRunRequest struct {
-	AgentProvider      string  `json:"agentProvider"`
+	// AgentProvider Legacy display/provider analytics hint. New run authority is agentTargetId.
+	AgentProvider      *string `json:"agentProvider,omitempty"`
 	AgentSessionId     *string `json:"agentSessionId,omitempty"`
+	AgentTargetId      string  `json:"agentTargetId"`
 	AgentUserId        *string `json:"agentUserId,omitempty"`
 	ExecutionDirectory *string `json:"executionDirectory,omitempty"`
 	RunId              *string `json:"runId,omitempty"`
@@ -2431,13 +2439,15 @@ type CreateWorkspaceAgentSessionRequest struct {
 
 // CreateWorkspaceAppFactoryJobRequest defines model for CreateWorkspaceAppFactoryJobRequest.
 type CreateWorkspaceAppFactoryJobRequest struct {
+	AgentTargetId    string  `json:"agentTargetId"`
 	Description      *string `json:"description,omitempty"`
 	DisplayName      string  `json:"displayName"`
 	Model            *string `json:"model,omitempty"`
 	PermissionModeId *string `json:"permissionModeId,omitempty"`
 	Prompt           string  `json:"prompt"`
-	Provider         *string `json:"provider,omitempty"`
-	ReasoningEffort  *string `json:"reasoningEffort,omitempty"`
+	// Deprecated: this property has been marked as deprecated upstream, but no `x-deprecated-reason` was set
+	Provider        *string `json:"provider,omitempty"`
+	ReasoningEffort *string `json:"reasoningEffort,omitempty"`
 }
 
 // CreateWorkspaceFileDirectoryRequest defines model for CreateWorkspaceFileDirectoryRequest.
@@ -2523,12 +2533,17 @@ type DesktopAgentComposerDefaults struct {
 	Model            *string `json:"model,omitempty"`
 	PermissionModeId *string `json:"permissionModeId,omitempty"`
 	ReasoningEffort  *string `json:"reasoningEffort,omitempty"`
+	Speed            *string `json:"speed,omitempty"`
 }
+
+// DesktopAgentComposerDefaultsByAgentTarget defines model for DesktopAgentComposerDefaultsByAgentTarget.
+type DesktopAgentComposerDefaultsByAgentTarget map[string]DesktopAgentComposerDefaults
 
 // DesktopAgentComposerDefaultsByProvider defines model for DesktopAgentComposerDefaultsByProvider.
 type DesktopAgentComposerDefaultsByProvider struct {
 	ClaudeCode *DesktopAgentComposerDefaults `json:"claude-code,omitempty"`
 	Codex      *DesktopAgentComposerDefaults `json:"codex,omitempty"`
+	Cursor     *DesktopAgentComposerDefaults `json:"cursor,omitempty"`
 	Gemini     *DesktopAgentComposerDefaults `json:"gemini,omitempty"`
 	Hermes     *DesktopAgentComposerDefaults `json:"hermes,omitempty"`
 	Nexight    *DesktopAgentComposerDefaults `json:"nexight,omitempty"`
@@ -2545,6 +2560,7 @@ type DesktopAgentDockLayout string
 type DesktopAgentGuiConversationRailCollapsedByProvider struct {
 	ClaudeCode *bool `json:"claude-code,omitempty"`
 	Codex      *bool `json:"codex,omitempty"`
+	Cursor     *bool `json:"cursor,omitempty"`
 	Gemini     *bool `json:"gemini,omitempty"`
 	Hermes     *bool `json:"hermes,omitempty"`
 	Nexight    *bool `json:"nexight,omitempty"`
@@ -2577,6 +2593,7 @@ type DesktopMinimizeAnimation string
 
 // DesktopPreferences defines model for DesktopPreferences.
 type DesktopPreferences struct {
+	AgentComposerDefaultsByAgentTarget          *DesktopAgentComposerDefaultsByAgentTarget         `json:"agentComposerDefaultsByAgentTarget,omitempty"`
 	AgentComposerDefaultsByProvider             DesktopAgentComposerDefaultsByProvider             `json:"agentComposerDefaultsByProvider"`
 	AgentConversationDetailMode                 DesktopAgentConversationDetailMode                 `json:"agentConversationDetailMode"`
 	AgentDockLayout                             DesktopAgentDockLayout                             `json:"agentDockLayout"`
@@ -2586,6 +2603,7 @@ type DesktopPreferences struct {
 	DefaultAgentProvider                        WorkspaceAgentProvider                             `json:"defaultAgentProvider"`
 	DockIconStyle                               DesktopDockIconStyle                               `json:"dockIconStyle"`
 	DockPlacement                               DesktopDockPlacement                               `json:"dockPlacement"`
+	EnableCursorAgent                           bool                                               `json:"enableCursorAgent"`
 	FileDefaultOpenersByExtension               DesktopFileDefaultOpenersByExtension               `json:"fileDefaultOpenersByExtension"`
 	Locale                                      DesktopLocale                                      `json:"locale"`
 	MinimizeAnimation                           DesktopMinimizeAnimation                           `json:"minimizeAnimation"`
@@ -2727,8 +2745,8 @@ type GetAgentProviderComposerOptionsRequest struct {
 	WorkspaceId *string `json:"workspaceId,omitempty"`
 }
 
-// GetWorkspaceAppFactoryProviderComposerOptionsRequest defines model for GetWorkspaceAppFactoryProviderComposerOptionsRequest.
-type GetWorkspaceAppFactoryProviderComposerOptionsRequest struct {
+// GetWorkspaceAppFactoryAgentTargetComposerOptionsRequest defines model for GetWorkspaceAppFactoryAgentTargetComposerOptionsRequest.
+type GetWorkspaceAppFactoryAgentTargetComposerOptionsRequest struct {
 	Locale   *DesktopLocale                `json:"locale,omitempty"`
 	Settings *AgentSessionComposerSettings `json:"settings,omitempty"`
 }
@@ -2865,6 +2883,7 @@ type IssueManagerReferenceSearchResponse struct {
 type IssueManagerRun struct {
 	AgentProvider      string             `json:"agentProvider"`
 	AgentSessionId     string             `json:"agentSessionId"`
+	AgentTargetId      string             `json:"agentTargetId"`
 	AgentUserId        string             `json:"agentUserId"`
 	CompletedAtUnix    int64              `json:"completedAtUnix"`
 	CreatedAtUnix      int64              `json:"createdAtUnix"`
@@ -3550,6 +3569,7 @@ type WorkspaceAppCliStatus string
 // WorkspaceAppFactoryJob defines model for WorkspaceAppFactoryJob.
 type WorkspaceAppFactoryJob struct {
 	AgentSessionId   *string                      `json:"agentSessionId"`
+	AgentTargetId    *string                      `json:"agentTargetId"`
 	AppId            *string                      `json:"appId"`
 	CreatedAtUnixMs  int64                        `json:"createdAtUnixMs"`
 	Description      *string                      `json:"description"`
@@ -4248,14 +4268,14 @@ type UpdateWorkspaceAgentSessionSettingsJSONRequestBody = AgentSessionComposerSe
 // UpdateWorkspaceAgentSessionVisibilityJSONRequestBody defines body for UpdateWorkspaceAgentSessionVisibility for application/json ContentType.
 type UpdateWorkspaceAgentSessionVisibilityJSONRequestBody = UpdateWorkspaceAgentSessionVisibilityRequest
 
+// GetWorkspaceAppFactoryAgentTargetComposerOptionsJSONRequestBody defines body for GetWorkspaceAppFactoryAgentTargetComposerOptions for application/json ContentType.
+type GetWorkspaceAppFactoryAgentTargetComposerOptionsJSONRequestBody = GetWorkspaceAppFactoryAgentTargetComposerOptionsRequest
+
 // CreateWorkspaceAppFactoryJobJSONRequestBody defines body for CreateWorkspaceAppFactoryJob for application/json ContentType.
 type CreateWorkspaceAppFactoryJobJSONRequestBody = CreateWorkspaceAppFactoryJobRequest
 
 // FixWorkspaceAppFactoryJobJSONRequestBody defines body for FixWorkspaceAppFactoryJob for application/json ContentType.
 type FixWorkspaceAppFactoryJobJSONRequestBody = FixWorkspaceAppFactoryJobRequest
-
-// GetWorkspaceAppFactoryProviderComposerOptionsJSONRequestBody defines body for GetWorkspaceAppFactoryProviderComposerOptions for application/json ContentType.
-type GetWorkspaceAppFactoryProviderComposerOptionsJSONRequestBody = GetWorkspaceAppFactoryProviderComposerOptionsRequest
 
 // ImportWorkspaceAppJSONRequestBody defines body for ImportWorkspaceApp for application/json ContentType.
 type ImportWorkspaceAppJSONRequestBody = ImportWorkspaceAppRequest

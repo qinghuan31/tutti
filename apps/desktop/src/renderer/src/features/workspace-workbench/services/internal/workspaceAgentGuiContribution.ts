@@ -1,5 +1,8 @@
 import { createElement, type CSSProperties, type ReactNode } from "react";
-import type { AgentGUIProviderTarget } from "@tutti-os/agent-gui";
+import type {
+  AgentGUIProvider,
+  AgentGUIProviderTarget
+} from "@tutti-os/agent-gui";
 import {
   createAgentGuiWorkbenchContribution,
   resolveAgentGuiUnifiedDockLaunchPayload
@@ -22,7 +25,6 @@ import type {
   DesktopPlatformApi,
   DesktopRuntimeApi
 } from "@preload/types";
-import type { DesktopAgentDockLayout } from "@shared/preferences";
 import type { IDesktopRichTextAtService } from "@renderer/features/rich-text-at";
 import type { IWorkspaceAppCenterService } from "@renderer/features/workspace-app-center";
 import type { IWorkspaceAgentActivityService } from "@renderer/features/workspace-agent";
@@ -46,14 +48,12 @@ import { requestWorkspaceFilesLaunch } from "../workspaceFilesLaunchCoordinator.
 import { requestWorkspaceIssueManagerLaunch } from "../workspaceIssueManagerLaunchCoordinator.ts";
 import { requestGroupChatLaunch } from "../groupChatLaunchCoordinator.ts";
 import { workspaceAgentGuiNodeFrame } from "./workspaceWorkbenchComposition.ts";
-import { isWorkspaceAgentGuiDefaultDockProvider } from "./workspaceAgentProviderCatalog.ts";
 
 export function createWorkspaceAgentGuiContribution(input: {
   agentProviderStatusService: AgentProviderStatusService;
   appCenterService: IWorkspaceAppCenterService;
   appI18n: I18nRuntime<string>;
   computerUseApi: Pick<DesktopComputerUseApi, "checkStatus">;
-  agentDockLayout: DesktopAgentDockLayout;
   dockPreviewCache: WorkbenchDockPreviewCache;
   dockIconUrls?: Parameters<
     typeof createAgentGuiWorkbenchContribution
@@ -70,6 +70,7 @@ export function createWorkspaceAgentGuiContribution(input: {
   >[0]["onCapabilitySettingsRequest"];
   providerTargets?: readonly AgentGUIProviderTarget[];
   providerTargetsLoading?: boolean;
+  comingSoonAgentProviders?: readonly AgentGUIProvider[];
   tuttidClient: TuttidClient;
   platformApi: Pick<
     DesktopPlatformApi,
@@ -151,6 +152,7 @@ export function createWorkspaceAgentGuiContribution(input: {
       previewMode: options?.previewMode,
       providerTargets: input.providerTargets,
       providerTargetsLoading: input.providerTargetsLoading,
+      comingSoonAgentProviders: input.comingSoonAgentProviders,
       defaultProviderTargetId: input.defaultProviderTargetId,
       contextMentionProviders:
         agentGUIWorkbenchHostInput.contextMentionProviders,
@@ -191,7 +193,6 @@ export function createWorkspaceAgentGuiContribution(input: {
     },
     dockIconUrls: input.dockIconUrls,
     unifiedDockIconUrl: input.unifiedDockIconUrl,
-    dockLayout: input.agentDockLayout,
     frame: workspaceAgentGuiNodeFrame,
     defaultProvider: isAgentGuiWorkbenchProvider(input.defaultAgentProvider)
       ? input.defaultAgentProvider
@@ -240,8 +241,6 @@ export function createWorkspaceAgentGuiContribution(input: {
         workspaceAgentActivityService: input.workspaceAgentActivityService,
         workspaceId: input.workspaceId
       }),
-    resolveDockEntryVisibility: (provider: AgentGuiWorkbenchProvider) =>
-      isWorkspaceAgentGuiDefaultDockProvider(provider) ? "always" : "never",
     workspaceId: input.workspaceId
   });
 }

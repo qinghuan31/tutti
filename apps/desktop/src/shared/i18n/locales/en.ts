@@ -463,15 +463,6 @@ export const en = {
         },
         agentConversationDetailModeSaveFailed:
           "We couldn't update the work mode right now.",
-        agentDockLayoutDescription:
-          "Choose whether Codex and Claude Code appear as separate dock icons or one Agent icon.",
-        agentDockLayoutLabel: "Agent dock",
-        agentDockLayoutOptions: {
-          legacySplit: "Separate icons",
-          unified: "One Agent icon"
-        },
-        agentDockLayoutSaveFailed:
-          "We couldn't update the Agent dock right now.",
         computerUseLabel: "Computer use",
         computerUseDescription:
           "Allows the agent to control your Mac desktop — take screenshots, click, type, and more.",
@@ -742,6 +733,12 @@ export const en = {
           "We couldn't clear conversation history right now.",
         daemonLogLabel: "Daemon log",
         desktopLogLabel: "Desktop log",
+        enableCursorAgentDescription:
+          "Show the Cursor agent across the app. Off by default while Cursor support is in preview.",
+        // i18n-check-ignore: Provider brand name.
+        enableCursorAgentLabel: "Enable Cursor agent",
+        enableCursorAgentSaveFailed:
+          "We couldn't update the Cursor agent setting right now.",
         exportLogs: "Export logs",
         exportLogsDialogTitle: "Export Logs",
         exportLogsFileType: "Zip Archive",
@@ -840,6 +837,11 @@ export const en = {
         unsupportedFallback:
           "Preview is not supported yet. Opening with your local app."
       },
+      filesLaunch: {
+        openFailedDescription:
+          "This session's original working directory could no longer be found on this computer.",
+        openFailedTitle: "Couldn't open folder"
+      },
       agentProviders: {
         checking: "Checking local CLI status...",
         comingSoon: "Coming soon",
@@ -869,6 +871,7 @@ export const en = {
         manageConfigMissing: "No local configuration detected",
         manageProviderClaudeCode: "Claude Code",
         manageProviderCodex: "Codex",
+        manageProviderCursor: "Cursor",
         manageProviderGemini: "Gemini CLI",
         manageProviderHermes: "Hermes",
         manageProviderOpenClaw: "OpenClaw",

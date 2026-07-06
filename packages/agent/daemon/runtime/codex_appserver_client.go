@@ -9,7 +9,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/tutti-os/tutti/packages/agentactivity/daemon/runtime/codexproto"
+	"github.com/tutti-os/tutti/packages/agent/daemon/runtime/codexproto"
 )
 
 type codexAppServerClient struct {

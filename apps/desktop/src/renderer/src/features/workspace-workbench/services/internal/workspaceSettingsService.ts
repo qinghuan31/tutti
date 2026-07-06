@@ -7,7 +7,6 @@ import type { DesktopLocale } from "@shared/i18n";
 import type {
   DesktopAgentProvider,
   DesktopAgentConversationDetailMode,
-  DesktopAgentDockLayout,
   DesktopAppCatalogChannel,
   DesktopBrowserUseConnectionMode,
   DesktopDockIconStyle,
@@ -311,25 +310,6 @@ export class WorkspaceSettingsService implements IWorkspaceSettingsService {
     }
   }
 
-  async changeAgentDockLayout(layout: DesktopAgentDockLayout): Promise<void> {
-    if (
-      this.desktopPreferences.store.agentDockLayout === layout ||
-      this.desktopPreferences.store.changingAgentDockLayout === layout
-    ) {
-      return;
-    }
-
-    try {
-      await this.desktopPreferences.setAgentDockLayout(layout);
-    } catch {
-      this.notifications.error({
-        title: createActiveTranslator().t(
-          "workspace.settings.general.agentDockLayoutSaveFailed"
-        )
-      });
-    }
-  }
-
   async changeBrowserUseConnectionMode(
     mode: DesktopBrowserUseConnectionMode
   ): Promise<void> {
@@ -563,6 +543,25 @@ export class WorkspaceSettingsService implements IWorkspaceSettingsService {
       this.notifications.error({
         title: createActiveTranslator().t(
           "workspace.settings.developer.showAppDeveloperSourcesSaveFailed"
+        )
+      });
+    }
+  }
+
+  async changeEnableCursorAgent(enable: boolean): Promise<void> {
+    if (
+      this.desktopPreferences.store.enableCursorAgent === enable ||
+      this.desktopPreferences.store.changingEnableCursorAgent === enable
+    ) {
+      return;
+    }
+
+    try {
+      await this.desktopPreferences.setEnableCursorAgent(enable);
+    } catch {
+      this.notifications.error({
+        title: createActiveTranslator().t(
+          "workspace.settings.developer.enableCursorAgentSaveFailed"
         )
       });
     }
@@ -1170,13 +1169,12 @@ IWorkspaceAppCenterService(WorkspaceSettingsService, undefined, 4);
 
 const noopDesktopPreferencesStore: DesktopPreferencesReadableStoreState = {
   agentComposerDefaultsByProvider: {},
+  agentComposerDefaultsByAgentTarget: {},
   agentGuiConversationRailCollapsedByProvider: {},
   agentConversationDetailMode: "coding",
-  agentDockLayout: "legacySplit",
   appCatalogChannel: "production",
   browserUseConnectionMode: "isolated",
   changingAgentConversationDetailMode: null,
-  changingAgentDockLayout: null,
   changingAppCatalogChannel: null,
   changingBrowserUseConnectionMode: null,
   changingDefaultAgentProvider: null,
@@ -1186,6 +1184,7 @@ const noopDesktopPreferencesStore: DesktopPreferencesReadableStoreState = {
   changingMinimizeAnimation: null,
   changingSleepPreventionMode: null,
   changingShowAppDeveloperSources: null,
+  changingEnableCursorAgent: null,
   changingThemeSource: null,
   changingUpdateChannel: null,
   changingUpdatePolicy: null,
@@ -1198,6 +1197,7 @@ const noopDesktopPreferencesStore: DesktopPreferencesReadableStoreState = {
   minimizeAnimation: defaultDesktopMinimizeAnimation,
   sleepPreventionMode: "never",
   showAppDeveloperSources: false,
+  enableCursorAgent: false,
   theme: createNoopTheme("dark"),
   updateChannel: "rc",
   updatePolicy: "prompt",
@@ -1221,9 +1221,6 @@ const noopDesktopPreferences: DesktopPreferencesService = {
   },
   setAgentConversationDetailMode(mode) {
     return Promise.resolve(mode);
-  },
-  setAgentDockLayout(layout) {
-    return Promise.resolve(layout);
   },
   setDockPlacement(placement) {
     return Promise.resolve(placement);
@@ -1249,6 +1246,9 @@ const noopDesktopPreferences: DesktopPreferencesService = {
   setShowAppDeveloperSources(show) {
     return Promise.resolve(show);
   },
+  setEnableCursorAgent(enable) {
+    return Promise.resolve(enable);
+  },
   setThemeSource(source) {
     return Promise.resolve(createNoopTheme(source));
   },
@@ -1258,7 +1258,7 @@ const noopDesktopPreferences: DesktopPreferencesService = {
   setUpdatePolicy(policy) {
     return Promise.resolve(policy);
   },
-  rememberAgentComposerDefaults() {
+  rememberAgentComposerDefaultsForAgentTarget() {
     return Promise.resolve();
   },
   rememberAgentGuiConversationRailCollapsed() {

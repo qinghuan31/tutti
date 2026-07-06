@@ -1,178 +1,47 @@
+// Package agentactivity re-exports the agent activity persistence contract,
+// which now lives in the embeddable packages/agent/store-sqlite module. The
+// aliases keep tuttid-internal import paths and type identities stable.
 package agentactivity
 
-import "context"
-
-type Repository interface {
-	ClearSessions(context.Context, string) (ClearSessionsResult, error)
-	DeleteSession(context.Context, string, string) (bool, error)
-	GetSession(context.Context, string, string) (Session, bool, error)
-	ListSessionSection(context.Context, ListSessionSectionInput) (SessionSectionPage, bool, error)
-	ListSessions(context.Context, string) ([]Session, bool, error)
-	ListWorkspaceGeneratedFiles(context.Context, ListWorkspaceGeneratedFilesInput) (GeneratedFileList, bool, error)
-	ListSessionMessages(context.Context, ListSessionMessagesInput) (MessagePage, bool, error)
-	ReportSessionMessages(context.Context, SessionMessageReport) (MessageReportResult, error)
-	ReportSessionState(context.Context, SessionStateReport) (StateReportResult, error)
-	UpdateSessionPinned(context.Context, string, string, bool) (Session, bool, error)
-}
-
-type ClearSessionsResult struct {
-	RemovedMessages   int
-	RemovedSessions   int
-	RemovedSessionIDs []string
-}
-
-type MessageOrder string
-
-const (
-	MessageOrderAsc  MessageOrder = "asc"
-	MessageOrderDesc MessageOrder = "desc"
+import (
+	agentstore "github.com/tutti-os/tutti/packages/agent/store-sqlite"
 )
 
-type ListSessionMessagesInput struct {
-	WorkspaceID    string
-	AgentSessionID string
-	TurnID         string
-	AfterVersion   uint64
-	BeforeVersion  uint64
-	Limit          int
-	Order          MessageOrder
-}
+type Repository = agentstore.Repository
 
-type ListWorkspaceGeneratedFilesInput struct {
-	WorkspaceID string
-	Query       string
-	SessionCwd  string
-	Limit       int
-}
+type ClearSessionsResult = agentstore.ClearSessionsResult
 
-type GeneratedFile struct {
-	Path  string
-	Label string
-}
+type MessageOrder = agentstore.MessageOrder
 
-type GeneratedFileList struct {
-	WorkspaceID string
-	Files       []GeneratedFile
-}
+const (
+	MessageOrderAsc  = agentstore.MessageOrderAsc
+	MessageOrderDesc = agentstore.MessageOrderDesc
+)
 
-type ListSessionSectionInput struct {
-	WorkspaceID       string
-	SectionKey        string
-	AgentTargetID     string
-	CursorUpdatedAtMS int64
-	CursorSessionID   string
-	Limit             int
-}
+type ListSessionMessagesInput = agentstore.ListSessionMessagesInput
 
-type SessionSectionPage struct {
-	WorkspaceID   string
-	SectionKey    string
-	Sessions      []Session
-	HasMore       bool
-	NextCursor    string
-	NextUpdatedAt int64
-}
+type ListWorkspaceGeneratedFilesInput = agentstore.ListWorkspaceGeneratedFilesInput
 
-type Session struct {
-	ID                string
-	WorkspaceID       string
-	Origin            string
-	AgentTargetID     string
-	Provider          string
-	ProviderSessionID string
-	Model             string
-	Settings          map[string]any
-	RuntimeContext    map[string]any
-	Cwd               string
-	Status            string
-	CurrentPhase      string
-	Title             string
-	LastError         string
-	MessageVersion    uint64
-	LastEventUnixMS   int64
-	StartedAtUnixMS   int64
-	EndedAtUnixMS     int64
-	PinnedAtUnixMS    int64
-	CreatedAtUnixMS   int64
-	UpdatedAtUnixMS   int64
-}
+type GeneratedFile = agentstore.GeneratedFile
 
-type SessionStateReport struct {
-	WorkspaceID       string
-	AgentSessionID    string
-	Origin            string
-	AgentTargetID     string
-	Provider          string
-	ProviderSessionID string
-	Model             string
-	Settings          map[string]any
-	RuntimeContext    map[string]any
-	Cwd               string
-	Title             string
-	Status            string
-	CurrentPhase      string
-	LastError         string
-	OccurredAtUnixMS  int64
-	StartedAtUnixMS   int64
-	EndedAtUnixMS     int64
-}
+type GeneratedFileList = agentstore.GeneratedFileList
 
-type StateReportResult struct {
-	Accepted         bool
-	StateApplied     bool
-	LastEventUnixMS  int64
-	RequestBodyBytes int
-	Session          Session
-}
+type ListSessionSectionInput = agentstore.ListSessionSectionInput
 
-type SessionMessageReport struct {
-	WorkspaceID    string
-	AgentSessionID string
-	Origin         string
-	Provider       string
-	Messages       []MessageUpdate
-}
+type SessionSectionPage = agentstore.SessionSectionPage
 
-type MessageUpdate struct {
-	MessageID         string
-	TurnID            string
-	Role              string
-	Kind              string
-	Status            string
-	ContentDelta      string
-	Payload           map[string]any
-	OccurredAtUnixMS  int64
-	StartedAtUnixMS   int64
-	CompletedAtUnixMS int64
-}
+type Session = agentstore.Session
 
-type MessageReportResult struct {
-	AcceptedCount    int
-	LatestVersion    uint64
-	Messages         []Message
-	RequestBodyBytes int
-}
+type SessionStateReport = agentstore.SessionStateReport
 
-type Message struct {
-	ID                uint64
-	AgentSessionID    string
-	MessageID         string
-	Version           uint64
-	TurnID            string
-	Role              string
-	Kind              string
-	Status            string
-	Payload           map[string]any
-	OccurredAtUnixMS  int64
-	StartedAtUnixMS   int64
-	CompletedAtUnixMS int64
-	CreatedAtUnixMS   int64
-	UpdatedAtUnixMS   int64
-}
+type StateReportResult = agentstore.StateReportResult
 
-type MessagePage struct {
-	AgentSessionID string
-	Messages       []Message
-	LatestVersion  uint64
-	HasMore        bool
-}
+type SessionMessageReport = agentstore.SessionMessageReport
+
+type MessageUpdate = agentstore.MessageUpdate
+
+type MessageReportResult = agentstore.MessageReportResult
+
+type Message = agentstore.Message
+
+type MessagePage = agentstore.MessagePage

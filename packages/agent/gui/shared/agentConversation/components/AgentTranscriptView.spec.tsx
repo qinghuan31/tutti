@@ -484,7 +484,7 @@ describe("AgentTranscriptView", () => {
 
       expect(scrollIntoView).not.toHaveBeenCalled();
       act(() => {
-        vi.advanceTimersByTime(1000);
+        vi.advanceTimersByTime(360);
       });
       expect(timeline.scrollTop).toBe(3040);
     } finally {

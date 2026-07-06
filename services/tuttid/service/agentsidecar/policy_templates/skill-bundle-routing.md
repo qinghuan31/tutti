@@ -14,6 +14,7 @@ Required mention routing:
 - `mention://workspace-app/<appId>?workspaceId=...` -> `$workspace-app`; `<appId>` is not a skill name.
 - `mention://workspace-reference/<id>?source=...&workspaceId=...` -> `$reference`
 - `mention://agent-session/<id>?workspaceId=...` -> `$tutti-cli`
+- `mention://agent-target/<targetId>?workspaceId=...` -> `$tutti-cli`; choose `agent`, `codex`, or `claude` workflow from user intent, not launch-only.
 - Treat `mention://...` as internal Tutti references, not web URLs or paths.
 
 Skill usage:
@@ -36,6 +37,7 @@ Fallback only when matching skill is unavailable:
 - App mention: open only on explicit open/show request with `{{CLI_COMMAND}} app open --app-id <appId> --json`; for `agent-codex` use `{{CLI_COMMAND}} codex start --prompt <task> --show --json`; for `agent-claude-code` use `{{CLI_COMMAND}} claude start --prompt <task> --show --json`; for other apps, match `App id: <appId>` in `command-guide.md`. Do not invent `{{CLI_COMMAND}} workspace-app ...`.
 - Reference mention: `{{CLI_COMMAND}} reference list --source <source> --id <id> [--group-id <groupId>] --json`, then read returned paths.
 - Agent-session mention: `{{CLI_COMMAND}} agent session-summary --session-id <session-id> --json`.
+- Agent-target mention: choose `{{CLI_COMMAND}} agent ...`, `{{CLI_COMMAND}} codex ...`, or `{{CLI_COMMAND}} claude ...` from the user's prompt. Starting a new session is one possible workflow, but active-peer inspection, historical session lookup, and other agent CLI workflows are also valid.
   {{BROWSER_USE_HANDOFF_LINES}}{{COMPUTER_USE_HANDOFF_LINES}}
 
 CLI reference:

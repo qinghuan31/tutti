@@ -1388,33 +1388,34 @@ paths:
           $ref: "#/components/responses/WorkspaceOperationError"
         "503":
           $ref: "#/components/responses/ServiceUnavailableError"
-  /v1/workspaces/{workspaceID}/app-factory/providers/{provider}/composer-options:
+  /v1/workspaces/{workspaceID}/app-factory/agent-targets/{agentTargetID}/composer-options:
     parameters:
       - $ref: "#/components/parameters/WorkspaceID"
-      - name: provider
+      - name: agentTargetID
         in: path
         required: true
         schema:
-          $ref: "#/components/schemas/WorkspaceAgentProvider"
+          type: string
+          minLength: 1
     post:
-      operationId: getWorkspaceAppFactoryProviderComposerOptions
+      operationId: getWorkspaceAppFactoryAgentTargetComposerOptions
       tags:
         - app-factory
-      summary: Get App Factory provider composer options
+      summary: Get App Factory agent target composer options
       description: >
         Resolves provider composer options for App Factory using daemon-owned
         workspace and factory draft context. Clients provide workspace and
-        provider selection, while tuttid owns the working directory used for
-        provider discovery.
+        agent target selection, while tuttid owns the working directory used
+        for provider discovery.
       requestBody:
         required: false
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/GetWorkspaceAppFactoryProviderComposerOptionsRequest"
+              $ref: "#/components/schemas/GetWorkspaceAppFactoryAgentTargetComposerOptionsRequest"
       responses:
         "200":
-          description: App Factory provider composer options
+          description: App Factory agent target composer options
           content:
             application/json:
               schema:
@@ -4128,12 +4129,15 @@ components:
         - minimizeAnimation
         - sleepPreventionMode
         - showAppDeveloperSources
+        - enableCursorAgent
         - themeSource
         - updateChannel
         - updatePolicy
       properties:
         agentComposerDefaultsByProvider:
           $ref: "#/components/schemas/DesktopAgentComposerDefaultsByProvider"
+        agentComposerDefaultsByAgentTarget:
+          $ref: "#/components/schemas/DesktopAgentComposerDefaultsByAgentTarget"
         agentGuiConversationRailCollapsedByProvider:
           $ref: "#/components/schemas/DesktopAgentGuiConversationRailCollapsedByProvider"
         agentConversationDetailMode:
@@ -4150,6 +4154,8 @@ components:
           $ref: "#/components/schemas/DesktopDockIconStyle"
         dockPlacement:
           $ref: "#/components/schemas/DesktopDockPlacement"
+        enableCursorAgent:
+          type: boolean
         fileDefaultOpenersByExtension:
           $ref: "#/components/schemas/DesktopFileDefaultOpenersByExtension"
         locale:
@@ -4194,6 +4200,8 @@ components:
           type: string
         reasoningEffort:
           type: string
+        speed:
+          type: string
     DesktopAgentConversationDetailMode:
       type: string
       enum:
@@ -4212,6 +4220,8 @@ components:
           $ref: "#/components/schemas/DesktopAgentComposerDefaults"
         codex:
           $ref: "#/components/schemas/DesktopAgentComposerDefaults"
+        cursor:
+          $ref: "#/components/schemas/DesktopAgentComposerDefaults"
         nexight:
           $ref: "#/components/schemas/DesktopAgentComposerDefaults"
         gemini:
@@ -4220,6 +4230,10 @@ components:
           $ref: "#/components/schemas/DesktopAgentComposerDefaults"
         openclaw:
           $ref: "#/components/schemas/DesktopAgentComposerDefaults"
+    DesktopAgentComposerDefaultsByAgentTarget:
+      type: object
+      additionalProperties:
+        $ref: "#/components/schemas/DesktopAgentComposerDefaults"
     DesktopAgentGuiConversationRailCollapsedByProvider:
       type: object
       additionalProperties: false
@@ -4227,6 +4241,8 @@ components:
         claude-code:
           type: boolean
         codex:
+          type: boolean
+        cursor:
           type: boolean
         nexight:
           type: boolean
@@ -4277,6 +4293,7 @@ components:
       enum:
         - codex
         - claude-code
+        - cursor
     AgentTargetSource:
       type: string
       enum:
@@ -5186,6 +5203,7 @@ components:
         - appId
         - displayName
         - description
+        - agentTargetId
         - provider
         - model
         - reasoningEffort
@@ -5213,6 +5231,9 @@ components:
           type: string
           minLength: 1
         description:
+          type: string
+          nullable: true
+        agentTargetId:
           type: string
           nullable: true
         provider:
@@ -5247,6 +5268,7 @@ components:
       type: object
       additionalProperties: false
       required:
+        - agentTargetId
         - displayName
         - prompt
       properties:
@@ -5258,8 +5280,12 @@ components:
           minLength: 1
         description:
           type: string
+        agentTargetId:
+          type: string
+          minLength: 1
         provider:
           type: string
+          deprecated: true
         model:
           type: string
         permissionModeId:
@@ -5544,6 +5570,7 @@ components:
       enum:
         - claude-code
         - codex
+        - cursor
         - nexight
         - gemini
         - hermes
@@ -5670,7 +5697,7 @@ components:
           $ref: "#/components/schemas/DesktopLocale"
         settings:
           $ref: "#/components/schemas/AgentSessionComposerSettings"
-    GetWorkspaceAppFactoryProviderComposerOptionsRequest:
+    GetWorkspaceAppFactoryAgentTargetComposerOptionsRequest:
       type: object
       additionalProperties: false
       properties:

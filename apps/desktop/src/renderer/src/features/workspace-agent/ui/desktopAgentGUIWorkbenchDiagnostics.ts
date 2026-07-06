@@ -1,10 +1,10 @@
 import type { DesktopRuntimeApi } from "@preload/types";
-import type { DesktopAgentComposerDefaults } from "@shared/preferences";
+import type { DesktopAgentComposerDefaultsPatch } from "@shared/preferences";
 import type { DesktopAgentGUIProvider } from "../desktopAgentGUINodeState";
 import { normalizedDesktopAgentComposerDefaultValue } from "../services/internal/desktopAgentComposerDefaultsWriteGate.ts";
 
 export function logAgentComposerDefaultsDiagnostic(input: {
-  defaults: DesktopAgentComposerDefaults;
+  defaults: DesktopAgentComposerDefaultsPatch;
   error?: unknown;
   event:
     | "agent.gui.composer_defaults.remembered"

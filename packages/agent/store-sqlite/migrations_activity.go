@@ -1,14 +1,12 @@
-package workspace
+package storesqlite
 
 import (
 	"context"
 	"fmt"
-	"time"
-
-	agenttargetbiz "github.com/tutti-os/tutti/services/tuttid/biz/agenttarget"
+	"sort"
 )
 
-func (s *SQLiteStore) applyWorkspaceAgentActivityV1(ctx context.Context) error {
+func (s *Store) applyWorkspaceAgentActivityV1(ctx context.Context) error {
 	applied, err := s.hasMigration(ctx, schemaMigrationWorkspaceAgentActivityV1)
 	if err != nil {
 		return err
@@ -17,7 +15,9 @@ func (s *SQLiteStore) applyWorkspaceAgentActivityV1(ctx context.Context) error {
 		return nil
 	}
 
-	now := unixMs(time.Now().UTC())
+	// Unlike the pre-extraction tuttid schema, workspace_agent_sessions has
+	// no foreign key into a host workspaces table; hosts delete a
+	// workspace's rows explicitly via ClearSessions.
 	_, err = s.db.ExecContext(ctx, `
 CREATE TABLE IF NOT EXISTS workspace_agent_sessions (
   workspace_id TEXT NOT NULL,
@@ -41,8 +41,7 @@ CREATE TABLE IF NOT EXISTS workspace_agent_sessions (
   deleted_at_unix_ms INTEGER NOT NULL DEFAULT 0,
   created_at_unix_ms INTEGER NOT NULL,
   updated_at_unix_ms INTEGER NOT NULL,
-  PRIMARY KEY (workspace_id, agent_session_id),
-  FOREIGN KEY (workspace_id) REFERENCES workspaces(id) ON DELETE CASCADE
+  PRIMARY KEY (workspace_id, agent_session_id)
 );
 
 CREATE INDEX IF NOT EXISTS idx_workspace_agent_sessions_workspace_updated
@@ -76,18 +75,15 @@ CREATE INDEX IF NOT EXISTS idx_workspace_agent_messages_session_version
 
 CREATE INDEX IF NOT EXISTS idx_workspace_agent_messages_session_display
   ON workspace_agent_messages(workspace_id, agent_session_id, deleted_at_unix_ms, id);
-
-INSERT INTO tuttid_schema_migrations (id, applied_at_unix_ms)
-  VALUES (?, ?);
-`, schemaMigrationWorkspaceAgentActivityV1, now)
+`)
 	if err != nil {
 		return fmt.Errorf("migrate workspace database agent activity v1: %w", err)
 	}
 
-	return nil
+	return s.recordMigration(ctx, schemaMigrationWorkspaceAgentActivityV1)
 }
 
-func (s *SQLiteStore) applyWorkspaceAgentActivityV2(ctx context.Context) error {
+func (s *Store) applyWorkspaceAgentActivityV2(ctx context.Context) error {
 	applied, err := s.hasMigration(ctx, schemaMigrationWorkspaceAgentActivityV2)
 	if err != nil {
 		return err
@@ -105,7 +101,6 @@ func (s *SQLiteStore) applyWorkspaceAgentActivityV2(ctx context.Context) error {
 		return err
 	}
 
-	now := unixMs(time.Now().UTC())
 	if !hasSettings {
 		if _, err := s.db.ExecContext(ctx, `ALTER TABLE workspace_agent_sessions ADD COLUMN settings_json TEXT NOT NULL DEFAULT '{}';`); err != nil {
 			return fmt.Errorf("migrate workspace agent activity to v2 settings: %w", err)
@@ -116,16 +111,10 @@ func (s *SQLiteStore) applyWorkspaceAgentActivityV2(ctx context.Context) error {
 			return fmt.Errorf("migrate workspace agent activity to v2 runtime context: %w", err)
 		}
 	}
-	if _, err := s.db.ExecContext(ctx, `
-INSERT INTO tuttid_schema_migrations (id, applied_at_unix_ms)
-  VALUES (?, ?);
-`, schemaMigrationWorkspaceAgentActivityV2, now); err != nil {
-		return fmt.Errorf("record workspace agent activity v2 migration: %w", err)
-	}
-	return nil
+	return s.recordMigration(ctx, schemaMigrationWorkspaceAgentActivityV2)
 }
 
-func (s *SQLiteStore) applyWorkspaceAgentActivityV3(ctx context.Context) error {
+func (s *Store) applyWorkspaceAgentActivityV3(ctx context.Context) error {
 	applied, err := s.hasMigration(ctx, schemaMigrationWorkspaceAgentActivityV3)
 	if err != nil {
 		return err
@@ -139,33 +128,27 @@ func (s *SQLiteStore) applyWorkspaceAgentActivityV3(ctx context.Context) error {
 		return err
 	}
 
-	now := unixMs(time.Now().UTC())
 	if !hasPinnedAt {
 		if _, err := s.db.ExecContext(ctx, `ALTER TABLE workspace_agent_sessions ADD COLUMN pinned_at_unix_ms INTEGER NOT NULL DEFAULT 0;`); err != nil {
 			return fmt.Errorf("migrate workspace agent activity to v3 pinned state: %w", err)
 		}
 	}
-	if _, err := s.db.ExecContext(ctx, `
-INSERT INTO tuttid_schema_migrations (id, applied_at_unix_ms)
-  VALUES (?, ?);
-`, schemaMigrationWorkspaceAgentActivityV3, now); err != nil {
-		return fmt.Errorf("record workspace agent activity v3 migration: %w", err)
-	}
-	return nil
+	return s.recordMigration(ctx, schemaMigrationWorkspaceAgentActivityV3)
 }
 
-func (s *SQLiteStore) applyWorkspaceAgentActivityV4(ctx context.Context) error {
+func (s *Store) applyWorkspaceAgentActivityV4(ctx context.Context) error {
 	applied, err := s.hasMigration(ctx, schemaMigrationWorkspaceAgentActivityV4)
 	if err != nil {
 		return err
 	}
 
+	// The column is repaired even when the migration is already recorded:
+	// some databases carry the v4 marker without the column.
 	hasAgentTargetID, err := s.hasColumn(ctx, "workspace_agent_sessions", "agent_target_id")
 	if err != nil {
 		return err
 	}
 
-	now := unixMs(time.Now().UTC())
 	if !hasAgentTargetID {
 		if _, err := s.db.ExecContext(ctx, `ALTER TABLE workspace_agent_sessions ADD COLUMN agent_target_id TEXT;`); err != nil {
 			return fmt.Errorf("migrate workspace agent activity to v4 agent target id: %w", err)
@@ -174,16 +157,10 @@ func (s *SQLiteStore) applyWorkspaceAgentActivityV4(ctx context.Context) error {
 	if applied {
 		return nil
 	}
-	if _, err := s.db.ExecContext(ctx, `
-INSERT INTO tuttid_schema_migrations (id, applied_at_unix_ms)
-  VALUES (?, ?);
-`, schemaMigrationWorkspaceAgentActivityV4, now); err != nil {
-		return fmt.Errorf("record workspace agent activity v4 migration: %w", err)
-	}
-	return nil
+	return s.recordMigration(ctx, schemaMigrationWorkspaceAgentActivityV4)
 }
 
-func (s *SQLiteStore) applyWorkspaceAgentActivityV5(ctx context.Context) error {
+func (s *Store) applyWorkspaceAgentActivityV5(ctx context.Context) error {
 	applied, err := s.hasMigration(ctx, schemaMigrationWorkspaceAgentActivityV5)
 	if err != nil {
 		return err
@@ -196,32 +173,24 @@ func (s *SQLiteStore) applyWorkspaceAgentActivityV5(ctx context.Context) error {
 		return err
 	}
 
-	now := unixMs(time.Now().UTC())
-	if _, err := s.db.ExecContext(ctx, `
-INSERT INTO tuttid_schema_migrations (id, applied_at_unix_ms)
-  VALUES (?, ?);
-`, schemaMigrationWorkspaceAgentActivityV5, now); err != nil {
-		return fmt.Errorf("record workspace agent activity v5 migration: %w", err)
-	}
-	return nil
+	return s.recordMigration(ctx, schemaMigrationWorkspaceAgentActivityV5)
 }
 
-func (s *SQLiteStore) backfillSystemAgentTargetIDs(ctx context.Context) error {
-	if _, err := s.db.ExecContext(ctx, `
-UPDATE workspace_agent_sessions
-SET agent_target_id = ?
-WHERE (agent_target_id IS NULL OR TRIM(agent_target_id) = '')
-  AND provider = 'codex'
-`, agenttargetbiz.IDLocalCodex); err != nil {
-		return fmt.Errorf("backfill codex agent target ids: %w", err)
+func (s *Store) backfillSystemAgentTargetIDs(ctx context.Context) error {
+	providers := make([]string, 0, len(s.opts.TargetIDBackfillByProvider))
+	for provider := range s.opts.TargetIDBackfillByProvider {
+		providers = append(providers, provider)
 	}
-	if _, err := s.db.ExecContext(ctx, `
+	sort.Strings(providers)
+	for _, provider := range providers {
+		if _, err := s.db.ExecContext(ctx, `
 UPDATE workspace_agent_sessions
 SET agent_target_id = ?
 WHERE (agent_target_id IS NULL OR TRIM(agent_target_id) = '')
-  AND provider = 'claude-code'
-`, agenttargetbiz.IDLocalClaudeCode); err != nil {
-		return fmt.Errorf("backfill claude-code agent target ids: %w", err)
+  AND provider = ?
+`, s.opts.TargetIDBackfillByProvider[provider], provider); err != nil {
+			return fmt.Errorf("backfill %s agent target ids: %w", provider, err)
+		}
 	}
 	return nil
 }

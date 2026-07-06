@@ -25,6 +25,7 @@ type HostMetadata struct {
 type ControllerOptions struct {
 	HostMetadata            HostMetadata
 	ProviderCommandResolver ProviderCommandResolver
+	ProviderLaunchPreparer  ProviderLaunchPreparer
 }
 
 type ProviderCommand struct {

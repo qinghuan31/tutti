@@ -1,4 +1,8 @@
 import type { AgentGUIComposerSettingsVM } from "./agentGuiNodeTypes";
+import {
+  collapseModelOptionsToLatest,
+  groupModelOptionsByVendor
+} from "./modelFamilies";
 
 // Labels for the composer settings menus. Lives here (next to the pure menu
 // model) so the model + the presentational component share one source; the
@@ -67,6 +71,12 @@ export interface ComposerMenuSection {
   options: ComposerMenuOption[];
 }
 
+export interface ComposerMenuOptionGroup {
+  /** Vendor heading; null for the leading ungrouped entries (Auto etc.). */
+  label: string | null;
+  options: ComposerMenuOption[];
+}
+
 export interface ComposerModelMenuModel {
   /** The trigger should be disabled / the menu not openable. */
   disabled: boolean;
@@ -78,7 +88,14 @@ export interface ComposerModelMenuModel {
     /** Render the single combined label vs. model + reasoning separately. */
     showCombined: boolean;
   };
-  model: ComposerMenuSection;
+  model: ComposerMenuSection & {
+    /**
+     * Vendor-grouped view of `options` (Claude / GPT / Gemini / ...); empty
+     * when the provider does not collapse its model list, in which case the
+     * menu renders the flat `options`.
+     */
+    groups: ComposerMenuOptionGroup[];
+  };
   reasoning: ComposerMenuSection;
   speed: ComposerMenuSection;
 }
@@ -138,14 +155,21 @@ export function buildComposerModelMenuModel(
           : `${modelLabel} ${reasoningLabel}`.trim(),
       showCombined: modelLabel === reasoningLabel || reasoningLabel.length === 0
     },
-    model: {
-      show: showModel,
-      selectedValue: selectedModelValue,
-      selectedLabel: modelLabel,
-      options: modelItems.map((option) =>
+    model: (() => {
+      const options = modelItems.map((option) =>
         modelMenuOptionFromSettingOption(option, labels)
-      )
-    },
+      );
+      return {
+        show: showModel,
+        selectedValue: selectedModelValue,
+        selectedLabel: modelLabel,
+        options,
+        groups:
+          showModel && composerSettings.modelListCollapsedToLatest
+            ? groupModelOptionsByVendor(options)
+            : []
+      };
+    })(),
     reasoning: {
       show: showReasoning,
       selectedValue: selectedReasoningValue,
@@ -568,8 +592,14 @@ function selectedComposerSpeedValue(
 function modelOptionsWithSelectedValue(
   composerSettings: AgentGUIComposerSettingsVM
 ): AgentGUIComposerSettingsVM["availableModels"] {
+  // Collapse to the latest version per family first, then re-guarantee the
+  // selected value: a previously chosen older version stays visible (and
+  // selectable) even though its family collapsed to a newer release.
+  const models = composerSettings.modelListCollapsedToLatest
+    ? collapseModelOptionsToLatest(composerSettings.availableModels)
+    : composerSettings.availableModels;
   return optionsWithSelectedValue(
-    composerSettings.availableModels,
+    models,
     selectedComposerModelValue(composerSettings)
   );
 }

@@ -536,6 +536,8 @@ function localAgentTargetIdForProvider(provider: string): string | null {
       return "local:claude-code";
     case "codex":
       return "local:codex";
+    case "cursor":
+      return "local:cursor";
     default:
       return null;
   }

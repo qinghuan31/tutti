@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { agentGuiI18nResources } from "../i18n/index";
 import {
   normalizeWorkspaceAgentActivityDisplayStatus,
   workspaceAgentActivityStatusLabel
@@ -52,5 +53,27 @@ describe("workspaceAgentActivityStatusLabel", () => {
     expect(workspaceAgentActivityStatusLabel("completed", t)).toBe("已完成");
     expect(workspaceAgentActivityStatusLabel("canceled", t)).toBe("已取消");
     expect(workspaceAgentActivityStatusLabel("failed", t)).toBe("错误");
+  });
+
+  it("keeps the message center's running filter/group label in sync with the shared activity status label in every locale", () => {
+    // Regression guard: the message center panel shows a group/filter label
+    // ("Running") right above cards whose own status pill is rendered via
+    // workspaceAgentActivityStatusLabel for the same "working" status. These
+    // must read as the same word in every locale, or the panel shows two
+    // different labels for the same "running" state side by side (the exact
+    // wording inconsistency reported against the message status panel).
+    for (const locale of Object.keys(
+      agentGuiI18nResources
+    ) as (keyof typeof agentGuiI18nResources)[]) {
+      const dictionary = agentGuiI18nResources[locale] as {
+        agentHost: {
+          workspaceAgentMessageCenterFilterWorking: string;
+          workspaceAgentActivityStatusWorking: string;
+        };
+      };
+      expect(
+        dictionary.agentHost.workspaceAgentMessageCenterFilterWorking
+      ).toBe(dictionary.agentHost.workspaceAgentActivityStatusWorking);
+    }
   });
 });

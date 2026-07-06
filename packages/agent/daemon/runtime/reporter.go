@@ -10,8 +10,8 @@ import (
 	"strings"
 	"time"
 
-	agentsessionstore "github.com/tutti-os/tutti/packages/agentactivity/daemon/activity"
-	activityshared "github.com/tutti-os/tutti/packages/agentactivity/daemon/activity/events"
+	agentsessionstore "github.com/tutti-os/tutti/packages/agent/daemon/activity"
+	activityshared "github.com/tutti-os/tutti/packages/agent/daemon/activity/events"
 )
 
 const WorkspaceAgentSessionOriginRuntime = "WORKSPACE_AGENT_SESSION_ORIGIN_RUNTIME"
@@ -1093,15 +1093,8 @@ func codexSubmitAvailabilityForLifecyclePhase(phase string) *agentsessionstore.W
 }
 
 func statePatchLastError(event activityshared.Event) string {
-	switch event.Type {
-	case activityshared.EventSessionUpdated:
-		if strings.TrimSpace(event.Payload.EffectiveStatus) == string(activityshared.SessionStatusPaused) {
-			return ""
-		}
-	case activityshared.EventTurnCompleted:
-		if strings.TrimSpace(event.Payload.TurnOutcome) == string(activityshared.TurnOutcomeInterrupted) {
-			return ""
-		}
+	if event.Type != activityshared.EventSessionFailed && event.Type != activityshared.EventTurnFailed {
+		return ""
 	}
 	detail := visibleFailureDetail(event)
 	if detail == "" {

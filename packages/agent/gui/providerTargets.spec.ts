@@ -24,10 +24,83 @@ describe("agent gui provider targets", () => {
     ).toEqual([
       "local:codex",
       "local:claude-code",
+      "local:cursor",
       "local:nexight",
       "local:hermes",
-      "local:gemini",
       "local:openclaw"
+    ]);
+    expect(createLocalAgentGUIProviderTarget("cursor")).toMatchObject({
+      agentTargetId: "local:cursor",
+      label: "Cursor",
+      provider: "cursor"
+    });
+    expect(createLocalAgentGUIProviderTarget("nexight")).toMatchObject({
+      agentTargetId: "local:nexight",
+      label: "Tutti Agent",
+      provider: "nexight"
+    });
+    expect(createLocalAgentGUIProviderTarget("hermes")).toMatchObject({
+      agentTargetId: "local:hermes",
+      label: "Hermes",
+      provider: "hermes"
+    });
+    expect(createLocalAgentGUIProviderTarget("openclaw")).toMatchObject({
+      agentTargetId: "local:openclaw",
+      label: "OpenClaw",
+      provider: "openclaw"
+    });
+  });
+
+  it("can append disabled placeholder targets for unavailable future providers", () => {
+    const targets = normalizeAgentGUIProviderTargets(
+      [
+        createLocalAgentGUIProviderTarget("codex"),
+        createLocalAgentGUIProviderTarget("claude-code")
+      ],
+      {
+        includeDisabledPlaceholders: true,
+        useStaticCatalog: false
+      }
+    );
+
+    expect(
+      targets.map((target) => ({
+        agentTargetId: target.agentTargetId ?? null,
+        disabled: target.disabled === true,
+        label: target.label,
+        provider: target.provider
+      }))
+    ).toEqual([
+      {
+        agentTargetId: "local:codex",
+        disabled: false,
+        label: "Codex",
+        provider: "codex"
+      },
+      {
+        agentTargetId: "local:claude-code",
+        disabled: false,
+        label: "Claude Code",
+        provider: "claude-code"
+      },
+      {
+        agentTargetId: "local:nexight",
+        disabled: true,
+        label: "Tutti Agent",
+        provider: "nexight"
+      },
+      {
+        agentTargetId: "local:hermes",
+        disabled: true,
+        label: "Hermes",
+        provider: "hermes"
+      },
+      {
+        agentTargetId: "local:openclaw",
+        disabled: true,
+        label: "OpenClaw",
+        provider: "openclaw"
+      }
     ]);
   });
 
@@ -94,9 +167,29 @@ describe("agent gui provider targets", () => {
     ]);
   });
 
-  it("can normalize explicit targets without local fallback targets", () => {
+  it("marks future providers disabled in the static provider catalog", () => {
+    const targets = normalizeAgentGUIProviderTargets(undefined, {
+      includeDisabledPlaceholders: true
+    });
+
+    expect(
+      targets.map((target) => ({
+        disabled: target.disabled === true,
+        provider: target.provider
+      }))
+    ).toEqual([
+      { disabled: false, provider: "codex" },
+      { disabled: false, provider: "claude-code" },
+      { disabled: false, provider: "cursor" },
+      { disabled: true, provider: "nexight" },
+      { disabled: true, provider: "hermes" },
+      { disabled: true, provider: "openclaw" }
+    ]);
+  });
+
+  it("can normalize explicit targets without static catalog targets", () => {
     const targets = normalizeAgentGUIProviderTargets([], {
-      fallbackToLocal: false
+      useStaticCatalog: false
     });
 
     expect(targets).toEqual([]);
@@ -183,7 +276,7 @@ describe("agent gui provider targets", () => {
           label: "Claude Code"
         }
       ],
-      { fallbackToLocal: false }
+      { useStaticCatalog: false }
     );
 
     expect(

@@ -1,6 +1,6 @@
 ---
 name: tutti-cli
-description: Use for `mention://agent-session/<sessionId>?workspaceId=...` links, Tutti CLI command syntax, and daemon context lookup when no more specific Tutti skill applies; also serves as the command reference for injected Tutti skills.
+description: Use for `mention://agent-session/<sessionId>?workspaceId=...` links, `mention://agent-target/<targetId>?workspaceId=...` links, Tutti CLI command syntax, and daemon context lookup when no more specific Tutti skill applies; also serves as the command reference for injected Tutti skills.
 ---
 
 # Tutti CLI
@@ -13,7 +13,7 @@ Classify the request before invoking any Tutti CLI command:
 
 1. Workspace issue work uses `issue ...`. If the request is inspection, breakdown, execution, or run reporting for an issue, invoke `$issue-manager` and use this skill only as its CLI reference.
 2. Workspace app work uses app scopes from the command guide. If the request comes from `mention://workspace-app/<appId>?workspaceId=...`, invoke `$workspace-app` and use this skill as its command reference.
-3. Agent session work uses `agent ...`, `codex ...`, or `claude ...`. For `mention://agent-session/<sessionId>?workspaceId=...`, start with `agent session-summary --session-id <session-id> --json`.
+3. Agent session work uses `agent ...`, `codex ...`, or `claude ...`. For `mention://agent-session/<sessionId>?workspaceId=...`, start with `agent session-summary --session-id <session-id> --json`. For `mention://agent-target/<targetId>?workspaceId=...`, choose the `agent`, `codex`, or `claude` workflow implied by the user's prompt; do not assume launch-only behavior.
 4. Browser automation uses `browser ...`.
 5. macOS desktop automation uses `computer ...`.
 6. If none match, read `command-guide.md` before guessing.
@@ -27,6 +27,7 @@ Tutti mention links are internal handoffs. Parse them as data; do not open them 
 - `mention://workspace-issue/<issueId>?workspaceId=...`: use `$issue-manager`.
 - `mention://workspace-app/<appId>?workspaceId=...`: use `$workspace-app`.
 - `mention://agent-session/<sessionId>?workspaceId=...`: use this skill and run `agent session-summary --session-id <session-id> --json`.
+- `mention://agent-target/<targetId>?workspaceId=...`: use this skill and choose the `agent`, `codex`, or `claude` CLI workflow from the user's prompt. This can mean starting a new session, inspecting active peers or historical sessions, or another agent workflow; it is not launch-only.
 - Unknown `mention://...`: parse the URI and ask for clarification if no command family or skill matches.
 
 Agent session summary JSON is compact and includes session context plus recent messages.
@@ -95,7 +96,7 @@ For workspace issue breakdowns, use issue/task inspection commands plus `issue t
 
 ## Workspace Issue Run Reporting
 
-When creating issue runs, pass `--agent-provider` from the current AgentGUI runtime metadata below. Do not pass `--agent-session-id` during normal AgentGUI execution; the Tutti CLI binds the run to the current AgentGUI session from the runtime context. Use `--agent-session-id` only as a manual fallback if the CLI explicitly reports the session id is missing.
+When creating issue runs, pass `--agent-target-id` from the current AgentGUI runtime metadata below. Do not pass `--agent-provider` for new runs; the daemon derives provider metadata from the target. Do not pass `--agent-session-id` during normal AgentGUI execution; the Tutti CLI binds the run to the current AgentGUI session from the runtime context. Use `--agent-session-id` only as a manual fallback if the CLI explicitly reports the session id is missing.
 
 When completing issue runs, include `--outputs` whenever the execution created or materially updated deliverable files. `--outputs` is a JSON array string; each item must include `path`, and may also include `displayName`, `title`, `mediaType`, `sizeBytes`, or `outputId`.
 
@@ -122,4 +123,5 @@ For syntax/flags, use `{{CLI_COMMAND}} <scope> --help` or `{{CLI_COMMAND}} <scop
 For app id mapping, read this skill's `command-guide.md`; it preserves `App id:` metadata.
 
 The current AgentGUI session is `{{AGENT_SESSION_ID}}`.
+The current AgentGUI agent target id is `{{AGENT_TARGET_ID}}`.
 The current AgentGUI provider is `{{AGENT_PROVIDER}}`.

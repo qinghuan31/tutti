@@ -6,8 +6,8 @@ import (
 	"errors"
 	"strings"
 
-	activityshared "github.com/tutti-os/tutti/packages/agentactivity/daemon/activity/events"
-	"github.com/tutti-os/tutti/packages/agentactivity/daemon/internal/titletext"
+	activityshared "github.com/tutti-os/tutti/packages/agent/daemon/activity/events"
+	"github.com/tutti-os/tutti/packages/agent/daemon/internal/titletext"
 )
 
 func acpModeValue(update map[string]any) string {

@@ -117,6 +117,35 @@ func TestNormalizeComposerSettingsClampsByProviderSupport(t *testing.T) {
 	}
 }
 
+func TestComposerPermissionConfigForCursor(t *testing.T) {
+	t.Parallel()
+	config := composerPermissionConfig("cursor", "", "en")
+	if !config.Configurable {
+		t.Fatal("cursor permission config must be configurable")
+	}
+	if config.DefaultValue != "agent" {
+		t.Fatalf("cursor default permission mode = %q, want agent", config.DefaultValue)
+	}
+	ids := make([]string, 0, len(config.Modes))
+	for _, mode := range config.Modes {
+		ids = append(ids, mode.ID)
+	}
+	if !slices.Equal(ids, []string{"read-only", "agent", "full-access"}) {
+		t.Fatalf("cursor permission mode ids = %v, want [read-only agent full-access]", ids)
+	}
+	if got := normalizePermissionModeIDForProvider("cursor", "yolo"); got != "agent" {
+		t.Fatalf("normalizePermissionModeIDForProvider(cursor, yolo) = %q, want agent", got)
+	}
+	// Pre-tier execution-mode ids persisted by earlier sessions fall back to
+	// the default tier instead of leaking through.
+	if got := normalizePermissionModeIDForProvider("cursor", "plan"); got != "agent" {
+		t.Fatalf("normalizePermissionModeIDForProvider(cursor, plan) = %q, want agent fallback", got)
+	}
+	if got := normalizePermissionModeIDForProvider("cursor", "full-access"); got != "full-access" {
+		t.Fatalf("normalizePermissionModeIDForProvider(cursor, full-access) = %q, want full-access", got)
+	}
+}
+
 func TestComposerConfigConfigurableTruthTable(t *testing.T) {
 	t.Parallel()
 	// Pins the backend configurable flags so the GUI can derive support from
@@ -129,6 +158,7 @@ func TestComposerConfigConfigurableTruthTable(t *testing.T) {
 	}{
 		{"claude-code", false, true, true},
 		{"codex", true, true, true},
+		{"cursor", true, false, true},
 		{"gemini", true, true, false},
 		{"hermes", false, false, false},
 		{"nexight", false, false, true},

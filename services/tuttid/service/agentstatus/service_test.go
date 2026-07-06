@@ -13,6 +13,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"reflect"
 	"runtime"
 	"slices"
 	"strings"
@@ -117,6 +118,86 @@ func TestDefaultRegistryUsesCodexCLILatestInstaller(t *testing.T) {
 	}
 	if install.CodexCLI == nil {
 		t.Fatalf("Install.CodexCLI = nil, want daemon-managed codex CLI installer spec")
+	}
+}
+
+func TestDefaultRegistryIncludesCursorSpec(t *testing.T) {
+	specs, err := DefaultRegistry().Select([]string{"cursor"})
+	if err != nil {
+		t.Fatalf("Select() error = %v", err)
+	}
+	if len(specs) != 1 {
+		t.Fatalf("len(specs) = %d, want 1", len(specs))
+	}
+	spec := specs[0]
+	if spec.SupportStatus == ProviderSupportStatusUnsupported {
+		t.Fatal("SupportStatus = unsupported, want cursor enabled by default")
+	}
+	if !reflect.DeepEqual(spec.BinaryNames, []string{"cursor-agent", "agent"}) {
+		t.Fatalf("BinaryNames = %#v", spec.BinaryNames)
+	}
+	if !reflect.DeepEqual(spec.AdapterCommand, []string{"cursor-agent", "acp"}) {
+		t.Fatalf("AdapterCommand = %#v", spec.AdapterCommand)
+	}
+	if spec.Install.Kind != InstallerKindOfficialScript || spec.Install.ScriptURL != "https://cursor.com/install" {
+		t.Fatalf("Install = %#v, want official cursor.com install script", spec.Install)
+	}
+	if !reflect.DeepEqual(spec.LoginArgs, []string{"login"}) {
+		t.Fatalf("LoginArgs = %#v", spec.LoginArgs)
+	}
+}
+
+func TestParseCursorAuthStatusOutput(t *testing.T) {
+	for _, tt := range []struct {
+		output string
+		status AuthStatus
+		ok     bool
+	}{
+		{output: "Logged in as user@example.com", status: AuthAuthenticated, ok: true},
+		{output: "cursor-agent 2026.06.10\nStatus: Authenticated", status: AuthAuthenticated, ok: true},
+		{output: "Not logged in. Run cursor-agent login to sign in.", status: AuthRequired, ok: true},
+		{output: "You are currently logged out", status: AuthRequired, ok: true},
+		{output: "", ok: false},
+		{output: "unrecognized output", ok: false},
+	} {
+		auth, ok := parseCursorAuthStatusOutput([]byte(tt.output))
+		if ok != tt.ok {
+			t.Fatalf("parseCursorAuthStatusOutput(%q) ok = %v, want %v", tt.output, ok, tt.ok)
+		}
+		if ok && auth.Status != tt.status {
+			t.Fatalf("parseCursorAuthStatusOutput(%q) status = %q, want %q", tt.output, auth.Status, tt.status)
+		}
+	}
+}
+
+func TestResolveProviderCommandSwapsInstalledCursorBinary(t *testing.T) {
+	service := testService(func(name string) (string, error) {
+		if name == "agent" {
+			return "/home/test/.local/bin/agent", nil
+		}
+		return "", errors.New("not found")
+	}, map[string]bool{})
+
+	resolved, err := service.ResolveProviderCommand(context.Background(), "cursor")
+	if err != nil {
+		t.Fatalf("ResolveProviderCommand() error = %v", err)
+	}
+	if !reflect.DeepEqual(resolved.Command, []string{"/home/test/.local/bin/agent", "acp"}) {
+		t.Fatalf("Command = %#v, want resolved agent binary", resolved.Command)
+	}
+}
+
+func TestResolveProviderCommandKeepsCursorDefaultWhenBinaryMissing(t *testing.T) {
+	service := testService(func(string) (string, error) {
+		return "", errors.New("not found")
+	}, map[string]bool{})
+
+	resolved, err := service.ResolveProviderCommand(context.Background(), "cursor")
+	if err != nil {
+		t.Fatalf("ResolveProviderCommand() error = %v", err)
+	}
+	if !reflect.DeepEqual(resolved.Command, []string{"cursor-agent", "acp"}) {
+		t.Fatalf("Command = %#v, want default cursor-agent command", resolved.Command)
 	}
 }
 

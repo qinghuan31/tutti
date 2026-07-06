@@ -5,6 +5,7 @@ import "strings"
 const (
 	ClaudeCode = "claude-code"
 	Codex      = "codex"
+	Cursor     = "cursor"
 	Gemini     = "gemini"
 	Hermes     = "hermes"
 	Nexight    = "nexight"
@@ -14,6 +15,7 @@ const (
 var allProviders = []string{
 	ClaudeCode,
 	Codex,
+	Cursor,
 	Nexight,
 	Gemini,
 	Hermes,
@@ -30,6 +32,8 @@ func Normalize(provider string) string {
 		return ClaudeCode
 	case Codex:
 		return Codex
+	case "cursor-agent", "cursor-cli", Cursor:
+		return Cursor
 	case "gemini-cli", Gemini:
 		return Gemini
 	case "hermes-agent", Hermes:
@@ -45,13 +49,4 @@ func Normalize(provider string) string {
 
 func IsSupported(provider string) bool {
 	return Normalize(provider) != ""
-}
-
-func SupportsComposerSettings(provider string) bool {
-	switch Normalize(provider) {
-	case ClaudeCode, Codex, Gemini:
-		return true
-	default:
-		return false
-	}
 }

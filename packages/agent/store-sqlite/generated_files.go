@@ -1,4 +1,4 @@
-package workspace
+package storesqlite
 
 import (
 	"context"
@@ -6,26 +6,24 @@ import (
 	"fmt"
 	"path"
 	"strings"
-
-	agentactivitybiz "github.com/tutti-os/tutti/services/tuttid/biz/agentactivity"
 )
 
 const defaultWorkspaceGeneratedFilesLimit = 30
 const maxWorkspaceGeneratedFilesLimit = 100
 
-func (s *SQLiteStore) ListWorkspaceGeneratedFiles(
+func (s *Store) ListWorkspaceGeneratedFiles(
 	ctx context.Context,
-	input agentactivitybiz.ListWorkspaceGeneratedFilesInput,
-) (agentactivitybiz.GeneratedFileList, bool, error) {
+	input ListWorkspaceGeneratedFilesInput,
+) (GeneratedFileList, bool, error) {
 	if s == nil || s.db == nil {
-		return agentactivitybiz.GeneratedFileList{}, false, fmt.Errorf("workspace database is not initialized")
+		return GeneratedFileList{}, false, fmt.Errorf("workspace database is not initialized")
 	}
 	workspaceID := strings.TrimSpace(input.WorkspaceID)
 	if workspaceID == "" {
-		return agentactivitybiz.GeneratedFileList{}, false, nil
+		return GeneratedFileList{}, false, nil
 	}
-	if _, err := s.Get(ctx, workspaceID); err != nil {
-		return agentactivitybiz.GeneratedFileList{}, false, err
+	if err := s.ensureWorkspaceExists(ctx, workspaceID); err != nil {
+		return GeneratedFileList{}, false, err
 	}
 	limit := input.Limit
 	if limit <= 0 {
@@ -52,23 +50,23 @@ ORDER BY m.updated_at_unix_ms DESC, m.id DESC
 LIMIT ?
 `, workspaceID, sessionCwd, sessionCwd, scanLimit)
 	if err != nil {
-		return agentactivitybiz.GeneratedFileList{}, false, fmt.Errorf("list workspace agent generated file messages: %w", err)
+		return GeneratedFileList{}, false, fmt.Errorf("list workspace agent generated file messages: %w", err)
 	}
 	defer rows.Close()
 
-	filesByPath := make(map[string]agentactivitybiz.GeneratedFile)
-	files := make([]agentactivitybiz.GeneratedFile, 0, limit)
+	filesByPath := make(map[string]GeneratedFile)
+	files := make([]GeneratedFile, 0, limit)
 	for rows.Next() {
 		var cwd string
 		var kind string
 		var status string
 		var payloadJSON string
 		if err := rows.Scan(&cwd, &kind, &status, &payloadJSON); err != nil {
-			return agentactivitybiz.GeneratedFileList{}, false, fmt.Errorf("scan workspace agent generated file message: %w", err)
+			return GeneratedFileList{}, false, fmt.Errorf("scan workspace agent generated file message: %w", err)
 		}
 		var payload map[string]any
 		if err := json.Unmarshal([]byte(payloadJSON), &payload); err != nil {
-			return agentactivitybiz.GeneratedFileList{}, false, fmt.Errorf("decode workspace agent generated file payload: %w", err)
+			return GeneratedFileList{}, false, fmt.Errorf("decode workspace agent generated file payload: %w", err)
 		}
 		if !isSuccessfulGeneratedFileMessage(kind, status, payload) {
 			continue
@@ -77,7 +75,7 @@ LIMIT ?
 			if _, exists := filesByPath[filePath]; exists {
 				continue
 			}
-			file := agentactivitybiz.GeneratedFile{
+			file := GeneratedFile{
 				Path:  filePath,
 				Label: generatedFileLabel(filePath),
 			}
@@ -87,7 +85,7 @@ LIMIT ?
 			filesByPath[filePath] = file
 			files = append(files, file)
 			if len(files) >= limit {
-				return agentactivitybiz.GeneratedFileList{
+				return GeneratedFileList{
 					WorkspaceID: workspaceID,
 					Files:       files,
 				}, true, nil
@@ -95,10 +93,10 @@ LIMIT ?
 		}
 	}
 	if err := rows.Err(); err != nil {
-		return agentactivitybiz.GeneratedFileList{}, false, fmt.Errorf("iterate workspace agent generated file messages: %w", err)
+		return GeneratedFileList{}, false, fmt.Errorf("iterate workspace agent generated file messages: %w", err)
 	}
 
-	return agentactivitybiz.GeneratedFileList{
+	return GeneratedFileList{
 		WorkspaceID: workspaceID,
 		Files:       files,
 	}, true, nil
@@ -414,7 +412,7 @@ func generatedFileLabel(filePath string) string {
 	return label
 }
 
-func matchesGeneratedFileQuery(file agentactivitybiz.GeneratedFile, query string) bool {
+func matchesGeneratedFileQuery(file GeneratedFile, query string) bool {
 	if query == "" {
 		return true
 	}

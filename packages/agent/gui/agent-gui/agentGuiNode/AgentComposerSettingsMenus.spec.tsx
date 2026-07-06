@@ -1780,6 +1780,12 @@ describe("AgentModelReasoningDropdown", () => {
     fireEvent.pointerMove(localizedOption, { pointerType: "mouse" });
     const localizedTooltip = await screen.findByRole("tooltip");
     expect(localizedTooltip).toHaveTextContent("复杂编码模型说明");
+    const localizedTooltipDescription = Array.from(
+      localizedTooltip.querySelectorAll("span")
+    ).find((element) => element.textContent === "复杂编码模型说明");
+    expect(localizedTooltipDescription).toHaveClass(
+      "text-[var(--text-tertiary)]"
+    );
     const localizedTooltipSurface = document.querySelector(
       '[data-agent-model-option-tooltip="true"]'
     );

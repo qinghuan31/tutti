@@ -3,6 +3,7 @@ import type { AgentGuiWorkbenchProvider } from "./types.ts";
 export const agentGuiWorkbenchProviders = [
   "claude-code",
   "codex",
+  "cursor",
   "nexight",
   "hermes",
   "gemini",
@@ -40,6 +41,7 @@ export const agentGuiWorkbenchProviderLabels: Record<
 > = {
   "claude-code": "Claude Code",
   codex: "Codex",
+  cursor: "Cursor",
   gemini: "Gemini CLI",
   hermes: "Hermes Agent",
   nexight: "Nexight",

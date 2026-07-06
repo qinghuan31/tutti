@@ -12,6 +12,7 @@ func GeneratedDesktopPreferencesFromBiz(value preferencesbiz.DesktopPreferences)
 	}
 	return tuttigenerated.DesktopPreferences{
 		AgentComposerDefaultsByProvider:             generatedAgentComposerDefaultsByProvider(value.AgentComposerDefaultsByProvider),
+		AgentComposerDefaultsByAgentTarget:          generatedAgentComposerDefaultsByAgentTarget(value.AgentComposerDefaultsByAgentTarget),
 		AgentGuiConversationRailCollapsedByProvider: generatedAgentGUIConversationRailCollapsedByProvider(value.AgentGUIConversationRailCollapsedByProvider),
 		AgentConversationDetailMode:                 tuttigenerated.DesktopAgentConversationDetailMode(preferencesbiz.NormalizeDesktopAgentConversationDetailMode(value.AgentConversationDetailMode)),
 		AgentDockLayout:                             tuttigenerated.DesktopAgentDockLayout(preferencesbiz.NormalizeDesktopAgentDockLayout(value.AgentDockLayout)),
@@ -20,6 +21,7 @@ func GeneratedDesktopPreferencesFromBiz(value preferencesbiz.DesktopPreferences)
 		DefaultAgentProvider:                        tuttigenerated.WorkspaceAgentProvider(value.DefaultAgentProvider),
 		DockIconStyle:                               tuttigenerated.DesktopDockIconStyle(value.DockIconStyle),
 		DockPlacement:                               tuttigenerated.DesktopDockPlacement(value.DockPlacement),
+		EnableCursorAgent:                           value.EnableCursorAgent,
 		FileDefaultOpenersByExtension:               generatedFileDefaultOpenersByExtension(value.FileDefaultOpenersByExtension),
 		Locale:                                      tuttigenerated.DesktopLocale(value.Locale),
 		MinimizeAnimation:                           tuttigenerated.DesktopMinimizeAnimation(value.MinimizeAnimation),
@@ -48,6 +50,7 @@ func generatedAgentGUIConversationRailCollapsedByProvider(value map[string]bool)
 	return tuttigenerated.DesktopAgentGuiConversationRailCollapsedByProvider{
 		ClaudeCode: optionalBoolPointerFromMap(value, "claude-code"),
 		Codex:      optionalBoolPointerFromMap(value, "codex"),
+		Cursor:     optionalBoolPointerFromMap(value, "cursor"),
 		Gemini:     optionalBoolPointerFromMap(value, "gemini"),
 		Hermes:     optionalBoolPointerFromMap(value, "hermes"),
 		Nexight:    optionalBoolPointerFromMap(value, "nexight"),
@@ -74,6 +77,7 @@ func generatedAgentComposerDefaultsByProvider(value map[string]preferencesbiz.Ag
 	return tuttigenerated.DesktopAgentComposerDefaultsByProvider{
 		ClaudeCode: generatedAgentComposerDefaultsPointer(value["claude-code"]),
 		Codex:      generatedAgentComposerDefaultsPointer(value["codex"]),
+		Cursor:     generatedAgentComposerDefaultsPointer(value["cursor"]),
 		Gemini:     generatedAgentComposerDefaultsPointer(value["gemini"]),
 		Hermes:     generatedAgentComposerDefaultsPointer(value["hermes"]),
 		Nexight:    generatedAgentComposerDefaultsPointer(value["nexight"]),
@@ -81,13 +85,26 @@ func generatedAgentComposerDefaultsByProvider(value map[string]preferencesbiz.Ag
 	}
 }
 
+func generatedAgentComposerDefaultsByAgentTarget(value map[string]preferencesbiz.AgentComposerDefaults) *tuttigenerated.DesktopAgentComposerDefaultsByAgentTarget {
+	result := tuttigenerated.DesktopAgentComposerDefaultsByAgentTarget{}
+	for agentTargetID, defaults := range value {
+		generated := generatedAgentComposerDefaultsPointer(defaults)
+		if agentTargetID == "" || generated == nil {
+			continue
+		}
+		result[agentTargetID] = *generated
+	}
+	return &result
+}
+
 func generatedAgentComposerDefaultsPointer(value preferencesbiz.AgentComposerDefaults) *tuttigenerated.DesktopAgentComposerDefaults {
 	generated := tuttigenerated.DesktopAgentComposerDefaults{
 		Model:            optionalStringPointer(value.Model),
 		PermissionModeId: optionalStringPointer(value.PermissionModeID),
 		ReasoningEffort:  optionalStringPointer(value.ReasoningEffort),
+		Speed:            optionalStringPointer(value.Speed),
 	}
-	if generated.Model == nil && generated.PermissionModeId == nil && generated.ReasoningEffort == nil {
+	if generated.Model == nil && generated.PermissionModeId == nil && generated.ReasoningEffort == nil && generated.Speed == nil {
 		return nil
 	}
 	return &generated

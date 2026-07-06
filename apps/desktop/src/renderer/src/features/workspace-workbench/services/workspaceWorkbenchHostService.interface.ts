@@ -1,5 +1,8 @@
 import type { ReactNode } from "react";
-import type { AgentGUIProviderTarget } from "@tutti-os/agent-gui";
+import type {
+  AgentGUIProvider,
+  AgentGUIProviderTarget
+} from "@tutti-os/agent-gui";
 import { createDecorator } from "@tutti-os/infra/di";
 import type { I18nRuntime } from "@tutti-os/ui-i18n-runtime";
 import type { WorkspaceFileManagerPersistedState } from "@tutti-os/workspace-file-manager/services";
@@ -24,10 +27,7 @@ import type {
   WorkbenchHostSnapshotRepository
 } from "@tutti-os/workbench-surface";
 import type { WorkspaceWorkbenchDesktopI18nRuntime } from "@shared/i18n";
-import type {
-  DesktopAgentDockLayout,
-  DesktopDockIconStyle
-} from "@shared/preferences";
+import type { DesktopDockIconStyle } from "@shared/preferences";
 import type { DesktopThemeAppearance } from "@shared/theme";
 import type {
   WorkspaceWallpaperDisplayMode,
@@ -114,7 +114,6 @@ export interface IWorkspaceWorkbenchHostService {
   approveWindowClose(): Promise<void>;
   createHostInput(input: {
     appI18n: I18nRuntime<string>;
-    agentDockLayout: DesktopAgentDockLayout;
     appCenterRevision?: number;
     confirmCloseGuard: (
       request: WorkbenchHostCloseDialogRequest
@@ -128,6 +127,7 @@ export interface IWorkspaceWorkbenchHostService {
     ) => void;
     providerTargets?: readonly AgentGUIProviderTarget[];
     providerTargetsLoading?: boolean;
+    comingSoonAgentProviders?: readonly AgentGUIProvider[];
     renderFilesNodeBody: (
       context: WorkspaceWorkbenchBodyRendererContext
     ) => ReactNode;

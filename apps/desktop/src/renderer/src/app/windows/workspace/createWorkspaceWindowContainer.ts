@@ -9,6 +9,7 @@ import {
 } from "@renderer/features/analytics";
 import { registerAppUpdateServices } from "@renderer/features/app-update";
 import { registerDesktopPreferencesServices } from "@renderer/features/desktop-preferences";
+import { subscribe } from "valtio";
 import {
   createDesktopAgentSessionStatusViewResolver,
   registerRichTextAtServices
@@ -112,6 +113,14 @@ export function createWorkspaceWindowContainer(): WorkspaceWindowContainerResult
     tuttidClient,
     tuttidEventStreamClient
   );
+  // Cursor is feature-gated behind the Developer-panel "Enable Cursor agent"
+  // preference: gated providers render as coming-soon placeholders in the
+  // AgentGUI rail (like hermes) and stay hidden from dock/mention/manage.
+  const isAgentProviderGated = (provider: string): boolean =>
+    provider === "cursor" && !desktopPreferencesService.store.enableCursorAgent;
+  const subscribeAgentProviderVisibility = (
+    listener: () => void
+  ): (() => void) => subscribe(desktopPreferencesService.store, listener);
   const daemonConnectionAnalytics = startDesktopDaemonConnectionAnalytics({
     eventStreamClient: tuttidEventStreamClient,
     reporterService
@@ -175,6 +184,7 @@ export function createWorkspaceWindowContainer(): WorkspaceWindowContainerResult
     reporterService,
     runtimeApi: desktopApi.runtime,
     resolveAgentIconUrl: resolveWorkspaceRichTextAgentIconUrl,
+    isAgentTargetProviderGated: isAgentProviderGated,
     terminalCommandRunner: createAgentProviderTerminalCommandRunner(
       desktopApi.runtime
     ),
@@ -210,6 +220,8 @@ export function createWorkspaceWindowContainer(): WorkspaceWindowContainerResult
   });
   registerWorkspaceWorkbenchServices(registry, {
     browserApi: desktopApi.browser,
+    isAgentProviderHidden: isAgentProviderGated,
+    subscribeAgentProviderVisibility,
     computerUseApi: desktopApi.computerUse,
     developerApi: desktopApi.developer,
     dockPreviewCacheApi: desktopApi.dockPreviewCache,

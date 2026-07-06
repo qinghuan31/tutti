@@ -21,7 +21,7 @@ import (
 	workspacebiz "github.com/tutti-os/tutti/services/tuttid/biz/workspace"
 	tuttitypes "github.com/tutti-os/tutti/services/tuttid/types"
 
-	"github.com/tutti-os/tutti/packages/agentactivity/daemon/httpx"
+	"github.com/tutti-os/tutti/packages/agent/daemon/httpx"
 )
 
 const defaultAppHealthcheckTimeout = 30 * time.Second

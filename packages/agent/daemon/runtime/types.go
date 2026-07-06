@@ -8,6 +8,7 @@ import (
 const (
 	ProviderClaudeCode = "claude-code"
 	ProviderCodex      = "codex"
+	ProviderCursor     = "cursor"
 	ProviderNexight    = "nexight"
 	ProviderGemini     = "gemini"
 	ProviderHermes     = "hermes"

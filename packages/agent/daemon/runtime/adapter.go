@@ -4,7 +4,7 @@ import (
 	"context"
 	"errors"
 
-	activityshared "github.com/tutti-os/tutti/packages/agentactivity/daemon/activity/events"
+	activityshared "github.com/tutti-os/tutti/packages/agent/daemon/activity/events"
 )
 
 var ErrLiveSessionBusy = errors.New("agent live session is busy")
