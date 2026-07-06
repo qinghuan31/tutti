@@ -5533,7 +5533,8 @@ const AgentGUIConversationRailPane = memo(
             })
           )}
         </ScrollArea>
-        {selectedProviderTarget?.disabled === true ? null : (
+        {selectedProviderTarget?.disabled === true ||
+        conversationFilter.kind === "all" ? null : (
           <div className="shrink-0 px-2 py-1.5">
             <Popover
               onOpenChange={(open) => {
