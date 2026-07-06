@@ -59,7 +59,11 @@ func (a *CodexAppServerAdapter) handleAppServerMessage(
 			return nil, nil
 		}
 	}
+	activeTurn, idleSequence, armIdleFallback := a.noteActiveTurnNotification(session.AgentSessionID, message.Method)
 	reduction := newCodexAppServerReducer(a).ReduceNotification(client, session, turnID, message, normalizer, emitCommands)
+	if armIdleFallback {
+		a.armTurnCompletionIdleFallback(session.AgentSessionID, activeTurn, idleSequence)
+	}
 	return reduction.Events, nil
 }
 
