@@ -1,6 +1,7 @@
 import {
   deriveSubmitAvailability,
-  isLiveTurnLifecyclePhase
+  isLiveTurnLifecyclePhase,
+  runtimeContextHasLiveBackgroundAgents
 } from "@tutti-os/agent-activity-core";
 import type {
   AgentActivityRuntime,
@@ -22,6 +23,7 @@ interface DesktopQueuedPromptReadyQueue {
 interface DesktopQueuedPromptSkipReason {
   agentSessionId: string;
   activeTurnId?: string | null;
+  availabilityProbe?: DesktopQueuedPromptAvailabilityProbe;
   blockedByRetryBlock?: boolean;
   claimOwnerId?: string | null;
   currentPhase?: unknown;
@@ -34,6 +36,23 @@ interface DesktopQueuedPromptSkipReason {
   submitAvailabilityReason?: unknown;
   submitAvailabilityState?: unknown;
   turnLifecyclePhase?: unknown;
+}
+
+// Diagnostic-only probe (temporary instrumentation): compares the wire
+// submitAvailability with a value derived from turnLifecycle +
+// runtimeContext.backgroundAgents, to validate two hypotheses in the field:
+// (1) the wire value goes stale while the lifecycle stays correct, and
+// (2) backgroundAgents never reaches this record over the push channel.
+interface DesktopQueuedPromptAvailabilityProbe {
+  backgroundAgents: {
+    present: boolean;
+    count: number | null;
+    liveItemCount: number | null;
+  };
+  derivedReason: string | null;
+  derivedState: string | null;
+  wireReason: string | null;
+  wireState: string | null;
 }
 
 interface DesktopQueuedPromptSendNextInterrupt {
@@ -178,10 +197,17 @@ export function createDesktopAgentQueuedPromptDrainCoordinator({
         if (!claimResult) {
           continue;
         }
+        const readySession = findActivitySession(
+          activitySnapshot,
+          readyQueue.queue.agentSessionId
+        );
         logDrainer("send-start", {
           workspaceId,
           ownerId,
           agentSessionId: readyQueue.queue.agentSessionId,
+          availabilityProbe: readySession
+            ? describeSessionAvailabilityProbe(readySession)
+            : null,
           queuedPromptId: claimResult.prompt.id,
           claimId: claimResult.claim.claimId,
           sessionStateUpdatedAtUnixMs: readyQueue.sessionStateUpdatedAtUnixMs
@@ -381,6 +407,7 @@ function findReadyQueue(
       skipped.push({
         agentSessionId: queue.agentSessionId,
         activeTurnId: session.turnLifecycle?.activeTurnId ?? null,
+        availabilityProbe: describeSessionAvailabilityProbe(session),
         currentPhase: session.currentPhase,
         promptId: queuedPrompt.id,
         reason: "session-not-ready",
@@ -473,6 +500,54 @@ function sessionLooksBusy(session: AgentActivitySession): boolean {
     currentPhase === "waiting" ||
     Boolean(lifecycle?.activeTurnId)
   );
+}
+
+// Diagnostic probe (temporary instrumentation): report the wire
+// submitAvailability next to the locally derived value so field logs show
+// where they diverge. Decisions use deriveSubmitAvailability directly.
+function describeSessionAvailabilityProbe(
+  session: AgentActivitySession
+): DesktopQueuedPromptAvailabilityProbe {
+  const derived = deriveSubmitAvailability(session);
+  return {
+    backgroundAgents: backgroundAgentsProbe(session),
+    derivedReason: derived?.reason ?? null,
+    derivedState: derived?.state ?? null,
+    wireReason: session.submitAvailability?.reason ?? null,
+    wireState: session.submitAvailability?.state ?? null
+  };
+}
+
+function backgroundAgentsProbe(
+  session: AgentActivitySession
+): DesktopQueuedPromptAvailabilityProbe["backgroundAgents"] {
+  const runtimeContext = session.runtimeContext as
+    | Record<string, unknown>
+    | undefined;
+  const backgroundAgents = runtimeContext?.backgroundAgents as
+    | { count?: unknown; items?: unknown }
+    | undefined;
+  if (!backgroundAgents || typeof backgroundAgents !== "object") {
+    return { present: false, count: null, liveItemCount: null };
+  }
+  const count =
+    typeof backgroundAgents.count === "number" ? backgroundAgents.count : null;
+  const items = Array.isArray(backgroundAgents.items)
+    ? backgroundAgents.items
+    : null;
+  const liveItemCount =
+    items === null
+      ? null
+      : items.filter(
+          (item) =>
+            !!item &&
+            typeof item === "object" &&
+            Object.keys(item).length > 0 &&
+            runtimeContextHasLiveBackgroundAgents({
+              backgroundAgents: { count: 0, items: [item] }
+            })
+        ).length;
+  return { present: true, count, liveItemCount };
 }
 
 function sessionActivityVersion(
