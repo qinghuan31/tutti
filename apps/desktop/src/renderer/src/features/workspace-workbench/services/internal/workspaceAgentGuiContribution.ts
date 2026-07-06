@@ -1,8 +1,13 @@
 import { createElement, type CSSProperties, type ReactNode } from "react";
-import type { AgentGUIProviderTarget } from "@tutti-os/agent-gui";
+import type {
+  AgentGUIProvider,
+  AgentGUIProviderTarget
+} from "@tutti-os/agent-gui";
+import { resolveAgentGuiSessionProviderIconUrl } from "@tutti-os/agent-gui/agentGuiSessionProviderIconUrls";
 import {
   createAgentGuiWorkbenchContribution,
-  resolveAgentGuiUnifiedDockLaunchPayload
+  resolveAgentGuiUnifiedDockLaunchPayload,
+  type AgentGuiWorkbenchConversationIdentity
 } from "@tutti-os/agent-gui/workbench/contribution";
 import { resolveAgentGuiWorkbenchSessionTitle } from "@tutti-os/agent-gui/workbench/sessionTitle";
 import type {
@@ -22,7 +27,6 @@ import type {
   DesktopPlatformApi,
   DesktopRuntimeApi
 } from "@preload/types";
-import type { DesktopAgentDockLayout } from "@shared/preferences";
 import type { IDesktopRichTextAtService } from "@renderer/features/rich-text-at";
 import type { IWorkspaceAppCenterService } from "@renderer/features/workspace-app-center";
 import type { IWorkspaceAgentActivityService } from "@renderer/features/workspace-agent";
@@ -46,14 +50,12 @@ import { requestWorkspaceFilesLaunch } from "../workspaceFilesLaunchCoordinator.
 import { requestWorkspaceIssueManagerLaunch } from "../workspaceIssueManagerLaunchCoordinator.ts";
 import { requestGroupChatLaunch } from "../groupChatLaunchCoordinator.ts";
 import { workspaceAgentGuiNodeFrame } from "./workspaceWorkbenchComposition.ts";
-import { isWorkspaceAgentGuiDefaultDockProvider } from "./workspaceAgentProviderCatalog.ts";
 
 export function createWorkspaceAgentGuiContribution(input: {
   agentProviderStatusService: AgentProviderStatusService;
   appCenterService: IWorkspaceAppCenterService;
   appI18n: I18nRuntime<string>;
   computerUseApi: Pick<DesktopComputerUseApi, "checkStatus">;
-  agentDockLayout: DesktopAgentDockLayout;
   dockPreviewCache: WorkbenchDockPreviewCache;
   dockIconUrls?: Parameters<
     typeof createAgentGuiWorkbenchContribution
@@ -70,6 +72,7 @@ export function createWorkspaceAgentGuiContribution(input: {
   >[0]["onCapabilitySettingsRequest"];
   providerTargets?: readonly AgentGUIProviderTarget[];
   providerTargetsLoading?: boolean;
+  comingSoonAgentProviders?: readonly AgentGUIProvider[];
   tuttidClient: TuttidClient;
   platformApi: Pick<
     DesktopPlatformApi,
@@ -157,6 +160,7 @@ export function createWorkspaceAgentGuiContribution(input: {
       previewMode: options?.previewMode,
       providerTargets: input.providerTargets,
       providerTargetsLoading: input.providerTargetsLoading,
+      comingSoonAgentProviders: input.comingSoonAgentProviders,
       defaultProviderTargetId: input.defaultProviderTargetId,
       contextMentionProviders:
         agentGUIWorkbenchHostInput.contextMentionProviders,
@@ -197,7 +201,6 @@ export function createWorkspaceAgentGuiContribution(input: {
     },
     dockIconUrls: input.dockIconUrls,
     unifiedDockIconUrl: input.unifiedDockIconUrl,
-    dockLayout: input.agentDockLayout,
     frame: workspaceAgentGuiNodeFrame,
     defaultProvider: defaultAgentProvider,
     defaultProviderTargetId: input.defaultProviderTargetId,
@@ -242,14 +245,13 @@ export function createWorkspaceAgentGuiContribution(input: {
         workspaceAgentActivityService: input.workspaceAgentActivityService,
         workspaceId: input.workspaceId
       }),
-    resolveDockEntryVisibility: (provider: AgentGuiWorkbenchProvider) =>
-      isWorkspaceAgentGuiDefaultDockProvider(provider) &&
-      isWorkspaceAgentGuiProviderEnabledForNewEntry(
-        provider,
-        input.providerTargets
-      )
-        ? "always"
-        : "never",
+    resolveDockPopupIdentity: (state) =>
+      resolveWorkspaceAgentGuiDockPopupIdentity(state, {
+        dockIconUrls: input.dockIconUrls,
+        providerTargets: input.providerTargets,
+        workspaceAgentActivityService: input.workspaceAgentActivityService,
+        workspaceId: input.workspaceId
+      }),
     workspaceId: input.workspaceId
   });
 }
@@ -298,12 +300,64 @@ function resolveWorkspaceAgentGuiDockPopupTitle(
   const provider =
     snapshot.sessions.find((item) => item.agentSessionId === agentSessionId)
       ?.provider ?? "codex";
-  return resolveAgentGuiWorkbenchSessionTitle({
-    agentSessionId,
-    fallbackTitle: null,
-    provider,
-    snapshot
-  }).title;
+  return (
+    resolveAgentGuiWorkbenchSessionTitle({
+      agentSessionId,
+      fallbackTitle: state?.lastActiveConversationTitle ?? null,
+      provider,
+      snapshot
+    }).title ??
+    state?.lastActiveConversationTitle ??
+    null
+  );
+}
+
+function resolveWorkspaceAgentGuiDockPopupIdentity(
+  state: AgentGuiWorkbenchState | null,
+  input: {
+    dockIconUrls?: Parameters<
+      typeof createAgentGuiWorkbenchContribution
+    >[0]["dockIconUrls"];
+    providerTargets?: readonly AgentGUIProviderTarget[];
+    workspaceAgentActivityService: IWorkspaceAgentActivityService;
+    workspaceId: string;
+  }
+): AgentGuiWorkbenchConversationIdentity | null {
+  const agentSessionId = state?.lastActiveAgentSessionId?.trim() ?? "";
+  if (!agentSessionId) {
+    return null;
+  }
+  const snapshot = input.workspaceAgentActivityService.getSnapshot(
+    input.workspaceId
+  );
+  const session = snapshot.sessions.find(
+    (item) => item.agentSessionId === agentSessionId
+  );
+  const provider = isAgentGuiWorkbenchProvider(session?.provider)
+    ? session.provider
+    : "codex";
+  const title =
+    resolveAgentGuiWorkbenchSessionTitle({
+      agentSessionId,
+      fallbackTitle: state?.lastActiveConversationTitle ?? null,
+      provider,
+      snapshot
+    }).title ??
+    state?.lastActiveConversationTitle ??
+    null;
+  const targetIconUrl = session?.agentTargetId
+    ? input.providerTargets?.find(
+        (target) => target.agentTargetId === session.agentTargetId
+      )?.iconUrl
+    : null;
+  return {
+    iconUrl:
+      targetIconUrl ??
+      resolveAgentGuiSessionProviderIconUrl(provider) ??
+      input.dockIconUrls?.[provider] ??
+      null,
+    title
+  };
 }
 
 const dockPopupPreviewViewport = {

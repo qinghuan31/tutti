@@ -59,6 +59,18 @@ export const zhCN = {
     retryAction: "重试"
   },
   desktop: {
+    installGuard: {
+      detail:
+        "Tutti 正在从下载的磁盘镜像中运行。请先移动到 Applications，再继续使用，这样后续更新才能正常安装。",
+      failureDetail:
+        "macOS 无法自动移动 Tutti。请将 {{appPath}} 拖到 Applications，然后从 Applications 打开 Tutti。",
+      failureMessage: "请手动移动 Tutti",
+      message: "要将 Tutti 移动到 Applications 吗？",
+      moveAction: "移动到 Applications 并重新打开",
+      quitAction: "退出",
+      showInFinderAction: "在 Finder 中显示",
+      title: "安装 Tutti"
+    },
     logsExport: {
       actionHint: "你可以复制 Agent 调试指令，或打开导出文件所在目录。",
       agentPrompt: {
@@ -430,14 +442,6 @@ export const zhCN = {
           generalDescription: "同样强大，技术细节更少。"
         },
         agentConversationDetailModeSaveFailed: "暂时无法更新工作模式。",
-        agentDockLayoutDescription:
-          "选择 Codex 和 Claude Code 在 Dock 中显示为两个独立图标，还是合并为一个 Agent 图标。",
-        agentDockLayoutLabel: "Agent Dock",
-        agentDockLayoutOptions: {
-          legacySplit: "独立图标",
-          unified: "一个 Agent 图标"
-        },
-        agentDockLayoutSaveFailed: "暂时无法更新 Agent Dock。",
         computerUseLabel: "电脑控制",
         computerUseDescription:
           "让 Agent 控制你的 Mac 桌面——截图、点击、键盘输入等",
@@ -452,10 +456,49 @@ export const zhCN = {
         computerUseProgressAria: "电脑控制设置进度",
         computerUseManageButton: "管理",
         computerUseGrantButton: "授权",
+        computerUseGrantAccessibilityButton: "授权辅助使用",
+        computerUseGrantScreenRecordingButton: "授权屏幕录制",
         computerUseAuthorizedButton: "已授权",
         computerUseGranting: "等待授权…",
+        computerUseGrantingAccessibility: "等待辅助使用授权…",
+        computerUseGrantingScreenRecording: "等待屏幕录制授权…",
+        computerUseCheckingCaptureAvailability: "正在检查屏幕捕获状态…",
+        computerUseStartAndCheckButton: "启动并检查",
+        computerUseStartingCuaDriver: "正在启动并检查…",
         computerUseGrantSuccess: "已授权。",
         computerUseGrantFailed: "授权失败。",
+        computerUseGrantAccessibilityInstruction:
+          "下一步：授权辅助使用。完成后继续授权屏幕录制。",
+        computerUseGrantScreenRecordingInstruction: "下一步：授权屏幕录制。",
+        computerUseScreenRecordingCaptureUnavailableInstruction:
+          "屏幕录制已经授权，但需要重启 CuaDriver 才能生效。点击「重启生效」即可自动完成。",
+        computerUseGrantUnknownInstruction:
+          "无法确认授权状态。点击后会由 CuaDriver 再次检查。",
+        computerUseDriverDaemonNotRunningInstruction:
+          "CuaDriver 未在运行，暂时无法读取授权状态。点击「启动」即可启动 CuaDriver 并自动检查。",
+        computerUseStartingCuaDriverInstruction:
+          "正在启动 CuaDriver 并检查授权状态…",
+        computerUseGrantTimedOutInstruction:
+          "macOS 没有弹出授权确认。请打开系统设置 > 隐私与安全性，为 CuaDriver 打开所需权限，然后回到 Tutti 重新检查。",
+        computerUseGrantAccessibilityTimedOutInstruction:
+          "macOS 没有弹出辅助使用授权确认。请打开系统设置 > 隐私与安全性 > 辅助使用，启用 CuaDriver，然后回到 Tutti 重新检查。",
+        computerUseGrantScreenRecordingTimedOutInstruction:
+          "macOS 没有弹出屏幕录制授权确认。请打开系统设置 > 隐私与安全性 > 屏幕与系统音频录制，启用 CuaDriver，然后回到 Tutti 重新检查。",
+        computerUseGrantManualFallbackInstruction:
+          "如果 macOS 没有弹出授权确认，请打开{{settings}}并手动启用 CuaDriver。Tutti 会在后台继续检查。",
+        computerUseOpenAccessibilitySettingsButton: "打开辅助使用设置",
+        computerUseOpenScreenRecordingSettingsButton: "打开屏幕录制设置",
+        computerUseOpenPrivacySettingsButton: "打开隐私设置",
+        computerUseOpeningSettings: "正在打开设置…",
+        computerUseOpenSettingsTooltip:
+          "打开对应的 macOS 隐私设置页面。保持此面板打开时，Tutti 会自动检查授权状态。",
+        computerUseOpenSettingsFailed: "无法打开系统设置。",
+        computerUseAccessibilitySettingsOpenedInstruction:
+          "辅助使用设置已打开。请在那里启用 CuaDriver，Tutti 会自动检查。",
+        computerUseScreenRecordingSettingsOpenedInstruction:
+          "屏幕录制设置已打开。请在那里启用 CuaDriver，Tutti 会自动检查。",
+        computerUsePrivacySettingsOpenedInstruction:
+          "隐私设置已打开。请在那里启用 CuaDriver 所需权限，Tutti 会自动检查。",
         computerUseAuthorizedTooltip:
           "CuaDriver 已具备屏幕录制与辅助使用权限。",
         computerUsePermissionUnknownTooltip:
@@ -464,9 +507,56 @@ export const zhCN = {
         computerUsePermissionAccessibility: "辅助使用",
         computerUsePermissionScreenRecording: "屏幕录制",
         computerUsePermissionListSeparator: "、",
+        computerUsePermissionDialogTitle: "设置电脑控制",
+        computerUsePermissionDialogDescription:
+          "Tutti 会引导授权流程，macOS 会把权限授予 CuaDriver。",
+        computerUsePermissionDialogRelationshipTitle:
+          "为什么授权给 CuaDriver？",
+        computerUsePermissionDialogRelationshipBody:
+          "Tutti 通过 CuaDriver 来完成截图、点击和键盘输入。接下来 macOS 可能会提示你授权 CuaDriver，这是正常的。",
+        computerUsePermissionDialogIconHint:
+          "打开系统设置后，在权限列表里找到「CuaDriver」，并打开权限开关。",
+        computerUsePermissionDialogRequiredTitle: "需要的权限",
+        computerUsePermissionDialogActionTitle: "当前操作",
+        computerUsePermissionDialogActionReady:
+          "CuaDriver 已具备 Tutti 进行电脑控制所需的权限。",
+        computerUsePermissionDialogAutoCheck:
+          "保持此弹窗打开时，Tutti 会自动检查授权状态。",
+        computerUsePermissionStatusGranted: "已生效",
+        computerUsePermissionStatusMissing: "需要授权",
+        computerUsePermissionStatusUnknown: "未知",
+        computerUsePermissionStatusCaptureUnavailable: "已授权，未生效",
         computerUseStatusInstalled: "已安装",
         computerUseStatusNotInstalled: "未安装",
         computerUseStatusCheckAgain: "重新检查",
+        computerUseDriverRowLabel: "CuaDriver 运行状态",
+        computerUseDriverStatusRunning: "运行中",
+        computerUseDriverStatusNotRunning: "未运行",
+        computerUseStartDriverButton: "启动",
+        computerUseRestartDriverButton: "重启生效",
+        computerUseRestartingDriver: "正在重启 CuaDriver…",
+        computerUseRestartDriverFailed:
+          "重启 CuaDriver 失败。请重试，或手动打开 CuaDriver 应用后再重新检查。",
+        computerUseOpenPaneButton: "打开设置",
+        computerUseStatusCheckFailed: "无法获取权限状态，请重试。",
+        computerUseStatusRetryButton: "重试",
+        computerUseStatusUnchanged: "已重新检查，状态未变化。",
+        computerUseLastCheckedAt: "上次检查 {{time}}",
+        computerUseDoneButton: "完成",
+        computerUseWizardBack: "上一步",
+        computerUseWizardNext: "下一步",
+        computerUseWizardInstallBody:
+          "安装 CuaDriver——负责执行截图、点击和键盘输入的本地驱动。安装不会请求任何权限。",
+        computerUseWizardGrantInstruction:
+          "打开系统设置后，在「{{permission}}」列表里找到「CuaDriver」，并打开权限开关。完成后点「下一步」。",
+        computerUseWizardScreenRecordingKillNote:
+          "打开开关时 macOS 可能提示重新打开 CuaDriver，可以忽略，下一步会自动处理。",
+        computerUseWizardVerifyBody:
+          "完成前面两步授权后，点击「重新检查」确认一切就绪（约 2 秒）。如果某项显示「需要授权」，点它旁边的「去授权」补上即可。",
+        computerUseWizardVerifyChecking: "正在重新检查…",
+        computerUseWizardGrantStepReturn: "去授权",
+        computerUseWizardDoneBody:
+          "电脑控制已就绪，Agent 现在可以操作你的桌面了。",
         browserUseConnectionModeDescription:
           "选择 Agent 执行网页任务时控制哪个浏览器：你电脑上的 Chrome，或由 Tutti 单独启动的浏览器",
         browserUseConnectionModeLabel: "浏览器连接",
@@ -610,6 +700,10 @@ export const zhCN = {
         conversationHistoryClearFailed: "暂时无法清除对话历史。",
         daemonLogLabel: "Daemon 日志",
         desktopLogLabel: "Desktop 日志",
+        enableCursorAgentDescription:
+          "在应用内展示 Cursor Agent。Cursor 支持处于预览阶段，默认关闭。",
+        enableCursorAgentLabel: "启用 Cursor Agent",
+        enableCursorAgentSaveFailed: "暂时无法更新 Cursor Agent 设置。",
         exportLogs: "导出日志",
         exportLogsDialogTitle: "导出日志",
         exportLogsFileType: "Zip 压缩包",
@@ -643,6 +737,13 @@ export const zhCN = {
         openLogsDirectory: "打开日志目录",
         addFileDefaultOpener: "添加",
         removeFileDefaultOpener: "移除 .{{extension}}",
+        releaseChannelDescription:
+          "选择稳定版更新；需要提前验收时可切到预览版。",
+        releaseChannelLabel: "发布渠道",
+        releaseChannelOptions: {
+          rc: "预览版",
+          stable: "稳定版"
+        },
         showAppDeveloperSourcesDescription:
           "在应用中心卡片中展示应用作者和 GitHub 来源。",
         showAppDeveloperSourcesLabel: "展示应用作者与来源",
@@ -697,6 +798,10 @@ export const zhCN = {
         unsaved: "有未保存更改",
         unsupportedFallback: "暂时不支持预览，使用本地软件打开。"
       },
+      filesLaunch: {
+        openFailedDescription: "这个会话原本的工作目录在本机上已经找不到了。",
+        openFailedTitle: "无法打开文件夹"
+      },
       agentProviders: {
         checking: "正在检测本地 CLI 状态...",
         comingSoon: "敬请期待",
@@ -724,8 +829,10 @@ export const zhCN = {
         manageConfigMissing: "未检测到本机配置",
         manageProviderClaudeCode: "Claude Code",
         manageProviderCodex: "Codex",
+        manageProviderCursor: "Cursor",
         manageProviderGemini: "Gemini CLI",
         manageProviderHermes: "Hermes",
+        manageProviderNexight: "Tutti Agent",
         manageProviderOpenClaw: "OpenClaw",
         manageProviderTuttiAgent: "Tutti Agent",
         manageStatusAuthRequired: "需要登录",

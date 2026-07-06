@@ -14,6 +14,7 @@ export type AgentHostManagedToolchainAgent = {
   helperProvider?:
     | "codex"
     | "claude"
+    | "cursor"
     | "gemini"
     | "openclaw"
     | "nexight"
@@ -46,6 +47,16 @@ export const AGENT_HOST_MANAGED_TOOLCHAIN_AGENTS: readonly AgentHostManagedToolc
       agentIds: ["codex"],
       runtimeManaged: true,
       helperProvider: "codex"
+    },
+    {
+      id: "cursor",
+      // i18n-check-ignore: Provider brand name.
+      label: "Cursor",
+      toolIds: ["cursor-cli"],
+      agentIds: ["cursor"],
+      runtimeManaged: true,
+      helperProvider: "cursor",
+      aliases: ["cursor cli", "cursor agent", "cursor-agent"]
     },
     {
       id: "tutti",

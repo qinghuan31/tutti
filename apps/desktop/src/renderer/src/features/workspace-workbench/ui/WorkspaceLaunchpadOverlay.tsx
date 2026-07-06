@@ -12,6 +12,7 @@ import type {
 import {
   buildWorkbenchLaunchpadItems,
   WorkbenchLaunchpadOverlay as SharedWorkbenchLaunchpadOverlay,
+  type WorkbenchLaunchpadAgentDescriptor,
   type WorkbenchLaunchpadItem
 } from "@tutti-os/workbench-launchpad";
 import type {
@@ -33,11 +34,11 @@ import {
   useWorkspaceAppCenterService,
   workspaceAppCenterNodeID
 } from "@renderer/features/workspace-app-center";
+import { useDesktopPreferencesService } from "@renderer/features/desktop-preferences";
 import { useTranslation } from "@renderer/i18n";
 import { useWorkspaceSettingsService } from "./useWorkspaceSettingsService.ts";
 import {
   isWorkspaceAgentGuiComingSoonProvider,
-  resolveWorkspaceAgentGuiLabel,
   workspaceAgentGuiProviders
 } from "../services/workspaceAgentProviderCatalog.ts";
 import {
@@ -86,6 +87,23 @@ export function WorkspaceLaunchpadOverlay({
     () => agentProviderStatusService.getSnapshot()
   );
   const { t } = useTranslation();
+  const { state: desktopPreferencesState } = useDesktopPreferencesService();
+  const hiddenAgentProviders = useMemo<ReadonlySet<WorkspaceAgentProvider>>(
+    () => {
+      const hidden: WorkspaceAgentProvider[] = [];
+      if (!desktopPreferencesState.enableCursorAgent) {
+        hidden.push("cursor");
+      }
+      if (workspaceSettingsState.tuttiAgentSwitchEnabled !== true) {
+        hidden.push("tutti-agent");
+      }
+      return new Set<WorkspaceAgentProvider>(hidden);
+    },
+    [
+      desktopPreferencesState.enableCursorAgent,
+      workspaceSettingsState.tuttiAgentSwitchEnabled
+    ]
+  );
   const wasOpenRef = useRef(false);
   const launchpadAnalytics = useMemo(
     () =>
@@ -112,50 +130,15 @@ export function WorkspaceLaunchpadOverlay({
       ),
     [agentProviderSnapshot.statuses]
   );
-  const launchpadAgentProviders = useMemo(() => workspaceAgentGuiProviders, []);
-
   const items = useMemo(
     () =>
       buildWorkbenchLaunchpadItems<WorkspaceAgentProvider>({
-        agentDescriptors: launchpadAgentProviders.map((provider) => {
-          const status = statusByProvider.get(provider) ?? null;
-          const disabledBySettings =
-            provider === "tutti-agent" &&
-            workspaceSettingsState.tuttiAgentSwitchEnabled !== true;
-          const comingSoon =
-            isWorkspaceAgentGuiComingSoonProvider(provider) ||
-            status?.availability.status === "unsupported";
-          const launchEnabled =
-            !disabledBySettings &&
-            !comingSoon &&
-            status?.availability.status === "ready";
-          return {
-            actions: resolveLaunchpadAgentActions({
-              comingSoon,
-              disabledBySettings,
-              status
-            }),
-            comingSoon,
-            disabledReason: launchEnabled
-              ? undefined
-              : disabledBySettings
-                ? undefined
-                : comingSoon
-                  ? t("workspace.workbenchDesktop.agentProviders.comingSoon")
-                  : t("workspace.workbenchDesktop.launchpad.agentUnavailable"),
-            iconUrl: launchpadDockIcons.agents[provider],
-            label: resolveWorkspaceAgentGuiLabel(provider),
-            launchEnabled,
-            provider,
-            reason: resolveLaunchpadAgentReason(
-              {
-                comingSoon,
-                disabledBySettings,
-                status
-              },
-              t
-            )
-          };
+        agentDescriptors: resolveLaunchpadAgentDescriptors({
+          defaultProvider: agentProviderSnapshot.defaultProvider,
+          hiddenProviders: hiddenAgentProviders,
+          launchpadDockIcons,
+          statusByProvider,
+          t
         }),
         apps: appCenterState.apps
           .filter((app) => shouldShowWorkspaceApp(app.appId) && app.installed)
@@ -211,11 +194,11 @@ export function WorkspaceLaunchpadOverlay({
         ]
       }),
     [
+      agentProviderSnapshot.defaultProvider,
       appCenterState.apps,
-      launchpadAgentProviders,
       launchpadDockIcons,
+      hiddenAgentProviders,
       statusByProvider,
-      workspaceSettingsState.tuttiAgentSwitchEnabled,
       t
     ]
   );
@@ -368,6 +351,111 @@ function resolveLaunchpadAnalyticsItem(
   };
 }
 
+function resolveLaunchpadAgentDescriptors(input: {
+  defaultProvider: WorkspaceAgentProvider | null;
+  hiddenProviders: ReadonlySet<WorkspaceAgentProvider>;
+  launchpadDockIcons: ReturnType<typeof resolveWorkspaceDockIconSet>;
+  statusByProvider: ReadonlyMap<WorkspaceAgentProvider, AgentProviderStatus>;
+  t: WorkspaceLaunchpadTranslate;
+}): readonly WorkbenchLaunchpadAgentDescriptor<WorkspaceAgentProvider>[] {
+  const provider = resolveLaunchpadDefaultAgentProvider({
+    defaultProvider: input.defaultProvider,
+    hiddenProviders: input.hiddenProviders,
+    statusByProvider: input.statusByProvider
+  });
+  return [
+    resolveLaunchpadAgentDescriptor({
+      iconUrl: input.launchpadDockIcons.agentUnified,
+      id: "agent:unified",
+      label: input.t("workspace.workbenchDesktop.nodes.agent"),
+      provider,
+      statusByProvider: input.statusByProvider,
+      t: input.t
+    })
+  ];
+}
+
+function resolveLaunchpadAgentDescriptor(input: {
+  iconUrl: string;
+  id?: string;
+  label: string;
+  provider: WorkspaceAgentProvider;
+  statusByProvider: ReadonlyMap<WorkspaceAgentProvider, AgentProviderStatus>;
+  t: WorkspaceLaunchpadTranslate;
+}): WorkbenchLaunchpadAgentDescriptor<WorkspaceAgentProvider> {
+  const status = input.statusByProvider.get(input.provider) ?? null;
+  const comingSoon =
+    isWorkspaceAgentGuiComingSoonProvider(input.provider) ||
+    status?.availability.status === "unsupported";
+  const launchEnabled = !comingSoon && status?.availability.status === "ready";
+  return {
+    actions: resolveLaunchpadAgentActions({
+      comingSoon,
+      status
+    }),
+    comingSoon,
+    disabledReason: launchEnabled
+      ? undefined
+      : comingSoon
+        ? input.t("workspace.workbenchDesktop.agentProviders.comingSoon")
+        : input.t("workspace.workbenchDesktop.launchpad.agentUnavailable"),
+    iconUrl: input.iconUrl,
+    ...(input.id ? { id: input.id } : {}),
+    label: input.label,
+    launchEnabled,
+    provider: input.provider,
+    reason: resolveLaunchpadAgentReason(
+      {
+        comingSoon,
+        status
+      },
+      input.t
+    )
+  };
+}
+
+function resolveLaunchpadDefaultAgentProvider(input: {
+  defaultProvider: WorkspaceAgentProvider | null;
+  hiddenProviders: ReadonlySet<WorkspaceAgentProvider>;
+  statusByProvider: ReadonlyMap<WorkspaceAgentProvider, AgentProviderStatus>;
+}): WorkspaceAgentProvider {
+  const defaultProvider =
+    isLaunchpadAgentProvider(input.defaultProvider) &&
+    !input.hiddenProviders.has(input.defaultProvider)
+      ? input.defaultProvider
+      : null;
+  if (
+    defaultProvider &&
+    input.statusByProvider.get(defaultProvider)?.availability.status === "ready"
+  ) {
+    return defaultProvider;
+  }
+  const visibleProviders = workspaceAgentGuiProviders.filter(
+    (provider) => !input.hiddenProviders.has(provider)
+  );
+  const readyProvider = visibleProviders.find(
+    (provider) =>
+      input.statusByProvider.get(provider)?.availability.status === "ready"
+  );
+  return (
+    readyProvider ??
+    defaultProvider ??
+    visibleProviders[0] ??
+    workspaceAgentGuiProviders[0]
+  );
+}
+
+function isLaunchpadAgentProvider(
+  provider: WorkspaceAgentProvider | null
+): provider is WorkspaceAgentProvider {
+  return (
+    provider !== null &&
+    workspaceAgentGuiProviders.includes(
+      provider as (typeof workspaceAgentGuiProviders)[number]
+    )
+  );
+}
+
 function resolveLaunchpadNodeItemType(
   typeId: string
 ): WorkspaceLaunchpadAnalyticsItemType {
@@ -389,10 +477,9 @@ function resolveLaunchpadNodeItemType(
 
 function resolveLaunchpadAgentActions(input: {
   comingSoon: boolean;
-  disabledBySettings: boolean;
   status: AgentProviderStatus | null;
 }): { id: string }[] {
-  if (input.comingSoon || input.disabledBySettings) {
+  if (input.comingSoon) {
     return [];
   }
   if (input.status === null) {
@@ -415,14 +502,10 @@ function resolveLaunchpadAgentActions(input: {
 function resolveLaunchpadAgentReason(
   input: {
     comingSoon: boolean;
-    disabledBySettings: boolean;
     status: AgentProviderStatus | null;
   },
   t: WorkspaceLaunchpadTranslate
 ): string | null {
-  if (input.disabledBySettings) {
-    return null;
-  }
   if (input.comingSoon) {
     return t("workspace.workbenchDesktop.agentProviders.comingSoon");
   }

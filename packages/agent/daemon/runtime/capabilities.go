@@ -15,6 +15,11 @@ const (
 	CapabilityInterrupt   = "interrupt"
 	CapabilityBrowserUse  = "browserUse"
 	CapabilityComputerUse = "computerUse"
+	// CapabilityGoalPause marks providers whose goal is a controllable
+	// entity with a real paused state (codex thread goals). Providers
+	// without it (Claude Code: /goal command in, goal_status attachments
+	// out, no pause) render the goal banner without pause/resume controls.
+	CapabilityGoalPause = "goalPause"
 )
 
 // standardACPCapabilities derives the canonical capability list for ACP

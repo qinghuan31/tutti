@@ -8,7 +8,7 @@ import (
 	"net/url"
 	"time"
 
-	"github.com/tutti-os/tutti/packages/agentactivity/daemon/runtimecmd"
+	"github.com/tutti-os/tutti/packages/agent/daemon/runtimecmd"
 	"github.com/tutti-os/tutti/services/tuttid/biz/agentprovider"
 )
 
@@ -178,7 +178,7 @@ func (s Service) probeProviderAPI(ctx context.Context, provider string) *Network
 func (s Service) probeProxy(ctx context.Context) *NetworkProxyStatus {
 	resolve := s.ResolveProxy
 	if resolve == nil {
-		resolve = runtimecmd.HTTPProxyFunc()
+		resolve = runtimecmd.DynamicProxyFunc()
 	}
 	request, err := http.NewRequest(http.MethodHead, officialNPMRegistry, nil)
 	if err != nil {

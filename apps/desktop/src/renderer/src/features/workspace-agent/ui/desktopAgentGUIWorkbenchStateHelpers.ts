@@ -31,6 +31,9 @@ export function resolveDesktopAgentGUIProviderForAgentTarget(
   if (agentTargetId === "local:claude-code") {
     return "claude-code";
   }
+  if (agentTargetId === "local:cursor") {
+    return "cursor";
+  }
   return fallbackProvider;
 }
 
@@ -101,6 +104,9 @@ function desktopAgentComposerDefaultsToComposerOverrides(
   }
   if (defaults.reasoningEffort?.trim()) {
     composerOverrides.reasoningEffort = defaults.reasoningEffort.trim();
+  }
+  if (defaults.speed?.trim()) {
+    composerOverrides.speed = defaults.speed.trim();
   }
   return Object.keys(composerOverrides).length > 0 ? composerOverrides : null;
 }

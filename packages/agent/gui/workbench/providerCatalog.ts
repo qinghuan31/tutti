@@ -4,6 +4,8 @@ export const agentGuiWorkbenchProviders = [
   "claude-code",
   "codex",
   "tutti-agent",
+  "cursor",
+  "nexight",
   "hermes",
   "gemini",
   "openclaw"
@@ -41,6 +43,7 @@ export const agentGuiWorkbenchProviderLabels: Record<
 > = {
   "claude-code": "Claude Code",
   codex: "Codex",
+  cursor: "Cursor",
   gemini: "Gemini CLI",
   hermes: "Hermes Agent",
   nexight: "Nexight",

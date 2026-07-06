@@ -3,7 +3,9 @@ package agentsessionstore
 
 import (
 	"context"
+	"errors"
 	"log/slog"
+	"net"
 	"strings"
 	"sync"
 	"time"
@@ -15,18 +17,83 @@ const (
 	messageMaxPages = 10
 )
 
+// SyncBackoffConfig configures per-session exponential backoff for failed
+// message syncs in the background syncer. After a retryable failure (HTTP 429
+// or 5xx) the session's message sync is skipped until the backoff window
+// elapses; each consecutive failure multiplies the delay by Multiplier up to
+// MaxDelay, and any success resets it. The zero value disables backoff
+// entirely, preserving historical retry-every-tick behavior.
+type SyncBackoffConfig struct {
+	// InitialDelay is the wait after the first retryable failure. A
+	// non-positive value disables backoff.
+	InitialDelay time.Duration
+	// MaxDelay caps the backoff delay. Defaults to InitialDelay when unset.
+	MaxDelay time.Duration
+	// Multiplier scales the delay after each consecutive failure. Values
+	// below 1 are treated as 1 (constant delay).
+	Multiplier float64
+}
+
+// DefaultSyncBackoffConfig returns the recommended backoff configuration:
+// 10s initial delay, 5min cap, doubling per consecutive failure.
+func DefaultSyncBackoffConfig() SyncBackoffConfig {
+	return SyncBackoffConfig{
+		InitialDelay: 10 * time.Second,
+		MaxDelay:     5 * time.Minute,
+		Multiplier:   2.0,
+	}
+}
+
+func (c SyncBackoffConfig) enabled() bool {
+	return c.InitialDelay > 0
+}
+
+func (c SyncBackoffConfig) nextDelay(current time.Duration) time.Duration {
+	if current <= 0 {
+		return c.InitialDelay
+	}
+	multiplier := c.Multiplier
+	if multiplier < 1 {
+		multiplier = 1
+	}
+	next := time.Duration(float64(current) * multiplier)
+	maxDelay := c.MaxDelay
+	if maxDelay <= 0 {
+		maxDelay = c.InitialDelay
+	}
+	if next > maxDelay {
+		next = maxDelay
+	}
+	return next
+}
+
 type sessionSyncer struct {
 	svc      *Store
 	client   ReadRepository
 	triggers chan string
+
+	backoff             SyncBackoffConfig
+	mu                  sync.Mutex
+	messageBackoffUntil map[string]time.Time
+	messageBackoffDelay map[string]time.Duration
+	now                 func() time.Time
 }
 
 func newSessionSyncer(svc *Store, client ReadRepository) *sessionSyncer {
-	return &sessionSyncer{
+	syncer := &sessionSyncer{
 		svc:      svc,
 		client:   client,
 		triggers: make(chan string, 64),
+		now:      time.Now,
 	}
+	if svc != nil {
+		syncer.backoff = svc.syncBackoff
+	}
+	if syncer.backoff.enabled() {
+		syncer.messageBackoffUntil = make(map[string]time.Time)
+		syncer.messageBackoffDelay = make(map[string]time.Duration)
+	}
+	return syncer
 }
 
 func (s *sessionSyncer) run(ctx context.Context) {
@@ -217,6 +284,10 @@ func (s *sessionSyncer) syncSessionMessagePages(ctx context.Context, roomID, age
 	if agentSessionID == "" {
 		return
 	}
+	backoffKey := messageSyncKey(roomID, agentSessionID)
+	if s.messageSyncBackoffActive(backoffKey) {
+		return
+	}
 
 	afterVersion := s.svc.getMessageVersionCursor(roomID, agentSessionID)
 	for page := 0; page < messageMaxPages; page++ {
@@ -229,9 +300,11 @@ func (s *sessionSyncer) syncSessionMessagePages(ctx context.Context, roomID, age
 		})
 		if err != nil {
 			slog.Warn("agent activity message sync failed", "room_id", roomID, "agent_session_id", agentSessionID, "error", err)
+			s.recordMessageSyncError(backoffKey, err)
 			return
 		}
 		if reply == nil {
+			s.clearMessageSyncBackoff(backoffKey)
 			return
 		}
 		s.svc.appendSessionMessages(roomID, agentSessionID, reply.Messages, reply.LatestVersion)
@@ -240,8 +313,88 @@ func (s *sessionSyncer) syncSessionMessagePages(ctx context.Context, roomID, age
 			nextVersion = maxSessionMessageVersion(afterVersion, reply.Messages)
 		}
 		if !reply.HasMore || nextVersion <= afterVersion {
+			s.clearMessageSyncBackoff(backoffKey)
 			return
 		}
 		afterVersion = nextVersion
 	}
+	s.clearMessageSyncBackoff(backoffKey)
+}
+
+func (s *sessionSyncer) messageSyncBackoffActive(key string) bool {
+	if s == nil || !s.backoff.enabled() {
+		return false
+	}
+	now := s.syncerNow()
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	until, ok := s.messageBackoffUntil[key]
+	if !ok {
+		return false
+	}
+	if now.Before(until) {
+		return true
+	}
+	delete(s.messageBackoffUntil, key)
+	return false
+}
+
+func (s *sessionSyncer) recordMessageSyncError(key string, err error) {
+	if s == nil || !s.backoff.enabled() || !isRetryableMessageSyncError(err) {
+		return
+	}
+	now := s.syncerNow()
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.messageBackoffUntil == nil {
+		s.messageBackoffUntil = make(map[string]time.Time)
+	}
+	if s.messageBackoffDelay == nil {
+		s.messageBackoffDelay = make(map[string]time.Duration)
+	}
+	delay := s.messageBackoffDelay[key]
+	if delay <= 0 {
+		delay = s.backoff.InitialDelay
+	}
+	s.messageBackoffUntil[key] = now.Add(delay)
+	s.messageBackoffDelay[key] = s.backoff.nextDelay(delay)
+}
+
+func (s *sessionSyncer) clearMessageSyncBackoff(key string) {
+	if s == nil || !s.backoff.enabled() {
+		return
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	delete(s.messageBackoffUntil, key)
+	delete(s.messageBackoffDelay, key)
+}
+
+func (s *sessionSyncer) syncerNow() time.Time {
+	if s != nil && s.now != nil {
+		return s.now()
+	}
+	return time.Now()
+}
+
+func isRetryableMessageSyncError(err error) bool {
+	var httpErr HTTPError
+	if errors.As(err, &httpErr) {
+		return httpErr.StatusCode == 429 || httpErr.StatusCode >= 500
+	}
+	// Transport-level failures (connection refused, DNS errors, timeouts) are
+	// the most common outage mode and exactly what backoff is meant to
+	// absorb. Deliberate cancellation is not retryable.
+	if errors.Is(err, context.Canceled) {
+		return false
+	}
+	if errors.Is(err, context.DeadlineExceeded) {
+		return true
+	}
+	var netErr net.Error
+	return errors.As(err, &netErr)
+}
+
+func messageSyncKey(roomID, agentSessionID string) string {
+	return strings.TrimSpace(roomID) + "\x00" + strings.TrimSpace(agentSessionID)
 }

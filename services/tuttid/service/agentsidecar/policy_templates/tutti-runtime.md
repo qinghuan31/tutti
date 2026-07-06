@@ -11,12 +11,13 @@ This directory is being used by a Tutti AgentGUI session.
 
 ### Routes
 
-| URI                                                             | Skill            | Fallback CLI Command                                                                       |
-| --------------------------------------------------------------- | ---------------- | ------------------------------------------------------------------------------------------ |
-| `mention://workspace-issue/<issueId>?workspaceId=...`           | `$issue-manager` | `{{CLI_COMMAND}} issue get --issue-id <issue-id> --json`                                   |
-| `mention://workspace-app/<appId>?workspaceId=...`               | `$workspace-app` | match `App id: <appId>` in command guide                                                   |
-| `mention://workspace-reference/<id>?source=...&workspaceId=...` | `$reference`     | `{{CLI_COMMAND}} reference list --source <source> --id <id> [--group-id <groupId>] --json` |
-| `mention://agent-session/<sessionId>?workspaceId=...`           | `$tutti-cli`     | `{{CLI_COMMAND}} agent session-summary --session-id <session-id> --json`                   |
+| URI | Skill | Fallback CLI Command |
+| --- | --- | --- |
+| `mention://workspace-issue/<issueId>?workspaceId=...` | `$issue-manager` | `{{CLI_COMMAND}} issue get --issue-id <issue-id> --json` |
+| `mention://workspace-app/<appId>?workspaceId=...` | `$workspace-app` | match `App id: <appId>` in command guide |
+| `mention://workspace-reference/<id>?source=...&workspaceId=...` | `$reference` | `{{CLI_COMMAND}} reference list --source <source> --id <id> [--group-id <groupId>] --json` |
+| `mention://agent-session/<sessionId>?workspaceId=...` | `$tutti-cli` | `{{CLI_COMMAND}} agent session-summary --session-id <session-id> --json` |
+| `mention://agent-target/<targetId>?workspaceId=...` | `$tutti-cli` | use `agent`/`codex`/`claude` from intent; not launch-only |
 
 ### Rules
 

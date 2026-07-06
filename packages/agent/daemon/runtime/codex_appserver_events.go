@@ -9,8 +9,8 @@ import (
 	"log/slog"
 	"strings"
 
-	activityshared "github.com/tutti-os/tutti/packages/agentactivity/daemon/activity/events"
-	"github.com/tutti-os/tutti/packages/agentactivity/daemon/runtime/codexproto"
+	activityshared "github.com/tutti-os/tutti/packages/agent/daemon/activity/events"
+	"github.com/tutti-os/tutti/packages/agent/daemon/runtime/codexproto"
 )
 
 // handleAppServerMessage routes codex app-server server->client traffic.
@@ -63,17 +63,36 @@ func (a *CodexAppServerAdapter) handleAppServerMessage(
 	return reduction.Events, nil
 }
 
-// appServerNoticeItems maps review/compaction thread items to a one-line
-// system-notice banner. emitOnCompleted selects which lifecycle event carries
-// the banner: enteredReviewMode rides item/started (it always fires), while
-// exitedReviewMode and contextCompaction ride the authoritative item/completed.
+// appServerNoticeItems maps review thread items to a one-line system-notice
+// banner. emitOnCompleted selects which lifecycle event carries the banner:
+// enteredReviewMode rides item/started (it always fires), while
+// exitedReviewMode rides the authoritative item/completed.
 var appServerNoticeItems = map[string]struct {
 	message         string
 	emitOnCompleted bool
 }{
 	"enteredReviewMode": {message: "Code review started.", emitOnCompleted: false},
 	"exitedReviewMode":  {message: "Code review finished.", emitOnCompleted: true},
-	"contextCompaction": {message: "Context compacted.", emitOnCompleted: true},
+}
+
+const (
+	appServerCompactingContextTitle     = "Compacting context."
+	appServerContextCompactedTitle      = "Context compacted."
+	appServerCompactionInterruptedTitle = "Context compaction interrupted."
+)
+
+// appServerCompactionNoticeEvent emits the compaction banner for both item
+// lifecycle events. Both banners share one messageId keyed to the thread item
+// so the "Context compacted." notice replaces the in-progress "Compacting
+// context." notice in place instead of appending a second transcript row.
+func appServerCompactionNoticeEvent(session Session, turnID string, messageID string, completed bool) activityshared.Event {
+	title := appServerCompactingContextTitle
+	if completed {
+		title = appServerContextCompactedTitle
+	}
+	return appServerSystemNoticeEvent(session, turnID, "system_notice", title, "", map[string]any{
+		"messageId": messageID,
+	})
 }
 
 func (*CodexAppServerAdapter) appServerItemEvents(
@@ -88,12 +107,32 @@ func (*CodexAppServerAdapter) appServerItemEvents(
 	}
 	itemType := asString(item["type"])
 	// Review/compaction items stream both item/started and item/completed.
-	// Gate each banner to a single lifecycle event so the GUI shows it once.
+	// Gate each review banner to a single lifecycle event so the GUI shows it
+	// once; compaction emits on both so the GUI can show live progress.
 	if notice, ok := appServerNoticeItems[itemType]; ok {
 		if notice.emitOnCompleted != completed {
 			return nil
 		}
 		return []activityshared.Event{appServerSystemNoticeEvent(session, turnID, "system_notice", notice.message, "")}
+	}
+	if itemType == "contextCompaction" {
+		// appServerSlashCompact emits the "Compacting context." banner eagerly
+		// (before this notification can even arrive) and tracks its messageId
+		// on the normalizer up front so the transcript row exists even if Codex
+		// app-server never streams item/started at all. When that's already
+		// the case, reuse the pending messageId instead of deriving a new one
+		// from the item id: otherwise item/started would append a second,
+		// unrelated banner row rather than confirming the one already shown.
+		messageID := normalizer.pendingCompactionMessageID
+		alreadyStarted := messageID != ""
+		if messageID == "" {
+			messageID = "compaction:" + firstNonEmpty(asString(item["id"]), turnID)
+		}
+		normalizer.TrackCompactionNotice(messageID, completed)
+		if !completed && alreadyStarted {
+			return nil
+		}
+		return []activityshared.Event{appServerCompactionNoticeEvent(session, turnID, messageID, completed)}
 	}
 	switch itemType {
 	case "agentMessage":
@@ -931,17 +970,31 @@ func (a *CodexAppServerAdapter) applyAccountUpdate(agentSessionID string, params
 	}
 }
 
-func (a *CodexAppServerAdapter) applyGoalUpdate(agentSessionID string, goal map[string]any) {
+// applyGoalUpdate stores the latest goal snapshot and reports the status
+// transition so callers can emit user-visible notices when the goal stops
+// progressing (paused/blocked/usageLimited/budgetLimited).
+func (a *CodexAppServerAdapter) applyGoalUpdate(agentSessionID string, goal map[string]any) (oldStatus, newStatus string, statusChanged bool) {
 	if len(goal) == 0 {
-		return
+		return "", "", false
 	}
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	appSession := a.sessions[strings.TrimSpace(agentSessionID)]
 	if appSession == nil {
-		return
+		return "", "", false
 	}
+	oldStatus = strings.TrimSpace(asString(appSession.goal["status"]))
 	appSession.goal = clonePayload(goal)
+	newStatus = strings.TrimSpace(asString(appSession.goal["status"]))
+	if oldStatus != newStatus {
+		slog.Info("agent session app-server goal status changed",
+			"event", "agent_session.app_server.goal.status_changed",
+			"agent_session_id", agentSessionID,
+			"old_status", oldStatus,
+			"new_status", newStatus,
+		)
+	}
+	return oldStatus, newStatus, oldStatus != newStatus
 }
 
 func (a *CodexAppServerAdapter) applyGoalClear(agentSessionID string) {
@@ -950,6 +1003,13 @@ func (a *CodexAppServerAdapter) applyGoalClear(agentSessionID string) {
 	appSession := a.sessions[strings.TrimSpace(agentSessionID)]
 	if appSession == nil {
 		return
+	}
+	if appSession.goal != nil {
+		slog.Info("agent session app-server goal cleared",
+			"event", "agent_session.app_server.goal.cleared",
+			"agent_session_id", agentSessionID,
+			"old_status", strings.TrimSpace(asString(appSession.goal["status"])),
+		)
 	}
 	appSession.goal = nil
 }
@@ -1004,9 +1064,13 @@ func appServerSystemNoticeEvent(session Session, turnID string, noticeKind strin
 	if title != "" {
 		update["title"] = title
 	}
-	if title == "Context compacted." {
+	if title == appServerContextCompactedTitle {
 		update["noticeCommand"] = "compact"
 		update["noticeCommandStatus"] = "completed"
+	}
+	if title == appServerCompactingContextTitle {
+		update["noticeCommand"] = "compact"
+		update["noticeCommandStatus"] = "inProgress"
 	}
 	if detail != "" {
 		update["detail"] = detail
@@ -1073,18 +1137,29 @@ func (a *CodexAppServerAdapter) respondAppServerServerRequest(
 	selection, err := pending.wait(ctx)
 	if err != nil {
 		resolved := acpPermissionResolvedEvents(session, turnID, pending, pendingACPResponse{}, err)
+		// The shared error path emits only call.failed; append the
+		// back-to-running turn.updated so the lifecycle cannot strand in
+		// waiting_approval when a request is rejected or canceled.
+		resolved = append(resolved, newTurnActivityEvent(session, EventTurnUpdated, turnID, SessionStatusWorking, "", "", map[string]any{
+			"phase":     string(activityshared.TurnPhaseWorking),
+			"requestId": pending.requestID,
+		}))
 		if emit != nil {
 			emit(resolved)
 		}
 		_ = client.Respond(ctx, message.ID, nil, &acpError{Code: -32000, Message: err.Error()})
 		return
 	}
+	if selection.outOfBandResolved {
+		resolved := acpPermissionOutOfBandResolvedEvents(session, turnID, pending)
+		if emit != nil {
+			emit(resolved)
+		}
+		return
+	}
 	resolved := acpPermissionResolvedEvents(session, turnID, pending, selection, nil)
 	if emit != nil {
 		emit(resolved)
-	}
-	if selection.outOfBandResolved {
-		return
 	}
 	result, responseErr := appServerApprovalResult(message.Method, params, selection)
 	if err := client.Respond(ctx, message.ID, result, responseErr); err != nil {
@@ -1684,6 +1759,27 @@ func appServerGoalNoticeEvent(session Session, turnID string, method string, res
 	}
 }
 
+// appServerGoalStatusNoticeEvent describes a goal status transition into a
+// non-progressing state the user did not ask for, so they learn why the goal
+// stopped advancing. Deliberate transitions (paused via Stop or the banner)
+// emit nothing: the banner already shows the state and repeated toggles would
+// spam the transcript.
+func appServerGoalStatusNoticeEvent(session Session, turnID string, newStatus string) *activityshared.Event {
+	title := ""
+	switch newStatus {
+	case "blocked":
+		title = "Goal blocked — the agent cannot continue without help."
+	case "usageLimited":
+		title = "Goal stopped: usage limit reached."
+	case "budgetLimited":
+		title = "Goal stopped: token budget exhausted."
+	default:
+		return nil
+	}
+	event := appServerSystemNoticeEvent(session, turnID, "system_notice", title, "")
+	return &event
+}
+
 func appServerGoalStatusDetail(goal map[string]any) string {
 	status := strings.TrimSpace(asString(goal["status"]))
 	if status == "" {
@@ -1892,6 +1988,7 @@ func codexAppServerCapabilities(planMode bool) []string {
 		"steer",
 		"review",
 		"goal",
+		CapabilityGoalPause,
 		"rollback",
 		"fork",
 		"perTurnModelOverride",

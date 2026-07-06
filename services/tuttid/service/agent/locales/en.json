@@ -32,6 +32,20 @@
         "label": "Ask for approval"
       }
     },
+    "cursor": {
+      "read-only": {
+        "label": "Read-only",
+        "description": "Cursor plans and reads only. Proposes changes without making them."
+      },
+      "agent": {
+        "label": "Ask for approval",
+        "description": "Full tool access. Cursor asks before running commands or other risky actions."
+      },
+      "full-access": {
+        "label": "Full access",
+        "description": "Runs commands without asking, unless explicitly denied by your Cursor permission rules."
+      }
+    },
     "gemini": {
       "yolo": {
         "description": "This provider does not support changing permission mode here.",

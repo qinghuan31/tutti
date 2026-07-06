@@ -2,12 +2,19 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { describe, expect, it, vi } from "vitest";
 import { fireEvent, render, screen } from "@testing-library/react";
-import { createElement, isValidElement, type ReactElement } from "react";
+import {
+  Children,
+  createElement,
+  isValidElement,
+  type ReactElement,
+  type ReactNode
+} from "react";
 import { agentGuiDockIconUrls } from "../dockIcons.ts";
 import { createLocalAgentGUIProviderTarget } from "../providerTargets.ts";
 import {
   AGENT_GUI_WORKBENCH_NEW_CONVERSATION_EVENT,
   agentGuiWorkbenchDefaultCopy,
+  agentGuiWorkbenchProviderRailWidthPx,
   buildAgentGuiDockEntries,
   agentGuiWorkbenchNewWindowCascadeOffset,
   createAgentGuiWorkbenchContribution,
@@ -15,16 +22,22 @@ import {
   resolveAgentGuiWorkbenchContributionCopy
 } from "./contribution.ts";
 import {
-  agentGuiWorkbenchDockEntryId,
+  agentGuiWorkbenchPrefillPromptActivationType,
   agentGuiWorkbenchUnifiedDockEntryId,
   agentGuiWorkbenchTypeId
 } from "./launch.ts";
+import type { AgentGuiWorkbenchState } from "./types.ts";
 
-function readDockEntryIconSrc(icon: unknown): string | undefined {
+function readDockEntryIconImageSrcs(icon: ReactNode): string[] {
   if (!isValidElement(icon)) {
-    return undefined;
+    return [];
   }
-  return (icon as ReactElement<{ src?: string }>).props.src;
+  const props = (icon as ReactElement<{ children?: ReactNode; src?: string }>)
+    .props;
+  return [
+    ...(typeof props.src === "string" ? [props.src] : []),
+    ...Children.toArray(props.children).flatMap(readDockEntryIconImageSrcs)
+  ];
 }
 
 function createTestAgentGuiWorkbenchContribution(
@@ -64,38 +77,11 @@ const testLaunchLayout = {
 };
 
 describe("agent GUI workbench contribution copy", () => {
-  it("builds legacy split dock entries for the current provider dock ids", () => {
-    const entries = buildAgentGuiDockEntries({
-      layout: "legacySplit",
-      providerAvailability: {},
-      targets: [
-        createLocalAgentGUIProviderTarget("codex"),
-        createLocalAgentGUIProviderTarget("claude-code")
-      ]
-    });
-
-    expect(entries.map((entry) => entry.id)).toEqual([
-      "agent-gui:claude-code",
-      "agent-gui",
-      "agent-gui:tutti-agent",
-      "agent-gui:hermes",
-      "agent-gui:gemini",
-      "agent-gui:openclaw"
-    ]);
-    expect(entries.find((entry) => entry.id === "agent-gui")?.visibility).toBe(
-      "always"
-    );
-    expect(
-      entries.find((entry) => entry.id === "agent-gui:claude-code")?.visibility
-    ).toBe("always");
-  });
-
   it("builds one unified dock entry with the selected default target payload", () => {
     const claudeTarget = createLocalAgentGUIProviderTarget("claude-code");
     const entries = buildAgentGuiDockEntries({
       defaultProvider: "codex",
       label: "Agent",
-      layout: "unified",
       providerAvailability: {
         "claude-code": true,
         codex: false
@@ -114,14 +100,10 @@ describe("agent GUI workbench contribution copy", () => {
     });
   });
 
-  it("uses the unified dock icon URL for unified dock entries", () => {
+  it("uses the unified icon URL for unified dock entries", () => {
     const entries = buildAgentGuiDockEntries({
       defaultProvider: "codex",
-      dockIconUrls: {
-        codex: "app://icons/codex.png"
-      },
       label: "Agent",
-      layout: "unified",
       providerAvailability: {
         codex: true
       },
@@ -130,9 +112,15 @@ describe("agent GUI workbench contribution copy", () => {
     });
 
     expect(entries).toHaveLength(1);
-    expect(readDockEntryIconSrc(entries[0]?.icon)).toBe(
+    expect(entries[0]?.icon).toMatchObject({
+      props: {
+        className:
+          "agent-gui-workbench-dock-icon agent-gui-workbench-dock-icon--single"
+      }
+    });
+    expect(readDockEntryIconImageSrcs(entries[0]?.icon)).toEqual([
       "app://icons/agent-unified.png"
-    );
+    ]);
     expect(entries[0]?.launchPayload).toMatchObject({
       provider: "codex"
     });
@@ -153,7 +141,6 @@ describe("agent GUI workbench contribution copy", () => {
     const entries = buildAgentGuiDockEntries({
       defaultProvider: "codex",
       label: "Agent",
-      layout: "unified",
       providerAvailability: {
         "claude-code": true,
         codex: false
@@ -183,7 +170,6 @@ describe("agent GUI workbench contribution copy", () => {
     const entries = buildAgentGuiDockEntries({
       defaultProvider: "codex",
       label: "Agent",
-      layout: "unified",
       providerAvailability: {
         codex: true
       },
@@ -200,7 +186,6 @@ describe("agent GUI workbench contribution copy", () => {
 
   it("matches unified dock nodes across provider-specific and historical agent GUI identities", () => {
     const [entry] = buildAgentGuiDockEntries({
-      layout: "unified",
       providerAvailability: {},
       targets: []
     });
@@ -242,7 +227,6 @@ describe("agent GUI workbench contribution copy", () => {
 
   it("keeps unified launch payload provider priority when opening a session", () => {
     const contribution = createTestAgentGuiWorkbenchContribution({
-      dockLayout: "unified",
       renderBody: () => null,
       workspaceId: "workspace-1"
     });
@@ -273,8 +257,72 @@ describe("agent GUI workbench contribution copy", () => {
         type: "agent-gui:open-session"
       },
       dockEntryId: agentGuiWorkbenchUnifiedDockEntryId(),
-      instanceId: "agent-gui:claude-code:session:session-claude-1",
       title: "Agent"
+    });
+    expect(launchResult?.instanceId).toContain("agent-gui:claude-code:panel:");
+  });
+
+  it("clears stale target state when opening a session without a target payload", () => {
+    const contribution = createTestAgentGuiWorkbenchContribution({
+      renderBody: () => null,
+      workspaceId: "workspace-1"
+    });
+    const baseRequest = {
+      dockEntryId: agentGuiWorkbenchUnifiedDockEntryId(),
+      layoutConstraints: testLaunchLayout.layoutConstraints,
+      reason: "host" as const,
+      surfaceSize: testLaunchLayout.surfaceSize,
+      typeId: agentGuiWorkbenchTypeId,
+      workspaceId: "workspace-1"
+    };
+
+    const seededLaunch = contribution.onLaunchRequest?.({
+      ...baseRequest,
+      payload: {
+        agentSessionId: "session-codex-1",
+        agentTargetId: "local:claude-code",
+        provider: "codex"
+      }
+    }) as
+      | {
+          instanceId: string;
+        }
+      | null
+      | undefined;
+
+    expect(
+      contribution.externalStateSource?.getSnapshotNodeState?.({
+        instanceId: seededLaunch?.instanceId ?? "",
+        typeId: agentGuiWorkbenchTypeId
+      } as never)
+    ).toMatchObject({
+      agentTargetId: "local:claude-code",
+      lastActiveAgentSessionId: "session-codex-1"
+    });
+
+    const relaunch = contribution.onLaunchRequest?.({
+      ...baseRequest,
+      payload: {
+        agentSessionId: "session-codex-1",
+        provider: "codex"
+      }
+    }) as
+      | {
+          instanceId: string;
+        }
+      | null
+      | undefined;
+
+    expect(relaunch?.instanceId).toBe(seededLaunch?.instanceId);
+    expect(
+      contribution.externalStateSource?.getSnapshotNodeState?.({
+        instanceId: relaunch?.instanceId ?? "",
+        typeId: agentGuiWorkbenchTypeId
+      } as never)
+    ).toEqual({
+      conversationRailCollapsed: false,
+      conversationRailWidthPx: null,
+      lastActiveAgentSessionId: "session-codex-1"
     });
   });
 
@@ -282,7 +330,6 @@ describe("agent GUI workbench contribution copy", () => {
     const claudeTarget = createLocalAgentGUIProviderTarget("claude-code");
     const contribution = createTestAgentGuiWorkbenchContribution({
       defaultProvider: "codex",
-      dockLayout: "unified",
       providerAvailability: {},
       providerTargets: [
         createLocalAgentGUIProviderTarget("codex"),
@@ -339,7 +386,6 @@ describe("agent GUI workbench contribution copy", () => {
     const claudeTarget = createLocalAgentGUIProviderTarget("claude-code");
     const contribution = createTestAgentGuiWorkbenchContribution({
       defaultProviderTargetId: claudeTarget.targetId,
-      dockLayout: "unified",
       providerTargets: [
         createLocalAgentGUIProviderTarget("codex"),
         claudeTarget
@@ -386,7 +432,6 @@ describe("agent GUI workbench contribution copy", () => {
 
   it("does not seed fallback target state while provider targets are loading", () => {
     const contribution = createTestAgentGuiWorkbenchContribution({
-      dockLayout: "unified",
       providerTargets: [],
       providerTargetsLoading: true,
       renderBody: () => null,
@@ -423,7 +468,6 @@ describe("agent GUI workbench contribution copy", () => {
 
   it("does not seed fallback target state when provider targets are explicitly empty", () => {
     const contribution = createTestAgentGuiWorkbenchContribution({
-      dockLayout: "unified",
       providerTargets: [],
       renderBody: () => null,
       workspaceId: "workspace-1"
@@ -489,13 +533,16 @@ describe("agent GUI workbench contribution copy", () => {
       workspaceId: "workspace-1"
     });
 
-    const codexDockEntry = contribution.dockEntries?.find(
-      (entry) => entry.id === agentGuiWorkbenchDockEntryId("codex")
+    const dockEntry = contribution.dockEntries?.find(
+      (entry) => entry.id === agentGuiWorkbenchUnifiedDockEntryId()
     );
 
-    expect(readDockEntryIconSrc(codexDockEntry?.icon)).toBe(
-      agentGuiDockIconUrls.codex
-    );
+    expect(readDockEntryIconImageSrcs(dockEntry?.icon)).toEqual([
+      agentGuiDockIconUrls.codex,
+      agentGuiDockIconUrls["claude-code"],
+      agentGuiDockIconUrls.nexight,
+      agentGuiDockIconUrls.hermes
+    ]);
   });
 
   it("lets hosts override packaged dock icons explicitly", () => {
@@ -507,22 +554,19 @@ describe("agent GUI workbench contribution copy", () => {
       workspaceId: "workspace-1"
     });
 
-    const codexDockEntry = contribution.dockEntries?.find(
-      (entry) => entry.id === agentGuiWorkbenchDockEntryId("codex")
-    );
-    const geminiDockEntry = contribution.dockEntries?.find(
-      (entry) => entry.id === agentGuiWorkbenchDockEntryId("gemini")
+    const dockEntry = contribution.dockEntries?.find(
+      (entry) => entry.id === agentGuiWorkbenchUnifiedDockEntryId()
     );
 
-    expect(readDockEntryIconSrc(codexDockEntry?.icon)).toBe(
-      "app://icons/codex.png"
-    );
-    expect(readDockEntryIconSrc(geminiDockEntry?.icon)).toBe(
-      agentGuiDockIconUrls.gemini
-    );
+    expect(readDockEntryIconImageSrcs(dockEntry?.icon)).toEqual([
+      "app://icons/codex.png",
+      agentGuiDockIconUrls["claude-code"],
+      agentGuiDockIconUrls.nexight,
+      agentGuiDockIconUrls.hermes
+    ]);
   });
 
-  it("uses browser-loadable packaged icons in the workbench header", () => {
+  it("renders the left agent window title while the rail is expanded", () => {
     const contribution = createTestAgentGuiWorkbenchContribution({
       dockIconUrls: {
         codex: "tutti-asset://agent/codex.png"
@@ -549,7 +593,7 @@ describe("agent GUI workbench contribution copy", () => {
           displayMode: "floating",
           frame: { height: 560, width: 1040, x: 0, y: 0 },
           id: "agent-gui-node-1",
-          title: "Codex"
+          title: "Agent"
         },
         surfaceSize: { height: 800, width: 1200 },
         windowActions: {
@@ -563,16 +607,56 @@ describe("agent GUI workbench contribution copy", () => {
       } as never) ?? null
     );
 
-    const headerIcon = screen.getByText("Codex")
-      .previousElementSibling as HTMLImageElement | null;
-    expect(headerIcon).toHaveAttribute("src", agentGuiDockIconUrls.codex);
-    expect(headerIcon).not.toHaveAttribute(
-      "src",
-      "tutti-asset://agent/codex.png"
+    expect(screen.getByText("Agent")).toHaveClass(
+      "agent-gui-workbench-header__agent-name"
+    );
+    expect(screen.queryByText("Codex")).toBeNull();
+    expect(screen.queryByTestId("agent-gui-window-session-icon")).toBeNull();
+  });
+
+  it("uses prefill activation provider for handoff body rendering", () => {
+    const renderBody = vi.fn(() => null);
+    const contribution = createTestAgentGuiWorkbenchContribution({
+      renderBody,
+      workspaceId: "workspace-1"
+    });
+
+    contribution.nodes?.[0]?.renderBody?.({
+      activation: {
+        payload: {
+          agentTargetId: "local:codex",
+          draftPrompt: "Continue from this session",
+          provider: "codex"
+        },
+        sequence: 12,
+        type: agentGuiWorkbenchPrefillPromptActivationType
+      },
+      externalNodeState: null,
+      externalWorkspaceState: null,
+      instanceId: "agent-gui:claude-code:panel:handoff-source",
+      instanceKey: null,
+      node: {
+        data: {
+          runtimeNodeState: null
+        },
+        displayMode: "floating",
+        frame: { height: 560, width: 1040, x: 0, y: 0 },
+        id: "agent-gui-node-1",
+        title: "Agent"
+      }
+    } as Parameters<
+      NonNullable<(typeof contribution.nodes)[number]["renderBody"]>
+    >[0]);
+
+    expect(renderBody).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        provider: "codex"
+      })
     );
   });
 
-  it("opens at the default width and 70 percent height when the workbench area can fit the default frame", () => {
+  it("opens at 80 percent width and 90 percent height of the visible workbench area", () => {
     const frame = resolveAgentGuiWorkbenchDefaultLaunchFrame({
       frame: { height: 560, width: 1040, x: 140, y: 48 },
       request: {
@@ -595,14 +679,14 @@ describe("agent GUI workbench contribution copy", () => {
     });
 
     expect(frame).toEqual({
-      height: 538,
-      width: 1040,
-      x: 140,
-      y: 48
+      height: 692,
+      width: 1152,
+      x: 144,
+      y: 91
     });
   });
 
-  it("opens at 90 percent of the visible workbench area when the window cannot fit the default frame", () => {
+  it("keeps the 80 percent width on compact visible workbench areas", () => {
     const frame = resolveAgentGuiWorkbenchDefaultLaunchFrame({
       frame: { height: 560, width: 1040, x: 140, y: 48 },
       request: {
@@ -626,8 +710,8 @@ describe("agent GUI workbench contribution copy", () => {
 
     expect(frame).toEqual({
       height: 512,
-      width: 882,
-      x: 49,
+      width: 784,
+      x: 98,
       y: 81
     });
   });
@@ -656,13 +740,13 @@ describe("agent GUI workbench contribution copy", () => {
 
     expect(frame).toEqual({
       height: 554,
-      width: 1040,
-      x: 200,
+      width: 1152,
+      x: 144,
       y: 83
     });
   });
 
-  it("preserves the 90 percent visible-area frame during compact launches", () => {
+  it("preserves the visible-area frame during compact launches", () => {
     const contribution = createTestAgentGuiWorkbenchContribution({
       renderBody: () => null,
       workspaceId: "workspace-1"
@@ -693,8 +777,8 @@ describe("agent GUI workbench contribution copy", () => {
     expect(launchResult).toMatchObject({
       defaultFrame: {
         height: 512,
-        width: 882,
-        x: 49,
+        width: 784,
+        x: 98,
         y: 81
       },
       framePolicy: "absolute"
@@ -743,9 +827,7 @@ describe("agent GUI workbench contribution copy", () => {
       }
     });
 
-    expect(existingLaunch?.instanceId).toBe(
-      "agent-gui:codex:session:session-1"
-    );
+    expect(existingLaunch?.instanceId).toContain("agent-gui:codex:panel:");
     expect(newWindowLaunch?.instanceId).toContain("agent-gui:codex:panel:");
     expect(newWindowLaunch?.instanceId).not.toBe(existingLaunch?.instanceId);
     expect(existingLaunch?.cascadeOffset).toBeUndefined();
@@ -758,6 +840,103 @@ describe("agent GUI workbench contribution copy", () => {
       },
       type: "agent-gui:open-session"
     });
+  });
+
+  it("preserves the frame of an already-open session window when re-launched (e.g. from a completion notification)", async () => {
+    const contribution = createTestAgentGuiWorkbenchContribution({
+      renderBody: () => null,
+      workspaceId: "workspace-1"
+    });
+    const baseRequest = {
+      layoutConstraints: {
+        minHeight: 160,
+        minWidth: 280,
+        safeArea: {
+          bottom: 79,
+          left: 0,
+          right: 0,
+          top: 52
+        },
+        surfacePadding: 0
+      },
+      reason: "host" as const,
+      surfaceSize: {
+        height: 900,
+        width: 1440
+      },
+      typeId: "agent-gui",
+      workspaceId: "workspace-1"
+    };
+    const payload = {
+      agentSessionId: "session-1",
+      provider: "codex"
+    };
+
+    const firstLaunch = await contribution.onLaunchRequest?.({
+      ...baseRequest,
+      payload
+    });
+    const relaunch = await contribution.onLaunchRequest?.({
+      ...baseRequest,
+      payload
+    });
+
+    expect(firstLaunch?.instanceId).toContain("agent-gui:codex:panel:");
+    expect(relaunch?.instanceId).toBe(firstLaunch?.instanceId);
+    expect(firstLaunch?.preserveExistingNodeFrame).not.toBe(true);
+    expect(relaunch?.preserveExistingNodeFrame).toBe(true);
+  });
+
+  it("does not treat a drifted session-keyed window as the requested session", async () => {
+    let rememberState: ((state: AgentGuiWorkbenchState) => void) | null = null;
+    const contribution = createTestAgentGuiWorkbenchContribution({
+      renderBody: (_context, helpers) => {
+        rememberState = helpers.onStateChange;
+        return null;
+      },
+      workspaceId: "workspace-1"
+    });
+
+    contribution.nodes?.[0]?.renderBody?.({
+      activation: null,
+      externalNodeState: null,
+      externalWorkspaceState: null,
+      instanceId: "agent-gui:codex:session:session-1",
+      instanceKey: null,
+      node: {
+        data: {
+          runtimeNodeState: null
+        },
+        displayMode: "floating",
+        frame: { height: 560, width: 1040, x: 0, y: 0 },
+        id: "legacy-session-node",
+        title: "Agent"
+      }
+    } as Parameters<
+      NonNullable<(typeof contribution.nodes)[number]["renderBody"]>
+    >[0]);
+    expect(rememberState).not.toBeNull();
+    (rememberState as unknown as (state: AgentGuiWorkbenchState) => void)({
+      conversationRailCollapsed: false,
+      conversationRailWidthPx: null,
+      lastActiveAgentSessionId: "session-2"
+    });
+
+    const relaunch = await contribution.onLaunchRequest?.({
+      layoutConstraints: testLaunchLayout.layoutConstraints,
+      payload: {
+        agentSessionId: "session-1",
+        provider: "codex"
+      },
+      reason: "host",
+      surfaceSize: testLaunchLayout.surfaceSize,
+      typeId: "agent-gui",
+      workspaceId: "workspace-1"
+    });
+
+    expect(relaunch?.instanceId).not.toBe("agent-gui:codex:session:session-1");
+    expect(relaunch?.instanceId).toContain("agent-gui:codex:panel:");
+    expect(relaunch?.preserveExistingNodeFrame).not.toBe(true);
   });
 
   it("keeps compact new-window session launches on the cascade policy", async () => {
@@ -796,8 +975,8 @@ describe("agent GUI workbench contribution copy", () => {
       cascadeOffset: agentGuiWorkbenchNewWindowCascadeOffset,
       defaultFrame: {
         height: 512,
-        width: 882,
-        x: 49,
+        width: 784,
+        x: 98,
         y: 81
       },
       framePolicy: "cascade-same-type-centered"
@@ -810,7 +989,7 @@ describe("agent GUI workbench contribution copy", () => {
       workspaceId: "workspace-1"
     });
     const dockEntry = contribution.dockEntries?.find(
-      (entry) => entry.id === agentGuiWorkbenchTypeId
+      (entry) => entry.id === agentGuiWorkbenchUnifiedDockEntryId()
     );
     expect(dockEntry).toBeDefined();
 
@@ -851,7 +1030,7 @@ describe("agent GUI workbench contribution copy", () => {
       workspaceId: "workspace-1"
     });
     const dockEntry = contribution.dockEntries?.find(
-      (entry) => entry.id === agentGuiWorkbenchTypeId
+      (entry) => entry.id === agentGuiWorkbenchUnifiedDockEntryId()
     );
     expect(dockEntry).toBeDefined();
 
@@ -1004,12 +1183,15 @@ describe("agent GUI workbench contribution copy", () => {
     });
   });
 
-  it("keeps the app title separate from the active session title when collapsed", () => {
+  it("shows the active session icon and title when the rail is collapsed", () => {
     const contribution = createTestAgentGuiWorkbenchContribution({
       renderBody: () => null,
-      resolveDockPopupTitle: (state) =>
+      resolveDockPopupIdentity: (state) =>
         state?.lastActiveAgentSessionId === "session-1"
-          ? "Current session title"
+          ? {
+              iconUrl: "tutti-asset://agent/codex-session.png",
+              title: null
+            }
           : null,
       workspaceId: "workspace-1"
     });
@@ -1026,7 +1208,8 @@ describe("agent GUI workbench contribution copy", () => {
         dragHandleProps: {},
         externalNodeState: {
           conversationRailCollapsed: true,
-          lastActiveAgentSessionId: "session-1"
+          lastActiveAgentSessionId: "session-1",
+          lastActiveConversationTitle: "Current session title"
         },
         externalWorkspaceState: null,
         instanceId: "agent-gui:codex:panel:test-1",
@@ -1070,12 +1253,9 @@ describe("agent GUI workbench contribution copy", () => {
       "data-agent-gui-workbench-header-collapsed",
       "true"
     );
-    expect(primary).toContainElement(screen.getByText("Codex"));
-    expect(screen.getByTestId("agent-gui-window-title-icon")).toHaveAttribute(
-      "src",
-      agentGuiDockIconUrls.codex
-    );
-    expect(screen.getByText("Codex")).toBeInTheDocument();
+    expect(primary).not.toHaveTextContent("Agent");
+    expect(screen.queryByText("Agent")).toBeNull();
+    expect(screen.queryByText("Codex")).toBeNull();
     expect(toggleButton).toHaveClass("agent-gui-workbench-header__icon-button");
     expect(toggleButton).toHaveClass("agent-gui-workbench-header__rail-toggle");
     expect(toggleButton).toHaveAttribute("data-size", "icon-sm");
@@ -1093,6 +1273,10 @@ describe("agent GUI workbench contribution copy", () => {
       .getByText("Current session title")
       .closest(".agent-gui-workbench-header__session-title");
     expect(collapsedSessionTitle).not.toBeNull();
+    expect(screen.getByTestId("agent-gui-window-session-icon")).toHaveAttribute(
+      "src",
+      "tutti-asset://agent/codex-session.png"
+    );
     expect(screen.getByText("Current session title")).toHaveClass(
       "agent-gui-workbench-header__title-text"
     );
@@ -1107,9 +1291,8 @@ describe("agent GUI workbench contribution copy", () => {
     expect(toggleDisplayMode).toHaveBeenCalledTimes(1);
   });
 
-  it("uses the generic Agent title with the unified icon for unified header chrome", () => {
+  it("keeps unified header chrome free of provider window titles", () => {
     const contribution = createTestAgentGuiWorkbenchContribution({
-      dockLayout: "unified",
       renderBody: () => null,
       unifiedDockIconUrl: "app://icons/agent-unified.png",
       workspaceId: "workspace-1"
@@ -1152,10 +1335,7 @@ describe("agent GUI workbench contribution copy", () => {
       "agent-gui-workbench-header__agent-name"
     );
     expect(screen.queryByText("Claude Code")).toBeNull();
-    expect(screen.getByTestId("agent-gui-window-title-icon")).toHaveAttribute(
-      "src",
-      "app://icons/agent-unified.png"
-    );
+    expect(screen.queryByTestId("agent-gui-window-session-icon")).toBeNull();
   });
 
   it("renders the expanded workbench header as a rail titlebar plus detail title", () => {
@@ -1221,19 +1401,19 @@ describe("agent GUI workbench contribution copy", () => {
       "false"
     );
     expect(header).toHaveStyle({
-      "--agent-gui-workbench-header-rail-width": "360px"
+      "--agent-gui-workbench-header-rail-width": `${
+        360 + agentGuiWorkbenchProviderRailWidthPx
+      }px`
     });
     expect(primary).toHaveClass("agent-gui-workbench-header__primary");
-    expect(screen.getByText("Codex")).toBeInTheDocument();
+    expect(screen.getByText("Agent")).toHaveClass(
+      "agent-gui-workbench-header__agent-name"
+    );
+    expect(screen.queryByText("Codex")).toBeNull();
     expect(
       screen.getByTestId("agent-gui-toggle-conversation-rail")
     ).toHaveClass("agent-gui-workbench-header__rail-toggle");
-    const headerIcon = screen.getByTestId("agent-gui-window-title-icon");
-    expect(headerIcon).toHaveAttribute("src", agentGuiDockIconUrls.codex);
-    expect(headerIcon).toHaveAttribute(
-      "data-agent-gui-workbench-header-icon",
-      "true"
-    );
+    expect(screen.queryByTestId("agent-gui-window-session-icon")).toBeNull();
     expect(
       screen.getByTestId("agent-gui-window-detail-title")
     ).toHaveTextContent("Current session title");
@@ -1245,6 +1425,58 @@ describe("agent GUI workbench contribution copy", () => {
         name: agentGuiWorkbenchDefaultCopy.newConversation
       })
     ).not.toBeInTheDocument();
+  });
+
+  it("aligns the expanded unified header controls with the provider and conversation rails", () => {
+    const contribution = createTestAgentGuiWorkbenchContribution({
+      renderBody: () => null,
+      workspaceId: "workspace-1"
+    });
+
+    render(
+      contribution.nodes?.[0]?.renderHeader?.({
+        activation: null,
+        defaultActions: null,
+        displayMode: "floating",
+        dragHandleProps: {},
+        externalNodeState: {
+          conversationRailCollapsed: false,
+          conversationRailWidthPx: 360,
+          lastActiveAgentSessionId: null
+        },
+        externalWorkspaceState: null,
+        instanceId: "agent-gui:codex:panel:test-1",
+        instanceKey: null,
+        isFocused: true,
+        node: {
+          data: {
+            dockEntryId: agentGuiWorkbenchUnifiedDockEntryId(),
+            runtimeNodeState: null
+          },
+          displayMode: "floating",
+          frame: { height: 560, width: 1040, x: 0, y: 0 },
+          id: "agent-gui-node-1",
+          title: "Agent"
+        },
+        surfaceSize: { height: 800, width: 1200 },
+        windowActions: {
+          applyQuickLayout: () => {},
+          close: () => {},
+          focus: () => {},
+          minimize: () => {},
+          resize: () => {},
+          toggleDisplayMode: () => {}
+        }
+      } as never) ?? null
+    );
+
+    expect(
+      document.querySelector('[data-agent-gui-workbench-header="true"]')
+    ).toHaveStyle({
+      "--agent-gui-workbench-header-rail-width": `${
+        360 + agentGuiWorkbenchProviderRailWidthPx
+      }px`
+    });
   });
 
   it("caps workbench header conversation titles with 32px right padding", () => {
@@ -1261,6 +1493,58 @@ describe("agent GUI workbench contribution copy", () => {
     );
     expect(css).toMatch(
       /\.agent-gui-workbench-header__title-text\s*{[^}]*overflow:\s*hidden[^}]*text-overflow:\s*ellipsis[^}]*white-space:\s*nowrap/s
+    );
+  });
+
+  it("hides the workbench header rail toggle while the node render fallback is visible", () => {
+    const css = readFileSync(resolve("app/renderer/agentactivity.css"), "utf8");
+
+    expect(css).toMatch(
+      /\.workbench-window:has\(\[data-workbench-node-render-error="true"\]\)\s+\.agent-gui-workbench-header__rail-toggle\s*{[^}]*display:\s*none !important;/s
+    );
+  });
+
+  it("owns the unified and tiled dock icon styles", () => {
+    const css = readFileSync(resolve("app/renderer/agentactivity.css"), "utf8");
+
+    expect(css).toMatch(
+      /\.agent-gui-workbench-dock-icon\s*{[^}]*display:\s*grid;[^}]*width:\s*44px;[^}]*height:\s*44px;[^}]*grid-template-columns:\s*repeat\(2,\s*minmax\(0,\s*1fr\)\);[^}]*gap:\s*2px;[^}]*padding:\s*3px;[^}]*border:\s*1px solid var\(--agent-gui-workbench-dock-icon-border,\s*var\(--line-1\)\);[^}]*border-radius:\s*8px;[^}]*background:\s*var\(\s*--agent-gui-workbench-dock-icon-bg,\s*var\(--transparency-block\)\s*\);/s
+    );
+    expect(css).toMatch(
+      /\.agent-gui-workbench-dock-icon__tile\s*{[^}]*display:\s*block;[^}]*overflow:\s*hidden;[^}]*min-width:\s*0;[^}]*min-height:\s*0;[^}]*border-radius:\s*6px;[^}]*background:\s*transparent;/s
+    );
+    expect(css).not.toMatch(
+      /\.agent-gui-workbench-dock-icon__tile:nth-child\(1\)\s*{[^}]*transform:\s*translateX\(-50%\);/s
+    );
+    expect(css).toMatch(
+      /\.agent-gui-workbench-dock-icon__tile\s*>\s*img\s*{[^}]*object-fit:\s*contain;[^}]*object-position:\s*center;/s
+    );
+    expect(css).toMatch(
+      /\.agent-gui-workbench-dock-icon--single\s*{[^}]*display:\s*block;[^}]*padding:\s*0;[^}]*border:\s*0;[^}]*background:\s*transparent;/s
+    );
+    expect(css).toMatch(
+      /\.agent-gui-workbench-dock-icon--single\s*>\s*img\s*{[^}]*object-fit:\s*contain;/s
+    );
+    expect(css).toMatch(
+      /\.agent-gui-node__provider-rail-launchpad-icon\s*{[^}]*display:\s*grid;[^}]*width:\s*28px;[^}]*height:\s*28px;[^}]*grid-template-columns:\s*repeat\(2,\s*1fr\);[^}]*gap:\s*2px;[^}]*padding:\s*1px;[^}]*border:\s*0;[^}]*border-radius:\s*6px;/s
+    );
+    expect(css).toMatch(
+      /\.agent-gui-node__provider-rail-launchpad-item\s*{[^}]*display:\s*grid;[^}]*min-width:\s*0;[^}]*min-height:\s*0;[^}]*place-items:\s*center;[^}]*overflow:\s*hidden;[^}]*background:\s*var\(--background-fronted\);[^}]*border-radius:\s*4px;/s
+    );
+    expect(css).not.toMatch(
+      /\.agent-gui-node__provider-rail-launchpad-item:nth-child\(1\)\s*{[^}]*transform:\s*translateX\(-50%\);/s
+    );
+    expect(css).toMatch(
+      /\.agent-gui-node__empty-hero-launchpad-icon\s*{[^}]*width:\s*54px;[^}]*height:\s*54px;[^}]*border-color:\s*var\(--tutti-purple\);[^}]*border-radius:\s*8px;[^}]*background:\s*var\(--transparency-block\);/s
+    );
+    expect(css).toMatch(
+      /\.agent-gui-node__empty-hero-launchpad-icon\s+\.agent-gui-node__provider-rail-launchpad-icon\s*{[^}]*width:\s*48px;[^}]*height:\s*48px;[^}]*gap:\s*3px;[^}]*padding:\s*1px;[^}]*border-radius:\s*8px;/s
+    );
+    expect(css).toMatch(
+      /\.agent-gui-node__empty-hero-launchpad-icon\s+\.agent-gui-node__provider-rail-launchpad-item\s*{[^}]*border-radius:\s*6px;/s
+    );
+    expect(css).toMatch(
+      /\.agent-gui-node__provider-rail-tile\[data-selected="true"\]\s+\.agent-gui-node__provider-rail-avatar:has\(\s*>\s*\.agent-gui-node__provider-rail-launchpad-icon\s*\),\s*\.agent-gui-node__provider-rail-tile\[data-selected="true"\]:hover:not\(:disabled\)\s+\.agent-gui-node__provider-rail-avatar:has\(\s*>\s*\.agent-gui-node__provider-rail-launchpad-icon\s*\)\s*{[^}]*border-color:\s*var\(--tutti-purple\);[^}]*background:\s*var\(--transparency-block\);/s
     );
   });
 
@@ -1304,9 +1588,6 @@ describe("agent GUI workbench contribution copy", () => {
     const css = readFileSync(resolve("app/renderer/agentactivity.css"), "utf8");
 
     expect(css).toMatch(/--agent-gui-workbench-header-padding-x:\s*16px;/);
-    expect(css).toMatch(
-      /--agent-gui-workbench-header-agent-icon-size:\s*20px;/
-    );
     expect(css).toMatch(/--agent-gui-workbench-header-primary-gap:\s*12px;/);
     expect(css).toMatch(
       /--agent-gui-workbench-header-traffic-light-size:\s*12px;/
@@ -1361,9 +1642,6 @@ describe("agent GUI workbench contribution copy", () => {
     expect(css).toMatch(
       /\.agent-gui-workbench-header__agent-brand\s*{[^}]*flex:\s*0\s+0\s+auto;/s
     );
-    expect(css).toMatch(
-      /\.agent-gui-workbench-header__agent-icon\s*{[^}]*width:\s*var\(--agent-gui-workbench-header-agent-icon-size\);[^}]*height:\s*var\(--agent-gui-workbench-header-agent-icon-size\);/s
-    );
     const agentNameCss = css.match(
       /\.agent-gui-workbench-header__agent-name\s*{(?<body>[^}]*)}/s
     )?.groups?.body;
@@ -1371,12 +1649,13 @@ describe("agent GUI workbench contribution copy", () => {
     expect(agentNameCss).not.toMatch(/text-overflow:\s*ellipsis/);
     expect(agentNameCss).not.toMatch(/overflow:\s*hidden/);
     expect(css).toMatch(
+      /\.agent-gui-workbench-header__session-title\s*{[^}]*align-items:\s*center;[^}]*gap:\s*8px;/s
+    );
+    expect(css).toMatch(
+      /\.agent-gui-workbench-header__session-icon\s*{[^}]*width:\s*20px;[^}]*height:\s*20px;[^}]*flex:\s*0\s+0\s+auto;/s
+    );
+    expect(css).toMatch(
       /\.agent-gui-workbench-header__rail-toggle\s*{[^}]*margin-left:\s*auto;/s
     );
-    const agentIconCss = css.match(
-      /\.agent-gui-workbench-header__agent-icon\s*{(?<body>[^}]*)}/s
-    )?.groups?.body;
-    expect(agentIconCss).toBeDefined();
-    expect(agentIconCss).not.toMatch(/box-shadow:/);
   });
 });

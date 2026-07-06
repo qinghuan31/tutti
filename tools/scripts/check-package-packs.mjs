@@ -14,6 +14,11 @@ const forbiddenPrefixes = [
   "package/tsup.config"
 ];
 
+// Packages that intentionally publish their raw TypeScript sources instead of a
+// compiled dist/ output. @tutti-os/claude-sdk-sidecar is executed directly with
+// `node --experimental-strip-types src/main.ts`, so it ships src/ on purpose.
+const sourcePublishingPackages = new Set(["@tutti-os/claude-sdk-sidecar"]);
+
 const packages = await getNpmReleasePackages();
 const tempDirectory = await mkdtemp(join(tmpdir(), "tutti-pack-check-"));
 
@@ -41,6 +46,11 @@ async function checkPackage(packageConfig, destination) {
   const entrySet = new Set(entries);
   const violations = [];
   const requiredFiles = getRequiredFiles(packageConfig.manifest);
+  const packageForbiddenPrefixes = sourcePublishingPackages.has(
+    packageConfig.name
+  )
+    ? forbiddenPrefixes.filter((prefix) => prefix !== "package/src/")
+    : forbiddenPrefixes;
 
   for (const requiredFile of requiredFiles) {
     if (!entrySet.has(requiredFile)) {
@@ -49,7 +59,7 @@ async function checkPackage(packageConfig, destination) {
   }
 
   for (const entry of entries) {
-    if (forbiddenPrefixes.some((prefix) => entry.startsWith(prefix))) {
+    if (packageForbiddenPrefixes.some((prefix) => entry.startsWith(prefix))) {
       violations.push(`unexpected ${entry}`);
     }
   }

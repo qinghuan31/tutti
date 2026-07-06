@@ -69,6 +69,7 @@ export type AgentGUIProvider = Extract<
   | "claude-code"
   | "codex"
   | "tutti-agent"
+  | "cursor"
   | "nexight"
   | "gemini"
   | "hermes"
@@ -96,6 +97,7 @@ export interface AgentGUIProviderTarget {
 
 export type AgentGUIProviderReadinessGateStatus =
   | "checking"
+  | "coming_soon"
   | "not_installed"
   | "auth_required"
   | "unavailable";
@@ -209,6 +211,7 @@ export interface RoomIssueNodeData {
     | "codex"
     | "claude-code"
     | "tutti-agent"
+    | "cursor"
     | "nexight"
     | "gemini"
     | "openclaw"

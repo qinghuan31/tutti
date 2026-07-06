@@ -213,7 +213,7 @@ test("desktop agent GUI host input drains queued prompts without mounted agent G
   );
 });
 
-test("desktop agent GUI queued prompt drainer ignores stale blocked submit availability when session is idle", async () => {
+test("desktop agent GUI queued prompt drainer waits for blocked submit availability to clear", async () => {
   const calls: string[] = [];
   const sendInputs: unknown[] = [];
   const activityService = {
@@ -225,7 +225,7 @@ test("desktop agent GUI queued prompt drainer ignores stale blocked submit avail
             currentPhase: "idle",
             status: "active",
             submitAvailability: { state: "blocked", reason: "active_turn" },
-            turnLifecycle: { activeTurnId: "stale-turn-1", phase: "idle" },
+            turnLifecycle: { activeTurnId: "lingering-turn-1", phase: "idle" },
             updatedAtUnixMs: 2
           })
         ]),
@@ -265,18 +265,19 @@ test("desktop agent GUI queued prompt drainer ignores stale blocked submit avail
     }
   });
 
-  await waitForQueuedPromptDrainer(() => sendInputs.length === 1);
-  assert.deepEqual(sendInputs, [
-    {
+  await flushQueuedPromptDrainer();
+  await flushQueuedPromptDrainer();
+  assert.deepEqual(sendInputs, []);
+  assert.equal(
+    hostInput.agentQueuedPromptRuntime.getSessionSnapshot({
       workspaceId,
-      agentSessionId: "session-1",
-      content: [{ type: "text", text: "queued after idle state patch" }],
-      displayPrompt: null
-    }
-  ]);
+      agentSessionId: "session-1"
+    }).prompts.length,
+    1
+  );
 });
 
-test("desktop agent GUI queued prompt drainer ignores stale active turn id when turn lifecycle is settled", async () => {
+test("desktop agent GUI queued prompt drainer waits for active turn id to clear", async () => {
   const calls: string[] = [];
   const sendInputs: unknown[] = [];
   const activityService = {
@@ -288,7 +289,10 @@ test("desktop agent GUI queued prompt drainer ignores stale active turn id when 
             currentPhase: "idle",
             status: "active",
             submitAvailability: { state: "blocked", reason: "active_turn" },
-            turnLifecycle: { activeTurnId: "stale-turn-1", phase: "settled" },
+            turnLifecycle: {
+              activeTurnId: "lingering-turn-1",
+              phase: "settled"
+            },
             updatedAtUnixMs: 2
           })
         ]),
@@ -328,15 +332,16 @@ test("desktop agent GUI queued prompt drainer ignores stale active turn id when 
     }
   });
 
-  await waitForQueuedPromptDrainer(() => sendInputs.length === 1);
-  assert.deepEqual(sendInputs, [
-    {
+  await flushQueuedPromptDrainer();
+  await flushQueuedPromptDrainer();
+  assert.deepEqual(sendInputs, []);
+  assert.equal(
+    hostInput.agentQueuedPromptRuntime.getSessionSnapshot({
       workspaceId,
-      agentSessionId: "session-1",
-      content: [{ type: "text", text: "queued after settled turn" }],
-      displayPrompt: null
-    }
-  ]);
+      agentSessionId: "session-1"
+    }).prompts.length,
+    1
+  );
 });
 
 test("desktop agent GUI queued prompt drainer waits when submit availability is blocked for non-active-turn reasons", async () => {
@@ -593,6 +598,14 @@ test("desktop agent GUI queued prompt drainer interrupts active turn for send-ne
         reason: "active_turn_canceled",
         session: activitySession(input.agentSessionId, {
           status: "canceled",
+          updatedAtUnixMs: 2
+        })
+      };
+    },
+    async goalControl(input) {
+      return {
+        goal: null,
+        session: activitySession(input.agentSessionId, {
           updatedAtUnixMs: 2
         })
       };
@@ -2040,6 +2053,15 @@ function createWorkspaceAgentActivityService(
         }
       };
     },
+    async goalControl(input) {
+      return {
+        goal: null,
+        session: {
+          ...emptySession(),
+          agentSessionId: input.agentSessionId
+        }
+      };
+    },
     async createSession(input) {
       return {
         ...emptySession(),
@@ -2095,6 +2117,20 @@ function createWorkspaceAgentActivityService(
     },
     async listAgentGeneratedFiles() {
       return { entries: [], workspaceId };
+    },
+    async listSessionsPage(input) {
+      return { hasMore: false, sessions: [], workspaceId: input.workspaceId };
+    },
+    async listSessionSections(input) {
+      return { sections: [], workspaceId: input.workspaceId };
+    },
+    async listSessionSectionPage(input) {
+      return {
+        kind: "conversations",
+        sectionKey: input.sectionKey,
+        sessions: [],
+        hasMore: false
+      };
     },
     async scanExternalSessionImports() {
       throw new Error("not implemented");

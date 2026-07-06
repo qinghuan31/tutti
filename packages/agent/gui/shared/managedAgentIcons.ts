@@ -2,6 +2,8 @@ import { normalizeManagedAgentProvider } from "./managedAgentProviders";
 import {
   claudeRoundedUrl,
   codexRoundedUrl,
+  cursorColorfulUrl,
+  cursorRoundedUrl,
   geminiRoundedUrl,
   hermesRoundedUrl,
   manageAgentClaudeCodeUrl,
@@ -10,6 +12,10 @@ import {
   manageAgentHermesUrl,
   manageAgentTuttiUrl,
   manageAgentOpenclawUrl,
+  providerRailClaudeCodeColorfulUrl,
+  providerRailCodexColorfulUrl,
+  providerRailHermesColorfulUrl,
+  providerRailTuttiUrl,
   tuttiDocRoundedUrl,
   openclawRoundedUrl
 } from "../managedAgentIconAssets";
@@ -18,16 +24,27 @@ import {
 export const MANAGED_AGENT_ICON_URLS: Record<string, string> = {
   "claude-code": manageAgentClaudeCodeUrl,
   codex: manageAgentCodexUrl,
+  cursor: cursorRoundedUrl,
   gemini: manageAgentGeminiUrl,
   hermes: manageAgentHermesUrl,
   tutti: manageAgentTuttiUrl,
   openclaw: manageAgentOpenclawUrl
 };
 
+/** Colorful provider rail icons used by AgentGUI's left provider filter. */
+export const MANAGED_AGENT_PROVIDER_RAIL_ICON_URLS: Record<string, string> = {
+  "claude-code": providerRailClaudeCodeColorfulUrl,
+  codex: providerRailCodexColorfulUrl,
+  cursor: cursorColorfulUrl,
+  hermes: providerRailHermesColorfulUrl,
+  tutti: providerRailTuttiUrl
+};
+
 /** Rounded avatars for Room status / room activity panel only. */
 export const MANAGED_AGENT_ICON_ROUNDED_URLS: Record<string, string> = {
   "claude-code": claudeRoundedUrl,
   codex: codexRoundedUrl,
+  cursor: cursorRoundedUrl,
   gemini: geminiRoundedUrl,
   hermes: hermesRoundedUrl,
   tutti: tuttiDocRoundedUrl,

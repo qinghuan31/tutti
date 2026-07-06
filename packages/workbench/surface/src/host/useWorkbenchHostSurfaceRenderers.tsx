@@ -225,6 +225,12 @@ export function useWorkbenchHostSurfaceRenderers(input: {
         <WorkbenchHostNodeRenderErrorBoundary
           debugDiagnostics={input.debugDiagnostics}
           node={context.node}
+          onErrorChange={(hasError) =>
+            definition.onBodyRenderErrorChange?.({
+              hasError,
+              node: context.node
+            })
+          }
           resetKey={`${context.node.id}:${context.node.data.typeId}:${input.externalStateRevision}`}
           workspaceId={input.workspaceId}
         >
@@ -458,6 +464,7 @@ interface WorkbenchHostNodeRenderErrorBoundaryProps {
   children: ReactNode;
   debugDiagnostics?: WorkbenchHostProps["debugDiagnostics"];
   node: WorkbenchNode<WorkbenchHostNodeData>;
+  onErrorChange?: (hasError: boolean) => void;
   resetKey: string;
   workspaceId: string;
 }
@@ -552,10 +559,18 @@ class WorkbenchHostNodeRenderErrorBoundary extends Component<
   ): void {
     if (this.state.hasError && previousProps.resetKey !== this.props.resetKey) {
       this.setState({ hasError: false });
+      this.props.onErrorChange?.(false);
+    }
+  }
+
+  override componentWillUnmount(): void {
+    if (this.state.hasError) {
+      this.props.onErrorChange?.(false);
     }
   }
 
   override componentDidCatch(error: unknown, info: ErrorInfo): void {
+    this.props.onErrorChange?.(true);
     try {
       const result = this.props.debugDiagnostics?.log?.({
         details: {
@@ -618,7 +633,10 @@ class WorkbenchHostNodeRenderErrorBoundary extends Component<
           </div>
           <button
             type="button"
-            onClick={() => this.setState({ hasError: false })}
+            onClick={() => {
+              this.setState({ hasError: false });
+              this.props.onErrorChange?.(false);
+            }}
             style={{
               border: "1px solid var(--line-2, #d1d5db)",
               borderRadius: 6,

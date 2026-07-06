@@ -63,6 +63,7 @@ import {
   dispatchWorkspaceAppOpenUrl,
   installWorkspaceAppWindowOpenHandler
 } from "./workspaceAppWindowOpen.ts";
+import { reportWorkspaceAppUserActive } from "./workspaceAppActivityAnalytics.ts";
 import {
   normalizeWorkspaceAppDiagnosticLogRecord,
   WorkspaceAppFrontendLogWriter,
@@ -147,6 +148,21 @@ export function registerWorkspaceAppContextIpc(
       preferences.getLocale(),
       workspaceAppGuestContexts.get(event.sender.id)
     )
+  );
+  registerDesktopIpcHandler(
+    desktopIpcChannels.appExternal.activityReportActive,
+    async (event) => {
+      const context = requireWorkspaceAppGuestContext(event.sender);
+      try {
+        await reportWorkspaceAppUserActive(endpoint, context);
+      } catch (error: unknown) {
+        logger?.warn("workspace app user active analytics failed", {
+          appId: context.appID,
+          error: error instanceof Error ? error.message : String(error),
+          workspaceId: context.workspaceID
+        });
+      }
+    }
   );
   registerDesktopIpcHandler(
     desktopIpcChannels.appExternal.atQuery,
@@ -812,6 +828,7 @@ async function requestWorkspaceAppUploadPrepare(
   input: DesktopWorkspaceAppFileUploadPrepareInput
 ): Promise<{ expiresAt: string; uploadId: string }> {
   const baseUrl = resolveDesktopDaemonBaseUrl(endpoint);
+  // oxlint-disable-next-line no-restricted-globals -- talks to the local daemon, not outbound
   const response = await fetch(workspaceAppUploadSessionUrl(baseUrl, context), {
     body: JSON.stringify(input),
     headers: {
@@ -862,6 +879,7 @@ async function requestWorkspaceAppUploadComplete(
   uploadId: string
 ): Promise<TuttiExternalUploadedFile> {
   const baseUrl = resolveDesktopDaemonBaseUrl(endpoint);
+  // oxlint-disable-next-line no-restricted-globals -- talks to the local daemon, not outbound
   const response = await fetch(
     new URL(
       `${workspaceAppUploadSessionPath(context)}/${encodeURIComponent(uploadId)}/complete`,
@@ -890,6 +908,7 @@ async function requestWorkspaceAppUploadCancel(
   uploadId: string
 ): Promise<void> {
   const baseUrl = resolveDesktopDaemonBaseUrl(endpoint);
+  // oxlint-disable-next-line no-restricted-globals -- talks to the local daemon, not outbound
   const response = await fetch(
     new URL(
       `${workspaceAppUploadSessionPath(context)}/${encodeURIComponent(uploadId)}`,
@@ -1072,6 +1091,7 @@ async function requestManagedAiModelPermission(
     installationId,
     issuer
   });
+  // oxlint-disable-next-line no-restricted-globals -- talks to the local daemon, not outbound
   const response = await fetch(
     new URL(
       `/v1/workspaces/${encodeURIComponent(context.workspaceID)}/apps/${encodeURIComponent(context.appID)}/managed-model-grants`,

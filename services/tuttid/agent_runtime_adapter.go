@@ -4,7 +4,7 @@ import (
 	"context"
 	"errors"
 
-	agentruntime "github.com/tutti-os/tutti/packages/agentactivity/daemon/runtime"
+	agentruntime "github.com/tutti-os/tutti/packages/agent/daemon/runtime"
 	agentservice "github.com/tutti-os/tutti/services/tuttid/service/agent"
 )
 
@@ -28,6 +28,22 @@ func (a agentRuntimeAdapter) Cancel(ctx context.Context, input agentservice.Runt
 	return agentservice.RuntimeCancelResult{
 		AgentSessionID: result.AgentSessionID,
 		Canceled:       result.Canceled,
+	}, nil
+}
+
+func (a agentRuntimeAdapter) GoalControl(ctx context.Context, input agentservice.RuntimeGoalControlInput) (agentservice.RuntimeGoalControlResult, error) {
+	result, err := a.controller.GoalControl(ctx, agentruntime.GoalControlInput{
+		RoomID:         input.WorkspaceID,
+		AgentSessionID: input.AgentSessionID,
+		Action:         agentruntime.GoalControlAction(input.Action),
+		Objective:      input.Objective,
+	})
+	if err != nil {
+		return agentservice.RuntimeGoalControlResult{}, mapAgentRuntimeError(err)
+	}
+	return agentservice.RuntimeGoalControlResult{
+		AgentSessionID: result.AgentSessionID,
+		Goal:           result.Goal,
 	}, nil
 }
 

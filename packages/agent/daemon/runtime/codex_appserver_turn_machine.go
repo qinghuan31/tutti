@@ -11,6 +11,10 @@ type codexAppServerTurnKind string
 const (
 	codexAppServerTurnKindNormal  codexAppServerTurnKind = "normal"
 	codexAppServerTurnKindCompact codexAppServerTurnKind = "compact"
+	// codexAppServerTurnKindGoalAdopted marks a turn that codex started on its
+	// own to continue an active goal, adopted by the reducer so its output is
+	// tracked like any Exec-driven turn.
+	codexAppServerTurnKindGoalAdopted codexAppServerTurnKind = "goal-adopted"
 )
 
 type codexAppServerTurnPhase string
@@ -86,6 +90,14 @@ func (a *CodexAppServerAdapter) failActiveTurnFromAppServerError(agentSessionID 
 // activeTurnID clear, non-blocking terminal send — so the completion and
 // failure paths cannot diverge on the guards. terminalFor runs under the
 // adapter lock with the matched active turn.
+//
+// A mismatched provider turn id settles anyway when the recorded id was
+// never confirmed by turn/started: a turn/start issued while another turn is
+// already running responds with a stub id that codex never starts — the
+// input is steered into the running turn, so that turn's same-thread
+// terminal is this turn's terminal (live-verified against codex 0.142.5,
+// TestLiveProtocolTurnStartDuringActiveTurn). Requiring an exact match there
+// wedged awaitTurnCompletion forever.
 func (a *CodexAppServerAdapter) settleActiveTurn(
 	agentSessionID string,
 	providerTurnID string,
@@ -96,22 +108,51 @@ func (a *CodexAppServerAdapter) settleActiveTurn(
 	}
 	var activeTurn *codexAppServerActiveTurn
 	var terminal codexAppServerTurnTerminal
+	steerAdoptedTurnID := ""
+	droppedTurnID := ""
 	a.mu.Lock()
 	appSession := a.sessions[strings.TrimSpace(agentSessionID)]
 	if appSession != nil {
 		activeTurn = appSession.activeTurn
-		if activeTurn != nil && a.activeTurnMatchesProviderTurnIDLocked(appSession, providerTurnID) {
+		if activeTurn != nil {
+			expected := strings.TrimSpace(appSession.activeTurnID)
+			actual := strings.TrimSpace(providerTurnID)
+			switch {
+			case expected == "" || actual == "" || expected == actual:
+			case !appSession.activeTurnStartConfirmed:
+				steerAdoptedTurnID = expected
+			default:
+				droppedTurnID = expected
+				activeTurn = nil
+			}
+		}
+		if activeTurn != nil {
 			terminal = terminalFor(activeTurn)
 			activeTurn.phase = terminal.phase
 			appSession.activeTurnID = ""
-		} else {
-			activeTurn = nil
+			appSession.activeTurnStartConfirmed = false
 		}
 	}
 	emits := activeTurn != nil && activeTurn.settleEmits
 	a.mu.Unlock()
+	if droppedTurnID != "" {
+		slog.Warn("agent session app-server turn terminal dropped on provider turn id mismatch",
+			"event", "agent_session.app_server.turn.terminal_id_mismatch",
+			"agent_session_id", agentSessionID,
+			"recorded_turn_id", droppedTurnID,
+			"terminal_turn_id", providerTurnID,
+		)
+	}
 	if activeTurn == nil {
 		return
+	}
+	if steerAdoptedTurnID != "" {
+		slog.Warn("agent session app-server steered turn adopted running turn terminal",
+			"event", "agent_session.app_server.turn.steer_terminal_adopted",
+			"agent_session_id", agentSessionID,
+			"stub_turn_id", steerAdoptedTurnID,
+			"terminal_turn_id", providerTurnID,
+		)
 	}
 	select {
 	case activeTurn.terminal <- terminal:
@@ -120,18 +161,6 @@ func (a *CodexAppServerAdapter) settleActiveTurn(
 	if emits {
 		a.finalizeSettledTurn(agentSessionID, activeTurn, terminal)
 	}
-}
-
-func (*CodexAppServerAdapter) activeTurnMatchesProviderTurnIDLocked(
-	appSession *codexAppServerSession,
-	providerTurnID string,
-) bool {
-	if appSession == nil || appSession.activeTurn == nil {
-		return false
-	}
-	expected := strings.TrimSpace(appSession.activeTurnID)
-	actual := strings.TrimSpace(providerTurnID)
-	return expected == "" || actual == "" || expected == actual
 }
 
 func appServerProjectedTurnTerminalPhase(turn map[string]any, forceCanceled bool) codexAppServerTurnPhase {

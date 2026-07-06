@@ -458,7 +458,7 @@ Do not put durable Agent Target business rules only in `apps/desktop`.
 
 - The Agent dock layout setting exists in the existing settings/preference
   system.
-- Default value is `legacySplit`.
+- Default value is `unified`.
 - First rollout exposes the control from the Developer settings panel.
 - Changing the setting updates dock presentation without restarting the app.
 
@@ -536,8 +536,8 @@ Phase 1:
 - Add the `agent-target` external `@` provider id and first desktop provider
   implementation.
 - Remove agent pseudo-apps from `workspace-app` mention candidates.
-- Add AB preference, defaulting to `legacySplit`.
-- Keep current dock behavior unchanged by default.
+- Add AB preference, defaulting to `unified`.
+- Keep legacy split dock behavior available through the setting.
 
 Phase 2:
 

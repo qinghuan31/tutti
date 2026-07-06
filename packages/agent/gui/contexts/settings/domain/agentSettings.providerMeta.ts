@@ -4,6 +4,7 @@ export const AGENT_PROVIDER_LABEL: Record<AgentProvider, string> = {
   "claude-code": "Claude Code",
   codex: "Codex",
   "tutti-agent": "Tutti Agent",
+  cursor: "Cursor",
   nexight: "Nexight",
   opencode: "OpenCode",
   gemini: "Gemini CLI",
@@ -30,6 +31,10 @@ export const AGENT_PROVIDER_CAPABILITIES: Record<
   },
   "tutti-agent": {
     runtimeObservation: "provider-api",
+    experimental: false
+  },
+  cursor: {
+    runtimeObservation: "jsonl",
     experimental: false
   },
   nexight: {

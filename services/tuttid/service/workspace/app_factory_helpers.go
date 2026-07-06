@@ -8,14 +8,6 @@ import (
 	workspacebiz "github.com/tutti-os/tutti/services/tuttid/biz/workspace"
 )
 
-func normalizeFactoryProvider(provider string) string {
-	provider = strings.TrimSpace(provider)
-	if provider == "" {
-		return defaultFactoryProvider
-	}
-	return provider
-}
-
 func appFactoryActionKey(action string, workspaceID string, jobID string) string {
 	return strings.TrimSpace(action) + "\x00" + strings.TrimSpace(workspaceID) + "\x00" + strings.TrimSpace(jobID)
 }

@@ -73,6 +73,7 @@ export function resolveAgentProviderDockStatusProps(input: {
         }
       };
     case "auth_required":
+      const isLoginPending = input.pendingActionIds?.has("login") === true;
       return {
         hoverActions: agentProviderDockActions(
           input.status.actions,
@@ -82,10 +83,10 @@ export function resolveAgentProviderDockStatusProps(input: {
         ),
         ...dockOrderProp(input.order),
         state: {
-          kind: "disabled",
-          // Describe the problem ("sign in to use this agent"), not just the
-          // action label — the hover action already carries the verb.
-          reason: input.copy.loginRequired
+          kind: isLoginPending ? "loading" : "disabled",
+          reason: isLoginPending
+            ? input.copy.installing
+            : input.copy.installRequired
         }
       };
     case "unsupported":
@@ -150,7 +151,7 @@ function agentProviderDockActionLabel(
     case "install":
       return copy.install;
     case "login":
-      return copy.login;
+      return copy.install;
     default:
       return copy.refresh;
   }

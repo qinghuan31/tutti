@@ -21,6 +21,12 @@ const launchpadOverlaySource = readFileSync(
   ),
   "utf8"
 );
+const shellRuntimeSource = readFileSync(
+  resolve(
+    "src/renderer/src/features/workspace-workbench/ui/useWorkspaceWorkbenchShellRuntime.tsx"
+  ),
+  "utf8"
+);
 
 test("WorkspaceWorkbench does not render a global agent install pending overlay", () => {
   assert.doesNotMatch(source, /WorkspaceAgentConnectingCard/);
@@ -41,6 +47,18 @@ test("WorkspaceWorkbench validates requested file targets before opening workspa
   assert.match(
     source,
     /request\.validateExists[\s\S]*workspaceFileManagerService\.entryExists\(\{[\s\S]*path: request\.path[\s\S]*workspaceID: request\.workspaceId[\s\S]*return false;[\s\S]*host\.launchNode/s
+  );
+});
+
+test("WorkspaceWorkbench surfaces a toast instead of silently no-op'ing when a requested file target doesn't exist", () => {
+  // Regression coverage for imported (historical Codex/Claude Code) sessions
+  // whose recorded working directory may no longer exist on this machine —
+  // previously, opening the Files panel for such a session (via a file link
+  // or the project menu's "Open folder" action) silently did nothing with no
+  // user-facing feedback at all.
+  assert.match(
+    source,
+    /workspaceID: request\.workspaceId[\s\S]*?\}\)\)\s*\)\s*\{[\s\S]*?Toast\.Error\(\s*translate\(\s*"workspace\.workbenchDesktop\.filesLaunch\.openFailedTitle"\s*\),\s*translate\(\s*"workspace\.workbenchDesktop\.filesLaunch\.openFailedDescription"\s*\)\s*\);\s*return false;/
   );
 });
 
@@ -89,13 +107,34 @@ test("agent gui dock visibility ignores disabled Tutti Agent targets", () => {
   );
 });
 
-test("launchpad keeps settings-disabled Tutti Agent silent", () => {
-  assert.match(launchpadOverlaySource, /disabledBySettings/);
-  assert.match(launchpadOverlaySource, /disabledBySettings\s*\?\s*undefined/);
-  assert.match(launchpadOverlaySource, /disabledBySettings\) \{\s*return null/);
-  assert.doesNotMatch(launchpadOverlaySource, /agentDisabledBySettings/);
+test("WorkspaceLaunchpad renders one generic Agent entry", () => {
+  assert.doesNotMatch(source, /agentDockLayout=\{runtime\.agentDockLayout\}/);
+  assert.match(
+    launchpadOverlaySource,
+    /return \[[\s\S]*iconUrl: input\.launchpadDockIcons\.agentUnified[\s\S]*id: "agent:unified"[\s\S]*\];/
+  );
   assert.doesNotMatch(
     launchpadOverlaySource,
-    /provider !== "tutti-agent" \|\|[\s\S]*tuttiAgentSwitchEnabled/
+    /workspaceAgentGuiProviders\.map\(\(provider\) =>\s*resolveLaunchpadAgentDescriptor/
+  );
+});
+
+test("launchpad excludes settings-disabled Tutti Agent from unified provider resolution", () => {
+  assert.match(
+    launchpadOverlaySource,
+    /workspaceSettingsState\.tuttiAgentSwitchEnabled !== true[\s\S]*hidden\.push\("tutti-agent"\)/
+  );
+  assert.doesNotMatch(launchpadOverlaySource, /disabledBySettings/);
+});
+
+test("workspace shell loads AgentGUI provider targets while preserving static catalog for empty loads", () => {
+  assert.match(shellRuntimeSource, /loadAgentGuiProviderTargets/);
+  assert.match(
+    shellRuntimeSource,
+    /const targets =[\s\S]*agentGuiProviderTargets && agentGuiProviderTargets\.length > 0[\s\S]*\? agentGuiProviderTargets[\s\S]*: undefined/s
+  );
+  assert.doesNotMatch(
+    shellRuntimeSource,
+    /const resolvedAgentGuiProviderTargets = useMemo\(\s*\(\) => agentGuiProviderTargets \?\? \[\]/s
   );
 });

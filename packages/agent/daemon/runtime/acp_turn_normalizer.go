@@ -4,7 +4,7 @@ import (
 	"sort"
 	"strings"
 
-	activityshared "github.com/tutti-os/tutti/packages/agentactivity/daemon/activity/events"
+	activityshared "github.com/tutti-os/tutti/packages/agent/daemon/activity/events"
 )
 
 type pendingToolCallSnapshot struct {
@@ -13,16 +13,52 @@ type pendingToolCallSnapshot struct {
 }
 
 type acpTurnNormalizer struct {
-	assistantMessageID        string
-	assistantContent          strings.Builder
-	assistantSegmentCompleted bool
-	thinkingMessageID         string
-	thinkingContent           strings.Builder
-	thinkingSegmentCompleted  bool
-	thinkingMessageKind       string
-	toolItemIDs               map[string]string
-	toolCallsSeen             map[string]bool
-	pendingToolCalls          map[string]pendingToolCallSnapshot
+	assistantMessageID         string
+	assistantContent           strings.Builder
+	assistantSegmentCompleted  bool
+	thinkingMessageID          string
+	thinkingContent            strings.Builder
+	thinkingSegmentCompleted   bool
+	thinkingMessageKind        string
+	toolItemIDs                map[string]string
+	toolCallsSeen              map[string]bool
+	pendingToolCalls           map[string]pendingToolCallSnapshot
+	pendingCompactionMessageID string
+}
+
+// TrackCompactionNotice remembers the in-flight compaction banner so a turn
+// that dies mid-compaction settles the banner instead of leaving a live
+// "Compacting context." row ticking in the transcript forever.
+func (n *acpTurnNormalizer) TrackCompactionNotice(messageID string, completed bool) {
+	if n == nil {
+		return
+	}
+	if completed {
+		n.pendingCompactionMessageID = ""
+		return
+	}
+	n.pendingCompactionMessageID = strings.TrimSpace(messageID)
+}
+
+// settlePendingCompactionEvents replaces a still-in-progress compaction banner
+// in place (same messageId) when the turn ends without the compaction item
+// completing.
+func (n *acpTurnNormalizer) settlePendingCompactionEvents(session Session, turnID string, title string) []activityshared.Event {
+	if n == nil || n.pendingCompactionMessageID == "" {
+		return nil
+	}
+	messageID := n.pendingCompactionMessageID
+	n.pendingCompactionMessageID = ""
+	event, ok := acpSystemNoticeEvent(session, turnID, map[string]any{
+		"kind":       "agent_system_notice",
+		"noticeKind": "system_notice",
+		"title":      title,
+		"messageId":  messageID,
+	}, "system_notice", true)
+	if !ok {
+		return nil
+	}
+	return []activityshared.Event{event}
 }
 
 // SetThinkingPresentation tags thinking snapshots with an optional messageKind
@@ -194,7 +230,19 @@ func (n *acpTurnNormalizer) FinalizeThinkingItem(session Session, turnID string,
 
 func (n *acpTurnNormalizer) FinishCompleted(session Session, turnID string) []activityshared.Event {
 	events := n.Finish(session, turnID, messageStreamStateCompleted)
-	events = append(events, n.completedToolCallEvents(session, turnID)...)
+	// A tool call still pending when its own turn reaches a normal terminal
+	// state never received its own item/completed (for example codex silently
+	// declining a spawnAgent call for a schema conflict, with no further
+	// notification tied to that item id for the rest of the turn - confirmed
+	// via exported session transcripts). It must not be reported as a
+	// successful completion: that would paint a rejected/never-run tool call
+	// as having succeeded. Close it out the same way an interrupted or failed
+	// turn already does - as a failure - so the GUI can render a clear
+	// failed/rejected state instead of an indefinite "running"/"queued" one.
+	events = append(events, n.terminalToolCallEvents(session, turnID, messageStreamStateFailed, "turn_completed_without_call_result")...)
+	// A turn that completed normally implies the compaction it ran finished;
+	// no-op in the usual flow because item/completed already cleared the id.
+	events = append(events, n.settlePendingCompactionEvents(session, turnID, appServerContextCompactedTitle)...)
 	return events
 }
 
@@ -308,6 +356,7 @@ func (n *acpTurnNormalizer) finishTerminal(
 ) []activityshared.Event {
 	events := n.Finish(session, turnID, streamState)
 	events = append(events, n.terminalToolCallEvents(session, turnID, toolStatus, reason)...)
+	events = append(events, n.settlePendingCompactionEvents(session, turnID, appServerCompactionInterruptedTitle)...)
 	return events
 }
 
@@ -349,41 +398,6 @@ func (n *acpTurnNormalizer) terminalToolCallEvents(
 			EventCallFailed,
 			turnID,
 			toolStatus,
-			"",
-			payloadString(payload, "name"),
-			payload,
-		))
-		delete(n.pendingToolCalls, key)
-	}
-	return events
-}
-
-func (n *acpTurnNormalizer) completedToolCallEvents(
-	session Session,
-	turnID string,
-) []activityshared.Event {
-	if n == nil || len(n.pendingToolCalls) == 0 {
-		return nil
-	}
-	keys := make([]string, 0, len(n.pendingToolCalls))
-	for key := range n.pendingToolCalls {
-		keys = append(keys, key)
-	}
-	sort.Strings(keys)
-	events := make([]activityshared.Event, 0, len(keys))
-	for _, key := range keys {
-		snapshot := n.pendingToolCalls[key]
-		payload := clonePayload(snapshot.payload)
-		if payload == nil {
-			payload = map[string]any{}
-		}
-		payload["status"] = messageStreamStateCompleted
-		events = append(events, newTurnActivityEventWithID(
-			session,
-			snapshot.eventID,
-			EventCallCompleted,
-			turnID,
-			messageStreamStateCompleted,
 			"",
 			payloadString(payload, "name"),
 			payload,

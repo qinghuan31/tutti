@@ -341,6 +341,8 @@ test("shared tuttid client creates workspace agent sessions with bearer auth", a
 test("shared tuttid client lists workspace agent sessions with query params", async () => {
   let requestPath = "";
   let requestQueryEntries: Record<string, string> = {};
+  const capturedRequest: { signal: AbortSignal | null } = { signal: null };
+  const abortController = new AbortController();
 
   const client = createTuttidClient({
     fetch: async (input, init) => {
@@ -349,9 +351,11 @@ test("shared tuttid client lists workspace agent sessions with query params", as
       const url = new URL(request.url);
       requestPath = url.pathname;
       requestQueryEntries = Object.fromEntries(url.searchParams.entries());
+      capturedRequest.signal = request.signal;
 
       return new Response(
         JSON.stringify({
+          hasMore: false,
           sessions: [],
           workspaceId: "ws-1"
         }),
@@ -363,17 +367,26 @@ test("shared tuttid client lists workspace agent sessions with query params", as
     }
   });
 
-  await client.listWorkspaceAgentSessions("ws-1", {
-    limit: 30,
-    searchQuery: "mention",
-    visibleOnly: true
-  });
+  await client.listWorkspaceAgentSessionSectionPage(
+    "ws-1",
+    {
+      agentTargetId: "claude-target",
+      cursor: "1000|session-1",
+      limit: 30,
+      sectionKey: "project:/workspace/project"
+    },
+    { signal: abortController.signal }
+  );
 
-  assert.equal(requestPath, "/v1/workspaces/ws-1/agent-sessions");
+  assert.equal(requestPath, "/v1/workspaces/ws-1/agent-session-sections/page");
+  assert.notEqual(capturedRequest.signal, null);
+  abortController.abort();
+  assert.equal(capturedRequest.signal?.aborted, true);
   assert.deepEqual(requestQueryEntries, {
+    agentTargetId: "claude-target",
+    cursor: "1000|session-1",
     limit: "30",
-    searchQuery: "mention",
-    visibleOnly: "true"
+    sectionKey: "project:/workspace/project"
   });
 });
 
@@ -1063,9 +1076,9 @@ test("shared tuttid client loads app factory provider composer options", async (
     }
   });
 
-  const result = await client.getWorkspaceAppFactoryProviderComposerOptions(
+  const result = await client.getWorkspaceAppFactoryAgentTargetComposerOptions(
     "workspace-1",
-    "claude-code",
+    "local:claude-code",
     {
       settings: {
         reasoningEffort: "high"
@@ -1076,7 +1089,7 @@ test("shared tuttid client loads app factory provider composer options", async (
   assert.equal(requestMethod, "POST");
   assert.equal(
     requestPath,
-    "/v1/workspaces/workspace-1/app-factory/providers/claude-code/composer-options"
+    "/v1/workspaces/workspace-1/app-factory/agent-targets/local%3Aclaude-code/composer-options"
   );
   assert.deepEqual(requestBody, {
     settings: {

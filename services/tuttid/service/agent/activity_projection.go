@@ -6,7 +6,7 @@ import (
 	"strings"
 	"time"
 
-	agentsessionstore "github.com/tutti-os/tutti/packages/agentactivity/daemon/activity"
+	agentsessionstore "github.com/tutti-os/tutti/packages/agent/daemon/activity"
 	agentactivitybiz "github.com/tutti-os/tutti/services/tuttid/biz/agentactivity"
 	reporterservice "github.com/tutti-os/tutti/services/tuttid/service/reporter"
 	agentnoderesult "github.com/tutti-os/tutti/services/tuttid/service/reporter/events/agent/node_result"
@@ -422,6 +422,29 @@ func (p *ActivityProjection) ListSessions(workspaceID string) ([]PersistedSessio
 	return out, true
 }
 
+func (p *ActivityProjection) ListSessionSection(
+	ctx context.Context,
+	input agentactivitybiz.ListSessionSectionInput,
+) (agentactivitybiz.SessionSectionPage, bool) {
+	if p == nil || p.repo == nil {
+		return agentactivitybiz.SessionSectionPage{}, false
+	}
+	page, ok, err := p.repo.ListSessionSection(ctx, input)
+	if err != nil {
+		slog.Warn("list workspace agent session section failed",
+			"event", "workspace.agent_session.section.list_failed",
+			"workspace_id", input.WorkspaceID,
+			"section_key", input.SectionKey,
+			"error", err,
+		)
+		return agentactivitybiz.SessionSectionPage{}, false
+	}
+	if !ok {
+		return agentactivitybiz.SessionSectionPage{}, false
+	}
+	return page, true
+}
+
 func (p *ActivityProjection) DeleteSession(ctx context.Context, workspaceID string, agentSessionID string) (bool, error) {
 	if p == nil || p.repo == nil {
 		return false, nil
@@ -519,10 +542,24 @@ func (p *ActivityProjection) ReconcileStaleTurnOnResume(ctx context.Context, ses
 			Title:             strings.TrimSpace(session.Title),
 			LifecycleStatus:   "active",
 			CurrentPhase:      "idle",
-			OccurredAtUnixMS:  now,
+			// Repair the persisted lifecycle copy too: the runtime confirmed
+			// no live turn exists, and lifecycle-first consumers (ADR 0008)
+			// would otherwise keep reading a stale live phase after resume.
+			TurnLifecycle: &agentsessionstore.WorkspaceAgentTurnLifecycle{
+				ActiveTurnID: nil,
+				Phase:        "settled",
+				Outcome:      staleResumeLifecycleOutcome(),
+			},
+			SubmitAvailability: &agentsessionstore.WorkspaceAgentSubmitAvailability{State: "available"},
+			OccurredAtUnixMS:   now,
 		},
 	})
 	return err
+}
+
+func staleResumeLifecycleOutcome() *string {
+	outcome := "canceled"
+	return &outcome
 }
 
 func (p *ActivityProjection) ListSessionMessages(

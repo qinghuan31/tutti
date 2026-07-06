@@ -17,8 +17,8 @@ func TestSQLiteStoreSeedsSystemAgentTargets(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ListAgentTargets() error = %v", err)
 	}
-	if len(targets) != 3 {
-		t.Fatalf("ListAgentTargets() len = %d, want 3", len(targets))
+	if len(targets) != 4 {
+		t.Fatalf("ListAgentTargets() len = %d, want 4", len(targets))
 	}
 	if targets[0].ID != agenttargetbiz.IDLocalCodex || targets[0].Provider != "codex" {
 		t.Fatalf("first target = %#v, want local codex", targets[0])
@@ -28,6 +28,9 @@ func TestSQLiteStoreSeedsSystemAgentTargets(t *testing.T) {
 	}
 	if targets[2].ID != agenttargetbiz.IDLocalTuttiAgent || targets[2].Provider != "tutti-agent" {
 		t.Fatalf("third target = %#v, want local tutti-agent", targets[2])
+	}
+	if targets[3].ID != agenttargetbiz.IDLocalCursor || targets[3].Provider != "cursor" {
+		t.Fatalf("fourth target = %#v, want local cursor", targets[3])
 	}
 	for _, target := range targets {
 		if target.Source != agenttargetbiz.SourceSystem {
@@ -127,8 +130,9 @@ VALUES ('ws-legacy-targets', 'session-1', 'runtime', ?, 'codex', 'ready', ?, ?);
 		t.Fatalf("insert legacy agent session fixture: %v", err)
 	}
 
-	if err := store.seedSystemAgentTargets(ctx, now+1); err != nil {
-		t.Fatalf("seedSystemAgentTargets() error = %v", err)
+	// Seeding and legacy target ID reconciliation run on every Migrate.
+	if err := store.Migrate(ctx); err != nil {
+		t.Fatalf("Migrate() error = %v", err)
 	}
 
 	if _, err := store.GetAgentTarget(ctx, legacyIDLocalCodex); !errors.Is(err, ErrAgentTargetNotFound) {

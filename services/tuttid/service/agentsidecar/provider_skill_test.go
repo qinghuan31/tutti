@@ -84,6 +84,8 @@ func TestTuttiCLIPolicyUsesPreparedCLICommandForAgentLauncherFallback(t *testing
 		"tutti-dev claude start --prompt <task> --show --json",
 		"tutti-dev agent session-summary",
 		"tutti-dev agent turn-resources",
+		"`mention://agent-target/<targetId>?workspaceId=...`",
+		"not launch-only",
 		"--image <localPath>",
 		"tutti-dev app open --app-id <appId> --json",
 		"Ask for task prompt, not model.",
@@ -352,11 +354,16 @@ func TestRenderProviderSkillBundleOmitsComputerUseWhenUnavailable(t *testing.T) 
 
 func setComputerUseAvailableForTest(t *testing.T) bool {
 	t.Helper()
-	executable, err := os.Executable()
-	if err != nil {
-		t.Fatalf("resolve test executable: %v", err)
+	// CheckReady executes the resolved command, so the override must be a
+	// hermetic stub that answers `permissions status --json`. Pointing it at
+	// the test binary itself would re-run the whole test suite recursively.
+	stub := filepath.Join(t.TempDir(), "cua-driver-stub")
+	script := "#!/bin/sh\n" +
+		"printf '%s' '{\"accessibility\":true,\"screen_recording\":true,\"screen_recording_capturable\":true}'\n"
+	if err := os.WriteFile(stub, []byte(script), 0o755); err != nil {
+		t.Fatalf("write cua-driver stub: %v", err)
 	}
-	t.Setenv("TUTTI_COMPUTER_MCP_COMMAND", executable)
+	t.Setenv("TUTTI_COMPUTER_MCP_COMMAND", stub)
 	return runtime.GOOS == "darwin"
 }
 
@@ -380,6 +387,8 @@ func TestRenderProviderSkillBundleIncludesClaudeRoutingForAlias(t *testing.T) {
 	}
 	if bundle.RecommendedSystemPrompt == nil ||
 		!strings.Contains(bundle.RecommendedSystemPrompt.Content, "Claude Code mention routing") ||
+		!strings.Contains(bundle.RecommendedSystemPrompt.Content, "mention://agent-target/<targetId>?workspaceId=...") ||
+		!strings.Contains(bundle.RecommendedSystemPrompt.Content, "this is not launch-only") ||
 		!strings.Contains(bundle.RecommendedSystemPrompt.Content, `Skill(skill="tutti-cli:workspace-app")`) ||
 		!strings.Contains(bundle.RecommendedSystemPrompt.Content, "Do not call a plain skill name that is not visible") ||
 		!strings.Contains(bundle.RecommendedSystemPrompt.Content, "Do not pass arguments to Skill") ||

@@ -5,6 +5,7 @@ import "strings"
 const (
 	ClaudeCode = "claude-code"
 	Codex      = "codex"
+	Cursor     = "cursor"
 	Gemini     = "gemini"
 	Hermes     = "hermes"
 	Nexight    = "nexight"
@@ -16,6 +17,7 @@ var allProviders = []string{
 	ClaudeCode,
 	Codex,
 	TuttiAgent,
+	Cursor,
 	Nexight,
 	Gemini,
 	Hermes,
@@ -34,6 +36,8 @@ func Normalize(provider string) string {
 		return Codex
 	case TuttiAgent:
 		return TuttiAgent
+	case "cursor-agent", "cursor-cli", Cursor:
+		return Cursor
 	case "gemini-cli", Gemini:
 		return Gemini
 	case "hermes-agent", Hermes:

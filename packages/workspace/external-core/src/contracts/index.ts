@@ -166,6 +166,7 @@ export type TuttiExternalWorkspaceFeature =
 export const tuttiExternalWorkspaceAgentProviders = [
   "claude-code",
   "codex",
+  "cursor",
   "nexight",
   "hermes",
   "gemini",
@@ -256,6 +257,9 @@ export interface TuttiExternalBridge {
   app: {
     getContext(): Promise<unknown>;
     subscribe(listener: (context: unknown) => void): () => void;
+  };
+  activity: {
+    reportActive(): Promise<void>;
   };
   browser: {
     openUrl(input: TuttiExternalBrowserOpenUrlInput): Promise<void>;

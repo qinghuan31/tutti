@@ -14,7 +14,8 @@ import (
 	"sync"
 	"unicode"
 
-	"github.com/tutti-os/tutti/packages/agentactivity/daemon/runtimecmd"
+	"github.com/tutti-os/tutti/packages/agent/daemon/httpx"
+	"github.com/tutti-os/tutti/packages/agent/daemon/runtimecmd"
 	tuttitypes "github.com/tutti-os/tutti/services/tuttid/types"
 )
 
@@ -541,7 +542,7 @@ func (r DefaultResolver) httpClient() *http.Client {
 	if r.HTTPClient != nil {
 		return r.HTTPClient
 	}
-	return http.DefaultClient
+	return httpx.Default()
 }
 
 func ContextWithDownloadProgress(ctx context.Context, report func(DownloadProgress)) context.Context {

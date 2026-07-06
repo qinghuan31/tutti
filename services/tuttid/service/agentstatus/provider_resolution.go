@@ -196,6 +196,9 @@ func fileExistsPath(path string) bool {
 }
 
 func (s Service) resolveStaticProviderSpec(ctx context.Context, spec ProviderSpec, requireManagedRuntime bool) ProviderSpec {
+	if spec.Provider == agentprovider.Cursor {
+		return s.resolveCursorProviderSpec(spec)
+	}
 	if spec.Provider != agentprovider.Codex {
 		return spec
 	}
@@ -207,6 +210,24 @@ func (s Service) resolveStaticProviderSpec(ctx context.Context, spec ProviderSpe
 		return spec
 	}
 	spec.AdapterEnv = append(s.managedRuntimeAdapterEnv(appRuntime), spec.AdapterEnv...)
+	return spec
+}
+
+// resolveCursorProviderSpec swaps the installed Cursor CLI binary into the
+// adapter command. Cursor's installer has shipped the CLI as `cursor-agent`
+// and, more recently, as `agent`; the static AdapterCommand assumes the
+// former, so re-point it at whichever binary actually resolves.
+func (s Service) resolveCursorProviderSpec(spec ProviderSpec) ProviderSpec {
+	if len(spec.AdapterCommand) == 0 {
+		return spec
+	}
+	path := s.commandResolver().ResolveBinary(spec.BinaryNames, spec.AdapterEnv)
+	if strings.TrimSpace(path) == "" {
+		return spec
+	}
+	command := cloneStrings(spec.AdapterCommand)
+	command[0] = path
+	spec.AdapterCommand = command
 	return spec
 }
 

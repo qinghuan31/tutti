@@ -1,5 +1,9 @@
+import { execFileSync } from "node:child_process";
+import { createHash } from "node:crypto";
+import { readFileSync, statSync } from "node:fs";
+import { homedir, userInfo } from "node:os";
 import * as readline from "node:readline/promises";
-import { stdin, stdout } from "node:process";
+import { stdin, stdout, stderr } from "node:process";
 import { pathToFileURL } from "node:url";
 import type {
   Options as ClaudeQueryOptions,
@@ -169,6 +173,15 @@ type AssistantSegmentState = {
 };
 
 const DEFAULT_FORCE_CANCEL_GRACE_MS = 30_000;
+const CLAUDE_AUTH_REFRESH_LOG_PREFIX = "CLAUDE_CODE_AUTH_REFRESH_DEBUG";
+const CLAUDE_AUTH_REFRESH_CREDENTIAL_SNAPSHOT_TTL_MS = 300;
+
+let cachedClaudeCredentialSnapshot:
+  | {
+      readonly capturedAtMs: number;
+      readonly snapshot: Record<string, unknown>;
+    }
+  | undefined;
 
 class AsyncPromptQueue {
   private readonly values: PromptQueueItem[] = [];
@@ -312,6 +325,11 @@ export class SessionRuntime {
   }
 
   async start(): Promise<void> {
+    this.logAuthRefresh("session_start.begin", {
+      restore: this.restore,
+      initialized: this.initialized,
+      queryClosed: this.queryClosed
+    });
     await this.ensureQuery({ initialize: true });
     await this.applyPendingFlagSettings();
     if (this.restore) {
@@ -324,6 +342,11 @@ export class SessionRuntime {
         ...this.sessionStatePayload(),
         resumeCursor: this.currentResumeCursor()
       }
+    });
+    this.logAuthRefresh("session_start.succeeded", {
+      restore: this.restore,
+      initialized: this.initialized,
+      queryClosed: this.queryClosed
     });
   }
 
@@ -445,6 +468,10 @@ export class SessionRuntime {
       })
       .then(() => this.consume())
       .catch((error) => {
+        this.logAuthRefresh("exec.ensure_query_failed", {
+          turnId,
+          error: errorPayload(error)
+        });
         emit({
           type: "turn_failed",
           payload: {
@@ -663,6 +690,13 @@ export class SessionRuntime {
           await this.handleMessage(message);
         }
       } catch (error) {
+        this.logAuthRefresh("query_consume.failed", {
+          activeTurnId: this.activeTurnId,
+          queuedTurnIds: this.turnQueue
+            .filter((turn) => !turn.settled)
+            .map((turn) => turn.turnId),
+          error: errorPayload(error)
+        });
         this.failLiveTurns(errorMessage(error));
       } finally {
         this.queryClosed = true;
@@ -1000,22 +1034,62 @@ export class SessionRuntime {
     } as ClaudeQueryOptions & {
       hooks: Record<string, Array<{ hooks: ClaudeHookCallback[] }>>;
     };
+    this.logAuthRefresh("query_create.begin", {
+      initialize: startOptions.initialize === true,
+      restore: this.restore,
+      permissionMode,
+      hasModel: Boolean(modelOptionValue(this.settings.model)),
+      hasResumeCursor: Boolean(this.resumeCursor),
+      querySettingsKeys: Object.keys(querySettings),
+      claudeOptionKeys: Object.keys(
+        claudeQueryOptionOverrides(this.claudeOptions)
+      )
+    });
     this.query = queryFactory({
       prompt: this.promptQueue.iterate(),
       options: queryOptions
     }) as ClaudeQueryRuntime;
+    this.logAuthRefresh("query_create.succeeded", {
+      initialize: startOptions.initialize === true,
+      restore: this.restore,
+      hasInitializationResult:
+        typeof this.query.initializationResult === "function"
+    });
     if (startOptions.initialize) {
       try {
+        this.logAuthRefresh("query_initialization.begin", {
+          restore: this.restore
+        });
         const initializationResult = await this.query.initializationResult?.();
         this.applyInitializationResult(initializationResult);
         this.initialized = true;
+        this.logAuthRefresh("query_initialization.succeeded", {
+          restore: this.restore,
+          resultKeys: Object.keys(recordValue(initializationResult) ?? {})
+        });
       } catch (error) {
+        this.logAuthRefresh("query_initialization.failed", {
+          restore: this.restore,
+          error: errorPayload(error)
+        });
         this.query.close?.();
         this.query = undefined;
         this.initialized = false;
         throw error;
       }
     }
+  }
+
+  private logAuthRefresh(
+    stage: string,
+    payload: Record<string, unknown>
+  ): void {
+    debugClaudeAuthRefreshLog(stage, {
+      providerSessionId: this.providerSessionId,
+      cwd: this.cwd,
+      credentials: claudeCredentialSnapshot(),
+      ...payload
+    });
   }
 
   private async handleMessage(message: SDKMessage): Promise<void> {
@@ -1148,7 +1222,7 @@ export class SessionRuntime {
         }
         if (
           this.isNestedDelegatedTaskTerminalAssistant(message) &&
-          !this.hasRunningChildDelegatedTasks(parentToolUseID)
+          !this.hasUnsettledChildWork(parentToolUseID)
         ) {
           this.completeDelegatedTaskFromParentMessage(parentToolUseID, {
             status: "completed",
@@ -1621,10 +1695,17 @@ export class SessionRuntime {
       const compactResult = stringValue(message.compact_result);
       if (compactResult === "success" && this.compactionInProgress) {
         this.compactionInProgress = false;
-        this.emitCompactCompleted(
-          this.compactEventTurnId(),
-          "Compacting completed."
-        );
+        const turnId = this.compactEventTurnId();
+        this.emitCompactCompleted(turnId, "Compacting completed.");
+        // The `status`/`compact_result` signal can arrive without a
+        // companion `compact_boundary` system message (or arrive first),
+        // so it cannot rely on emitCompactBoundaryUsage to refresh the
+        // context-usage percentage. Without this, the GUI keeps showing
+        // the pre-compaction (often ~100%) usage forever after a manual
+        // /compact, since no further usage_updated event is guaranteed to
+        // follow "Compacting completed." — see the P1 bug where the usage
+        // chip stays pinned at 100% after clicking compact.
+        void this.emitContextUsageSnapshot(turnId);
         return;
       }
       if (compactResult === "failed" && this.compactionInProgress) {
@@ -2586,6 +2667,22 @@ export class SessionRuntime {
     return false;
   }
 
+  private hasUnsettledChildWork(parentToolUseId: string): boolean {
+    return (
+      this.hasPendingChildToolResults(parentToolUseId) ||
+      this.hasRunningChildDelegatedTasks(parentToolUseId)
+    );
+  }
+
+  private hasPendingChildToolResults(parentToolUseId: string): boolean {
+    for (const tool of this.toolByID.values()) {
+      if (tool.parentToolUseId === parentToolUseId) {
+        return true;
+      }
+    }
+    return false;
+  }
+
   private emitDelegatedTaskParentUpdate(
     task: DelegatedTaskState,
     message: Record<string, unknown>
@@ -3287,6 +3384,15 @@ function contextWindowTokensFromModelUsage(value: unknown): number {
       return tokens;
     }
   }
+  for (const nested of Object.values(record)) {
+    if (typeof nested !== "object" || nested === null) {
+      continue;
+    }
+    const tokens = contextWindowTokensFromModelUsage(nested);
+    if (tokens > 0) {
+      return tokens;
+    }
+  }
   return 0;
 }
 
@@ -3297,6 +3403,242 @@ function isCompactCommandPrompt(value: string): boolean {
 
 function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
+}
+
+function errorPayload(error: unknown): Record<string, unknown> {
+  if (!(error instanceof Error)) {
+    return { message: String(error) };
+  }
+  const result: Record<string, unknown> = {
+    name: error.name,
+    message: error.message
+  };
+  const withCode = error as Error & {
+    code?: unknown;
+    status?: unknown;
+    cause?: unknown;
+  };
+  if (withCode.code !== undefined) {
+    result.code = withCode.code;
+  }
+  if (withCode.status !== undefined) {
+    result.status = withCode.status;
+  }
+  if (withCode.cause !== undefined) {
+    result.cause = errorPayload(withCode.cause);
+  }
+  if (error.stack) {
+    result.stack = error.stack;
+  }
+  return result;
+}
+
+function debugClaudeAuthRefreshLog(
+  stage: string,
+  payload: Record<string, unknown>
+): void {
+  try {
+    stderr.write(
+      `${CLAUDE_AUTH_REFRESH_LOG_PREFIX} ${JSON.stringify({
+        stage,
+        timestamp: new Date().toISOString(),
+        ...payload
+      })}\n`
+    );
+  } catch (error) {
+    stderr.write(
+      `${CLAUDE_AUTH_REFRESH_LOG_PREFIX} ${JSON.stringify({
+        stage: "log_failed",
+        timestamp: new Date().toISOString(),
+        originalStage: stage,
+        error: errorPayload(error)
+      })}\n`
+    );
+  }
+}
+
+function claudeCredentialSnapshot(): Record<string, unknown> {
+  const now = Date.now();
+  if (
+    cachedClaudeCredentialSnapshot &&
+    now - cachedClaudeCredentialSnapshot.capturedAtMs <=
+      CLAUDE_AUTH_REFRESH_CREDENTIAL_SNAPSHOT_TTL_MS
+  ) {
+    return {
+      ...cachedClaudeCredentialSnapshot.snapshot,
+      cache: {
+        hit: true,
+        ageMs: now - cachedClaudeCredentialSnapshot.capturedAtMs,
+        ttlMs: CLAUDE_AUTH_REFRESH_CREDENTIAL_SNAPSHOT_TTL_MS
+      }
+    };
+  }
+  const configDir = claudeConfigDir();
+  const keychain = claudeKeychainCredentialSnapshot(configDir);
+  const plaintext = claudePlaintextCredentialSnapshot(configDir);
+  const effectiveSource =
+    keychain.found && keychain.hasAccessToken
+      ? "keychain"
+      : plaintext.found && plaintext.hasAccessToken
+        ? "plaintext"
+        : "none";
+  const snapshot = {
+    storageBackend:
+      process.platform === "darwin"
+        ? "keychain-with-plaintext-fallback"
+        : "plaintext",
+    configDir,
+    configDirDefault: !process.env.CLAUDE_CONFIG_DIR,
+    effectiveSource,
+    keychain,
+    plaintext,
+    cache: {
+      hit: false,
+      ageMs: 0,
+      ttlMs: CLAUDE_AUTH_REFRESH_CREDENTIAL_SNAPSHOT_TTL_MS
+    }
+  };
+  cachedClaudeCredentialSnapshot = {
+    capturedAtMs: now,
+    snapshot
+  };
+  return snapshot;
+}
+
+function claudeKeychainCredentialSnapshot(
+  configDir: string
+): Record<string, unknown> {
+  if (process.platform !== "darwin") {
+    return { checked: false, reason: "non_darwin" };
+  }
+  const serviceName = claudeKeychainServiceName(configDir);
+  const account = claudeKeychainAccount();
+  try {
+    const content = execFileSync(
+      "/usr/bin/security",
+      ["find-generic-password", "-a", account, "-w", "-s", serviceName],
+      {
+        encoding: "utf8",
+        stdio: ["ignore", "pipe", "pipe"],
+        timeout: 10_000
+      }
+    ).trim();
+    return {
+      checked: true,
+      serviceName,
+      account,
+      found: Boolean(content),
+      ...credentialContentSnapshot(content)
+    };
+  } catch (error) {
+    return {
+      checked: true,
+      serviceName,
+      account,
+      found: false,
+      error: credentialProbeErrorPayload(error)
+    };
+  }
+}
+
+function claudePlaintextCredentialSnapshot(
+  configDir: string
+): Record<string, unknown> {
+  const path = `${configDir}/.credentials.json`;
+  try {
+    const stat = statSync(path);
+    return {
+      path,
+      found: true,
+      mtimeMs: stat.mtimeMs,
+      mtimeISO: stat.mtime.toISOString(),
+      ...credentialContentSnapshot(readFileSync(path, "utf8"))
+    };
+  } catch (error) {
+    return {
+      path,
+      found: false,
+      error: credentialProbeErrorPayload(error)
+    };
+  }
+}
+
+function credentialContentSnapshot(content: string): Record<string, unknown> {
+  try {
+    const parsed = JSON.parse(content) as Record<string, unknown>;
+    const oauth = recordValue(parsed.claudeAiOauth) ?? {};
+    const expiresAt = numberValue(oauth.expiresAt);
+    return {
+      topLevelKeys: Object.keys(parsed),
+      oauthKeys: Object.keys(oauth),
+      hasAccessToken: Boolean(stringValue(oauth.accessToken)),
+      hasRefreshToken: Boolean(stringValue(oauth.refreshToken)),
+      expiresAt,
+      expiresAtISO: expiresAt > 0 ? new Date(expiresAt).toISOString() : null,
+      expired: expiresAt > 0 ? expiresAt <= Date.now() : null
+    };
+  } catch (error) {
+    return {
+      parseError: credentialProbeErrorPayload(error)
+    };
+  }
+}
+
+function credentialProbeErrorPayload(error: unknown): Record<string, unknown> {
+  if (!(error instanceof Error)) {
+    return { message: String(error) };
+  }
+  const withCode = error as Error & {
+    code?: unknown;
+    status?: unknown;
+  };
+  return {
+    name: error.name,
+    message: error.message,
+    ...(withCode.code !== undefined ? { code: withCode.code } : {}),
+    ...(withCode.status !== undefined ? { status: withCode.status } : {})
+  };
+}
+
+function claudeConfigDir(): string {
+  return process.env.CLAUDE_CONFIG_DIR || `${homedir()}/.claude`;
+}
+
+function claudeKeychainAccount(): string {
+  try {
+    return process.env.USER || userInfo().username;
+  } catch {
+    return "claude-code-user";
+  }
+}
+
+function claudeKeychainServiceName(configDir: string): string {
+  const dirHash = process.env.CLAUDE_CONFIG_DIR
+    ? `-${createHash("sha256").update(configDir).digest("hex").slice(0, 8)}`
+    : "";
+  return `Claude Code${claudeOAuthFileSuffix()}-credentials${dirHash}`;
+}
+
+function claudeOAuthFileSuffix(): string {
+  if (process.env.CLAUDE_CODE_CUSTOM_OAUTH_URL) {
+    return "-custom-oauth";
+  }
+  if (process.env.USER_TYPE === "ant") {
+    if (truthyEnv(process.env.USE_LOCAL_OAUTH)) {
+      return "-local-oauth";
+    }
+    if (truthyEnv(process.env.USE_STAGING_OAUTH)) {
+      return "-staging-oauth";
+    }
+  }
+  return "";
+}
+
+function truthyEnv(value: string | undefined): boolean {
+  if (!value) {
+    return false;
+  }
+  return !["0", "false", "no", "off"].includes(value.toLowerCase());
 }
 
 async function runMain(): Promise<void> {

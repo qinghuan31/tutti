@@ -1,9 +1,12 @@
-import type { DesktopDeveloperLogKind } from "@shared/contracts/ipc";
+import type {
+  DesktopComputerUsePermissionPane,
+  DesktopComputerUseRestartDriverInput,
+  DesktopDeveloperLogKind
+} from "@shared/contracts/ipc";
 import type { DesktopLocale } from "@shared/i18n";
 import type {
   DesktopDefaultAgentProvider,
   DesktopAgentConversationDetailMode,
-  DesktopAgentDockLayout,
   DesktopAppCatalogChannel,
   DesktopBrowserUseConnectionMode,
   DesktopDockIconStyle,
@@ -157,6 +160,39 @@ export class WorkspaceSettingsService implements IWorkspaceSettingsService {
     return this.dependencies.client.grantComputerUsePermissions();
   }
 
+  startComputerUsePermissionGrant() {
+    return this.dependencies.client.startComputerUsePermissionGrant();
+  }
+
+  getComputerUsePermissionGrantStatus() {
+    return this.dependencies.client.getComputerUsePermissionGrantStatus();
+  }
+
+  logComputerUsePermissionDiagnostic(input: {
+    details?: Record<string, unknown>;
+    event: string;
+    level?: "debug" | "error" | "info" | "warn";
+  }): void {
+    void this.dependencies.client
+      .logComputerUsePermissionDiagnostic({
+        details: input.details,
+        event: input.event,
+        level: input.level,
+        workspaceId: this.store.workspaceID
+      })
+      .catch(() => undefined);
+  }
+
+  openComputerUsePermissionSettings(
+    pane: DesktopComputerUsePermissionPane
+  ): Promise<void> {
+    return this.dependencies.client.openComputerUsePermissionSettings(pane);
+  }
+
+  restartComputerUseDriver(input?: DesktopComputerUseRestartDriverInput) {
+    return this.dependencies.client.restartComputerUseDriver(input);
+  }
+
   syncWorkspace(workspace: WorkspaceSettingsWorkspaceInput): void {
     if (workspace.id !== this.store.workspaceID) {
       this.store.workspaceID = workspace.id;
@@ -269,25 +305,6 @@ export class WorkspaceSettingsService implements IWorkspaceSettingsService {
       this.notifications.error({
         title: createActiveTranslator().t(
           "workspace.settings.general.agentConversationDetailModeSaveFailed"
-        )
-      });
-    }
-  }
-
-  async changeAgentDockLayout(layout: DesktopAgentDockLayout): Promise<void> {
-    if (
-      this.desktopPreferences.store.agentDockLayout === layout ||
-      this.desktopPreferences.store.changingAgentDockLayout === layout
-    ) {
-      return;
-    }
-
-    try {
-      await this.desktopPreferences.setAgentDockLayout(layout);
-    } catch {
-      this.notifications.error({
-        title: createActiveTranslator().t(
-          "workspace.settings.general.agentDockLayoutSaveFailed"
         )
       });
     }
@@ -526,6 +543,25 @@ export class WorkspaceSettingsService implements IWorkspaceSettingsService {
       this.notifications.error({
         title: createActiveTranslator().t(
           "workspace.settings.developer.showAppDeveloperSourcesSaveFailed"
+        )
+      });
+    }
+  }
+
+  async changeEnableCursorAgent(enable: boolean): Promise<void> {
+    if (
+      this.desktopPreferences.store.enableCursorAgent === enable ||
+      this.desktopPreferences.store.changingEnableCursorAgent === enable
+    ) {
+      return;
+    }
+
+    try {
+      await this.desktopPreferences.setEnableCursorAgent(enable);
+    } catch {
+      this.notifications.error({
+        title: createActiveTranslator().t(
+          "workspace.settings.developer.enableCursorAgentSaveFailed"
         )
       });
     }
@@ -1133,13 +1169,12 @@ IWorkspaceAppCenterService(WorkspaceSettingsService, undefined, 4);
 
 const noopDesktopPreferencesStore: DesktopPreferencesReadableStoreState = {
   agentComposerDefaultsByProvider: {},
+  agentComposerDefaultsByAgentTarget: {},
   agentGuiConversationRailCollapsedByProvider: {},
   agentConversationDetailMode: "coding",
-  agentDockLayout: "legacySplit",
   appCatalogChannel: "production",
   browserUseConnectionMode: "isolated",
   changingAgentConversationDetailMode: null,
-  changingAgentDockLayout: null,
   changingAppCatalogChannel: null,
   changingBrowserUseConnectionMode: null,
   changingDefaultAgentProvider: null,
@@ -1149,6 +1184,7 @@ const noopDesktopPreferencesStore: DesktopPreferencesReadableStoreState = {
   changingMinimizeAnimation: null,
   changingSleepPreventionMode: null,
   changingShowAppDeveloperSources: null,
+  changingEnableCursorAgent: null,
   changingThemeSource: null,
   changingUpdateChannel: null,
   changingUpdatePolicy: null,
@@ -1161,6 +1197,7 @@ const noopDesktopPreferencesStore: DesktopPreferencesReadableStoreState = {
   minimizeAnimation: defaultDesktopMinimizeAnimation,
   sleepPreventionMode: "never",
   showAppDeveloperSources: false,
+  enableCursorAgent: false,
   theme: createNoopTheme("dark"),
   updateChannel: "rc",
   updatePolicy: "prompt",
@@ -1184,9 +1221,6 @@ const noopDesktopPreferences: DesktopPreferencesService = {
   },
   setAgentConversationDetailMode(mode) {
     return Promise.resolve(mode);
-  },
-  setAgentDockLayout(layout) {
-    return Promise.resolve(layout);
   },
   setDockPlacement(placement) {
     return Promise.resolve(placement);
@@ -1212,6 +1246,9 @@ const noopDesktopPreferences: DesktopPreferencesService = {
   setShowAppDeveloperSources(show) {
     return Promise.resolve(show);
   },
+  setEnableCursorAgent(enable) {
+    return Promise.resolve(enable);
+  },
   setThemeSource(source) {
     return Promise.resolve(createNoopTheme(source));
   },
@@ -1221,7 +1258,7 @@ const noopDesktopPreferences: DesktopPreferencesService = {
   setUpdatePolicy(policy) {
     return Promise.resolve(policy);
   },
-  rememberAgentComposerDefaults() {
+  rememberAgentComposerDefaultsForAgentTarget() {
     return Promise.resolve();
   },
   rememberAgentGuiConversationRailCollapsed() {

@@ -43,6 +43,61 @@ export function composerSettingOptionsFromActivity(
   return options.map((option) => ({ ...option }));
 }
 
+// liveModelOptionValuesFromRuntimeContext extracts the model option values a
+// live ACP session advertises through its runtime-context config options
+// (configOptions[id="model"].options[].value). Providers such as Cursor only
+// expose their model list this way — there is no static catalog.
+export function liveModelOptionValuesFromRuntimeContext(
+  runtimeContext: Record<string, unknown> | null | undefined
+): string[] {
+  const configOptions = runtimeContext?.configOptions;
+  if (!Array.isArray(configOptions)) {
+    return [];
+  }
+  for (const optionRaw of configOptions) {
+    if (!optionRaw || typeof optionRaw !== "object") {
+      continue;
+    }
+    const option = optionRaw as Record<string, unknown>;
+    if (normalizeConfigOptionValue(option.id) !== "model") {
+      continue;
+    }
+    const entries = option.options;
+    if (!Array.isArray(entries)) {
+      return [];
+    }
+    const values: string[] = [];
+    for (const entryRaw of entries) {
+      if (!entryRaw || typeof entryRaw !== "object") {
+        continue;
+      }
+      const value = normalizeConfigOptionValue(
+        (entryRaw as Record<string, unknown>).value
+      );
+      if (value) {
+        values.push(value);
+      }
+    }
+    return values;
+  }
+  return [];
+}
+
+// composerOptionsMissingLiveModelValues reports whether the loaded composer
+// options lack model values the live session advertises — the signal that the
+// daemon fetched composer options before the session's model list existed and
+// a forced refetch (which merges the live list server-side) is needed.
+export function composerOptionsMissingLiveModelValues(
+  options: AgentActivityComposerOptions | null,
+  liveValues: readonly string[]
+): boolean {
+  if (!options || liveValues.length === 0) {
+    return false;
+  }
+  const known = new Set(options.models.map((option) => option.value));
+  return liveValues.some((value) => !known.has(value));
+}
+
 export function modelSelectionFromComposerOptions(
   options: AgentActivityComposerOptions | null,
   currentValue: string | null

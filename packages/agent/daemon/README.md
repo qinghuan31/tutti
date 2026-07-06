@@ -27,6 +27,18 @@ if err != nil {
 controller := runtime.Controller()
 ```
 
+Hosts that need to prepare a provider launch immediately before process spawn
+can set `ProviderLaunchPreparer`. The hook receives the provider, session,
+command, environment, cwd, and direct-start mode; it returns the command,
+environment, cwd, and optional cleanup function to use for `ProcessTransport`
+startup.
+
+Prepare errors fail session start before spawning a process. When prepare
+succeeds, cleanup runs after the provider process is closed, including process
+start or initialize failure, live-session close, idle release, and live process
+replacement. Cleanup failures are logged and do not replace the original close
+or start error.
+
 ## Package Ownership
 
 This package owns:
@@ -62,6 +74,52 @@ mirror the opaque SDK resume cursor in `runtimeContext.resumeCursor`. The sideca
 owns SDK stream ordering, turn cancellation, orphan result draining, and cursor
 updates; the Go adapter forwards requests, persists session state patches, and
 restores the last cursor on resume.
+
+## Cloud Projection Extension Points
+
+External daemons (for example tsh desktopd) can project local agent activity to
+a remote controlplane without forking any `activity/` code.
+
+**Scope ID semantics (RFC hard constraint):** the scope identifier in these
+shared contracts is opaque — on the tutti side it is the **workspace ID**, for
+external daemons such as tsh it is the **control-plane room ID**. workspace ≡
+room, one-to-one, with no implicit translation anywhere: `roomID` in the store
+interfaces is exactly the `WorkspaceID` on report inputs and is sent on the
+wire as `roomId`. External daemons must pass the control-plane room ID directly
+and must not introduce a second mapping in between.
+
+- **`SyncStateStore`** — inject persistence for per-session sync states
+  (pending counts, failure counters, last error) via
+  `agentsessionstore.WithSyncStateStore`. `FileAgentSyncStateStore` is a
+  ready-made file-backed implementation.
+- **`SessionActivityReporterAdapter`** — wraps any `SessionActivityReporter`
+  (such as `agentsessionstore.Client` configured with the controlplane
+  `BaseURL`) into an `ActivityReporter`. It converts `ReportActivityInput`
+  into per-session state and message reports and tracks/persists sync state
+  through a `SyncStateStore`.
+- **Syncer backoff and cursor persistence** — `WithSyncBackoff`
+  (`DefaultSyncBackoffConfig`: 10s initial, 5min cap, 2.0 multiplier) enables
+  per-session exponential backoff for failed message syncs, and
+  `WithMessageCursorStore` persists message sync cursors so pulls resume after
+  a restart. Both are opt-in; without them behavior is unchanged.
+
+```go
+client := agentsessionstore.NewClient(agentsessionstore.Config{
+    BaseURL: "https://controlplane.example.com",
+    Token:   token,
+})
+fileStore := agentsessionstore.NewFileAgentSyncStateStore(stateDir)
+reporter := agentsessionstore.NewSessionActivityReporterAdapter(
+    client,
+    agentsessionstore.WithReporterSyncStateStore(fileStore),
+)
+store := agentsessionstore.New(
+    client,
+    agentsessionstore.WithSyncStateStore(fileStore),
+    agentsessionstore.WithMessageCursorStore(fileStore),
+    agentsessionstore.WithSyncBackoff(agentsessionstore.DefaultSyncBackoffConfig()),
+)
+```
 
 ## Legacy Defaults
 

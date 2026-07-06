@@ -10,8 +10,8 @@ import (
 	"testing"
 	"time"
 
-	agentsessionstore "github.com/tutti-os/tutti/packages/agentactivity/daemon/activity"
-	activityshared "github.com/tutti-os/tutti/packages/agentactivity/daemon/activity/events"
+	agentsessionstore "github.com/tutti-os/tutti/packages/agent/daemon/activity"
+	activityshared "github.com/tutti-os/tutti/packages/agent/daemon/activity/events"
 )
 
 type retryingActivityClient struct {
@@ -1060,7 +1060,9 @@ func TestReporterProjectsSessionAndTurnLifecycleToStatePatches(t *testing.T) {
 	input := reportActivityInput(session, []activityshared.Event{
 		newSessionActivityEvent(session, EventSessionStarted, SessionStatusReady, nil),
 		newTurnActivityEventWithID(session, "turn-start-1", EventTurnStarted, "turn-1", SessionStatusWorking, "", "", nil),
-		newTurnActivityEventWithID(session, "turn-done-1", EventTurnCompleted, "turn-1", SessionStatusReady, "", "", nil),
+		newTurnActivityEventWithID(session, "turn-done-1", EventTurnCompleted, "turn-1", SessionStatusReady, "", "", map[string]any{
+			"stopReason": "end_turn",
+		}),
 	})
 	err := reporter.Report(context.Background(), input)
 	if err != nil {
@@ -1068,6 +1070,9 @@ func TestReporterProjectsSessionAndTurnLifecycleToStatePatches(t *testing.T) {
 	}
 	if client.calls != 3 {
 		t.Fatalf("calls = %d, want 3 state reports", client.calls)
+	}
+	if len(client.stateInputs) != 3 {
+		t.Fatalf("state inputs = %#v, want 3", client.stateInputs)
 	}
 	if len(input.TimelineItems) != 0 {
 		t.Fatalf("timeline items = %#v, want none for lifecycle-only report", input.TimelineItems)
@@ -1086,8 +1091,26 @@ func TestReporterProjectsSessionAndTurnLifecycleToStatePatches(t *testing.T) {
 	}
 	if input.StatePatches[2].Turn == nil ||
 		input.StatePatches[2].Turn.CompletedAtUnixMS == 0 ||
+		input.StatePatches[2].Turn.ActiveTurnID != nil ||
+		input.StatePatches[2].Turn.Phase != "settled" ||
+		input.StatePatches[2].Turn.Outcome != "completed" ||
+		input.StatePatches[2].Turn.SubmitAvailability == nil ||
+		input.StatePatches[2].Turn.SubmitAvailability.State != "available" ||
+		input.StatePatches[2].TurnLifecycle == nil ||
+		input.StatePatches[2].TurnLifecycle.ActiveTurnID != nil ||
+		input.StatePatches[2].TurnLifecycle.Phase != "settled" ||
+		input.StatePatches[2].TurnLifecycle.Outcome == nil ||
+		*input.StatePatches[2].TurnLifecycle.Outcome != "completed" ||
+		input.StatePatches[2].SubmitAvailability == nil ||
+		input.StatePatches[2].SubmitAvailability.State != "available" ||
 		input.StatePatches[2].CurrentPhase != string(activityshared.TurnPhaseIdle) {
 		t.Fatalf("turn completed patch = %#v", input.StatePatches[2])
+	}
+	if input.StatePatches[2].LastError != "" {
+		t.Fatalf("turn completed last error = %q, want empty", input.StatePatches[2].LastError)
+	}
+	if client.stateInputs[2].State.LastError != "" {
+		t.Fatalf("reported turn completed last error = %q, want empty", client.stateInputs[2].State.LastError)
 	}
 }
 
@@ -1179,11 +1202,27 @@ func TestReporterProjectsTurnFailureErrorToStatePatch(t *testing.T) {
 	if len(input.StatePatches) != 1 {
 		t.Fatalf("state patches = %#v, want 1", input.StatePatches)
 	}
-	if input.StatePatches[0].CurrentPhase != string(activityshared.TurnPhaseFailed) {
+	if input.StatePatches[0].CurrentPhase != string(activityshared.TurnPhaseIdle) ||
+		input.StatePatches[0].Turn == nil ||
+		input.StatePatches[0].Turn.ActiveTurnID != nil ||
+		input.StatePatches[0].Turn.Phase != "settled" ||
+		input.StatePatches[0].Turn.Outcome != "failed" ||
+		input.StatePatches[0].Turn.SubmitAvailability == nil ||
+		input.StatePatches[0].Turn.SubmitAvailability.State != "available" ||
+		input.StatePatches[0].TurnLifecycle == nil ||
+		input.StatePatches[0].TurnLifecycle.ActiveTurnID != nil ||
+		input.StatePatches[0].TurnLifecycle.Phase != "settled" ||
+		input.StatePatches[0].TurnLifecycle.Outcome == nil ||
+		*input.StatePatches[0].TurnLifecycle.Outcome != "failed" ||
+		input.StatePatches[0].SubmitAvailability == nil ||
+		input.StatePatches[0].SubmitAvailability.State != "available" {
 		t.Fatalf("turn failed patch = %#v", input.StatePatches[0])
 	}
 	if input.StatePatches[0].LastError != "Codex request failed because a quota or rate limit was reached." {
 		t.Fatalf("last error = %q, want projected failure reason", input.StatePatches[0].LastError)
+	}
+	if client.stateInputs[0].State.LastError != "Codex request failed because a quota or rate limit was reached." {
+		t.Fatalf("reported last error = %q, want projected failure reason", client.stateInputs[0].State.LastError)
 	}
 	if len(input.MessageUpdates) != 1 {
 		t.Fatalf("message updates = %#v, want visible failure message", input.MessageUpdates)

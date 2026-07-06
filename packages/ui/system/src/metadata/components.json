@@ -1676,6 +1676,20 @@
       "iconVariant": "filled"
     },
     {
+      "id": "folder-open-lined-icon",
+      "layer": "base",
+      "name": "FolderOpenLinedIcon",
+      "export": "FolderOpenLinedIcon",
+      "from": "@tutti-os/ui-system/icons",
+      "category": "icon",
+      "status": "stable",
+      "source": "src/icons/system-icons.tsx",
+      "description": "Lined system icon for an open folder, used to indicate an expanded folder or section.",
+      "useCases": ["Expanded folder state", "Directory navigation"],
+      "migrationHints": [],
+      "iconVariant": "lined"
+    },
+    {
       "id": "nav-launch-lined-icon",
       "layer": "base",
       "name": "DashboardIcon",

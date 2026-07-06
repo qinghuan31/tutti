@@ -27,7 +27,8 @@ export interface NetworkCheck {
 const MANUAL_INSTALL_COMMANDS: Partial<Record<WorkspaceAgentProvider, string>> =
   {
     codex: "npm install -g @openai/codex --include=optional",
-    "claude-code": "curl -fsSL https://claude.ai/install.sh | bash"
+    "claude-code": "curl -fsSL https://claude.ai/install.sh | bash",
+    cursor: "curl https://cursor.com/install -fsS | bash"
   };
 
 function endpointHost(endpoint: string | null | undefined): string | null {

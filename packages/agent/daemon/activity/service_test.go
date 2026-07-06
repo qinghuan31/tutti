@@ -6,7 +6,7 @@ import (
 	"reflect"
 	"testing"
 
-	activityshared "github.com/tutti-os/tutti/packages/agentactivity/daemon/activity/events"
+	activityshared "github.com/tutti-os/tutti/packages/agent/daemon/activity/events"
 )
 
 func TestStoreTracksRoomsAndClonesState(t *testing.T) {
@@ -961,6 +961,29 @@ func TestStoreAppliesRuntimeStatusEventsImmediately(t *testing.T) {
 	}
 	if state.Sessions[0].UpdatedAtUnixMS != 1710000000200 {
 		t.Fatalf("updated_at = %d, want runtime timestamp", state.Sessions[0].UpdatedAtUnixMS)
+	}
+}
+
+func TestStatePatchFromActivityEventIgnoresCompletedTurnLastError(t *testing.T) {
+	event := activityshared.NewTurnCompleted(activityshared.EventContext{
+		EventID:           "turn-completed",
+		Provider:          activityshared.ProviderClaudeCode,
+		ProviderSessionID: "provider-session",
+		AgentSessionID:    "agent-session",
+		CWD:               "/workspace/room-1",
+		OccurredAtUnixMS:  1710000000200,
+	}, "turn-1", activityshared.TurnOutcomeCompleted)
+	event.Payload.Metadata = map[string]any{
+		"lastError":  "end_turn",
+		"stopReason": "end_turn",
+	}
+
+	patch, ok := statePatchFromActivityEvent(EventSource{}, event, "agent-session", event.OccurredAtUnixMS)
+	if !ok {
+		t.Fatal("statePatchFromActivityEvent ok = false, want true")
+	}
+	if patch.LastError != "" {
+		t.Fatalf("last error = %q, want empty for completed turn", patch.LastError)
 	}
 }
 

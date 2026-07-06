@@ -3,6 +3,7 @@ import { agentGuiDockIconUrl, agentGuiDockIconUrls } from "./dockIcons.ts";
 import {
   claudeRoundedUrl,
   codexRoundedUrl,
+  cursorColorfulUrl,
   geminiRoundedUrl,
   hermesRoundedUrl,
   manageAgentClaudeCodeUrl,
@@ -17,7 +18,8 @@ import {
 import {
   MANAGED_AGENT_ICON_FALLBACK_URL,
   MANAGED_AGENT_ICON_ROUNDED_URLS,
-  MANAGED_AGENT_ICON_URLS
+  MANAGED_AGENT_ICON_URLS,
+  MANAGED_AGENT_PROVIDER_RAIL_ICON_URLS
 } from "./shared/managedAgentIcons.ts";
 
 function expectPackagedIconUrl(url: string): void {
@@ -32,6 +34,7 @@ describe("managed agent icon assets", () => {
     [
       ...Object.values(MANAGED_AGENT_ICON_URLS),
       ...Object.values(MANAGED_AGENT_ICON_ROUNDED_URLS),
+      ...Object.values(MANAGED_AGENT_PROVIDER_RAIL_ICON_URLS),
       MANAGED_AGENT_ICON_FALLBACK_URL,
       agentGuiDockIconUrl,
       ...Object.values(agentGuiDockIconUrls)
@@ -52,5 +55,13 @@ describe("managed agent icon assets", () => {
     expect(agentGuiDockIconUrls.hermes).toBe(hermesRoundedUrl);
     expect(agentGuiDockIconUrls.nexight).toBe(tuttiDocRoundedUrl);
     expect(agentGuiDockIconUrls.openclaw).toBe(openclawRoundedUrl);
+  });
+
+  it("uses Cursor colorful artwork only for the provider rail", () => {
+    expect(MANAGED_AGENT_PROVIDER_RAIL_ICON_URLS.cursor).toBe(
+      cursorColorfulUrl
+    );
+    expect(MANAGED_AGENT_ICON_URLS.cursor).not.toBe(cursorColorfulUrl);
+    expect(MANAGED_AGENT_ICON_ROUNDED_URLS.cursor).not.toBe(cursorColorfulUrl);
   });
 });

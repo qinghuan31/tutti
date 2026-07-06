@@ -168,7 +168,7 @@ function fileNameFromPath(path: string | null | undefined): string | null {
 
 function flatLineClassName(kind: "add" | "remove" | "context"): string {
   if (kind === "add") {
-    return "agent-tool-diff__line grid grid-cols-[48px_minmax(0,1fr)] border-l-[2px] border-l-[var(--state-success)] font-[var(--tsh-font-mono)] text-[11px] leading-6";
+    return "grid grid-cols-[48px_minmax(0,1fr)] border-l-[2px] border-l-[var(--state-success)] bg-[color:color-mix(in_srgb,var(--state-success)_10%,transparent)] font-[var(--tsh-font-mono)] text-[11px] leading-6";
   }
   if (kind === "remove") {
     return "grid grid-cols-[48px_minmax(0,1fr)] border-l-[2px] border-l-[var(--state-danger)] bg-[color:color-mix(in_srgb,var(--state-danger)_10%,transparent)] font-[var(--tsh-font-mono)] text-[11px] leading-6";

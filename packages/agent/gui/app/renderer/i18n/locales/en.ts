@@ -369,14 +369,20 @@ export const en = {
       providerGateCheckingTitle: "Checking your agent",
       providerGateCheckingDescription:
         "One moment while we check whether {{provider}} is ready.",
+      providerGateCheckingAgentsDescription:
+        "One moment while we check whether agents are ready.",
       providerGateInstallTitle: "Install {{provider}} first",
       providerGateInstallDescription:
         "{{provider}} needs to be installed before you can start a new chat here.",
       providerGateInstallAction: "Install",
-      providerGateLoginTitle: "Sign in to {{provider}}",
+      providerGateLoginTitle: "Connect to {{provider}}",
       providerGateLoginDescription:
-        "{{provider}} is installed. Sign in once, then come back and start chatting.",
-      providerGateLoginAction: "Sign in",
+        "{{provider}} is ready to connect. Complete the connection, then come back and start chatting.",
+      providerGateLoginAction: "Connect",
+      providerGateComingSoonTitle: "{{provider}} is coming soon",
+      providerGateComingSoonDescription:
+        "{{provider}} is not available yet. We will enable this agent when it is ready.",
+      providerGateComingSoonAction: "coming soon",
       providerGateUnavailableTitle: "{{provider}} is not ready yet",
       providerGateUnavailableDescription:
         "We could not confirm that {{provider}} is ready. Try checking again.",
@@ -454,6 +460,23 @@ export const en = {
             label: "Full access",
             description:
               "Unrestricted access to the internet and any file on your computer"
+          }
+        },
+        cursor: {
+          "read-only": {
+            label: "Read-only",
+            description:
+              "Cursor plans and reads only. Proposes changes without making them."
+          },
+          agent: {
+            label: "Ask for approval",
+            description:
+              "Full tool access. Cursor asks before running commands or other risky actions."
+          },
+          "full-access": {
+            label: "Full access",
+            description:
+              "Runs commands without asking, unless explicitly denied by your Cursor permission rules."
           }
         },
         nexight: {
@@ -538,7 +561,7 @@ export const en = {
       slashStatusSession: "Session",
       slashStatusBaseUrl: "Base URL",
       slashStatusContext: "Context",
-      slashStatusLimits: "Limits",
+      slashStatusLimits: "Usage Limits",
       slashStatusClose: "Close",
       slashStatusFiveHourLimit: "5h limit",
       slashStatusWeeklyLimit: "7d limit",
@@ -630,7 +653,10 @@ export const en = {
       conversationFilterAll: "All",
       conversationFilterCodex: "Codex",
       conversationFilterClaudeCode: "Claude Code",
+      conversationFilterTutti: "Tutti",
       providerSwitchLabel: "Switch provider",
+      handoffConversation: "Handoff",
+      handoffConversationMenu: "Choose an agent for handoff",
       batchRunnerStandaloneTitle: "Agent GUI batch runner",
       batchRunnerSubtitle:
         "Run JSONL prompt cases and review execution results",
@@ -695,6 +721,7 @@ export const en = {
       selectConversation: "Select a session",
       loadingConversations: "Loading sessions...",
       loadingConversation: "Loading session...",
+      scrollToBottom: "Scroll to bottom",
       searchNoConversations: "No related sessions",
       conversationUnavailable: "Session unavailable.",
       contextPickerBrowseHint: "Search workspace files based on your input",
@@ -769,14 +796,18 @@ export const en = {
       retryActivation: "Retry",
       continueInNewConversation: "New session",
       goalLabel: "Goal",
-      goalStatusActive: "Active",
-      goalStatusPaused: "Paused",
-      goalStatusBlocked: "Blocked",
-      goalStatusUsageLimited: "Usage limited",
-      goalStatusBudgetLimited: "Budget limited",
-      goalStatusComplete: "Complete",
+      goalTitleActive: "Active goal",
+      goalTitlePaused: "Paused goal",
+      goalTitleBlocked: "Blocked goal",
+      goalTitleUsageLimited: "Usage-limited goal",
+      goalTitleBudgetLimited: "Budget-limited goal",
+      goalTitleComplete: "Completed goal",
       goalBudgetUsage: "{{used}}/{{budget}} tokens",
       goalClearHint: "Type /goal clear to clear",
+      goalEditAction: "Edit goal",
+      goalPauseAction: "Pause goal",
+      goalResumeAction: "Resume goal",
+      goalClearAction: "Delete goal",
       processing: "Planning next moves",
       agentTargetRequired:
         "Select an available agent target before starting a session.",
@@ -817,6 +848,9 @@ export const en = {
       systemNoticeTransportFallback: "Codex switched to HTTPS transport",
       systemNoticeWarning: "Codex warning",
       systemNoticeDefault: "Agent notice",
+      contextCompactionInProgress: "Compacting context",
+      contextCompactionCompleted: "Context compacted.",
+      contextCompactionInterrupted: "Context compaction interrupted.",
       turnSummary: "Changed files",
       userMessageLocator: "User messages",
       turnSummaryFilesChanged: "{{count}} files changed",
@@ -949,6 +983,7 @@ export const en = {
         "Tab switch category | ←→ enter/leave folder | ↑↓ switch selection",
       mentionPalette: "Mention context",
       addReference: "Add reference",
+      addContent: "Add files and more",
       referenceWorkspaceFiles: "Reference workspace files",
       referencePicker: {
         clearFilter: "Clear filter",
@@ -1403,6 +1438,7 @@ export const en = {
         subAgentProgress: "PROGRESS",
         missingFailureDetails: "The provider reported failure without details.",
         noMatches: "No matches",
+        stepLabel: "Step {{index}}",
         noMatchingTools: "No matching tools",
         loadedAvailable: "{{loaded}} loaded · {{available}} available",
         contentTruncated: "Content truncated",

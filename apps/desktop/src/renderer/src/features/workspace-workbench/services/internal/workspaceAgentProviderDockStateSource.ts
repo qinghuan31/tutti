@@ -32,6 +32,9 @@ export function createWorkspaceAgentProviderDockStateSource(input: {
   agentProviderStatusService: AgentProviderStatusService;
   i18n: WorkspaceWorkbenchDesktopI18nRuntime;
   providerTargets?: readonly AgentGUIProviderTarget[];
+  /** Feature gate: providers reported hidden never render a dock entry. */
+  isAgentProviderHidden?: (provider: WorkspaceAgentGuiProvider) => boolean;
+  subscribeAgentProviderVisibility?: (listener: () => void) => () => void;
   workspaceAgentActivityService?: Pick<
     IWorkspaceAgentActivityService,
     "subscribe"
@@ -103,9 +106,11 @@ export function createWorkspaceAgentProviderDockStateSource(input: {
           snapshotError: snapshot.error,
           status
         }),
-        visibility: shouldShowAgentProviderInDock(provider, status)
-          ? "always"
-          : "never"
+        visibility:
+          input.isAgentProviderHidden?.(provider) !== true &&
+          shouldShowAgentProviderInDock(provider, status)
+            ? "always"
+            : "never"
       };
     },
     subscribe(listener) {
@@ -121,9 +126,12 @@ export function createWorkspaceAgentProviderDockStateSource(input: {
               }
             )
           : undefined;
+      const unsubscribeProviderVisibility =
+        input.subscribeAgentProviderVisibility?.(listener);
       return () => {
         unsubscribeProviderStatus();
         unsubscribeAgentActivity?.();
+        unsubscribeProviderVisibility?.();
       };
     }
   };

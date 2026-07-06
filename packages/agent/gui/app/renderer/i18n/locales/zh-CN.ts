@@ -341,14 +341,20 @@ export const zhCN = {
       providerGateCheckingTitle: "正在检查 Agent",
       providerGateCheckingDescription:
         "稍等一下，我们正在确认 {{provider}} 是否已经可用。",
+      providerGateCheckingAgentsDescription:
+        "稍等一下，我们正在确认 agents 是否已经可用。",
       providerGateInstallTitle: "先安装 {{provider}}",
       providerGateInstallDescription:
         "需要先安装 {{provider}}，才能在这里开始新的对话。",
       providerGateInstallAction: "安装",
-      providerGateLoginTitle: "登录 {{provider}}",
+      providerGateLoginTitle: "连接 {{provider}}",
       providerGateLoginDescription:
-        "{{provider}} 已安装。先完成一次登录，然后就可以开始对话。",
-      providerGateLoginAction: "登录",
+        "{{provider}} 已准备好连接。完成连接后回到这里即可开始对话。",
+      providerGateLoginAction: "连接",
+      providerGateComingSoonTitle: "{{provider}} 即将上线",
+      providerGateComingSoonDescription:
+        "{{provider}} 暂未开放。准备好后即可在这里使用这个 Agent。",
+      providerGateComingSoonAction: "coming soon",
       providerGateUnavailableTitle: "{{provider}} 暂时还不可用",
       providerGateUnavailableDescription:
         "我们还不能确认 {{provider}} 已准备好，可以再检测一次。",
@@ -420,6 +426,22 @@ export const zhCN = {
           "full-access": {
             label: "完全访问权限",
             description: "可不受限制地访问互联网和您电脑上的任何文件"
+          }
+        },
+        cursor: {
+          "read-only": {
+            label: "只读",
+            description: "Cursor 只读取和规划，提出修改建议但不做任何更改。"
+          },
+          agent: {
+            label: "请求批准",
+            description:
+              "完整工具权限；Cursor 在运行命令等高风险操作前会先询问你。"
+          },
+          "full-access": {
+            label: "完全访问",
+            description:
+              "无需询问直接运行命令，除非被你的 Cursor 权限规则明确拒绝。"
           }
         },
         nexight: {
@@ -580,7 +602,10 @@ export const zhCN = {
       conversationFilterAll: "全部",
       conversationFilterCodex: "Codex",
       conversationFilterClaudeCode: "Claude Code",
+      conversationFilterTutti: "Tutti",
       providerSwitchLabel: "切换 Provider",
+      handoffConversation: "Handoff",
+      handoffConversationMenu: "选择要交接的 Agent",
       batchRunnerStandaloneTitle: "Agent GUI 批量执行面板",
       batchRunnerSubtitle: "批量执行 JSONL 用例，查看进度与执行结果",
       batchRunnerPromptSource: "用例来源",
@@ -642,6 +667,7 @@ export const zhCN = {
       selectConversation: "选择一个会话",
       loadingConversations: "正在加载会话...",
       loadingConversation: "正在加载会话...",
+      scrollToBottom: "滚动至底部",
       searchNoConversations: "暂无相关会话",
       conversationUnavailable: "会话不可用。",
       contextPickerBrowseHint: "根据你输入的内容搜索工作区文件",
@@ -711,14 +737,18 @@ export const zhCN = {
       retryActivation: "重试",
       continueInNewConversation: "去新会话",
       goalLabel: "目标",
-      goalStatusActive: "进行中",
-      goalStatusPaused: "已暂停",
-      goalStatusBlocked: "已阻塞",
-      goalStatusUsageLimited: "用量受限",
-      goalStatusBudgetLimited: "预算受限",
-      goalStatusComplete: "已完成",
+      goalTitleActive: "进行中的目标",
+      goalTitlePaused: "已暂停的目标",
+      goalTitleBlocked: "已阻塞的目标",
+      goalTitleUsageLimited: "用量受限的目标",
+      goalTitleBudgetLimited: "预算受限的目标",
+      goalTitleComplete: "已完成的目标",
       goalBudgetUsage: "{{used}}/{{budget}} tokens",
       goalClearHint: "输入 /goal clear 清除",
+      goalEditAction: "编辑目标",
+      goalPauseAction: "暂停目标",
+      goalResumeAction: "继续目标",
+      goalClearAction: "删除目标",
       processing: "正在规划下一步",
       agentTargetRequired: "请先选择可用的 Agent 目标。",
       promptImagesUnsupported: "当前模型不支持图片输入。",
@@ -753,6 +783,9 @@ export const zhCN = {
       systemNoticeTransportFallback: "Codex 已切换到 HTTPS 传输",
       systemNoticeWarning: "Codex 警告",
       systemNoticeDefault: "Agent 通知",
+      contextCompactionInProgress: "正在压缩上下文",
+      contextCompactionCompleted: "已压缩上下文",
+      contextCompactionInterrupted: "上下文压缩已中断",
       turnSummary: "已变更文件",
       userMessageLocator: "用户消息",
       turnSummaryFilesChanged: "变更了 {{count}} 个文件",
@@ -876,6 +909,7 @@ export const zhCN = {
       fileMentionTabHint: "Tab 切换分类 ｜ ←→ 进入/返回文件夹 ｜ ↑↓ 切换选中",
       mentionPalette: "提及上下文",
       addReference: "添加引用",
+      addContent: "添加文件等内容",
       referenceWorkspaceFiles: "引用空间文件",
       referencePicker: {
         clearFilter: "清除筛选",
@@ -1093,7 +1127,7 @@ export const zhCN = {
     workspaceAgentMessageCenterWaitingCount_other: "{{count}} 个等待中",
     workspaceAgentMessageCenterFilterAll: "全部",
     workspaceAgentMessageCenterFilterWaiting: "等待中",
-    workspaceAgentMessageCenterFilterWorking: "工作中",
+    workspaceAgentMessageCenterFilterWorking: "运行中",
     workspaceAgentMessageCenterFilterCompleted: "已完成",
     workspaceAgentMessageCenterFilterFailed: "错误",
     workspaceAgentMessageCenterViewOptions: "视图选项",
@@ -1315,6 +1349,7 @@ export const zhCN = {
         subAgentProgress: "进展",
         missingFailureDetails: "Provider 报告失败，但没有返回失败详情。",
         noMatches: "没有匹配结果",
+        stepLabel: "步骤 {{index}}",
         noMatchingTools: "没有匹配的工具",
         loadedAvailable: "已加载 {{loaded}} 个 · 共 {{available}} 个",
         contentTruncated: "内容已截断",

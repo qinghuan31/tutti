@@ -5,7 +5,7 @@ import {
   workbenchLaunchpadDockEntryId
 } from "./launchpadModel.ts";
 
-export function createWorkbenchLaunchpadDockIcon(input: {
+export function createWorkbenchLaunchpadDockIcon(_input: {
   tileIconUrls: readonly string[];
 }): ReactNode {
   return createElement(
@@ -14,19 +14,12 @@ export function createWorkbenchLaunchpadDockIcon(input: {
       "aria-hidden": "true",
       className: "workspace-launchpad-dock-icon"
     },
-    input.tileIconUrls.map((src, index) =>
-      createElement(
-        "span",
-        {
-          className: "workspace-launchpad-dock-icon__tile",
-          key: `${src}:${index}`
-        },
-        createElement("img", {
-          alt: "",
-          draggable: false,
-          src
-        })
-      )
+    createElement(
+      "span",
+      {
+        className: "workspace-launchpad-dock-icon__label"
+      },
+      "ALL"
     )
   );
 }

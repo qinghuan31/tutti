@@ -2,34 +2,41 @@ package agent
 
 import (
 	"context"
+	"sync"
 	"time"
 
 	agentactivitybiz "github.com/tutti-os/tutti/services/tuttid/biz/agentactivity"
 	agenttargetbiz "github.com/tutti-os/tutti/services/tuttid/biz/agenttarget"
+	userprojectbiz "github.com/tutti-os/tutti/services/tuttid/biz/userproject"
 	agentsidecarservice "github.com/tutti-os/tutti/services/tuttid/service/agentsidecar"
 	reporterservice "github.com/tutti-os/tutti/services/tuttid/service/reporter"
 )
 
 type Service struct {
-	Runtime                      RuntimeController
-	AnalyticsReporter            reporterservice.Reporter
-	AvailabilityChecker          ProviderAvailabilityChecker
-	ModelCatalog                 AgentModelCatalog
-	AgentTargetStore             AgentTargetStore
-	SessionReader                SessionReader
-	MessageReader                MessageReader
-	ExternalImportStore          agentactivitybiz.Repository
-	SessionDirectoryAllocator    SessionDirectoryAllocator
-	PromptAttachmentStore        PromptAttachmentStore
-	RuntimePreparer              agentsidecarservice.Preparer
-	CapabilityLister             ComposerCapabilityLister
-	ProviderAvailabilityCacheTTL time.Duration
-	CapabilityCatalogCacheTTL    time.Duration
-	LiveModelCacheTTL            time.Duration
-	skillOptionsCache            *composerSkillOptionsCache
-	providerAvailabilityCache    *providerAvailabilityCache
-	capabilityCatalogCache       *composerCapabilityCatalogCache
-	liveModelCache               *composerLiveModelCache
+	Runtime                       RuntimeController
+	AnalyticsReporter             reporterservice.Reporter
+	AvailabilityChecker           ProviderAvailabilityChecker
+	ModelCatalog                  AgentModelCatalog
+	AgentTargetStore              AgentTargetStore
+	SessionReader                 SessionReader
+	UserProjectReader             UserProjectReader
+	MessageReader                 MessageReader
+	ExternalImportStore           agentactivitybiz.Repository
+	SessionDirectoryAllocator     SessionDirectoryAllocator
+	PromptAttachmentStore         PromptAttachmentStore
+	RuntimePreparer               agentsidecarservice.Preparer
+	CapabilityLister              ComposerCapabilityLister
+	ProviderAvailabilityCacheTTL  time.Duration
+	CapabilityCatalogCacheTTL     time.Duration
+	LiveModelCacheTTL             time.Duration
+	LiveModelDiscoveryDeleteDelay time.Duration
+	skillOptionsCache             *composerSkillOptionsCache
+	providerAvailabilityCache     *providerAvailabilityCache
+	capabilityCatalogCache        *composerCapabilityCatalogCache
+	liveModelCache                *composerLiveModelCache
+	claudeStartupLock             *claudeStartupSerializer
+	liveModelDiscoveryMu          sync.Mutex
+	liveModelDiscoveryAttempted   map[string]struct{}
 }
 
 type StaleTurnResumeReconciler interface {
@@ -38,6 +45,7 @@ type StaleTurnResumeReconciler interface {
 
 type RuntimeController interface {
 	Cancel(context.Context, RuntimeCancelInput) (RuntimeCancelResult, error)
+	GoalControl(context.Context, RuntimeGoalControlInput) (RuntimeGoalControlResult, error)
 	CanResume(RuntimeResumeInput) bool
 	Close(context.Context, RuntimeCloseInput) error
 	Exec(context.Context, RuntimeExecInput) (RuntimeExecResult, error)
@@ -103,7 +111,38 @@ type CancelSessionResult struct {
 type ListSessionsInput struct {
 	SearchQuery string
 	Limit       int
-	VisibleOnly bool
+}
+
+type SessionListPage struct {
+	Sessions   []Session
+	HasMore    bool
+	NextCursor string
+}
+
+type ListSessionSectionsInput struct {
+	LimitPerSection int
+	AgentTargetID   string
+}
+
+type ListSessionSectionPageInput struct {
+	SectionKey    string
+	Cursor        string
+	Limit         int
+	AgentTargetID string
+}
+
+type SessionSectionsPage struct {
+	WorkspaceID string
+	Sections    []SessionSection
+}
+
+type SessionSection struct {
+	Kind        string
+	SectionKey  string
+	UserProject *userprojectbiz.Project
+	Sessions    []Session
+	HasMore     bool
+	NextCursor  string
 }
 
 type PersistedSession struct {
@@ -149,6 +188,14 @@ type SessionMessage struct {
 type SessionReader interface {
 	GetSession(workspaceID string, agentSessionID string) (PersistedSession, bool)
 	ListSessions(workspaceID string) ([]PersistedSession, bool)
+}
+
+type SessionSectionReader interface {
+	ListSessionSection(context.Context, agentactivitybiz.ListSessionSectionInput) (agentactivitybiz.SessionSectionPage, bool)
+}
+
+type UserProjectReader interface {
+	List(context.Context) ([]userprojectbiz.Project, error)
 }
 
 type ClearSessionsResult struct {
@@ -291,6 +338,18 @@ type RuntimeCancelResult struct {
 	Canceled       bool
 }
 
+type RuntimeGoalControlInput struct {
+	WorkspaceID    string
+	AgentSessionID string
+	Action         string
+	Objective      string
+}
+
+type RuntimeGoalControlResult struct {
+	AgentSessionID string
+	Goal           map[string]any
+}
+
 type RuntimeCloseInput struct {
 	WorkspaceID    string
 	AgentSessionID string
@@ -352,6 +411,12 @@ type CreateSessionInput struct {
 	ConversationDetailMode string
 	Visible                *bool
 	ExtraSkills            []SessionSkillBundle
+	// ExternalRolloutSourcePath is the absolute path to the original provider
+	// CLI rollout/transcript file this session was imported from, when known.
+	// Populated from the persisted session's RuntimeContext when resuming an
+	// imported conversation (see createSessionInputFromPersisted); empty for
+	// brand-new sessions.
+	ExternalRolloutSourcePath string
 }
 
 type SessionSkillBundle struct {

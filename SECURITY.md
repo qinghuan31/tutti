@@ -16,7 +16,7 @@ Email `tutti@nexight.io` with:
 - A clear description of the issue and impact.
 - Steps to reproduce, proof-of-concept code, logs, or screenshots when available.
 - The affected version, commit, operating system, and relevant configuration.
-- Whether the issue affects Tutti Local, Tutti Cloud, or both.
+- Whether the issue affects Tutti Local, Tutti · VM, or both.
 
 We aim to acknowledge reports within 3 business days. After triage, we will keep
 you informed about severity, expected fix timing, and disclosure coordination

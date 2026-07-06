@@ -3,7 +3,7 @@ export interface DeveloperLogsAgentSessionRecord {
   hasMoreMessages: boolean;
   latestMessageVersion: number;
   messages: unknown[];
-  provider: "claude-code" | "codex";
+  provider: "claude-code" | "codex" | "cursor";
   providerSessionID: string;
   session: unknown;
   updatedAtUnixMS: number;
@@ -15,7 +15,7 @@ export interface ExportedAgentSessionFile {
   archivePath: string;
   content: Buffer;
   path: string;
-  provider: "claude-code" | "codex";
+  provider: "claude-code" | "codex" | "cursor";
   sizeBytes: number;
   workspaceID: string;
 }

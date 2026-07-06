@@ -9,6 +9,16 @@ const source = readFileSync(
   "utf8"
 );
 
+test("workspace chrome header releases the drag region while the message center is open", () => {
+  assert.match(
+    source,
+    /messageCenterOpen\s*\?\s*"\[-webkit-app-region:no-drag\]"\s*:\s*"\[-webkit-app-region:drag\]"/
+  );
+  assert.doesNotMatch(source, /min-h-\[52px\][^"]*\[-webkit-app-region:drag\]/);
+  assert.match(source, /open=\{messageCenterOpen\}/);
+  assert.match(source, /setOpen=\{setMessageCenterOpen\}/);
+});
+
 test("workspace chrome deck submit forwards to submitPlanDecision instead of branching on plan action", () => {
   // Must call submitPlanDecision with promptKind threaded from the panel
   assert.match(source, /workspaceAgentActivityService\.submitPlanDecision\(/);
@@ -76,4 +86,28 @@ test("workspace chrome does not call updateSessionSettings or sendInput from the
   assert.doesNotMatch(handler, /sendInput/);
   assert.doesNotMatch(handler, /submitInteractive/);
   assert.match(source, /onSubmitPrompt=\{handleMessageCenterSubmitPrompt\}/);
+});
+
+test("workspace chrome gates the agent decision toast on window focus, message center visibility, and the session's own AgentGUI window", () => {
+  // The decision toast must consult message-center visibility, window focus,
+  // and whether the session's own AgentGUI window is already open (via
+  // shouldShowWorkspaceAgentDecisionToast) before popping up, so it does not
+  // interrupt the user while the workspace window is unfocused or the
+  // conversation is already visible.
+  assert.match(
+    source,
+    /shouldShowWorkspaceAgentDecisionToast\(\{\s*agentGuiSessionOpen: isWorkspaceAgentGuiSessionOpen\(\s*workspace\.id,\s*item\.agentSessionId\s*\),\s*messageCenterOpen: open,\s*windowForeground: windowForegroundVisibility\.isForeground\(\)\s*\}\)/
+  );
+  // The OS notification path (background-only presentation) must remain
+  // unconditional here — it is the mechanism that already correctly gates on
+  // focus for the OS face, and the message-center model/list must keep
+  // reflecting pending items regardless of toast visibility.
+  assert.match(
+    source,
+    /notifications\.notify\(osMessage\);\s*if \(\s*!shouldShowWorkspaceAgentDecisionToast/
+  );
+  assert.match(
+    source,
+    /createDocumentNotificationVisibilityState\(\{\s*hasFocus: \(\) => document\.hasFocus\(\),\s*visibilityState: \(\) => document\.visibilityState\s*\}\)/
+  );
 });

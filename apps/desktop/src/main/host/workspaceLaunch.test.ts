@@ -302,7 +302,7 @@ function createTransportClient(
     async getWorkspaceAppFactoryJob() {
       throw new Error("not used");
     },
-    async getWorkspaceAppFactoryProviderComposerOptions() {
+    async getWorkspaceAppFactoryAgentTargetComposerOptions() {
       throw new Error("not used");
     },
     async getAgentProviderComposerOptions() {
@@ -409,6 +409,12 @@ function createTransportClient(
     async listWorkspaceAgentSessions(workspaceID) {
       return { sessions: [], workspaceId: workspaceID };
     },
+    async listWorkspaceAgentSessionSections(workspaceID) {
+      return { sections: [], workspaceId: workspaceID };
+    },
+    async listWorkspaceAgentSessionSectionPage() {
+      throw new Error("not used");
+    },
     async scanWorkspaceExternalAgentSessionImports() {
       throw new Error("not used");
     },
@@ -457,6 +463,9 @@ function createTransportClient(
       throw new Error("not used");
     },
     async cancelWorkspaceAgentSessionWithResult() {
+      throw new Error("not used");
+    },
+    async goalControlWorkspaceAgentSession() {
       throw new Error("not used");
     },
     async sendWorkspaceAgentSessionInput() {

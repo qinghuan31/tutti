@@ -15,8 +15,8 @@ import (
 	"testing"
 	"time"
 
-	agentsessionstore "github.com/tutti-os/tutti/packages/agentactivity/daemon/activity"
-	activityshared "github.com/tutti-os/tutti/packages/agentactivity/daemon/activity/events"
+	agentsessionstore "github.com/tutti-os/tutti/packages/agent/daemon/activity"
+	activityshared "github.com/tutti-os/tutti/packages/agent/daemon/activity/events"
 )
 
 func TestDefaultControllerUsesClaudeSDKAdapterByDefault(t *testing.T) {
@@ -764,6 +764,67 @@ func TestClaudeCodeSDKAdapterCancelClearsPendingInteractive(t *testing.T) {
 	}
 }
 
+// TestClaudeCodeSDKAdapterReaderFailureFailsPendingInteractive guards against
+// a real bug found while investigating a Feishu report (LENj32): if the
+// sidecar connection/process dies while a permission dialog is still
+// unanswered (e.g. the user left it open for a while), failClaudeSDKReader
+// used to discard the pending approval bookkeeping silently along with the
+// rest of the session. The GUI would then see the request vanish on the next
+// reconnect with no terminal event explaining why, while the turn itself
+// failed for an unrelated-looking reason -- giving the impression the
+// approval was answered or bypassed when it never was.
+func TestClaudeCodeSDKAdapterReaderFailureFailsPendingInteractive(t *testing.T) {
+	adapter := NewClaudeCodeSDKAdapter(nil)
+	session := standardTestSession(ProviderClaudeCode)
+	adapterSession := &claudeSDKAdapterSession{
+		conn:             &recordingClaudeSDKConnection{},
+		session:          session,
+		pendingRequests:  make(map[string]*pendingACPRequest),
+		pendingResponses: make(map[string]chan claudeSDKSidecarEvent),
+		turns:            make(map[string]*claudeSDKTurnWaiter),
+		liveState:        newClaudeSDKLiveState(),
+	}
+	adapter.storeSession(session.AgentSessionID, adapterSession)
+
+	if _, _, err := adapter.sidecarTurnEvents(adapterSession, session, "turn-disconnect", claudeSDKSidecarEvent{
+		Type: "approval_requested",
+		Payload: map[string]any{
+			"turnId":    "turn-disconnect",
+			"requestId": "approval-disconnect",
+			"toolName":  "Bash",
+			"input":     map[string]any{"command": "sleep 10"},
+		},
+	}); err != nil {
+		t.Fatalf("approval_requested: %v", err)
+	}
+	if prompt := adapter.SessionState(session).PendingInteractive; prompt == nil {
+		t.Fatal("pending prompt missing before disconnect")
+	}
+
+	var mu sync.Mutex
+	var received []activityshared.Event
+	adapter.SetSessionEventSink(func(_ string, events []activityshared.Event) {
+		mu.Lock()
+		defer mu.Unlock()
+		received = append(received, events...)
+	})
+
+	adapter.failClaudeSDKReader(session.AgentSessionID, adapterSession, errors.New("sidecar connection lost"))
+
+	mu.Lock()
+	events := append([]activityshared.Event(nil), received...)
+	mu.Unlock()
+	if len(events) != 1 || events[0].Type != activityshared.EventCallFailed {
+		t.Fatalf("disconnect events = %#v, want a single failed pending approval event", events)
+	}
+	if msg, _ := events[0].Payload.Error["message"].(string); msg != "sidecar connection lost" {
+		t.Fatalf("failed approval error = %#v, want the disconnect reason", events[0].Payload.Error)
+	}
+	if adapter.getSession(session.AgentSessionID) != nil {
+		t.Fatal("session should be removed after the reader fails")
+	}
+}
+
 func TestClaudeCodeSDKAdapterExecWithSidecarTestDriver(t *testing.T) {
 	t.Setenv(claudeSDKSidecarTestDriverEnv, "1")
 
@@ -972,6 +1033,89 @@ func TestClaudeCodeSDKAdapterReaderKeepsDrainingAfterTurnTerminal(t *testing.T) 
 	}
 }
 
+// TestClaudeCodeSDKAdapterDropsUntrackedTurnTerminalEvent reproduces the
+// Rkyo8B report: the same agent session shows both a completion and a
+// failure toast simultaneously. The sidecar can settle a turn (e.g. a
+// queued/steered turn discarded via its own turnQueue) that never went
+// through Exec()/ExecAsync() and therefore never had a waiter registered.
+// Forwarding that stray terminal event unconditionally used to publish a
+// second, contradictory outcome-carrying activity event for the session
+// alongside the real turn's own completion. The dispatcher must drop
+// terminal events for turns it never tracked instead of forwarding them.
+func TestClaudeCodeSDKAdapterDropsUntrackedTurnTerminalEvent(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	adapter := NewClaudeCodeSDKAdapter(nil)
+	session := standardTestSession(ProviderClaudeCode)
+	conn := newBlockingClaudeSDKConnection()
+	defer func() { _ = conn.Close() }()
+	adapter.storeSession(session.AgentSessionID, &claudeSDKAdapterSession{
+		conn:              conn,
+		reader:            &claudeSDKLineReader{conn: conn},
+		session:           session,
+		providerSessionID: "provider-session-1",
+		pendingRequests:   make(map[string]*pendingACPRequest),
+		pendingResponses:  make(map[string]chan claudeSDKSidecarEvent),
+		turns:             make(map[string]*claudeSDKTurnWaiter),
+		liveState:         newClaudeSDKLiveState(),
+	})
+	sessionEvents := make(chan []activityshared.Event, 4)
+	adapter.SetSessionEventSink(func(agentSessionID string, events []activityshared.Event) {
+		if agentSessionID == session.AgentSessionID {
+			sessionEvents <- events
+		}
+	})
+
+	done := make(chan error, 1)
+	go func() {
+		_, err := adapter.Exec(ctx, session, []PromptContentBlock{{Type: "text", Text: "open the site"}}, "open the site", "turn-real", nil, nil)
+		done <- err
+	}()
+	waitForClaudeSDKSentRequest(t, conn, "exec")
+	conn.pushEvent(claudeSDKSidecarEvent{
+		Type:    "turn_completed",
+		Payload: map[string]any{"turnId": "turn-real", "stopReason": "end_turn"},
+	})
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Fatalf("Exec: %v", err)
+		}
+	case <-ctx.Done():
+		t.Fatal("timed out waiting for Exec completion")
+	}
+
+	// A different, never-Exec'd turn (e.g. discarded from the sidecar's own
+	// turnQueue) settles as failed. No waiter was ever registered for it, so
+	// this must be dropped rather than published as a stray outcome event.
+	conn.pushEvent(claudeSDKSidecarEvent{
+		Type:    "turn_failed",
+		Payload: map[string]any{"turnId": "turn-queued-orphan", "error": "browser tool call failed"},
+	})
+	// Follow it with a normal, trackable event on a fresh turn to prove the
+	// reader keeps draining and the orphan didn't wedge or crash dispatch.
+	conn.pushEvent(claudeSDKSidecarEvent{
+		Type:    "assistant_completed",
+		Payload: map[string]any{"turnId": "turn-real", "content": "done"},
+	})
+
+	select {
+	case events := <-sessionEvents:
+		if len(events) != 1 || events[0].Type != activityshared.EventMessageAppended {
+			t.Fatalf("events = %#v, want only the trailing assistant message (orphan turn_failed must be dropped)", events)
+		}
+	case <-ctx.Done():
+		t.Fatal("timed out waiting for post-orphan event")
+	}
+
+	select {
+	case unexpected := <-sessionEvents:
+		t.Fatalf("unexpected extra session events published for orphan turn: %#v", unexpected)
+	case <-time.After(50 * time.Millisecond):
+	}
+}
+
 func TestClaudeCodeSDKAdapterRoundTripUsesReaderDispatcherAfterExec(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
@@ -1150,6 +1294,60 @@ func TestClaudeCodeSDKAdapterStartSendsInitialSettings(t *testing.T) {
 		settings["reasoningEffort"] != "xhigh" ||
 		settings["speed"] != "fast" {
 		t.Fatalf("start settings = %#v", settings)
+	}
+}
+
+func TestClaudeCodeSDKAdapterProviderLaunchPrepareMutatesSpecAndCleansUpOnClose(t *testing.T) {
+	conn := &scriptedClaudeSDKConnection{
+		frames: []ProcessFrame{{
+			Stdout: []byte(`{"type":"session_started","payload":{"providerSessionId":"provider-session-1"}}` + "\n"),
+		}},
+	}
+	transport := &recordingClaudeSDKTransport{conn: conn}
+	adapter := NewClaudeCodeSDKAdapter(transport)
+	cleanupCalls := 0
+	adapter.SetProviderLaunchPreparer(func(_ context.Context, input ProviderLaunchPrepareInput) (ProviderLaunchPrepareResult, error) {
+		if input.Provider != ProviderClaudeCode {
+			t.Fatalf("Provider = %q, want %q", input.Provider, ProviderClaudeCode)
+		}
+		if !input.DirectStart {
+			t.Fatal("DirectStart = false, want true for Claude SDK")
+		}
+		return ProviderLaunchPrepareResult{
+			Command: []string{"prepared-node", "sidecar.ts"},
+			Env:     append(append([]string(nil), input.Env...), "HOOK_ENV=1"),
+			CWD:     "/prepared/claude-sdk",
+			Cleanup: func(context.Context) error {
+				cleanupCalls++
+				return nil
+			},
+		}, nil
+	})
+	session := standardTestSession(ProviderClaudeCode)
+	session.Env = []string{"SESSION_ENV=1"}
+	session.ProviderSessionID = "provider-session-1"
+
+	if _, err := adapter.Start(context.Background(), session); err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+	if cleanupCalls != 0 {
+		t.Fatalf("cleanup calls before close = %d, want 0", cleanupCalls)
+	}
+	if !slices.Equal(transport.spec.Command, []string{"prepared-node", "sidecar.ts"}) {
+		t.Fatalf("Command = %#v", transport.spec.Command)
+	}
+	if transport.spec.CWD != "/prepared/claude-sdk" {
+		t.Fatalf("CWD = %q", transport.spec.CWD)
+	}
+	if !containsString(transport.spec.Env, "SESSION_ENV=1") || !containsString(transport.spec.Env, "HOOK_ENV=1") {
+		t.Fatalf("Env = %#v, want session and hook env", transport.spec.Env)
+	}
+
+	if err := adapter.Close(context.Background(), session); err != nil {
+		t.Fatalf("Close: %v", err)
+	}
+	if cleanupCalls != 1 {
+		t.Fatalf("cleanup calls after close = %d, want 1", cleanupCalls)
 	}
 }
 
@@ -1754,6 +1952,197 @@ func TestClaudeCodeSDKAdapterMapsUsageUpdatedIntoRuntimeContext(t *testing.T) {
 	}
 }
 
+func TestClaudeCodeSDKAdapterMapsModelUsageContextWindowMap(t *testing.T) {
+	adapter := NewClaudeCodeSDKAdapter(nil)
+	session := standardTestSession(ProviderClaudeCode)
+	adapterSession := &claudeSDKAdapterSession{liveState: newClaudeSDKLiveState()}
+	adapter.storeSession(session.AgentSessionID, adapterSession)
+	adapterSession.applyConfigOption("model", "sonnet")
+
+	events, terminal, err := adapter.sidecarTurnEvents(adapterSession, session, "turn-1", claudeSDKSidecarEvent{
+		Type: "usage_updated",
+		Payload: map[string]any{
+			"turnId": "turn-1",
+			"usage": map[string]any{
+				"input_tokens":                2,
+				"output_tokens":               13,
+				"cache_read_input_tokens":     18622,
+				"cache_creation_input_tokens": 17466,
+			},
+			"modelUsage": map[string]any{
+				"claude-haiku-4-5-20251001": map[string]any{
+					"contextWindow": 200_000,
+				},
+				"claude-sonnet-5": map[string]any{
+					"contextWindow": 1_000_000,
+				},
+			},
+		},
+	})
+	if err != nil || terminal {
+		t.Fatalf("usage_updated terminal=%v err=%v", terminal, err)
+	}
+	if len(events) != 1 || events[0].Type != activityshared.EventSessionUpdated {
+		t.Fatalf("usage events = %#v, want session.updated", events)
+	}
+	state := adapter.SessionState(session)
+	usage, _ := state.RuntimeContext["usage"].(map[string]any)
+	contextWindow, _ := usage["contextWindow"].(map[string]any)
+	if got, ok := acpInt64Value(contextWindow["usedTokens"]); !ok || got != 36103 {
+		t.Fatalf("usedTokens = %#v, want 36103", contextWindow["usedTokens"])
+	}
+	if got, ok := acpInt64Value(contextWindow["totalTokens"]); !ok || got != 1_000_000 {
+		t.Fatalf("totalTokens = %#v, want model usage context window", contextWindow["totalTokens"])
+	}
+}
+
+// TestClaudeCodeSDKAdapterAssumes1MWindowForOneMillionModelAliasBeforeResult
+// reproduces the context-usage popover bug reported after PR #749: on a
+// "[1m]" (1M-context) model alias, every usage_updated delta streamed before
+// the turn's final result message (the only one carrying an authoritative
+// modelUsage.contextWindow) used to fall back to the flat 200k default,
+// so the popover showed e.g. "38,551 / 200,000 (19%)" for a model whose real
+// window is 1,000,000 — for the entire duration of the turn. Once the final
+// message with modelUsage landed, the total would jump to 1,000,000, only to
+// reset back to the wrong 200k default on the next turn/session. This test
+// pins the fix: even the very first, modelUsage-less delta on a "[1m]" alias
+// must assume the 1,000,000 window, not the flat 200k default.
+func TestClaudeCodeSDKAdapterAssumes1MWindowForOneMillionModelAliasBeforeResult(t *testing.T) {
+	adapter := NewClaudeCodeSDKAdapter(nil)
+	session := standardTestSession(ProviderClaudeCode)
+	adapterSession := &claudeSDKAdapterSession{liveState: newClaudeSDKLiveState()}
+	adapter.storeSession(session.AgentSessionID, adapterSession)
+	// Mirrors a user-configured custom model alias such as the reported
+	// "claude-fable-5[1m]", following the same "[1m]" suffix convention as
+	// the built-in "opus[1m]"/"sonnet[1m]" aliases.
+	adapterSession.applyConfigOption("model", "claude-fable-5[1m]")
+
+	// First streamed usage delta of a brand-new turn/session: no
+	// modelUsage yet (previous.contextKnown is false), matching the
+	// "agent session Claude SDK usage update" log lines observed at
+	// current_context_known=false in the field report.
+	events, terminal, err := adapter.sidecarTurnEvents(adapterSession, session, "turn-1", claudeSDKSidecarEvent{
+		Type: "usage_updated",
+		Payload: map[string]any{
+			"turnId": "turn-1",
+			"usage": map[string]any{
+				"input_tokens":  30_000,
+				"output_tokens": 8_551,
+			},
+		},
+	})
+	if err != nil || terminal {
+		t.Fatalf("usage_updated terminal=%v err=%v", terminal, err)
+	}
+	if len(events) != 1 || events[0].Type != activityshared.EventSessionUpdated {
+		t.Fatalf("usage events = %#v, want session.updated", events)
+	}
+	state := adapter.SessionState(session)
+	usage, _ := state.RuntimeContext["usage"].(map[string]any)
+	contextWindow, _ := usage["contextWindow"].(map[string]any)
+	if got, ok := acpInt64Value(contextWindow["totalTokens"]); !ok || got != 1_000_000 {
+		t.Fatalf("totalTokens = %#v, want assumed 1,000,000 window for a [1m] model alias before modelUsage is known", contextWindow["totalTokens"])
+	}
+
+	// The turn's final result message now reports the authoritative
+	// modelUsage window: it must agree with the assumed value, not flip
+	// the denominator mid-turn.
+	events, terminal, err = adapter.sidecarTurnEvents(adapterSession, session, "turn-1", claudeSDKSidecarEvent{
+		Type: "usage_updated",
+		Payload: map[string]any{
+			"turnId": "turn-1",
+			"usage": map[string]any{
+				"input_tokens":  32_000,
+				"output_tokens": 8_859,
+			},
+			"modelUsage": map[string]any{
+				"claude-fable-5[1m]": map[string]any{
+					"contextWindow": 1_000_000,
+				},
+			},
+		},
+	})
+	if err != nil || terminal {
+		t.Fatalf("usage_updated (final) terminal=%v err=%v", terminal, err)
+	}
+	if len(events) != 1 {
+		t.Fatalf("usage events (final) = %#v", events)
+	}
+	state = adapter.SessionState(session)
+	usage, _ = state.RuntimeContext["usage"].(map[string]any)
+	contextWindow, _ = usage["contextWindow"].(map[string]any)
+	if got, ok := acpInt64Value(contextWindow["totalTokens"]); !ok || got != 1_000_000 {
+		t.Fatalf("totalTokens (final) = %#v, want 1,000,000 from modelUsage", contextWindow["totalTokens"])
+	}
+}
+
+func TestClaudeCodeSDKAdapterDoesNotCarryContextWindowAcrossModelChange(t *testing.T) {
+	adapter := NewClaudeCodeSDKAdapter(nil)
+	session := standardTestSession(ProviderClaudeCode)
+	adapterSession := &claudeSDKAdapterSession{liveState: newClaudeSDKLiveState()}
+	adapter.storeSession(session.AgentSessionID, adapterSession)
+
+	adapterSession.applyConfigOption("model", "haiku")
+	events, terminal, err := adapter.sidecarTurnEvents(adapterSession, session, "turn-1", claudeSDKSidecarEvent{
+		Type: "usage_updated",
+		Payload: map[string]any{
+			"turnId": "turn-1",
+			"contextWindow": map[string]any{
+				"usedTokens":  20_000,
+				"totalTokens": 200_000,
+			},
+		},
+	})
+	if err != nil || terminal || len(events) != 1 {
+		t.Fatalf("haiku usage events=%#v terminal=%v err=%v, want session.updated", events, terminal, err)
+	}
+
+	adapterSession.applyConfigOption("model", "sonnet")
+	events, terminal, err = adapter.sidecarTurnEvents(adapterSession, session, "turn-2", claudeSDKSidecarEvent{
+		Type: "usage_updated",
+		Payload: map[string]any{
+			"turnId": "turn-2",
+			"usage": map[string]any{
+				"input_tokens":                2,
+				"output_tokens":               13,
+				"cache_read_input_tokens":     18_622,
+				"cache_creation_input_tokens": 17_466,
+			},
+			"modelUsage": map[string]any{
+				"claude-sonnet-5": map[string]any{
+					"contextWindow": 1_000_000,
+				},
+			},
+		},
+	})
+	if err != nil || terminal || len(events) != 1 {
+		t.Fatalf("sonnet usage events=%#v terminal=%v err=%v, want session.updated", events, terminal, err)
+	}
+
+	adapterSession.applyConfigOption("model", "haiku")
+	events, terminal, err = adapter.sidecarTurnEvents(adapterSession, session, "turn-3", claudeSDKSidecarEvent{
+		Type: "usage_updated",
+		Payload: map[string]any{
+			"turnId": "turn-3",
+			"contextWindow": map[string]any{
+				"usedTokens": 29_538,
+			},
+		},
+	})
+	if err != nil || terminal || len(events) != 1 {
+		t.Fatalf("haiku context usage events=%#v terminal=%v err=%v, want session.updated", events, terminal, err)
+	}
+	state := adapter.SessionState(session)
+	usage, _ := state.RuntimeContext["usage"].(map[string]any)
+	contextWindow, _ := usage["contextWindow"].(map[string]any)
+	if got, ok := acpInt64Value(contextWindow["usedTokens"]); !ok || got != 29_538 {
+		t.Fatalf("usedTokens = %#v, want latest haiku context usage", contextWindow["usedTokens"])
+	}
+	if got, ok := acpInt64Value(contextWindow["totalTokens"]); !ok || got != 200_000 {
+		t.Fatalf("totalTokens = %#v, want default context window after model switch", contextWindow["totalTokens"])
+	}
+}
+
 func TestClaudeCodeSDKAdapterMapsContextUsageUpdatedIntoRuntimeContext(t *testing.T) {
 	adapter := NewClaudeCodeSDKAdapter(nil)
 	session := standardTestSession(ProviderClaudeCode)
@@ -2147,6 +2536,49 @@ func TestClaudeCodeSDKAdapterMapsToolLifecycleAndFileMetadata(t *testing.T) {
 	completedMetadata := payloadMap(completed[0].Payload.Metadata, "metadata")
 	if toolResponse := payloadMap(completedMetadata, "claudeToolResponse"); payloadMap(toolResponse, "structuredPatch") == nil {
 		t.Fatalf("completed metadata = %#v, want structuredPatch", completed[0].Payload.Metadata)
+	}
+}
+
+func TestClaudeSDKLineReaderExitErrorIncludesCapturedStderrTail(t *testing.T) {
+	// Regression: previously, any sidecar stderr not matching the
+	// auth-refresh-debug marker was silently discarded (logClaudeSDKSidecarDebugStderr),
+	// so if the sidecar crashed with an uncaught exception, its stack trace
+	// never reached the resulting error or the logs — the exit surfaced as a
+	// bare "claude sdk sidecar exited with code N" black box. The reader must
+	// now quote the captured stderr tail, mirroring acpClient.readLoop's
+	// handling of the Codex ACP transport.
+	exitCode := 1
+	conn := &scriptedClaudeSDKConnection{
+		frames: []ProcessFrame{
+			{Stderr: []byte("TypeError: something went wrong\n    at main (main.ts:1:1)\n")},
+			{ExitCode: &exitCode},
+		},
+	}
+	reader := &claudeSDKLineReader{conn: conn}
+
+	_, err := reader.next(context.Background())
+	if err == nil {
+		t.Fatal("next() err = nil, want exit error")
+	}
+	if !strings.Contains(err.Error(), "exited with code 1") {
+		t.Fatalf("next() err = %q, want it to mention the exit code", err.Error())
+	}
+	if !strings.Contains(err.Error(), "TypeError: something went wrong") {
+		t.Fatalf("next() err = %q, want it to quote the captured stderr tail", err.Error())
+	}
+}
+
+func TestClaudeSDKLineReaderExitErrorOmitsColonWhenNoStderr(t *testing.T) {
+	exitCode := -1
+	conn := &scriptedClaudeSDKConnection{
+		frames: []ProcessFrame{{ExitCode: &exitCode}},
+	}
+	reader := &claudeSDKLineReader{conn: conn}
+
+	_, err := reader.next(context.Background())
+	want := "claude sdk sidecar exited with code -1"
+	if err == nil || err.Error() != want {
+		t.Fatalf("next() err = %v, want %q", err, want)
 	}
 }
 

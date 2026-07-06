@@ -1,6 +1,10 @@
 import { createDecorator } from "@tutti-os/infra/di";
 import type {
   DesktopComputerUseActionResult,
+  DesktopComputerUsePermissionGrantStatus,
+  DesktopComputerUsePermissionPane,
+  DesktopComputerUseRestartDriverInput,
+  DesktopComputerUseRestartDriverResult,
   DesktopComputerUseStatus,
   DesktopDeveloperLogKind
 } from "@shared/contracts/ipc";
@@ -8,7 +12,6 @@ import type { DesktopLocale } from "@shared/i18n";
 import type {
   DesktopDefaultAgentProvider,
   DesktopAgentConversationDetailMode,
-  DesktopAgentDockLayout,
   DesktopAppCatalogChannel,
   DesktopBrowserUseConnectionMode,
   DesktopDockIconStyle,
@@ -49,6 +52,19 @@ export interface IWorkspaceSettingsService {
   installComputerUse(): Promise<DesktopComputerUseActionResult>;
   uninstallComputerUse(): Promise<DesktopComputerUseActionResult>;
   grantComputerUsePermissions(): Promise<DesktopComputerUseActionResult>;
+  startComputerUsePermissionGrant(): Promise<DesktopComputerUsePermissionGrantStatus>;
+  getComputerUsePermissionGrantStatus(): Promise<DesktopComputerUsePermissionGrantStatus | null>;
+  logComputerUsePermissionDiagnostic(input: {
+    details?: Record<string, unknown>;
+    event: string;
+    level?: "debug" | "error" | "info" | "warn";
+  }): void;
+  openComputerUsePermissionSettings(
+    pane: DesktopComputerUsePermissionPane
+  ): Promise<void>;
+  restartComputerUseDriver(
+    input?: DesktopComputerUseRestartDriverInput
+  ): Promise<DesktopComputerUseRestartDriverResult>;
   closePanel(): void;
   openPanel(
     workspace: WorkspaceSettingsWorkspaceInput,
@@ -75,7 +91,6 @@ export interface IWorkspaceSettingsService {
   changeAgentConversationDetailMode(
     mode: DesktopAgentConversationDetailMode
   ): Promise<void>;
-  changeAgentDockLayout(layout: DesktopAgentDockLayout): Promise<void>;
   changeAppCatalogChannel(channel: DesktopAppCatalogChannel): Promise<void>;
   changeBrowserUseConnectionMode(
     mode: DesktopBrowserUseConnectionMode
@@ -89,6 +104,7 @@ export interface IWorkspaceSettingsService {
   changeLocale(nextLocale: DesktopLocale): Promise<void>;
   changeSleepPreventionMode(mode: DesktopSleepPreventionMode): Promise<void>;
   changeShowAppDeveloperSources(show: boolean): Promise<void>;
+  changeEnableCursorAgent(enable: boolean): Promise<void>;
   changeThemeSource(nextThemeSource: DesktopThemeSource): Promise<void>;
   changeUpdateChannel(channel: DesktopUpdateChannel): Promise<void>;
   changeUpdatePolicy(policy: DesktopUpdatePolicy): Promise<void>;

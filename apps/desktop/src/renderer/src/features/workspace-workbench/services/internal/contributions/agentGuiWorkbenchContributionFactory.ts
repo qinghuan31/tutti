@@ -8,7 +8,6 @@ export const agentGuiWorkbenchContributionFactory: DesktopWorkbenchContributionF
     create(context) {
       return createWorkspaceAgentGuiContribution({
         agentProviderStatusService: context.agentProviderStatusService,
-        agentDockLayout: context.agentDockLayout,
         appCenterService: context.appCenterService,
         appI18n: context.appI18n,
         computerUseApi: context.computerUseApi,
@@ -22,6 +21,7 @@ export const agentGuiWorkbenchContributionFactory: DesktopWorkbenchContributionF
         onCapabilitySettingsRequest: context.onCapabilitySettingsRequest,
         providerTargets: context.providerTargets,
         providerTargetsLoading: context.providerTargetsLoading,
+        comingSoonAgentProviders: context.comingSoonAgentProviders,
         tuttidClient: context.tuttidClient,
         platformApi: context.platformApi,
         reporterService: context.reporterService,

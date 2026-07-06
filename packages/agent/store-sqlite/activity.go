@@ -1,33 +1,31 @@
-package workspace
+package storesqlite
 
 import (
 	"context"
 	"database/sql"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"log/slog"
 	"strings"
 	"time"
 
-	agentactivityprojection "github.com/tutti-os/tutti/packages/agentactivity/daemon/activity/projection"
-	agentactivitybiz "github.com/tutti-os/tutti/services/tuttid/biz/agentactivity"
+	agentactivityprojection "github.com/tutti-os/tutti/packages/agent/daemon/activity/projection"
 )
 
-func (s *SQLiteStore) ReportSessionState(
+func (s *Store) ReportSessionState(
 	ctx context.Context,
-	input agentactivitybiz.SessionStateReport,
-) (agentactivitybiz.StateReportResult, error) {
+	input SessionStateReport,
+) (StateReportResult, error) {
 	if s == nil || s.db == nil {
-		return agentactivitybiz.StateReportResult{}, errors.New("workspace database is not initialized")
+		return StateReportResult{}, errors.New("workspace database is not initialized")
 	}
 	workspaceID := strings.TrimSpace(input.WorkspaceID)
 	agentSessionID := strings.TrimSpace(input.AgentSessionID)
 	if workspaceID == "" || agentSessionID == "" {
-		return agentactivitybiz.StateReportResult{}, errors.New("workspace id and agent session id are required")
+		return StateReportResult{}, errors.New("workspace id and agent session id are required")
 	}
 	if err := s.ensureWorkspaceExists(ctx, workspaceID); err != nil {
-		return agentactivitybiz.StateReportResult{}, err
+		return StateReportResult{}, err
 	}
 
 	now := unixMs(time.Now().UTC())
@@ -36,9 +34,9 @@ func (s *SQLiteStore) ReportSessionState(
 	}
 	accepted, stateApplied, lastEventUnixMS, session, err := s.upsertAgentSession(ctx, input, now)
 	if err != nil {
-		return agentactivitybiz.StateReportResult{}, err
+		return StateReportResult{}, err
 	}
-	return agentactivitybiz.StateReportResult{
+	return StateReportResult{
 		Accepted:        accepted,
 		StateApplied:    stateApplied,
 		LastEventUnixMS: lastEventUnixMS,
@@ -46,25 +44,25 @@ func (s *SQLiteStore) ReportSessionState(
 	}, nil
 }
 
-func (s *SQLiteStore) ReportSessionMessages(
+func (s *Store) ReportSessionMessages(
 	ctx context.Context,
-	input agentactivitybiz.SessionMessageReport,
-) (agentactivitybiz.MessageReportResult, error) {
+	input SessionMessageReport,
+) (MessageReportResult, error) {
 	if s == nil || s.db == nil {
-		return agentactivitybiz.MessageReportResult{}, errors.New("workspace database is not initialized")
+		return MessageReportResult{}, errors.New("workspace database is not initialized")
 	}
 	workspaceID := strings.TrimSpace(input.WorkspaceID)
 	agentSessionID := strings.TrimSpace(input.AgentSessionID)
 	if workspaceID == "" || agentSessionID == "" || len(input.Messages) == 0 {
-		return agentactivitybiz.MessageReportResult{}, errors.New("workspace id, agent session id, and messages are required")
+		return MessageReportResult{}, errors.New("workspace id, agent session id, and messages are required")
 	}
 	if err := s.ensureWorkspaceExists(ctx, workspaceID); err != nil {
-		return agentactivitybiz.MessageReportResult{}, err
+		return MessageReportResult{}, err
 	}
 
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
-		return agentactivitybiz.MessageReportResult{}, fmt.Errorf("begin workspace agent message report: %w", err)
+		return MessageReportResult{}, fmt.Errorf("begin workspace agent message report: %w", err)
 	}
 	committed := false
 	defer func() {
@@ -76,26 +74,26 @@ func (s *SQLiteStore) ReportSessionMessages(
 	now := unixMs(time.Now().UTC())
 	agentSessionID, err = resolveAgentMessageReportSessionIDTx(ctx, tx, workspaceID, agentSessionID, input.Provider, input.Origin)
 	if err != nil {
-		return agentactivitybiz.MessageReportResult{}, err
+		return MessageReportResult{}, err
 	}
-	accepted, _, _, _, err := upsertAgentSessionTx(ctx, tx, agentactivitybiz.SessionStateReport{
+	accepted, _, _, _, err := s.upsertAgentSessionTx(ctx, tx, SessionStateReport{
 		WorkspaceID:    workspaceID,
 		AgentSessionID: agentSessionID,
 		Origin:         input.Origin,
 		Provider:       input.Provider,
 	}, now)
 	if err != nil {
-		return agentactivitybiz.MessageReportResult{}, err
+		return MessageReportResult{}, err
 	}
 	if !accepted {
 		if err := tx.Commit(); err != nil {
-			return agentactivitybiz.MessageReportResult{}, fmt.Errorf("commit ignored workspace agent message report: %w", err)
+			return MessageReportResult{}, fmt.Errorf("commit ignored workspace agent message report: %w", err)
 		}
 		committed = true
-		return agentactivitybiz.MessageReportResult{}, nil
+		return MessageReportResult{}, nil
 	}
 
-	result := agentactivitybiz.MessageReportResult{}
+	result := MessageReportResult{}
 	for _, message := range input.Messages {
 		message.MessageID = strings.TrimSpace(message.MessageID)
 		if message.MessageID == "" {
@@ -103,11 +101,11 @@ func (s *SQLiteStore) ReportSessionMessages(
 		}
 		version, err := incrementAgentSessionMessageVersion(ctx, tx, workspaceID, agentSessionID)
 		if err != nil {
-			return agentactivitybiz.MessageReportResult{}, err
+			return MessageReportResult{}, err
 		}
 		acceptedMessage, accepted, err := upsertAgentMessageTx(ctx, tx, workspaceID, agentSessionID, version, message, now)
 		if err != nil {
-			return agentactivitybiz.MessageReportResult{}, err
+			return MessageReportResult{}, err
 		}
 		if !accepted {
 			continue
@@ -118,24 +116,24 @@ func (s *SQLiteStore) ReportSessionMessages(
 	}
 
 	if err := tx.Commit(); err != nil {
-		return agentactivitybiz.MessageReportResult{}, fmt.Errorf("commit workspace agent message report: %w", err)
+		return MessageReportResult{}, fmt.Errorf("commit workspace agent message report: %w", err)
 	}
 	committed = true
 	return result, nil
 }
 
-func (s *SQLiteStore) GetSession(
+func (s *Store) GetSession(
 	ctx context.Context,
 	workspaceID string,
 	agentSessionID string,
-) (agentactivitybiz.Session, bool, error) {
+) (Session, bool, error) {
 	if s == nil || s.db == nil {
-		return agentactivitybiz.Session{}, false, errors.New("workspace database is not initialized")
+		return Session{}, false, errors.New("workspace database is not initialized")
 	}
 	workspaceID = strings.TrimSpace(workspaceID)
 	agentSessionID = strings.TrimSpace(agentSessionID)
 	if workspaceID == "" || agentSessionID == "" {
-		return agentactivitybiz.Session{}, false, nil
+		return Session{}, false, nil
 	}
 	row := s.db.QueryRowContext(ctx, `
 SELECT workspace_id, agent_session_id, origin, agent_target_id, provider, provider_session_id, model,
@@ -149,17 +147,17 @@ WHERE workspace_id = ? AND agent_session_id = ? AND deleted_at_unix_ms = 0
 	session, err := scanAgentSession(row)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			return agentactivitybiz.Session{}, false, nil
+			return Session{}, false, nil
 		}
-		return agentactivitybiz.Session{}, false, fmt.Errorf("get workspace agent session: %w", err)
+		return Session{}, false, fmt.Errorf("get workspace agent session: %w", err)
 	}
 	return session, true, nil
 }
 
-func (s *SQLiteStore) ListSessions(
+func (s *Store) ListSessions(
 	ctx context.Context,
 	workspaceID string,
-) ([]agentactivitybiz.Session, bool, error) {
+) ([]Session, bool, error) {
 	if s == nil || s.db == nil {
 		return nil, false, errors.New("workspace database is not initialized")
 	}
@@ -182,7 +180,7 @@ ORDER BY updated_at_unix_ms DESC, agent_session_id ASC
 	}
 	defer rows.Close()
 
-	sessions := make([]agentactivitybiz.Session, 0)
+	sessions := make([]Session, 0)
 	for rows.Next() {
 		session, err := scanAgentSession(rows)
 		if err != nil {
@@ -196,7 +194,7 @@ ORDER BY updated_at_unix_ms DESC, agent_session_id ASC
 	return sessions, true, nil
 }
 
-func (s *SQLiteStore) DeleteSession(
+func (s *Store) DeleteSession(
 	ctx context.Context,
 	workspaceID string,
 	agentSessionID string,
@@ -252,21 +250,21 @@ WHERE workspace_id = ? AND agent_session_id = ? AND deleted_at_unix_ms = 0
 	return removed, nil
 }
 
-func (s *SQLiteStore) ClearSessions(
+func (s *Store) ClearSessions(
 	ctx context.Context,
 	workspaceID string,
-) (agentactivitybiz.ClearSessionsResult, error) {
+) (ClearSessionsResult, error) {
 	if s == nil || s.db == nil {
-		return agentactivitybiz.ClearSessionsResult{}, errors.New("workspace database is not initialized")
+		return ClearSessionsResult{}, errors.New("workspace database is not initialized")
 	}
 	workspaceID = strings.TrimSpace(workspaceID)
 	if workspaceID == "" {
-		return agentactivitybiz.ClearSessionsResult{}, nil
+		return ClearSessionsResult{}, nil
 	}
 
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
-		return agentactivitybiz.ClearSessionsResult{}, fmt.Errorf("begin clear workspace agent sessions: %w", err)
+		return ClearSessionsResult{}, fmt.Errorf("begin clear workspace agent sessions: %w", err)
 	}
 	committed := false
 	defer func() {
@@ -275,37 +273,62 @@ func (s *SQLiteStore) ClearSessions(
 		}
 	}()
 
+	result, err := s.ClearSessionsTx(ctx, tx, workspaceID)
+	if err != nil {
+		return ClearSessionsResult{}, err
+	}
+	if err := tx.Commit(); err != nil {
+		return ClearSessionsResult{}, fmt.Errorf("commit clear workspace agent sessions: %w", err)
+	}
+	committed = true
+	return result, nil
+}
+
+// ClearSessionsTx hard-deletes a workspace's sessions and messages within
+// the caller's transaction. Hosts that delete a workspace of their own and
+// need the agent-row cascade to be atomic with that deletion should run
+// both through one transaction via this method; the caller owns commit and
+// rollback.
+func (s *Store) ClearSessionsTx(
+	ctx context.Context,
+	tx *sql.Tx,
+	workspaceID string,
+) (ClearSessionsResult, error) {
+	if s == nil || tx == nil {
+		return ClearSessionsResult{}, errors.New("workspace database is not initialized")
+	}
+	workspaceID = strings.TrimSpace(workspaceID)
+	if workspaceID == "" {
+		return ClearSessionsResult{}, nil
+	}
+
 	removedSessionIDs, err := listAgentSessionIDsTx(ctx, tx, workspaceID)
 	if err != nil {
-		return agentactivitybiz.ClearSessionsResult{}, err
+		return ClearSessionsResult{}, err
 	}
 	messageResult, err := tx.ExecContext(ctx, `
 DELETE FROM workspace_agent_messages
 WHERE workspace_id = ?
 `, workspaceID)
 	if err != nil {
-		return agentactivitybiz.ClearSessionsResult{}, fmt.Errorf("clear workspace agent messages: %w", err)
+		return ClearSessionsResult{}, fmt.Errorf("clear workspace agent messages: %w", err)
 	}
 	sessionResult, err := tx.ExecContext(ctx, `
 DELETE FROM workspace_agent_sessions
 WHERE workspace_id = ?
 `, workspaceID)
 	if err != nil {
-		return agentactivitybiz.ClearSessionsResult{}, fmt.Errorf("clear workspace agent sessions: %w", err)
+		return ClearSessionsResult{}, fmt.Errorf("clear workspace agent sessions: %w", err)
 	}
-	if err := tx.Commit(); err != nil {
-		return agentactivitybiz.ClearSessionsResult{}, fmt.Errorf("commit clear workspace agent sessions: %w", err)
-	}
-	committed = true
 	removedMessages, err := messageResult.RowsAffected()
 	if err != nil {
-		return agentactivitybiz.ClearSessionsResult{}, fmt.Errorf("clear workspace agent messages rows affected: %w", err)
+		return ClearSessionsResult{}, fmt.Errorf("clear workspace agent messages rows affected: %w", err)
 	}
 	removedSessions, err := sessionResult.RowsAffected()
 	if err != nil {
-		return agentactivitybiz.ClearSessionsResult{}, fmt.Errorf("clear workspace agent sessions rows affected: %w", err)
+		return ClearSessionsResult{}, fmt.Errorf("clear workspace agent sessions rows affected: %w", err)
 	}
-	return agentactivitybiz.ClearSessionsResult{
+	return ClearSessionsResult{
 		RemovedMessages:   int(removedMessages),
 		RemovedSessions:   int(removedSessions),
 		RemovedSessionIDs: removedSessionIDs,
@@ -341,19 +364,19 @@ ORDER BY updated_at_unix_ms DESC, agent_session_id ASC
 	return sessionIDs, nil
 }
 
-func (s *SQLiteStore) UpdateSessionPinned(
+func (s *Store) UpdateSessionPinned(
 	ctx context.Context,
 	workspaceID string,
 	agentSessionID string,
 	pinned bool,
-) (agentactivitybiz.Session, bool, error) {
+) (Session, bool, error) {
 	if s == nil || s.db == nil {
-		return agentactivitybiz.Session{}, false, errors.New("workspace database is not initialized")
+		return Session{}, false, errors.New("workspace database is not initialized")
 	}
 	workspaceID = strings.TrimSpace(workspaceID)
 	agentSessionID = strings.TrimSpace(agentSessionID)
 	if workspaceID == "" || agentSessionID == "" {
-		return agentactivitybiz.Session{}, false, nil
+		return Session{}, false, nil
 	}
 
 	now := unixMs(time.Now().UTC())
@@ -368,36 +391,36 @@ SET pinned_at_unix_ms = ?,
 WHERE workspace_id = ? AND agent_session_id = ? AND deleted_at_unix_ms = 0
 `, pinnedAtUnixMS, now, workspaceID, agentSessionID)
 	if err != nil {
-		return agentactivitybiz.Session{}, false, fmt.Errorf("update workspace agent session pinned state: %w", err)
+		return Session{}, false, fmt.Errorf("update workspace agent session pinned state: %w", err)
 	}
 	updated, err := rowsWereAffected(result, "update workspace agent session pinned state")
 	if err != nil {
-		return agentactivitybiz.Session{}, false, err
+		return Session{}, false, err
 	}
 	if !updated {
-		return agentactivitybiz.Session{}, false, nil
+		return Session{}, false, nil
 	}
 	session, ok, err := s.GetSession(ctx, workspaceID, agentSessionID)
 	if err != nil {
-		return agentactivitybiz.Session{}, false, err
+		return Session{}, false, err
 	}
 	return session, ok, nil
 }
 
-func (s *SQLiteStore) ListSessionMessages(
+func (s *Store) ListSessionMessages(
 	ctx context.Context,
-	input agentactivitybiz.ListSessionMessagesInput,
-) (agentactivitybiz.MessagePage, bool, error) {
+	input ListSessionMessagesInput,
+) (MessagePage, bool, error) {
 	if s == nil || s.db == nil {
-		return agentactivitybiz.MessagePage{}, false, errors.New("workspace database is not initialized")
+		return MessagePage{}, false, errors.New("workspace database is not initialized")
 	}
 	workspaceID := strings.TrimSpace(input.WorkspaceID)
 	agentSessionID := strings.TrimSpace(input.AgentSessionID)
 	if workspaceID == "" || agentSessionID == "" {
-		return agentactivitybiz.MessagePage{}, false, nil
+		return MessagePage{}, false, nil
 	}
 	if _, ok, err := s.GetSession(ctx, workspaceID, agentSessionID); err != nil || !ok {
-		return agentactivitybiz.MessagePage{}, ok, err
+		return MessagePage{}, ok, err
 	}
 
 	queryLimit := input.Limit
@@ -413,12 +436,12 @@ func (s *SQLiteStore) ListSessionMessages(
 	}
 	order := input.Order
 	if order == "" {
-		order = agentactivitybiz.MessageOrderAsc
+		order = MessageOrderAsc
 	}
 	var rows *sql.Rows
 	var err error
 	switch order {
-	case agentactivitybiz.MessageOrderDesc:
+	case MessageOrderDesc:
 		if input.BeforeVersion > 0 {
 			whereWithCursor := append(append([]string{}, where...), "version < ?")
 			argsWithCursor := append(append([]any{}, args...), input.BeforeVersion, queryLimit)
@@ -443,7 +466,7 @@ ORDER BY version DESC, id DESC
 LIMIT ?
 `, argsWithLimit...)
 		}
-	case agentactivitybiz.MessageOrderAsc:
+	case MessageOrderAsc:
 		whereWithCursor := append(append([]string{}, where...), "version > ?")
 		argsWithCursor := append(append([]any{}, args...), input.AfterVersion, queryLimit)
 		rows, err = s.db.QueryContext(ctx, `
@@ -456,7 +479,7 @@ ORDER BY version ASC, id ASC
 LIMIT ?
 `, argsWithCursor...)
 	default:
-		return agentactivitybiz.MessagePage{}, false, fmt.Errorf("unsupported workspace agent message order: %s", order)
+		return MessagePage{}, false, fmt.Errorf("unsupported workspace agent message order: %s", order)
 	}
 	if err != nil {
 		slog.Warn("workspace agent messages query failed",
@@ -470,11 +493,11 @@ LIMIT ?
 			"query_limit", queryLimit,
 			"error", err,
 		)
-		return agentactivitybiz.MessagePage{}, false, fmt.Errorf("list workspace agent messages: %w", err)
+		return MessagePage{}, false, fmt.Errorf("list workspace agent messages: %w", err)
 	}
 	defer rows.Close()
 
-	messages := make([]agentactivitybiz.Message, 0)
+	messages := make([]Message, 0)
 	for rows.Next() {
 		message, err := scanAgentMessage(rows)
 		if err != nil {
@@ -490,7 +513,7 @@ LIMIT ?
 				"scanned_message_count", len(messages),
 				"error", err,
 			)
-			return agentactivitybiz.MessagePage{}, false, err
+			return MessagePage{}, false, err
 		}
 		messages = append(messages, message)
 	}
@@ -507,7 +530,7 @@ LIMIT ?
 			"scanned_message_count", len(messages),
 			"error", err,
 		)
-		return agentactivitybiz.MessagePage{}, false, fmt.Errorf("iterate workspace agent messages: %w", err)
+		return MessagePage{}, false, fmt.Errorf("iterate workspace agent messages: %w", err)
 	}
 	hasMore := false
 	if input.Limit > 0 && len(messages) > input.Limit {
@@ -515,7 +538,7 @@ LIMIT ?
 		messages = messages[:input.Limit]
 	}
 	latestVersion := input.AfterVersion
-	if order == agentactivitybiz.MessageOrderDesc {
+	if order == MessageOrderDesc {
 		latestVersion = 0
 	}
 	for _, message := range messages {
@@ -523,7 +546,7 @@ LIMIT ?
 			latestVersion = message.Version
 		}
 	}
-	return agentactivitybiz.MessagePage{
+	return MessagePage{
 		AgentSessionID: agentSessionID,
 		Messages:       messages,
 		LatestVersion:  latestVersion,
@@ -531,14 +554,14 @@ LIMIT ?
 	}, true, nil
 }
 
-func (s *SQLiteStore) upsertAgentSession(
+func (s *Store) upsertAgentSession(
 	ctx context.Context,
-	input agentactivitybiz.SessionStateReport,
+	input SessionStateReport,
 	now int64,
-) (bool, bool, int64, agentactivitybiz.Session, error) {
+) (bool, bool, int64, Session, error) {
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
-		return false, false, 0, agentactivitybiz.Session{}, fmt.Errorf("begin workspace agent session state report: %w", err)
+		return false, false, 0, Session{}, fmt.Errorf("begin workspace agent session state report: %w", err)
 	}
 	committed := false
 	defer func() {
@@ -546,31 +569,31 @@ func (s *SQLiteStore) upsertAgentSession(
 			_ = tx.Rollback()
 		}
 	}()
-	accepted, stateApplied, lastEventUnixMS, session, err := upsertAgentSessionTx(ctx, tx, input, now)
+	accepted, stateApplied, lastEventUnixMS, session, err := s.upsertAgentSessionTx(ctx, tx, input, now)
 	if err != nil {
-		return false, false, 0, agentactivitybiz.Session{}, err
+		return false, false, 0, Session{}, err
 	}
 	if err := tx.Commit(); err != nil {
-		return false, false, 0, agentactivitybiz.Session{}, fmt.Errorf("commit workspace agent session state report: %w", err)
+		return false, false, 0, Session{}, fmt.Errorf("commit workspace agent session state report: %w", err)
 	}
 	committed = true
 	return accepted, stateApplied, lastEventUnixMS, session, nil
 }
 
-func upsertAgentSessionTx(
+func (s *Store) upsertAgentSessionTx(
 	ctx context.Context,
 	tx *sql.Tx,
-	input agentactivitybiz.SessionStateReport,
+	input SessionStateReport,
 	now int64,
-) (bool, bool, int64, agentactivitybiz.Session, error) {
+) (bool, bool, int64, Session, error) {
 	workspaceID := strings.TrimSpace(input.WorkspaceID)
 	agentSessionID := strings.TrimSpace(input.AgentSessionID)
 	if workspaceID == "" || agentSessionID == "" {
-		return false, false, 0, agentactivitybiz.Session{}, nil
+		return false, false, 0, Session{}, nil
 	}
 	existing, hasExisting, err := getAgentSessionForUpdate(ctx, tx, workspaceID, agentSessionID)
 	if err != nil {
-		return false, false, 0, agentactivitybiz.Session{}, err
+		return false, false, 0, Session{}, err
 	}
 	projected := agentactivityprojection.ProjectSessionState(
 		existing,
@@ -597,24 +620,37 @@ func upsertAgentSessionTx(
 		now,
 	)
 	if !projected.Accepted {
-		return false, false, projected.LastEventUnixMS, projectionSessionToBiz(projected.Session), nil
+		return false, false, projected.LastEventUnixMS, projectionSessionToDTO(projected.Session), nil
 	}
 	session := projected.Session
 	settingsJSON, err := marshalJSONMap(session.Settings)
 	if err != nil {
-		return false, false, 0, agentactivitybiz.Session{}, err
+		return false, false, 0, Session{}, err
 	}
 	runtimeContextJSON, err := marshalJSONMap(session.RuntimeContext)
 	if err != nil {
-		return false, false, 0, agentactivitybiz.Session{}, err
+		return false, false, 0, Session{}, err
+	}
+	railSection, err := s.resolveAgentSessionRailSectionTx(
+		ctx,
+		tx,
+		workspaceID,
+		agentSessionID,
+		hasExisting,
+		existing.CWD,
+		session.CWD,
+		session.RuntimeContext,
+	)
+	if err != nil {
+		return false, false, 0, Session{}, err
 	}
 	result, err := tx.ExecContext(ctx, `
 INSERT INTO workspace_agent_sessions (
   workspace_id, agent_session_id, origin, agent_target_id, provider, provider_session_id, model,
-  settings_json, runtime_context_json, cwd,
+  settings_json, runtime_context_json, cwd, rail_section_kind, rail_project_path, rail_section_key,
   title, status, current_phase, last_error, last_event_at_unix_ms, started_at_unix_ms,
   ended_at_unix_ms, created_at_unix_ms, updated_at_unix_ms
-) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 ON CONFLICT(workspace_id, agent_session_id) DO UPDATE SET
   origin = excluded.origin,
   agent_target_id = excluded.agent_target_id,
@@ -624,6 +660,9 @@ ON CONFLICT(workspace_id, agent_session_id) DO UPDATE SET
   settings_json = excluded.settings_json,
   runtime_context_json = excluded.runtime_context_json,
   cwd = excluded.cwd,
+  rail_section_kind = excluded.rail_section_kind,
+  rail_project_path = excluded.rail_project_path,
+  rail_section_key = excluded.rail_section_key,
   title = excluded.title,
   status = excluded.status,
   current_phase = excluded.current_phase,
@@ -634,20 +673,20 @@ ON CONFLICT(workspace_id, agent_session_id) DO UPDATE SET
   deleted_at_unix_ms = 0,
   updated_at_unix_ms = excluded.updated_at_unix_ms
 WHERE workspace_agent_sessions.deleted_at_unix_ms = 0
-	`, session.WorkspaceID, session.AgentSessionID, session.Origin, nullString(session.AgentTargetID), session.Provider,
+`, session.WorkspaceID, session.AgentSessionID, session.Origin, nullString(session.AgentTargetID), session.Provider,
 		session.ProviderSessionID, session.Model, settingsJSON, runtimeContextJSON,
-		session.CWD, session.Title,
+		session.CWD, railSection.Kind, railSection.ProjectPath, railSection.Key, session.Title,
 		session.Status, session.CurrentPhase, session.LastError, session.LastEventUnixMS,
 		session.StartedAtUnixMS, session.EndedAtUnixMS, session.CreatedAtUnixMS,
 		session.UpdatedAtUnixMS)
 	if err != nil {
-		return false, false, 0, agentactivitybiz.Session{}, fmt.Errorf("upsert workspace agent session: %w", err)
+		return false, false, 0, Session{}, fmt.Errorf("upsert workspace agent session: %w", err)
 	}
 	accepted, err := rowsWereAffected(result, "upsert workspace agent session")
 	if err != nil {
-		return false, false, 0, agentactivitybiz.Session{}, err
+		return false, false, 0, Session{}, err
 	}
-	return accepted, sessionStateReportApplied(input, projected.Session), projected.LastEventUnixMS, projectionSessionToBiz(projected.Session), nil
+	return accepted, sessionStateReportApplied(input, projected.Session), projected.LastEventUnixMS, projectionSessionToDTO(projected.Session), nil
 }
 
 func getAgentSessionForUpdate(
@@ -708,12 +747,8 @@ WHERE workspace_id = ? AND agent_session_id = ?
 	return session, true, nil
 }
 
-type rowScanner interface {
-	Scan(dest ...any) error
-}
-
-func scanAgentSession(scanner rowScanner) (agentactivitybiz.Session, error) {
-	var session agentactivitybiz.Session
+func scanAgentSession(scanner rowScanner) (Session, error) {
+	var session Session
 	var agentTargetID sql.NullString
 	var settingsJSON string
 	var runtimeContextJSON string
@@ -741,58 +776,14 @@ func scanAgentSession(scanner rowScanner) (agentactivitybiz.Session, error) {
 		&session.UpdatedAtUnixMS,
 	)
 	if err != nil {
-		return agentactivitybiz.Session{}, err
+		return Session{}, err
 	}
 	if session.Settings, err = unmarshalJSONMap(settingsJSON); err != nil {
-		return agentactivitybiz.Session{}, fmt.Errorf("decode workspace agent session settings: %w", err)
+		return Session{}, fmt.Errorf("decode workspace agent session settings: %w", err)
 	}
 	session.AgentTargetID = strings.TrimSpace(agentTargetID.String)
 	if session.RuntimeContext, err = unmarshalJSONMap(runtimeContextJSON); err != nil {
-		return agentactivitybiz.Session{}, fmt.Errorf("decode workspace agent session runtime context: %w", err)
+		return Session{}, fmt.Errorf("decode workspace agent session runtime context: %w", err)
 	}
 	return session, nil
-}
-
-func nullString(value string) sql.NullString {
-	value = strings.TrimSpace(value)
-	if value == "" {
-		return sql.NullString{}
-	}
-	return sql.NullString{String: value, Valid: true}
-}
-
-func marshalJSONMap(payload map[string]any) (string, error) {
-	if len(payload) == 0 {
-		return "{}", nil
-	}
-	data, err := json.Marshal(payload)
-	if err != nil {
-		return "", fmt.Errorf("encode workspace agent session json: %w", err)
-	}
-	return string(data), nil
-}
-
-func unmarshalJSONMap(input string) (map[string]any, error) {
-	if strings.TrimSpace(input) == "" {
-		return nil, nil
-	}
-	var payload map[string]any
-	if err := json.Unmarshal([]byte(input), &payload); err != nil {
-		return nil, err
-	}
-	if len(payload) == 0 {
-		return nil, nil
-	}
-	return payload, nil
-}
-
-func cloneJSONMap(payload map[string]any) map[string]any {
-	if len(payload) == 0 {
-		return nil
-	}
-	out := make(map[string]any, len(payload))
-	for key, value := range payload {
-		out[key] = value
-	}
-	return out
 }

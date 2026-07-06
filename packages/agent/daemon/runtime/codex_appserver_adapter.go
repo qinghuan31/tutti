@@ -14,7 +14,7 @@ import (
 	"sync/atomic"
 	"time"
 
-	activityshared "github.com/tutti-os/tutti/packages/agentactivity/daemon/activity/events"
+	activityshared "github.com/tutti-os/tutti/packages/agent/daemon/activity/events"
 )
 
 // Codex app-server JSON-RPC methods used by the adapter. The app-server
@@ -135,12 +135,22 @@ func tuttiAgentAppServerAdapterConfig() appServerAdapterConfig {
 // defaultCodexAppServerCancelGraceWindow is how long Cancel waits for codex to
 // honor turn/interrupt gracefully before force-closing the app-server process.
 const defaultCodexAppServerCancelGraceWindow = 3 * time.Second
-const defaultCodexAppServerGoalContinuationGraceWindow = 100 * time.Millisecond
+
+// startupModelSteadyRetryCount is how many 30s-spaced model/list retries follow
+// the initial fast ramp before the background refresh gives up (~18 minutes
+// total), bounding the goroutine while covering realistic transient outages.
+const startupModelSteadyRetryCount = 36
+
+// defaultCodexAppServerGoalContinuationGraceWindow is how long the adapter
+// waits after a goal turn settles for codex to auto-start the next turn
+// before nudging it with a thread/goal/set re-send.
+const defaultCodexAppServerGoalContinuationGraceWindow = 1500 * time.Millisecond
 
 type CodexAppServerAdapter struct {
 	transport   ProcessTransport
 	host        HostMetadata
 	config      appServerAdapterConfig
+	preparer    ProviderLaunchPreparer
 	mu          sync.Mutex
 	sessions    map[string]*codexAppServerSession
 	commandSink CommandSnapshotSink
@@ -159,6 +169,15 @@ type CodexAppServerAdapter struct {
 	// per adapter instance (each instance owns one command).
 	cliVersionMu     sync.Mutex
 	cliVersionCached string
+	// startupModelRetryBackoffs is the wait schedule between background model/list
+	// refetches when the initial probe came back empty; the slice length bounds
+	// the number of retries. Nil falls back to defaultStartupModelRetryBackoffs.
+	// Overridable in tests to drive the loop without real delays.
+	startupModelRetryBackoffs []time.Duration
+	// goalContinuationGraceWindow is how long a settled goal turn waits for
+	// codex to auto-start the next turn before the adapter nudges it. Zero
+	// falls back to the default.
+	goalContinuationGraceWindow time.Duration
 }
 
 type codexAppServerSessionLock struct {
@@ -175,6 +194,11 @@ type codexAppServerSession struct {
 	goal                   map[string]any
 	startupModelsReady     bool
 	startupRateLimitsReady bool
+	// lifecycleSeq numbers the adapter's TurnLifecycle snapshots (ADR 0008):
+	// monotonically increasing per session so consumers receiving snapshots
+	// over different channels can drop stale ones. Guarded by the adapter
+	// mutex.
+	lifecycleSeq uint64
 	// Collaboration mode masks come from collaborationMode/list. The app-server
 	// expects the active mode settings, including developer_instructions, on
 	// every turn/start request.
@@ -184,6 +208,14 @@ type codexAppServerSession struct {
 	authState       string
 	authMessage     string
 	activeTurnID    string
+	// activeTurnStartConfirmed reports whether a turn/started notification
+	// confirmed activeTurnID. A turn/start issued while another turn is
+	// already running responds with a stub turn id that codex never starts
+	// (live-verified: TestLiveProtocolTurnStartDuringActiveTurn) — the input
+	// is steered into the running turn instead. An unconfirmed id therefore
+	// must not veto the running turn's terminal in settleActiveTurn. Guarded
+	// by the adapter mutex.
+	activeTurnStartConfirmed bool
 	// lastTurnID survives turn settlement so post-turn child lifecycle
 	// markers can carry a turn id (the activity store rejects turnless
 	// message updates).
@@ -370,6 +402,13 @@ func (a *CodexAppServerAdapter) SetConfigOptionsUpdateSink(sink ConfigOptionsUpd
 	a.mu.Lock()
 	a.configSink = sink
 	a.mu.Unlock()
+}
+
+func (a *CodexAppServerAdapter) SetProviderLaunchPreparer(preparer ProviderLaunchPreparer) {
+	if a == nil {
+		return
+	}
+	a.preparer = preparer
 }
 
 func (*CodexAppServerAdapter) ValidatePromptContent(Session, []PromptContentBlock) error {
@@ -702,13 +741,8 @@ func (a *CodexAppServerAdapter) startInitializedClient(
 	if a == nil || a.transport == nil {
 		return nil, nil, errors.New("app-server process transport is unavailable")
 	}
-	trace.Log("process.start.begin", map[string]any{
-		"command": a.commandString(),
-		"cwd":     a.sessionCWD(session),
-	})
-	processStartedAt := time.Now()
 	spawnEnv := append(codexACPEnv(session, a.host), session.Env...)
-	conn, err := a.transport.Start(ctx, ProcessSpec{
+	spec, cleanup, err := prepareProviderLaunch(ctx, a.preparer, session, ProcessSpec{
 		Provider:       a.config.provider,
 		AgentSessionID: session.AgentSessionID,
 		RoomID:         session.RoomID,
@@ -717,12 +751,26 @@ func (a *CodexAppServerAdapter) startInitializedClient(
 		Env:            spawnEnv,
 	})
 	if err != nil {
+		trace.Log("process.prepare.failed", map[string]any{
+			"error": err.Error(),
+		})
+		return nil, nil, err
+	}
+	trace.Log("process.start.begin", map[string]any{
+		"command": strings.Join(spec.Command, " "),
+		"cwd":     spec.CWD,
+	})
+	processStartedAt := time.Now()
+	conn, err := a.transport.Start(ctx, spec)
+	if err != nil {
+		cleanupPreparedLaunch(cleanup)
 		trace.Log("process.start.failed", map[string]any{
 			"duration_ms": time.Since(processStartedAt).Milliseconds(),
 			"error":       err.Error(),
 		})
 		return nil, nil, err
 	}
+	conn = wrapProviderLaunchCleanup(conn, cleanup)
 	trace.Log("process.start.succeeded", map[string]any{
 		"duration_ms": time.Since(processStartedAt).Milliseconds(),
 	})
@@ -761,7 +809,7 @@ func (a *CodexAppServerAdapter) startInitializedClient(
 
 	initializeResult, err := trace.TypedCall(acpStartCallTimeout, appServerMethodInitialize, func() (json.RawMessage, error) {
 		return client.Initialize(ctx, acpStartCallTimeout, map[string]any{
-			"clientInfo": a.clientInfoParams(spawnEnv),
+			"clientInfo": a.clientInfoParams(spec.Env),
 			"capabilities": map[string]any{
 				"experimentalApi": true,
 			},
@@ -902,6 +950,26 @@ func (*CodexAppServerAdapter) fetchRateLimitsNoHandler(
 		"has_rate_limits": payload.RateLimits != nil,
 	})
 	return payload.RateLimits
+}
+
+// fetchGoal reads the thread's persisted goal. Best effort: any error means
+// the in-memory goal stays as-is. NoHandler: this runs in the background and
+// must not claim the message handler slot away from a streaming turn.
+func (*CodexAppServerAdapter) fetchGoal(
+	ctx context.Context,
+	client *codexAppServerClient,
+	threadID string,
+	trace *codexAppServerStartupTrace,
+) map[string]any {
+	result, err := trace.TypedCallNoHandler(acpStartCallTimeout, appServerMethodThreadGoalGet, func() (json.RawMessage, error) {
+		goalCtx, cancel := context.WithTimeout(ctx, acpStartCallTimeout)
+		defer cancel()
+		return client.ThreadGoalGetNoHandler(goalCtx, map[string]any{"threadId": threadID})
+	})
+	if err != nil {
+		return nil
+	}
+	return appServerGoalFromResult(result)
 }
 
 // fetchCollaborationModeMasks probes the experimental collaboration mode list
@@ -1098,32 +1166,116 @@ func (a *CodexAppServerAdapter) refreshStartupMetadataAsync(
 				})
 			}
 		}()
-		appSession := a.getSession(agentSessionID)
-		if appSession == nil || appSession.client == nil {
-			return
-		}
 		ctx := context.Background()
-		updated := false
-		if fetchModels {
-			models := a.fetchModelsNoHandler(ctx, appSession.client, trace)
-			if a.applyStartupModels(agentSessionID, session, threadResult, models) {
-				updated = true
-			}
-		}
 		if fetchRateLimits {
-			rateLimits := a.fetchRateLimitsNoHandler(ctx, appSession.client, trace)
-			if a.applyRateLimits(agentSessionID, rateLimits) {
-				updated = true
+			if appSession := a.getSession(agentSessionID); appSession != nil && appSession.client != nil {
+				rateLimits := a.fetchRateLimitsNoHandler(ctx, appSession.client, trace)
+				if a.applyRateLimits(agentSessionID, rateLimits) {
+					a.emitStartupMetadataRefreshEvent(session, agentSessionID)
+				}
 			}
 		}
-		if updated {
-			a.emitSessionEvents(agentSessionID, []activityshared.Event{
-				newSessionActivityEvent(session, EventSessionUpdated, SessionStatusReady, map[string]any{
-					"appServerMetadataRefresh": true,
-				}),
-			})
+		if fetchModels {
+			// fetchModels re-resolves the session each attempt so the loop keeps
+			// working against a live client and stops once the session is gone.
+			fetch := func(ctx context.Context) []map[string]any {
+				appSession := a.getSession(agentSessionID)
+				if appSession == nil || appSession.client == nil {
+					return nil
+				}
+				return a.fetchModelsNoHandler(ctx, appSession.client, trace)
+			}
+			sleep := func(ctx context.Context, d time.Duration) bool {
+				return sleepWithContext(ctx, d) == nil
+			}
+			if a.retryStartupModels(ctx, agentSessionID, session, threadResult, fetch, sleep) {
+				a.emitStartupMetadataRefreshEvent(session, agentSessionID)
+			}
+		}
+		// The goal lives in codex's thread state; restore it after start or
+		// resume so the banner survives daemon restarts and adopted
+		// continuation turns find the goal status they gate on.
+		if appSession := a.getSession(agentSessionID); appSession != nil && appSession.client != nil {
+			if goal := a.fetchGoal(ctx, appSession.client, appSession.threadID, trace); len(goal) > 0 {
+				a.applyGoalUpdate(agentSessionID, goal)
+				a.emitStartupMetadataRefreshEvent(session, agentSessionID)
+			}
 		}
 	}()
+}
+
+// retryStartupModels re-fetches the codex model/list until it returns a
+// non-empty list (and the startup state resolves to "ready"), the session is
+// torn down, the context is canceled, or the bounded backoff budget is
+// exhausted. A single transient empty/slow response therefore no longer pins
+// the composer's model options at "loading" forever — the previous code fetched
+// exactly once and silently left the state stuck on failure.
+func (a *CodexAppServerAdapter) retryStartupModels(
+	ctx context.Context,
+	agentSessionID string,
+	session Session,
+	threadResult json.RawMessage,
+	fetch func(context.Context) []map[string]any,
+	sleep func(context.Context, time.Duration) bool,
+) bool {
+	if a == nil || fetch == nil {
+		return false
+	}
+	backoffs := a.startupModelRetryBackoffs
+	if backoffs == nil {
+		backoffs = defaultStartupModelRetryBackoffs()
+	}
+	for attempt := 0; attempt <= len(backoffs); attempt++ {
+		if a.getSession(agentSessionID) == nil {
+			return false
+		}
+		models := fetch(ctx)
+		if a.applyStartupModels(agentSessionID, session, threadResult, models) {
+			if attempt > 0 {
+				slog.Info("agent session app-server model list resolved after retry",
+					"agent_session_id", agentSessionID,
+					"attempts", attempt+1,
+				)
+			}
+			return true
+		}
+		if attempt == len(backoffs) {
+			break
+		}
+		if sleep != nil && !sleep(ctx, backoffs[attempt]) {
+			return false
+		}
+	}
+	slog.Warn("agent session app-server model list never resolved",
+		"agent_session_id", agentSessionID,
+		"attempts", len(backoffs)+1,
+	)
+	return false
+}
+
+func (a *CodexAppServerAdapter) emitStartupMetadataRefreshEvent(session Session, agentSessionID string) {
+	a.emitSessionEvents(agentSessionID, []activityshared.Event{
+		newSessionActivityEvent(session, EventSessionUpdated, SessionStatusReady, map[string]any{
+			"appServerMetadataRefresh": true,
+		}),
+	})
+}
+
+// defaultStartupModelRetryBackoffs ramps quickly then settles at a steady 30s
+// cadence, giving codex time to recover from transient hiccups (rate limits,
+// a still-materializing platform package, a slow first model/list) while
+// keeping the background goroutine bounded.
+func defaultStartupModelRetryBackoffs() []time.Duration {
+	backoffs := []time.Duration{
+		time.Second,
+		2 * time.Second,
+		5 * time.Second,
+		10 * time.Second,
+	}
+	for i := 0; i < startupModelSteadyRetryCount; i++ {
+		backoffs = append(backoffs, 30*time.Second)
+	}
+	return backoffs
 }
 
 func (a *CodexAppServerAdapter) applyStartupModels(
@@ -1145,6 +1297,28 @@ func (a *CodexAppServerAdapter) applyStartupModels(
 	appSession.defaultModel = codexAppServerSessionDefaultModel(session, models)
 	appSession.startupModelsReady = true
 	return true
+}
+
+// nextTurnLifecycleSeq allocates the next per-session lifecycle snapshot
+// sequence number.
+func (a *CodexAppServerAdapter) nextTurnLifecycleSeq(agentSessionID string) uint64 {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	appSession := a.sessions[strings.TrimSpace(agentSessionID)]
+	if appSession == nil {
+		return 0
+	}
+	appSession.lifecycleSeq++
+	return appSession.lifecycleSeq
+}
+
+// stampTurnLifecycleSnapshots stamps an adapter-origin TurnLifecycle snapshot
+// onto every turn.* event in the batch (ADR 0008); see
+// stampAdapterTurnLifecycleEvents for the contract.
+func (a *CodexAppServerAdapter) stampTurnLifecycleSnapshots(agentSessionID string, events []activityshared.Event) []activityshared.Event {
+	return stampAdapterTurnLifecycleEvents(events, func() uint64 {
+		return a.nextTurnLifecycleSeq(agentSessionID)
+	})
 }
 
 func (a *CodexAppServerAdapter) emitSessionEvents(agentSessionID string, events []activityshared.Event) {
@@ -1248,6 +1422,19 @@ func (a *CodexAppServerAdapter) finalizeSettledTurn(agentSessionID string, appTu
 	}
 	a.endActiveTurn(agentSessionID, appTurn)
 	appTurn.markTerminated()
+	// With an active goal, codex normally auto-starts the next turn; the
+	// nudge covers the case where it does not. This must run regardless of
+	// how the turn settled: a mid-goal turn can end failed (a transient tool
+	// or model error) or externally canceled (client hiccup) while codex's
+	// own thread state still reports the goal active, and if codex does not
+	// resume on its own the goal would otherwise stop advancing for good
+	// with no further signal. scheduleGoalContinuationNudge already no-ops
+	// once the goal itself is no longer active (paused/complete/cleared) or
+	// the app-server connection is gone, so calling it unconditionally here
+	// cannot resume a goal that was legitimately stopped (for example Cancel
+	// pauses the goal before interrupting the turn, so a user-initiated
+	// cancellation settles with the goal already paused).
+	a.scheduleGoalContinuationNudge(session)
 }
 
 // settleTurnExternal settles THIS turn (pointer match) from an external
@@ -1263,6 +1450,7 @@ func (a *CodexAppServerAdapter) settleTurnExternal(agentSessionID string, appTur
 	if appSession != nil && appSession.activeTurn == appTurn && !appTurn.phase.terminal() {
 		appTurn.phase = terminal.phase
 		appSession.activeTurnID = ""
+		appSession.activeTurnStartConfirmed = false
 		settled = true
 	}
 	emits := settled && appTurn.settleEmits
@@ -1315,9 +1503,20 @@ func (a *CodexAppServerAdapter) execBlocking(
 	}
 	session.ProviderSessionID = appSession.threadID
 	explicitDisplayPrompt, visibleText := explicitAndVisiblePromptText(content, displayPrompt)
+	mentionRoutingApplied, mentionRoutingSkills := tuttiMentionRoutingSkills(visibleText)
+	providerContent := content
+	if mentionRoutingApplied {
+		providerContent = appendTuttiMentionRoutingContent(providerContent, mentionRoutingSkills)
+	}
 
 	if activeTurnID := a.sessionActiveTurnID(session.AgentSessionID); activeTurnID != "" {
-		return a.steerActiveTurn(ctx, appSession, session, content, explicitDisplayPrompt, visibleText, turnID, activeTurnID, emit)
+		if command, args := splitSlashCommand(visibleText); command == appServerSlashGoal {
+			// Goal commands are thread-level control operations; steering them
+			// would paste "/goal …" into the running turn as prompt text
+			// instead of executing the RPC.
+			return a.execGoalControlCommand(ctx, appSession, session, args, turnID, content, explicitDisplayPrompt, visibleText, emit)
+		}
+		return a.steerActiveTurn(ctx, appSession, session, content, providerContent, explicitDisplayPrompt, visibleText, turnID, activeTurnID, emit)
 	}
 
 	normalizer := newACPTurnNormalizer()
@@ -1331,6 +1530,7 @@ func (a *CodexAppServerAdapter) execBlocking(
 	var events []activityshared.Event
 	turnClosed := false
 	emitLocked := func(next []activityshared.Event) {
+		next = a.stampTurnLifecycleSnapshots(session.AgentSessionID, next)
 		events = append(events, next...)
 		if emit != nil {
 			emit(next)
@@ -1405,8 +1605,8 @@ func (a *CodexAppServerAdapter) execBlocking(
 	a.markTurnSettleEmits(appTurn)
 
 	trace := newCodexAppServerTurnTrace(session, turnID, execMetadataFromContext(ctx))
-	turnParams := appServerTurnStartParams(session, appSession.threadID, content, appSession.planModeMask, appSession.defaultModeMask, appSession.defaultModel)
-	trace.Log("turn.start.params", codexAppServerTraceTurnStartParams(session, turnParams, content))
+	turnParams := appServerTurnStartParams(session, appSession.threadID, providerContent, appSession.planModeMask, appSession.defaultModeMask, appSession.defaultModel)
+	trace.Log("turn.start.params", codexAppServerTraceTurnStartParams(session, turnParams, providerContent))
 	turnStartedAt := time.Now()
 	result, err := appSession.client.TurnStart(ctx, turnParams,
 		func(ctx context.Context, message acpMessage) error {
@@ -1559,6 +1759,7 @@ func (*CodexAppServerAdapter) steerActiveTurn(
 	appSession *codexAppServerSession,
 	session Session,
 	content []PromptContentBlock,
+	providerContent []PromptContentBlock,
 	explicitDisplayPrompt string,
 	displayPrompt string,
 	turnID string,
@@ -1568,7 +1769,7 @@ func (*CodexAppServerAdapter) steerActiveTurn(
 	_, err := appSession.client.TurnSteerNoHandler(ctx, map[string]any{
 		"threadId":       appSession.threadID,
 		"expectedTurnId": activeTurnID,
-		"input":          appServerUserInput(content),
+		"input":          appServerUserInput(providerContent),
 	})
 	if err != nil {
 		return nil, err
@@ -1577,6 +1778,163 @@ func (*CodexAppServerAdapter) steerActiveTurn(
 		newTurnActivityEvent(session, EventMessage, turnID, "", RoleUser, displayPrompt, userPromptActivityPayload(content, explicitDisplayPrompt, userPromptActivityPayloadExtraFromExecMetadata(ctx, map[string]any{
 			"steered": true,
 		}))),
+	}
+	if emit != nil {
+		emit(events)
+	}
+	return events, nil
+}
+
+// GoalControl performs a direct goal action from the GUI without going
+// through the prompt pipeline: no user message, no turn, no transcript entry
+// — only the goal RPC plus a goal-updated session event so the banner
+// refreshes, matching the codex desktop goal bar's in-place controls.
+func (a *CodexAppServerAdapter) GoalControl(
+	ctx context.Context,
+	session Session,
+	action GoalControlAction,
+	objective string,
+) ([]activityshared.Event, map[string]any, error) {
+	appSession := a.getSession(session.AgentSessionID)
+	if appSession == nil || appSession.client == nil {
+		return nil, nil, ErrSessionDisconnected
+	}
+	session.ProviderSessionID = appSession.threadID
+	method := appServerMethodThreadGoalSet
+	params := map[string]any{"threadId": appSession.threadID}
+	switch action {
+	case GoalControlPause:
+		params["status"] = "paused"
+	case GoalControlResume:
+		params["status"] = "active"
+	case GoalControlClear:
+		method = appServerMethodThreadGoalClear
+	case GoalControlSet:
+		objective = strings.TrimSpace(objective)
+		if objective == "" {
+			return nil, nil, fmt.Errorf("goal objective is required")
+		}
+		params["objective"] = objective
+		params["status"] = "active"
+	default:
+		return nil, nil, fmt.Errorf("unsupported goal control action %q", action)
+	}
+	slog.Info("agent session app-server goal control",
+		"event", "agent_session.app_server.goal.control",
+		"agent_session_id", session.AgentSessionID,
+		"action", string(action),
+	)
+	result, err := appSession.callGoalNoHandler(ctx, method, params)
+	if err != nil {
+		return nil, nil, err
+	}
+	goalUpdateType := "thread_goal_update"
+	var goal map[string]any
+	if method == appServerMethodThreadGoalClear {
+		a.applyGoalClear(session.AgentSessionID)
+		goalUpdateType = "thread_goal_cleared"
+	} else {
+		goal = appServerGoalFromResult(result)
+		if len(goal) > 0 {
+			a.applyGoalUpdate(session.AgentSessionID, goal)
+		} else if action == GoalControlPause || action == GoalControlResume {
+			// Status-only set may return an empty goal payload; mirror the
+			// change locally so the banner and the reducer's paused-goal
+			// defense stay correct.
+			if goal = a.sessionGoal(session.AgentSessionID); len(goal) > 0 {
+				if action == GoalControlPause {
+					goal["status"] = "paused"
+				} else {
+					goal["status"] = "active"
+				}
+				a.applyGoalUpdate(session.AgentSessionID, goal)
+			}
+		}
+	}
+	events := []activityshared.Event{}
+	if event, ok := acpGoalUpdatedEvent(session, goalUpdateType); ok {
+		events = append(events, event)
+	}
+	if action == GoalControlResume || action == GoalControlSet {
+		// Codex normally starts the next goal turn itself after the goal
+		// becomes active again; the nudge covers the case where it does not.
+		a.scheduleGoalContinuationNudge(session)
+	}
+	return events, a.sessionGoal(session.AgentSessionID), nil
+}
+
+// ExecGoalControl executes a /goal control command as a thread-level
+// operation without opening a turn. The controller routes here when another
+// turn already holds the session's turn slot, so the goal banner's
+// pause/resume/delete act immediately instead of being rejected by the
+// single-turn gate. handled is false when the prompt is not a /goal command.
+func (a *CodexAppServerAdapter) ExecGoalControl(
+	ctx context.Context,
+	session Session,
+	content []PromptContentBlock,
+	displayPrompt string,
+	turnID string,
+) ([]activityshared.Event, bool, error) {
+	explicitDisplayPrompt, visibleText := explicitAndVisiblePromptText(content, displayPrompt)
+	command, args := splitSlashCommand(visibleText)
+	if command != appServerSlashGoal {
+		return nil, false, nil
+	}
+	appSession := a.getSession(session.AgentSessionID)
+	if appSession == nil || appSession.client == nil {
+		return nil, true, ErrSessionDisconnected
+	}
+	session.ProviderSessionID = appSession.threadID
+	events, err := a.execGoalControlCommand(ctx, appSession, session, args, turnID, content, explicitDisplayPrompt, visibleText, nil)
+	return events, true, err
+}
+
+// execGoalControlCommand executes /goal while another turn is running. The
+// goal RPC runs against the thread (not the turn); the submission is recorded
+// like a steered message so the controller closes this Exec's turn record
+// while the running turn keeps owning the session lifecycle. A /goal with a
+// new objective mid-turn updates the objective; continuation turns are then
+// adopted after the running turn settles.
+func (a *CodexAppServerAdapter) execGoalControlCommand(
+	ctx context.Context,
+	appSession *codexAppServerSession,
+	session Session,
+	args string,
+	turnID string,
+	content []PromptContentBlock,
+	explicitDisplayPrompt string,
+	displayPrompt string,
+	emit EventSink,
+) ([]activityshared.Event, error) {
+	method, params := appServerGoalSlashRequest(args, appSession.threadID)
+	// NoHandler: the active turn keeps streaming while this control RPC runs;
+	// claiming the handler slot would swallow its notifications.
+	result, err := appSession.callGoalNoHandler(ctx, method, params)
+	events := []activityshared.Event{
+		newTurnActivityEvent(session, EventMessage, turnID, "", RoleUser, displayPrompt, userPromptActivityPayload(content, explicitDisplayPrompt, userPromptActivityPayloadExtraFromExecMetadata(ctx, map[string]any{
+			"steered":     true,
+			"goalControl": true,
+		}))),
+	}
+	if err != nil {
+		events = append(events, appServerSystemNoticeEvent(session, turnID, "warning", "Goal command failed.", err.Error()))
+		if emit != nil {
+			emit(events)
+		}
+		return events, nil
+	}
+	goalUpdateType := "thread_goal_update"
+	if method == appServerMethodThreadGoalClear {
+		a.applyGoalClear(session.AgentSessionID)
+		goalUpdateType = "thread_goal_cleared"
+	} else if goal := appServerGoalFromResult(result); len(goal) > 0 {
+		a.applyGoalUpdate(session.AgentSessionID, goal)
+	}
+	if event, ok := acpGoalUpdatedEvent(session, goalUpdateType); ok {
+		events = append(events, event)
+	}
+	if notice := appServerGoalNoticeEvent(session, turnID, method, result); notice != nil {
+		events = append(events, *notice)
 	}
 	if emit != nil {
 		emit(events)
@@ -1600,11 +1958,26 @@ func (a *CodexAppServerAdapter) execSlashCommand(
 	switch command {
 	case appServerSlashCompact:
 		a.transitionActiveTurnPhase(session.AgentSessionID, appTurn, codexAppServerTurnPhaseCompacting)
+		// Emit the "Compacting context." banner up front instead of waiting for
+		// the server's contextCompaction item/started notification: Codex
+		// app-server frequently finishes thread/compact/start without ever
+		// streaming that notification, which used to leave the whole operation
+		// invisible until (if ever) an item/completed notice arrived. Tracking
+		// the messageId now means a later item/started reuses this same row
+		// (see appServerItemEvents) instead of appending a duplicate, and an
+		// immediate RPC failure or an interrupted/failed turn always has a
+		// pending banner to settle in place.
+		startMessageID := "compaction:" + turnID
+		normalizer.TrackCompactionNotice(startMessageID, false)
+		emitEvents([]activityshared.Event{appServerCompactionNoticeEvent(session, turnID, startMessageID, false)})
 		_, err := appSession.client.ThreadCompactStart(ctx, map[string]any{
 			"threadId": appSession.threadID,
 		}, a.appServerMessageHandler(appSession, session, turnID, normalizer, emitEvents, emitCommands))
 		if err != nil {
-			emitTerminal([]activityshared.Event{newTurnActivityEvent(session, EventTurnFailed, turnID, SessionStatusFailed, "", "", acpFailureMetadata(err))})
+			emitTerminal(append(
+				normalizer.settlePendingCompactionEvents(session, turnID, appServerCompactionInterruptedTitle),
+				newTurnActivityEvent(session, EventTurnFailed, turnID, SessionStatusFailed, "", "", acpFailureMetadata(err)),
+			))
 			return true, nil
 		}
 		// Block until the App Server signals turn/completed. The session-level
@@ -1641,6 +2014,14 @@ func (a *CodexAppServerAdapter) execSlashCommand(
 	case appServerSlashGoal:
 		method, params := appServerGoalSlashRequest(args, appSession.threadID)
 		goalObjective := strings.TrimSpace(asString(params["objective"]))
+		goalDrivesTurn := method == appServerMethodThreadGoalSet && goalObjective != ""
+		if goalDrivesTurn {
+			// Mark before the RPC: the server may start (and even settle) the
+			// goal's first turn while thread/goal/set is still in flight, and
+			// the settle path only emits terminal events for marked turns.
+			a.markTurnSettleEmits(appTurn)
+			go a.watchTurnExternalTermination(appSession, appTurn)
+		}
 		result, err := appSession.callGoal(ctx, method, params,
 			a.appServerMessageHandler(appSession, session, turnID, normalizer, emitEvents, emitCommands))
 		if err != nil {
@@ -1649,28 +2030,41 @@ func (a *CodexAppServerAdapter) execSlashCommand(
 		}
 		if method == appServerMethodThreadGoalClear {
 			a.applyGoalClear(session.AgentSessionID)
+			if event, ok := acpGoalUpdatedEvent(session, "thread_goal_cleared"); ok {
+				emitEvents([]activityshared.Event{event})
+			}
 		} else if goal := appServerGoalFromResult(result); len(goal) > 0 {
 			a.applyGoalUpdate(session.AgentSessionID, goal)
+			if event, ok := acpGoalUpdatedEvent(session, "thread_goal_update"); ok {
+				emitEvents([]activityshared.Event{event})
+			}
 		}
-		if method == appServerMethodThreadGoalSet && goalObjective != "" {
+		if goalDrivesTurn {
+			// The settle path (notification loop) owns terminal production for
+			// the goal's first turn, exactly like a normal turn. Continuation
+			// turns that codex starts on its own afterwards are adopted by the
+			// reducer (adoptServerInitiatedTurn) and render as their own turns,
+			// so goal progress never depends on this Exec staying alive.
 			initialTurn := appServerTurnFromResult(result)
 			if providerTurnID := asString(initialTurn["id"]); providerTurnID != "" {
 				if a.setSessionActiveTurnID(session.AgentSessionID, providerTurnID) {
 					a.interruptActiveTurnAsync(appSession, session, appTurn, providerTurnID, "queued cancel")
 				}
 			}
-			finalTurn, finishErr := a.awaitGoalOperationCompletion(
-				ctx,
-				appSession,
-				session,
-				turnID,
-				appTurn,
-				initialTurn,
-				normalizer,
-				emitEvents,
-				emitCommands,
-			)
+			finalTurn, finishErr := a.awaitTurnCompletion(ctx, appSession, appTurn, initialTurn)
+			select {
+			case <-appTurn.terminated:
+			case <-time.After(2 * time.Second):
+			}
 			a.endActiveTurn(session.AgentSessionID, appTurn)
+			if appTurn.settleFinalized.Load() {
+				return true, nil
+			}
+			slog.Warn(
+				"agent session app-server goal turn terminal produced by blocking shell (settle shadow miss)",
+				"agent_session_id", session.AgentSessionID,
+				"turn_id", turnID,
+			)
 			if finishErr != nil {
 				if errors.Is(finishErr, context.Canceled) || errors.Is(finishErr, errPermissionRequestCanceled) || a.turnForceCanceled(appTurn) {
 					terminalEvents := a.pendingRequestFailureEvents(session, turnID, errPermissionRequestCanceled)
@@ -1722,74 +2116,6 @@ func (a *CodexAppServerAdapter) execSlashCommand(
 	}
 }
 
-func (a *CodexAppServerAdapter) awaitGoalOperationCompletion(
-	ctx context.Context,
-	appSession *codexAppServerSession,
-	session Session,
-	turnID string,
-	appTurn *codexAppServerActiveTurn,
-	initialTurn map[string]any,
-	normalizer *acpTurnNormalizer,
-	emitEvents func([]activityshared.Event),
-	emitCommands CommandSnapshotSink,
-) (map[string]any, error) {
-	nextInitialTurn := initialTurn
-	for {
-		finalTurn, err := a.awaitTurnCompletion(ctx, appSession, appTurn, nextInitialTurn)
-		if err != nil {
-			return nil, err
-		}
-		if !a.shouldContinueActiveGoalAfterTurn(session.AgentSessionID, finalTurn) {
-			return finalTurn, nil
-		}
-		normalizer.ApplyAssistantFinalText(appServerTurnFinalAssistantText(finalTurn))
-		emitEvents(normalizer.FinishCompleted(session, turnID))
-		nextTurn, continued, err := a.waitForAutomaticGoalContinuation(ctx, session.AgentSessionID, appTurn)
-		if err != nil {
-			return nil, err
-		}
-		if continued {
-			nextInitialTurn = nextTurn
-			continue
-		}
-		continued, err = a.requestActiveGoalContinuation(ctx, appSession, session, turnID, normalizer, emitEvents, emitCommands)
-		if err != nil {
-			return nil, err
-		}
-		if !continued {
-			return finalTurn, nil
-		}
-		nextInitialTurn = nil
-	}
-}
-
-func (a *CodexAppServerAdapter) waitForAutomaticGoalContinuation(
-	ctx context.Context,
-	agentSessionID string,
-	appTurn *codexAppServerActiveTurn,
-) (map[string]any, bool, error) {
-	timer := time.NewTimer(defaultCodexAppServerGoalContinuationGraceWindow)
-	defer timer.Stop()
-	select {
-	case terminal := <-appTurn.terminal:
-		return terminal.turn, true, terminal.err
-	case <-ctx.Done():
-		return nil, false, ctx.Err()
-	case <-timer.C:
-		if a.sessionActiveTurnID(agentSessionID) != "" {
-			return nil, true, nil
-		}
-		return nil, false, nil
-	}
-}
-
-func (a *CodexAppServerAdapter) shouldContinueActiveGoalAfterTurn(agentSessionID string, turn map[string]any) bool {
-	if strings.TrimSpace(asString(turn["status"])) != "completed" {
-		return false
-	}
-	return strings.TrimSpace(asString(a.sessionGoal(agentSessionID)["status"])) == "active"
-}
-
 func (a *CodexAppServerAdapter) sessionGoal(agentSessionID string) map[string]any {
 	if a == nil {
 		return nil
@@ -1803,38 +2129,139 @@ func (a *CodexAppServerAdapter) sessionGoal(agentSessionID string) map[string]an
 	return clonePayload(appSession.goal)
 }
 
-func (a *CodexAppServerAdapter) requestActiveGoalContinuation(
-	ctx context.Context,
-	appSession *codexAppServerSession,
-	session Session,
-	turnID string,
-	normalizer *acpTurnNormalizer,
-	emitEvents func([]activityshared.Event),
-	emitCommands CommandSnapshotSink,
-) (bool, error) {
-	goal := a.sessionGoal(session.AgentSessionID)
-	if strings.TrimSpace(asString(goal["status"])) != "active" {
-		return false, nil
+// adoptServerInitiatedTurn registers a turn that codex started on its own
+// (goal auto-continuation) as a first-class tracked turn: it gets a fresh
+// turn id, a normalizer, and a session-sink emitter, so its output persists
+// and renders exactly like an Exec-driven turn. Settlement is owned by the
+// notification path (settleEmits); no goroutine blocks on it. Runs on the
+// client read loop, so registration completes before the turn's first item
+// notification is processed.
+func (a *CodexAppServerAdapter) adoptServerInitiatedTurn(session Session, providerTurnID string) {
+	appSession := a.getSession(session.AgentSessionID)
+	if appSession == nil || appSession.client == nil {
+		return
 	}
-	params := map[string]any{
-		"threadId": appSession.threadID,
-		"status":   "active",
+	turnID := newID()
+	normalizer := newACPTurnNormalizer()
+	var eventsMu sync.Mutex
+	turnClosed := false
+	emitEvents := func(next []activityshared.Event) {
+		if len(next) == 0 {
+			return
+		}
+		eventsMu.Lock()
+		defer eventsMu.Unlock()
+		if turnClosed {
+			return
+		}
+		a.emitSessionEvents(session.AgentSessionID, a.stampTurnLifecycleSnapshots(session.AgentSessionID, next))
 	}
-	if objective := strings.TrimSpace(asStringRaw(goal["objective"])); objective != "" {
-		params["objective"] = objective
+	emitTerminal := func(next []activityshared.Event) {
+		eventsMu.Lock()
+		defer eventsMu.Unlock()
+		if turnClosed {
+			return
+		}
+		turnClosed = true
+		a.emitSessionEvents(session.AgentSessionID, a.stampTurnLifecycleSnapshots(session.AgentSessionID, next))
 	}
-	result, err := appSession.client.ThreadGoalSet(
-		ctx,
-		params,
-		a.appServerMessageHandler(appSession, session, turnID, normalizer, emitEvents, emitCommands),
+	appTurn := &codexAppServerActiveTurn{
+		turnID:      turnID,
+		session:     session,
+		ctx:         context.Background(),
+		normalizer:  normalizer,
+		emit:        emitEvents,
+		kind:        codexAppServerTurnKindGoalAdopted,
+		phase:       codexAppServerTurnPhaseRunning,
+		terminal:    make(chan codexAppServerTurnTerminal, 1),
+		terminated:  make(chan struct{}),
+		settleEmits: true,
+	}
+	appTurn.emitTerminal = emitTerminal
+	if !a.beginActiveTurn(session.AgentSessionID, appTurn) {
+		// A registered turn won the race; leave tracking to it.
+		return
+	}
+	a.setSessionActiveTurnID(session.AgentSessionID, providerTurnID)
+	// The adopted id comes from the turn/started notification itself.
+	a.confirmSessionActiveTurnStarted(session.AgentSessionID, providerTurnID)
+	slog.Info("agent session app-server goal turn adopted",
+		"event", "agent_session.app_server.goal.turn_adopted",
+		"agent_session_id", session.AgentSessionID,
+		"provider_turn_id", providerTurnID,
+		"turn_id", turnID,
 	)
-	if err != nil {
-		return true, err
+	emitEvents([]activityshared.Event{
+		newTurnActivityEvent(session, EventTurnStarted, turnID, SessionStatusWorking, "", "", map[string]any{
+			"goalContinuation": true,
+		}),
+	})
+	go a.watchTurnExternalTermination(appSession, appTurn)
+}
+
+// scheduleGoalContinuationNudge re-sends thread/goal/set {status: active}
+// when a goal turn settled but codex did not auto-start the next turn within
+// the grace window. It is a safety net: the primary continuation driver is
+// codex itself (whose turns are adopted on turn/started).
+func (a *CodexAppServerAdapter) scheduleGoalContinuationNudge(session Session) {
+	agentSessionID := session.AgentSessionID
+	appSession := a.getSession(agentSessionID)
+	if appSession == nil || appSession.client == nil {
+		return
 	}
-	if nextGoal := appServerGoalFromResult(result); len(nextGoal) > 0 {
-		a.applyGoalUpdate(session.AgentSessionID, nextGoal)
+	client := appSession.client
+	threadID := appSession.threadID
+	if strings.TrimSpace(asString(a.sessionGoal(agentSessionID)["status"])) != "active" {
+		return
 	}
-	return true, nil
+	grace := a.goalContinuationGraceWindow
+	if grace <= 0 {
+		grace = defaultCodexAppServerGoalContinuationGraceWindow
+	}
+	go func() {
+		timer := time.NewTimer(grace)
+		defer timer.Stop()
+		select {
+		case <-client.Done():
+			return
+		case <-timer.C:
+		}
+		if a.sessionActiveTurn(agentSessionID) != nil || a.sessionActiveTurnID(agentSessionID) != "" {
+			// Codex already continued (adopted turn) or a user turn is running.
+			return
+		}
+		goal := a.sessionGoal(agentSessionID)
+		if strings.TrimSpace(asString(goal["status"])) != "active" {
+			return
+		}
+		params := map[string]any{
+			"threadId": threadID,
+			"status":   "active",
+		}
+		if objective := strings.TrimSpace(asStringRaw(goal["objective"])); objective != "" {
+			params["objective"] = objective
+		}
+		slog.Info("agent session app-server goal continuation nudge",
+			"event", "agent_session.app_server.goal.continuation_nudge",
+			"agent_session_id", agentSessionID,
+		)
+		nudgeCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
+		// NoHandler: the continuation turn's notifications must keep flowing
+		// to the session-level handler while this RPC is in flight.
+		result, err := client.ThreadGoalSetNoHandler(nudgeCtx, params)
+		if err != nil {
+			slog.Warn("agent session app-server goal continuation nudge failed",
+				"event", "agent_session.app_server.goal.continuation_nudge_failed",
+				"agent_session_id", agentSessionID,
+				"error", err.Error(),
+			)
+			return
+		}
+		if nextGoal := appServerGoalFromResult(result); len(nextGoal) > 0 {
+			a.applyGoalUpdate(agentSessionID, nextGoal)
+		}
+	}()
 }
 
 func (a *CodexAppServerAdapter) Cancel(ctx context.Context, session Session, reason string) ([]activityshared.Event, error) {
@@ -1849,6 +2276,12 @@ func (a *CodexAppServerAdapter) Cancel(ctx context.Context, session Session, rea
 	// read loop is parked inside that handler, so the interrupt response
 	// could never be dispatched otherwise.
 	a.rejectPendingRequests(session.AgentSessionID, errPermissionRequestCanceled)
+	// Stop pauses an active goal BEFORE interrupting the turn: otherwise codex
+	// would immediately auto-start the next goal turn and the stop would be a
+	// no-op from the user's perspective. Pause failures fall through to the
+	// interrupt (the reducer additionally interrupts unowned turns for paused
+	// goals as defense-in-depth).
+	childEvents = append(a.pauseActiveGoalForCancel(session), childEvents...)
 	if activeTurnID == "" {
 		if queued {
 			return childEvents, nil
@@ -1860,6 +2293,55 @@ func (a *CodexAppServerAdapter) Cancel(ctx context.Context, session Session, rea
 	}
 	appTurn := a.sessionActiveTurn(session.AgentSessionID)
 	return childEvents, a.interruptActiveTurn(ctx, appSession, session, appTurn, activeTurnID, reason)
+}
+
+// pauseActiveGoalForCancel sets an active goal to paused so codex stops
+// auto-continuing after the interrupted turn. Best-effort: on failure the
+// interrupt still proceeds and the reducer's paused-goal defense interrupts
+// any turn codex starts anyway.
+func (a *CodexAppServerAdapter) pauseActiveGoalForCancel(session Session) []activityshared.Event {
+	agentSessionID := session.AgentSessionID
+	appSession := a.getSession(agentSessionID)
+	if appSession == nil || appSession.client == nil {
+		return nil
+	}
+	if strings.TrimSpace(asString(a.sessionGoal(agentSessionID)["status"])) != "active" {
+		return nil
+	}
+	client := appSession.client
+	// Cancel's own ctx can be short-lived; bound the pause independently.
+	// NoHandler: the turn being canceled is still streaming, so this RPC must
+	// not claim the message handler slot (or serialize behind turn/start).
+	pauseCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	result, err := client.ThreadGoalSetNoHandler(pauseCtx, map[string]any{
+		"threadId": appSession.threadID,
+		"status":   "paused",
+	})
+	if err != nil {
+		slog.Warn("agent session app-server goal pause on cancel failed",
+			"event", "agent_session.app_server.goal.pause_failed",
+			"agent_session_id", agentSessionID,
+			"error", err.Error(),
+		)
+		return nil
+	}
+	if goal := appServerGoalFromResult(result); len(goal) > 0 {
+		a.applyGoalUpdate(agentSessionID, goal)
+	} else if goal := a.sessionGoal(agentSessionID); len(goal) > 0 {
+		// Status-only set may return an empty goal payload; mirror the pause
+		// locally so the reducer's paused-goal defense engages.
+		goal["status"] = "paused"
+		a.applyGoalUpdate(agentSessionID, goal)
+	}
+	// No transcript notice: pausing is a deliberate action and the banner
+	// already reflects the paused state; repeated stops would spam the
+	// timeline.
+	events := []activityshared.Event{}
+	if event, ok := acpGoalUpdatedEvent(session, "thread_goal_update"); ok {
+		events = append(events, event)
+	}
+	return events
 }
 
 // interruptActiveTurn stops the active turn. It first asks codex to cancel
@@ -2008,12 +2490,32 @@ func (*CodexAppServerAdapter) sendThreadInterrupt(
 	if client == nil || threadID == "" {
 		return
 	}
-	interruptCtx, cancel := context.WithTimeout(context.Background(), acpPermissionModeTimeout)
-	defer cancel()
-	if _, err := client.TurnInterruptNoHandler(interruptCtx, acpPermissionModeTimeout, map[string]any{
-		"threadId": threadID,
-		"turnId":   strings.TrimSpace(turnID),
-	}); err != nil {
+	turnID = strings.TrimSpace(turnID)
+	err := codexSendTurnInterruptOnce(client, threadID, turnID)
+	if err != nil {
+		// Our own turn bookkeeping settles a turn locally as soon as its Go
+		// context is canceled (see Cancel/interruptActiveTurn), without
+		// waiting for the app-server to actually confirm the turn stopped.
+		// When a slow-to-terminate tool call (for example wait_agent on
+		// several dispatched sub-agents) keeps the app-server's real turn
+		// alive past that point, a subsequent interrupt aimed at the turn id
+		// we *think* is active gets rejected with "expected active turn id X
+		// but found Y". Retry once against Y so the real, still-running turn
+		// actually gets interrupted instead of being abandoned to die on its
+		// own — which otherwise can leave it running for minutes.
+		if foundTurnID, ok := codexExpectedActiveTurnIDMismatch(err); ok && foundTurnID != turnID {
+			slog.Warn("agent session app-server interrupt turn id stale, retrying",
+				"event", "agent_session.app_server.interrupt.turn_id_stale",
+				"agent_session_id", session.AgentSessionID,
+				"provider_session_id", threadID,
+				"requested_turn_id", turnID,
+				"actual_turn_id", foundTurnID,
+				"reason", reason,
+			)
+			err = codexSendTurnInterruptOnce(client, threadID, foundTurnID)
+		}
+	}
+	if err != nil {
 		slog.Warn("agent session app-server interrupt failed",
 			"event", "agent_session.app_server.interrupt.failed",
 			"agent_session_id", session.AgentSessionID,
@@ -2023,6 +2525,49 @@ func (*CodexAppServerAdapter) sendThreadInterrupt(
 			"error", err.Error(),
 		)
 	}
+}
+
+func codexSendTurnInterruptOnce(client *codexAppServerClient, threadID, turnID string) error {
+	interruptCtx, cancel := context.WithTimeout(context.Background(), acpPermissionModeTimeout)
+	defer cancel()
+	_, err := client.TurnInterruptNoHandler(interruptCtx, acpPermissionModeTimeout, map[string]any{
+		"threadId": threadID,
+		"turnId":   turnID,
+	})
+	return err
+}
+
+// codexExpectedActiveTurnIDMismatch recognizes the codex app-server's
+// turn/interrupt rejection for a stale expected turn id: "expected active
+// turn id <requested> but found <actual>". It reports actual so the caller
+// can retry against the turn codex itself considers active. JSON-RPC -32600
+// is the generic "invalid request" code the app-server reuses for several
+// distinct rejections (see isACPProviderSessionNotFound), so this keys off
+// the distinctive message text rather than the code.
+func codexExpectedActiveTurnIDMismatch(err error) (string, bool) {
+	var callErr *acpCallError
+	if !errors.As(err, &callErr) || callErr == nil {
+		return "", false
+	}
+	message := strings.TrimSpace(callErr.Err.Message)
+	lower := strings.ToLower(message)
+	if !strings.Contains(lower, "expected active turn id") {
+		return "", false
+	}
+	const marker = "but found "
+	idx := strings.LastIndex(lower, marker)
+	if idx < 0 {
+		return "", false
+	}
+	rest := strings.TrimSpace(message[idx+len(marker):])
+	if sp := strings.IndexAny(rest, " \t\n"); sp >= 0 {
+		rest = rest[:sp]
+	}
+	rest = strings.Trim(rest, ".,;")
+	if rest == "" {
+		return "", false
+	}
+	return rest, true
 }
 
 func (a *CodexAppServerAdapter) interruptLinkedChildThreads(
@@ -2506,6 +3051,7 @@ func (a *CodexAppServerAdapter) endActiveTurn(agentSessionID string, turn *codex
 	}
 	appSession.activeTurn = nil
 	appSession.activeTurnID = ""
+	appSession.activeTurnStartConfirmed = false
 }
 
 func (a *CodexAppServerAdapter) sessionActiveTurn(agentSessionID string) *codexAppServerActiveTurn {
@@ -2570,6 +3116,9 @@ func (a *CodexAppServerAdapter) setSessionActiveTurnID(agentSessionID string, tu
 	appSession := a.sessions[strings.TrimSpace(agentSessionID)]
 	if appSession != nil {
 		appSession.activeTurnID = strings.TrimSpace(turnID)
+		// The binding starts unconfirmed; a matching turn/started notification
+		// confirms it via confirmSessionActiveTurnStarted.
+		appSession.activeTurnStartConfirmed = false
 		if appSession.activeTurnID != "" {
 			appSession.lastTurnID = appSession.activeTurnID
 		}
@@ -2582,6 +3131,39 @@ func (a *CodexAppServerAdapter) setSessionActiveTurnID(agentSessionID string, tu
 		}
 	}
 	return false
+}
+
+// confirmSessionActiveTurnStarted marks the recorded provider turn id as
+// confirmed by a turn/started notification. Stub ids from a steered
+// turn/start never receive turn/started, so they stay unconfirmed and the
+// settle path may adopt the running turn's terminal for them. The
+// confirmation is scoped to the turn the notification named: a concurrent
+// rebinding (steered turn/start racing the read loop) must not get its stub
+// id confirmed by another turn's start.
+func (a *CodexAppServerAdapter) confirmSessionActiveTurnStarted(agentSessionID string, providerTurnID string) {
+	if a == nil {
+		return
+	}
+	providerTurnID = strings.TrimSpace(providerTurnID)
+	if providerTurnID == "" {
+		return
+	}
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	appSession := a.sessions[strings.TrimSpace(agentSessionID)]
+	if appSession != nil && strings.TrimSpace(appSession.activeTurnID) == providerTurnID {
+		appSession.activeTurnStartConfirmed = true
+	}
+}
+
+func (a *CodexAppServerAdapter) sessionActiveTurnStartConfirmed(agentSessionID string) bool {
+	if a == nil {
+		return false
+	}
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	appSession := a.sessions[strings.TrimSpace(agentSessionID)]
+	return appSession != nil && appSession.activeTurnStartConfirmed
 }
 
 // sessionMarkerTurnID resolves the turn id to stamp on child lifecycle

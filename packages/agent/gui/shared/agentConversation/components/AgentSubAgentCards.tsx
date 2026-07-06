@@ -1,4 +1,4 @@
-import { memo, useState, type JSX } from "react";
+import { memo, useEffect, useState, type JSX } from "react";
 import { AlertCircle, ChevronDown, ChevronRight } from "lucide-react";
 import { AgentLinedIcon } from "../../../app/renderer/components/icons/AgentLinedIcon";
 import { translate } from "../../../i18n/index";
@@ -112,7 +112,8 @@ function SubAgentHeader({
   "use memo";
   const running = subAgent.status === "running";
   const statusLabel = subAgentStatusLabel(subAgent.status);
-  const elapsedText = subAgentElapsedText(subAgent);
+  const runningNowUnixMs = useRunningSubAgentNowUnixMs(subAgent);
+  const elapsedText = subAgentElapsedText(subAgent, runningNowUnixMs);
   const nameText = subAgentNameText(subAgent);
   return (
     <div
@@ -247,15 +248,64 @@ function subAgentStatusLabel(status: AgentTaskSubAgentVM["status"]): string {
   }
 }
 
-function subAgentElapsedText(subAgent: AgentTaskSubAgentVM): string | null {
+// A sub-agent that is merely `queued` has been accepted but has not been
+// dispatched to a provider yet (codex caps concurrent sub-agents and queues
+// spawns beyond the cap - see AgentTaskSubAgentVM.queued). Its `status` still
+// reads "running" (there is no child lifecycle yet to say otherwise) and its
+// `startedAtUnixMs` is stamped from the spawn call itself, i.e. dispatch/
+// queued time, not from when the sub-agent actually started running. Ticking
+// a live clock off that timestamp would count queued wait time as elapsed
+// run time, so the clock must stay off until the sub-agent is no longer
+// queued.
+function isSubAgentActivelyRunning(subAgent: AgentTaskSubAgentVM): boolean {
+  return subAgent.status === "running" && !subAgent.queued;
+}
+
+function useRunningSubAgentNowUnixMs(
+  subAgent: AgentTaskSubAgentVM
+): number | null {
+  const shouldTick =
+    isSubAgentActivelyRunning(subAgent) &&
+    typeof subAgent.startedAtUnixMs === "number";
+  const [nowUnixMs, setNowUnixMs] = useState<number | null>(() =>
+    shouldTick ? Date.now() : null
+  );
+
+  useEffect(() => {
+    if (!shouldTick) {
+      setNowUnixMs(null);
+      return;
+    }
+
+    const updateNow = () => setNowUnixMs(Date.now());
+    updateNow();
+    const intervalId = window.setInterval(updateNow, 1000);
+    return () => window.clearInterval(intervalId);
+  }, [shouldTick, subAgent.startedAtUnixMs]);
+
+  return nowUnixMs;
+}
+
+function subAgentElapsedText(
+  subAgent: AgentTaskSubAgentVM,
+  runningNowUnixMs: number | null
+): string | null {
   const started = subAgent.startedAtUnixMs;
-  const latest = subAgent.latestActivityAtUnixMs;
-  if (
-    typeof started !== "number" ||
-    typeof latest !== "number" ||
-    latest <= started
-  ) {
+  if (typeof started !== "number") {
     return null;
   }
-  return formatAgentToolDurationMs(latest - started);
+
+  const terminal = subAgent.terminalAtUnixMs;
+  const latest = subAgent.latestActivityAtUnixMs;
+  const ended =
+    typeof terminal === "number"
+      ? terminal
+      : isSubAgentActivelyRunning(subAgent) &&
+          typeof runningNowUnixMs === "number"
+        ? Math.max(latest ?? started, runningNowUnixMs)
+        : latest;
+  if (typeof ended !== "number" || ended <= started) {
+    return null;
+  }
+  return formatAgentToolDurationMs(ended - started);
 }

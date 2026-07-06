@@ -111,6 +111,7 @@ func (s Service) Use(ctx context.Context, input UseInput) (userprojectbiz.Projec
 		ID:               projectID(projectPath),
 		Path:             projectPath,
 		Label:            userprojectbiz.LabelFromPath(projectPath),
+		SectionKey:       userprojectbiz.SectionKeyFromPath(projectPath),
 		LastUsedAtUnixMS: input.LastUsedAtUnixMS,
 	})
 }
@@ -123,7 +124,14 @@ func (s Service) Delete(ctx context.Context, input DeleteInput) error {
 	if err != nil {
 		return err
 	}
-	return s.Store.DeleteUserProject(ctx, projectID(projectPath))
+	// Delete by the normalized path rather than a recomputed id: `path` is
+	// the table's durable UNIQUE key, while `projectID(projectPath)` is
+	// derived fresh on every call and is only guaranteed to match the id that
+	// was stored at registration time. If that derivation ever drifts (e.g.
+	// symlink resolution behaves differently the second time around), a
+	// delete keyed on the recomputed id silently affects zero rows and the
+	// "removed" project never actually goes away.
+	return s.Store.DeleteUserProjectByPath(ctx, projectPath)
 }
 
 func normalizeDirectoryPath(path string) (string, error) {

@@ -19,7 +19,6 @@ import type { ReferenceSourceAggregator } from "@tutti-os/workspace-file-referen
 import type { WorkspaceLinkAction } from "../../actions/workspaceLinkActions";
 import type { AgentActivitySnapshot } from "@tutti-os/agent-activity-core";
 import { MANAGED_AGENT_ICON_URLS } from "../../shared/managedAgentIcons";
-import { agentGuiDockIconUrls } from "../../dockIcons";
 import { AgentActivityHostProvider } from "../../agentActivityHost";
 import type { AgentActivityRuntime } from "../../agentActivityRuntime";
 import { AgentGUINode } from "./AgentGUINode";
@@ -579,10 +578,14 @@ vi.mock("../../i18n/index", () => ({
         reset?: string;
         text?: string;
         label?: string;
+        provider?: string;
         usedTokens?: string;
         totalTokens?: string;
       }
     ) => {
+      if (key === "agentHost.agentGui.empty") {
+        return `What can ${options?.provider ?? "Codex"} help you with?`;
+      }
       if (typeof options?.count === "number") {
         if (key === "agentHost.agentGui.relativeTimeMinutes") {
           return `${options.count} 分钟`;
@@ -918,22 +921,41 @@ describe("AgentGUINode", () => {
     expect(screen.getByText("暂未接入用量")).toBeInTheDocument();
   });
 
-  it("keeps the rail config entry visible for legacy single-provider docks", () => {
-    mockViewModel = createViewModel({
-      conversationScope: "single-provider",
-      conversationFilter: { kind: "all" }
+  it("shows the same fallback when an agent probe's usage fetch failed outright", () => {
+    // A genuine fetch failure (no `usage` field, a `lastError` other than
+    // "unsupported" — e.g. Claude Code credentials not yet readable right
+    // after a fresh install) must not render as an empty, silent popover.
+    renderAgentGUINode({
+      workspaceAgentProbes: {
+        isLoadingAvailability: false,
+        isLoadingUsage: false,
+        snapshot: {
+          workspaceId: "workspace-1",
+          capturedAtUnixMs: 1,
+          providers: [
+            {
+              provider: "claude-code",
+              availability: { status: "available", detailsVisible: false },
+              lastError: { code: "auth_required", message: "not signed in" }
+            }
+          ]
+        }
+      },
+      state: {
+        provider: "claude-code",
+        lastActiveAgentSessionId: null,
+        conversationRailWidthPx: null
+      }
     });
 
-    renderAgentGUINode();
-
-    expect(
-      screen.getByTitle("agentHost.agentGui.agentConfig")
-    ).toBeInTheDocument();
+    const info = screen.getByTestId("agent-gui-window-agent-info");
+    fireEvent.mouseEnter(info);
+    expect(screen.getByText("额度")).toBeInTheDocument();
+    expect(screen.getByText("暂未接入用量")).toBeInTheDocument();
   });
 
   it("hides the rail config entry for the unified All provider filter", () => {
     mockViewModel = createViewModel({
-      conversationScope: "multi-provider",
       conversationFilter: { kind: "all" },
       providerTargets: [
         createLocalAgentGUIProviderTarget("codex"),
@@ -951,7 +973,6 @@ describe("AgentGUINode", () => {
     const codexTarget = createLocalAgentGUIProviderTarget("codex");
     const claudeTarget = createLocalAgentGUIProviderTarget("claude-code");
     mockViewModel = createViewModel({
-      conversationScope: "multi-provider",
       conversationFilter: {
         kind: "agentTarget",
         agentTargetId: claudeTarget.agentTargetId ?? ""
@@ -1034,6 +1055,54 @@ describe("AgentGUINode", () => {
     expect(onAgentProbeRefreshRequest).toHaveBeenCalledWith(
       "codex",
       "agent-gui:agent-gui-1"
+    );
+  });
+
+  it("requests a fresh agent probe when the rail config menu opens", () => {
+    const onAgentProbeRefreshRequest = vi.fn();
+    const codexTarget = createLocalAgentGUIProviderTarget("codex");
+    mockViewModel = createViewModel({
+      conversationFilter: {
+        kind: "agentTarget",
+        agentTargetId: codexTarget.agentTargetId ?? ""
+      },
+      selectedProviderTarget: codexTarget,
+      providerTargets: [codexTarget]
+    });
+
+    renderAgentGUINode({
+      workspaceAgentProbes: {
+        isLoadingAvailability: false,
+        isLoadingUsage: false,
+        snapshot: {
+          workspaceId: "workspace-1",
+          capturedAtUnixMs: 1,
+          providers: [
+            {
+              provider: "codex",
+              availability: { status: "available", detailsVisible: false },
+              usage: {
+                capturedAtUnixMs: 1,
+                quotas: [{ quotaType: "session", percentRemaining: 79 }]
+              }
+            }
+          ]
+        }
+      },
+      agentActivityRuntime: {} as AgentActivityRuntime,
+      onAgentProbeRefreshRequest
+    });
+
+    // This is the click-triggered "usage & environment check" rail menu, a
+    // second surface showing the same probe data as the hover-triggered
+    // title info tooltip above. It needs the same on-open refresh — a
+    // provider that just finished installing must not stay stuck showing a
+    // stale/empty probe fetched before install completed.
+    fireEvent.click(screen.getByTitle("agentHost.agentGui.agentConfig"));
+
+    expect(onAgentProbeRefreshRequest).toHaveBeenCalledWith(
+      "codex",
+      "agent-gui:agent-gui-1:config"
     );
   });
 
@@ -1225,7 +1294,7 @@ describe("AgentGUINode", () => {
     expect(panel).not.toHaveTextContent("Rate limits unavailable");
   });
 
-  it("uses the active agent name as the Agent GUI window title", () => {
+  it("uses the generic Agent label as the Agent GUI window title", () => {
     const { container } = renderAgentGUINode({
       title: "Agent",
       state: {
@@ -1242,7 +1311,7 @@ describe("AgentGUINode", () => {
       '[data-workspace-node-window-root="true"]'
     );
 
-    expect(windowTitle).toHaveTextContent("Codex");
+    expect(windowTitle).toHaveTextContent("Agent");
     expect(windowTitle).toHaveClass("max-w-[280px]");
     expect(windowTitle).toHaveClass("gap-2");
     expect(windowRoot?.style.getPropertyValue("--node-header-padding-x")).toBe(
@@ -1250,7 +1319,7 @@ describe("AgentGUINode", () => {
     );
   });
 
-  it("shows the provider dock icon before the Agent GUI window title", () => {
+  it("does not show a provider icon before the Agent GUI window title", () => {
     const codex = renderAgentGUINode({
       title: "Agent",
       state: {
@@ -1263,7 +1332,7 @@ describe("AgentGUINode", () => {
     const codexIcon = codex.container.querySelector<HTMLImageElement>(
       '[data-agent-gui-window-provider-icon="true"]'
     );
-    expect(codexIcon).toHaveAttribute("src", agentGuiDockIconUrls.codex);
+    expect(codexIcon).toBeNull();
     codex.unmount();
 
     const claude = renderAgentGUINode({
@@ -1278,13 +1347,10 @@ describe("AgentGUINode", () => {
     const claudeIcon = claude.container.querySelector<HTMLImageElement>(
       '[data-agent-gui-window-provider-icon="true"]'
     );
-    expect(claudeIcon).toHaveAttribute(
-      "src",
-      agentGuiDockIconUrls["claude-code"]
-    );
+    expect(claudeIcon).toBeNull();
   });
 
-  it("uses the active conversation as the window title when the rail is collapsed", () => {
+  it("keeps the Agent window title when the rail is collapsed", () => {
     mockViewModel = createViewModel({
       activeConversation: {
         id: "session-1",
@@ -1311,13 +1377,13 @@ describe("AgentGUINode", () => {
     const windowTitle = container.querySelector(
       '[data-workspace-node-window-title="true"]'
     );
-    expect(windowTitle).toHaveTextContent("Fresh dock title");
+    expect(windowTitle).toHaveTextContent("Agent");
     expect(
       container.querySelector(".agent-gui-node__detail-header")
     ).toBeNull();
   });
 
-  it("keeps a fallback active conversation title at the window top when the rail is collapsed", () => {
+  it("does not promote a fallback active conversation title into the window title when the rail is collapsed", () => {
     mockViewModel = createViewModel({
       activeConversation: {
         id: "session-1",
@@ -1343,7 +1409,7 @@ describe("AgentGUINode", () => {
 
     expect(
       container.querySelector('[data-workspace-node-window-title="true"]')
-    ).toHaveTextContent("Current task");
+    ).toHaveTextContent("Agent");
   });
 
   it("does not clear the dock conversation title while the active conversation is unavailable", () => {
@@ -1759,10 +1825,13 @@ describe("AgentGUINode", () => {
     renderAgentGUINode();
 
     const emptyHeading = screen.getByRole("heading", {
-      name: "agentHost.agentGui.empty"
+      name: "What can Codex help you with?"
     });
     const iconEffect = document.querySelector(
       ".agent-gui-node__empty-hero-icon-effect"
+    );
+    const launchpadIcon = document.querySelector(
+      ".agent-gui-node__empty-hero-launchpad-icon .agent-gui-node__provider-rail-launchpad-icon"
     );
 
     expect(queryComposerEditor()).not.toBeNull();
@@ -1771,29 +1840,40 @@ describe("AgentGUINode", () => {
     ).toBeTruthy();
     expect(screen.queryByTestId("agent-gui-bottom-dock")).toBeNull();
     expect(emptyHeading).toBeTruthy();
-    expect(iconEffect).toHaveAttribute("src", MANAGED_AGENT_ICON_URLS.codex);
-    expect(iconEffect?.querySelector("canvas")).toBeNull();
+    expect(iconEffect).toBeNull();
+    expect(launchpadIcon).not.toBeNull();
+    expect(launchpadIcon?.children).toHaveLength(4);
     expect(
       document.querySelector(".agent-gui-node__timeline-centered")
     ).toContainElement(emptyHeading);
   });
 
-  it("renders the empty hero icon from the selected provider target", () => {
+  it("renders the empty hero from the selected provider target", () => {
+    const claudeTarget = createLocalAgentGUIProviderTarget("claude-code");
     mockViewModel = createViewModel({
       data: {
         provider: "codex",
         lastActiveAgentSessionId: null,
         conversationRailWidthPx: null
       },
-      selectedProviderTarget: createLocalAgentGUIProviderTarget("claude-code"),
+      conversationFilter: {
+        kind: "agentTarget",
+        agentTargetId: claudeTarget.agentTargetId ?? ""
+      },
+      selectedProviderTarget: claudeTarget,
       providerTargets: [
         createLocalAgentGUIProviderTarget("codex"),
-        createLocalAgentGUIProviderTarget("claude-code")
+        claudeTarget
       ]
     });
 
     renderAgentGUINode();
 
+    expect(
+      screen.getByRole("heading", {
+        name: "What can Claude Code help you with?"
+      })
+    ).toBeTruthy();
     const iconEffect = document.querySelector(
       ".agent-gui-node__empty-hero-icon-effect"
     );
@@ -1819,12 +1899,12 @@ describe("AgentGUINode", () => {
     );
   });
 
-  it("emphasizes the empty hero provider name only for English copy", () => {
+  it("emphasizes the empty hero provider name across localized copy", () => {
     expect(
       shouldEmphasizeEmptyHeroProvider("What can Codex help you with?")
     ).toBe(true);
     expect(shouldEmphasizeEmptyHeroProvider("需要 Codex 帮你做些什么？")).toBe(
-      false
+      true
     );
   });
 
@@ -6837,6 +6917,12 @@ function createNoopAgentActivityRuntime(): AgentActivityRuntime {
   });
   return {
     promptContentUploadSupport: { file: true, image: true },
+    async goalControl(input) {
+      return {
+        session: createSession(input.workspaceId, input.agentSessionId),
+        goal: null
+      };
+    },
     async cancelSession(input) {
       return {
         session: createSession(input.workspaceId, input.agentSessionId),
@@ -7038,6 +7124,7 @@ function createViewModel(
     selectedProviderTarget: createLocalAgentGUIProviderTarget("codex"),
     providerTargets: [createLocalAgentGUIProviderTarget("codex")],
     providerTargetsLoading: false,
+    comingSoonProviders: [],
     conversations: [],
     userProjects: [],
     activeConversation: null,
@@ -7057,6 +7144,7 @@ function createViewModel(
     isRespondingApproval: false,
     promptImagesSupported: true,
     compactSupported: null,
+    goalPauseSupported: true,
     usage: null,
     backgroundAgentCount: 0,
     isDeletingConversation: false,
@@ -7110,7 +7198,6 @@ function createViewModel(
     },
     inlineNotice: null,
     ...overrides,
-    conversationScope: overrides.conversationScope ?? "single-provider",
     conversationFilter: overrides.conversationFilter ?? { kind: "all" },
     providerReadinessGate: overrides.providerReadinessGate ?? null,
     listError: overrides.listError ?? null

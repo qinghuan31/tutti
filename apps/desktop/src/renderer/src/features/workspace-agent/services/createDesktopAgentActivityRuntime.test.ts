@@ -162,6 +162,9 @@ function createWorkspaceAgentActivityService(): IWorkspaceAgentActivityService {
     cancelSession: async () => {
       throw new Error("not implemented");
     },
+    goalControl: async () => {
+      throw new Error("not implemented");
+    },
     createSession: async () => {
       throw new Error("not implemented");
     },
@@ -189,6 +192,21 @@ function createWorkspaceAgentActivityService(): IWorkspaceAgentActivityService {
     listAgentGeneratedFiles: async () => {
       throw new Error("not implemented");
     },
+    listSessionsPage: async () => ({
+      hasMore: false,
+      sessions: [],
+      workspaceId: "workspace-1"
+    }),
+    listSessionSections: async () => ({
+      sections: [],
+      workspaceId: "workspace-1"
+    }),
+    listSessionSectionPage: async (input) => ({
+      kind: "conversations",
+      sectionKey: input.sectionKey,
+      sessions: [],
+      hasMore: false
+    }),
     scanExternalSessionImports: async () => {
       throw new Error("not implemented");
     },

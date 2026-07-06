@@ -142,12 +142,12 @@ import type {
   GetWorkspaceAgentSessionData,
   GetWorkspaceAgentSessionErrors,
   GetWorkspaceAgentSessionResponses,
+  GetWorkspaceAppFactoryAgentTargetComposerOptionsData,
+  GetWorkspaceAppFactoryAgentTargetComposerOptionsErrors,
+  GetWorkspaceAppFactoryAgentTargetComposerOptionsResponses,
   GetWorkspaceAppFactoryJobData,
   GetWorkspaceAppFactoryJobErrors,
   GetWorkspaceAppFactoryJobResponses,
-  GetWorkspaceAppFactoryProviderComposerOptionsData,
-  GetWorkspaceAppFactoryProviderComposerOptionsErrors,
-  GetWorkspaceAppFactoryProviderComposerOptionsResponses,
   GetWorkspaceData,
   GetWorkspaceErrors,
   GetWorkspaceFileTreeSnapshotData,
@@ -175,6 +175,9 @@ import type {
   GetWorkspaceWorkbenchData,
   GetWorkspaceWorkbenchErrors,
   GetWorkspaceWorkbenchResponses,
+  GoalControlWorkspaceAgentSessionData,
+  GoalControlWorkspaceAgentSessionErrors,
+  GoalControlWorkspaceAgentSessionResponses,
   ImportWorkspaceAppData,
   ImportWorkspaceAppErrors,
   ImportWorkspaceAppResponses,
@@ -209,6 +212,12 @@ import type {
   ListWorkspaceAgentSessionMessagesErrors,
   ListWorkspaceAgentSessionMessagesResponses,
   ListWorkspaceAgentSessionsData,
+  ListWorkspaceAgentSessionSectionPageData,
+  ListWorkspaceAgentSessionSectionPageErrors,
+  ListWorkspaceAgentSessionSectionPageResponses,
+  ListWorkspaceAgentSessionSectionsData,
+  ListWorkspaceAgentSessionSectionsErrors,
+  ListWorkspaceAgentSessionSectionsResponses,
   ListWorkspaceAgentSessionsErrors,
   ListWorkspaceAgentSessionsResponses,
   ListWorkspaceAppFactoryJobsData,
@@ -1310,26 +1319,26 @@ export const createWorkspaceAppFactoryJob = <
   });
 
 /**
- * Get App Factory provider composer options
+ * Get App Factory agent target composer options
  *
- * Resolves provider composer options for App Factory using daemon-owned workspace and factory draft context. Clients provide workspace and provider selection, while tuttid owns the working directory used for provider discovery.
+ * Resolves provider composer options for App Factory using daemon-owned workspace and factory draft context. Clients provide workspace and agent target selection, while tuttid owns the working directory used for provider discovery.
  *
  */
-export const getWorkspaceAppFactoryProviderComposerOptions = <
+export const getWorkspaceAppFactoryAgentTargetComposerOptions = <
   ThrowOnError extends boolean = false
 >(
   options: Options<
-    GetWorkspaceAppFactoryProviderComposerOptionsData,
+    GetWorkspaceAppFactoryAgentTargetComposerOptionsData,
     ThrowOnError
   >
 ) =>
   (options.client ?? client).post<
-    GetWorkspaceAppFactoryProviderComposerOptionsResponses,
-    GetWorkspaceAppFactoryProviderComposerOptionsErrors,
+    GetWorkspaceAppFactoryAgentTargetComposerOptionsResponses,
+    GetWorkspaceAppFactoryAgentTargetComposerOptionsErrors,
     ThrowOnError
   >({
     security: [{ scheme: "bearer", type: "http" }],
-    url: "/v1/workspaces/{workspaceID}/app-factory/providers/{provider}/composer-options",
+    url: "/v1/workspaces/{workspaceID}/app-factory/agent-targets/{agentTargetID}/composer-options",
     ...options,
     headers: {
       "Content-Type": "application/json",
@@ -1519,6 +1528,42 @@ export const createWorkspaceAgentSession = <
       "Content-Type": "application/json",
       ...options.headers
     }
+  });
+
+/**
+ * List agent session rail sections for one workspace
+ */
+export const listWorkspaceAgentSessionSections = <
+  ThrowOnError extends boolean = false
+>(
+  options: Options<ListWorkspaceAgentSessionSectionsData, ThrowOnError>
+) =>
+  (options.client ?? client).get<
+    ListWorkspaceAgentSessionSectionsResponses,
+    ListWorkspaceAgentSessionSectionsErrors,
+    ThrowOnError
+  >({
+    security: [{ scheme: "bearer", type: "http" }],
+    url: "/v1/workspaces/{workspaceID}/agent-session-sections",
+    ...options
+  });
+
+/**
+ * List one agent session rail section page for one workspace
+ */
+export const listWorkspaceAgentSessionSectionPage = <
+  ThrowOnError extends boolean = false
+>(
+  options: Options<ListWorkspaceAgentSessionSectionPageData, ThrowOnError>
+) =>
+  (options.client ?? client).get<
+    ListWorkspaceAgentSessionSectionPageResponses,
+    ListWorkspaceAgentSessionSectionPageErrors,
+    ThrowOnError
+  >({
+    security: [{ scheme: "bearer", type: "http" }],
+    url: "/v1/workspaces/{workspaceID}/agent-session-sections/page",
+    ...options
   });
 
 /**
@@ -1811,6 +1856,28 @@ export const cancelWorkspaceAgentSession = <
     security: [{ scheme: "bearer", type: "http" }],
     url: "/v1/workspaces/{workspaceID}/agent-sessions/{agentSessionID}/cancel",
     ...options
+  });
+
+/**
+ * Perform a goal control action on one workspace agent session
+ */
+export const goalControlWorkspaceAgentSession = <
+  ThrowOnError extends boolean = false
+>(
+  options: Options<GoalControlWorkspaceAgentSessionData, ThrowOnError>
+) =>
+  (options.client ?? client).post<
+    GoalControlWorkspaceAgentSessionResponses,
+    GoalControlWorkspaceAgentSessionErrors,
+    ThrowOnError
+  >({
+    security: [{ scheme: "bearer", type: "http" }],
+    url: "/v1/workspaces/{workspaceID}/agent-sessions/{agentSessionID}/goal",
+    ...options,
+    headers: {
+      "Content-Type": "application/json",
+      ...options.headers
+    }
   });
 
 /**

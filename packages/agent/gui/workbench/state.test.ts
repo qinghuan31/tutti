@@ -73,7 +73,8 @@ describe("agent gui workbench state", () => {
       agentTargetId: "shared-agent:agent-1",
       conversationRailCollapsed: true,
       conversationRailWidthPx: 360,
-      lastActiveAgentSessionId: "session-1"
+      lastActiveAgentSessionId: "session-1",
+      lastActiveConversationTitle: "A title"
     });
   });
 

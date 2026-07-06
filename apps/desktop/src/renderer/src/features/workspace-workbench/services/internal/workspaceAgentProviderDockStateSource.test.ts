@@ -31,7 +31,7 @@ test("agent provider dock state source resolves dynamic login state", () => {
     source.getEntryState(workspaceAgentGuiDockEntryId("claude-code")),
     {
       hoverActions: [
-        { id: "login", label: "login" },
+        { id: "login", label: "install" },
         { id: "refresh", label: "refresh" }
       ],
       diagnostics: createExpectedDiagnostics({
@@ -48,7 +48,7 @@ test("agent provider dock state source resolves dynamic login state", () => {
       order: 0,
       state: {
         kind: "disabled",
-        reason: "login required"
+        reason: "install required"
       },
       visibility: "always"
     }
@@ -203,7 +203,7 @@ test("agent provider dock state source reads latest service snapshot without rec
     source.getEntryState(workspaceAgentGuiDockEntryId("claude-code")),
     {
       hoverActions: [
-        { id: "login", label: "login" },
+        { id: "login", label: "install" },
         { id: "refresh", label: "refresh" }
       ],
       diagnostics: createExpectedDiagnostics({
@@ -220,7 +220,7 @@ test("agent provider dock state source reads latest service snapshot without rec
       order: 0,
       state: {
         kind: "disabled",
-        reason: "login required"
+        reason: "install required"
       },
       visibility: "always"
     }
@@ -422,7 +422,7 @@ test("agent provider dock state source puts OpenClaw last when setup is required
   );
 
   assert.equal(claudeState?.order, 100);
-  assert.equal(openClawState?.order, 205);
+  assert.equal(openClawState?.order, 207);
   assert.equal(openClawState?.visibility, "never");
   assert.ok((openClawState?.order ?? 0) > (claudeState?.order ?? 0));
 });
@@ -446,7 +446,7 @@ test("agent provider dock state source keeps ready OpenClaw with installed provi
     workspaceAgentGuiDockEntryId("openclaw")
   );
 
-  assert.equal(openClawState?.order, 5);
+  assert.equal(openClawState?.order, 7);
   assert.equal(openClawState?.visibility, "always");
 });
 
@@ -584,7 +584,7 @@ test("agent provider dock state source hides non-default providers until ready",
   );
 });
 
-test("agent provider dock state source does not expose Nexight as a new dock entry", () => {
+test("agent provider dock state source exposes Nexight only when ready", () => {
   const service = createAgentProviderStatusService({
     statuses: [
       createStatus({
@@ -600,8 +600,8 @@ test("agent provider dock state source does not expose Nexight as a new dock ent
   });
 
   assert.equal(
-    source.getEntryState(workspaceAgentGuiDockEntryId("nexight")),
-    null
+    source.getEntryState(workspaceAgentGuiDockEntryId("nexight"))?.visibility,
+    "never"
   );
 
   service.setStatuses([
@@ -613,8 +613,8 @@ test("agent provider dock state source does not expose Nexight as a new dock ent
   ]);
 
   assert.equal(
-    source.getEntryState(workspaceAgentGuiDockEntryId("nexight")),
-    null
+    source.getEntryState(workspaceAgentGuiDockEntryId("nexight"))?.visibility,
+    "always"
   );
 });
 

@@ -1031,6 +1031,8 @@ function normalizeWorkspaceAgentProvider(
       return "codex";
     case "tutti-agent":
       return "tutti-agent";
+    case "cursor":
+      return "cursor";
     default:
       return null;
   }
@@ -1098,8 +1100,7 @@ function createAgentSessionAtContributor(
               input.workspaceId,
               {
                 limit: searchInput.maxResults,
-                searchQuery: searchInput.keyword.trim(),
-                visibleOnly: true
+                searchQuery: searchInput.keyword.trim()
               }
             );
             if (searchInput.abortSignal?.aborted) {
@@ -1222,6 +1223,8 @@ function resolveAgentSessionProviderLabel(provider?: string | null): string {
       return "Claude Code";
     case "codex":
       return "Codex";
+    case "cursor":
+      return "Cursor";
     case "gemini":
       return "Gemini CLI";
     case "hermes":

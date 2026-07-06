@@ -330,7 +330,7 @@ test("desktop decision toast prompt uses the agent gui ui font", () => {
   );
   assert.match(
     desktopToastStyleSource,
-    /\.agent-gui-conversation__interactive-prompt-actions button\s*{[^}]*font-family:\s*inherit;/s
+    /\.agent-gui-conversation__interactive-prompt-actions\s*button:not\(\[data-slot="button"\]\)\s*{[^}]*font-family:\s*inherit;/s
   );
   assert.match(
     desktopToastStyleSource,

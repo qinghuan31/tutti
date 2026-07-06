@@ -164,6 +164,35 @@ test("workspace app external bridge invokes at query without user activation", a
   ]);
 });
 
+test("workspace app external bridge reports active without user activation", async () => {
+  const calls: Array<{ channel: string; payload?: unknown }> = [];
+  const bridge = createWorkspaceAppExternalBridge({
+    appContext: {
+      async get() {
+        return { locale: "en" };
+      },
+      subscribe() {
+        throw new Error("unexpected subscribe");
+      }
+    },
+    isUserActivationActive: () => false,
+    send: unexpectedSend,
+    async invoke<TResult>(channel: string, payload?: unknown) {
+      calls.push({ channel, payload });
+      return undefined as TResult;
+    }
+  });
+
+  await bridge.activity.reportActive();
+
+  assert.deepEqual(calls, [
+    {
+      channel: workspaceAppExternalChannels.activityReportActive,
+      payload: undefined
+    }
+  ]);
+});
+
 test("workspace app external bridge invokes workspace feature open", async () => {
   const calls: Array<{ channel: string; payload?: unknown }> = [];
   const bridge = createWorkspaceAppExternalBridge({

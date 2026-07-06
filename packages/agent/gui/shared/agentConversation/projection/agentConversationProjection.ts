@@ -845,6 +845,10 @@ function selectPendingApproval(
       continue;
     }
     for (const call of toolCallsFromRow(row).reverse()) {
+      const nestedApproval = pendingApprovalFromNestedTask(call);
+      if (nestedApproval) {
+        return nestedApproval;
+      }
       const approval = call.approval ?? fallbackApprovalFromCall(call);
       if (
         approval &&
@@ -861,6 +865,43 @@ function selectPendingApproval(
   return null;
 }
 
+// A delegated Task/subagent call renders its own tool activity as nested
+// `task.steps`, each carrying a fully-projected AgentToolCallVM (including its
+// own `approval`, recursively, for sub-subagents). Those nested calls never
+// appear in `toolCallsFromRow`, so without this a subagent step waiting on
+// approval was invisible to the parent conversation's `pendingApproval` --
+// the bottom-dock prompt would never mount even though the delegated tool
+// call was genuinely blocked on a human decision.
+function pendingApprovalFromNestedTask(
+  call: AgentToolCallVM
+): AgentApprovalItemVM | null {
+  if (!call.task) {
+    return null;
+  }
+  for (const step of [...call.task.steps].reverse()) {
+    const stepCall = step.tool;
+    if (!stepCall) {
+      continue;
+    }
+    const nestedApproval = pendingApprovalFromNestedTask(stepCall);
+    if (nestedApproval) {
+      return nestedApproval;
+    }
+    const approval = stepCall.approval ?? fallbackApprovalFromCall(stepCall);
+    if (
+      approval &&
+      normalizeApprovalPendingStatus(
+        approval.status ?? stepCall.status,
+        stepCall.statusKind
+      ) &&
+      !approval.output
+    ) {
+      return approval;
+    }
+  }
+  return null;
+}
+
 function selectPendingInteractivePrompt(
   rows: readonly AgentTranscriptRowVM[]
 ): AgentConversationPendingInteractivePromptVM | null {
@@ -869,40 +910,63 @@ function selectPendingInteractivePrompt(
       continue;
     }
     for (const call of toolCallsFromRow(row).reverse()) {
-      if (
-        call.askUserQuestion &&
-        normalizeInteractivePendingStatus(
-          call.askUserQuestion.status ?? call.status,
-          call.statusKind
-        ) &&
-        call.askUserQuestion.questions.some(
-          (question) => question.answer === null
-        )
-      ) {
-        return {
-          kind: "ask-user",
-          requestId: call.askUserQuestion.requestId,
-          title: call.askUserQuestion.title,
-          questions: call.askUserQuestion.questions
-        };
+      const prompt = pendingInteractivePromptFromCall(call);
+      if (prompt) {
+        return prompt;
       }
-      if (
-        call.planMode?.kind === "exit" &&
-        normalizeInteractivePendingStatus(
-          call.planMode.status ?? call.status,
-          call.statusKind
-        )
-      ) {
-        return {
-          kind: "exit-plan",
-          requestId: call.planMode.requestId ?? call.id.replace(/^call:/, ""),
-          title: call.planMode.title,
-          options: call.planMode.options ?? [],
-          ...(call.planMode.keepPlanningOptionId
-            ? { keepPlanningOptionId: call.planMode.keepPlanningOptionId }
-            : {})
-        };
-      }
+    }
+  }
+  return null;
+}
+
+// See pendingApprovalFromNestedTask: a delegated Task/subagent call's own
+// ask-user / exit-plan prompts live under `task.steps`, not in the parent
+// row's flat call list, so they need the same nested lookup.
+function pendingInteractivePromptFromCall(
+  call: AgentToolCallVM
+): AgentConversationPendingInteractivePromptVM | null {
+  if (
+    call.askUserQuestion &&
+    normalizeInteractivePendingStatus(
+      call.askUserQuestion.status ?? call.status,
+      call.statusKind
+    ) &&
+    call.askUserQuestion.questions.some((question) => question.answer === null)
+  ) {
+    return {
+      kind: "ask-user",
+      requestId: call.askUserQuestion.requestId,
+      title: call.askUserQuestion.title,
+      questions: call.askUserQuestion.questions
+    };
+  }
+  if (
+    call.planMode?.kind === "exit" &&
+    normalizeInteractivePendingStatus(
+      call.planMode.status ?? call.status,
+      call.statusKind
+    )
+  ) {
+    return {
+      kind: "exit-plan",
+      requestId: call.planMode.requestId ?? call.id.replace(/^call:/, ""),
+      title: call.planMode.title,
+      options: call.planMode.options ?? [],
+      ...(call.planMode.keepPlanningOptionId
+        ? { keepPlanningOptionId: call.planMode.keepPlanningOptionId }
+        : {})
+    };
+  }
+  if (!call.task) {
+    return null;
+  }
+  for (const step of [...call.task.steps].reverse()) {
+    if (!step.tool) {
+      continue;
+    }
+    const prompt = pendingInteractivePromptFromCall(step.tool);
+    if (prompt) {
+      return prompt;
     }
   }
   return null;

@@ -2,6 +2,7 @@ export type AgentProviderId =
   | "claude-code"
   | "codex"
   | "tutti-agent"
+  | "cursor"
   | "nexight"
   | "opencode"
   | "gemini"

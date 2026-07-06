@@ -90,6 +90,105 @@ func TestLiveProtocolResumeServerRequestReissue(t *testing.T) {
 	t.Logf("notifications observed after resume:\n%s", proc2.notificationDigest())
 }
 
+// Live verification for the steer settle-miss investigation: what does the
+// real app-server return for turn/start while another turn on the same
+// thread is still inProgress, and which turn ids do the subsequent
+// turn/started / turn/completed notifications carry? The answer decides
+// whether the scripted steeredTurnStart repro matches the real user path.
+//
+//	TUTTI_LIVE_PROTOCOL_VERIFY=1 go test ./runtime/ -run TestLiveProtocolTurnStartDuringActiveTurn -v -count=1
+func TestLiveProtocolTurnStartDuringActiveTurn(t *testing.T) {
+	if os.Getenv("TUTTI_LIVE_PROTOCOL_VERIFY") == "" {
+		t.Skip("set TUTTI_LIVE_PROTOCOL_VERIFY=1 to run live protocol verification")
+	}
+
+	workDir := t.TempDir()
+	proc := startLiveAppServer(t)
+	defer proc.kill()
+	proc.initialize(t)
+	threadID := proc.threadStart(t, workDir)
+	t.Logf("thread started: %s", threadID)
+
+	turn1 := proc.call(t, "turn/start", map[string]any{
+		"threadId": threadID,
+		"input": []any{map[string]any{
+			"type": "text",
+			"text": "Write a detailed 600-word essay about the history of version control systems. Do not use any tools; just write the essay.",
+		}},
+	})
+	turn1ID := liveTurnID(turn1)
+	t.Logf("turn1 result id=%q: %s", turn1ID, truncateForLog(compactJSON(turn1), 400))
+
+	if !proc.waitForNotificationMatch(t, "turn/started", 30*time.Second) {
+		t.Fatalf("turn1 never emitted turn/started; notifications:\n%s", proc.notificationDigest())
+	}
+
+	// Steer while turn1 is streaming.
+	turn2 := proc.call(t, "turn/start", map[string]any{
+		"threadId": threadID,
+		"input": []any{map[string]any{
+			"type": "text",
+			"text": "Stop writing the essay. Reply with just the word DONE.",
+		}},
+	})
+	turn2ID := liveTurnID(turn2)
+	t.Logf("turn2 (steer) result id=%q: %s", turn2ID, truncateForLog(compactJSON(turn2), 400))
+
+	// Watch the wire until the thread settles, then report every turn
+	// lifecycle notification with its turn id.
+	if !proc.waitForNotificationMatch(t, "turn/completed", 180*time.Second) {
+		t.Fatalf("no turn/completed arrived; notifications:\n%s", proc.notificationDigest())
+	}
+	// Allow a possible second turn (queued semantics) to start and finish.
+	time.Sleep(20 * time.Second)
+
+	t.Logf("VERDICT turn1.id=%q turn2.id=%q sameID=%v", turn1ID, turn2ID, turn1ID == turn2ID)
+	t.Logf("turn lifecycle notifications observed:\n%s", proc.lifecycleDigest())
+}
+
+func liveTurnID(response map[string]any) string {
+	raw, _ := response["result"].(json.RawMessage)
+	var parsed struct {
+		Turn struct {
+			ID string `json:"id"`
+		} `json:"turn"`
+	}
+	_ = json.Unmarshal(raw, &parsed)
+	return parsed.Turn.ID
+}
+
+func (s *liveAppServer) waitForNotificationMatch(t *testing.T, methodSubstring string, timeout time.Duration) bool {
+	t.Helper()
+	deadline := time.Now().Add(timeout)
+	for time.Now().Before(deadline) {
+		s.mu.Lock()
+		for _, notification := range s.notifications {
+			if strings.Contains(notification, methodSubstring) {
+				s.mu.Unlock()
+				return true
+			}
+		}
+		s.mu.Unlock()
+		time.Sleep(200 * time.Millisecond)
+	}
+	return false
+}
+
+func (s *liveAppServer) lifecycleDigest() string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	var lines []string
+	for _, notification := range s.notifications {
+		if strings.HasPrefix(notification, "turn/") || strings.HasPrefix(notification, "thread/status") {
+			lines = append(lines, notification)
+		}
+	}
+	if len(lines) == 0 {
+		return "(none)"
+	}
+	return strings.Join(lines, "\n")
+}
+
 // --- minimal NDJSON JSON-RPC driver over the codex app-server binary ---
 
 type liveServerRequest struct {

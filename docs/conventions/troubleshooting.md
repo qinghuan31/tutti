@@ -43,6 +43,51 @@ Use this shape for new entries:
 
 ## Current Entries
 
+### Claude SDK context window shows 200k for 1M models
+
+- Symptom:
+  Claude Code GUI usage shows a 200k context window for a model that should have
+  1M context, such as Claude Sonnet 5. The inverse can also happen after a model
+  switch: a 200k model such as Haiku keeps showing the prior 1M total.
+- Quick checks:
+  Inspect the session runtime context for `usage.contextWindow.totalTokens`,
+  then trace the Claude SDK sidecar `usage_updated` payload and daemon
+  `agent_session.claude_sdk.usage_update` log. If the payload keys include
+  `modelUsage` but `raw_total_tokens` is `0`, the daemon did not parse the
+  model-usage context window. If `previous_context_model` and
+  `current_context_model` differ but `current_total_tokens` equals
+  `previous_total_tokens`, daemon usage normalization reused a stale context
+  window across models. If switching models without sending a message makes the
+  usage entry disappear, inspect whether a forced session-control reload
+  returned `runtimeContext` without `usage` and replaced the active control
+  state.
+- Root cause:
+  AgentGUI only renders `runtimeContext.usage`; the total comes from the daemon
+  and Claude SDK sidecar. Claude SDK result messages expose model usage as a
+  map keyed by model id, for example
+  `modelUsage["claude-sonnet-5"].contextWindow`. If either sidecar or daemon
+  only parses array-shaped `modelUsage`, the context-window total is missing and
+  daemon normalization falls back to 200k.
+- Fix:
+  Parse `modelUsage` recursively as both arrays and maps before using fallback
+  context-window values. Track the model associated with a cached context
+  window, and only reuse the previous total for the same model or when the model
+  is unknown. Treat `runtimeContext.usage` as incremental telemetry in AgentGUI
+  reload races: a full session-control snapshot that omits usage should not
+  clear the previous usage display. Do not hard-code alias-to-model mappings in
+  Tutti.
+- Validation:
+  Add sidecar and daemon coverage with map-shaped `modelUsage` carrying
+  `contextWindow: 1_000_000`, plus daemon coverage for Haiku -> Sonnet5 -> Haiku
+  usage updates where the last payload lacks `totalTokens`. Add AgentGUI
+  coverage for session-control reloads that omit `runtimeContext.usage`. Then
+  run the Claude SDK sidecar tests, daemon Go tests, AgentGUI tests, and
+  typechecks.
+- References:
+  [main.ts](../../packages/agent/claude-sdk-sidecar/src/main.ts)
+  [main.test.ts](../../packages/agent/claude-sdk-sidecar/src/main.test.ts)
+  [claude_sdk_adapter.go](../../packages/agent/daemon/runtime/claude_sdk_adapter.go)
+
 ### Codex npm install misses the platform package
 
 - Symptom:
@@ -123,7 +168,9 @@ Use this shape for new entries:
   `make dev-gui` exits during startup before the desktop window is usable. The
   early form reports `pnpm <version> installation did not succeed`; the later
   form reaches `start electron app...` and then `make` exits while desktop logs
-  say `secondary tutti instance detected`.
+  say `secondary tutti instance detected`. Another early form exits while
+  checking prerequisites because a stale `pnpm` shim reports that its bundled
+  `../node/bin/node` no longer exists.
 - Quick checks:
   Run `DEV_GUI_SKIP_START=1 make dev-gui` to isolate prerequisite setup from
   Electron startup. If full startup exits after `start electron app...`, inspect
@@ -132,15 +179,19 @@ Use this shape for new entries:
 - Root cause:
   Shells launched by tools can put another `pnpm` earlier on `PATH` than
   corepack's shim, so `corepack prepare` succeeds but the script still validates
-  the wrong `pnpm`. Electron's single-instance lock also follows Electron
+  the wrong `pnpm`. That earlier shim can also be a symlink into a relocated
+  runtime cache, so invoking `pnpm --version` fails before the script has a
+  chance to run Corepack. Electron's single-instance lock also follows Electron
   userData; if development and production share userData, a running production
   app makes the dev app quit as a secondary instance. Agent shells launched from
   the packaged app may inherit `TUTTI_ENV=production`, so `make dev-gui` must
   force the development environment instead of preserving that inherited value.
 - Fix:
-  Prefer the corepack shim directory before checking or running `pnpm`, and set
-  development Electron userData to an environment-specific path before
-  requesting the single-instance lock. Ensure the dev-gui script exports
+  Probe `pnpm --version` without letting a broken shim abort startup, discover
+  Corepack from the active or locally installed Node runtime, prefer that
+  Corepack shim directory before checking or running `pnpm`, and set development
+  Electron userData to an environment-specific path before requesting the
+  single-instance lock. Ensure the dev-gui script exports
   `TUTTI_ENV=development` before resolving pid files, installing the dev CLI, or
   launching Electron.
 - Validation:
@@ -153,6 +204,63 @@ Use this shape for new entries:
   [dev-gui.sh](../../tools/scripts/dev-gui.sh)
   [bootstrap.ts](../../apps/desktop/src/main/bootstrap.ts)
   [defaults.ts](../../apps/desktop/src/main/defaults.ts)
+
+### GitHub Actions pnpm setup fails with ERR_PNPM_BAD_PM_VERSION
+
+- Symptom:
+  GitHub Actions jobs fail in the `pnpm/action-setup` step with
+  `ERR_PNPM_BAD_PM_VERSION` or "Multiple versions of pnpm specified" after
+  `package.json` gains an integrity-pinned `packageManager` value such as
+  `pnpm@10.11.0+sha512...`.
+- Quick checks:
+  Inspect every workflow that uses `pnpm/action-setup`. If the workflow passes
+  `with.version` while the root `package.json` also declares `packageManager`,
+  the action sees two pnpm targets.
+- Root cause:
+  `pnpm/action-setup` reads `packageManager` from `package.json` by default.
+  Passing a separate `version` input duplicates the same version source, and an
+  integrity-pinned `packageManager` string makes the mismatch explicit.
+- Fix:
+  Keep `package.json` as the single pnpm version source. Remove the
+  `with.version` input from `pnpm/action-setup` steps instead of weakening the
+  root `packageManager` integrity pin.
+- Validation:
+  Search workflows for `pnpm/action-setup` and confirm no step still passes a
+  `version` input. Push a new commit to rerun the PR checks.
+
+### macOS updates fail from a mounted DMG
+
+- Symptom:
+  A packaged macOS build can check for and download an update, but clicking
+  install appears to do nothing or logs an updater error such as
+  `Cannot update while running on a read-only volume`. The desktop log shows
+  the app executable under `/Volumes/.../Tutti.app`, and the daemon may stop
+  briefly because the update install flow began before the updater rejected the
+  read-only volume.
+- Quick checks:
+  Inspect `tutti-desktop.log` for `process.execPath`, updater errors, or
+  managed daemon start lines that point under `/Volumes`. Confirm whether the
+  user launched Tutti directly from a mounted `.dmg` instead of the copy in
+  `/Applications`.
+- Root cause:
+  macOS mounts compressed DMG installers as read-only volumes. Electron's macOS
+  updater cannot replace an app bundle that is running from that volume, so the
+  failure is an install-location problem rather than a dead `tuttid` process.
+- Fix:
+  In packaged macOS builds, detect `/Volumes` startup before desktop services
+  and managed `tuttid` are created. Prompt the user to move Tutti to
+  `/Applications`, call Electron's application-folder move when accepted, and
+  quit rather than continuing from the mounted image. Development builds must
+  skip this guard so local Electron runs keep working.
+- Validation:
+  Cover the guard with tests for development mode, non-macOS platforms,
+  `/Applications`, `/Volumes`, declined installation, successful automatic
+  move, and failed automatic move. Run the desktop tests, desktop typecheck, and
+  i18n check because the guard uses Electron dialog copy.
+- References:
+  [macosApplicationInstallGuard.ts](../../apps/desktop/src/main/macosApplicationInstallGuard.ts)
+  [bootstrap.ts](../../apps/desktop/src/main/bootstrap.ts)
+  [desktop-release.md](./desktop-release.md)
 
 ### App Center list requests repeatedly log runtime preload
 
@@ -536,6 +644,41 @@ delimited by ---`, and the composer skill picker may show partial or
   [terminalImeInputGuard.ts](../../packages/workspace/terminal/src/react/terminalImeInputGuard.ts)
   [terminalSurfaceRuntime.ts](../../packages/workspace/terminal/src/react/terminalSurfaceRuntime.ts)
 
+### Post-composition suppression window swallows real terminal input
+
+- Symptom:
+  After committing Chinese IME text in a workspace terminal, the next quick
+  keystroke is intermittently lost: Enter pressed right after the candidate
+  commits does not execute the command (it must be pressed twice), fast typing
+  drops the first letter of the next word, or a full-width punctuation mark
+  typed immediately after a commit never reaches the PTY.
+- Quick checks:
+  Reproduce with fast input — commit a candidate with Space, then press Enter
+  or type the next character within ~80ms. Losses that disappear when typing
+  slowly point at the IME guard's post-composition window, not the PTY.
+- Root cause:
+  The guard suppressed every unmodified key for a fixed window after
+  `compositionend` to swallow ghost commit-key events. Only keys that can
+  commit a candidate (Enter, Escape, Space, digit selection keys) can replay
+  after `compositionend`; blanket suppression also swallowed genuine next
+  keystrokes, and blocking keyCode 229 keydowns kept xterm's
+  `CompositionHelper._handleAnyTextareaChanges` from forwarding IME
+  punctuation entered right after a commit.
+- Fix:
+  Inside the window, suppress only commit-capable keys (Enter, Escape, Space,
+  digits); let all other keys through so xterm's own keyCode 229 handling
+  still runs. Ghost events replay before the physical key is released, so
+  close the window as soon as a keyup arrives outside composition — any later
+  keydown is genuine user input, including genuine digits.
+- Validation:
+  Unit-cover letters and `Process` keys passing through the window, keyup
+  closing the window so a repeated Enter or digit is processed, and commit
+  keys (including digits) staying suppressed. Manually commit with Space then
+  immediately press Enter, select a candidate with a digit key, and type
+  full-width punctuation right after a commit.
+- References:
+  [terminalImeInputGuard.ts](../../packages/workspace/terminal/src/react/terminalImeInputGuard.ts)
+
 ### Agent GUI app mentions show unavailable workspace apps
 
 - Symptom:
@@ -598,15 +741,14 @@ delimited by ---`, and the composer skill picker may show partial or
   must be persisted as session metadata rather than inferred later from
   user-project prefix matching.
 - Fix:
-  Treat exact user-project path matches as explicit user intent, then call the
-  host no-project resolver before parent project matching. The desktop resolver
-  should recognize generated `$HOME/Documents/tutti/session-<uuid>` cwd values
-  while allowing explicit registered projects to override them. External import
-  should mark home-cwd sessions and known provider scratch cwd shapes as
-  no-project in `runtimeContext`, skip them when registering user-project paths,
-  and let Agent GUI preserve that no-project mode during later project
-  re-resolution. Keep the project field derived in the Agent GUI view-model
-  rather than writing it back into the conversation store.
+  Persist Agent GUI rail grouping in daemon-owned
+  `workspace_agent_sessions.rail_section_*` fields from the shared
+  `services/tuttid/data/workspace` classifier. Migration and session-state
+  upsert should both use that classifier, matching exact user projects first,
+  then preserving no-project/provider scratch cwd shapes as conversations, then
+  applying longest parent-project matches. Do not rederive historical rail
+  assignment from the current user-project list during read pagination; keep
+  existing rail fields stable when a session's final cwd has not changed.
 - Validation:
   Run
   `pnpm --filter @tutti-os/agent-gui test -- agent-gui/agentGuiNode/model/agentGuiConversationModel.spec.ts`,
@@ -1038,10 +1180,14 @@ delimited by ---`, and the composer skill picker may show partial or
   For nested launches: register tool_use blocks from child-stream assistant
   messages, treat the `Async agent launched successfully` result text as the
   authoritative subagent-launch signal even when the tool name is unknown,
-  inherit the delegated-task turn id along the parent tool-use chain, let
-  interactive requests fall back to any delegated task's turn id (settled
-  ones included) and open a synthetic turn as last resort rather than emit a
-  turnless event.
+  inherit the delegated-task turn id along the parent tool-use chain, and do
+  not settle a nested `end_turn` assistant while it still has a child tool_use
+  whose tool_result has not been processed. Use the sidecar's pending
+  `toolByID` entry for that pre-result window, then rely on the delegated task
+  created from the launch result while the grandchild is running. Let
+  interactive requests fall back to any delegated task's turn id (settled ones
+  included) and open a synthetic turn as last resort rather than emit a turnless
+  event.
 - Validation:
   Add adapter coverage that stored pending turn ids survive missing
   `approval_resolved.turnId`. Add service coverage for ghost approval reconcile
@@ -1052,8 +1198,9 @@ delimited by ---`, and the composer skill picker may show partial or
   launches, keep sidecar coverage that a grandchild launch registers with the
   inherited turn id (with and without an observed tool_use block), that a
   nested approval after the parent task completed still carries a turn id, and
-  that a child `end_turn` assistant defers completion while a grandchild task
-  is running.
+  that a child `end_turn` assistant defers completion both while a grandchild
+  tool_result is still pending and while the resulting grandchild task is
+  running.
 
 ### Claude SDK parent waits forever for background agents that already finished
 
@@ -1556,30 +1703,34 @@ information is not available yet`, but `ps` or `lsof` still shows an older
 ### macOS in-app update closes Tutti but does not install the new version
 
 - Symptom:
-  After downloading a desktop update on macOS, clicking **Install** closes Tutti.
-  Reopening the app still shows the old version.
+  After downloading a desktop update on macOS, clicking **Install** closes or
+  relaunches Tutti, but reopening the app still shows the old version. ShipIt
+  logs may contain `SQRLInstallerErrorDomain Code=-9` or
+  `App Still Running Error`.
 - Quick checks:
   Confirm the packaged build is signed (unsigned or ad-hoc builds disable in-app
-  updates). Inspect desktop logs for `desktop app before quit` immediately after
-  `application update install requested` without a relaunch.
+  updates). Inspect `~/Library/Caches/sh.tutti.desktop.ShipIt/ShipIt_stderr.log`
+  for `Aborting update attempt because there are 1 running instances of the
+target app`. Compare `/Applications/Tutti.app/Contents/Info.plist` with the
+  cached update under `~/Library/Caches/@tutti-osdesktop-updater/pending`.
 - Root cause:
-  `electron-updater` calls `quitAndInstall()` during Squirrel.Mac install.
-  Desktop's async `before-quit` gate called `event.preventDefault()` to stop
-  `tuttid` gracefully, which cancelled the updater's first quit and prevented
-  the install/relaunch sequence from completing.
+  Squirrel.Mac refuses to replace `/Applications/Tutti.app` while any target
+  app instance is still running. Stopping `tuttid` before `quitAndInstall()` is
+  not sufficient because the Electron main process and helper windows still need
+  to complete the app quit path.
 - Fix:
-  Stop managed `tuttid` inside `installUpdate()` before calling
-  `quitAndInstall()`, mark the update install as pending, and bypass the async
-  `before-quit` gate while that flag is set. If stopping `tuttid` fails, abort
-  the install before calling `quitAndInstall()`. If the updater reports an
-  install error after the pending flag is set, clear the flag and restart
-  managed `tuttid` so the desktop process does not stay open with its daemon
-  stopped.
+  Keep daemon shutdown in the desktop lifecycle instead of the update service.
+  `installUpdate()` should mark the install pending and call
+  `quitAndInstall()`. The `before-quit` gate should still run for pending update
+  installs: prevent the first quit, stop managed `tuttid`, destroy all windows,
+  then call `app.quit()` again so the app process exits and ShipIt can replace
+  the bundle.
 - Validation:
   Run `src/main/desktopAppLifecycle.test.ts` and
-  `src/main/update/appUpdateService.test.ts`, including mock install failure
-  recovery cases. Then install a downloaded update in a packaged macOS build;
-  the app should relaunch on the new version.
+  `src/main/update/appUpdateService.test.ts`, including updater error and
+  synchronous `quitAndInstall()` failure cases. Then install a downloaded update
+  in a packaged macOS build; the app should relaunch on the new version and
+  ShipIt should not log `App Still Running Error`.
 - References:
   [appUpdateService.ts](../../apps/desktop/src/main/update/appUpdateService.ts)
   [desktopAppLifecycle.ts](../../apps/desktop/src/main/desktopAppLifecycle.ts)
@@ -1825,3 +1976,52 @@ information is not available yet`, but `ps` or `lsof` still shows an older
   Claude SDK sidecar process env includes `IS_SANDBOX=1`. Add callback coverage
   proving bypass mode allows an ordinary Bash request without
   `approval_requested`, while `AskUserQuestion` still surfaces user input.
+
+### Claude Code logs out after sending a message (invalid_grant, credentials wiped)
+
+- Symptom:
+  Inside the desktop app, sending a message around the OAuth token expiry window
+  leaves Claude Code in a "Not logged in · Please run /login" state. The keychain
+  entry (`Claude Code-credentials`) has empty `accessToken`/`refreshToken` and
+  `expiresAt: 0`, while the plaintext `~/.claude/.credentials.json` may still hold
+  a valid token. The Claude CLI alone does not reproduce it.
+- Quick checks:
+  Capture `/v1/oauth/token` traffic (mitmproxy). A failure may show `Client
+disconnected` immediately before later refresh attempts return `400
+invalid_grant`. Daemon logs may also show an extra `claude-code` process start
+  with `cwd=/`, `hasModel=false`, and a different `agent_session_id` from the
+  real conversation session; that shape is the hidden live-model discovery
+  session.
+- Root cause:
+  Composer-options loading spawned a hidden, `visible:false` Claude live-model
+  discovery session that shares the on-disk credential store with the real
+  conversation session and deleted it as soon as the model list was read. When
+  it performs an OAuth refresh near expiry, the server can rotate the refresh
+  token even if the local client disconnects before receiving or persisting the
+  response. The real session later refreshes with the now-consumed refresh
+  token, gets `400 invalid_grant`, and Claude Code wipes the stored credentials.
+  Because `fallbackStorage` prefers the (now empty) keychain entry over the
+  still-valid plaintext file, the user is locked out.
+- Fix:
+  Cold composer options must always have a static Claude fallback (`default`,
+  `opus`, `sonnet`, `haiku`, plus any configured custom model) so the UI never
+  depends on live discovery. A cold-start live discovery may run at most once per
+  provider/workspace/cwd cache key, but it must be hidden, serialized with other
+  Claude startups, and deleted only after a delayed grace period rather than
+  immediately after the model list appears. Successful discovery updates the
+  daemon live-model cache; later composer-options calls prefer cached models or
+  model options reported by a real running Claude session over the static
+  fallback. Claude Create model validation should only use cached live-model
+  options; it must not start discovery. If the daemon exits before the delayed
+  cleanup timer fires, later persisted-session reads must delete the stale
+  hidden discovery session instead of restoring it as a real conversation.
+- Validation:
+  Add daemon service tests for Create cache-only validation, SendInput waiting
+  on the Claude startup slot before runtime exec, static Claude cold-start model
+  options, reusing model options from a running Claude session, cold-start
+  discovery running once, delayed hidden discovery cleanup, and stale persisted
+  hidden discovery cleanup after restart. Run targeted agent service Go tests
+  plus the daemon Go lint/test/build lanes.
+- References:
+  [composer_live_model_discovery.go](../../services/tuttid/service/agent/composer_live_model_discovery.go)
+  [model_validation.go](../../services/tuttid/service/agent/model_validation.go)

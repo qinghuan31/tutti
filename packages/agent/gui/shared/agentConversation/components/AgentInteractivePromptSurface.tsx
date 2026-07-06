@@ -10,6 +10,7 @@ import { MessageSquareMoreIcon } from "../../../app/renderer/components/icons/Me
 import { Spinner } from "../../../app/renderer/components/ui/spinner";
 import { translate } from "../../../i18n/index";
 import {
+  Button,
   ShortcutBadge,
   Tooltip,
   TooltipContent,
@@ -161,7 +162,8 @@ export function AgentInteractivePromptSurface({
 // click — selecting an option submits it immediately, matching the approval and
 // plan cards. Multi-select / multi-question / free-text-only prompts can't be
 // answered in one tap, so they defer to the conversation (the card's "open
-// conversation" jump), showing just the question for context.
+// conversation" jump); their options are still shown as read-only context
+// (see the non-oneClickable branch below) rather than being omitted.
 function CompactAskUserPromptSurface({
   prompt,
   embedded = false,
@@ -226,6 +228,29 @@ function CompactAskUserPromptSurface({
                       </span>
                     ) : null}
                   </button>
+                ))}
+              </div>
+            ) : question.options.length > 0 ? (
+              // Multi-select / multi-question prompts can't be answered with a
+              // single click here, so the options are shown as read-only
+              // context instead of being silently omitted. Answering still
+              // happens in the full conversation via the card's "open
+              // conversation" jump.
+              <div className={styles.interactivePromptOptions}>
+                {question.options.map((option) => (
+                  <div
+                    key={option.label}
+                    className={styles.interactiveOptionDisplay}
+                  >
+                    <span className={styles.interactiveOptionTitle}>
+                      {option.label}
+                    </span>
+                    {option.description ? (
+                      <span className={styles.interactiveOptionDescription}>
+                        {option.description}
+                      </span>
+                    ) : null}
+                  </div>
                 ))}
               </div>
             ) : null}
@@ -903,16 +928,20 @@ function FullAskUserPromptSurface({
           }}
         />
         <div className={styles.interactivePromptActions}>
-          <button
+          <Button
             type="button"
+            variant="secondary"
+            size="sm"
             disabled={isSubmitting || index === 0}
             onClick={() => setIndex((current) => Math.max(current - 1, 0))}
           >
             {labels.previousQuestion}
-          </button>
+          </Button>
           {isLast ? (
-            <button
+            <Button
               type="button"
+              variant="default"
+              size="sm"
               disabled={
                 isSubmitting ||
                 Object.keys(payload.answersByQuestionId).length === 0
@@ -926,10 +955,12 @@ function FullAskUserPromptSurface({
               }
             >
               {labels.submitAnswers}
-            </button>
+            </Button>
           ) : (
-            <button
+            <Button
               type="button"
+              variant="default"
+              size="sm"
               disabled={isSubmitting || !canAdvance}
               onClick={() =>
                 setIndex((current) =>
@@ -938,7 +969,7 @@ function FullAskUserPromptSurface({
               }
             >
               {labels.nextQuestion}
-            </button>
+            </Button>
           )}
         </div>
       </div>

@@ -1,9 +1,8 @@
 import { createDecorator } from "@tutti-os/infra/di";
 import type { DesktopLocale } from "@shared/i18n";
 import type {
-  DesktopAgentComposerDefaults,
+  DesktopAgentComposerDefaultsPatch,
   DesktopAgentConversationDetailMode,
-  DesktopAgentDockLayout,
   DesktopAgentProvider,
   DesktopDefaultAgentProvider,
   DesktopAppCatalogChannel,
@@ -30,9 +29,6 @@ export interface IDesktopPreferencesService {
   setAgentConversationDetailMode(
     mode: DesktopAgentConversationDetailMode
   ): Promise<DesktopAgentConversationDetailMode>;
-  setAgentDockLayout(
-    layout: DesktopAgentDockLayout
-  ): Promise<DesktopAgentDockLayout>;
   setAppCatalogChannel(
     channel: DesktopAppCatalogChannel
   ): Promise<DesktopAppCatalogChannel>;
@@ -54,6 +50,7 @@ export interface IDesktopPreferencesService {
     mode: DesktopSleepPreventionMode
   ): Promise<DesktopSleepPreventionMode>;
   setShowAppDeveloperSources(show: boolean): Promise<boolean>;
+  setEnableCursorAgent(enable: boolean): Promise<boolean>;
   setThemeSource(source: DesktopThemeSource): Promise<DesktopThemeState>;
   setUpdateChannel(
     channel: DesktopUpdateChannel
@@ -62,9 +59,9 @@ export interface IDesktopPreferencesService {
   setWorkbenchWindowSnapping(
     value: DesktopWorkbenchWindowSnapping
   ): Promise<DesktopWorkbenchWindowSnapping>;
-  rememberAgentComposerDefaults(
-    provider: DesktopAgentProvider,
-    defaults: DesktopAgentComposerDefaults | null
+  rememberAgentComposerDefaultsForAgentTarget(
+    agentTargetId: string,
+    defaults: DesktopAgentComposerDefaultsPatch | null
   ): Promise<void>;
   rememberAgentGuiConversationRailCollapsed(
     provider: DesktopAgentProvider,

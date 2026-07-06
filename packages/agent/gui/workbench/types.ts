@@ -4,6 +4,7 @@ export type AgentGuiWorkbenchProvider =
   | "claude-code"
   | "codex"
   | "tutti-agent"
+  | "cursor"
   | "nexight"
   | "gemini"
   | "hermes"
@@ -16,8 +17,10 @@ export const agentGuiWorkbenchPrefillPromptActivationType =
   "agent-gui:prefill-prompt";
 
 export interface AgentGuiWorkbenchPrefillPromptPayload {
+  agentTargetId?: string | null;
   autoSubmit?: boolean;
   draftPrompt: string;
+  provider?: AgentGuiWorkbenchProvider;
   userProjectPath?: string | null;
 }
 
@@ -26,6 +29,7 @@ export interface AgentGuiWorkbenchComposerOverrides {
   permissionModeId?: string | null;
   planMode?: boolean;
   reasoningEffort?: string | null;
+  speed?: string | null;
 }
 
 export type AgentGuiWorkbenchComposerOverridesByProvider = Partial<
@@ -60,6 +64,7 @@ export interface AgentGuiWorkbenchState {
   conversationRailCollapsed?: boolean | null;
   conversationRailWidthPx?: number | null;
   lastActiveAgentSessionId: string | null;
+  lastActiveConversationTitle?: string | null;
 }
 
 export interface AgentGuiWorkbenchWorkspaceState {

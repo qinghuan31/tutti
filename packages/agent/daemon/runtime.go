@@ -8,7 +8,7 @@ import (
 	"sync"
 	"time"
 
-	agentruntime "github.com/tutti-os/tutti/packages/agentactivity/daemon/runtime"
+	agentruntime "github.com/tutti-os/tutti/packages/agent/daemon/runtime"
 )
 
 var ErrHostMetadataRequired = errors.New("agent daemon host metadata is required")
@@ -17,6 +17,14 @@ var ErrProcessTransportRequired = errors.New("agent daemon process transport is 
 const (
 	defaultLiveSessionReaperIdleAfter     = 30 * time.Minute
 	defaultLiveSessionReaperSweepInterval = 5 * time.Minute
+
+	// shutdownCloseAllLiveSessionsTimeout bounds how long Runtime.Close waits
+	// for CloseAllLiveSessions to force-terminate every live provider
+	// process. Each process close is already internally bounded (SIGTERM,
+	// then SIGKILL after a short grace period; see localProcessConnection),
+	// so this is a backstop against an unexpectedly large number of live
+	// sessions, not the primary timeout mechanism.
+	shutdownCloseAllLiveSessionsTimeout = 15 * time.Second
 )
 
 type ActivityReporter = agentruntime.ActivityReporter
@@ -27,12 +35,17 @@ type HostMetadata = agentruntime.HostMetadata
 type ProcessTransport = agentruntime.ProcessTransport
 type ProviderCommand = agentruntime.ProviderCommand
 type ProviderCommandResolver = agentruntime.ProviderCommandResolver
+type ProviderLaunchPrepareInput = agentruntime.ProviderLaunchPrepareInput
+type ProviderLaunchPrepareResult = agentruntime.ProviderLaunchPrepareResult
+type ProviderLaunchPreparer = agentruntime.ProviderLaunchPreparer
+type ProviderLaunchPreparerAdapter = agentruntime.ProviderLaunchPreparerAdapter
 
 type Config struct {
 	Reporter                ActivityReporter
 	ProcessTransport        ProcessTransport
 	HostMetadata            HostMetadata
 	ProviderCommandResolver ProviderCommandResolver
+	ProviderLaunchPreparer  ProviderLaunchPreparer
 	Adapters                []Adapter
 	LiveSessionReaper       LiveSessionReaperConfig
 }
@@ -53,6 +66,7 @@ type Runtime struct {
 func NewRuntime(config Config) (*Runtime, error) {
 	var controller *Controller
 	if len(config.Adapters) > 0 {
+		agentruntime.ApplyProviderLaunchPreparer(config.Adapters, config.ProviderLaunchPreparer)
 		controller = agentruntime.NewController(config.Adapters, config.Reporter)
 	} else {
 		if !hasCompleteHostMetadata(config.HostMetadata) {
@@ -67,6 +81,7 @@ func NewRuntime(config Config) (*Runtime, error) {
 			agentruntime.ControllerOptions{
 				HostMetadata:            config.HostMetadata,
 				ProviderCommandResolver: config.ProviderCommandResolver,
+				ProviderLaunchPreparer:  config.ProviderLaunchPreparer,
 			},
 		)
 	}
@@ -99,6 +114,7 @@ func (r *Runtime) Close() {
 		return
 	}
 	r.closeOnce.Do(func() {
+		r.closeAllLiveSessions()
 		if r.cancel != nil {
 			r.cancel()
 		}
@@ -106,6 +122,32 @@ func (r *Runtime) Close() {
 			<-r.done
 		}
 	})
+}
+
+// closeAllLiveSessions force-terminates every live provider process (Codex
+// app-server, Claude Code SDK sidecar, other ACP subprocess adapters) before
+// the daemon process exits. A spawned subprocess is not killed automatically
+// just because tuttid exits — it is reparented to init and keeps running —
+// so without this step, every daemon shutdown (or a desktop-parent-monitor
+// triggered shutdown after the host app disappears) would orphan any
+// in-flight provider processes, leaving them running unmanaged against the
+// session's working directory indefinitely.
+func (r *Runtime) closeAllLiveSessions() {
+	if r == nil || r.controller == nil {
+		return
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), shutdownCloseAllLiveSessionsTimeout)
+	defer cancel()
+	result := r.controller.CloseAllLiveSessions(ctx)
+	if result.Scanned == 0 {
+		return
+	}
+	slog.Info("agent live session shutdown close completed",
+		"event", "agent_session.shutdown_close.completed",
+		"scanned", result.Scanned,
+		"closed", result.Closed,
+		"failed", result.Failed,
+	)
 }
 
 func (r *Runtime) startLiveSessionReaper(config LiveSessionReaperConfig) {

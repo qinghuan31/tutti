@@ -18,6 +18,7 @@ import {
   cn
 } from "@tutti-os/ui-system";
 import { CreateChatIcon } from "@tutti-os/ui-system/icons";
+import { useAgentGuiWorkbenchBodyRenderError } from "./bodyRenderErrorRegistry.ts";
 
 const headerChromeIconButtonClassName =
   "agent-gui-workbench-header__icon-button";
@@ -42,11 +43,13 @@ export interface AgentGuiWorkbenchHeaderProps extends HTMLAttributes<HTMLElement
   copy: AgentGuiWorkbenchHeaderCopy;
   defaultActions?: ReactNode;
   displayMode?: WorkbenchDisplayMode;
-  iconUrl?: string;
   isConversationRailAutoCollapsed: boolean;
   isConversationRailCollapsed: boolean;
   conversationRailWidthPx?: number | null;
+  conversationIconUrl?: string | null;
+  providerRailWidthPx?: number | null;
   conversationTitle?: string | null;
+  nodeId: string;
   onCreateConversation?: () => void;
   onToggleConversationRail: (nextCollapsed: boolean) => void;
   title?: string;
@@ -61,22 +64,28 @@ export function AgentGuiWorkbenchHeader({
   copy,
   defaultActions: _defaultActions,
   displayMode,
-  iconUrl,
   isConversationRailAutoCollapsed,
   isConversationRailCollapsed,
   conversationRailWidthPx,
+  conversationIconUrl,
+  providerRailWidthPx,
   conversationTitle,
+  nodeId,
   onCreateConversation,
   onToggleConversationRail,
-  title,
+  title: _title,
   windowActions,
   ...headerProps
 }: AgentGuiWorkbenchHeaderProps): ReactNode {
+  const hasBodyRenderError = useAgentGuiWorkbenchBodyRenderError(nodeId);
   const toggleLabel = isConversationRailCollapsed
     ? copy.expandConversationRail
     : copy.collapseConversationRail;
-  const appTitle = title?.trim() || copy.fallbackAgentLabel;
-  const sessionTitle = conversationTitle?.trim() || "";
+  const appTitle = _title?.trim() || copy.fallbackAgentLabel;
+  const sessionTitle = hasBodyRenderError
+    ? ""
+    : conversationTitle?.trim() || "";
+  const sessionIconUrl = conversationIconUrl?.trim() || "";
   const safeDisplayMode = displayMode ?? "floating";
   const safeWindowActions = windowActions ?? {
     close: () => undefined,
@@ -92,7 +101,13 @@ export function AgentGuiWorkbenchHeader({
     ...(typeof conversationRailWidthPx === "number" &&
     Number.isFinite(conversationRailWidthPx)
       ? {
-          "--agent-gui-workbench-header-rail-width": `${Math.round(conversationRailWidthPx)}px`
+          "--agent-gui-workbench-header-rail-width": `${Math.round(
+            conversationRailWidthPx +
+              (typeof providerRailWidthPx === "number" &&
+              Number.isFinite(providerRailWidthPx)
+                ? providerRailWidthPx
+                : 0)
+          )}px`
         }
       : {})
   } as CSSProperties;
@@ -141,30 +156,21 @@ export function AgentGuiWorkbenchHeader({
           tone: "maximize"
         })
       ),
-      createElement(
-        "div",
-        {
-          className: "agent-gui-workbench-header__agent-brand"
-        },
-        iconUrl
-          ? createElement("img", {
-              alt: "",
-              "aria-hidden": true,
-              className: "agent-gui-workbench-header__agent-icon",
-              "data-agent-gui-workbench-header-icon": "true",
-              "data-testid": "agent-gui-window-title-icon",
-              draggable: false,
-              src: iconUrl
-            })
-          : null,
-        createElement(
-          "span",
-          {
-            className: "agent-gui-workbench-header__agent-name"
-          },
-          appTitle
-        )
-      ),
+      !isConversationRailCollapsed
+        ? createElement(
+            "div",
+            {
+              className: "agent-gui-workbench-header__agent-brand"
+            },
+            createElement(
+              "span",
+              {
+                className: "agent-gui-workbench-header__agent-name"
+              },
+              appTitle
+            )
+          )
+        : null,
       createElement(
         Button as never,
         {
@@ -217,6 +223,15 @@ export function AgentGuiWorkbenchHeader({
             {
               className: "agent-gui-workbench-header__session-title"
             },
+            sessionIconUrl
+              ? createElement("img", {
+                  alt: "",
+                  className: "agent-gui-workbench-header__session-icon",
+                  "data-testid": "agent-gui-window-session-icon",
+                  draggable: false,
+                  src: sessionIconUrl
+                })
+              : null,
             createElement(
               "span",
               {

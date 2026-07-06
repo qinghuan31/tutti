@@ -1388,33 +1388,34 @@ paths:
           $ref: "#/components/responses/WorkspaceOperationError"
         "503":
           $ref: "#/components/responses/ServiceUnavailableError"
-  /v1/workspaces/{workspaceID}/app-factory/providers/{provider}/composer-options:
+  /v1/workspaces/{workspaceID}/app-factory/agent-targets/{agentTargetID}/composer-options:
     parameters:
       - $ref: "#/components/parameters/WorkspaceID"
-      - name: provider
+      - name: agentTargetID
         in: path
         required: true
         schema:
-          $ref: "#/components/schemas/WorkspaceAgentProvider"
+          type: string
+          minLength: 1
     post:
-      operationId: getWorkspaceAppFactoryProviderComposerOptions
+      operationId: getWorkspaceAppFactoryAgentTargetComposerOptions
       tags:
         - app-factory
-      summary: Get App Factory provider composer options
+      summary: Get App Factory agent target composer options
       description: >
         Resolves provider composer options for App Factory using daemon-owned
         workspace and factory draft context. Clients provide workspace and
-        provider selection, while tuttid owns the working directory used for
-        provider discovery.
+        agent target selection, while tuttid owns the working directory used
+        for provider discovery.
       requestBody:
         required: false
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/GetWorkspaceAppFactoryProviderComposerOptionsRequest"
+              $ref: "#/components/schemas/GetWorkspaceAppFactoryAgentTargetComposerOptionsRequest"
       responses:
         "200":
-          description: App Factory provider composer options
+          description: App Factory agent target composer options
           content:
             application/json:
               schema:
@@ -1650,11 +1651,6 @@ paths:
             type: integer
             minimum: 1
             maximum: 100
-        - name: visibleOnly
-          in: query
-          required: false
-          schema:
-            type: boolean
       responses:
         "200":
           description: Workspace agent sessions
@@ -1716,6 +1712,103 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/WorkspaceAgentSessionResponse"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "400":
+          $ref: "#/components/responses/InvalidRequestError"
+        "404":
+          $ref: "#/components/responses/WorkspaceNotFoundError"
+        "405":
+          $ref: "#/components/responses/MethodNotAllowedError"
+        "502":
+          $ref: "#/components/responses/WorkspaceOperationError"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailableError"
+  /v1/workspaces/{workspaceID}/agent-session-sections:
+    parameters:
+      - $ref: "#/components/parameters/WorkspaceID"
+    get:
+      operationId: listWorkspaceAgentSessionSections
+      tags:
+        - agent-session
+      summary: List agent session rail sections for one workspace
+      parameters:
+        - name: limitPerSection
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+        - name: agentTargetId
+          in: query
+          required: false
+          description: Optional agent target filter applied before section pagination and hasMore calculation.
+          schema:
+            type: string
+            minLength: 1
+      responses:
+        "200":
+          description: Workspace agent session sections
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WorkspaceAgentSessionSectionsResponse"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "400":
+          $ref: "#/components/responses/InvalidRequestError"
+        "404":
+          $ref: "#/components/responses/WorkspaceNotFoundError"
+        "405":
+          $ref: "#/components/responses/MethodNotAllowedError"
+        "502":
+          $ref: "#/components/responses/WorkspaceOperationError"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailableError"
+  /v1/workspaces/{workspaceID}/agent-session-sections/page:
+    parameters:
+      - $ref: "#/components/parameters/WorkspaceID"
+    get:
+      operationId: listWorkspaceAgentSessionSectionPage
+      tags:
+        - agent-session
+      summary: List one agent session rail section page for one workspace
+      parameters:
+        - name: sectionKey
+          in: query
+          required: true
+          schema:
+            type: string
+            minLength: 1
+        - name: cursor
+          in: query
+          required: false
+          description: Cursor for the next older page, encoded as updatedAtUnixMs|agentSessionId.
+          schema:
+            type: string
+            minLength: 1
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+        - name: agentTargetId
+          in: query
+          required: false
+          description: Optional agent target filter applied before section pagination and hasMore calculation.
+          schema:
+            type: string
+            minLength: 1
+      responses:
+        "200":
+          description: Workspace agent session section page
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WorkspaceAgentSessionSectionPageResponse"
         "401":
           $ref: "#/components/responses/UnauthorizedError"
         "400":
@@ -2264,6 +2357,40 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/WorkspaceAgentSessionCancelResponse"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "400":
+          $ref: "#/components/responses/InvalidRequestError"
+        "404":
+          $ref: "#/components/responses/WorkspaceNotFoundError"
+        "405":
+          $ref: "#/components/responses/MethodNotAllowedError"
+        "502":
+          $ref: "#/components/responses/WorkspaceOperationError"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailableError"
+  /v1/workspaces/{workspaceID}/agent-sessions/{agentSessionID}/goal:
+    parameters:
+      - $ref: "#/components/parameters/WorkspaceID"
+      - $ref: "#/components/parameters/AgentSessionID"
+    post:
+      operationId: goalControlWorkspaceAgentSession
+      tags:
+        - agent-session
+      summary: Perform a goal control action on one workspace agent session
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/WorkspaceAgentSessionGoalControlRequest"
+      responses:
+        "200":
+          description: Workspace agent session goal updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WorkspaceAgentSessionGoalControlResponse"
         "401":
           $ref: "#/components/responses/UnauthorizedError"
         "400":
@@ -4002,12 +4129,15 @@ components:
         - minimizeAnimation
         - sleepPreventionMode
         - showAppDeveloperSources
+        - enableCursorAgent
         - themeSource
         - updateChannel
         - updatePolicy
       properties:
         agentComposerDefaultsByProvider:
           $ref: "#/components/schemas/DesktopAgentComposerDefaultsByProvider"
+        agentComposerDefaultsByAgentTarget:
+          $ref: "#/components/schemas/DesktopAgentComposerDefaultsByAgentTarget"
         agentGuiConversationRailCollapsedByProvider:
           $ref: "#/components/schemas/DesktopAgentGuiConversationRailCollapsedByProvider"
         agentConversationDetailMode:
@@ -4024,6 +4154,8 @@ components:
           $ref: "#/components/schemas/DesktopDockIconStyle"
         dockPlacement:
           $ref: "#/components/schemas/DesktopDockPlacement"
+        enableCursorAgent:
+          type: boolean
         fileDefaultOpenersByExtension:
           $ref: "#/components/schemas/DesktopFileDefaultOpenersByExtension"
         locale:
@@ -4068,6 +4200,8 @@ components:
           type: string
         reasoningEffort:
           type: string
+        speed:
+          type: string
     DesktopAgentConversationDetailMode:
       type: string
       enum:
@@ -4093,12 +4227,20 @@ components:
           $ref: "#/components/schemas/DesktopAgentComposerDefaults"
         tutti-agent:
           $ref: "#/components/schemas/DesktopAgentComposerDefaults"
+        cursor:
+          $ref: "#/components/schemas/DesktopAgentComposerDefaults"
+        nexight:
+          $ref: "#/components/schemas/DesktopAgentComposerDefaults"
         gemini:
           $ref: "#/components/schemas/DesktopAgentComposerDefaults"
         hermes:
           $ref: "#/components/schemas/DesktopAgentComposerDefaults"
         openclaw:
           $ref: "#/components/schemas/DesktopAgentComposerDefaults"
+    DesktopAgentComposerDefaultsByAgentTarget:
+      type: object
+      additionalProperties:
+        $ref: "#/components/schemas/DesktopAgentComposerDefaults"
     DesktopAgentGuiConversationRailCollapsedByProvider:
       type: object
       additionalProperties: false
@@ -4108,6 +4250,10 @@ components:
         codex:
           type: boolean
         tutti-agent:
+          type: boolean
+        cursor:
+          type: boolean
+        nexight:
           type: boolean
         gemini:
           type: boolean
@@ -4157,6 +4303,7 @@ components:
         - codex
         - claude-code
         - tutti-agent
+        - cursor
     AgentTargetSource:
       type: string
       enum:
@@ -5066,6 +5213,7 @@ components:
         - appId
         - displayName
         - description
+        - agentTargetId
         - provider
         - model
         - reasoningEffort
@@ -5093,6 +5241,9 @@ components:
           type: string
           minLength: 1
         description:
+          type: string
+          nullable: true
+        agentTargetId:
           type: string
           nullable: true
         provider:
@@ -5127,6 +5278,7 @@ components:
       type: object
       additionalProperties: false
       required:
+        - agentTargetId
         - displayName
         - prompt
       properties:
@@ -5138,8 +5290,12 @@ components:
           minLength: 1
         description:
           type: string
+        agentTargetId:
+          type: string
+          minLength: 1
         provider:
           type: string
+          deprecated: true
         model:
           type: string
         permissionModeId:
@@ -5425,6 +5581,7 @@ components:
         - claude-code
         - codex
         - tutti-agent
+        - cursor
         - nexight
         - gemini
         - hermes
@@ -5551,7 +5708,7 @@ components:
           $ref: "#/components/schemas/DesktopLocale"
         settings:
           $ref: "#/components/schemas/AgentSessionComposerSettings"
-    GetWorkspaceAppFactoryProviderComposerOptionsRequest:
+    GetWorkspaceAppFactoryAgentTargetComposerOptionsRequest:
       type: object
       additionalProperties: false
       properties:
@@ -6361,6 +6518,63 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/WorkspaceAgentSession"
+    WorkspaceAgentSessionSectionKind:
+      type: string
+      enum:
+        - conversations
+        - project
+    WorkspaceAgentSessionSection:
+      type: object
+      additionalProperties: false
+      required:
+        - kind
+        - sectionKey
+        - sessions
+        - hasMore
+      properties:
+        kind:
+          $ref: "#/components/schemas/WorkspaceAgentSessionSectionKind"
+        sectionKey:
+          type: string
+          minLength: 1
+        userProject:
+          $ref: "#/components/schemas/UserProject"
+        sessions:
+          type: array
+          items:
+            $ref: "#/components/schemas/WorkspaceAgentSession"
+        hasMore:
+          type: boolean
+        nextCursor:
+          type: string
+          description: Cursor for the next older page, encoded as updatedAtUnixMs|agentSessionId.
+          minLength: 1
+    WorkspaceAgentSessionSectionsResponse:
+      type: object
+      additionalProperties: false
+      required:
+        - workspaceId
+        - sections
+      properties:
+        workspaceId:
+          type: string
+          minLength: 1
+        sections:
+          type: array
+          items:
+            $ref: "#/components/schemas/WorkspaceAgentSessionSection"
+    WorkspaceAgentSessionSectionPageResponse:
+      type: object
+      additionalProperties: false
+      required:
+        - workspaceId
+        - section
+      properties:
+        workspaceId:
+          type: string
+          minLength: 1
+        section:
+          $ref: "#/components/schemas/WorkspaceAgentSessionSection"
     ExternalAgentImportScanRequest:
       type: object
       additionalProperties: false
@@ -6613,6 +6827,32 @@ components:
       properties:
         visible:
           type: boolean
+    WorkspaceAgentSessionGoalControlRequest:
+      type: object
+      additionalProperties: false
+      required:
+        - action
+      properties:
+        action:
+          type: string
+          enum:
+            - pause
+            - resume
+            - clear
+            - set
+        objective:
+          type: string
+    WorkspaceAgentSessionGoalControlResponse:
+      type: object
+      additionalProperties: false
+      required:
+        - session
+      properties:
+        session:
+          $ref: "#/components/schemas/WorkspaceAgentSession"
+        goal:
+          type: object
+          additionalProperties: true
     CreateWorkspaceAgentSessionRequest:
       type: object
       additionalProperties: false
@@ -6855,6 +7095,7 @@ components:
         - id
         - path
         - label
+        - sectionKey
         - createdAtUnixMs
         - updatedAtUnixMs
       properties:
@@ -6865,6 +7106,9 @@ components:
           type: string
           minLength: 1
         label:
+          type: string
+          minLength: 1
+        sectionKey:
           type: string
           minLength: 1
         createdAtUnixMs:

@@ -16,6 +16,7 @@ import (
 
 	agentactivitybiz "github.com/tutti-os/tutti/services/tuttid/biz/agentactivity"
 	agentproviderbiz "github.com/tutti-os/tutti/services/tuttid/biz/agentprovider"
+	agenttargetbiz "github.com/tutti-os/tutti/services/tuttid/biz/agenttarget"
 )
 
 type ExternalImportScanInput struct {
@@ -108,6 +109,13 @@ type externalImportedSession struct {
 	StartedAtUnixMS  int64
 	UpdatedAtUnixMS  int64
 	Messages         []externalImportedMessage
+	// Model and ReasoningEffort capture the provider-reported model/effort the
+	// local CLI was actually using (Codex `turn_context.model`/`effort`,
+	// Claude Code `message.model`) so imported sessions preserve the user's
+	// local model configuration instead of falling back to workspace
+	// defaults when the conversation is continued.
+	Model           string
+	ReasoningEffort string
 }
 
 type externalImportedMessage struct {
@@ -163,9 +171,6 @@ func (s *Service) ImportExternalSessions(ctx context.Context, workspaceID string
 		if !selected {
 			continue
 		}
-		if !session.NoProject && session.UpdatedAtUnixMS > validProjectPaths[projectPath] {
-			validProjectPaths[projectPath] = session.UpdatedAtUnixMS
-		}
 		importedMessages, imported, err := s.importExternalSession(ctx, workspaceID, session)
 		if err != nil {
 			result.Errors = append(result.Errors, ExternalImportError{
@@ -174,6 +179,18 @@ func (s *Service) ImportExternalSessions(ctx context.Context, workspaceID string
 				Message:    err.Error(),
 			})
 			continue
+		}
+		// Only mark projectPath as a candidate for ProjectPaths once its session
+		// has actually landed in the store without error. Marking it here
+		// unconditionally (before knowing whether importExternalSession
+		// succeeded) let a project whose only session failed to import (a
+		// transient store error, a write timeout, etc.) still come back in
+		// ProjectPaths — and registerExternalImportUserProjects registers
+		// whatever ProjectPaths contains, so that project would surface as a
+		// folder card with "No chats yet" and no way to tell it apart from a
+		// project that imported cleanly.
+		if !session.NoProject && session.UpdatedAtUnixMS > validProjectPaths[projectPath] {
+			validProjectPaths[projectPath] = session.UpdatedAtUnixMS
 		}
 		if imported {
 			result.ImportedSessions++
@@ -258,6 +275,32 @@ func providersFromExternalImportSelections(selections []ExternalImportProjectSel
 		}
 	}
 	return out
+}
+
+// externalImportedSessionSettings carries the provider-reported model/effort
+// forward into the imported session's composer settings so continuing the
+// conversation in Tutti reuses the same model configuration the user's local
+// CLI had, instead of silently falling back to workspace defaults.
+func externalImportedSessionSettings(session externalImportedSession) map[string]any {
+	settings := ComposerSettings{
+		Model:           strings.TrimSpace(session.Model),
+		ReasoningEffort: normalizeReasoningEffortForProvider(session.Provider, session.ReasoningEffort),
+	}
+	if composerSettingsIsEmpty(settings) {
+		return nil
+	}
+	return composerSettingsToPayload(settings)
+}
+
+func externalImportAgentTargetID(provider string) string {
+	switch agentproviderbiz.Normalize(provider) {
+	case agentproviderbiz.Codex:
+		return agenttargetbiz.IDLocalCodex
+	case agentproviderbiz.ClaudeCode:
+		return agenttargetbiz.IDLocalClaudeCode
+	default:
+		return ""
+	}
 }
 
 func scanExternalAgentSessions(ctx context.Context, providers []string, days int) externalScanData {
@@ -466,8 +509,11 @@ func (s *Service) importExternalSession(ctx context.Context, workspaceID string,
 		WorkspaceID:       workspaceID,
 		AgentSessionID:    agentSessionID,
 		Origin:            WorkspaceAgentSessionOriginImported,
+		AgentTargetID:     externalImportAgentTargetID(session.Provider),
 		Provider:          session.Provider,
 		ProviderSessionID: session.ProviderSessionID,
+		Model:             session.Model,
+		Settings:          externalImportedSessionSettings(session),
 		RuntimeContext: map[string]any{
 			"visible":                 true,
 			"imported":                true,

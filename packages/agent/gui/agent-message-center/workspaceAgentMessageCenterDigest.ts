@@ -108,7 +108,10 @@ export function buildWorkspaceAgentMessageCenterDigest(
 export function resolveWorkspaceAgentMessageCenterDigestAgentMessageSummary(
   message: AgentActivityMessage
 ): string {
-  if (!isAgentMessageRole(message.role)) {
+  if (
+    !isAgentMessageRole(message.role) ||
+    isReasoningMessageKind(message.kind)
+  ) {
     return "";
   }
   return meaningfulMessageSummary(message);
@@ -145,6 +148,15 @@ function promptTimeUnixMs(
 function isAgentMessageRole(role: string): boolean {
   const normalized = role.trim().toLowerCase();
   return normalized === "assistant" || normalized === "agent";
+}
+
+/**
+ * Mirrors the same-named guard in workspaceAgentMessageCenterModel.ts: a
+ * reasoning/thinking message carries an assistant-like `role` but
+ * `kind: "reasoning"` and must never be summarized as a normal agent reply.
+ */
+function isReasoningMessageKind(kind: string): boolean {
+  return kind.trim().toLowerCase() === "reasoning";
 }
 
 type MessageSummarySource =

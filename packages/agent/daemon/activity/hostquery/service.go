@@ -6,8 +6,8 @@ import (
 	"strings"
 	"sync"
 
-	agentsessionstore "github.com/tutti-os/tutti/packages/agentactivity/daemon/activity"
-	guestdesktoprelayv1 "github.com/tutti-os/tutti/packages/agentactivity/daemon/internal/guestdesktoprelay/v1"
+	agentsessionstore "github.com/tutti-os/tutti/packages/agent/daemon/activity"
+	guestdesktoprelayv1 "github.com/tutti-os/tutti/packages/agent/daemon/internal/guestdesktoprelay/v1"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"

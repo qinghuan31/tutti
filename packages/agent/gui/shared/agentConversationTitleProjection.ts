@@ -43,6 +43,10 @@ export function normalizeAgentGUIProviderIdentity(
     case "tutti-agent":
     case "tutti agent":
       return "tutti-agent";
+    case "cursor":
+    case "cursor-agent":
+    case "cursor agent":
+      return "cursor";
     case "nexight":
     case "tutti":
       return "nexight";

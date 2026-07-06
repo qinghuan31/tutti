@@ -74,7 +74,7 @@ import {
 } from "./controllerUtils.ts";
 import {
   applyIssueManagerIssueDeleted,
-  applyIssueManagerSelectedAgentProvider,
+  applyIssueManagerSelectedAgentTargetId,
   applyIssueManagerSelectedExecutionDirectory,
   applyIssueManagerTaskDeleted
 } from "./controllerState.ts";
@@ -191,6 +191,35 @@ function resolveIssueManagerMovedTaskOrder(input: {
     nextTask,
     ...tasksWithoutMoved.slice(normalizedInsertIndex)
   ];
+}
+
+/**
+ * Resolves the execution directory (project path) to run a task/breakdown in.
+ *
+ * The user's explicit per-issue selection (`selectedExecutionDirectory`)
+ * always wins. Otherwise this falls back to the same remembered "default
+ * project" that ad-hoc new agent-GUI sessions use, so a task run/breakdown
+ * launched without the user ever touching the execution-directory picker
+ * still gets associated with a real project instead of silently landing in
+ * the agent runtime's internal session-storage directory (which then shows
+ * up as the session's project path in both the session window and the
+ * message center).
+ */
+async function resolveIssueManagerExecutionDirectory(input: {
+  feature: IssueManagerFeature;
+  selectedExecutionDirectory: string | null | undefined;
+}): Promise<string | null> {
+  const selected = input.selectedExecutionDirectory?.trim();
+  if (selected) {
+    return selected;
+  }
+  try {
+    const defaultSelection =
+      await input.feature.executionDirectoryPicker?.service?.getDefaultSelection?.();
+    return defaultSelection?.path?.trim() || null;
+  } catch {
+    return null;
+  }
 }
 
 export function createIssueManagerControllerActions(
@@ -598,6 +627,7 @@ export function createIssueManagerControllerActions(
       try {
         await feature.agentSessionOpener.openSession({
           agentSessionId,
+          agentTargetId: run.agentTargetId,
           provider: run.agentProvider,
           workspaceId
         });
@@ -649,11 +679,12 @@ export function createIssueManagerControllerActions(
       }
     },
 
-    async runTask(providerOverride?: string) {
+    async runTask(agentTargetIdOverride?: string) {
       const runPlan = createIssueManagerRunTaskPlan({
+        agentTargetOptions: feature.agentTargetOptions?.getOptions(),
+        agentTargetIdOverride,
         issueDetail: issueDetail.value,
-        providerOverride,
-        selectedAgentProvider: nodeState.selectedAgentProvider,
+        selectedAgentTargetId: nodeState.selectedAgentTargetId,
         taskDetail: taskDetail.value
       });
       if (runPlan.kind !== "ready") {
@@ -664,30 +695,33 @@ export function createIssueManagerControllerActions(
       if (!currentIssueDetail) {
         return;
       }
-      if (runPlan.shouldUpdateSelectedAgentProvider) {
+      if (runPlan.shouldUpdateSelectedAgentTargetId) {
         updateNodeState((current) =>
-          applyIssueManagerSelectedAgentProvider(current, runPlan.provider)
+          applyIssueManagerSelectedAgentTargetId(current, runPlan.agentTargetId)
         );
       }
 
       setIsRunningTask(true);
       try {
+        const executionDirectory = await resolveIssueManagerExecutionDirectory({
+          feature,
+          selectedExecutionDirectory: nodeState.selectedExecutionDirectory
+        });
         trackIssueManagerAnalytics(feature, {
           name: "issue_manager.task_run_initiated",
           params: {
-            hasExecutionDirectory: Boolean(
-              nodeState.selectedExecutionDirectory?.trim()
-            ),
+            hasExecutionDirectory: Boolean(executionDirectory),
             issueId: currentIssueDetail.issue.issueId,
             provider: runPlan.provider,
             taskId: currentTaskDetail?.task.taskId ?? null
           }
         });
         const result = await executeIssueManagerRunTask({
+          agentTargetId: runPlan.agentTargetId,
           feature,
           issue: currentIssueDetail.issue,
           provider: runPlan.provider,
-          executionDirectory: nodeState.selectedExecutionDirectory,
+          executionDirectory,
           task: currentTaskDetail?.task,
           workspaceId
         });
@@ -709,11 +743,12 @@ export function createIssueManagerControllerActions(
       }
     },
 
-    async startTaskBreakdown(providerOverride?: string) {
+    async startTaskBreakdown(agentTargetIdOverride?: string) {
       const breakdownPlan = createIssueManagerRunTaskPlan({
+        agentTargetOptions: feature.agentTargetOptions?.getOptions(),
+        agentTargetIdOverride,
         issueDetail: issueDetail.value,
-        providerOverride,
-        selectedAgentProvider: nodeState.selectedAgentProvider,
+        selectedAgentTargetId: nodeState.selectedAgentTargetId,
         taskDetail: taskDetail.value
       });
       if (breakdownPlan.kind !== "ready") {
@@ -728,17 +763,21 @@ export function createIssueManagerControllerActions(
         notifyTip(copy.t("messages.breakdownUnavailable"));
         return;
       }
-      if (breakdownPlan.shouldUpdateSelectedAgentProvider) {
+      if (breakdownPlan.shouldUpdateSelectedAgentTargetId) {
         updateNodeState((current) =>
-          applyIssueManagerSelectedAgentProvider(
+          applyIssueManagerSelectedAgentTargetId(
             current,
-            breakdownPlan.provider
+            breakdownPlan.agentTargetId
           )
         );
       }
 
       setIsRunningTask(true);
       try {
+        const executionDirectory = await resolveIssueManagerExecutionDirectory({
+          feature,
+          selectedExecutionDirectory: nodeState.selectedExecutionDirectory
+        });
         trackIssueManagerAnalytics(feature, {
           name: "issue_manager.issue_breakdown_initiated",
           params: {
@@ -747,11 +786,8 @@ export function createIssueManagerControllerActions(
           }
         });
         const result = await breakdownLauncher.startBreakdown({
-          ...(nodeState.selectedExecutionDirectory?.trim()
-            ? {
-                executionDirectory: nodeState.selectedExecutionDirectory.trim()
-              }
-            : {}),
+          agentTargetId: breakdownPlan.agentTargetId,
+          ...(executionDirectory ? { executionDirectory } : {}),
           issueDetail: currentIssueDetail,
           provider: breakdownPlan.provider,
           workspaceId

@@ -95,38 +95,6 @@ describe("AgentGUINode memoization", () => {
     agentGuiNodeViewSpy.mockReset();
   });
 
-  it("does not rerender when another provider probe changes", () => {
-    mockViewModel = createViewModel();
-    const props = createProps();
-    const { rerender } = render(<AgentGUINode {...props} />);
-
-    expect(agentGuiNodeViewSpy).toHaveBeenCalledTimes(1);
-    agentGuiNodeViewSpy.mockClear();
-
-    rerender(
-      <AgentGUINode
-        {...props}
-        workspaceAgentProbes={{
-          snapshot: {
-            workspaceId: "workspace-1",
-            capturedAtUnixMs: 2,
-            providers: [
-              {
-                provider: "gemini",
-                availability: { status: "unavailable", detailsVisible: false },
-                lastError: { code: "auth_required", message: "Sign in again" }
-              }
-            ]
-          },
-          isLoadingAvailability: false,
-          isLoadingUsage: false
-        }}
-      />
-    );
-
-    expect(agentGuiNodeViewSpy).not.toHaveBeenCalled();
-  });
-
   it("rerenders when its own provider probe changes", () => {
     mockViewModel = createViewModel();
     const props = createProps({
@@ -237,6 +205,32 @@ describe("AgentGUINode memoization", () => {
 
     expect(agentGuiNodeViewSpy).toHaveBeenCalledTimes(1);
   });
+
+  it("rerenders when the active conversation title changes", () => {
+    mockViewModel = createViewModel();
+    const props = createProps({
+      state: createState({
+        lastActiveAgentSessionId: "session-1",
+        lastActiveConversationTitle: "Old title"
+      })
+    });
+    const { rerender } = render(<AgentGUINode {...props} />);
+
+    expect(agentGuiNodeViewSpy).toHaveBeenCalledTimes(1);
+    agentGuiNodeViewSpy.mockClear();
+
+    rerender(
+      <AgentGUINode
+        {...props}
+        state={createState({
+          lastActiveAgentSessionId: "session-1",
+          lastActiveConversationTitle: "New title"
+        })}
+      />
+    );
+
+    expect(agentGuiNodeViewSpy).toHaveBeenCalledTimes(1);
+  });
 });
 
 function createProps(
@@ -290,6 +284,7 @@ function createViewModel(
     selectedProviderTarget: createLocalAgentGUIProviderTarget("codex"),
     providerTargets: [createLocalAgentGUIProviderTarget("codex")],
     providerTargetsLoading: false,
+    conversationFilter: { kind: "all" },
     draftPrompt: "",
     draftContent,
     sessionChrome: {

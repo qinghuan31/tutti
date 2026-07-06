@@ -395,6 +395,7 @@ func (e AgentTargetLaunchRefType) Valid() bool {
 const (
 	AgentTargetProviderClaudeCode AgentTargetProvider = "claude-code"
 	AgentTargetProviderCodex      AgentTargetProvider = "codex"
+	AgentTargetProviderCursor     AgentTargetProvider = "cursor"
 	AgentTargetProviderTuttiAgent AgentTargetProvider = "tutti-agent"
 )
 
@@ -404,6 +405,8 @@ func (e AgentTargetProvider) Valid() bool {
 	case AgentTargetProviderClaudeCode:
 		return true
 	case AgentTargetProviderCodex:
+		return true
+	case AgentTargetProviderCursor:
 		return true
 	case AgentTargetProviderTuttiAgent:
 		return true
@@ -1103,6 +1106,7 @@ func (e WorkbenchSnapshotNodeDisplayMode) Valid() bool {
 const (
 	ClaudeCode WorkspaceAgentProvider = "claude-code"
 	Codex      WorkspaceAgentProvider = "codex"
+	Cursor     WorkspaceAgentProvider = "cursor"
 	Gemini     WorkspaceAgentProvider = "gemini"
 	Hermes     WorkspaceAgentProvider = "hermes"
 	Nexight    WorkspaceAgentProvider = "nexight"
@@ -1116,6 +1120,8 @@ func (e WorkspaceAgentProvider) Valid() bool {
 	case ClaudeCode:
 		return true
 	case Codex:
+		return true
+	case Cursor:
 		return true
 	case Gemini:
 		return true
@@ -1168,6 +1174,48 @@ func (e WorkspaceAgentSessionCancelResultReason) Valid() bool {
 	case NoActiveTurn:
 		return true
 	case StaleTurnReconciled:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for WorkspaceAgentSessionGoalControlRequestAction.
+const (
+	Clear  WorkspaceAgentSessionGoalControlRequestAction = "clear"
+	Pause  WorkspaceAgentSessionGoalControlRequestAction = "pause"
+	Resume WorkspaceAgentSessionGoalControlRequestAction = "resume"
+	Set    WorkspaceAgentSessionGoalControlRequestAction = "set"
+)
+
+// Valid indicates whether the value is a known member of the WorkspaceAgentSessionGoalControlRequestAction enum.
+func (e WorkspaceAgentSessionGoalControlRequestAction) Valid() bool {
+	switch e {
+	case Clear:
+		return true
+	case Pause:
+		return true
+	case Resume:
+		return true
+	case Set:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for WorkspaceAgentSessionSectionKind.
+const (
+	Conversations WorkspaceAgentSessionSectionKind = "conversations"
+	Project       WorkspaceAgentSessionSectionKind = "project"
+)
+
+// Valid indicates whether the value is a known member of the WorkspaceAgentSessionSectionKind enum.
+func (e WorkspaceAgentSessionSectionKind) Valid() bool {
+	switch e {
+	case Conversations:
+		return true
+	case Project:
 		return true
 	default:
 		return false
@@ -2355,8 +2403,10 @@ type CreateIssueManagerIssueRequest struct {
 
 // CreateIssueManagerRunRequest defines model for CreateIssueManagerRunRequest.
 type CreateIssueManagerRunRequest struct {
-	AgentProvider      string  `json:"agentProvider"`
+	// AgentProvider Legacy display/provider analytics hint. New run authority is agentTargetId.
+	AgentProvider      *string `json:"agentProvider,omitempty"`
 	AgentSessionId     *string `json:"agentSessionId,omitempty"`
+	AgentTargetId      string  `json:"agentTargetId"`
 	AgentUserId        *string `json:"agentUserId,omitempty"`
 	ExecutionDirectory *string `json:"executionDirectory,omitempty"`
 	RunId              *string `json:"runId,omitempty"`
@@ -2413,13 +2463,15 @@ type CreateWorkspaceAgentSessionRequest struct {
 
 // CreateWorkspaceAppFactoryJobRequest defines model for CreateWorkspaceAppFactoryJobRequest.
 type CreateWorkspaceAppFactoryJobRequest struct {
+	AgentTargetId    string  `json:"agentTargetId"`
 	Description      *string `json:"description,omitempty"`
 	DisplayName      string  `json:"displayName"`
 	Model            *string `json:"model,omitempty"`
 	PermissionModeId *string `json:"permissionModeId,omitempty"`
 	Prompt           string  `json:"prompt"`
-	Provider         *string `json:"provider,omitempty"`
-	ReasoningEffort  *string `json:"reasoningEffort,omitempty"`
+	// Deprecated: this property has been marked as deprecated upstream, but no `x-deprecated-reason` was set
+	Provider        *string `json:"provider,omitempty"`
+	ReasoningEffort *string `json:"reasoningEffort,omitempty"`
 }
 
 // CreateWorkspaceFileDirectoryRequest defines model for CreateWorkspaceFileDirectoryRequest.
@@ -2505,14 +2557,20 @@ type DesktopAgentComposerDefaults struct {
 	Model            *string `json:"model,omitempty"`
 	PermissionModeId *string `json:"permissionModeId,omitempty"`
 	ReasoningEffort  *string `json:"reasoningEffort,omitempty"`
+	Speed            *string `json:"speed,omitempty"`
 }
+
+// DesktopAgentComposerDefaultsByAgentTarget defines model for DesktopAgentComposerDefaultsByAgentTarget.
+type DesktopAgentComposerDefaultsByAgentTarget map[string]DesktopAgentComposerDefaults
 
 // DesktopAgentComposerDefaultsByProvider defines model for DesktopAgentComposerDefaultsByProvider.
 type DesktopAgentComposerDefaultsByProvider struct {
 	ClaudeCode *DesktopAgentComposerDefaults `json:"claude-code,omitempty"`
 	Codex      *DesktopAgentComposerDefaults `json:"codex,omitempty"`
+	Cursor     *DesktopAgentComposerDefaults `json:"cursor,omitempty"`
 	Gemini     *DesktopAgentComposerDefaults `json:"gemini,omitempty"`
 	Hermes     *DesktopAgentComposerDefaults `json:"hermes,omitempty"`
+	Nexight    *DesktopAgentComposerDefaults `json:"nexight,omitempty"`
 	Openclaw   *DesktopAgentComposerDefaults `json:"openclaw,omitempty"`
 	TuttiAgent *DesktopAgentComposerDefaults `json:"tutti-agent,omitempty"`
 }
@@ -2527,8 +2585,10 @@ type DesktopAgentDockLayout string
 type DesktopAgentGuiConversationRailCollapsedByProvider struct {
 	ClaudeCode *bool `json:"claude-code,omitempty"`
 	Codex      *bool `json:"codex,omitempty"`
+	Cursor     *bool `json:"cursor,omitempty"`
 	Gemini     *bool `json:"gemini,omitempty"`
 	Hermes     *bool `json:"hermes,omitempty"`
+	Nexight    *bool `json:"nexight,omitempty"`
 	Openclaw   *bool `json:"openclaw,omitempty"`
 	TuttiAgent *bool `json:"tutti-agent,omitempty"`
 }
@@ -2562,6 +2622,7 @@ type DesktopMinimizeAnimation string
 
 // DesktopPreferences defines model for DesktopPreferences.
 type DesktopPreferences struct {
+	AgentComposerDefaultsByAgentTarget          *DesktopAgentComposerDefaultsByAgentTarget         `json:"agentComposerDefaultsByAgentTarget,omitempty"`
 	AgentComposerDefaultsByProvider             DesktopAgentComposerDefaultsByProvider             `json:"agentComposerDefaultsByProvider"`
 	AgentConversationDetailMode                 DesktopAgentConversationDetailMode                 `json:"agentConversationDetailMode"`
 	AgentDockLayout                             DesktopAgentDockLayout                             `json:"agentDockLayout"`
@@ -2571,6 +2632,7 @@ type DesktopPreferences struct {
 	DefaultAgentProvider                        DesktopDefaultAgentProvider                        `json:"defaultAgentProvider"`
 	DockIconStyle                               DesktopDockIconStyle                               `json:"dockIconStyle"`
 	DockPlacement                               DesktopDockPlacement                               `json:"dockPlacement"`
+	EnableCursorAgent                           bool                                               `json:"enableCursorAgent"`
 	FileDefaultOpenersByExtension               DesktopFileDefaultOpenersByExtension               `json:"fileDefaultOpenersByExtension"`
 	Locale                                      DesktopLocale                                      `json:"locale"`
 	MinimizeAnimation                           DesktopMinimizeAnimation                           `json:"minimizeAnimation"`
@@ -2712,8 +2774,8 @@ type GetAgentProviderComposerOptionsRequest struct {
 	WorkspaceId *string `json:"workspaceId,omitempty"`
 }
 
-// GetWorkspaceAppFactoryProviderComposerOptionsRequest defines model for GetWorkspaceAppFactoryProviderComposerOptionsRequest.
-type GetWorkspaceAppFactoryProviderComposerOptionsRequest struct {
+// GetWorkspaceAppFactoryAgentTargetComposerOptionsRequest defines model for GetWorkspaceAppFactoryAgentTargetComposerOptionsRequest.
+type GetWorkspaceAppFactoryAgentTargetComposerOptionsRequest struct {
 	Locale   *DesktopLocale                `json:"locale,omitempty"`
 	Settings *AgentSessionComposerSettings `json:"settings,omitempty"`
 }
@@ -2850,6 +2912,7 @@ type IssueManagerReferenceSearchResponse struct {
 type IssueManagerRun struct {
 	AgentProvider      string             `json:"agentProvider"`
 	AgentSessionId     string             `json:"agentSessionId"`
+	AgentTargetId      string             `json:"agentTargetId"`
 	AgentUserId        string             `json:"agentUserId"`
 	CompletedAtUnix    int64              `json:"completedAtUnix"`
 	CreatedAtUnix      int64              `json:"createdAtUnix"`
@@ -3226,6 +3289,7 @@ type UserProject struct {
 	Label            string `json:"label"`
 	LastUsedAtUnixMs *int64 `json:"lastUsedAtUnixMs,omitempty"`
 	Path             string `json:"path"`
+	SectionKey       string `json:"sectionKey"`
 	UpdatedAtUnixMs  int64  `json:"updatedAtUnixMs"`
 }
 
@@ -3375,6 +3439,21 @@ type WorkspaceAgentSessionGitBranchesResponse struct {
 	CurrentBranch *string  `json:"currentBranch,omitempty"`
 }
 
+// WorkspaceAgentSessionGoalControlRequest defines model for WorkspaceAgentSessionGoalControlRequest.
+type WorkspaceAgentSessionGoalControlRequest struct {
+	Action    WorkspaceAgentSessionGoalControlRequestAction `json:"action"`
+	Objective *string                                       `json:"objective,omitempty"`
+}
+
+// WorkspaceAgentSessionGoalControlRequestAction defines model for WorkspaceAgentSessionGoalControlRequest.Action.
+type WorkspaceAgentSessionGoalControlRequestAction string
+
+// WorkspaceAgentSessionGoalControlResponse defines model for WorkspaceAgentSessionGoalControlResponse.
+type WorkspaceAgentSessionGoalControlResponse struct {
+	Goal    *map[string]interface{} `json:"goal,omitempty"`
+	Session WorkspaceAgentSession   `json:"session"`
+}
+
 // WorkspaceAgentSessionListResponse defines model for WorkspaceAgentSessionListResponse.
 type WorkspaceAgentSessionListResponse struct {
 	Sessions    []WorkspaceAgentSession `json:"sessions"`
@@ -3411,6 +3490,33 @@ type WorkspaceAgentSessionMessagesResponse struct {
 // WorkspaceAgentSessionResponse defines model for WorkspaceAgentSessionResponse.
 type WorkspaceAgentSessionResponse struct {
 	Session WorkspaceAgentSession `json:"session"`
+}
+
+// WorkspaceAgentSessionSection defines model for WorkspaceAgentSessionSection.
+type WorkspaceAgentSessionSection struct {
+	HasMore bool                             `json:"hasMore"`
+	Kind    WorkspaceAgentSessionSectionKind `json:"kind"`
+
+	// NextCursor Cursor for the next older page, encoded as updatedAtUnixMs|agentSessionId.
+	NextCursor  *string                 `json:"nextCursor,omitempty"`
+	SectionKey  string                  `json:"sectionKey"`
+	Sessions    []WorkspaceAgentSession `json:"sessions"`
+	UserProject *UserProject            `json:"userProject,omitempty"`
+}
+
+// WorkspaceAgentSessionSectionKind defines model for WorkspaceAgentSessionSectionKind.
+type WorkspaceAgentSessionSectionKind string
+
+// WorkspaceAgentSessionSectionPageResponse defines model for WorkspaceAgentSessionSectionPageResponse.
+type WorkspaceAgentSessionSectionPageResponse struct {
+	Section     WorkspaceAgentSessionSection `json:"section"`
+	WorkspaceId string                       `json:"workspaceId"`
+}
+
+// WorkspaceAgentSessionSectionsResponse defines model for WorkspaceAgentSessionSectionsResponse.
+type WorkspaceAgentSessionSectionsResponse struct {
+	Sections    []WorkspaceAgentSessionSection `json:"sections"`
+	WorkspaceId string                         `json:"workspaceId"`
 }
 
 // WorkspaceAgentSessionStatus defines model for WorkspaceAgentSessionStatus.
@@ -3492,6 +3598,7 @@ type WorkspaceAppCliStatus string
 // WorkspaceAppFactoryJob defines model for WorkspaceAppFactoryJob.
 type WorkspaceAppFactoryJob struct {
 	AgentSessionId   *string                      `json:"agentSessionId"`
+	AgentTargetId    *string                      `json:"agentTargetId"`
 	AppId            *string                      `json:"appId"`
 	CreatedAtUnixMs  int64                        `json:"createdAtUnixMs"`
 	Description      *string                      `json:"description"`
@@ -4026,11 +4133,30 @@ type ListWorkspaceAgentGeneratedFilesParams struct {
 	Limit      *int    `form:"limit,omitempty" json:"limit,omitempty"`
 }
 
+// ListWorkspaceAgentSessionSectionsParams defines parameters for ListWorkspaceAgentSessionSections.
+type ListWorkspaceAgentSessionSectionsParams struct {
+	LimitPerSection *int `form:"limitPerSection,omitempty" json:"limitPerSection,omitempty"`
+
+	// AgentTargetId Optional agent target filter applied before section pagination and hasMore calculation.
+	AgentTargetId *string `form:"agentTargetId,omitempty" json:"agentTargetId,omitempty"`
+}
+
+// ListWorkspaceAgentSessionSectionPageParams defines parameters for ListWorkspaceAgentSessionSectionPage.
+type ListWorkspaceAgentSessionSectionPageParams struct {
+	SectionKey string `form:"sectionKey" json:"sectionKey"`
+
+	// Cursor Cursor for the next older page, encoded as updatedAtUnixMs|agentSessionId.
+	Cursor *string `form:"cursor,omitempty" json:"cursor,omitempty"`
+	Limit  *int    `form:"limit,omitempty" json:"limit,omitempty"`
+
+	// AgentTargetId Optional agent target filter applied before section pagination and hasMore calculation.
+	AgentTargetId *string `form:"agentTargetId,omitempty" json:"agentTargetId,omitempty"`
+}
+
 // ListWorkspaceAgentSessionsParams defines parameters for ListWorkspaceAgentSessions.
 type ListWorkspaceAgentSessionsParams struct {
 	SearchQuery *string `form:"searchQuery,omitempty" json:"searchQuery,omitempty"`
 	Limit       *int    `form:"limit,omitempty" json:"limit,omitempty"`
-	VisibleOnly *bool   `form:"visibleOnly,omitempty" json:"visibleOnly,omitempty"`
 }
 
 // ListWorkspaceAgentSessionMessagesParams defines parameters for ListWorkspaceAgentSessionMessages.
@@ -4153,6 +4279,9 @@ type ImportWorkspaceExternalAgentSessionsJSONRequestBody = ImportExternalAgentSe
 // ScanWorkspaceExternalAgentSessionImportsJSONRequestBody defines body for ScanWorkspaceExternalAgentSessionImports for application/json ContentType.
 type ScanWorkspaceExternalAgentSessionImportsJSONRequestBody = ExternalAgentImportScanRequest
 
+// GoalControlWorkspaceAgentSessionJSONRequestBody defines body for GoalControlWorkspaceAgentSession for application/json ContentType.
+type GoalControlWorkspaceAgentSessionJSONRequestBody = WorkspaceAgentSessionGoalControlRequest
+
 // SendWorkspaceAgentSessionInputJSONRequestBody defines body for SendWorkspaceAgentSessionInput for application/json ContentType.
 type SendWorkspaceAgentSessionInputJSONRequestBody = SendWorkspaceAgentSessionInputRequest
 
@@ -4168,14 +4297,14 @@ type UpdateWorkspaceAgentSessionSettingsJSONRequestBody = AgentSessionComposerSe
 // UpdateWorkspaceAgentSessionVisibilityJSONRequestBody defines body for UpdateWorkspaceAgentSessionVisibility for application/json ContentType.
 type UpdateWorkspaceAgentSessionVisibilityJSONRequestBody = UpdateWorkspaceAgentSessionVisibilityRequest
 
+// GetWorkspaceAppFactoryAgentTargetComposerOptionsJSONRequestBody defines body for GetWorkspaceAppFactoryAgentTargetComposerOptions for application/json ContentType.
+type GetWorkspaceAppFactoryAgentTargetComposerOptionsJSONRequestBody = GetWorkspaceAppFactoryAgentTargetComposerOptionsRequest
+
 // CreateWorkspaceAppFactoryJobJSONRequestBody defines body for CreateWorkspaceAppFactoryJob for application/json ContentType.
 type CreateWorkspaceAppFactoryJobJSONRequestBody = CreateWorkspaceAppFactoryJobRequest
 
 // FixWorkspaceAppFactoryJobJSONRequestBody defines body for FixWorkspaceAppFactoryJob for application/json ContentType.
 type FixWorkspaceAppFactoryJobJSONRequestBody = FixWorkspaceAppFactoryJobRequest
-
-// GetWorkspaceAppFactoryProviderComposerOptionsJSONRequestBody defines body for GetWorkspaceAppFactoryProviderComposerOptions for application/json ContentType.
-type GetWorkspaceAppFactoryProviderComposerOptionsJSONRequestBody = GetWorkspaceAppFactoryProviderComposerOptionsRequest
 
 // ImportWorkspaceAppJSONRequestBody defines body for ImportWorkspaceApp for application/json ContentType.
 type ImportWorkspaceAppJSONRequestBody = ImportWorkspaceAppRequest

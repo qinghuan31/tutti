@@ -56,6 +56,7 @@ func TestDefaultPreparerCodexWritesInstructionsSkillManifestAndEnv(t *testing.T)
 	prepared, err := NewDefaultPreparer(stateDir).Prepare(t.Context(), PrepareInput{
 		WorkspaceID:    "workspace-1",
 		AgentSessionID: "session-1",
+		AgentTargetID:  "local:codex",
 		Provider:       "codex",
 		Cwd:            cwd,
 		ExtraSkills: []ProviderSkillBundle{
@@ -203,7 +204,9 @@ func TestDefaultPreparerCodexWritesInstructionsSkillManifestAndEnv(t *testing.T)
 		t.Fatalf("tutti skill missing: %v", err)
 	}
 	if !strings.Contains(string(skill), "`tutti <scope> --help`") ||
-		!strings.Contains(string(skill), "this skill's `command-guide.md`") {
+		!strings.Contains(string(skill), "this skill's `command-guide.md`") ||
+		!strings.Contains(string(skill), "mention://agent-target") ||
+		!strings.Contains(string(skill), "not launch-only") {
 		t.Fatalf("skill content = %q", string(skill))
 	}
 	commandGuideReference, err := os.ReadFile(filepath.Join(codexHome, "skills", "tutti-cli", commandGuideReferencePath))
@@ -237,7 +240,7 @@ func TestDefaultPreparerCodexWritesInstructionsSkillManifestAndEnv(t *testing.T)
 		!strings.Contains(string(issueSkill), "Create the run yourself before doing the work") ||
 		!strings.Contains(string(issueSkill), "inspect issue tasks before creating a run") ||
 		!strings.Contains(string(issueSkill), "execute each child task in issue order") ||
-		!strings.Contains(string(issueSkill), "--agent-provider codex --json") ||
+		!strings.Contains(string(issueSkill), "--agent-target-id local:codex --json") ||
 		!strings.Contains(string(issueSkill), "current AgentGUI session from the runtime context") ||
 		!strings.Contains(string(issueSkill), "complete that same run") ||
 		!strings.Contains(string(issueSkill), "Do not edit code, do not execute the task, and do not create or complete runs in breakdown mode") ||
@@ -249,6 +252,9 @@ func TestDefaultPreparerCodexWritesInstructionsSkillManifestAndEnv(t *testing.T)
 	}
 	if envValue(prepared.Env, "TUTTI_AGENT_PROVIDER") != "codex" {
 		t.Fatalf("prepared env = %#v, want TUTTI_AGENT_PROVIDER", prepared.Env)
+	}
+	if envValue(prepared.Env, "TUTTI_AGENT_TARGET_ID") != "local:codex" {
+		t.Fatalf("prepared env = %#v, want TUTTI_AGENT_TARGET_ID", prepared.Env)
 	}
 	if envValue(prepared.Env, "TUTTI_AGENT_CWD") != cwd {
 		t.Fatalf("prepared env = %#v, want TUTTI_AGENT_CWD", prepared.Env)
@@ -853,6 +859,7 @@ func TestDefaultPreparerClaudeCodeUsesSessionScopedSystemPrompt(t *testing.T) {
 		!strings.Contains(string(systemPrompt), "`mention://workspace-app/<appId>?workspaceId=...`") ||
 		!strings.Contains(string(systemPrompt), "`mention://workspace-reference/<id>?source=...&workspaceId=...`") ||
 		!strings.Contains(string(systemPrompt), "`mention://agent-session/<sessionId>?workspaceId=...`") ||
+		!strings.Contains(string(systemPrompt), "`mention://agent-target/<targetId>?workspaceId=...`") ||
 		!strings.Contains(string(systemPrompt), "Provider Skill tool exists -> call exact visible name for matching `$...` skill") ||
 		!strings.Contains(string(systemPrompt), "Skill missing/fails -> read matching materialized `SKILL.md`") ||
 		!strings.Contains(string(systemPrompt), "Claude Code mention routing") ||
@@ -869,7 +876,8 @@ func TestDefaultPreparerClaudeCodeUsesSessionScopedSystemPrompt(t *testing.T) {
 		!strings.Contains(string(systemPrompt), "issue get --issue-id <issue-id> --json") ||
 		!strings.Contains(string(systemPrompt), "Claude Code `Monitor` tool is disabled") ||
 		!strings.Contains(string(systemPrompt), "bounded shell/script") ||
-		!strings.Contains(string(systemPrompt), "agent session-summary --session-id <session-id> --json") {
+		!strings.Contains(string(systemPrompt), "agent session-summary --session-id <session-id> --json") ||
+		!strings.Contains(string(systemPrompt), "this is not launch-only") {
 		t.Fatalf("claude system prompt content = %q, want mention handoff fallback guidance", string(systemPrompt))
 	}
 	if !strings.Contains(string(systemPrompt), "# Host App Context") ||
@@ -888,6 +896,7 @@ func TestDefaultPreparerClaudeCodeUsesSessionScopedSystemPrompt(t *testing.T) {
 		!strings.Contains(string(systemPrompt), "Provider Skill tool exists -> call exact visible name for matching `$...` skill") ||
 		!strings.Contains(string(systemPrompt), "Skill missing/fails -> read matching materialized `SKILL.md`") ||
 		!strings.Contains(string(systemPrompt), "`mention://...` = internal data. Not URL/path.") ||
+		!strings.Contains(string(systemPrompt), "`mention://agent-target/<targetId>?workspaceId=...`") ||
 		!strings.Contains(string(systemPrompt), "agent session-summary --session-id <session-id> --json") ||
 		!strings.Contains(string(systemPrompt), "issue get --issue-id <issue-id> --json") {
 		t.Fatalf("claude system prompt content = %q, want strict Tutti mention routing", string(systemPrompt))
@@ -927,6 +936,8 @@ func TestDefaultPreparerClaudeCodeUsesSessionScopedSystemPrompt(t *testing.T) {
 	if !strings.Contains(string(pluginSkill), "`tutti <scope> --help`") ||
 		!strings.Contains(string(pluginSkill), "this skill's `command-guide.md`") ||
 		!strings.Contains(string(pluginSkill), "mention://agent-session") ||
+		!strings.Contains(string(pluginSkill), "mention://agent-target") ||
+		!strings.Contains(string(pluginSkill), "not launch-only") ||
 		!strings.Contains(string(pluginSkill), "## Route First") ||
 		!strings.Contains(string(pluginSkill), "## Call Protocol") ||
 		!strings.Contains(string(pluginSkill), "invoke `$issue-manager`") ||
@@ -1220,6 +1231,142 @@ func TestCodexPreparerSkipsUserBrowserSkillWhenBrowserUseEnabled(t *testing.T) {
 	}
 	if !strings.Contains(string(codexAgents), "`$browser-use`") {
 		t.Fatalf("codex AGENTS.md content = %q, want browser-use policy", string(codexAgents))
+	}
+}
+
+func TestExposeCodexImportedRolloutFileSymlinksMatchingRelativePath(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	rel := filepath.Join("sessions", "2026", "07", "04", "rollout-abc.jsonl")
+	sourcePath := filepath.Join(home, ".codex", rel)
+	writeSidecarTestFile(t, sourcePath, `{"type":"session_meta"}`)
+
+	codexHome := t.TempDir()
+	if err := exposeCodexImportedRolloutFile(codexHome, sourcePath); err != nil {
+		t.Fatalf("exposeCodexImportedRolloutFile() error = %v", err)
+	}
+
+	target := filepath.Join(codexHome, rel)
+	info, err := os.Lstat(target)
+	if err != nil {
+		t.Fatalf("imported rollout file not exposed: %v", err)
+	}
+	if info.Mode()&os.ModeSymlink == 0 {
+		t.Fatalf("imported rollout file mode = %v, want symlink", info.Mode())
+	}
+	linkTarget, err := os.Readlink(target)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if linkTarget != sourcePath {
+		t.Fatalf("symlink target = %q, want %q", linkTarget, sourcePath)
+	}
+}
+
+func TestExposeCodexImportedRolloutFileNoopWhenSourcePathEmpty(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	codexHome := t.TempDir()
+	if err := exposeCodexImportedRolloutFile(codexHome, ""); err != nil {
+		t.Fatalf("exposeCodexImportedRolloutFile() error = %v", err)
+	}
+	entries, err := os.ReadDir(codexHome)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(entries) != 0 {
+		t.Fatalf("codexHome entries = %#v, want none created for empty source path", entries)
+	}
+}
+
+func TestExposeCodexImportedRolloutFileGracefulWhenSourceFileMissing(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	sourcePath := filepath.Join(home, ".codex", "sessions", "2026", "07", "04", "rollout-gone.jsonl")
+
+	codexHome := t.TempDir()
+	if err := exposeCodexImportedRolloutFile(codexHome, sourcePath); err != nil {
+		t.Fatalf("exposeCodexImportedRolloutFile() error = %v, want graceful nil when source is gone", err)
+	}
+	if _, err := os.Lstat(filepath.Join(codexHome, "sessions", "2026", "07", "04", "rollout-gone.jsonl")); !os.IsNotExist(err) {
+		t.Fatalf("expected no symlink for a missing source rollout, err = %v", err)
+	}
+}
+
+func TestExposeCodexImportedRolloutFileGracefulWhenSourceOutsideRealCodexHome(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	outsidePath := filepath.Join(t.TempDir(), "rollout.jsonl")
+	writeSidecarTestFile(t, outsidePath, `{"type":"session_meta"}`)
+
+	codexHome := t.TempDir()
+	if err := exposeCodexImportedRolloutFile(codexHome, outsidePath); err != nil {
+		t.Fatalf("exposeCodexImportedRolloutFile() error = %v, want graceful nil for a path outside ~/.codex", err)
+	}
+	entries, err := os.ReadDir(codexHome)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(entries) != 0 {
+		t.Fatalf("codexHome entries = %#v, want none created for a source path outside ~/.codex", entries)
+	}
+}
+
+func TestDefaultPreparerCodexExposesImportedRolloutFileFromPrepareInput(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	rel := filepath.Join("sessions", "2026", "07", "04", "rollout-abc.jsonl")
+	sourcePath := filepath.Join(home, ".codex", rel)
+	writeSidecarTestFile(t, sourcePath, `{"type":"session_meta"}`)
+
+	stateDir := t.TempDir()
+	cwd := t.TempDir()
+	prepared, err := NewDefaultPreparer(stateDir).Prepare(t.Context(), PrepareInput{
+		WorkspaceID:               "workspace-1",
+		AgentSessionID:            "session-1",
+		AgentTargetID:             "local:codex",
+		Provider:                  "codex",
+		Cwd:                       cwd,
+		ExternalRolloutSourcePath: sourcePath,
+	})
+	if err != nil {
+		t.Fatalf("Prepare() error = %v", err)
+	}
+	codexHome := envValue(prepared.Env, "CODEX_HOME")
+	if codexHome == "" {
+		t.Fatalf("prepared env = %#v, want CODEX_HOME", prepared.Env)
+	}
+	target := filepath.Join(codexHome, rel)
+	info, err := os.Lstat(target)
+	if err != nil {
+		t.Fatalf("imported rollout file not exposed via Prepare(): %v", err)
+	}
+	if info.Mode()&os.ModeSymlink == 0 {
+		t.Fatalf("imported rollout file mode = %v, want symlink", info.Mode())
+	}
+}
+
+func TestDefaultPreparerCodexSkipsRolloutExposureForNonImportedSession(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	stateDir := t.TempDir()
+	cwd := t.TempDir()
+	prepared, err := NewDefaultPreparer(stateDir).Prepare(t.Context(), PrepareInput{
+		WorkspaceID:    "workspace-1",
+		AgentSessionID: "session-1",
+		AgentTargetID:  "local:codex",
+		Provider:       "codex",
+		Cwd:            cwd,
+	})
+	if err != nil {
+		t.Fatalf("Prepare() error = %v", err)
+	}
+	codexHome := envValue(prepared.Env, "CODEX_HOME")
+	if codexHome == "" {
+		t.Fatalf("prepared env = %#v, want CODEX_HOME", prepared.Env)
+	}
+	if _, err := os.Stat(filepath.Join(codexHome, "sessions")); !os.IsNotExist(err) {
+		t.Fatalf("non-imported session should not create a sessions dir, err = %v", err)
 	}
 }
 

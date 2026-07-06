@@ -20,6 +20,7 @@ export const preferencesDesktopPreferencesSchema = {
     "minimizeAnimation",
     "sleepPreventionMode",
     "showAppDeveloperSources",
+    "enableCursorAgent",
     "themeSource",
     "updateChannel",
     "updatePolicy"
@@ -41,6 +42,9 @@ export const preferencesDesktopPreferencesSchema = {
             },
             reasoningEffort: {
               type: "string"
+            },
+            speed: {
+              type: "string"
             }
           }
         },
@@ -56,6 +60,9 @@ export const preferencesDesktopPreferencesSchema = {
             },
             reasoningEffort: {
               type: "string"
+            },
+            speed: {
+              type: "string"
             }
           }
         },
@@ -70,6 +77,45 @@ export const preferencesDesktopPreferencesSchema = {
               type: "string"
             },
             reasoningEffort: {
+              type: "string"
+            },
+            speed: {
+              type: "string"
+            }
+          }
+        },
+        cursor: {
+          type: "object",
+          additionalProperties: false,
+          properties: {
+            model: {
+              type: "string"
+            },
+            permissionModeId: {
+              type: "string"
+            },
+            reasoningEffort: {
+              type: "string"
+            },
+            speed: {
+              type: "string"
+            }
+          }
+        },
+        nexight: {
+          type: "object",
+          additionalProperties: false,
+          properties: {
+            model: {
+              type: "string"
+            },
+            permissionModeId: {
+              type: "string"
+            },
+            reasoningEffort: {
+              type: "string"
+            },
+            speed: {
               type: "string"
             }
           }
@@ -86,6 +132,9 @@ export const preferencesDesktopPreferencesSchema = {
             },
             reasoningEffort: {
               type: "string"
+            },
+            speed: {
+              type: "string"
             }
           }
         },
@@ -100,6 +149,9 @@ export const preferencesDesktopPreferencesSchema = {
               type: "string"
             },
             reasoningEffort: {
+              type: "string"
+            },
+            speed: {
               type: "string"
             }
           }
@@ -116,7 +168,31 @@ export const preferencesDesktopPreferencesSchema = {
             },
             reasoningEffort: {
               type: "string"
+            },
+            speed: {
+              type: "string"
             }
+          }
+        }
+      }
+    },
+    agentComposerDefaultsByAgentTarget: {
+      type: "object",
+      additionalProperties: {
+        type: "object",
+        additionalProperties: false,
+        properties: {
+          model: {
+            type: "string"
+          },
+          permissionModeId: {
+            type: "string"
+          },
+          reasoningEffort: {
+            type: "string"
+          },
+          speed: {
+            type: "string"
           }
         }
       }
@@ -132,6 +208,12 @@ export const preferencesDesktopPreferencesSchema = {
           type: "boolean"
         },
         "tutti-agent": {
+          type: "boolean"
+        },
+        cursor: {
+          type: "boolean"
+        },
+        nexight: {
           type: "boolean"
         },
         gemini: {
@@ -195,6 +277,9 @@ export const preferencesDesktopPreferencesSchema = {
     showAppDeveloperSources: {
       type: "boolean"
     },
+    enableCursorAgent: {
+      type: "boolean"
+    },
     themeSource: {
       type: "string",
       enum: ["system", "dark", "light"]
@@ -235,6 +320,9 @@ export const preferencesDesktopPreferencesSchema = {
         },
         reasoningEffort: {
           type: "string"
+        },
+        speed: {
+          type: "string"
         }
       }
     }
@@ -255,6 +343,7 @@ export const workspaceWorkspaceAppFactoryJobSchema = {
     "appId",
     "displayName",
     "description",
+    "agentTargetId",
     "provider",
     "model",
     "reasoningEffort",
@@ -298,6 +387,9 @@ export const workspaceWorkspaceAppFactoryJobSchema = {
       minLength: 1
     },
     description: {
+      type: ["string", "null"]
+    },
+    agentTargetId: {
       type: ["string", "null"]
     },
     provider: {
@@ -983,6 +1075,7 @@ export const preferencesDesktopUpdateRequestedPayloadSchema = {
         "minimizeAnimation",
         "sleepPreventionMode",
         "showAppDeveloperSources",
+        "enableCursorAgent",
         "themeSource",
         "updateChannel",
         "updatePolicy"
@@ -1004,6 +1097,9 @@ export const preferencesDesktopUpdateRequestedPayloadSchema = {
                 },
                 reasoningEffort: {
                   type: "string"
+                },
+                speed: {
+                  type: "string"
                 }
               }
             },
@@ -1019,6 +1115,9 @@ export const preferencesDesktopUpdateRequestedPayloadSchema = {
                 },
                 reasoningEffort: {
                   type: "string"
+                },
+                speed: {
+                  type: "string"
                 }
               }
             },
@@ -1033,6 +1132,45 @@ export const preferencesDesktopUpdateRequestedPayloadSchema = {
                   type: "string"
                 },
                 reasoningEffort: {
+                  type: "string"
+                },
+                speed: {
+                  type: "string"
+                }
+              }
+            },
+            cursor: {
+              type: "object",
+              additionalProperties: false,
+              properties: {
+                model: {
+                  type: "string"
+                },
+                permissionModeId: {
+                  type: "string"
+                },
+                reasoningEffort: {
+                  type: "string"
+                },
+                speed: {
+                  type: "string"
+                }
+              }
+            },
+            nexight: {
+              type: "object",
+              additionalProperties: false,
+              properties: {
+                model: {
+                  type: "string"
+                },
+                permissionModeId: {
+                  type: "string"
+                },
+                reasoningEffort: {
+                  type: "string"
+                },
+                speed: {
                   type: "string"
                 }
               }
@@ -1049,6 +1187,9 @@ export const preferencesDesktopUpdateRequestedPayloadSchema = {
                 },
                 reasoningEffort: {
                   type: "string"
+                },
+                speed: {
+                  type: "string"
                 }
               }
             },
@@ -1063,6 +1204,9 @@ export const preferencesDesktopUpdateRequestedPayloadSchema = {
                   type: "string"
                 },
                 reasoningEffort: {
+                  type: "string"
+                },
+                speed: {
                   type: "string"
                 }
               }
@@ -1079,7 +1223,31 @@ export const preferencesDesktopUpdateRequestedPayloadSchema = {
                 },
                 reasoningEffort: {
                   type: "string"
+                },
+                speed: {
+                  type: "string"
                 }
+              }
+            }
+          }
+        },
+        agentComposerDefaultsByAgentTarget: {
+          type: "object",
+          additionalProperties: {
+            type: "object",
+            additionalProperties: false,
+            properties: {
+              model: {
+                type: "string"
+              },
+              permissionModeId: {
+                type: "string"
+              },
+              reasoningEffort: {
+                type: "string"
+              },
+              speed: {
+                type: "string"
               }
             }
           }
@@ -1095,6 +1263,12 @@ export const preferencesDesktopUpdateRequestedPayloadSchema = {
               type: "boolean"
             },
             "tutti-agent": {
+              type: "boolean"
+            },
+            cursor: {
+              type: "boolean"
+            },
+            nexight: {
               type: "boolean"
             },
             gemini: {
@@ -1158,6 +1332,9 @@ export const preferencesDesktopUpdateRequestedPayloadSchema = {
         showAppDeveloperSources: {
           type: "boolean"
         },
+        enableCursorAgent: {
+          type: "boolean"
+        },
         themeSource: {
           type: "string",
           enum: ["system", "dark", "light"]
@@ -1197,6 +1374,9 @@ export const preferencesDesktopUpdateRequestedPayloadSchema = {
               type: "string"
             },
             reasoningEffort: {
+              type: "string"
+            },
+            speed: {
               type: "string"
             }
           }
@@ -1234,6 +1414,7 @@ export const preferencesDesktopUpdatedPayloadSchema = {
         "minimizeAnimation",
         "sleepPreventionMode",
         "showAppDeveloperSources",
+        "enableCursorAgent",
         "themeSource",
         "updateChannel",
         "updatePolicy"
@@ -1255,6 +1436,9 @@ export const preferencesDesktopUpdatedPayloadSchema = {
                 },
                 reasoningEffort: {
                   type: "string"
+                },
+                speed: {
+                  type: "string"
                 }
               }
             },
@@ -1270,6 +1454,9 @@ export const preferencesDesktopUpdatedPayloadSchema = {
                 },
                 reasoningEffort: {
                   type: "string"
+                },
+                speed: {
+                  type: "string"
                 }
               }
             },
@@ -1284,6 +1471,45 @@ export const preferencesDesktopUpdatedPayloadSchema = {
                   type: "string"
                 },
                 reasoningEffort: {
+                  type: "string"
+                },
+                speed: {
+                  type: "string"
+                }
+              }
+            },
+            cursor: {
+              type: "object",
+              additionalProperties: false,
+              properties: {
+                model: {
+                  type: "string"
+                },
+                permissionModeId: {
+                  type: "string"
+                },
+                reasoningEffort: {
+                  type: "string"
+                },
+                speed: {
+                  type: "string"
+                }
+              }
+            },
+            nexight: {
+              type: "object",
+              additionalProperties: false,
+              properties: {
+                model: {
+                  type: "string"
+                },
+                permissionModeId: {
+                  type: "string"
+                },
+                reasoningEffort: {
+                  type: "string"
+                },
+                speed: {
                   type: "string"
                 }
               }
@@ -1300,6 +1526,9 @@ export const preferencesDesktopUpdatedPayloadSchema = {
                 },
                 reasoningEffort: {
                   type: "string"
+                },
+                speed: {
+                  type: "string"
                 }
               }
             },
@@ -1314,6 +1543,9 @@ export const preferencesDesktopUpdatedPayloadSchema = {
                   type: "string"
                 },
                 reasoningEffort: {
+                  type: "string"
+                },
+                speed: {
                   type: "string"
                 }
               }
@@ -1330,7 +1562,31 @@ export const preferencesDesktopUpdatedPayloadSchema = {
                 },
                 reasoningEffort: {
                   type: "string"
+                },
+                speed: {
+                  type: "string"
                 }
+              }
+            }
+          }
+        },
+        agentComposerDefaultsByAgentTarget: {
+          type: "object",
+          additionalProperties: {
+            type: "object",
+            additionalProperties: false,
+            properties: {
+              model: {
+                type: "string"
+              },
+              permissionModeId: {
+                type: "string"
+              },
+              reasoningEffort: {
+                type: "string"
+              },
+              speed: {
+                type: "string"
               }
             }
           }
@@ -1346,6 +1602,12 @@ export const preferencesDesktopUpdatedPayloadSchema = {
               type: "boolean"
             },
             "tutti-agent": {
+              type: "boolean"
+            },
+            cursor: {
+              type: "boolean"
+            },
+            nexight: {
               type: "boolean"
             },
             gemini: {
@@ -1409,6 +1671,9 @@ export const preferencesDesktopUpdatedPayloadSchema = {
         showAppDeveloperSources: {
           type: "boolean"
         },
+        enableCursorAgent: {
+          type: "boolean"
+        },
         themeSource: {
           type: "string",
           enum: ["system", "dark", "light"]
@@ -1448,6 +1713,9 @@ export const preferencesDesktopUpdatedPayloadSchema = {
               type: "string"
             },
             reasoningEffort: {
+              type: "string"
+            },
+            speed: {
               type: "string"
             }
           }
@@ -1717,6 +1985,7 @@ export const workspaceAppfactoryJobUpdatedPayloadSchema = {
         "appId",
         "displayName",
         "description",
+        "agentTargetId",
         "provider",
         "model",
         "reasoningEffort",
@@ -1760,6 +2029,9 @@ export const workspaceAppfactoryJobUpdatedPayloadSchema = {
           minLength: 1
         },
         description: {
+          type: ["string", "null"]
+        },
+        agentTargetId: {
           type: ["string", "null"]
         },
         provider: {

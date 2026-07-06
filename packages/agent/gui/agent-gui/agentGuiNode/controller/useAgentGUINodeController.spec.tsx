@@ -330,7 +330,6 @@ describe("useAgentGUINodeController", () => {
           providerTargetId: "local:codex",
           providerTargetRef: { kind: "local-provider", provider: "codex" }
         }),
-        conversationScope: "multi-provider",
         onDataChange,
         onRememberComposerDefaults
       })
@@ -388,7 +387,7 @@ describe("useAgentGUINodeController", () => {
     expect(onRememberComposerDefaults).not.toHaveBeenCalled();
   });
 
-  it("selects a rail target by updating only the conversation filter", async () => {
+  it("selects a rail target by updating the filter and empty composer provider", async () => {
     installAgentHostApi({
       list: vi.fn(async () => ({
         presences: [],
@@ -419,7 +418,6 @@ describe("useAgentGUINodeController", () => {
         data: agentGuiData(null, "codex", {
           agentTargetId: "local:codex"
         }),
-        conversationScope: "multi-provider",
         providerTargets: [
           {
             targetId: "local:codex",
@@ -460,25 +458,482 @@ describe("useAgentGUINodeController", () => {
         agentTargetId: "local:claude-code"
       });
     });
-    expect(result.current.viewModel.data.provider).toBe("codex");
+    expect(result.current.viewModel.data.provider).toBe("claude-code");
     expect(result.current.viewModel.selectedProviderTarget.provider).toBe(
-      "codex"
+      "claude-code"
     );
-    expect(result.current.viewModel.data.agentTargetId).toBe("local:codex");
+    expect(result.current.viewModel.data.agentTargetId).toBe(
+      "local:claude-code"
+    );
     const currentData = agentGuiData(null, "codex", {
       agentTargetId: "local:codex",
       composerOverrides: { model: "gpt-5" }
     });
-    for (const [updater] of onDataChange.mock.calls) {
-      const next = updater(currentData);
-      expect(next).toMatchObject({
-        provider: "codex",
-        agentTargetId: "local:codex",
-        composerOverrides: { model: "gpt-5" }
+    const nextData = onDataChange.mock.calls
+      .map(([updater]) => updater(currentData))
+      .find((candidate) => candidate.provider === "claude-code");
+    expect(nextData).toMatchObject({
+      provider: "claude-code",
+      agentTargetId: "local:claude-code",
+      composerOverrides: null
+    });
+    expect(nextData?.providerTargetId ?? null).toBeNull();
+    expect(nextData?.providerTargetRef ?? null).toBeNull();
+  });
+
+  it("resets the empty composer provider when switching the rail filter back to All", async () => {
+    installAgentHostApi({
+      list: vi.fn(async () => ({
+        presences: [],
+        sessions: [
+          workspaceAgentSession("codex-session", {
+            agentTargetId: "local:codex",
+            provider: "codex",
+            title: "Codex session",
+            updatedAtUnixMs: 3
+          }),
+          workspaceAgentSession("claude-session", {
+            agentTargetId: "local:claude-code",
+            provider: "claude-code",
+            title: "Claude session",
+            updatedAtUnixMs: 2
+          })
+        ]
+      })),
+      listSessionTimeline: vi.fn(async () => ({ timelineItems: [] })),
+      subscribeEvents: vi.fn(() => vi.fn())
+    });
+    const onDataChange = vi.fn();
+    const initialData = agentGuiData(null, "codex", {
+      agentTargetId: "local:codex"
+    });
+    let renderedData = initialData;
+
+    const { result, rerender } = renderHook(
+      ({ data }) =>
+        useAgentGUINodeController({
+          workspaceId: "room-1",
+          currentUserId: "user-1",
+          workspacePath: "/workspace",
+          avoidGroupingEdits: false,
+          data,
+          defaultProviderTargetId: "local:codex",
+          providerTargets: [
+            {
+              targetId: "local:codex",
+              agentTargetId: "local:codex",
+              provider: "codex",
+              ref: { kind: "local-provider", provider: "codex" },
+              label: "Codex"
+            },
+            {
+              targetId: "local:claude-code",
+              agentTargetId: "local:claude-code",
+              provider: "claude-code",
+              ref: { kind: "local-provider", provider: "claude-code" },
+              label: "Claude Code"
+            }
+          ],
+          providerReadinessGates: {
+            "claude-code": { status: "auth_required" }
+          },
+          onDataChange
+        }),
+      { initialProps: { data: renderedData } }
+    );
+
+    act(() => {
+      result.current.actions.selectConversationFilterTarget({
+        provider: "claude-code",
+        providerTargetId: "local:claude-code"
       });
-      expect(next.providerTargetId ?? null).toBeNull();
-      expect(next.providerTargetRef ?? null).toBeNull();
-    }
+    });
+
+    await waitFor(() => {
+      expect(result.current.viewModel.conversationFilter).toEqual({
+        kind: "agentTarget",
+        agentTargetId: "local:claude-code"
+      });
+    });
+    expect(result.current.viewModel.selectedProviderTarget.provider).toBe(
+      "claude-code"
+    );
+    expect(result.current.viewModel.providerReadinessGate?.status).toBe(
+      "auth_required"
+    );
+
+    renderedData = onDataChange.mock.calls.reduce(
+      (data, [updater]) => updater(data),
+      renderedData
+    );
+    rerender({ data: renderedData });
+    await waitFor(() => {
+      expect(result.current.viewModel.data.provider).toBe("claude-code");
+    });
+    onDataChange.mockClear();
+
+    act(() => {
+      result.current.actions.updateConversationFilter({ kind: "all" });
+    });
+
+    await waitFor(() => {
+      expect(result.current.viewModel.conversationFilter).toEqual({
+        kind: "all"
+      });
+    });
+    expect(result.current.viewModel.selectedProviderTarget.provider).toBe(
+      "codex"
+    );
+    expect(result.current.viewModel.data).toMatchObject({
+      provider: "codex",
+      agentTargetId: "local:codex",
+      lastActiveAgentSessionId: null
+    });
+    expect(result.current.viewModel.providerReadinessGate).toBeNull();
+  });
+
+  it("keeps the active conversation target stable while an empty rail target transition starts", async () => {
+    const unactivate = vi.fn();
+    installAgentHostApi({
+      list: vi.fn(async () => ({
+        presences: [],
+        sessions: [
+          workspaceAgentSession("codex-session", {
+            agentTargetId: "local:codex",
+            provider: "codex",
+            title: "Codex session",
+            updatedAtUnixMs: 3
+          }),
+          workspaceAgentSession("claude-session", {
+            agentTargetId: "local:claude-code",
+            provider: "claude-code",
+            title: "Claude session",
+            updatedAtUnixMs: 2
+          })
+        ]
+      })),
+      listSessionTimeline: vi.fn(async () => ({ timelineItems: [] })),
+      subscribeEvents: vi.fn(() => vi.fn()),
+      unactivate
+    });
+    const onDataChange = vi.fn();
+    const initialData = agentGuiData("codex-session", "codex", {
+      agentTargetId: "local:codex"
+    });
+
+    const { result } = renderHook(() =>
+      useAgentGUINodeController({
+        workspaceId: "room-1",
+        currentUserId: "user-1",
+        workspacePath: "/workspace",
+        avoidGroupingEdits: false,
+        data: initialData,
+        providerTargets: [
+          {
+            targetId: "local:codex",
+            agentTargetId: "local:codex",
+            provider: "codex",
+            ref: { kind: "local-provider", provider: "codex" },
+            label: "Codex"
+          },
+          {
+            targetId: "local:claude-code",
+            agentTargetId: "local:claude-code",
+            provider: "claude-code",
+            ref: { kind: "local-provider", provider: "claude-code" },
+            label: "Claude Code"
+          }
+        ],
+        onDataChange
+      })
+    );
+
+    await waitFor(() => {
+      expect(result.current.viewModel.activeConversationId).toBe(
+        "codex-session"
+      );
+      expect(result.current.viewModel.isLoadingConversations).toBe(false);
+    });
+    onDataChange.mockClear();
+
+    act(() => {
+      result.current.actions.selectConversationFilterTarget({
+        provider: "claude-code",
+        providerTargetId: "local:claude-code"
+      });
+    });
+
+    await waitFor(() => {
+      expect(result.current.viewModel.conversationFilter).toEqual({
+        kind: "agentTarget",
+        agentTargetId: "local:claude-code"
+      });
+    });
+    expect(result.current.viewModel.activeConversationId).toBe("codex-session");
+    expect(result.current.viewModel.data.provider).toBe("codex");
+    expect(result.current.viewModel.selectedProviderTarget.provider).toBe(
+      "codex"
+    );
+    await waitFor(() => {
+      expect(unactivate).toHaveBeenCalledWith({
+        workspaceId: "room-1",
+        agentSessionId: "codex-session"
+      });
+    });
+    const appliedData = onDataChange.mock.calls.reduce(
+      (data, [updater]) => updater(data),
+      initialData
+    );
+    expect(appliedData).toMatchObject({
+      provider: "claude-code",
+      agentTargetId: "local:claude-code",
+      lastActiveAgentSessionId: null
+    });
+  });
+
+  it("opens the target empty composer when an active conversation switches to an agent with no conversations", async () => {
+    const unactivate = vi.fn();
+    installAgentHostApi({
+      list: vi.fn(async () => ({
+        presences: [],
+        sessions: [
+          workspaceAgentSession("codex-session", {
+            agentTargetId: "local:codex",
+            provider: "codex",
+            title: "Codex session",
+            updatedAtUnixMs: 3
+          })
+        ]
+      })),
+      listSessionTimeline: vi.fn(async () => ({ timelineItems: [] })),
+      subscribeEvents: vi.fn(() => vi.fn()),
+      unactivate
+    });
+    const onDataChange = vi.fn();
+    const initialData = agentGuiData("codex-session", "codex", {
+      agentTargetId: "local:codex"
+    });
+
+    const { result } = renderHook(() =>
+      useAgentGUINodeController({
+        workspaceId: "room-1",
+        currentUserId: "user-1",
+        workspacePath: "/workspace",
+        avoidGroupingEdits: false,
+        data: initialData,
+        providerTargets: [
+          {
+            targetId: "local:codex",
+            agentTargetId: "local:codex",
+            provider: "codex",
+            ref: { kind: "local-provider", provider: "codex" },
+            label: "Codex"
+          },
+          {
+            targetId: "local:claude-code",
+            agentTargetId: "local:claude-code",
+            provider: "claude-code",
+            ref: { kind: "local-provider", provider: "claude-code" },
+            label: "Claude Code"
+          }
+        ],
+        onDataChange
+      })
+    );
+
+    await waitFor(() => {
+      expect(result.current.viewModel.activeConversationId).toBe(
+        "codex-session"
+      );
+      expect(result.current.viewModel.isLoadingConversations).toBe(false);
+    });
+    onDataChange.mockClear();
+
+    act(() => {
+      result.current.actions.selectConversationFilterTarget({
+        provider: "claude-code",
+        providerTargetId: "local:claude-code"
+      });
+    });
+
+    await waitFor(() => {
+      expect(result.current.viewModel.activeConversationId).toBeNull();
+    });
+    expect(result.current.viewModel.conversationFilter).toEqual({
+      kind: "agentTarget",
+      agentTargetId: "local:claude-code"
+    });
+    expect(result.current.viewModel.selectedProviderTarget.provider).toBe(
+      "claude-code"
+    );
+    const appliedData = onDataChange.mock.calls.reduce(
+      (data, [updater]) => updater(data),
+      initialData
+    );
+    expect(appliedData).toMatchObject({
+      provider: "claude-code",
+      agentTargetId: "local:claude-code",
+      lastActiveAgentSessionId: null
+    });
+    expect(unactivate).toHaveBeenCalledWith({
+      workspaceId: "room-1",
+      agentSessionId: "codex-session"
+    });
+  });
+
+  it("keeps the All rail target selected when switching the empty composer provider from All", async () => {
+    installAgentHostApi({
+      list: vi.fn(async () => ({
+        presences: [],
+        sessions: [
+          workspaceAgentSession("codex-session", {
+            provider: "codex",
+            title: "Codex session",
+            updatedAtUnixMs: 3
+          }),
+          workspaceAgentSession("claude-session", {
+            provider: "claude-code",
+            title: "Claude session",
+            updatedAtUnixMs: 2
+          })
+        ]
+      })),
+      listSessionTimeline: vi.fn(async () => ({ timelineItems: [] })),
+      subscribeEvents: vi.fn(() => vi.fn())
+    });
+
+    const { result } = renderHook(() =>
+      useAgentGUINodeController({
+        workspaceId: "room-1",
+        currentUserId: "user-1",
+        workspacePath: "/workspace",
+        avoidGroupingEdits: false,
+        data: agentGuiData(null, "codex", {
+          agentTargetId: "local:codex"
+        }),
+        providerTargets: [
+          {
+            targetId: "local:codex",
+            agentTargetId: "local:codex",
+            provider: "codex",
+            ref: { kind: "local-provider", provider: "codex" },
+            label: "Codex"
+          },
+          {
+            targetId: "local:claude-code",
+            agentTargetId: "local:claude-code",
+            provider: "claude-code",
+            ref: { kind: "local-provider", provider: "claude-code" },
+            label: "Claude Code"
+          }
+        ],
+        onDataChange: vi.fn()
+      })
+    );
+
+    await waitFor(() => {
+      expect(result.current.viewModel.conversationFilter).toEqual({
+        kind: "all"
+      });
+    });
+
+    act(() => {
+      result.current.actions.selectHomeComposerAgentTarget({
+        provider: "claude-code",
+        providerTargetId: "local:claude-code"
+      });
+    });
+
+    await waitFor(() => {
+      expect(result.current.viewModel.conversationFilter).toEqual({
+        kind: "all"
+      });
+    });
+    expect(result.current.viewModel.selectedProviderTarget.provider).toBe(
+      "claude-code"
+    );
+  });
+
+  it("syncs a scoped rail target when switching the empty composer provider", async () => {
+    installAgentHostApi({
+      list: vi.fn(async () => ({
+        presences: [],
+        sessions: [
+          workspaceAgentSession("codex-session", {
+            provider: "codex",
+            title: "Codex session",
+            updatedAtUnixMs: 3
+          }),
+          workspaceAgentSession("claude-session", {
+            provider: "claude-code",
+            title: "Claude session",
+            updatedAtUnixMs: 2
+          })
+        ]
+      })),
+      listSessionTimeline: vi.fn(async () => ({ timelineItems: [] })),
+      subscribeEvents: vi.fn(() => vi.fn())
+    });
+
+    const { result } = renderHook(() =>
+      useAgentGUINodeController({
+        workspaceId: "room-1",
+        currentUserId: "user-1",
+        workspacePath: "/workspace",
+        avoidGroupingEdits: false,
+        data: agentGuiData(null, "codex", {
+          agentTargetId: "local:codex"
+        }),
+        providerTargets: [
+          {
+            targetId: "local:codex",
+            agentTargetId: "local:codex",
+            provider: "codex",
+            ref: { kind: "local-provider", provider: "codex" },
+            label: "Codex"
+          },
+          {
+            targetId: "local:claude-code",
+            agentTargetId: "local:claude-code",
+            provider: "claude-code",
+            ref: { kind: "local-provider", provider: "claude-code" },
+            label: "Claude Code"
+          }
+        ],
+        onDataChange: vi.fn()
+      })
+    );
+
+    act(() => {
+      result.current.actions.selectConversationFilterTarget({
+        provider: "codex",
+        providerTargetId: "local:codex"
+      });
+    });
+
+    await waitFor(() => {
+      expect(result.current.viewModel.conversationFilter).toEqual({
+        kind: "agentTarget",
+        agentTargetId: "local:codex"
+      });
+    });
+
+    act(() => {
+      result.current.actions.selectHomeComposerAgentTarget({
+        provider: "claude-code",
+        providerTargetId: "local:claude-code"
+      });
+    });
+
+    await waitFor(() => {
+      expect(result.current.viewModel.conversationFilter).toEqual({
+        kind: "agentTarget",
+        agentTargetId: "local:claude-code"
+      });
+    });
+    expect(result.current.viewModel.selectedProviderTarget.provider).toBe(
+      "claude-code"
+    );
   });
 
   it("resolves provider readiness gates from the selected provider target before legacy node provider", () => {
@@ -497,7 +952,6 @@ describe("useAgentGUINodeController", () => {
         data: agentGuiData(null, "codex", {
           agentTargetId: "daemon-claude"
         }),
-        conversationScope: "multi-provider",
         providerTargets: [
           {
             targetId: "daemon-claude",
@@ -524,7 +978,7 @@ describe("useAgentGUINodeController", () => {
     );
   });
 
-  it("does not persist provider target ids while filtering rail conversations", async () => {
+  it("selects provider-only rail targets for the empty composer", async () => {
     installAgentHostApi({
       list: vi.fn(async () => ({ presences: [], sessions: [] })),
       listSessionTimeline: vi.fn(async () => ({ timelineItems: [] })),
@@ -543,7 +997,6 @@ describe("useAgentGUINodeController", () => {
         workspacePath: "/workspace",
         avoidGroupingEdits: false,
         data: initialData,
-        conversationScope: "multi-provider",
         providerTargets: [
           {
             targetId: "shared-agent:codex-1",
@@ -572,17 +1025,319 @@ describe("useAgentGUINodeController", () => {
         kind: "all"
       });
     });
-    expect(result.current.viewModel.data).toEqual(initialData);
-    for (const [updater] of onDataChange.mock.calls) {
-      const next = updater(initialData);
-      expect(next).toMatchObject({
-        provider: "claude-code",
-        agentTargetId: "local:claude-code",
-        composerOverrides: { model: "sonnet" }
+    expect(result.current.viewModel.selectedProviderTarget.targetId).toBe(
+      "shared-agent:codex-1"
+    );
+    expect(result.current.viewModel.data.provider).toBe("codex");
+    expect(result.current.viewModel.data.providerTargetId).toBe(
+      "shared-agent:codex-1"
+    );
+    const nextData = onDataChange.mock.calls
+      .map(([updater]) => updater(initialData))
+      .find((candidate) => candidate.provider === "codex");
+    expect(nextData).toMatchObject({
+      provider: "codex",
+      agentTargetId: null,
+      providerTargetId: "shared-agent:codex-1",
+      providerTargetRef: {
+        kind: "shared-agent",
+        provider: "codex",
+        sharedAgentId: "codex-1"
+      },
+      composerOverrides: null
+    });
+  });
+
+  it("selects disabled placeholder rail targets for the empty composer", async () => {
+    installAgentHostApi({
+      list: vi.fn(async () => ({ presences: [], sessions: [] })),
+      listSessionTimeline: vi.fn(async () => ({ timelineItems: [] })),
+      subscribeEvents: vi.fn(() => vi.fn())
+    });
+    const onDataChange = vi.fn();
+    const initialData = agentGuiData(null, "codex", {
+      agentTargetId: "local:codex"
+    });
+    const openclawTarget = {
+      targetId: "local:openclaw",
+      agentTargetId: "local:openclaw",
+      provider: "openclaw" as const,
+      ref: { kind: "local", provider: "openclaw" as const },
+      label: "OpenClaw",
+      disabled: true
+    };
+
+    const { result } = renderHook(() =>
+      useAgentGUINodeController({
+        workspaceId: "room-1",
+        currentUserId: "user-1",
+        workspacePath: "/workspace",
+        avoidGroupingEdits: false,
+        data: initialData,
+        providerTargets: [
+          {
+            targetId: "local:codex",
+            agentTargetId: "local:codex",
+            provider: "codex",
+            ref: { kind: "local", provider: "codex" },
+            label: "Codex"
+          },
+          openclawTarget
+        ],
+        onDataChange
+      })
+    );
+
+    act(() => {
+      result.current.actions.selectConversationFilterTarget({
+        provider: "openclaw",
+        providerTargetId: "local:openclaw"
       });
-      expect(next.providerTargetId ?? null).toBeNull();
-      expect(next.providerTargetRef ?? null).toBeNull();
-    }
+    });
+
+    await waitFor(() => {
+      expect(result.current.viewModel.conversationFilter).toEqual({
+        kind: "agentTarget",
+        agentTargetId: "local:openclaw"
+      });
+    });
+    expect(result.current.viewModel.selectedProviderTarget).toMatchObject({
+      provider: "openclaw",
+      targetId: "local:openclaw",
+      disabled: true
+    });
+    expect(result.current.viewModel.data).toMatchObject({
+      provider: "openclaw",
+      agentTargetId: "local:openclaw"
+    });
+    expect(onDataChange).toHaveBeenCalled();
+  });
+
+  it("syncs the composer target to an activated conversation from another provider", async () => {
+    installAgentHostApi({
+      list: vi.fn(async () => ({
+        presences: [],
+        sessions: [
+          workspaceAgentSession("codex-session", {
+            provider: "codex",
+            agentTargetId: "local:codex",
+            title: "Codex session",
+            updatedAtUnixMs: 3
+          })
+        ]
+      })),
+      listSessionTimeline: vi.fn(async () => ({ timelineItems: [] })),
+      subscribeEvents: vi.fn(() => vi.fn())
+    });
+    const onDataChange = vi.fn();
+    const initialData = agentGuiData(null, "claude-code", {
+      agentTargetId: "local:claude-code"
+    });
+
+    const { result } = renderHook(() =>
+      useAgentGUINodeController({
+        workspaceId: "room-1",
+        currentUserId: "user-1",
+        workspacePath: "/workspace",
+        avoidGroupingEdits: false,
+        data: initialData,
+        providerTargets: [
+          {
+            targetId: "local:codex",
+            agentTargetId: "local:codex",
+            provider: "codex",
+            ref: { kind: "local-provider", provider: "codex" },
+            label: "Codex"
+          },
+          {
+            targetId: "local:claude-code",
+            agentTargetId: "local:claude-code",
+            provider: "claude-code",
+            ref: { kind: "local-provider", provider: "claude-code" },
+            label: "Claude Code"
+          }
+        ],
+        onDataChange
+      })
+    );
+
+    await waitFor(() => {
+      expect(
+        result.current.viewModel.conversations.map((item) => item.id)
+      ).toEqual(["codex-session"]);
+    });
+
+    act(() => {
+      result.current.actions.selectConversation("codex-session");
+    });
+
+    // Activating a conversation from another provider re-targets the node
+    // composer data at the session's own provider target.
+    await waitFor(() => {
+      const applied = onDataChange.mock.calls.reduce(
+        (data, [updater]) => updater(data),
+        initialData
+      );
+      expect(applied).toMatchObject({
+        provider: "codex",
+        agentTargetId: "local:codex"
+      });
+    });
+  });
+
+  it("keeps the scoped rail filter aligned when switching the empty composer target before starting a new conversation", async () => {
+    installAgentHostApi({
+      list: vi.fn(async () => ({ presences: [], sessions: [] })),
+      listSessionTimeline: vi.fn(async () => ({ timelineItems: [] })),
+      subscribeEvents: vi.fn(() => vi.fn())
+    });
+
+    const { result } = renderHook(() =>
+      useAgentGUINodeController({
+        workspaceId: "room-1",
+        currentUserId: "user-1",
+        workspacePath: "/workspace",
+        avoidGroupingEdits: false,
+        data: agentGuiData(null, "codex", {
+          agentTargetId: "local:codex"
+        }),
+        providerTargets: [
+          {
+            targetId: "local:codex",
+            agentTargetId: "local:codex",
+            provider: "codex",
+            ref: { kind: "local-provider", provider: "codex" },
+            label: "Codex"
+          },
+          {
+            targetId: "local:claude-code",
+            agentTargetId: "local:claude-code",
+            provider: "claude-code",
+            ref: { kind: "local-provider", provider: "claude-code" },
+            label: "Claude Code"
+          }
+        ],
+        onDataChange: vi.fn()
+      })
+    );
+
+    act(() => {
+      result.current.actions.selectConversationFilterTarget({
+        provider: "claude-code",
+        providerTargetId: "local:claude-code"
+      });
+    });
+    // The user flips the chip away from the tab target…
+    act(() => {
+      result.current.actions.selectHomeComposerAgentTarget({
+        provider: "codex",
+        providerTargetId: "local:codex"
+      });
+    });
+    await waitFor(() => {
+      expect(result.current.viewModel.selectedProviderTarget.provider).toBe(
+        "codex"
+      );
+    });
+    expect(result.current.viewModel.conversationFilter).toEqual({
+      kind: "agentTarget",
+      agentTargetId: "local:codex"
+    });
+
+    // Starting a new conversation follows the visibly selected tab.
+    act(() => {
+      result.current.actions.createConversation();
+    });
+
+    await waitFor(() => {
+      expect(result.current.viewModel.selectedProviderTarget.provider).toBe(
+        "codex"
+      );
+    });
+    expect(result.current.viewModel.data.provider).toBe("codex");
+    expect(result.current.viewModel.data.agentTargetId).toBe("local:codex");
+  });
+
+  it("moves the conversation filter to the created conversation's target tab", async () => {
+    const activate = vi.fn(
+      async (input: AgentHostActivateAgentSessionInput) => ({
+        session: agentSession(input.agentSessionId, {
+          provider: input.mode === "new" ? input.provider : "codex"
+        }),
+        activation: { mode: input.mode, status: "attached" as const }
+      })
+    );
+    installAgentHostApi({
+      list: vi.fn(async () => ({ presences: [], sessions: [] })),
+      listSessionTimeline: vi.fn(async () => ({ timelineItems: [] })),
+      subscribeEvents: vi.fn(() => vi.fn()),
+      activate
+    });
+
+    const { result } = renderHook(() =>
+      useAgentGUINodeController({
+        workspaceId: "room-1",
+        currentUserId: "user-1",
+        workspacePath: "/workspace",
+        avoidGroupingEdits: false,
+        data: agentGuiData(null, "codex", {
+          agentTargetId: "local:codex"
+        }),
+        providerTargets: [
+          {
+            targetId: "local:codex",
+            agentTargetId: "local:codex",
+            provider: "codex",
+            ref: { kind: "local-provider", provider: "codex" },
+            label: "Codex"
+          },
+          {
+            targetId: "local:claude-code",
+            agentTargetId: "local:claude-code",
+            provider: "claude-code",
+            ref: { kind: "local-provider", provider: "claude-code" },
+            label: "Claude Code"
+          }
+        ],
+        onDataChange: vi.fn()
+      })
+    );
+
+    // Looking at the Claude Code tab…
+    act(() => {
+      result.current.actions.selectConversationFilterTarget({
+        provider: "claude-code",
+        providerTargetId: "local:claude-code"
+      });
+    });
+    // …the user explicitly re-targets the chip at Codex and submits.
+    act(() => {
+      result.current.actions.selectHomeComposerAgentTarget({
+        provider: "codex",
+        providerTargetId: "local:codex"
+      });
+    });
+    act(() => {
+      result.current.actions.submitPrompt(promptBlocks("start codex here"));
+    });
+
+    await waitFor(() => {
+      expect(activate).toHaveBeenCalledWith(
+        expect.objectContaining({
+          mode: "new",
+          agentTargetId: "local:codex",
+          provider: "codex"
+        })
+      );
+    });
+    // The created codex conversation must not stay pinned under the Claude
+    // Code tab: the filter follows the conversation's own target.
+    await waitFor(() => {
+      expect(result.current.viewModel.conversationFilter).toEqual({
+        kind: "agentTarget",
+        agentTargetId: "local:codex"
+      });
+    });
   });
 
   it("clears generic composer overrides when switching the empty composer provider", async () => {
@@ -617,7 +1372,6 @@ describe("useAgentGUINodeController", () => {
         workspacePath: "/workspace",
         avoidGroupingEdits: false,
         data: initialData,
-        conversationScope: "multi-provider",
         providerTargets: [
           {
             targetId: "local:codex",
@@ -640,7 +1394,7 @@ describe("useAgentGUINodeController", () => {
 
     onDataChange.mockClear();
     act(() => {
-      result.current.actions.selectProvider({
+      result.current.actions.selectHomeComposerAgentTarget({
         provider: "claude-code",
         providerTargetId: "local:claude-code"
       });
@@ -679,7 +1433,6 @@ describe("useAgentGUINodeController", () => {
         workspacePath: "/workspace",
         avoidGroupingEdits: false,
         data: initialData,
-        conversationScope: "multi-provider",
         providerTargets: [
           {
             targetId: "local:codex",
@@ -695,7 +1448,7 @@ describe("useAgentGUINodeController", () => {
 
     onDataChange.mockClear();
     act(() => {
-      result.current.actions.selectProvider({
+      result.current.actions.selectHomeComposerAgentTarget({
         provider: "codex",
         providerTargetId: "local:codex"
       });
@@ -782,7 +1535,6 @@ describe("useAgentGUINodeController", () => {
             }
           }
         }),
-        conversationScope: "multi-provider",
         providerTargets: [
           {
             targetId: "local:codex",
@@ -813,7 +1565,7 @@ describe("useAgentGUINodeController", () => {
     });
 
     act(() => {
-      result.current.actions.selectProvider({
+      result.current.actions.selectHomeComposerAgentTarget({
         provider: "claude-code",
         providerTargetId: "local:claude-code"
       });
@@ -895,7 +1647,6 @@ describe("useAgentGUINodeController", () => {
             }
           }
         }),
-        conversationScope: "multi-provider",
         providerTargets: [
           {
             targetId: "local:codex",
@@ -986,7 +1737,6 @@ describe("useAgentGUINodeController", () => {
             }
           }
         }),
-        conversationScope: "multi-provider",
         providerTargets: [
           {
             targetId: "local:codex",
@@ -1080,7 +1830,6 @@ describe("useAgentGUINodeController", () => {
         workspacePath: "/workspace",
         avoidGroupingEdits: false,
         data: initialData,
-        conversationScope: "multi-provider",
         providerTargets: [
           {
             targetId: "local:claude-code",
@@ -1130,98 +1879,9 @@ describe("useAgentGUINodeController", () => {
       permissionModeId: null,
       reasoningEffort: "high"
     });
-    expect(onRememberComposerDefaults).toHaveBeenCalledWith({
-      provider: "claude-code",
-      defaults: { reasoningEffort: "high" }
-    });
-  });
-
-  it("keeps provider filters disabled for single-provider conversation scope", async () => {
-    installAgentHostApi({
-      list: vi.fn(async () => ({
-        presences: [],
-        sessions: [
-          workspaceAgentSession("codex-session", {
-            provider: "codex",
-            title: "Codex session",
-            updatedAtUnixMs: 3
-          }),
-          workspaceAgentSession("claude-session", {
-            provider: "claude-code",
-            title: "Claude session",
-            updatedAtUnixMs: 2
-          })
-        ]
-      })),
-      listSessionTimeline: vi.fn(async () => ({ timelineItems: [] })),
-      subscribeEvents: vi.fn(() => vi.fn())
-    });
-
-    const onDataChange = vi.fn();
-    const { result } = renderHook(() =>
-      useAgentGUINodeController({
-        workspaceId: "room-1",
-        currentUserId: "user-1",
-        workspacePath: "/workspace",
-        avoidGroupingEdits: false,
-        data: agentGuiData(null, "codex"),
-        providerTargets: [
-          {
-            targetId: "local:codex",
-            agentTargetId: "local:codex",
-            provider: "codex",
-            ref: { kind: "local-provider", provider: "codex" },
-            label: "Codex"
-          },
-          {
-            targetId: "local:claude-code",
-            agentTargetId: "local:claude-code",
-            provider: "claude-code",
-            ref: { kind: "local-provider", provider: "claude-code" },
-            label: "Claude Code"
-          }
-        ],
-        onDataChange
-      })
-    );
-
-    await waitFor(() => {
-      expect(
-        result.current.viewModel.conversations.map((item) => item.id)
-      ).toEqual(["codex-session"]);
-    });
-
-    act(() => {
-      result.current.actions.updateConversationFilter({
-        kind: "agentTarget",
-        agentTargetId: "local:claude-code"
-      });
-    });
-
-    await waitFor(() => {
-      expect(result.current.viewModel.conversationFilter).toEqual({
-        kind: "all"
-      });
-    });
-    expect(
-      result.current.viewModel.conversations.map((item) => item.id)
-    ).toEqual(["codex-session"]);
-
-    onDataChange.mockClear();
-    act(() => {
-      result.current.actions.selectConversationFilterTarget({
-        provider: "claude-code",
-        providerTargetId: "local:claude-code"
-      });
-    });
-
-    await waitFor(() => {
-      expect(result.current.viewModel.conversationFilter).toEqual({
-        kind: "all"
-      });
-    });
-    expect(onDataChange).not.toHaveBeenCalled();
-    expect(result.current.viewModel.data.provider).toBe("codex");
+    // Sanitization must never rewrite the remembered defaults; only explicit
+    // user switches do.
+    expect(onRememberComposerDefaults).not.toHaveBeenCalled();
   });
 
   it("keeps the visible conversation list reference for equal project reloads", async () => {
@@ -1620,6 +2280,71 @@ describe("useAgentGUINodeController", () => {
     await waitFor(() => {
       expect(result.current.viewModel.conversations[0]?.project).toBeNull();
     });
+  });
+
+  it("keeps a removed project visible until the backend confirms deletion, then drops it without a remount", async () => {
+    let resolveRemove: (() => void) | null = null;
+    const removeProject = vi.fn(
+      () =>
+        new Promise<void>((resolve) => {
+          resolveRemove = resolve;
+        })
+    );
+    installAgentHostApi({
+      list: vi.fn(async () => ({ presences: [], sessions: [] })),
+      listSessionTimeline: vi.fn(async () => ({ timelineItems: [] })),
+      subscribeEvents: vi.fn(() => vi.fn()),
+      userProjects: {
+        list: vi.fn(async () => ({
+          projects: [
+            { id: "app", path: "/workspace/app", label: "App" },
+            { id: "web", path: "/workspace/web", label: "Web" }
+          ]
+        })),
+        remove: removeProject,
+        subscribe: vi.fn(() => vi.fn()),
+        use: vi.fn()
+      }
+    });
+
+    const { result } = renderHook(() =>
+      useAgentGUINodeController({
+        workspaceId: "room-1",
+        currentUserId: "user-1",
+        workspacePath: "/workspace",
+        avoidGroupingEdits: false,
+        data: agentGuiData("session-1"),
+        onDataChange: vi.fn()
+      })
+    );
+
+    await waitFor(() => {
+      expect(result.current.viewModel.userProjects).toHaveLength(2);
+    });
+
+    await act(async () => {
+      result.current.actions.removeProject("/workspace/app");
+      await Promise.resolve();
+    });
+
+    expect(removeProject).toHaveBeenCalledWith({ path: "/workspace/app" });
+    // The backend delete has not resolved yet: the project must still be
+    // present. Filtering it out before the backend confirms is what let a
+    // concurrent, in-flight section-list refetch race the delete and
+    // reinstate the row with nothing left to re-sync it afterwards.
+    expect(result.current.viewModel.userProjects).toHaveLength(2);
+
+    await act(async () => {
+      resolveRemove?.();
+      await Promise.resolve();
+    });
+
+    await waitFor(() => {
+      expect(result.current.viewModel.userProjects).toHaveLength(1);
+    });
+    expect(result.current.viewModel.userProjects[0]?.path).toBe(
+      "/workspace/web"
+    );
   });
 
   it("ignores stale user project list responses after a newer refresh completes", async () => {
@@ -2069,7 +2794,7 @@ describe("useAgentGUINodeController", () => {
     });
   });
 
-  it("blocks new conversation submit when provider targets are explicitly empty", async () => {
+  it("falls back to local provider targets for new conversation submit when provider targets are explicitly empty", async () => {
     const activate = vi.fn(
       async (input: AgentHostActivateAgentSessionInput) => ({
         session: agentSession(input.agentSessionId, {
@@ -2097,15 +2822,64 @@ describe("useAgentGUINodeController", () => {
       })
     );
 
-    expect(result.current.viewModel.canSubmit).toBe(false);
+    expect(result.current.viewModel.canSubmit).toBe(true);
 
     act(() => {
       result.current.actions.submitPrompt(promptBlocks("start without target"));
     });
 
     await waitFor(() => {
-      expect(activate).not.toHaveBeenCalled();
+      expect(activate).toHaveBeenCalledWith(
+        expect.objectContaining({
+          agentTargetId: "local:codex",
+          mode: "new",
+          provider: "codex",
+          providerTargetRef: null
+        })
+      );
     });
+  });
+
+  it("falls back to local provider rail targets when multi-provider targets load empty", () => {
+    installAgentHostApi({
+      list: vi.fn(async () => ({ presences: [], sessions: [] })),
+      listSessionTimeline: vi.fn(async () => ({ timelineItems: [] })),
+      subscribeEvents: vi.fn(() => vi.fn())
+    });
+
+    const { result } = renderHook(() =>
+      useAgentGUINodeController({
+        workspaceId: "room-1",
+        currentUserId: "user-1",
+        workspacePath: "/workspace",
+        avoidGroupingEdits: false,
+        data: agentGuiData(null),
+        providerTargets: [],
+        onDataChange: vi.fn()
+      })
+    );
+
+    expect(
+      result.current.viewModel.providerTargets.map((target) => ({
+        agentTargetId: target.agentTargetId ?? null,
+        label: target.label,
+        provider: target.provider
+      }))
+    ).toEqual(
+      expect.arrayContaining([
+        {
+          agentTargetId: "local:codex",
+          label: "Codex",
+          provider: "codex"
+        },
+        {
+          agentTargetId: "local:claude-code",
+          label: "Claude Code",
+          provider: "claude-code"
+        }
+      ])
+    );
+    expect(result.current.viewModel.providerTargets.length).toBeGreaterThan(1);
   });
 
   it("sends fallback local agent target ids without provider target refs when provider targets are omitted", async () => {
@@ -2421,28 +3195,97 @@ describe("useAgentGUINodeController", () => {
     expect(releaseEventStream).not.toHaveBeenCalled();
   });
 
-  it("keeps the first created conversation on home before activation resolves", async () => {
-    let resolveActivate:
-      | ((result: AgentHostActivateAgentSessionResult) => void)
-      | undefined;
-    let capturedAgentSessionId = "";
-    const activate = vi.fn((input: AgentHostActivateAgentSessionInput) => {
-      capturedAgentSessionId = input.agentSessionId;
-      return new Promise<AgentHostActivateAgentSessionResult>((resolve) => {
-        resolveActivate = resolve;
+  it.each([["codex"], ["claude-code"]] as const)(
+    "enters the first created conversation immediately before activation resolves (provider: %s)",
+    async (provider) => {
+      let resolveActivate:
+        | ((result: AgentHostActivateAgentSessionResult) => void)
+        | undefined;
+      let capturedAgentSessionId = "";
+      const activate = vi.fn((input: AgentHostActivateAgentSessionInput) => {
+        capturedAgentSessionId = input.agentSessionId;
+        return new Promise<AgentHostActivateAgentSessionResult>((resolve) => {
+          resolveActivate = resolve;
+        });
       });
-    });
+      installAgentHostApi({
+        list: vi.fn(async () => ({ presences: [], sessions: [] })),
+        listSessionTimeline: vi.fn(async () => ({ timelineItems: [] })),
+        subscribeEvents: vi.fn(() => vi.fn()),
+        activate,
+        exec: vi.fn(async () => ({
+          accepted: true,
+          agentSessionId: capturedAgentSessionId,
+          sessionStatus: "working",
+          status: "started"
+        }))
+      });
+
+      const { result } = renderHook(() =>
+        useAgentGUINodeController({
+          workspaceId: "room-1",
+          currentUserId: "user-1",
+          workspacePath: "/workspace",
+          avoidGroupingEdits: false,
+          data: agentGuiData(null, provider),
+          onDataChange: vi.fn()
+        })
+      );
+
+      act(() => {
+        result.current.actions.submitPrompt(
+          promptBlocks("start the first turn")
+        );
+      });
+
+      await waitFor(() => {
+        expect(capturedAgentSessionId).not.toBe("");
+        expect(result.current.viewModel.activeConversationId).toBe(
+          capturedAgentSessionId
+        );
+      });
+      // The optimistic user message is shown immediately, before activation
+      // resolves, and no per-session loading flag is left on. This holds
+      // identically for every provider: the entry timing lives entirely in
+      // the shared controller, with no provider-specific branching.
+      expect(
+        getAgentSessionView({
+          workspaceId: "room-1",
+          agentSessionId: capturedAgentSessionId
+        })?.isLoadingMessages
+      ).not.toBe(true);
+      expect(result.current.viewModel.isCreatingConversation).toBe(true);
+      expect(
+        result.current.viewModel.conversationDetail?.turns[0]?.userMessages
+      ).toEqual([expect.objectContaining({ body: "start the first turn" })]);
+
+      await act(async () => {
+        resolveActivate?.({
+          session: agentSession(capturedAgentSessionId),
+          activation: { mode: "new", status: "attached" }
+        });
+      });
+
+      await waitFor(() => {
+        expect(result.current.viewModel.activeConversationId).toBe(
+          capturedAgentSessionId
+        );
+      });
+    }
+  );
+
+  it("suppresses the connecting banner during a first-message create while activation is pending", async () => {
+    const activate = vi.fn(
+      (_input: AgentHostActivateAgentSessionInput) =>
+        new Promise<AgentHostActivateAgentSessionResult>(() => {
+          // Keep activation pending so the live state stays "activating".
+        })
+    );
     installAgentHostApi({
       list: vi.fn(async () => ({ presences: [], sessions: [] })),
       listSessionTimeline: vi.fn(async () => ({ timelineItems: [] })),
       subscribeEvents: vi.fn(() => vi.fn()),
-      activate,
-      exec: vi.fn(async () => ({
-        accepted: true,
-        agentSessionId: capturedAgentSessionId,
-        sessionStatus: "working",
-        status: "started"
-      }))
+      activate
     });
 
     const { result } = renderHook(() =>
@@ -2457,33 +3300,174 @@ describe("useAgentGUINodeController", () => {
     );
 
     act(() => {
-      result.current.actions.submitPrompt(promptBlocks("start the first turn"));
+      result.current.actions.submitPrompt(promptBlocks("first turn"));
     });
 
     await waitFor(() => {
-      expect(capturedAgentSessionId).not.toBe("");
-      expect(
-        getAgentSessionView({
-          workspaceId: "room-1",
-          agentSessionId: capturedAgentSessionId
-        })?.isLoadingMessages
-      ).not.toBe(true);
+      expect(activate).toHaveBeenCalledTimes(1);
     });
-    expect(result.current.viewModel.activeConversationId).toBeNull();
-    expect(result.current.viewModel.isCreatingConversation).toBe(true);
+    // The live state is "activating" (session creation in flight), but the
+    // initial first-message create must NOT surface the "reconnecting" banner —
+    // the user just submitted and is already seeing their optimistic message.
+    expect(result.current.viewModel.activeLiveState).toBe("activating");
+    expect(result.current.viewModel.sessionChrome.recovery).toBeNull();
+  });
 
-    await act(async () => {
+  it("drops the optimistic entry and keeps the user put when they navigate away before a first-message create resolves", async () => {
+    let resolveActivate:
+      | ((result: AgentHostActivateAgentSessionResult) => void)
+      | undefined;
+    let createdId = "";
+    const activate = vi.fn((input: AgentHostActivateAgentSessionInput) => {
+      if (input.mode === "new") {
+        createdId = input.agentSessionId;
+        return new Promise<AgentHostActivateAgentSessionResult>((resolve) => {
+          resolveActivate = resolve;
+        });
+      }
+      return Promise.resolve<AgentHostActivateAgentSessionResult>({
+        session: agentSession(input.agentSessionId),
+        activation: { mode: input.mode, status: "attached" }
+      });
+    });
+    installAgentHostApi({
+      list: vi.fn(async () => snapshotWithSession("session-1")),
+      listSessionTimeline: vi.fn(async () => ({ timelineItems: [] })),
+      subscribeEvents: vi.fn(() => vi.fn()),
+      activate
+    });
+
+    const { result } = renderHook(() =>
+      useAgentGUINodeController({
+        workspaceId: "room-1",
+        currentUserId: "user-1",
+        workspacePath: "/workspace",
+        avoidGroupingEdits: false,
+        data: agentGuiData(null),
+        onDataChange: vi.fn()
+      })
+    );
+
+    await waitFor(() => {
+      expect(
+        result.current.viewModel.conversations.some((c) => c.id === "session-1")
+      ).toBe(true);
+    });
+
+    act(() => {
+      result.current.actions.submitPrompt(promptBlocks("abandoned turn"));
+    });
+    await waitFor(() => {
+      expect(activate).toHaveBeenCalledTimes(1);
+      expect(result.current.viewModel.activeConversationId).toBe(createdId);
+    });
+    // The optimistic user message is recorded before the user navigates away.
+    expect(
+      getAgentSessionView({ workspaceId: "room-1", agentSessionId: createdId })
+        ?.overlayMessages.length
+    ).toBeGreaterThan(0);
+
+    act(() => {
+      result.current.actions.selectConversation("session-1");
+    });
+    await waitFor(() => {
+      expect(result.current.viewModel.activeConversationId).toBe("session-1");
+    });
+
+    // The create resolves while the user is on session-1.
+    act(() => {
       resolveActivate?.({
-        session: agentSession(capturedAgentSessionId),
+        session: agentSession(createdId),
         activation: { mode: "new", status: "attached" }
       });
     });
+    await waitFor(() => {
+      expect(result.current.viewModel.isCreatingConversation).toBe(false);
+    });
+
+    // The abandoned create's optimistic messages are dropped — its pending-turn
+    // user prompt was never retargeted (the session wasn't watched), so it
+    // would reappear as a duplicate when the session is reopened — and the
+    // user stays where they navigated.
+    expect(
+      getAgentSessionView({ workspaceId: "room-1", agentSessionId: createdId })
+        ?.overlayMessages ?? []
+    ).toEqual([]);
+    expect(result.current.viewModel.activeConversationId).toBe("session-1");
+  });
+
+  it("does not leak a first-message create error onto the conversation the user switched to during pending", async () => {
+    let rejectActivate: ((error: unknown) => void) | undefined;
+    let createdId = "";
+    const activate = vi.fn((input: AgentHostActivateAgentSessionInput) => {
+      if (input.mode === "new") {
+        createdId = input.agentSessionId;
+        return new Promise<AgentHostActivateAgentSessionResult>(
+          (_resolve, reject) => {
+            rejectActivate = reject;
+          }
+        );
+      }
+      return Promise.resolve<AgentHostActivateAgentSessionResult>({
+        session: agentSession(input.agentSessionId),
+        activation: { mode: input.mode, status: "attached" }
+      });
+    });
+    installAgentHostApi({
+      list: vi.fn(async () => snapshotWithSession("session-1")),
+      listSessionTimeline: vi.fn(async () => ({ timelineItems: [] })),
+      subscribeEvents: vi.fn(() => vi.fn()),
+      activate
+    });
+
+    const { result } = renderHook(() =>
+      useAgentGUINodeController({
+        workspaceId: "room-1",
+        currentUserId: "user-1",
+        workspacePath: "/workspace",
+        avoidGroupingEdits: false,
+        data: agentGuiData(null),
+        onDataChange: vi.fn()
+      })
+    );
 
     await waitFor(() => {
-      expect(result.current.viewModel.activeConversationId).toBe(
-        capturedAgentSessionId
-      );
+      expect(
+        result.current.viewModel.conversations.some((c) => c.id === "session-1")
+      ).toBe(true);
     });
+
+    act(() => {
+      result.current.actions.submitPrompt(promptBlocks("abandoned turn"));
+    });
+    await waitFor(() => {
+      expect(activate).toHaveBeenCalledTimes(1);
+      expect(result.current.viewModel.activeConversationId).toBe(createdId);
+    });
+    expect(
+      getAgentSessionView({ workspaceId: "room-1", agentSessionId: createdId })
+        ?.overlayMessages.length
+    ).toBeGreaterThan(0);
+
+    act(() => {
+      result.current.actions.selectConversation("session-1");
+    });
+    await waitFor(() => {
+      expect(result.current.viewModel.activeConversationId).toBe("session-1");
+    });
+
+    act(() => {
+      rejectActivate?.(new Error("runtime not connected"));
+    });
+    await waitFor(() => {
+      expect(result.current.viewModel.isCreatingConversation).toBe(false);
+    });
+
+    // The failure belongs to the abandoned create, not session-1: it is not
+    // surfaced on the conversation the user is now looking at, and the user
+    // stays where they navigated.
+    expect(result.current.viewModel.detailError).toBeNull();
+    expect(result.current.viewModel.activeConversationId).toBe("session-1");
   });
 
   it("keeps background session timeline events in the activity snapshot", async () => {
@@ -3058,6 +4042,183 @@ describe("useAgentGUINodeController", () => {
     await waitFor(() => {
       expect(result.current.viewModel.activeConversationId).toBe("session-1");
     });
+  });
+
+  it("keeps an explicit open-session request even when the session is outside the loaded rail", async () => {
+    installAgentHostApi({
+      list: vi.fn(async () => ({
+        presences: [],
+        sessions: [workspaceAgentSession("recent-session")]
+      })),
+      listSessionTimeline: vi.fn(
+        async ({ agentSessionId }: { agentSessionId: string }) => ({
+          timelineItems:
+            agentSessionId === "old-session"
+              ? [
+                  timelineMessage({
+                    agentSessionId,
+                    id: 1,
+                    eventId: "old-session-message",
+                    role: "user",
+                    content: "open old session"
+                  })
+                ]
+              : []
+        })
+      ),
+      getState: vi.fn(async ({ agentSessionId }: { agentSessionId: string }) =>
+        agentSessionState(agentSessionId)
+      ),
+      subscribeEvents: vi.fn(() => vi.fn()),
+      userProjects: {
+        list: vi.fn(async () => ({
+          projects: [
+            {
+              id: "workspace-project",
+              label: "Workspace",
+              path: "/workspace"
+            }
+          ]
+        })),
+        subscribe: vi.fn(() => vi.fn())
+      }
+    });
+
+    const { result, rerender } = renderHook(
+      (props) =>
+        useAgentGUINodeController({
+          workspaceId: "room-1",
+          currentUserId: "user-1",
+          workspacePath: "/workspace",
+          avoidGroupingEdits: false,
+          ...props
+        }),
+      {
+        initialProps: {
+          data: agentGuiData("recent-session"),
+          onDataChange: vi.fn(),
+          openSessionRequest: null as {
+            agentSessionId: string;
+            sequence: number;
+          } | null
+        }
+      }
+    );
+
+    await waitFor(() => {
+      expect(result.current.viewModel.activeConversationId).toBe(
+        "recent-session"
+      );
+    });
+
+    rerender({
+      data: agentGuiData("recent-session"),
+      onDataChange: vi.fn(),
+      openSessionRequest: {
+        agentSessionId: "old-session",
+        sequence: 1
+      }
+    });
+
+    await waitFor(() => {
+      expect(result.current.viewModel.activeConversationId).toBe("old-session");
+    });
+
+    await new Promise((resolve) => window.setTimeout(resolve, 0));
+    expect(result.current.viewModel.activeConversationId).toBe("old-session");
+    expect(result.current.viewModel.activeConversation?.id).toBe("old-session");
+    await waitFor(() => {
+      expect(
+        result.current.viewModel.conversations.filter(
+          (conversation) => conversation.id === "old-session"
+        )
+      ).toHaveLength(1);
+    });
+    expect(
+      result.current.viewModel.conversations.find(
+        (conversation) => conversation.id === "old-session"
+      )?.project
+    ).toEqual({
+      id: "workspace-project",
+      label: "Workspace",
+      path: "/workspace"
+    });
+
+    rerender({
+      data: agentGuiData("recent-session"),
+      onDataChange: vi.fn(),
+      openSessionRequest: {
+        agentSessionId: "old-session",
+        sequence: 1
+      }
+    });
+    expect(
+      result.current.viewModel.conversations.some(
+        (conversation) => conversation.id === "old-session"
+      )
+    ).toBe(true);
+  });
+
+  it("keeps an explicit open-session request when restored state points at another session", async () => {
+    installAgentHostApi({
+      list: vi.fn(async () => ({
+        presences: [],
+        sessions: [workspaceAgentSession("gobang-session")]
+      })),
+      listSessionTimeline: vi.fn(async () => ({ timelineItems: [] })),
+      getState: vi.fn(async ({ agentSessionId }: { agentSessionId: string }) =>
+        agentSessionState(agentSessionId)
+      ),
+      subscribeEvents: vi.fn(() => vi.fn())
+    });
+
+    const { result, rerender } = renderHook(
+      (props) =>
+        useAgentGUINodeController({
+          workspaceId: "room-1",
+          currentUserId: "user-1",
+          workspacePath: "/workspace",
+          avoidGroupingEdits: false,
+          ...props
+        }),
+      {
+        initialProps: {
+          data: agentGuiData("gobang-session"),
+          onDataChange: vi.fn(),
+          openSessionRequest: null as {
+            agentSessionId: string;
+            sequence: number;
+          } | null
+        }
+      }
+    );
+
+    await waitFor(() => {
+      expect(result.current.viewModel.activeConversationId).toBe(
+        "gobang-session"
+      );
+    });
+
+    rerender({
+      data: agentGuiData("gobang-session"),
+      onDataChange: vi.fn(),
+      openSessionRequest: {
+        agentSessionId: "news-session",
+        sequence: 1
+      }
+    });
+
+    await waitFor(() => {
+      expect(result.current.viewModel.activeConversationId).toBe(
+        "news-session"
+      );
+    });
+
+    await new Promise((resolve) => window.setTimeout(resolve, 0));
+    expect(result.current.viewModel.activeConversationId).toBe("news-session");
+    expect(result.current.viewModel.activeConversation?.id).toBe(
+      "news-session"
+    );
   });
 
   it("keeps a switched conversation loading while its timeline request is pending", async () => {
@@ -5132,7 +6293,7 @@ describe("useAgentGUINodeController", () => {
     });
   });
 
-  it("keeps home active while activation is pending and switches after activation succeeds", async () => {
+  it("enters the conversation immediately while activation is pending and stays after it succeeds", async () => {
     let resolveActivation:
       | ((value: AgentHostActivateAgentSessionResult) => void)
       | undefined;
@@ -5179,9 +6340,11 @@ describe("useAgentGUINodeController", () => {
     });
 
     const createdId = activate.mock.calls[0]![0].agentSessionId;
-    expect(result.current.viewModel.activeConversationId).toBeNull();
+    expect(result.current.viewModel.activeConversationId).toBe(createdId);
     expect(result.current.viewModel.isCreatingConversation).toBe(true);
-    expect(result.current.viewModel.draftPrompt).toBe("first prompt");
+    // The active surface is now the new session, whose draft was cleared; the
+    // optimistic user message is already present in the first turn.
+    expect(result.current.viewModel.draftPrompt).toBe("");
     expect(
       getAgentSessionView({
         workspaceId: "room-1",
@@ -5196,7 +6359,7 @@ describe("useAgentGUINodeController", () => {
     ]);
     expect(
       result.current.viewModel.conversationDetail?.turns[0]?.userMessages
-    ).toBeUndefined();
+    ).toEqual([expect.objectContaining({ body: "first prompt" })]);
     expect(exec).not.toHaveBeenCalled();
 
     act(() => {
@@ -5216,15 +6379,15 @@ describe("useAgentGUINodeController", () => {
     expect(exec).not.toHaveBeenCalled();
   });
 
-  it("preserves home draft edits made while first conversation activation is pending", async () => {
-    let resolveActivation:
-      | ((value: AgentHostActivateAgentSessionResult) => void)
-      | undefined;
+  it("restores the original home draft when first conversation activation fails after pending", async () => {
+    let rejectActivation: ((error: unknown) => void) | undefined;
     const activate = vi.fn((input: AgentHostActivateAgentSessionInput) => {
       if (input.mode === "new") {
-        return new Promise<AgentHostActivateAgentSessionResult>((resolve) => {
-          resolveActivation = resolve;
-        });
+        return new Promise<AgentHostActivateAgentSessionResult>(
+          (_resolve, reject) => {
+            rejectActivation = reject;
+          }
+        );
       }
       return Promise.resolve({
         session: agentSession(input.agentSessionId),
@@ -5260,27 +6423,27 @@ describe("useAgentGUINodeController", () => {
       );
     });
     const createdId = activate.mock.calls[0]![0].agentSessionId;
-
+    // During pending the user is already on the new session surface.
+    expect(result.current.viewModel.activeConversationId).toBe(createdId);
+    // Typing while pending edits the in-flight session draft, not the home
+    // draft, which retains the original submitted prompt for restore-on-failure.
     act(() => {
       result.current.actions.updateDraftContent(
-        draftContent("keep this draft")
+        draftContent("a different next turn")
       );
-      resolveActivation?.({
-        session: agentSession(createdId),
-        activation: { mode: "new", status: "attached" }
-      });
+    });
+
+    act(() => {
+      rejectActivation?.(new Error("runtime not connected"));
     });
 
     await waitFor(() => {
-      expect(result.current.viewModel.activeConversationId).toBe(createdId);
+      expect(result.current.viewModel.isCreatingConversation).toBe(false);
     });
-
-    act(() => {
-      result.current.actions.createConversation();
-    });
-
+    // Reverted to the home composer with the ORIGINAL submitted draft preserved.
     expect(result.current.viewModel.activeConversationId).toBeNull();
-    expect(result.current.viewModel.draftPrompt).toBe("keep this draft");
+    expect(result.current.viewModel.draftPrompt).toBe("first prompt");
+    expect(result.current.viewModel.detailError).toBe("runtime not connected");
   });
 
   it("keeps first conversation creation busy after the controller remounts before activation resolves", async () => {
@@ -5415,7 +6578,7 @@ describe("useAgentGUINodeController", () => {
     });
   });
 
-  it("passes the submitted prompt as the activation title without showing a pending history entry", async () => {
+  it("passes the submitted prompt as the activation title and shows an optimistic history entry immediately", async () => {
     const activate = vi.fn(
       (_input: AgentHostActivateAgentSessionInput) =>
         new Promise<AgentHostActivateAgentSessionResult>(() => {
@@ -5435,7 +6598,7 @@ describe("useAgentGUINodeController", () => {
         currentUserId: "user-1",
         workspacePath: "/workspace",
         avoidGroupingEdits: false,
-        data: agentGuiData(null, "hermes"),
+        data: agentGuiData(null, "codex"),
         onDataChange: vi.fn()
       })
     );
@@ -5450,20 +6613,184 @@ describe("useAgentGUINodeController", () => {
 
     expect(activate).toHaveBeenCalledWith(
       expect.objectContaining({
-        provider: "hermes",
+        provider: "codex",
         title: "hello from hero"
       })
     );
-    expect(result.current.viewModel.conversations).toEqual([]);
-    expect(result.current.viewModel.activeConversation).toBeNull();
-    expect(result.current.viewModel.activeConversationId).toBeNull();
+    // No durable history entry yet (activation is still pending), but the
+    // optimistic conversation already appears in the sidebar list so it does
+    // not look like the new chat vanished while it activates.
+    const createdId = activate.mock.calls[0]![0].agentSessionId;
+    expect(result.current.viewModel.conversations).toEqual([
+      expect.objectContaining({ id: createdId, title: "hello from hero" })
+    ]);
+    // ...and the user is already on the conversation surface with their
+    // optimistic message shown immediately.
+    expect(result.current.viewModel.activeConversationId).toBe(createdId);
+    expect(result.current.viewModel.activeConversation).toEqual(
+      expect.objectContaining({ id: createdId, title: "hello from hero" })
+    );
     expect(result.current.viewModel.isCreatingConversation).toBe(true);
     expect(
       result.current.viewModel.conversationDetail?.turns[0]?.userMessages
-    ).toBeUndefined();
+    ).toEqual([expect.objectContaining({ body: "hello from hero" })]);
   });
 
-  it("blocks OpenClaw conversation creation until the gateway is ready", async () => {
+  it("applies a composer settings change locally during the pre-activation window and flushes it once the session attaches", async () => {
+    let resolveActivation:
+      | ((value: AgentHostActivateAgentSessionResult) => void)
+      | undefined;
+    const activate = vi.fn(
+      (_input: AgentHostActivateAgentSessionInput) =>
+        new Promise<AgentHostActivateAgentSessionResult>((resolve) => {
+          resolveActivation = resolve;
+        })
+    );
+    // Mutable so getState reflects whatever the daemon last applied, like a
+    // real backend would: the pre-activation window's queued settings patch
+    // is flushed in the same tick as the unconditional post-activation
+    // getSessionControlState reload (see startConversation), and a
+    // realistic daemon would already reflect the just-applied model there
+    // too instead of momentarily reverting it.
+    let appliedSettings = {
+      model: "gpt-5",
+      reasoningEffort: "medium",
+      speed: null as string | null,
+      planMode: false,
+      permissionModeId: "auto"
+    };
+    const updateSettings = vi.fn(async ({ settings }) => {
+      appliedSettings = { ...appliedSettings, ...settings };
+      return { settings: appliedSettings };
+    });
+    const getState = vi.fn(
+      async ({ agentSessionId }: { agentSessionId: string }) =>
+        agentSessionState(agentSessionId, { settings: appliedSettings })
+    );
+    installAgentHostApi({
+      list: vi.fn(async () => ({ presences: [], sessions: [] })),
+      listSessionTimeline: vi.fn(async () => ({ timelineItems: [] })),
+      subscribeEvents: vi.fn(() => vi.fn()),
+      activate,
+      updateSettings,
+      getState
+    });
+
+    const { result } = renderHook(() =>
+      useAgentGUINodeController({
+        workspaceId: "room-1",
+        currentUserId: "user-1",
+        workspacePath: "/workspace",
+        avoidGroupingEdits: false,
+        data: agentGuiData(null, "codex"),
+        onDataChange: vi.fn()
+      })
+    );
+
+    act(() => {
+      result.current.actions.submitPrompt(promptBlocks("hello from hero"));
+    });
+
+    await waitFor(() => {
+      expect(activate).toHaveBeenCalledTimes(1);
+    });
+    const createdId = activate.mock.calls[0]![0].agentSessionId;
+    // Still mid-activation: activeConversationId is already the optimistic
+    // id, but there is no backend session yet.
+    expect(result.current.viewModel.activeConversationId).toBe(createdId);
+    expect(result.current.viewModel.activeLiveState).toBe("activating");
+
+    act(() => {
+      result.current.actions.updateComposerSettings({ model: "gpt-5.1" });
+    });
+
+    // Local/optimistic feedback happens immediately, without waiting for the
+    // session to attach: the user's click is not silently swallowed.
+    expect(result.current.viewModel.composerSettings.selectedModelValue).toBe(
+      "gpt-5.1"
+    );
+    // Nothing to send an RPC to yet: no backend session exists.
+    expect(updateSettings).not.toHaveBeenCalled();
+
+    act(() => {
+      resolveActivation?.({
+        session: agentSession(createdId, { status: "working" }),
+        activation: { mode: "new", status: "attached" }
+      });
+    });
+
+    await waitFor(() => {
+      expect(updateSettings).toHaveBeenCalledTimes(1);
+      expect(updateSettings).toHaveBeenNthCalledWith(1, {
+        workspaceId: "room-1",
+        agentSessionId: createdId,
+        settings: { model: "gpt-5.1" }
+      });
+    });
+    expect(result.current.viewModel.composerSettings.selectedModelValue).toBe(
+      "gpt-5.1"
+    );
+  });
+
+  it("drops a composer settings change queued during the pre-activation window if activation fails", async () => {
+    let rejectActivation: ((error: unknown) => void) | undefined;
+    const activate = vi.fn(
+      (_input: AgentHostActivateAgentSessionInput) =>
+        new Promise<AgentHostActivateAgentSessionResult>((_resolve, reject) => {
+          rejectActivation = reject;
+        })
+    );
+    const updateSettings = vi.fn(async ({ settings }) => ({ settings }));
+    installAgentHostApi({
+      list: vi.fn(async () => ({ presences: [], sessions: [] })),
+      listSessionTimeline: vi.fn(async () => ({ timelineItems: [] })),
+      subscribeEvents: vi.fn(() => vi.fn()),
+      activate,
+      updateSettings
+    });
+
+    const { result } = renderHook(() =>
+      useAgentGUINodeController({
+        workspaceId: "room-1",
+        currentUserId: "user-1",
+        workspacePath: "/workspace",
+        avoidGroupingEdits: false,
+        data: agentGuiData(null, "codex"),
+        onDataChange: vi.fn()
+      })
+    );
+
+    act(() => {
+      result.current.actions.submitPrompt(promptBlocks("hello from hero"));
+    });
+    await waitFor(() => {
+      expect(activate).toHaveBeenCalledTimes(1);
+    });
+
+    act(() => {
+      result.current.actions.updateComposerSettings({ model: "gpt-5.1" });
+    });
+    expect(result.current.viewModel.composerSettings.selectedModelValue).toBe(
+      "gpt-5.1"
+    );
+
+    act(() => {
+      rejectActivation?.(
+        createAppError("common.unexpected", { debugMessage: "boom" })
+      );
+    });
+
+    await waitFor(() => {
+      expect(result.current.viewModel.activeConversationId).toBeNull();
+    });
+    // The session never attached, so the queued patch must not fire once
+    // some later, unrelated session happens to reuse RPC plumbing: nothing
+    // should ever be sent for the abandoned create.
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(updateSettings).not.toHaveBeenCalled();
+  });
+
+  it("keeps OpenClaw static catalog target disabled even when the gateway is ready", async () => {
     let resolveWarmup: (() => void) | undefined;
     const warmupOpenclawGateway = vi.fn(
       () =>
@@ -5520,19 +6847,8 @@ describe("useAgentGUINodeController", () => {
         promptBlocks("start openclaw session")
       );
     });
-    await waitFor(() => {
-      expect(activate).toHaveBeenCalledTimes(1);
-    });
-    await waitFor(() => {
-      expect(result.current.viewModel.activeConversationId).not.toBeNull();
-    });
-    expect(activate.mock.calls[0]?.[0]).toEqual(
-      expect.objectContaining({
-        mode: "new",
-        provider: "openclaw",
-        openclawGatewayReady: true
-      })
-    );
+    expect(activate).not.toHaveBeenCalled();
+    expect(result.current.viewModel.activeConversationId).toBeNull();
     unmount();
   });
 
@@ -8478,7 +9794,9 @@ describe("useAgentGUINodeController", () => {
     expect(result.current.viewModel.conversations).toEqual([]);
     expect(result.current.viewModel.activeConversation).toBeNull();
     expect(result.current.viewModel.draftPrompt).toBe("create one");
-    expect(result.current.viewModel.detailError).toBeNull();
+    // The optimistic entry is reverted and the failure is surfaced on the
+    // home composer instead of being silently swallowed.
+    expect(result.current.viewModel.detailError).toBe("runtime not connected");
     expect(toast.error).not.toHaveBeenCalled();
   });
 
@@ -8519,8 +9837,10 @@ describe("useAgentGUINodeController", () => {
 
     const failedId = activate.mock.calls.at(-1)?.[0]?.agentSessionId;
     expect(failedId).toBeTruthy();
-    // The failed create must not leave global or per-session loading state behind.
-    expect(result.current.viewModel.detailError).toBeNull();
+    // The failed create must not leave global or per-session loading state
+    // behind, but it does surface the error on the home composer it reverted
+    // to.
+    expect(result.current.viewModel.detailError).toBe("runtime not connected");
     expect(result.current.viewModel.isLoadingMessages).toBe(false);
     expect(
       getAgentSessionView({
@@ -9715,7 +11035,7 @@ describe("useAgentGUINodeController", () => {
     ).toEqual([]);
   });
 
-  it("updates the active session without syncing next-conversation defaults", async () => {
+  it("updates the active session and remembers the switched fields as target defaults", async () => {
     let resolveUpdateSettings:
       | ((value: {
           settings: {
@@ -9897,8 +11217,25 @@ describe("useAgentGUINodeController", () => {
         permissionModeId: "auto"
       });
     });
-    expect(onDataChange).not.toHaveBeenCalled();
-    expect(onRememberComposerDefaults).not.toHaveBeenCalled();
+    // The switch is also remembered as the target default, but only the
+    // durable fields the user actually changed (planMode is task-scoped).
+    expect(onRememberComposerDefaults).toHaveBeenCalledTimes(1);
+    expect(onRememberComposerDefaults).toHaveBeenCalledWith({
+      agentTargetId: null,
+      provider: "codex",
+      defaults: { model: "gpt-5.1", reasoningEffort: "high" }
+    });
+    // The durable fields also sync into the node default drafts so this
+    // node's next composer picks them up (node drafts win over the
+    // remembered preferences on the read path).
+    expect(onDataChange).toHaveBeenCalled();
+    const updatedData = onDataChange.mock.calls
+      .map(([updater]) => updater(agentGuiData("session-1")))
+      .at(-1);
+    expect(updatedData?.composerOverrides).toMatchObject({
+      model: "gpt-5.1",
+      reasoningEffort: "high"
+    });
   });
 
   it("queues later active session settings updates while an earlier request is still in flight", async () => {
@@ -10080,7 +11417,7 @@ describe("useAgentGUINodeController", () => {
     });
   });
 
-  it("does not update node defaults when an active session settings update fails", async () => {
+  it("records node defaults at switch time even when the active session settings update fails", async () => {
     const updateSettings = vi.fn(async () => {
       throw new Error("Claude Code custom models require a new session");
     });
@@ -10161,7 +11498,26 @@ describe("useAgentGUINodeController", () => {
         permissionModeId: "default"
       });
     });
-    expect(onDataChange).not.toHaveBeenCalled();
+    // The switch itself is the user's choice: it is recorded into the node
+    // defaults at switch time even though this session rejected it (the
+    // error literally asks for a new session, which should use the model).
+    expect(onDataChange).toHaveBeenCalled();
+    const updatedData = onDataChange.mock.calls
+      .map(([updater]) =>
+        updater(
+          agentGuiData("session-1", "claude-code", {
+            composerOverrides: {
+              model: "sonnet",
+              reasoningEffort: "medium"
+            }
+          })
+        )
+      )
+      .at(-1);
+    expect(updatedData?.composerOverrides).toMatchObject({
+      model: "MiniMax-M2.7",
+      reasoningEffort: "medium"
+    });
   });
 
   it("shows a warning tip when an active session settings update requires a new session", async () => {
@@ -10251,6 +11607,184 @@ describe("useAgentGUINodeController", () => {
       reasoningEffort: "high",
       permissionModeId: "full-access"
     });
+  });
+
+  it("tells the user a codex permission-mode change will apply on the next message when a turn is in flight", async () => {
+    const updateSettings = vi.fn(
+      async ({ settings }: { settings: { permissionModeId?: string } }) => ({
+        settings: {
+          model: "gpt-5.4",
+          reasoningEffort: "high",
+          speed: null,
+          planMode: false,
+          permissionModeId: settings.permissionModeId ?? "auto"
+        }
+      })
+    );
+    const onShowMessage = vi.fn();
+    installAgentHostApi({
+      list: vi.fn(async () => ({
+        presences: [],
+        sessions: [
+          workspaceAgentSession("session-1", {
+            provider: "codex",
+            title: "Codex"
+          })
+        ]
+      })),
+      listSessionTimeline: vi.fn(async () => ({ timelineItems: [] })),
+      subscribeEvents: vi.fn(() => vi.fn()),
+      getState: vi.fn(async () =>
+        agentSessionState("session-1", {
+          provider: "codex",
+          permissionModeId: "auto",
+          turnLifecycle: { activeTurnId: "turn-1", phase: "running" },
+          settings: {
+            model: "gpt-5.4",
+            reasoningEffort: "high",
+            speed: null,
+            planMode: false,
+            permissionModeId: "auto"
+          }
+        })
+      ),
+      updateSettings
+    });
+
+    const { result } = renderHook(() =>
+      useAgentGUINodeController({
+        workspaceId: "room-1",
+        currentUserId: "user-1",
+        workspacePath: "/workspace",
+        avoidGroupingEdits: false,
+        data: agentGuiData("session-1", "codex", {
+          composerOverrides: {
+            model: "gpt-5.4",
+            reasoningEffort: "high",
+            permissionModeId: "auto"
+          }
+        }),
+        onDataChange: vi.fn(),
+        onShowMessage
+      })
+    );
+
+    await waitFor(() => {
+      expect(result.current.viewModel.activeConversationId).toBe("session-1");
+    });
+    await waitFor(() => {
+      expect(result.current.viewModel.sessionChrome.rawState).not.toBeNull();
+    });
+
+    act(() => {
+      result.current.actions.updateComposerSettings({
+        permissionModeId: "full-access"
+      });
+    });
+
+    await waitFor(() => {
+      expect(updateSettings).toHaveBeenCalledWith({
+        workspaceId: "room-1",
+        agentSessionId: "session-1",
+        settings: {
+          permissionModeId: "full-access"
+        }
+      });
+    });
+    await waitFor(() => {
+      expect(onShowMessage).toHaveBeenCalledWith(
+        "Permission mode will apply starting with your next message.",
+        "info"
+      );
+    });
+  });
+
+  it("does not show the deferred-apply tip for claude-code, which applies permission mode live mid-turn", async () => {
+    const updateSettings = vi.fn(
+      async ({ settings }: { settings: { permissionModeId?: string } }) => ({
+        settings: {
+          model: "sonnet",
+          reasoningEffort: "medium",
+          speed: null,
+          planMode: false,
+          permissionModeId: settings.permissionModeId ?? "default"
+        }
+      })
+    );
+    const onShowMessage = vi.fn();
+    installAgentHostApi({
+      list: vi.fn(async () => ({
+        presences: [],
+        sessions: [
+          workspaceAgentSession("session-1", {
+            provider: "claude-code",
+            title: "Claude Code"
+          })
+        ]
+      })),
+      listSessionTimeline: vi.fn(async () => ({ timelineItems: [] })),
+      subscribeEvents: vi.fn(() => vi.fn()),
+      getState: vi.fn(async () =>
+        agentSessionState("session-1", {
+          provider: "claude-code",
+          permissionModeId: "default",
+          turnLifecycle: { activeTurnId: "turn-1", phase: "running" },
+          settings: {
+            model: "sonnet",
+            reasoningEffort: "medium",
+            speed: null,
+            planMode: false,
+            permissionModeId: "default"
+          }
+        })
+      ),
+      updateSettings
+    });
+
+    const { result } = renderHook(() =>
+      useAgentGUINodeController({
+        workspaceId: "room-1",
+        currentUserId: "user-1",
+        workspacePath: "/workspace",
+        avoidGroupingEdits: false,
+        data: agentGuiData("session-1", "claude-code", {
+          composerOverrides: {
+            model: "sonnet",
+            reasoningEffort: "medium",
+            permissionModeId: "default"
+          }
+        }),
+        onDataChange: vi.fn(),
+        onShowMessage
+      })
+    );
+
+    await waitFor(() => {
+      expect(result.current.viewModel.activeConversationId).toBe("session-1");
+    });
+    await waitFor(() => {
+      expect(result.current.viewModel.sessionChrome.rawState).not.toBeNull();
+    });
+
+    act(() => {
+      result.current.actions.updateComposerSettings({
+        permissionModeId: "acceptEdits"
+      });
+    });
+
+    await waitFor(() => {
+      expect(updateSettings).toHaveBeenCalledWith({
+        workspaceId: "room-1",
+        agentSessionId: "session-1",
+        settings: {
+          permissionModeId: "acceptEdits"
+        }
+      });
+    });
+    expect(onShowMessage).not.toHaveBeenCalledWith(
+      "Permission mode will apply starting with your next message.",
+      "info"
+    );
   });
 
   it("uses active ACP model options for live sessions", async () => {
@@ -10379,6 +11913,234 @@ describe("useAgentGUINodeController", () => {
       false
     );
     expect(listModels).not.toHaveBeenCalled();
+  });
+
+  it("keeps a submitted Claude model selected while the live settings refresh is in flight", async () => {
+    let resolveRefresh:
+      | ((value: ReturnType<typeof agentSessionState>) => void)
+      | null = null;
+    const getState = vi
+      .fn()
+      .mockResolvedValueOnce(
+        agentSessionState("session-1", {
+          provider: "claude-code",
+          settings: {
+            model: "haiku",
+            reasoningEffort: "high",
+            speed: null,
+            planMode: false,
+            permissionModeId: "default"
+          },
+          runtimeContext: {
+            cwd: "/workspace",
+            configOptions: [
+              {
+                id: "model",
+                name: "Model",
+                currentValue: "haiku",
+                options: [
+                  { value: "default", name: "Default (recommended)" },
+                  { value: "opus", name: "Opus" },
+                  { value: "haiku", name: "Haiku" }
+                ]
+              }
+            ]
+          }
+        })
+      )
+      .mockImplementationOnce(
+        () =>
+          new Promise((resolve) => {
+            resolveRefresh = resolve;
+          })
+      );
+    const updateSettings = vi.fn(async () => ({
+      agentSessionId: "session-1",
+      settings: {
+        model: "default",
+        reasoningEffort: "high",
+        speed: null,
+        planMode: false,
+        permissionModeId: "default"
+      }
+    }));
+    const getComposerOptions = vi.fn(async () => ({
+      provider: "claude-code",
+      runtimeContext: {
+        configOptions: [
+          {
+            id: "model",
+            options: [
+              { value: "default", name: "Default (recommended)" },
+              { value: "opus", name: "Opus" },
+              { value: "haiku", name: "Haiku" }
+            ]
+          }
+        ]
+      }
+    }));
+    installAgentHostApi({
+      list: vi.fn(async () => ({
+        presences: [],
+        sessions: [
+          workspaceAgentSession("session-1", {
+            provider: "claude-code",
+            title: "Claude Code"
+          })
+        ]
+      })),
+      listSessionTimeline: vi.fn(async () => ({ timelineItems: [] })),
+      subscribeEvents: vi.fn(() => vi.fn()),
+      getComposerOptions,
+      getState,
+      updateSettings
+    });
+
+    const { result } = renderHook(() =>
+      useAgentGUINodeController({
+        workspaceId: "room-1",
+        currentUserId: "user-1",
+        workspacePath: "/workspace",
+        avoidGroupingEdits: false,
+        data: agentGuiData("session-1", "claude-code"),
+        onDataChange: vi.fn()
+      })
+    );
+
+    await waitFor(() => {
+      expect(result.current.viewModel.composerSettings.selectedModelValue).toBe(
+        "haiku"
+      );
+    });
+
+    act(() => {
+      result.current.actions.updateComposerSettings({ model: "opus" });
+    });
+
+    await waitFor(() => {
+      expect(updateSettings).toHaveBeenCalledWith({
+        workspaceId: "room-1",
+        agentSessionId: "session-1",
+        settings: {
+          model: "opus"
+        }
+      });
+      expect(getState).toHaveBeenCalledTimes(2);
+      expect(result.current.viewModel.composerSettings.selectedModelValue).toBe(
+        "opus"
+      );
+    });
+
+    await act(async () => {
+      resolveRefresh?.(
+        agentSessionState("session-1", {
+          provider: "claude-code",
+          settings: {
+            model: "default",
+            reasoningEffort: "high",
+            speed: null,
+            planMode: false,
+            permissionModeId: "default"
+          },
+          runtimeContext: {
+            cwd: "/workspace",
+            configOptions: [
+              {
+                id: "model",
+                name: "Model",
+                currentValue: "opus",
+                options: [
+                  { value: "default", name: "Default (recommended)" },
+                  { value: "opus", name: "Opus" },
+                  { value: "haiku", name: "Haiku" }
+                ]
+              }
+            ]
+          }
+        })
+      );
+    });
+    expect(result.current.viewModel.composerSettings.selectedModelValue).toBe(
+      "opus"
+    );
+  });
+
+  it("prefers an imported session's persisted model over a differing live config option", async () => {
+    // Regression test: an imported Codex conversation persists the model
+    // (and reasoning effort) the user's local CLI actually used
+    // (`services/tuttid/service/agent/external_import.go`,
+    // `TestServiceImportPreservesLocalCodexModelAndReasoningEffort`). That
+    // persisted value must win in the composer even if the live
+    // app-server-reported "model" config option differs — e.g. because the
+    // provider session hasn't resumed yet, or reports a different session's
+    // config. Before this fix, `draftModel` in useAgentGUINodeController.ts
+    // unconditionally preferred the live config option's `currentValue`
+    // over the persisted session settings, silently discarding the carried
+    // over model.
+    const getState = vi.fn(async () =>
+      agentSessionState("session-1", {
+        provider: "codex",
+        settings: {
+          model: "gpt-5.4",
+          reasoningEffort: "xhigh",
+          speed: null,
+          planMode: false,
+          permissionModeId: "auto"
+        },
+        runtimeContext: {
+          cwd: "/workspace",
+          configOptions: [
+            {
+              id: "model",
+              name: "Model",
+              currentValue: "gpt-5-codex",
+              options: [
+                { value: "gpt-5-codex", name: "GPT-5 Codex" },
+                { value: "gpt-5.4", name: "GPT-5.4" }
+              ]
+            }
+          ]
+        }
+      })
+    );
+    installAgentHostApi({
+      list: vi.fn(async () => ({
+        presences: [],
+        sessions: [
+          workspaceAgentSession("session-1", {
+            provider: "codex",
+            title: "Imported Codex conversation"
+          })
+        ]
+      })),
+      listSessionTimeline: vi.fn(async () => ({ timelineItems: [] })),
+      subscribeEvents: vi.fn(() => vi.fn()),
+      getComposerOptions: vi.fn(async () => ({
+        provider: "codex",
+        runtimeContext: { configOptions: [] }
+      })),
+      getState
+    });
+
+    const { result } = renderHook(() =>
+      useAgentGUINodeController({
+        workspaceId: "room-1",
+        currentUserId: "user-1",
+        workspacePath: "/workspace",
+        avoidGroupingEdits: false,
+        data: agentGuiData("session-1", "codex"),
+        onDataChange: vi.fn()
+      })
+    );
+
+    await waitFor(() => {
+      expect(result.current.viewModel.composerSettings.selectedModelValue).toBe(
+        "gpt-5.4"
+      );
+    });
+    expect(
+      result.current.viewModel.composerSettings.selectedReasoningEffortValue
+    ).toBe("xhigh");
   });
 
   it("reloads active ACP options after switching the live model", async () => {
@@ -10839,12 +12601,14 @@ describe("useAgentGUINodeController", () => {
       permissionModeId: "full-access"
     });
     expect(onDataChange).toHaveBeenCalled();
+    // Only the fields touched by this switch are remembered (patch
+    // semantics); the untouched reasoningEffort is not re-recorded.
     expect(onRememberComposerDefaults).toHaveBeenCalledWith({
+      agentTargetId: "local:codex",
       provider: "codex",
       defaults: {
         model: "gpt-5",
-        permissionModeId: "full-access",
-        reasoningEffort: "high"
+        permissionModeId: "full-access"
       }
     });
   });
@@ -16091,6 +17855,19 @@ function installAgentActivityRuntimeForHostMocks({
       );
       return result;
     },
+    async goalControl(input) {
+      return {
+        session: {
+          workspaceId: input.workspaceId,
+          agentSessionId: input.agentSessionId,
+          provider: "codex",
+          cwd: "/workspace",
+          title: "Codex",
+          status: "ready"
+        },
+        goal: null
+      };
+    },
     async cancelSession(input) {
       const result = await cancel({
         workspaceId: input.workspaceId,
@@ -16407,6 +18184,14 @@ function installNoopAgentActivityRuntimeForTests(): void {
       activateSession: async (input) => ({
         session: agentSession(input.agentSessionId),
         activation: { mode: input.mode, status: "attached" as const }
+      }),
+      goalControl: async (input) => ({
+        goal: null,
+        session: upsertRuntimeSession(
+          (workspaceId, updater) => updater(getSnapshot(workspaceId)),
+          input.workspaceId,
+          { agentSessionId: input.agentSessionId }
+        )
       }),
       cancelSession: async (input) => ({
         canceled: true,

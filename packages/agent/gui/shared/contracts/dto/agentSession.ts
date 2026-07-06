@@ -4,6 +4,7 @@ export type AgentHostAgentSessionProvider =
   | "claude-code"
   | "codex"
   | "tutti-agent"
+  | "cursor"
   | "nexight"
   | "gemini"
   | "hermes"

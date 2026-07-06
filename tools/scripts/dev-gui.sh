@@ -32,6 +32,61 @@ command_exists() {
   command -v "$1" >/dev/null 2>&1
 }
 
+prepend_command_dir() {
+  local command_path="$1"
+  local command_dir
+
+  command_dir="$(dirname "${command_path}")"
+  export PATH="${command_dir}:${PATH}"
+  hash -r
+}
+
+resolve_corepack_command() {
+  local node_exec_path
+  local node_bin_dir
+  local node_version
+  local node_platform
+  local node_arch
+  local local_node_corepack
+  local corepack_candidate
+
+  if command_exists corepack; then
+    command -v corepack
+    return
+  fi
+
+  if command_exists node; then
+    node_exec_path="$(node -p 'process.execPath' 2>/dev/null || true)"
+    if [[ -n "${node_exec_path}" ]]; then
+      node_bin_dir="$(dirname "${node_exec_path}")"
+      if [[ -x "${node_bin_dir}/corepack" ]]; then
+        printf '%s\n' "${node_bin_dir}/corepack"
+        return
+      fi
+    fi
+
+    node_version="$(node -p 'process.versions.node' 2>/dev/null || true)"
+    node_platform="$(node -p 'process.platform' 2>/dev/null || true)"
+    node_arch="$(node -p 'process.arch' 2>/dev/null || true)"
+    if [[ -n "${node_version}" && -n "${node_platform}" && -n "${node_arch}" ]]; then
+      local_node_corepack="${HOME}/.local/node-v${node_version}-${node_platform}-${node_arch}/bin/corepack"
+      if [[ -x "${local_node_corepack}" ]]; then
+        printf '%s\n' "${local_node_corepack}"
+        return
+      fi
+    fi
+  fi
+
+  while IFS= read -r corepack_candidate; do
+    if [[ -x "${corepack_candidate}" ]]; then
+      printf '%s\n' "${corepack_candidate}"
+      return
+    fi
+  done < <(find "${HOME}/.local" -maxdepth 3 -path '*/bin/corepack' 2>/dev/null | sort -r)
+
+  return 1
+}
+
 run_go() {
   env -u GOROOT "${GO_BIN}" "$@"
 }
@@ -315,40 +370,38 @@ ensure_node_runtime() {
 
 ensure_pnpm() {
   local required_pnpm_version
+  local required_pnpm_semver
   local current_pnpm_version=""
-  local corepack_bin_dir
+  local corepack_command=""
   local resolved_pnpm_version
 
   required_pnpm_version="$(resolve_required_pnpm_version)"
+  required_pnpm_semver="${required_pnpm_version%%+*}"
 
-  if command_exists corepack; then
-    corepack_bin_dir="$(dirname "$(command -v corepack)")"
-    export PATH="${corepack_bin_dir}:${PATH}"
-    hash -r
+  if corepack_command="$(resolve_corepack_command)"; then
+    prepend_command_dir "${corepack_command}"
   fi
 
   if command_exists pnpm; then
-    current_pnpm_version="$(pnpm --version)"
+    current_pnpm_version="$(pnpm --version 2>/dev/null || true)"
   fi
 
-  if [[ "${current_pnpm_version}" == "${required_pnpm_version}" ]]; then
+  if [[ "${current_pnpm_version}" == "${required_pnpm_semver}" ]]; then
     log "pnpm ${current_pnpm_version}"
     return
   fi
 
-  if ! command_exists corepack; then
+  if [[ -z "${corepack_command}" ]] && ! corepack_command="$(resolve_corepack_command)"; then
     fail "corepack is required to install pnpm ${required_pnpm_version} automatically."
   fi
 
   log "installing pnpm ${required_pnpm_version} with corepack"
-  corepack enable
-  corepack prepare "pnpm@${required_pnpm_version}" --activate
-  corepack_bin_dir="$(dirname "$(command -v corepack)")"
-  export PATH="${corepack_bin_dir}:${PATH}"
-  hash -r
+  "${corepack_command}" enable
+  "${corepack_command}" prepare "pnpm@${required_pnpm_version}" --activate
+  prepend_command_dir "${corepack_command}"
 
-  resolved_pnpm_version="$(pnpm --version)"
-  if [[ "${resolved_pnpm_version}" != "${required_pnpm_version}" ]]; then
+  resolved_pnpm_version="$(pnpm --version 2>/dev/null || true)"
+  if [[ "${resolved_pnpm_version}" != "${required_pnpm_semver}" ]]; then
     fail "pnpm ${required_pnpm_version} installation did not succeed; found ${resolved_pnpm_version:-unknown version}."
   fi
 

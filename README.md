@@ -243,25 +243,11 @@ No. Tutti is useful for coding, design, content, app workflows, and any work whe
 
 <!-- TODO: download link for Tutti · Local -->
 
-Download Tutti · Local — coming soon.
+[Download Tutti · Local](https://tutti.sh/desktop/download?platform=macos&arch=universal&format=dmg)
 
-<!-- TODO: waitlist link for Tutti · Cloud -->
+<!-- TODO: waitlist link for Tutti · VM -->
 
-Join the waitlist for Tutti · Cloud — coming soon.
-
-### Build from source
-
-Prerequisites:
-
-- Node.js `24` or newer (`.node-version` pins the baseline)
-- pnpm `10.11.0`
-- Go `1.24`
-
-```sh
-pnpm install
-pnpm setup:dev
-make dev-gui
-```
+Join the [Tutti · VM waitlist](https://tutti.sh/waitlist).
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) for the full development guide.
 
@@ -274,5 +260,3 @@ To report a security vulnerability, see [SECURITY.md](SECURITY.md).
 ## License
 
 Tutti is licensed under the [Apache License 2.0](LICENSE).
-
-> Note: this codebase uses the internal codename `tutti` — you will see it in directory and binary names such as `services/tuttid`.

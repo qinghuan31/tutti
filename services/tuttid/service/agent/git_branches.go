@@ -7,7 +7,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/tutti-os/tutti/packages/agentactivity/daemon/runtimecmd"
+	"github.com/tutti-os/tutti/packages/agent/daemon/runtimecmd"
 )
 
 // gitBranchListTimeout bounds the git subprocesses backing the review picker so

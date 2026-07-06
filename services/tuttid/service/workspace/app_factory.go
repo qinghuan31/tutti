@@ -13,8 +13,9 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	agentsessionstore "github.com/tutti-os/tutti/packages/agentactivity/daemon/activity"
+	agentsessionstore "github.com/tutti-os/tutti/packages/agent/daemon/activity"
 	workspacefiles "github.com/tutti-os/tutti/packages/workspace/files"
+	agenttargetbiz "github.com/tutti-os/tutti/services/tuttid/biz/agenttarget"
 	workspacebiz "github.com/tutti-os/tutti/services/tuttid/biz/workspace"
 	workspacedata "github.com/tutti-os/tutti/services/tuttid/data/workspace"
 	agentservice "github.com/tutti-os/tutti/services/tuttid/service/agent"
@@ -22,7 +23,6 @@ import (
 )
 
 const (
-	defaultFactoryProvider          = "codex"
 	defaultFactoryAppVersion        = "0.1.0"
 	defaultFactoryValidationTimeout = 45 * time.Second
 	defaultFactoryPrepareTimeout    = 5 * time.Minute
@@ -40,6 +40,7 @@ type AppFactoryService struct {
 	WorkspaceRootResolver WorkspaceRootResolver
 	AppCenter             *AppCenterService
 	AgentSessionService   FactoryAgentSessionService
+	AgentTargetStore      workspacedata.AgentTargetStore
 	AgentMessageReader    agentservice.MessageReader
 	AgentSessionReader    agentservice.SessionReader
 	AgentSessionState     FactoryAgentSessionStateReporter
@@ -48,6 +49,12 @@ type AppFactoryService struct {
 	Publisher             WorkspaceAppFactoryEventPublisher
 
 	publishLocks keyedOperationLocks
+
+	// liveTurnAgentSessions tracks, per agent session, whether the most
+	// recently observed TurnLifecycle snapshot (see ObserveAgentSessionState)
+	// reports a live turn. See agentSessionHasLiveTurn in
+	// app_factory_agent_state.go for why this exists.
+	liveTurnAgentSessions sync.Map
 }
 
 type keyedOperationLocks struct {
@@ -108,7 +115,7 @@ type CreateAppFactoryJobInput struct {
 	Prompt           string
 	DisplayName      string
 	Description      string
-	Provider         string
+	AgentTargetID    string
 	Model            string
 	PermissionModeID string
 	ReasoningEffort  string
@@ -118,10 +125,43 @@ type FixAppFactoryJobInput struct {
 	Prompt string
 }
 
-type AppFactoryProviderComposerOptionsInput struct {
-	Locale   string
+type AppFactoryAgentTargetComposerOptionsInput struct {
+	AgentTargetID string
+	Locale        string
+	Settings      agentservice.ComposerSettings
+}
+
+type resolvedAppFactoryAgentTarget struct {
+	ID       string
 	Provider string
-	Settings agentservice.ComposerSettings
+}
+
+func (s *AppFactoryService) resolveAgentTargetProvider(ctx context.Context, agentTargetID string) (resolvedAppFactoryAgentTarget, error) {
+	agentTargetID = strings.TrimSpace(agentTargetID)
+	if agentTargetID == "" {
+		return resolvedAppFactoryAgentTarget{}, fmt.Errorf("%w: agent target id is required", agentservice.ErrInvalidArgument)
+	}
+	if s.AgentTargetStore == nil {
+		return resolvedAppFactoryAgentTarget{}, fmt.Errorf("%w: agent target store is unavailable", agentservice.ErrInvalidArgument)
+	}
+	target, err := s.AgentTargetStore.GetAgentTarget(ctx, agentTargetID)
+	if err != nil {
+		if errors.Is(err, workspacedata.ErrAgentTargetNotFound) {
+			return resolvedAppFactoryAgentTarget{}, fmt.Errorf("%w: agent target not found", agentservice.ErrInvalidArgument)
+		}
+		return resolvedAppFactoryAgentTarget{}, fmt.Errorf("get agent target: %w", err)
+	}
+	normalized, err := agenttargetbiz.NormalizeTarget(target)
+	if err != nil {
+		return resolvedAppFactoryAgentTarget{}, fmt.Errorf("%w: invalid agent target: %v", agentservice.ErrInvalidArgument, err)
+	}
+	if !normalized.Enabled {
+		return resolvedAppFactoryAgentTarget{}, fmt.Errorf("%w: agent target is disabled", agentservice.ErrInvalidArgument)
+	}
+	if _, err := agenttargetbiz.RuntimeProviderTargetRef(normalized); err != nil {
+		return resolvedAppFactoryAgentTarget{}, fmt.Errorf("%w: invalid agent target launch ref: %v", agentservice.ErrInvalidArgument, err)
+	}
+	return resolvedAppFactoryAgentTarget{ID: normalized.ID, Provider: normalized.Provider}, nil
 }
 
 func (s *AppFactoryService) List(ctx context.Context, workspaceID string) ([]workspacebiz.AppFactoryJob, error) {
@@ -153,12 +193,16 @@ func (s *AppFactoryService) List(ctx context.Context, workspaceID string) ([]wor
 	return jobs, nil
 }
 
-func (s *AppFactoryService) GetProviderComposerOptions(ctx context.Context, workspaceID string, input AppFactoryProviderComposerOptionsInput) (agentservice.ComposerOptions, error) {
+func (s *AppFactoryService) GetAgentTargetComposerOptions(ctx context.Context, workspaceID string, input AppFactoryAgentTargetComposerOptionsInput) (agentservice.ComposerOptions, error) {
 	if _, err := s.workspaceSummary(ctx, workspaceID); err != nil {
 		return agentservice.ComposerOptions{}, err
 	}
 	if s.AgentSessionService == nil {
 		return agentservice.ComposerOptions{}, errors.New("agent session service is unavailable")
+	}
+	resolvedTarget, err := s.resolveAgentTargetProvider(ctx, input.AgentTargetID)
+	if err != nil {
+		return agentservice.ComposerOptions{}, err
 	}
 	cwd := s.appFactoryComposerDraftDir(workspaceID)
 	if err := os.MkdirAll(cwd, 0o755); err != nil {
@@ -166,10 +210,11 @@ func (s *AppFactoryService) GetProviderComposerOptions(ctx context.Context, work
 	}
 	includeCapabilityCatalog := false
 	return s.AgentSessionService.GetComposerOptions(ctx, agentservice.ComposerOptionsInput{
+		AgentTargetID:            resolvedTarget.ID,
 		Cwd:                      cwd,
 		IncludeCapabilityCatalog: &includeCapabilityCatalog,
 		Locale:                   strings.TrimSpace(input.Locale),
-		Provider:                 strings.TrimSpace(input.Provider),
+		Provider:                 resolvedTarget.Provider,
 		Settings:                 input.Settings,
 		WorkspaceID:              strings.TrimSpace(workspaceID),
 	})
@@ -256,6 +301,10 @@ func (s *AppFactoryService) Create(ctx context.Context, workspaceID string, inpu
 	if displayName == "" {
 		return workspacebiz.AppFactoryJob{}, errors.New("app factory display name is required")
 	}
+	resolvedTarget, err := s.resolveAgentTargetProvider(ctx, input.AgentTargetID)
+	if err != nil {
+		return workspacebiz.AppFactoryJob{}, err
+	}
 
 	jobID := uuid.NewString()
 	appID := "app_" + uuid.NewString()
@@ -268,7 +317,8 @@ func (s *AppFactoryService) Create(ctx context.Context, workspaceID string, inpu
 		AppID:           appID,
 		DisplayName:     displayName,
 		Description:     strings.TrimSpace(input.Description),
-		Provider:        normalizeFactoryProvider(input.Provider),
+		AgentTargetID:   resolvedTarget.ID,
+		Provider:        resolvedTarget.Provider,
 		Model:           strings.TrimSpace(input.Model),
 		ReasoningEffort: strings.TrimSpace(input.ReasoningEffort),
 		DraftDir:        filepath.Join(jobRoot, "draft"),
@@ -319,6 +369,7 @@ func (s *AppFactoryService) Create(ctx context.Context, workspaceID string, inpu
 	}
 	session, err := s.AgentSessionService.Create(ctx, workspaceID, agentservice.CreateSessionInput{
 		AgentSessionID: agentSessionID,
+		AgentTargetID:  job.AgentTargetID,
 		Provider:       job.Provider,
 		InitialContent: agentservice.TextPromptContent(initialPrompt),
 		Title:          &title,
@@ -584,6 +635,7 @@ func (s *AppFactoryService) failInterruptedAgentSession(ctx context.Context, job
 		AgentSessionID: agentSessionID,
 		SessionOrigin:  agentsessionstore.WorkspaceAgentSessionOriginRuntime,
 		State: agentsessionstore.WorkspaceAgentSessionStateUpdate{
+			AgentTargetID:    strings.TrimSpace(job.AgentTargetID),
 			Provider:         strings.TrimSpace(job.Provider),
 			Title:            "Create App: " + strings.TrimSpace(job.DisplayName),
 			LifecycleStatus:  "failed",
@@ -736,6 +788,7 @@ func logAppFactoryJobStatePersisted(job workspacebiz.AppFactoryJob) {
 		"jobId", job.JobID,
 		"appId", job.AppID,
 		"displayName", job.DisplayName,
+		"agentTargetId", job.AgentTargetID,
 		"provider", job.Provider,
 		"model", job.Model,
 		"status", job.Status,

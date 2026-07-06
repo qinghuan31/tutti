@@ -25,8 +25,6 @@ const agentGuiWorkbenchDockEntryPrefix = "agent-gui:";
 const agentGuiWorkbenchUnifiedDockEntryIdValue = "agent-gui:unified";
 let agentGuiWorkbenchInstanceSequence = 0;
 
-export type AgentGuiWorkbenchDockLayout = "legacySplit" | "unified";
-
 export type AgentGuiWorkbenchDockIdentity =
   | {
       kind: "legacyProvider";
@@ -46,15 +44,6 @@ export function agentGuiWorkbenchDockEntryId(
 
 export function agentGuiWorkbenchUnifiedDockEntryId(): string {
   return agentGuiWorkbenchUnifiedDockEntryIdValue;
-}
-
-export function agentGuiWorkbenchDockEntryIdForLayout(input: {
-  dockLayout: AgentGuiWorkbenchDockLayout;
-  provider: AgentGuiWorkbenchProvider;
-}): string {
-  return input.dockLayout === "unified"
-    ? agentGuiWorkbenchUnifiedDockEntryId()
-    : agentGuiWorkbenchDockEntryId(input.provider);
 }
 
 export function agentGuiWorkbenchInstanceId(
@@ -141,6 +130,7 @@ export function agentGuiWorkbenchProviderFromLaunchRequest(
 }
 
 export function createAgentGuiWorkbenchSessionLaunchRequest(input: {
+  agentTargetId?: string | null;
   agentSessionId?: string;
   openInNewWindow?: boolean;
   provider: unknown;
@@ -149,6 +139,9 @@ export function createAgentGuiWorkbenchSessionLaunchRequest(input: {
   return {
     dockEntryId: agentGuiWorkbenchDockEntryId(provider),
     payload: {
+      ...(input.agentTargetId?.trim()
+        ? { agentTargetId: input.agentTargetId.trim() }
+        : {}),
       ...(input.agentSessionId ? { agentSessionId: input.agentSessionId } : {}),
       ...(input.openInNewWindow ? { openInNewWindow: true } : {}),
       provider
@@ -159,8 +152,10 @@ export function createAgentGuiWorkbenchSessionLaunchRequest(input: {
 }
 
 export function createAgentGuiWorkbenchDraftLaunchRequest(input: {
+  agentTargetId?: string | null;
   autoSubmit?: boolean;
   draftPrompt: string;
+  openInNewWindow?: boolean;
   provider: unknown;
   userProjectPath?: string | null;
 }) {
@@ -173,7 +168,11 @@ export function createAgentGuiWorkbenchDraftLaunchRequest(input: {
     payload: {
       draftPrompt: input.draftPrompt,
       provider,
+      ...(input.agentTargetId?.trim()
+        ? { agentTargetId: input.agentTargetId.trim() }
+        : {}),
       ...(input.autoSubmit ? { autoSubmit: true } : {}),
+      ...(input.openInNewWindow ? { openInNewWindow: true } : {}),
       ...(userProjectPath ? { userProjectPath } : {})
     },
     reason: "host" as const,
@@ -213,6 +212,7 @@ export function createAgentGuiWorkbenchLaunchDescriptor(
   });
   const prefillPrompt = prefillPromptFromLaunchPayload(request.payload);
   if (prefillPrompt) {
+    const openInNewWindow = openInNewWindowFromLaunchPayload(request.payload);
     return {
       activation: {
         payload: prefillPrompt,
@@ -220,16 +220,18 @@ export function createAgentGuiWorkbenchLaunchDescriptor(
       },
       dockEntryId,
       instanceId: createAgentGuiWorkbenchInstanceId({
-        agentTargetId: agentTargetIdFromLaunchPayload(request.payload),
+        agentTargetId: openInNewWindow
+          ? null
+          : agentTargetIdFromLaunchPayload(request.payload),
         provider
       }),
-      openInNewWindow: false,
+      openInNewWindow,
       provider,
       reuseDockEntryNode: shouldReuseAgentGuiWorkbenchDockEntryNode({
         dockEntryId,
         launchKind: "prefill"
       }),
-      reuseExistingSessionNode: true,
+      reuseExistingSessionNode: !openInNewWindow,
       targetAgentSessionId: null
     };
   }
@@ -237,7 +239,7 @@ export function createAgentGuiWorkbenchLaunchDescriptor(
   const targetAgentSessionId = agentSessionIdFromLaunchPayload(request.payload);
   const openInNewWindow = openInNewWindowFromLaunchPayload(request.payload);
   const instanceId = createAgentGuiWorkbenchInstanceId({
-    agentSessionId: openInNewWindow ? null : targetAgentSessionId,
+    agentSessionId: null,
     agentTargetId: openInNewWindow
       ? null
       : agentTargetIdFromLaunchPayload(request.payload),
@@ -307,6 +309,8 @@ function prefillPromptFromLaunchPayload(
     return null;
   }
   const autoSubmit = (payload as { autoSubmit?: unknown }).autoSubmit === true;
+  const provider = (payload as { provider?: unknown }).provider;
+  const agentTargetId = agentTargetIdFromLaunchPayload(payload);
   const userProjectPath = (payload as { userProjectPath?: unknown })
     .userProjectPath;
   const normalizedUserProjectPath =
@@ -315,7 +319,9 @@ function prefillPromptFromLaunchPayload(
       : null;
   return {
     draftPrompt,
+    ...(agentTargetId ? { agentTargetId } : {}),
     ...(autoSubmit ? { autoSubmit: true } : {}),
+    ...(isAgentGuiWorkbenchProvider(provider) ? { provider } : {}),
     ...(normalizedUserProjectPath
       ? { userProjectPath: normalizedUserProjectPath }
       : {})

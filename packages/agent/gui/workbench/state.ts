@@ -62,7 +62,10 @@ export function normalizeAgentGuiWorkbenchState(
     lastActiveAgentSessionId:
       typeof state.lastActiveAgentSessionId === "string"
         ? state.lastActiveAgentSessionId
-        : null
+        : null,
+    ...(typeof state.lastActiveConversationTitle === "string"
+      ? { lastActiveConversationTitle: state.lastActiveConversationTitle }
+      : {})
   };
 }
 
@@ -78,7 +81,10 @@ export function projectAgentGuiWorkbenchState(
     conversationRailWidthPx: normalizeOptionalPositiveNumber(
       state.conversationRailWidthPx
     ),
-    lastActiveAgentSessionId: state.lastActiveAgentSessionId ?? null
+    lastActiveAgentSessionId: state.lastActiveAgentSessionId ?? null,
+    ...(typeof state.lastActiveConversationTitle === "string"
+      ? { lastActiveConversationTitle: state.lastActiveConversationTitle }
+      : {})
   };
 }
 
@@ -90,7 +96,9 @@ export function areAgentGuiWorkbenchStatesEqual(
     (left.agentTargetId ?? null) === (right.agentTargetId ?? null) &&
     left.conversationRailCollapsed === right.conversationRailCollapsed &&
     left.conversationRailWidthPx === right.conversationRailWidthPx &&
-    left.lastActiveAgentSessionId === right.lastActiveAgentSessionId
+    left.lastActiveAgentSessionId === right.lastActiveAgentSessionId &&
+    (left.lastActiveConversationTitle ?? null) ===
+      (right.lastActiveConversationTitle ?? null)
   );
 }
 

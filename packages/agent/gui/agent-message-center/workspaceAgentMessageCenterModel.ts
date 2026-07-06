@@ -344,7 +344,10 @@ function analyzeMessageCenterSessionMessages(
         }
       }
     }
-    if (isAgentMessageRole(message.role)) {
+    if (
+      isAgentMessageRole(message.role) &&
+      !isReasoningMessageKind(message.kind)
+    ) {
       const summary = messageSummary(message);
       if (summary) {
         const occurredAtUnixMs = messageTimeUnixMs(message);
@@ -722,6 +725,19 @@ function compareMessageCenterItems(
 function isAgentMessageRole(role: string): boolean {
   const normalized = role.trim().toLowerCase();
   return normalized === "assistant" || normalized === "agent";
+}
+
+/**
+ * Reasoning/thinking messages are stored with an assistant-like `role` but a
+ * distinct `kind: "reasoning"` (see workspaceAgentMessageProjection.ts, which
+ * routes `kind === "reasoning"` to a separate "assistant_thinking" timeline
+ * item instead of a normal reply). The message center must not treat these as
+ * a normal agent reply when picking the latest message to preview, otherwise
+ * raw thinking content (occasionally still carrying literal tag markup) can
+ * surface verbatim in the message-center list instead of the actual reply.
+ */
+function isReasoningMessageKind(kind: string): boolean {
+  return kind.trim().toLowerCase() === "reasoning";
 }
 
 function isUserMessageRole(role: string): boolean {

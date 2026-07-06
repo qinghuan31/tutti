@@ -44,7 +44,8 @@ test("desktop agent gui workbench state only preserves whitelisted data", () => 
     agentTargetId: "daemon-gemini",
     conversationRailCollapsed: true,
     conversationRailWidthPx: null,
-    lastActiveAgentSessionId: "session-1"
+    lastActiveAgentSessionId: "session-1",
+    lastActiveConversationTitle: "A title"
   });
 });
 
@@ -64,7 +65,8 @@ test("desktop agent gui workbench projection preserves rail state and permission
       agentTargetId: "daemon-gemini",
       conversationRailCollapsed: true,
       conversationRailWidthPx: 360,
-      lastActiveAgentSessionId: "session-1"
+      lastActiveAgentSessionId: "session-1",
+      lastActiveConversationTitle: "A title"
     }
   );
 });

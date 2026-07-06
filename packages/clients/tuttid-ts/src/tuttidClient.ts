@@ -3,6 +3,7 @@ import {
   addWorkspaceIssueTaskContextRefs,
   applyWorkspaceGitPatch,
   cancelWorkspaceAgentSession,
+  goalControlWorkspaceAgentSession,
   checkUserProjectPath,
   clearWorkspaceAgentSessions,
   completeWorkspaceIssueRun,
@@ -46,6 +47,8 @@ import {
   listWorkspaceAppMentionCandidates,
   listWorkspaceAgentGeneratedFiles,
   listUserProjects,
+  listWorkspaceAgentSessionSectionPage,
+  listWorkspaceAgentSessionSections,
   listWorkspaceAgentSessionMessages,
   listWorkspaceIssues,
   listWorkspaceIssueTopics,
@@ -582,13 +585,46 @@ export function createTuttidClient(
       });
       return unwrapData(response, "Workspace terminals request failed.");
     },
-    async listWorkspaceAgentSessions(workspaceID, request) {
+    async listWorkspaceAgentSessions(workspaceID, request, requestOptions) {
       const response = await listWorkspaceAgentSessions({
         client,
         path: { workspaceID },
-        query: request
+        query: request,
+        ...requestOptions
       });
       return unwrapData(response, "Workspace agent sessions request failed.");
+    },
+    async listWorkspaceAgentSessionSections(
+      workspaceID,
+      request,
+      requestOptions
+    ) {
+      const response = await listWorkspaceAgentSessionSections({
+        client,
+        path: { workspaceID },
+        query: request,
+        ...requestOptions
+      });
+      return unwrapData(
+        response,
+        "Workspace agent session sections request failed."
+      );
+    },
+    async listWorkspaceAgentSessionSectionPage(
+      workspaceID,
+      request,
+      requestOptions
+    ) {
+      const response = await listWorkspaceAgentSessionSectionPage({
+        client,
+        path: { workspaceID },
+        query: request,
+        ...requestOptions
+      });
+      return unwrapData(
+        response,
+        "Workspace agent session section page request failed."
+      );
     },
     async listWorkspaceAgentGeneratedFiles(workspaceID, request) {
       const response = await listWorkspaceAgentGeneratedFiles({
@@ -801,6 +837,18 @@ export function createTuttidClient(
         path: { agentSessionID, workspaceID }
       });
       return unwrapData(response, "Cancel workspace agent session failed.");
+    },
+    async goalControlWorkspaceAgentSession(
+      workspaceID,
+      agentSessionID,
+      request
+    ) {
+      const response = await goalControlWorkspaceAgentSession({
+        client,
+        body: request,
+        path: { agentSessionID, workspaceID }
+      });
+      return unwrapData(response, "Goal control failed.");
     },
     async sendWorkspaceAgentSessionInput(workspaceID, agentSessionID, request) {
       const response = await sendWorkspaceAgentSessionInput({

@@ -96,6 +96,6 @@ any invocation plan before launching.
 
 If `providerTargets` is omitted or empty, AgentGUI creates local targets such as
 `local:codex` and `local:claude-code` from the static provider catalog for
-display/backward compatibility. Those fallback local targets are not persisted
+display/backward compatibility. Those static catalog targets are not persisted
 or sent as `providerTargetRef`; legacy hosts continue to receive only the real
 `provider`.

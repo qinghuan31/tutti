@@ -1,6 +1,11 @@
 import type { JSX } from "react";
-import type { AgentToolCallVM } from "../../contracts/agentToolCallVM";
+import type {
+  AgentToolCallVM,
+  AgentToolRendererKind
+} from "../../contracts/agentToolCallVM";
 import { AgentEditContent } from "./AgentEditContent";
+import { AgentWebFetchContent } from "./AgentWebFetchContent";
+import { AgentWebSearchContent } from "./AgentWebSearchContent";
 import {
   arrayValue,
   objectValue,
@@ -19,13 +24,56 @@ export function AgentApprovalContent({
     return null;
   }
   if (previewCall) {
-    return <AgentEditContent call={previewCall} onLinkClick={onLinkClick} />;
+    switch (previewCall.rendererKind) {
+      case "web-fetch":
+        return (
+          <AgentWebFetchContent call={previewCall} onLinkClick={onLinkClick} />
+        );
+      case "web-search":
+        return (
+          <AgentWebSearchContent call={previewCall} onLinkClick={onLinkClick} />
+        );
+      default:
+        return (
+          <AgentEditContent call={previewCall} onLinkClick={onLinkClick} />
+        );
+    }
   }
   return (
     <div className="workspace-agents-status-panel__detail-tool-body">
       <ToolMarkdownBlock content={call.summary} />
     </div>
   );
+}
+
+interface ApprovalPreviewKind {
+  rendererKind: AgentToolRendererKind;
+  toolName: string;
+}
+
+// The nested tool-call's `kind` follows the ACP vocabulary (edit/move/fetch/...)
+// when the provider sends it (e.g. Codex); Claude Code omits `kind` and only
+// sets `title`/`toolName` to the canonical tool name (e.g. "WebFetch"), so
+// both vocabularies are matched here.
+function approvalPreviewKindFor(
+  normalizedKind: string
+): ApprovalPreviewKind | null {
+  switch (normalizedKind) {
+    case "edit":
+    case "move":
+      return { rendererKind: "edit", toolName: "Edit" };
+    case "fetch":
+    case "webfetch":
+    case "web_fetch":
+    case "web-fetch":
+      return { rendererKind: "web-fetch", toolName: "WebFetch" };
+    case "websearch":
+    case "web_search":
+    case "web-search":
+      return { rendererKind: "web-search", toolName: "WebSearch" };
+    default:
+      return null;
+  }
 }
 
 function approvalPreviewCall(call: AgentToolCallVM): AgentToolCallVM | null {
@@ -38,7 +86,8 @@ function approvalPreviewCall(call: AgentToolCallVM): AgentToolCallVM | null {
       stringValue(toolCall.title) ??
       stringValue(toolCall.toolName)
   );
-  if (normalizedKind !== "edit" && normalizedKind !== "move") {
+  const preview = approvalPreviewKindFor(normalizedKind);
+  if (!preview) {
     return null;
   }
   const input = objectValue(toolCall.rawInput) ?? objectValue(toolCall.input);
@@ -49,7 +98,7 @@ function approvalPreviewCall(call: AgentToolCallVM): AgentToolCallVM | null {
     id: `${call.id}:approval-preview`,
     turnId: call.turnId,
     name: stringValue(toolCall.title) ?? call.name,
-    toolName: "Edit",
+    toolName: preview.toolName,
     callType: "tool",
     status: stringValue(toolCall.status) ?? call.status,
     statusKind: call.statusKind,
@@ -67,7 +116,7 @@ function approvalPreviewCall(call: AgentToolCallVM): AgentToolCallVM | null {
     metadata: null,
     content,
     locations,
-    rendererKind: "edit",
+    rendererKind: preview.rendererKind,
     approval: null,
     planMode: null,
     askUserQuestion: null,
