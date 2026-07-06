@@ -972,6 +972,26 @@ export const agentActivityUpdatedPayloadSchema = {
   }
 } as const;
 
+export const agentModelCatalogInvalidatedPayloadSchema = {
+  type: "object",
+  additionalProperties: false,
+  required: ["providers", "occurredAtUnixMs"],
+  properties: {
+    providers: {
+      type: "array",
+      minItems: 1,
+      items: {
+        type: "string",
+        minLength: 1
+      }
+    },
+    occurredAtUnixMs: {
+      type: "integer",
+      minimum: 0
+    }
+  }
+} as const;
+
 export const analyticsDebugReportedPayloadSchema = {
   type: "object",
   additionalProperties: false,
@@ -2343,6 +2363,7 @@ export const businessEventServerFrameSchema = {
 
 export const businessEventPayloadSchemas = {
   "agent.activity.updated": agentActivityUpdatedPayloadSchema,
+  "agent.model.catalog.invalidated": agentModelCatalogInvalidatedPayloadSchema,
   "analytics.debug.reported": analyticsDebugReportedPayloadSchema,
   "preferences.desktop.update.requested":
     preferencesDesktopUpdateRequestedPayloadSchema,

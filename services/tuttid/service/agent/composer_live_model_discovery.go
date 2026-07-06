@@ -2,8 +2,10 @@ package agent
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
 	"strings"
 	"time"
 
@@ -16,6 +18,22 @@ const liveModelDiscoveryPollInterval = 100 * time.Millisecond
 const liveModelDiscoveryTimeout = 20 * time.Second
 const liveModelDiscoveryDeleteDelay = 10 * time.Minute
 const liveModelDiscoveryCleanupTimeout = 5 * time.Second
+const claudeModelCatalogInvalidationDebugPrefix = "CLAUDE_MODEL_CATALOG_INVALIDATION_DEBUG"
+
+func logClaudeModelCatalogInvalidationDebug(stage string, payload map[string]any) {
+	if payload == nil {
+		payload = map[string]any{}
+	}
+	payload["stage"] = stage
+	encoded, err := json.Marshal(payload)
+	if err != nil {
+		encoded, _ = json.Marshal(map[string]any{
+			"stage":        stage,
+			"marshalError": err.Error(),
+		})
+	}
+	slog.Warn(claudeModelCatalogInvalidationDebugPrefix, "payload_json", string(encoded))
+}
 
 // claudeStartupSerializer serializes credential-touching Claude startups so that
 // Tutti never runs two `claude` processes that both refresh the shared OAuth
@@ -76,16 +94,65 @@ func (s *Service) awaitClaudeStartupSlot(ctx context.Context, provider string) (
 // credential-sharing process next to it.
 func (s *Service) liveClaudeModelOptionsFromRunningSession(workspaceID string) ([]ComposerConfigOptionValue, bool) {
 	hasClaudeSession := false
+	invalidatedAtUnixMS := s.liveModelInvalidatedAtUnixMSForProvider(agentprovider.ClaudeCode)
 	for _, session := range s.controller().Sessions(workspaceID) {
 		if agentprovider.Normalize(session.Provider) != agentprovider.ClaudeCode {
 			continue
 		}
+		sessionCatalogUnixMS := firstNonZeroInt64(session.UpdatedAtUnixMS, session.CreatedAtUnixMS)
+		options := extractModelOptionsFromRuntimeContext(session.RuntimeContext)
+		logClaudeModelCatalogInvalidationDebug("running_session_model_options_inspected", map[string]any{
+			"workspaceId":         workspaceID,
+			"agentSessionId":      session.ID,
+			"status":              session.Status,
+			"visible":             session.Visible,
+			"hiddenDiscovery":     isHiddenLiveModelDiscoveryRuntimeContext(session.RuntimeContext),
+			"createdAtUnixMs":     session.CreatedAtUnixMS,
+			"updatedAtUnixMs":     session.UpdatedAtUnixMS,
+			"invalidatedAtUnixMs": invalidatedAtUnixMS,
+			"modelOptionCount":    len(options),
+			"modelOptionValues":   composerConfigOptionValuesDebugValues(options),
+			"modelSource":         stringFromAny(session.RuntimeContext["modelCatalogSource"]),
+		})
+		if invalidatedAtUnixMS > 0 && sessionCatalogUnixMS <= invalidatedAtUnixMS {
+			logClaudeModelCatalogInvalidationDebug("running_session_model_options_skipped_stale_after_invalidation", map[string]any{
+				"workspaceId":         workspaceID,
+				"agentSessionId":      session.ID,
+				"createdAtUnixMs":     session.CreatedAtUnixMS,
+				"updatedAtUnixMs":     session.UpdatedAtUnixMS,
+				"invalidatedAtUnixMs": invalidatedAtUnixMS,
+				"modelOptionCount":    len(options),
+				"modelOptionValues":   composerConfigOptionValuesDebugValues(options),
+			})
+			continue
+		}
 		hasClaudeSession = true
-		if options := extractModelOptionsFromRuntimeContext(session.RuntimeContext); len(options) > 0 {
+		if len(options) > 0 {
+			logClaudeModelCatalogInvalidationDebug("running_session_model_options_reused", map[string]any{
+				"workspaceId":       workspaceID,
+				"agentSessionId":    session.ID,
+				"modelOptionCount":  len(options),
+				"modelOptionValues": composerConfigOptionValuesDebugValues(options),
+			})
 			return options, true
 		}
 	}
+	if hasClaudeSession {
+		logClaudeModelCatalogInvalidationDebug("running_session_without_reusable_models", map[string]any{
+			"workspaceId": workspaceID,
+		})
+	}
 	return nil, hasClaudeSession
+}
+
+func (s *Service) liveModelInvalidatedAtUnixMSForProvider(provider string) int64 {
+	normalized := agentprovider.Normalize(provider)
+	if normalized == "" {
+		return 0
+	}
+	s.liveModelDiscoveryMu.Lock()
+	defer s.liveModelDiscoveryMu.Unlock()
+	return s.liveModelInvalidatedAtUnixMS[normalized]
 }
 
 var liveComposerModelDiscoveryGroup singleflight.Group
@@ -108,16 +175,47 @@ func (s *Service) discoverLiveComposerModels(
 	resultCh := liveComposerModelDiscoveryGroup.DoChan(cacheKey, func() (any, error) {
 		now := time.Now().UTC()
 		if cached, ok := s.getLiveComposerModelOptions(provider, workspaceID, cwd, now); ok && len(cached) > 0 {
+			logClaudeModelCatalogInvalidationDebug("discovery_cache_hit", map[string]any{
+				"workspaceId":       workspaceID,
+				"cwd":               cwd,
+				"modelOptionCount":  len(cached),
+				"modelOptionValues": composerConfigOptionValuesDebugValues(cached),
+				"checkedAtUnixMs":   now.UnixMilli(),
+				"liveModelCacheKey": cacheKey,
+			})
 			return cached, nil
 		}
 		if !s.markLiveModelDiscoveryAttempted(cacheKey) {
+			logClaudeModelCatalogInvalidationDebug("discovery_skipped_already_attempted", map[string]any{
+				"workspaceId":       workspaceID,
+				"cwd":               cwd,
+				"liveModelCacheKey": cacheKey,
+			})
 			return nil, errLiveModelDiscoveryAlreadyAttempted
 		}
+		logClaudeModelCatalogInvalidationDebug("discovery_uncached_start", map[string]any{
+			"workspaceId":       workspaceID,
+			"cwd":               cwd,
+			"liveModelCacheKey": cacheKey,
+		})
 		discovered, discoverErr := s.discoverLiveComposerModelsUncached(ctx, workspaceID, cwd, settings)
 		if discoverErr != nil {
+			logClaudeModelCatalogInvalidationDebug("discovery_uncached_failed", map[string]any{
+				"workspaceId":       workspaceID,
+				"cwd":               cwd,
+				"liveModelCacheKey": cacheKey,
+				"error":             discoverErr.Error(),
+			})
 			return nil, discoverErr
 		}
 		s.setLiveComposerModelOptions(provider, workspaceID, cwd, now, discovered)
+		logClaudeModelCatalogInvalidationDebug("discovery_uncached_succeeded", map[string]any{
+			"workspaceId":       workspaceID,
+			"cwd":               cwd,
+			"liveModelCacheKey": cacheKey,
+			"modelOptionCount":  len(discovered),
+			"modelOptionValues": composerConfigOptionValuesDebugValues(discovered),
+		})
 		return discovered, nil
 	})
 	select {
@@ -436,11 +534,25 @@ func (s *Service) mergeLiveComposerModelsForComposerOptions(
 		if ok {
 			liveModels = cached
 			modelSource = "acp-live-discovery"
+			logClaudeModelCatalogInvalidationDebug("composer_options_cache_hit", map[string]any{
+				"workspaceId":       input.WorkspaceID,
+				"cwd":               input.Cwd,
+				"modelOptionCount":  len(cached),
+				"modelOptionValues": composerConfigOptionValuesDebugValues(cached),
+				"checkedAtUnixMs":   now.UnixMilli(),
+			})
 		} else if reused, hasClaudeSession := s.liveClaudeModelOptionsFromRunningSession(input.WorkspaceID); hasClaudeSession {
 			if len(reused) > 0 {
 				liveModels = reused
 				s.setLiveComposerModelOptions(provider, input.WorkspaceID, input.Cwd, now, reused)
 				modelSource = "acp-live-discovery"
+				logClaudeModelCatalogInvalidationDebug("composer_options_reused_running_session", map[string]any{
+					"workspaceId":       input.WorkspaceID,
+					"cwd":               input.Cwd,
+					"modelOptionCount":  len(reused),
+					"modelOptionValues": composerConfigOptionValuesDebugValues(reused),
+					"checkedAtUnixMs":   now.UnixMilli(),
+				})
 			}
 			// If a real Claude session exists but has not advertised a model list
 			// yet, do not spawn a hidden discovery session next to it.
@@ -456,13 +568,42 @@ func (s *Service) mergeLiveComposerModelsForComposerOptions(
 		}
 	}
 	if len(liveModels) > 0 {
+		logClaudeModelCatalogInvalidationDebug("composer_options_model_source_selected", map[string]any{
+			"workspaceId":       input.WorkspaceID,
+			"cwd":               input.Cwd,
+			"modelSource":       modelSource,
+			"modelOptionCount":  len(liveModels),
+			"modelOptionValues": composerConfigOptionValuesDebugValues(liveModels),
+		})
 		return mergeComposerModelsIntoComposerOptions(options, liveModels, modelSource), nil
 	}
 	staticModels := staticClaudeComposerModelOptions(effectiveSettings.Model)
 	if len(staticModels) > 0 {
+		logClaudeModelCatalogInvalidationDebug("composer_options_model_source_selected", map[string]any{
+			"workspaceId":       input.WorkspaceID,
+			"cwd":               input.Cwd,
+			"modelSource":       modelSource,
+			"modelOptionCount":  len(staticModels),
+			"modelOptionValues": composerConfigOptionValuesDebugValues(staticModels),
+		})
 		return mergeComposerModelsIntoComposerOptions(options, staticModels, modelSource), nil
 	}
 	return clearUnverifiedLiveComposerModel(options), nil
+}
+
+func composerConfigOptionValuesDebugValues(options []ComposerConfigOptionValue) []string {
+	if len(options) == 0 {
+		return []string{}
+	}
+	values := make([]string, 0, len(options))
+	for _, option := range options {
+		value := strings.TrimSpace(option.Value)
+		if value == "" {
+			continue
+		}
+		values = append(values, value)
+	}
+	return values
 }
 
 func mergeLiveModelsIntoComposerOptions(options ComposerOptions, liveModels []ComposerConfigOptionValue) ComposerOptions {
