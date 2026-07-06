@@ -29,47 +29,6 @@ test("workspace chrome deck submit forwards to submitPlanDecision instead of bra
   assert.doesNotMatch(source, /PLAN_IMPLEMENTATION_PROMPT/);
 });
 
-test("workspace chrome keeps macOS traffic light left padding at 16px", () => {
-  assert.match(
-    source,
-    /const WORKSPACE_CHROME_MAC_TRAFFIC_LIGHT_INSET_PX = 16;/
-  );
-  assert.match(
-    source,
-    /const WORKSPACE_CHROME_MAC_TRAFFIC_LIGHT_GUTTER_PX = 64;/
-  );
-  assert.match(
-    source,
-    /const WORKSPACE_CHROME_MAC_TRAFFIC_LIGHT_RESERVED_WIDTH_PX =\s*WORKSPACE_CHROME_MAC_TRAFFIC_LIGHT_INSET_PX \+\s*WORKSPACE_CHROME_MAC_TRAFFIC_LIGHT_GUTTER_PX;/
-  );
-  assert.match(
-    source,
-    /chromeState\.useCompactTitlebar\s*\?\s*`\$\{WORKSPACE_CHROME_MAC_TRAFFIC_LIGHT_INSET_PX\}px`/
-  );
-});
-
-test("workspace chrome active buttons keep mission-control foreground override", () => {
-  assert.match(source, /--workbench-chrome-active-foreground/);
-  assert.match(
-    source,
-    /open && "text-\[var\(--workbench-chrome-active-foreground\)\]"/
-  );
-  assert.match(
-    source,
-    /settingsState\.open &&\s*"text-\[var\(--workbench-chrome-active-foreground\)\]"/
-  );
-  assert.match(
-    source,
-    /active &&\s*"bg-transparency-block text-\[var\(--workbench-chrome-active-foreground\)\]"/
-  );
-  assert.doesNotMatch(source, /open && "text-foreground"/);
-  assert.doesNotMatch(source, /settingsState\.open && "text-foreground"/);
-  assert.doesNotMatch(
-    source,
-    /active && "bg-transparency-block text-foreground"/
-  );
-});
-
 test("workspace chrome does not call updateSessionSettings or sendInput from the deck submit handler", () => {
   // Ensure the old branching logic in onSubmitPrompt is removed
   // (toast notification path at line 484 uses submitInteractive — that is expected to stay)

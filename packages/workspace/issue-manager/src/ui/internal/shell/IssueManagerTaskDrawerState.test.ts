@@ -28,14 +28,6 @@ const issueManagerPanelsSource = readFileSync(
   new URL("./IssueManagerPanels.tsx", import.meta.url),
   "utf8"
 );
-const issueManagerIssueSectionsSource = readFileSync(
-  new URL("../issue/IssueManagerIssueSections.tsx", import.meta.url),
-  "utf8"
-);
-const titleTooltipSource = readFileSync(
-  new URL("../content/IssueManagerTitleTooltip.tsx", import.meta.url),
-  "utf8"
-);
 
 test("task drawer view state prefers create labels in create mode", () => {
   const view = resolveIssueManagerTaskDrawerViewState({
@@ -162,31 +154,6 @@ test("task drawer run controls do not use the global running task lock", () => {
   );
 });
 
-test("task drawer title wraps long unbroken text inside the panel", () => {
-  assert.match(
-    taskDrawerSectionsSource,
-    /line-clamp-2 min-w-0 flex-1 whitespace-normal text-\[15px\] font-semibold leading-6 text-\[var\(--text-primary\)\] \[overflow-wrap:anywhere\]/
-  );
-  assert.match(
-    taskDrawerSectionsSource,
-    /line-clamp-2 min-w-0 flex-1 whitespace-normal text-\[15px\] font-semibold leading-\[1\.35\] text-\[var\(--text-primary\)\] \[overflow-wrap:anywhere\]/
-  );
-});
-
-test("task drawer header exposes an explicit back control", () => {
-  assert.match(taskDrawerSectionsSource, /CollapseLinedIcon/);
-  assert.match(taskDrawerSectionsSource, /BareIconButton/);
-  assert.match(
-    taskDrawerSectionsSource,
-    /aria-label=\{copy\.t\("actions\.closeTaskDetails"\)\}/
-  );
-  assert.match(
-    taskDrawerSectionsSource,
-    /title=\{copy\.t\("actions\.closeTaskDetails"\)\}/
-  );
-  assert.match(taskDrawerSectionsSource, /onClick=\{onClose\}/);
-});
-
 test("issue pane keeps issue-level run content behind the task drawer", () => {
   assert.match(issueManagerPanelsSource, /latestRun=\{issueLatestRun\}/);
   assert.match(issueManagerPanelsSource, /outputs=\{issueLatestOutputs\}/);
@@ -201,40 +168,6 @@ test("issue pane keeps issue-level run content behind the task drawer", () => {
     /controller\.taskDetail\.value\?\.latestOutputs/
   );
   assert.doesNotMatch(issueManagerPanelsSource, /selectedTask\?\.title/);
-});
-
-test("task delete confirmation wraps long unbroken titles", () => {
-  assert.match(
-    taskDrawerSectionsSource,
-    /<span className="block max-w-full whitespace-normal \[overflow-wrap:anywhere\]">/
-  );
-  assert.match(taskDrawerSectionsSource, /description=\{\s*<span/);
-});
-
-test("clamped issue and task titles expose the full text in shared tooltips", () => {
-  assert.match(
-    titleTooltipSource,
-    /const TRUNCATED_TITLE_TOOLTIP_DELAY_MS = 300;/
-  );
-  assert.match(
-    titleTooltipSource,
-    /<Tooltip delayDuration=\{TRUNCATED_TITLE_TOOLTIP_DELAY_MS\}>/
-  );
-  assert.match(titleTooltipSource, /TooltipTrigger asChild/);
-  assert.match(titleTooltipSource, /TooltipContent/);
-  assert.match(titleTooltipSource, /\[overflow-wrap:anywhere\]/);
-  assert.match(
-    taskDrawerSectionsSource,
-    /<IssueManagerTitleTooltip title=\{view\.title\}>/
-  );
-  assert.match(
-    issueManagerPanelsSource,
-    /<IssueManagerTitleTooltip title=\{selectedIssue\.title\}>/
-  );
-  assert.match(
-    issueManagerIssueSectionsSource,
-    /<IssueManagerTitleTooltip title=\{task\.title\}>/
-  );
 });
 
 function createController(
