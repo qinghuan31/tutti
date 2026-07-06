@@ -177,6 +177,7 @@ var importRuntimeContextFields = []string{
 	"imported",
 	"externalImportNoProject",
 	"externalSourcePath",
+	"noProject",
 }
 
 // mergeImportRuntimeContextFields carries the import-classification markers
