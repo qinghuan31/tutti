@@ -636,7 +636,6 @@ export const agentActivityUpdatedPayloadSchema = {
         },
         data: {
           type: "object",
-          additionalProperties: false,
           required: [
             "workspaceId",
             "agentSessionId",
@@ -684,7 +683,6 @@ export const agentActivityUpdatedPayloadSchema = {
         },
         data: {
           type: "object",
-          additionalProperties: false,
           required: [
             "workspaceId",
             "agentSessionId",
@@ -729,7 +727,6 @@ export const agentActivityUpdatedPayloadSchema = {
         },
         data: {
           type: "object",
-          additionalProperties: false,
           required: [
             "workspaceId",
             "agentSessionId",
@@ -762,7 +759,6 @@ export const agentActivityUpdatedPayloadSchema = {
               type: "array",
               items: {
                 type: "object",
-                additionalProperties: false,
                 required: [
                   "agentSessionId",
                   "id",
@@ -854,7 +850,6 @@ export const agentActivityUpdatedPayloadSchema = {
         },
         data: {
           type: "object",
-          additionalProperties: false,
           required: [
             "workspaceId",
             "agentSessionId",
@@ -921,7 +916,6 @@ export const agentActivityUpdatedPayloadSchema = {
             },
             submitAvailability: {
               type: "object",
-              additionalProperties: false,
               required: ["state"],
               properties: {
                 state: {
@@ -935,7 +929,6 @@ export const agentActivityUpdatedPayloadSchema = {
             },
             turn: {
               type: "object",
-              additionalProperties: false,
               required: ["turnId"],
               properties: {
                 turnId: {
@@ -959,7 +952,6 @@ export const agentActivityUpdatedPayloadSchema = {
                 },
                 submitAvailability: {
                   type: "object",
-                  additionalProperties: false,
                   required: ["state"],
                   properties: {
                     state: {

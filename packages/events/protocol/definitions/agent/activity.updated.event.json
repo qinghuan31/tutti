@@ -28,7 +28,6 @@
           },
           "data": {
             "type": "object",
-            "additionalProperties": false,
             "required": [
               "workspaceId",
               "agentSessionId",
@@ -76,7 +75,6 @@
           },
           "data": {
             "type": "object",
-            "additionalProperties": false,
             "required": [
               "workspaceId",
               "agentSessionId",
@@ -121,7 +119,6 @@
           },
           "data": {
             "type": "object",
-            "additionalProperties": false,
             "required": [
               "workspaceId",
               "agentSessionId",
@@ -154,7 +151,6 @@
                 "type": "array",
                 "items": {
                   "type": "object",
-                  "additionalProperties": false,
                   "required": [
                     "agentSessionId",
                     "id",
@@ -246,7 +242,6 @@
           },
           "data": {
             "type": "object",
-            "additionalProperties": false,
             "required": [
               "workspaceId",
               "agentSessionId",
@@ -313,7 +308,6 @@
               },
               "submitAvailability": {
                 "type": "object",
-                "additionalProperties": false,
                 "required": ["state"],
                 "properties": {
                   "state": {
@@ -327,7 +321,6 @@
               },
               "turn": {
                 "type": "object",
-                "additionalProperties": false,
                 "required": ["turnId"],
                 "properties": {
                   "turnId": {
@@ -351,7 +344,6 @@
                   },
                   "submitAvailability": {
                     "type": "object",
-                    "additionalProperties": false,
                     "required": ["state"],
                     "properties": {
                       "state": {
