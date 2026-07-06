@@ -1038,6 +1038,15 @@ active. Do not preserve an untracked synthetic/live lifecycle over the finishing
 turn: that leaves `submitAvailability.blocked(active_turn)` without real work
 and makes the composer stay loading after the provider has completed.
 
+A user stop is an intent, not just a turn cancel: `interruptCurrentTurn`
+suspends the session's prompt queue (`suspendReason: "user_stop"`) before
+issuing the cancel, so the drainer must not fire the next queued prompt the
+moment the session becomes available. Only an explicit user send lifts the
+hold — composer submit calls `resumeQueue`, and `promotePrompt` ("send now"
+on a queued item) clears the suspension in the queue core. The drainer's own
+send-next interrupt path never suspends: intent is captured at its source,
+never inferred from the cancel outcome.
+
 Preview-mode AgentGUI surfaces are read-only for this runtime: they may render an
 existing queue if injected into the same context, but they must not enqueue,
 claim, drain, promote, edit, or delete queued prompts.

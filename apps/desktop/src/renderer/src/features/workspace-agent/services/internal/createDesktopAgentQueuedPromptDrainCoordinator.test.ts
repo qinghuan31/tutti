@@ -260,3 +260,48 @@ test("keeps the queue for lifecycle-less records with busy status tokens", async
 
   assert.equal(sendCalls.length, 0);
 });
+
+test("holds a suspended queue even when the session is available", async () => {
+  const agentQueuedPromptRuntime = createAgentQueuedPromptRuntime();
+  const { runtime, sendCalls } = activityRuntimeFake(
+    activitySession({
+      turnLifecycle: {
+        activeTurnId: null,
+        phase: "settled",
+        outcome: "canceled"
+      },
+      submitAvailability: { state: "available" }
+    })
+  );
+  enqueuePrompt(agentQueuedPromptRuntime);
+  agentQueuedPromptRuntime.suspendQueue({
+    workspaceId: WORKSPACE_ID,
+    agentSessionId: AGENT_SESSION_ID,
+    reason: "user_stop"
+  });
+
+  const dispose = createDesktopAgentQueuedPromptDrainCoordinator({
+    agentActivityRuntime: runtime,
+    agentQueuedPromptRuntime,
+    workspaceId: WORKSPACE_ID
+  });
+  await waitForDrainTick();
+
+  assert.equal(sendCalls.length, 0);
+  assert.equal(
+    agentQueuedPromptRuntime.getSessionSnapshot({
+      workspaceId: WORKSPACE_ID,
+      agentSessionId: AGENT_SESSION_ID
+    }).prompts.length,
+    1
+  );
+
+  agentQueuedPromptRuntime.resumeQueue({
+    workspaceId: WORKSPACE_ID,
+    agentSessionId: AGENT_SESSION_ID
+  });
+  await waitForDrainTick();
+  dispose();
+
+  assert.equal(sendCalls.length, 1);
+});

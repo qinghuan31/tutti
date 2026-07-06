@@ -36,6 +36,7 @@ interface DesktopQueuedPromptSkipReason {
   status?: unknown;
   submitAvailabilityReason?: unknown;
   submitAvailabilityState?: unknown;
+  suspendReason?: string | null;
   turnLifecyclePhase?: unknown;
 }
 
@@ -382,6 +383,18 @@ function findReadyQueue(
         claimOwnerId: queue.claim.ownerId,
         promptId: queuedPrompt.id,
         reason: "claimed"
+      });
+      continue;
+    }
+    if (queue.suspendReason) {
+      // User intent gate: a stopped session holds its queue until an
+      // explicit user send lifts the suspension. Availability alone is not
+      // permission to dispatch.
+      skipped.push({
+        agentSessionId: queue.agentSessionId,
+        promptId: queuedPrompt.id,
+        reason: "suspended",
+        suspendReason: queue.suspendReason
       });
       continue;
     }
