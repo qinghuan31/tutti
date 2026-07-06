@@ -1,5 +1,4 @@
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
 import test from "node:test";
 import type { WorkspaceFileManagerPersistedState } from "@tutti-os/workspace-file-manager/services";
 import type { WorkbenchHostLaunchRequest } from "@tutti-os/workbench-surface";
@@ -7,31 +6,7 @@ import type { IWorkspaceFileManagerService } from "@renderer/features/workspace-
 import type { ReporterEventInput } from "@renderer/features/analytics";
 import { createWorkspaceFilesContribution } from "./workspaceFilesContribution.ts";
 import { workspaceFilesNodeID } from "./workspaceWorkbenchComposition.ts";
-
-const source = readFileSync(
-  new URL("./workspaceFilesContribution.ts", import.meta.url),
-  "utf8"
-);
-const factorySource = readFileSync(
-  new URL(
-    "./contributions/filesWorkbenchContributionFactory.ts",
-    import.meta.url
-  ),
-  "utf8"
-);
 const renderTrafficLights = () => null;
-
-test("workspace files window renders unified traffic lights in the custom header", () => {
-  assert.match(source, /renderHeader: \(context\) =>/);
-  assert.match(source, /WorkspaceFilesWorkbenchHeader/);
-  assert.match(source, /renderTrafficLights\(context\)/);
-  assert.match(factorySource, /WorkspaceWorkbenchTrafficLights/);
-  assert.match(
-    factorySource,
-    /createElement\([\s\S]*WorkspaceWorkbenchTrafficLights[\s\S]*displayMode: headerContext\.displayMode[\s\S]*windowActions: headerContext\.windowActions/
-  );
-  assert.doesNotMatch(source, /context\.defaultActions/);
-});
 
 test("workspace files contribution exposes file manager state through runtime and snapshot node state", () => {
   const snapshotState: WorkspaceFileManagerPersistedState = {

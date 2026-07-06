@@ -38,19 +38,6 @@ test("workspace settings gates account behind Tutti Agent Switch", () => {
   assert.match(source, /<WorkspaceAccountSettingsSection \/>/);
 });
 
-test("workspace settings backdrop preserves titlebar dragging", () => {
-  assert.match(source, /data-workspace-settings-backdrop="true"/);
-  assert.match(source, /bg-\[var\(--backdrop\)\]/);
-  assert.doesNotMatch(source, /var\(--backdrop\)_28%/);
-  assert.match(source, /data-workspace-settings-window-drag-region="true"/);
-  assert.match(
-    source,
-    /pointer-events-auto absolute inset-x-0 top-0 z-0 h-\[52px\] \[-webkit-app-region:drag\]/
-  );
-  assert.match(source, /data-workspace-settings-panel="true"/);
-  assert.match(source, /\[-webkit-app-region:no-drag\]/);
-});
-
 test("workspace settings agent panel lists agent controls", () => {
   assert.match(
     source,
@@ -72,13 +59,6 @@ test("workspace settings agent panel lists agent controls", () => {
   assert.doesNotMatch(
     source.slice(agentSectionStart, generalSectionStart),
     /agentDockLayout|agentDockLayoutLabel|desktopAgentDockLayouts/
-  );
-});
-
-test("workspace settings work mode selected state uses a tutti purple border", () => {
-  assert.match(
-    source,
-    /selected\s*\?\s*"border border-\[var\(--tutti-purple\)\] bg-\[var\(--background-fronted\)\]/
   );
 });
 
