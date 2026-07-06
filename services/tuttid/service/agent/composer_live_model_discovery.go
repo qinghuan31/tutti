@@ -106,7 +106,7 @@ func (s *Service) discoverLiveComposerModels(
 		return nil, ErrInvalidArgument
 	}
 	provider = agentprovider.Normalize(provider)
-	cacheKey := composerLiveModelCacheKey(provider, workspaceID, cwd)
+	cacheKey := composerLiveModelCacheKey(provider, workspaceID, cwd, liveModelAuthScope(provider))
 	resultCh := liveComposerModelDiscoveryGroup.DoChan(cacheKey, func() (any, error) {
 		now := time.Now().UTC()
 		if cached, ok := s.getLiveComposerModelOptions(provider, workspaceID, cwd, now); ok && len(cached) > 0 {

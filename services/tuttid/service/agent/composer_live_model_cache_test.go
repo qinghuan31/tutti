@@ -11,6 +11,7 @@ import (
 // session's model list must not decay back to the static fallback, because
 // hidden discovery runs at most once per key and cannot re-probe after expiry.
 func TestGetLiveComposerModelOptionsClaudeNeverExpires(t *testing.T) {
+	t.Setenv("CLAUDE_CONFIG_DIR", t.TempDir())
 	service := &Service{}
 	cachedAt := time.Now().UTC()
 	service.setLiveComposerModelOptions("claude-code", "ws-1", "/repo", cachedAt, []ComposerConfigOptionValue{
@@ -42,6 +43,31 @@ func TestGetLiveComposerModelOptionsCursorExpiresAfterTTL(t *testing.T) {
 	}
 	if _, ok := service.getLiveComposerModelOptions("cursor", "ws-1", "/repo", cachedAt.Add(defaultLiveModelCacheTTL+time.Minute)); ok {
 		t.Fatal("cursor cache survived past TTL, want eviction")
+	}
+}
+
+// Switching Claude auth context (e.g. OAuth subscription -> ANTHROPIC_API_KEY
+// billing) must not serve the previous context's cached model list: the auth
+// fingerprint in the cache key buckets them separately.
+func TestGetLiveComposerModelOptionsClaudeAuthScopeIsolatesCache(t *testing.T) {
+	t.Setenv("CLAUDE_CONFIG_DIR", t.TempDir())
+	t.Setenv("ANTHROPIC_API_KEY", "")
+	t.Setenv("ANTHROPIC_AUTH_TOKEN", "")
+	service := &Service{}
+	now := time.Now().UTC()
+	service.setLiveComposerModelOptions("claude-code", "ws-1", "/repo", now, []ComposerConfigOptionValue{
+		{Value: "default", Label: "Default"},
+		{Value: "opus[1m]", Label: "Opus"},
+	})
+
+	if _, ok := service.getLiveComposerModelOptions("claude-code", "ws-1", "/repo", now); !ok {
+		t.Fatal("cache miss under same auth scope, want hit")
+	}
+
+	// Switch to API-key billing: the OAuth-context list must not leak through.
+	t.Setenv("ANTHROPIC_API_KEY", "sk-ant-test")
+	if _, ok := service.getLiveComposerModelOptions("claude-code", "ws-1", "/repo", now); ok {
+		t.Fatal("cache hit across auth switch, want miss (cross-auth isolation)")
 	}
 }
 

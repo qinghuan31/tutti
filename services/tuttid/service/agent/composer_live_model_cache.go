@@ -80,7 +80,7 @@ func (s *Service) liveComposerModelCache() *composerLiveModelCache {
 }
 
 func (s *Service) getLiveComposerModelOptions(provider, workspaceID, cwd string, now time.Time) ([]ComposerConfigOptionValue, bool) {
-	key := composerLiveModelCacheKey(provider, workspaceID, cwd)
+	key := composerLiveModelCacheKey(provider, workspaceID, cwd, liveModelAuthScope(provider))
 	return s.liveComposerModelCache().get(key, now, s.liveModelCacheTTL(provider))
 }
 
@@ -88,15 +88,24 @@ func (s *Service) setLiveComposerModelOptions(provider, workspaceID, cwd string,
 	if len(options) == 0 {
 		return
 	}
-	key := composerLiveModelCacheKey(provider, workspaceID, cwd)
+	key := composerLiveModelCacheKey(provider, workspaceID, cwd, liveModelAuthScope(provider))
 	s.liveComposerModelCache().set(key, now, options)
 }
 
-func composerLiveModelCacheKey(provider, workspaceID, cwd string) string {
-	return "live-model:" +
+// composerLiveModelCacheKey buckets the cache by provider, workspace, cwd, and
+// (for auth-sensitive providers) an auth-context fingerprint. authScope is ""
+// for providers whose model list does not depend on auth, keeping their key
+// format unchanged. The same fingerprint also scopes the once-per-key hidden
+// discovery guard, so switching auth grants the new context its own probe.
+func composerLiveModelCacheKey(provider, workspaceID, cwd, authScope string) string {
+	key := "live-model:" +
 		agentprovider.Normalize(provider) + ":" +
 		strings.TrimSpace(workspaceID) + ":" +
 		strings.TrimSpace(cwd)
+	if authScope = strings.TrimSpace(authScope); authScope != "" {
+		key += ":" + authScope
+	}
+	return key
 }
 
 func cloneComposerConfigOptionValues(options []ComposerConfigOptionValue) []ComposerConfigOptionValue {
