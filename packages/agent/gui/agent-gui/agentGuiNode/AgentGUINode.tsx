@@ -191,6 +191,7 @@ export interface AgentGUINodeProps {
   onAgentProviderLogin?: (provider: AgentProvider) => void;
   providerTargets?: readonly AgentGUIProviderTarget[];
   providerTargetsLoading?: boolean;
+  comingSoonProviders?: readonly AgentGUIProvider[];
   providerReadinessGates?: Partial<
     Record<AgentGUIProvider, AgentGUIProviderReadinessGate | null>
   > | null;
@@ -567,6 +568,7 @@ function areAgentGUINodePropsEqual(
     previous.onAgentProviderLogin === next.onAgentProviderLogin &&
     previous.providerTargets === next.providerTargets &&
     previous.providerTargetsLoading === next.providerTargetsLoading &&
+    previous.comingSoonProviders === next.comingSoonProviders &&
     previous.providerReadinessGates === next.providerReadinessGates &&
     previous.defaultProviderTargetId === next.defaultProviderTargetId &&
     previous.onClose === next.onClose &&
@@ -624,6 +626,7 @@ export const AgentGUINode = memo(function AgentGUINode({
   onAgentProviderLogin,
   providerTargets,
   providerTargetsLoading = false,
+  comingSoonProviders,
   providerReadinessGates = null,
   defaultProviderTargetId = null,
   onWorkspaceFileReferencesAdded,
@@ -796,6 +799,7 @@ export const AgentGUINode = memo(function AgentGUINode({
     prefillPromptRequest,
     providerTargets,
     providerTargetsLoading,
+    comingSoonProviders,
     providerReadinessGates,
     defaultProviderTargetId,
     previewMode,

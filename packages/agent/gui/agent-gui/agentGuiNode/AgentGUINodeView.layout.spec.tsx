@@ -200,6 +200,8 @@ describe("AgentGUINodeView layout persistence", () => {
       ".agent-gui-node__provider-rail-panel"
     );
     expect(providerRailPanel).not.toBeNull();
+    expect(providerRailPanel).toHaveClass("nodrag");
+    expect(providerRailPanel).toHaveClass("tsh-desktop-no-drag");
     expect(providerRailPanel).toContainElement(
       container.querySelector('[role="tablist"]')
     );
@@ -256,6 +258,15 @@ describe("AgentGUINodeView layout persistence", () => {
 
     expect(css).toMatch(
       /\.agent-gui-node__provider-rail-tile\s*\{[^}]*grid-template-rows:\s*32px;[^}]*gap:\s*0;[^}]*padding:\s*0;/s
+    );
+    expect(css).toMatch(
+      /\.agent-gui-node__provider-rail-panel\s*\{[^}]*-webkit-app-region:\s*no-drag;/s
+    );
+    expect(css).toMatch(
+      /\.agent-gui-node__provider-rail\s*\{[^}]*-webkit-app-region:\s*no-drag;/s
+    );
+    expect(css).toMatch(
+      /\.agent-gui-node__provider-rail-tile\s*\{[^}]*-webkit-app-region:\s*no-drag;/s
     );
     expect(css).toMatch(
       /\.agent-gui-node__provider-rail-tile\s*\+\s*\.agent-gui-node__provider-rail-tile\s*\{[^}]*margin-top:\s*12px;/s
@@ -498,7 +509,7 @@ describe("AgentGUINodeView layout persistence", () => {
     expect(actions.selectHomeComposerAgentTarget).not.toHaveBeenCalled();
   });
 
-  it("keeps unavailable provider rail targets disabled and non-selectable", () => {
+  it("keeps unavailable provider rail targets visually disabled but selectable", () => {
     const actions = createActions();
     const tuttiTarget = {
       ...createLocalAgentGUIProviderTarget("nexight"),
@@ -533,20 +544,32 @@ describe("AgentGUINodeView layout persistence", () => {
     expect(tuttiTile).toHaveAttribute("data-disabled", "true");
     expect(hermesTile).toHaveAttribute("data-disabled", "true");
     expect(openclawTile).toHaveAttribute("data-disabled", "true");
-    expect(tuttiTile).toBeDisabled();
-    expect(hermesTile).toBeDisabled();
-    expect(openclawTile).toBeDisabled();
+    expect(tuttiTile).not.toBeDisabled();
+    expect(hermesTile).not.toBeDisabled();
+    expect(openclawTile).not.toBeDisabled();
 
     fireEvent.click(tuttiTile);
     fireEvent.click(hermesTile);
     fireEvent.click(openclawTile);
 
-    expect(actions.selectConversationFilterTarget).not.toHaveBeenCalled();
+    expect(actions.selectConversationFilterTarget).toHaveBeenCalledTimes(3);
+    expect(actions.selectConversationFilterTarget).toHaveBeenNthCalledWith(1, {
+      provider: "nexight",
+      providerTargetId: tuttiTarget.targetId
+    });
+    expect(actions.selectConversationFilterTarget).toHaveBeenNthCalledWith(2, {
+      provider: "hermes",
+      providerTargetId: hermesTarget.targetId
+    });
+    expect(actions.selectConversationFilterTarget).toHaveBeenNthCalledWith(3, {
+      provider: "openclaw",
+      providerTargetId: openclawTarget.targetId
+    });
     expect(actions.updateConversationFilter).not.toHaveBeenCalled();
     expect(actions.selectHomeComposerAgentTarget).not.toHaveBeenCalled();
   });
 
-  it("orders provider rail tiles as Codex, Claude Code, Tutti, Hermes, OpenClaw without visible provider labels", () => {
+  it("orders provider rail tiles as Codex, Claude Code, Cursor, Tutti, Hermes, OpenClaw without visible provider labels", () => {
     renderAgentGUINodeView({
       viewModel: {
         ...createViewModel(),
@@ -573,7 +596,15 @@ describe("AgentGUINodeView layout persistence", () => {
             tab.getAttribute("aria-label") ??
             tab.textContent?.replace(/\s+/gu, " ").trim()
         )
-    ).toEqual(["All", "Codex", "Claude Code", "Tutti", "Hermes", "OpenClaw"]);
+    ).toEqual([
+      "All",
+      "Codex",
+      "Claude Code",
+      "Cursor",
+      "Tutti",
+      "Hermes",
+      "OpenClaw"
+    ]);
     expect(screen.getByRole("tab", { name: "All" })).toHaveTextContent("");
     expect(screen.getByRole("tab", { name: "Codex" })).toHaveTextContent("");
     expect(screen.getByRole("tab", { name: "Claude Code" })).toHaveTextContent(
@@ -860,7 +891,7 @@ describe("AgentGUINodeView layout persistence", () => {
     );
   });
 
-  it("dims disabled provider options in the empty hero provider select", async () => {
+  it("omits disabled provider options in the empty hero provider select", async () => {
     const actions = createActions();
     const disabledTuttiTarget = {
       ...createLocalAgentGUIProviderTarget("nexight"),
@@ -899,18 +930,14 @@ describe("AgentGUINodeView layout persistence", () => {
     });
     fireEvent.keyDown(providerSelect, { key: "ArrowDown" });
 
-    const tuttiOption = await screen.findByRole("option", {
-      name: "Tutti Agent"
-    });
-    const hermesOption = screen.getByRole("option", { name: "Hermes" });
-
-    expect(tuttiOption).toHaveAttribute("data-disabled");
-    expect(tuttiOption).toHaveClass("opacity-30");
-    expect(tuttiOption.querySelector("img")).toHaveClass("grayscale");
-    expect(hermesOption).toHaveAttribute("data-disabled");
-    expect(hermesOption).toHaveClass("opacity-30");
-
-    fireEvent.click(tuttiOption);
+    expect(await screen.findByRole("option", { name: "Codex" })).toBeVisible();
+    expect(screen.getByRole("option", { name: "Claude Code" })).toBeVisible();
+    expect(
+      screen.queryByRole("option", { name: "Tutti Agent" })
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("option", { name: "Hermes" })
+    ).not.toBeInTheDocument();
 
     expect(actions.selectHomeComposerAgentTarget).not.toHaveBeenCalled();
   });
@@ -977,15 +1004,24 @@ describe("AgentGUINodeView layout persistence", () => {
     expect(
       screen.getByRole("tab", { name: "Claude Code" })
     ).toBeInTheDocument();
+    expect(screen.getByRole("tab", { name: "Cursor" })).toBeInTheDocument();
     expect(screen.getByRole("tab", { name: "Tutti" })).toBeInTheDocument();
     expect(screen.getByRole("tab", { name: "Hermes" })).toBeInTheDocument();
     expect(screen.getByRole("tab", { name: "OpenClaw" })).toBeInTheDocument();
-    expect(screen.getByRole("tab", { name: "Tutti" })).toBeDisabled();
-    expect(screen.getByRole("tab", { name: "Hermes" })).toBeDisabled();
-    expect(screen.getByRole("tab", { name: "OpenClaw" })).toBeDisabled();
+    expect(screen.getByRole("tab", { name: "Tutti" })).not.toBeDisabled();
+    expect(screen.getByRole("tab", { name: "Hermes" })).not.toBeDisabled();
+    expect(screen.getByRole("tab", { name: "OpenClaw" })).not.toBeDisabled();
     expect(
       screen.getAllByRole("tab").map((tab) => tab.getAttribute("aria-label"))
-    ).toEqual(["All", "Codex", "Claude Code", "Tutti", "Hermes", "OpenClaw"]);
+    ).toEqual([
+      "All",
+      "Codex",
+      "Claude Code",
+      "Cursor",
+      "Tutti",
+      "Hermes",
+      "OpenClaw"
+    ]);
   });
 
   it("keeps the provider rail to the default agent tiles for static provider catalogs", () => {
@@ -999,7 +1035,15 @@ describe("AgentGUINodeView layout persistence", () => {
 
     expect(
       screen.getAllByRole("tab").map((tab) => tab.getAttribute("aria-label"))
-    ).toEqual(["All", "Codex", "Claude Code", "Tutti", "Hermes", "OpenClaw"]);
+    ).toEqual([
+      "All",
+      "Codex",
+      "Claude Code",
+      "Cursor",
+      "Tutti",
+      "Hermes",
+      "OpenClaw"
+    ]);
   });
 
   it("falls back to All for avatar rail targets without an agent target id", () => {
@@ -3345,6 +3389,42 @@ describe("AgentGUINodeView provider readiness gate", () => {
     expect(onAction).toHaveBeenCalledWith("codex", "login");
   });
 
+  it("renders a disabled action for placeholder provider targets", () => {
+    const tuttiTarget = {
+      ...createLocalAgentGUIProviderTarget("nexight"),
+      disabled: true
+    };
+    renderAgentGUINodeView({
+      viewModel: createViewModel({
+        data: {
+          provider: "nexight",
+          agentTargetId: tuttiTarget.agentTargetId,
+          lastActiveAgentSessionId: null,
+          conversationRailWidthPx: null
+        },
+        conversationFilter: {
+          kind: "agentTarget",
+          agentTargetId: tuttiTarget.agentTargetId ?? ""
+        },
+        selectedProviderTarget: tuttiTarget,
+        providerTargets: [
+          createLocalAgentGUIProviderTarget("codex"),
+          tuttiTarget
+        ]
+      })
+    });
+
+    expect(
+      screen.getByTestId("agent-gui-provider-readiness-gate")
+    ).toHaveTextContent("providerGateComingSoonTitle");
+    const action = screen.getByTestId(
+      "agent-gui-provider-readiness-gate-action"
+    );
+    expect(action).toHaveTextContent("providerGateComingSoonAction");
+    expect(action).toBeDisabled();
+    expect(screen.queryByTestId("agent-composer")).toBeNull();
+  });
+
   it("renders the aggregate agents checking gate when the All tab is active", () => {
     renderAgentGUINodeView({
       viewModel: createViewModel({
@@ -3761,6 +3841,7 @@ function createViewModel(
     selectedProviderTarget: createLocalAgentGUIProviderTarget("codex"),
     providerTargets: [createLocalAgentGUIProviderTarget("codex")],
     providerTargetsLoading: false,
+    comingSoonProviders: [],
     conversationFilter: { kind: "all" },
     conversations: [],
     userProjects: [],

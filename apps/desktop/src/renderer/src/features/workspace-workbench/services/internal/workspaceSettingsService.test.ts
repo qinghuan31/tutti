@@ -1099,7 +1099,7 @@ function createDesktopPreferencesService(input: {
   return {
     _serviceBrand: undefined,
     store: input.state,
-    rememberAgentComposerDefaults: async () => {},
+    rememberAgentComposerDefaultsForAgentTarget: async () => {},
     rememberAgentGuiConversationRailCollapsed: async () => {},
     setAppCatalogChannel:
       input.onSetAppCatalogChannel ?? (async (channel) => channel),
@@ -1119,6 +1119,7 @@ function createDesktopPreferencesService(input: {
     setMinimizeAnimation:
       input.onSetMinimizeAnimation ?? (async (animation) => animation),
     setShowAppDeveloperSources: async (show) => show,
+    setEnableCursorAgent: async (enable) => enable,
     setSleepPreventionMode:
       input.onSetSleepPreventionMode ?? (async (enabled) => enabled),
     setWorkbenchWindowSnapping:
@@ -1135,6 +1136,7 @@ function createPreferencesState(
 ): DesktopPreferencesReadableStoreState {
   return {
     agentComposerDefaultsByProvider: {},
+    agentComposerDefaultsByAgentTarget: {},
     agentGuiConversationRailCollapsedByProvider: {},
     agentConversationDetailMode: "coding",
     appCatalogChannel: "production",
@@ -1147,6 +1149,7 @@ function createPreferencesState(
     changingDockPlacement: null,
     changingLocale: null,
     changingMinimizeAnimation: null,
+    changingEnableCursorAgent: null,
     changingShowAppDeveloperSources: null,
     changingSleepPreventionMode: null,
     changingThemeSource: null,
@@ -1158,6 +1161,7 @@ function createPreferencesState(
     dockPlacement: "bottom",
     fileDefaultOpenersByExtension: { html: "defaultBrowser" },
     locale: "en",
+    enableCursorAgent: false,
     minimizeAnimation: "scale",
     showAppDeveloperSources: false,
     sleepPreventionMode: "never",

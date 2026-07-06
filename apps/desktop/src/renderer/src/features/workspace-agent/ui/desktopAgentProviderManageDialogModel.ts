@@ -33,6 +33,7 @@ export interface DesktopAgentProviderManageRow {
 }
 
 export function projectDesktopAgentProviderManageRows(input: {
+  hiddenProviders?: ReadonlySet<WorkspaceAgentProvider>;
   isLoading: boolean;
   pendingActions: readonly AgentProviderStatusPendingAction[];
   statuses: readonly AgentProviderStatus[];
@@ -41,14 +42,16 @@ export function projectDesktopAgentProviderManageRows(input: {
     input.statuses.map((status) => [status.provider, status])
   );
 
-  return desktopAgentProviderManageDialogProviders.map((provider) =>
-    projectDesktopAgentProviderManageRow({
-      isLoading: input.isLoading,
-      pendingActions: input.pendingActions,
-      provider,
-      status: statusByProvider.get(provider) ?? null
-    })
-  );
+  return desktopAgentProviderManageDialogProviders
+    .filter((provider) => input.hiddenProviders?.has(provider) !== true)
+    .map((provider) =>
+      projectDesktopAgentProviderManageRow({
+        isLoading: input.isLoading,
+        pendingActions: input.pendingActions,
+        provider,
+        status: statusByProvider.get(provider) ?? null
+      })
+    );
 }
 
 export function projectDesktopAgentProviderManageRow(input: {

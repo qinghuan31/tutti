@@ -240,3 +240,99 @@ INSERT INTO desktop_preferences (
 		t.Fatalf("GetDesktopPreferences() agentDockLayout = %q, want unified", preferences.AgentDockLayout)
 	}
 }
+
+func TestSQLiteStorePutDesktopPreferencesPersistsAgentComposerDefaultsByAgentTarget(t *testing.T) {
+	t.Parallel()
+
+	store := openTestSQLiteStore(t)
+
+	input := preferencesbiz.DefaultDesktopPreferences()
+	input.AgentComposerDefaultsByProvider = map[string]preferencesbiz.AgentComposerDefaults{
+		"codex": {Model: "gpt-5"},
+	}
+	input.AgentComposerDefaultsByAgentTarget = map[string]preferencesbiz.AgentComposerDefaults{
+		"local:codex": {
+			Model:            "gpt-5-codex",
+			PermissionModeID: "full-access",
+			ReasoningEffort:  "high",
+			Speed:            "fast",
+		},
+	}
+	if _, err := store.PutDesktopPreferences(context.Background(), input); err != nil {
+		t.Fatalf("PutDesktopPreferences() error = %v", err)
+	}
+
+	preferences, err := store.GetDesktopPreferences(context.Background())
+	if err != nil {
+		t.Fatalf("GetDesktopPreferences() error = %v", err)
+	}
+	codexDefaults := preferences.AgentComposerDefaultsByAgentTarget["local:codex"]
+	if codexDefaults.Model != "gpt-5-codex" ||
+		codexDefaults.PermissionModeID != "full-access" ||
+		codexDefaults.ReasoningEffort != "high" ||
+		codexDefaults.Speed != "fast" {
+		t.Fatalf("agent target defaults = %#v, want persisted round-trip", codexDefaults)
+	}
+	if preferences.AgentComposerDefaultsByProvider["codex"].Model != "gpt-5" {
+		t.Fatalf("legacy provider defaults = %#v, want preserved", preferences.AgentComposerDefaultsByProvider)
+	}
+}
+
+func TestSQLiteStoreMigrationBackfillsAgentComposerDefaultsByAgentTarget(t *testing.T) {
+	t.Parallel()
+
+	store := openTestSQLiteStore(t)
+
+	// Simulate a pre-migration database: legacy provider-keyed defaults
+	// exist, the agent-target column is empty, and the data migration marker
+	// is absent.
+	legacy := preferencesbiz.DefaultDesktopPreferences()
+	legacy.AgentComposerDefaultsByProvider = map[string]preferencesbiz.AgentComposerDefaults{
+		"codex":  {Model: "gpt-5", PermissionModeID: "full-access"},
+		"gemini": {Model: "gemini-pro"},
+	}
+	if _, err := store.PutDesktopPreferences(context.Background(), legacy); err != nil {
+		t.Fatalf("PutDesktopPreferences() error = %v", err)
+	}
+	if _, err := store.db.ExecContext(context.Background(), `
+DELETE FROM tuttid_schema_migrations WHERE id = ?
+`, schemaMigrationDesktopPreferencesAgentComposerDefaultsByAgentTargetV1); err != nil {
+		t.Fatalf("reset migration marker: %v", err)
+	}
+
+	if err := store.applyDesktopPreferencesAgentComposerDefaultsByAgentTargetV1(context.Background()); err != nil {
+		t.Fatalf("applyDesktopPreferencesAgentComposerDefaultsByAgentTargetV1() error = %v", err)
+	}
+
+	preferences, err := store.GetDesktopPreferences(context.Background())
+	if err != nil {
+		t.Fatalf("GetDesktopPreferences() error = %v", err)
+	}
+	codexDefaults := preferences.AgentComposerDefaultsByAgentTarget["local:codex"]
+	if codexDefaults.Model != "gpt-5" || codexDefaults.PermissionModeID != "full-access" {
+		t.Fatalf("backfilled codex defaults = %#v, want legacy values", codexDefaults)
+	}
+	geminiDefaults := preferences.AgentComposerDefaultsByAgentTarget["local:gemini"]
+	if geminiDefaults.Model != "gemini-pro" {
+		t.Fatalf("backfilled gemini defaults = %#v, want legacy values", geminiDefaults)
+	}
+
+	// Re-running the backfill must not clobber newer agent-target data.
+	updated := preferences
+	updated.AgentComposerDefaultsByAgentTarget = map[string]preferencesbiz.AgentComposerDefaults{
+		"local:codex": {Model: "gpt-5-codex"},
+	}
+	if _, err := store.PutDesktopPreferences(context.Background(), updated); err != nil {
+		t.Fatalf("PutDesktopPreferences() error = %v", err)
+	}
+	if err := store.backfillAgentComposerDefaultsByAgentTarget(context.Background()); err != nil {
+		t.Fatalf("backfillAgentComposerDefaultsByAgentTarget() error = %v", err)
+	}
+	preferences, err = store.GetDesktopPreferences(context.Background())
+	if err != nil {
+		t.Fatalf("GetDesktopPreferences() error = %v", err)
+	}
+	if preferences.AgentComposerDefaultsByAgentTarget["local:codex"].Model != "gpt-5-codex" {
+		t.Fatalf("agent target defaults = %#v, want newer data preserved", preferences.AgentComposerDefaultsByAgentTarget)
+	}
+}

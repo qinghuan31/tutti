@@ -14,6 +14,7 @@ export const DEFAULT_AGENT_SETTINGS: AgentSettings = {
   customModelEnabledByProvider: {
     "claude-code": false,
     codex: false,
+    cursor: false,
     nexight: false,
     opencode: false,
     gemini: false,
@@ -23,6 +24,7 @@ export const DEFAULT_AGENT_SETTINGS: AgentSettings = {
   customModelByProvider: {
     "claude-code": "",
     codex: "",
+    cursor: "",
     nexight: "",
     opencode: "",
     gemini: "",
@@ -32,6 +34,7 @@ export const DEFAULT_AGENT_SETTINGS: AgentSettings = {
   customModelOptionsByProvider: {
     "claude-code": [],
     codex: [],
+    cursor: [],
     nexight: [],
     opencode: [],
     gemini: [],

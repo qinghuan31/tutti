@@ -31,6 +31,10 @@ const defaultCodexIconUrl = new URL(
   "../../../assets/workspace-canvas/dock/default/codex.png",
   import.meta.url
 ).href;
+const defaultCursorIconUrl = new URL(
+  "../../../assets/workspace-canvas/dock/default/cursor.png",
+  import.meta.url
+).href;
 const defaultAgentUnifiedIconUrl = new URL(
   "../../../assets/workspace-canvas/dock/default/agent-unified.png",
   import.meta.url
@@ -75,6 +79,7 @@ export function resolveWorkspaceDockIconSet(_input: {
   const agents: Record<AgentGuiWorkbenchProvider, string> = {
     "claude-code": defaultClaudeCodeIconUrl,
     codex: defaultCodexIconUrl,
+    cursor: defaultCursorIconUrl,
     gemini: defaultGeminiIconUrl,
     hermes: defaultHermesIconUrl,
     nexight: defaultTuttiIconUrl,

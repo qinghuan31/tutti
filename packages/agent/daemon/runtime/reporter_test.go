@@ -1040,7 +1040,9 @@ func TestReporterProjectsSessionAndTurnLifecycleToStatePatches(t *testing.T) {
 	input := reportActivityInput(session, []activityshared.Event{
 		newSessionActivityEvent(session, EventSessionStarted, SessionStatusReady, nil),
 		newTurnActivityEventWithID(session, "turn-start-1", EventTurnStarted, "turn-1", SessionStatusWorking, "", "", nil),
-		newTurnActivityEventWithID(session, "turn-done-1", EventTurnCompleted, "turn-1", SessionStatusReady, "", "", nil),
+		newTurnActivityEventWithID(session, "turn-done-1", EventTurnCompleted, "turn-1", SessionStatusReady, "", "", map[string]any{
+			"stopReason": "end_turn",
+		}),
 	})
 	err := reporter.Report(context.Background(), input)
 	if err != nil {
@@ -1048,6 +1050,9 @@ func TestReporterProjectsSessionAndTurnLifecycleToStatePatches(t *testing.T) {
 	}
 	if client.calls != 3 {
 		t.Fatalf("calls = %d, want 3 state reports", client.calls)
+	}
+	if len(client.stateInputs) != 3 {
+		t.Fatalf("state inputs = %#v, want 3", client.stateInputs)
 	}
 	if len(input.TimelineItems) != 0 {
 		t.Fatalf("timeline items = %#v, want none for lifecycle-only report", input.TimelineItems)
@@ -1080,6 +1085,12 @@ func TestReporterProjectsSessionAndTurnLifecycleToStatePatches(t *testing.T) {
 		input.StatePatches[2].SubmitAvailability.State != "available" ||
 		input.StatePatches[2].CurrentPhase != string(activityshared.TurnPhaseIdle) {
 		t.Fatalf("turn completed patch = %#v", input.StatePatches[2])
+	}
+	if input.StatePatches[2].LastError != "" {
+		t.Fatalf("turn completed last error = %q, want empty", input.StatePatches[2].LastError)
+	}
+	if client.stateInputs[2].State.LastError != "" {
+		t.Fatalf("reported turn completed last error = %q, want empty", client.stateInputs[2].State.LastError)
 	}
 }
 
@@ -1189,6 +1200,9 @@ func TestReporterProjectsTurnFailureErrorToStatePatch(t *testing.T) {
 	}
 	if input.StatePatches[0].LastError != "Codex request failed because a quota or rate limit was reached." {
 		t.Fatalf("last error = %q, want projected failure reason", input.StatePatches[0].LastError)
+	}
+	if client.stateInputs[0].State.LastError != "Codex request failed because a quota or rate limit was reached." {
+		t.Fatalf("reported last error = %q, want projected failure reason", client.stateInputs[0].State.LastError)
 	}
 	if len(input.MessageUpdates) != 1 {
 		t.Fatalf("message updates = %#v, want visible failure message", input.MessageUpdates)

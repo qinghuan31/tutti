@@ -1093,15 +1093,8 @@ func codexSubmitAvailabilityForLifecyclePhase(phase string) *agentsessionstore.W
 }
 
 func statePatchLastError(event activityshared.Event) string {
-	switch event.Type {
-	case activityshared.EventSessionUpdated:
-		if strings.TrimSpace(event.Payload.EffectiveStatus) == string(activityshared.SessionStatusPaused) {
-			return ""
-		}
-	case activityshared.EventTurnCompleted:
-		if strings.TrimSpace(event.Payload.TurnOutcome) == string(activityshared.TurnOutcomeInterrupted) {
-			return ""
-		}
+	if event.Type != activityshared.EventSessionFailed && event.Type != activityshared.EventTurnFailed {
+		return ""
 	}
 	detail := visibleFailureDetail(event)
 	if detail == "" {

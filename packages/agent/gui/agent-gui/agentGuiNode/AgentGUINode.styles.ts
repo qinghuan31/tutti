@@ -12,6 +12,7 @@ const styles = {
   composerHero: "agent-gui-node__composer-hero",
   composerFloatingPrompt: "agent-gui-node__composer-floating-prompt",
   composerHandoffIcon: "agent-gui-node__composer-handoff-icon",
+  composerHandoffAnimatedIcon: "agent-gui-node__composer-handoff-icon-animated",
   composerHandoffMenuContent: "agent-gui-node__composer-handoff-menu-content",
   composerHandoffStaticIcon: "agent-gui-node__composer-handoff-icon-static",
   composerHandoffTrigger: "agent-gui-node__composer-handoff-trigger",

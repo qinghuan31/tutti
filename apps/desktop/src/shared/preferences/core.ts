@@ -58,6 +58,8 @@ export const defaultDesktopAppCatalogChannel: DesktopAppCatalogChannel =
 
 export const defaultDesktopShowAppDeveloperSources = false;
 
+export const defaultDesktopEnableCursorAgent = false;
+
 export const desktopAgentConversationDetailModes = [
   "coding",
   "general"
@@ -162,6 +164,7 @@ export function normalizeDesktopAgentConversationDetailMode(
 export const desktopAgentProviders = [
   "claude-code",
   "codex",
+  "cursor",
   "nexight",
   "gemini",
   "hermes",
@@ -176,11 +179,33 @@ export interface DesktopAgentComposerDefaults {
   model?: string;
   permissionModeId?: string;
   reasoningEffort?: string;
+  speed?: string;
 }
 
 export type DesktopAgentComposerDefaultsByProvider = Partial<
   Record<DesktopAgentProvider, DesktopAgentComposerDefaults>
 >;
+
+export type DesktopAgentComposerDefaultsByAgentTarget = Record<
+  string,
+  DesktopAgentComposerDefaults
+>;
+
+// Patch for one agent target's remembered defaults: undefined leaves a field
+// untouched, null (or empty) clears it, a non-empty string replaces it.
+export interface DesktopAgentComposerDefaultsPatch {
+  model?: string | null;
+  permissionModeId?: string | null;
+  reasoningEffort?: string | null;
+  speed?: string | null;
+}
+
+export const desktopAgentComposerDefaultsFields = [
+  "model",
+  "permissionModeId",
+  "reasoningEffort",
+  "speed"
+] as const;
 
 export type DesktopAgentGuiConversationRailCollapsedByProvider = Partial<
   Record<DesktopAgentProvider, boolean>
@@ -361,6 +386,7 @@ export function normalizeDesktopAgentComposerDefaults(
   const model = normalizeOptionalText(value.model);
   const permissionModeId = normalizeOptionalText(value.permissionModeId);
   const reasoningEffort = normalizeOptionalText(value.reasoningEffort);
+  const speed = normalizeOptionalText(value.speed);
   if (model) {
     defaults.model = model;
   }
@@ -370,7 +396,31 @@ export function normalizeDesktopAgentComposerDefaults(
   if (reasoningEffort) {
     defaults.reasoningEffort = reasoningEffort;
   }
+  if (speed) {
+    defaults.speed = speed;
+  }
   return Object.keys(defaults).length > 0 ? defaults : null;
+}
+
+export function normalizeDesktopAgentComposerDefaultsByAgentTarget(
+  value: unknown
+): DesktopAgentComposerDefaultsByAgentTarget {
+  if (!isRecord(value)) {
+    return {};
+  }
+
+  const defaultsByAgentTarget: DesktopAgentComposerDefaultsByAgentTarget = {};
+  for (const [agentTargetId, entry] of Object.entries(value)) {
+    const normalizedAgentTargetId = normalizeOptionalText(agentTargetId);
+    if (!normalizedAgentTargetId) {
+      continue;
+    }
+    const defaults = normalizeDesktopAgentComposerDefaults(entry);
+    if (defaults) {
+      defaultsByAgentTarget[normalizedAgentTargetId] = defaults;
+    }
+  }
+  return defaultsByAgentTarget;
 }
 
 export function normalizeDesktopAgentComposerDefaultsByProvider(
@@ -454,6 +504,73 @@ export function mergeDesktopAgentComposerDefaultsByProvider(
   };
 }
 
+// Merges a patch into the existing entry: only the fields present in the
+// patch change, so a partial user switch never clobbers other remembered
+// fields. An explicit null (or empty) field clears the remembered value; a
+// null patch removes the whole entry.
+export function mergeDesktopAgentComposerDefaultsByAgentTarget(
+  current: DesktopAgentComposerDefaultsByAgentTarget | null | undefined,
+  agentTargetId: string,
+  patch: DesktopAgentComposerDefaultsPatch | null | undefined
+): DesktopAgentComposerDefaultsByAgentTarget {
+  const normalizedCurrent =
+    normalizeDesktopAgentComposerDefaultsByAgentTarget(current);
+  const normalizedAgentTargetId = agentTargetId.trim();
+  if (!normalizedAgentTargetId) {
+    return normalizedCurrent;
+  }
+  const { [normalizedAgentTargetId]: existing, ...remaining } =
+    normalizedCurrent;
+  if (patch === null || patch === undefined) {
+    return remaining;
+  }
+  const merged: DesktopAgentComposerDefaults = { ...existing };
+  for (const field of desktopAgentComposerDefaultsFields) {
+    const value = patch[field];
+    if (value === undefined) {
+      continue;
+    }
+    const normalizedValue = normalizeOptionalText(value);
+    if (normalizedValue) {
+      merged[field] = normalizedValue;
+    } else {
+      delete merged[field];
+    }
+  }
+  if (Object.keys(merged).length === 0) {
+    return remaining;
+  }
+  return {
+    ...remaining,
+    [normalizedAgentTargetId]: merged
+  };
+}
+
+export function desktopAgentComposerDefaultsByAgentTargetEqual(
+  left: DesktopAgentComposerDefaultsByAgentTarget | null | undefined,
+  right: DesktopAgentComposerDefaultsByAgentTarget | null | undefined
+): boolean {
+  const normalizedLeft =
+    normalizeDesktopAgentComposerDefaultsByAgentTarget(left);
+  const normalizedRight =
+    normalizeDesktopAgentComposerDefaultsByAgentTarget(right);
+  const agentTargetIds = new Set([
+    ...Object.keys(normalizedLeft),
+    ...Object.keys(normalizedRight)
+  ]);
+  for (const agentTargetId of agentTargetIds) {
+    if (
+      !desktopAgentComposerDefaultsEqual(
+        normalizedLeft[agentTargetId],
+        normalizedRight[agentTargetId]
+      )
+    ) {
+      return false;
+    }
+  }
+  return true;
+}
+
 export function desktopAgentComposerDefaultsByProviderEqual(
   left: DesktopAgentComposerDefaultsByProvider | null | undefined,
   right: DesktopAgentComposerDefaultsByProvider | null | undefined
@@ -480,7 +597,8 @@ export function desktopAgentComposerDefaultsEqual(
     (normalizedLeft?.permissionModeId ?? null) ===
       (normalizedRight?.permissionModeId ?? null) &&
     (normalizedLeft?.reasoningEffort ?? null) ===
-      (normalizedRight?.reasoningEffort ?? null)
+      (normalizedRight?.reasoningEffort ?? null) &&
+    (normalizedLeft?.speed ?? null) === (normalizedRight?.speed ?? null)
   );
 }
 

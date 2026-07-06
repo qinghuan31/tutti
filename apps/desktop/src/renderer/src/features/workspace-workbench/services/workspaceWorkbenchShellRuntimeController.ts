@@ -1,5 +1,8 @@
 import type { ReactNode } from "react";
-import type { AgentGUIProviderTarget } from "@tutti-os/agent-gui";
+import type {
+  AgentGUIProvider,
+  AgentGUIProviderTarget
+} from "@tutti-os/agent-gui";
 import type {
   WorkbenchHostCloseDialogRequest,
   WorkbenchHostHandle,
@@ -132,6 +135,7 @@ export interface WorkspaceWorkbenchShellHostInput {
   ) => void;
   providerTargets?: readonly AgentGUIProviderTarget[];
   providerTargetsLoading?: boolean;
+  comingSoonAgentProviders?: readonly AgentGUIProvider[];
   renderFilesNodeBody: (
     context: WorkspaceWorkbenchBodyRendererContext
   ) => ReactNode;

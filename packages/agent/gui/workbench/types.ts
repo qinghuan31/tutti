@@ -3,6 +3,7 @@ import type { AgentGUIProviderTargetRef } from "../types";
 export type AgentGuiWorkbenchProvider =
   | "claude-code"
   | "codex"
+  | "cursor"
   | "nexight"
   | "gemini"
   | "hermes"
@@ -27,6 +28,7 @@ export interface AgentGuiWorkbenchComposerOverrides {
   permissionModeId?: string | null;
   planMode?: boolean;
   reasoningEffort?: string | null;
+  speed?: string | null;
 }
 
 export type AgentGuiWorkbenchComposerOverridesByProvider = Partial<

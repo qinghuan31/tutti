@@ -54,6 +54,9 @@ func (localProcessTransport) Start(ctx context.Context, spec ProcessSpec) (Proce
 	logProcessStartEnvDiagnostics(spec, env, resolvedCommand)
 	cmd := exec.CommandContext(processCtx, resolvedCommand, spec.Command[1:]...)
 	cmd.Env = env
+	if cwd := strings.TrimSpace(spec.CWD); cwd != "" {
+		cmd.Dir = cwd
+	}
 
 	stdin, err := cmd.StdinPipe()
 	if err != nil {

@@ -1,6 +1,105 @@
 package agent
 
-import "testing"
+import (
+	"context"
+	"errors"
+	"testing"
+)
+
+// cursorModelRuntimeContext mirrors the configOptions a live cursor-agent
+// (2026.07) session advertises: parameterized model ids in {value, name}.
+func cursorModelRuntimeContext() map[string]any {
+	return map[string]any{
+		"configOptions": []any{
+			map[string]any{
+				"id":           "model",
+				"currentValue": "composer-2.5[fast=true]",
+				"options": []any{
+					map[string]any{"value": "default[]", "name": "Auto"},
+					map[string]any{"value": "composer-2.5[fast=true]", "name": "composer-2.5"},
+					map[string]any{"value": "gpt-5.2[reasoning=medium,fast=false]", "name": "gpt-5.2"},
+				},
+			},
+		},
+	}
+}
+
+func TestLiveModelOptionsFromRunningSessionFiltersProvider(t *testing.T) {
+	t.Parallel()
+	runtime := newFakeRuntime()
+	runtime.sessions["claude-1"] = RuntimeSession{
+		ID: "claude-1", WorkspaceID: "ws-1", Provider: "claude-code",
+	}
+	runtime.sessions["cursor-1"] = RuntimeSession{
+		ID: "cursor-1", WorkspaceID: "ws-1", Provider: "cursor",
+		RuntimeContext: cursorModelRuntimeContext(),
+	}
+	service := NewService(runtime)
+
+	options, hasSession := service.liveModelOptionsFromRunningSession("ws-1", "cursor")
+	if !hasSession || len(options) != 3 {
+		t.Fatalf("cursor options = %#v hasSession = %v, want 3 live models", options, hasSession)
+	}
+	if options[1].Value != "composer-2.5[fast=true]" || options[1].Label != "composer-2.5" {
+		t.Fatalf("cursor option[1] = %#v, want parameterized value with display label", options[1])
+	}
+	if _, hasClaude := service.liveModelOptionsFromRunningSession("ws-1", "claude-code"); !hasClaude {
+		t.Fatal("claude session must be detected")
+	}
+	if _, hasGemini := service.liveModelOptionsFromRunningSession("ws-1", "gemini"); hasGemini {
+		t.Fatal("gemini must not match cursor/claude sessions")
+	}
+}
+
+func TestDiscoverLiveComposerModelsUncachedSkipsProbeForCursor(t *testing.T) {
+	t.Parallel()
+	runtime := newFakeRuntime()
+	service := NewService(runtime)
+
+	_, err := service.discoverLiveComposerModelsUncached(
+		context.Background(), "cursor", "ws-1", "", ComposerSettings{},
+	)
+	if !errors.Is(err, errLiveModelDiscoveryAlreadyAttempted) {
+		t.Fatalf("err = %v, want probe skipped for cursor", err)
+	}
+	if len(runtime.startCalls) != 0 {
+		t.Fatalf("start calls = %#v, cursor discovery must never spawn a hidden session", runtime.startCalls)
+	}
+}
+
+func TestGetComposerOptionsMergesLiveCursorModels(t *testing.T) {
+	t.Parallel()
+	runtime := newFakeRuntime()
+	runtime.sessions["cursor-1"] = RuntimeSession{
+		ID: "cursor-1", WorkspaceID: "ws-1", Provider: "cursor",
+		RuntimeContext: cursorModelRuntimeContext(),
+	}
+	service := NewService(runtime)
+
+	options, err := service.GetComposerOptions(context.Background(), ComposerOptionsInput{
+		Provider:    "cursor",
+		WorkspaceID: "ws-1",
+		Settings: ComposerSettings{
+			Model:            "composer-2.5[fast=true]",
+			PermissionModeID: "agent",
+		},
+	})
+	if err != nil {
+		t.Fatalf("GetComposerOptions returned error: %v", err)
+	}
+	if !options.ModelConfig.Configurable {
+		t.Fatal("cursor model config must be configurable")
+	}
+	if len(options.ModelConfig.Options) != 3 {
+		t.Fatalf("model options = %#v, want the 3 live models", options.ModelConfig.Options)
+	}
+	if options.ModelConfig.Options[0].Value != "default[]" || options.ModelConfig.Options[0].Label != "Auto" {
+		t.Fatalf("model option[0] = %#v, want live Auto entry", options.ModelConfig.Options[0])
+	}
+	if options.ModelConfig.CurrentValue != "composer-2.5[fast=true]" {
+		t.Fatalf("model current value = %q", options.ModelConfig.CurrentValue)
+	}
+}
 
 func TestExtractModelOptionsFromRuntimeContext(t *testing.T) {
 	options := extractModelOptionsFromRuntimeContext(map[string]any{

@@ -166,8 +166,12 @@ func (r codexAppServerReducer) ReduceNotification(
 		a.applyAccountUpdate(session.AgentSessionID, params)
 		return codexAppServerReduction{}
 	case appServerNotifyThreadNameUpdated:
+		threadName := asString(params["threadName"])
+		if isInternalMentionRoutingTitle(threadName) {
+			return codexAppServerReduction{}
+		}
 		if event, ok := acpSessionTitleEvent(session, map[string]any{
-			"title": asString(params["threadName"]),
+			"title": threadName,
 		}); ok {
 			return emit([]activityshared.Event{event})
 		}

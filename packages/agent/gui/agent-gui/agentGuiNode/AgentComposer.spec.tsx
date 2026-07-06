@@ -1150,6 +1150,160 @@ describe("AgentComposer", () => {
     expect(onHandoffConversation).toHaveBeenCalledWith(claudeTarget);
   });
 
+  it("marks the handoff icon disabled with the handoff trigger", () => {
+    const codexTarget = {
+      targetId: "local:codex",
+      agentTargetId: "local:codex",
+      provider: "codex" as const,
+      ref: { kind: "local-provider", provider: "codex" as const },
+      label: "Codex"
+    };
+    const claudeTarget = {
+      targetId: "local:claude-code",
+      agentTargetId: "local:claude-code",
+      provider: "claude-code" as const,
+      ref: { kind: "local-provider", provider: "claude-code" as const },
+      label: "Claude Code"
+    };
+
+    render(
+      <AgentComposer
+        workspaceId="workspace-1"
+        currentUserId="user-1"
+        provider="codex"
+        selectedProviderTarget={codexTarget}
+        providerTargets={[codexTarget, claudeTarget]}
+        providerSelectReadonly
+        draftContent={createDraft("")}
+        availableCommands={[] satisfies readonly AgentHostAgentSessionCommand[]}
+        disabled={false}
+        submitDisabled={false}
+        placeholder="placeholder"
+        composerSettings={createComposerSettings()}
+        queuedPrompts={[]}
+        drainingQueuedPromptId={null}
+        canQueueWhileBusy={false}
+        showStopButton={false}
+        activePrompt={null}
+        isInterrupting={false}
+        isSendingTurn={false}
+        isSubmittingPrompt={false}
+        labels={createLabels()}
+        workspaceUserProjectI18n={workspaceUserProjectI18n}
+        onDraftContentChange={vi.fn()}
+        onSettingsChange={vi.fn()}
+        onSubmit={vi.fn()}
+        onSendQueuedPromptNext={vi.fn()}
+        onRemoveQueuedPrompt={vi.fn()}
+        onEditQueuedPrompt={vi.fn()}
+        onInterruptCurrentTurn={vi.fn()}
+        onSubmitInteractivePrompt={vi.fn()}
+      />
+    );
+
+    const handoffTrigger = screen.getByRole("combobox", { name: "Handoff" });
+    const handoffIcon = handoffTrigger.querySelector(
+      ".agent-gui-node__composer-handoff-icon"
+    );
+
+    expect(handoffTrigger).toBeDisabled();
+    expect(handoffIcon).toHaveAttribute("data-disabled", "true");
+  });
+
+  it("omits disabled targets from the provider switch menu", async () => {
+    const codexTarget = {
+      targetId: "local:codex",
+      agentTargetId: "local:codex",
+      provider: "codex" as const,
+      ref: { kind: "local-provider", provider: "codex" as const },
+      label: "Codex"
+    };
+    const claudeTarget = {
+      targetId: "local:claude-code",
+      agentTargetId: "local:claude-code",
+      provider: "claude-code" as const,
+      ref: { kind: "local-provider", provider: "claude-code" as const },
+      label: "Claude Code"
+    };
+    const disabledTargets = [
+      {
+        targetId: "local:tutti",
+        agentTargetId: "local:tutti",
+        provider: "nexight" as const,
+        ref: { kind: "local-provider", provider: "nexight" as const },
+        label: "Tutti Agent",
+        disabled: true
+      },
+      {
+        targetId: "local:hermes",
+        agentTargetId: "local:hermes",
+        provider: "hermes" as const,
+        ref: { kind: "local-provider", provider: "hermes" as const },
+        label: "Hermes",
+        disabled: true
+      },
+      {
+        targetId: "local:openclaw",
+        agentTargetId: "local:openclaw",
+        provider: "openclaw" as const,
+        ref: { kind: "local-provider", provider: "openclaw" as const },
+        label: "OpenClaw",
+        disabled: true
+      }
+    ];
+
+    render(
+      <AgentComposer
+        workspaceId="workspace-1"
+        currentUserId="user-1"
+        provider="claude-code"
+        selectedProviderTarget={claudeTarget}
+        providerTargets={[codexTarget, claudeTarget, ...disabledTargets]}
+        providerSelectLabel="切换 Provider"
+        draftContent={createDraft("")}
+        availableCommands={[] satisfies readonly AgentHostAgentSessionCommand[]}
+        disabled={false}
+        submitDisabled={false}
+        placeholder="placeholder"
+        composerSettings={createComposerSettings()}
+        queuedPrompts={[]}
+        drainingQueuedPromptId={null}
+        canQueueWhileBusy={false}
+        showStopButton={false}
+        activePrompt={null}
+        isInterrupting={false}
+        isSendingTurn={false}
+        isSubmittingPrompt={false}
+        labels={createLabels()}
+        workspaceUserProjectI18n={workspaceUserProjectI18n}
+        onDraftContentChange={vi.fn()}
+        onSettingsChange={vi.fn()}
+        onSubmit={vi.fn()}
+        onSendQueuedPromptNext={vi.fn()}
+        onRemoveQueuedPrompt={vi.fn()}
+        onEditQueuedPrompt={vi.fn()}
+        onInterruptCurrentTurn={vi.fn()}
+        onSubmitInteractivePrompt={vi.fn()}
+      />
+    );
+
+    fireEvent.keyDown(screen.getByRole("combobox", { name: "切换 Provider" }), {
+      key: "ArrowDown"
+    });
+
+    expect(await screen.findByRole("option", { name: "Codex" })).toBeVisible();
+    expect(screen.getByRole("option", { name: "Claude Code" })).toBeVisible();
+    expect(
+      screen.queryByRole("option", { name: "Tutti Agent" })
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("option", { name: "Hermes" })
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("option", { name: "OpenClaw" })
+    ).not.toBeInTheDocument();
+  });
+
   it("matches the browser-use slash capability by its English alias", async () => {
     render(
       <AgentComposer

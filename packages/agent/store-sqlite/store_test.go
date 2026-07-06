@@ -379,6 +379,91 @@ func TestStoreClassifiesRailSectionsWithInjectedProjectPaths(t *testing.T) {
 	}
 }
 
+func TestStoreListSessionSectionFiltersHiddenSessionsBeforePagination(t *testing.T) {
+	t.Parallel()
+
+	projects := &staticProjectPaths{paths: []string{"/workspace/app"}}
+	store := openTestStore(t, testOptions(projects))
+	ctx := context.Background()
+
+	for _, input := range []SessionStateReport{
+		{
+			WorkspaceID:      "ws-rail-visible",
+			AgentSessionID:   "bbb-visible-newer",
+			Origin:           "runtime",
+			Provider:         "codex",
+			Cwd:              "/workspace/app",
+			Title:            "visible newer",
+			Status:           "completed",
+			OccurredAtUnixMS: 100,
+		},
+		{
+			WorkspaceID:      "ws-rail-visible",
+			AgentSessionID:   "ccc-visible-older",
+			Origin:           "runtime",
+			Provider:         "codex",
+			Cwd:              "/workspace/app",
+			Title:            "visible older",
+			Status:           "completed",
+			RuntimeContext:   map[string]any{"visible": true},
+			OccurredAtUnixMS: 100,
+		},
+		{
+			WorkspaceID:      "ws-rail-visible",
+			AgentSessionID:   "aaa-hidden",
+			Origin:           "runtime",
+			Provider:         "claude-code",
+			Cwd:              "/workspace/app",
+			Title:            "hidden",
+			Status:           "completed",
+			RuntimeContext:   map[string]any{"visible": false},
+			OccurredAtUnixMS: 100,
+		},
+	} {
+		if _, err := store.ReportSessionState(ctx, input); err != nil {
+			t.Fatalf("ReportSessionState(%s) error = %v", input.AgentSessionID, err)
+		}
+	}
+	if _, err := store.db.ExecContext(ctx, `
+UPDATE workspace_agent_sessions
+SET updated_at_unix_ms = 1000
+WHERE workspace_id = ?`, "ws-rail-visible"); err != nil {
+		t.Fatalf("normalize updated_at_unix_ms error = %v", err)
+	}
+
+	page, ok, err := store.ListSessionSection(ctx, ListSessionSectionInput{
+		WorkspaceID: "ws-rail-visible",
+		SectionKey:  RailSectionKeyForProject("/workspace/app"),
+		Limit:       1,
+	})
+	if err != nil || !ok {
+		t.Fatalf("ListSessionSection(first) ok=%v error=%v", ok, err)
+	}
+	if len(page.Sessions) != 1 || page.Sessions[0].ID != "bbb-visible-newer" {
+		t.Fatalf("first page sessions = %#v, want bbb-visible-newer", page.Sessions)
+	}
+	if !page.HasMore || !strings.HasSuffix(page.NextCursor, "|bbb-visible-newer") {
+		t.Fatalf("first page state = hasMore %v cursor %q, want visible cursor with more", page.HasMore, page.NextCursor)
+	}
+
+	next, ok, err := store.ListSessionSection(ctx, ListSessionSectionInput{
+		WorkspaceID:       "ws-rail-visible",
+		SectionKey:        RailSectionKeyForProject("/workspace/app"),
+		CursorUpdatedAtMS: page.Sessions[0].UpdatedAtUnixMS,
+		CursorSessionID:   page.Sessions[0].ID,
+		Limit:             1,
+	})
+	if err != nil || !ok {
+		t.Fatalf("ListSessionSection(next) ok=%v error=%v", ok, err)
+	}
+	if len(next.Sessions) != 1 || next.Sessions[0].ID != "ccc-visible-older" {
+		t.Fatalf("next page sessions = %#v, want ccc-visible-older", next.Sessions)
+	}
+	if next.HasMore || next.NextCursor != "" {
+		t.Fatalf("next page state = hasMore %v cursor %q, want exhausted", next.HasMore, next.NextCursor)
+	}
+}
+
 func TestStoreTargetNormalizationAndSkippableRows(t *testing.T) {
 	t.Parallel()
 

@@ -30,6 +30,7 @@ func NewDefaultPreparer(stateDir string) *DefaultPreparer {
 	preparer.RegisterProvider(CodexPreparer{})
 	preparer.RegisterProvider(ClaudeCodePreparer{})
 	preparer.RegisterProvider(GeminiPreparer{})
+	preparer.RegisterProvider(InstructionFilePreparer{ProviderID: "cursor", FileName: "AGENTS.md"})
 	preparer.RegisterProvider(InstructionFilePreparer{ProviderID: "nexight", FileName: "AGENTS.md"})
 	preparer.RegisterProvider(InstructionFilePreparer{ProviderID: "hermes", FileName: "AGENTS.md"})
 	preparer.RegisterProvider(InstructionFilePreparer{ProviderID: "openclaw", FileName: "AGENTS.md"})
@@ -190,6 +191,7 @@ func defaultRuntimeEnv(input PrepareInput, stateDir string) []string {
 	env := []string{
 		"TUTTI_WORKSPACE_ID=" + strings.TrimSpace(input.WorkspaceID),
 		"TUTTI_AGENT_SESSION_ID=" + strings.TrimSpace(input.AgentSessionID),
+		"TUTTI_AGENT_TARGET_ID=" + strings.TrimSpace(input.AgentTargetID),
 		"TUTTI_AGENT_PROVIDER=" + strings.TrimSpace(input.Provider),
 		"TUTTI_AGENT_CWD=" + strings.TrimSpace(input.Cwd),
 	}

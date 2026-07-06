@@ -252,13 +252,17 @@ SELECT applied_at_unix_ms FROM agent_store_schema_migrations WHERE id = ?
 		t.Fatalf("legacy message page = %#v", page)
 	}
 
-	// Seeded system targets survive untouched and remain valid.
+	// Seeded system targets survive untouched, and newer system targets
+	// (cursor) are seeded onto the upgraded database.
 	targets, err := store.ListAgentTargets(ctx)
 	if err != nil {
 		t.Fatalf("ListAgentTargets() error = %v", err)
 	}
-	if len(targets) != 2 || targets[0].ID != agenttargetbiz.IDLocalCodex || targets[1].ID != agenttargetbiz.IDLocalClaudeCode {
-		t.Fatalf("targets after upgrade = %#v, want the two system targets", targets)
+	if len(targets) != 3 ||
+		targets[0].ID != agenttargetbiz.IDLocalCodex ||
+		targets[1].ID != agenttargetbiz.IDLocalClaudeCode ||
+		targets[2].ID != agenttargetbiz.IDLocalCursor {
+		t.Fatalf("targets after upgrade = %#v, want the three system targets", targets)
 	}
 
 	// Migrate is idempotent after the claim.

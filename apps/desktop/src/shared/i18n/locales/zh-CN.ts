@@ -700,6 +700,10 @@ export const zhCN = {
         conversationHistoryClearFailed: "暂时无法清除对话历史。",
         daemonLogLabel: "Daemon 日志",
         desktopLogLabel: "Desktop 日志",
+        enableCursorAgentDescription:
+          "在应用内展示 Cursor Agent。Cursor 支持处于预览阶段，默认关闭。",
+        enableCursorAgentLabel: "启用 Cursor Agent",
+        enableCursorAgentSaveFailed: "暂时无法更新 Cursor Agent 设置。",
         exportLogs: "导出日志",
         exportLogsDialogTitle: "导出日志",
         exportLogsFileType: "Zip 压缩包",
@@ -825,6 +829,7 @@ export const zhCN = {
         manageConfigMissing: "未检测到本机配置",
         manageProviderClaudeCode: "Claude Code",
         manageProviderCodex: "Codex",
+        manageProviderCursor: "Cursor",
         manageProviderGemini: "Gemini CLI",
         manageProviderHermes: "Hermes",
         manageProviderOpenClaw: "OpenClaw",

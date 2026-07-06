@@ -2,6 +2,7 @@ import { normalizeManagedAgentProvider } from "./managedAgentProviders";
 import {
   claudeRoundedUrl,
   codexRoundedUrl,
+  cursorRoundedUrl,
   geminiRoundedUrl,
   hermesRoundedUrl,
   manageAgentClaudeCodeUrl,
@@ -22,6 +23,7 @@ import {
 export const MANAGED_AGENT_ICON_URLS: Record<string, string> = {
   "claude-code": manageAgentClaudeCodeUrl,
   codex: manageAgentCodexUrl,
+  cursor: cursorRoundedUrl,
   gemini: manageAgentGeminiUrl,
   hermes: manageAgentHermesUrl,
   tutti: manageAgentTuttiUrl,
@@ -32,6 +34,7 @@ export const MANAGED_AGENT_ICON_URLS: Record<string, string> = {
 export const MANAGED_AGENT_PROVIDER_RAIL_ICON_URLS: Record<string, string> = {
   "claude-code": providerRailClaudeCodeColorfulUrl,
   codex: providerRailCodexColorfulUrl,
+  cursor: cursorRoundedUrl,
   hermes: providerRailHermesColorfulUrl,
   tutti: providerRailTuttiUrl
 };
@@ -40,6 +43,7 @@ export const MANAGED_AGENT_PROVIDER_RAIL_ICON_URLS: Record<string, string> = {
 export const MANAGED_AGENT_ICON_ROUNDED_URLS: Record<string, string> = {
   "claude-code": claudeRoundedUrl,
   codex: codexRoundedUrl,
+  cursor: cursorRoundedUrl,
   gemini: geminiRoundedUrl,
   hermes: hermesRoundedUrl,
   tutti: tuttiDocRoundedUrl,

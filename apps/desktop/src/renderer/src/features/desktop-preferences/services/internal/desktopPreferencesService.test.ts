@@ -25,6 +25,7 @@ test("DesktopPreferencesService bootstraps persisted preferences before connecti
         initialized: true,
         preferences: {
           agentComposerDefaultsByProvider: {},
+          agentComposerDefaultsByAgentTarget: {},
           agentGuiConversationRailCollapsedByProvider: {},
           agentConversationDetailMode: "coding",
           agentDockLayout: "unified",
@@ -39,6 +40,7 @@ test("DesktopPreferencesService bootstraps persisted preferences before connecti
           minimizeAnimation: "scale",
           sleepPreventionMode: "never",
           showAppDeveloperSources: false,
+          enableCursorAgent: false,
           themeSource: "dark",
           updateChannel: "stable",
           updatePolicy: "prompt"
@@ -89,6 +91,7 @@ test("DesktopPreferencesService keeps in-memory defaults when preferences are no
       initialized: false,
       preferences: {
         agentComposerDefaultsByProvider: {},
+        agentComposerDefaultsByAgentTarget: {},
         agentGuiConversationRailCollapsedByProvider: {},
         agentConversationDetailMode: "coding",
         agentDockLayout: "unified",
@@ -103,6 +106,7 @@ test("DesktopPreferencesService keeps in-memory defaults when preferences are no
         minimizeAnimation: "scale",
         sleepPreventionMode: "never",
         showAppDeveloperSources: false,
+        enableCursorAgent: false,
         themeSource: "system",
         updateChannel: "stable",
         updatePolicy: "prompt"
@@ -162,6 +166,7 @@ test("DesktopPreferencesService publishes locale writes and converges on the aut
   assert.deepEqual(client.updatedRequests, [
     {
       agentComposerDefaultsByProvider: {},
+      agentComposerDefaultsByAgentTarget: {},
       agentGuiConversationRailCollapsedByProvider: {},
       agentConversationDetailMode: "coding",
       agentDockLayout: "unified",
@@ -176,6 +181,7 @@ test("DesktopPreferencesService publishes locale writes and converges on the aut
       minimizeAnimation: "scale",
       sleepPreventionMode: "never",
       showAppDeveloperSources: false,
+      enableCursorAgent: false,
       themeSource: "system",
       updateChannel: "stable",
       updatePolicy: "prompt"
@@ -186,6 +192,7 @@ test("DesktopPreferencesService publishes locale writes and converges on the aut
 
   client.emitDesktopPreferencesUpdated({
     agentComposerDefaultsByProvider: {},
+    agentComposerDefaultsByAgentTarget: {},
     agentGuiConversationRailCollapsedByProvider: {},
     agentConversationDetailMode: "coding",
     agentDockLayout: "unified",
@@ -200,6 +207,7 @@ test("DesktopPreferencesService publishes locale writes and converges on the aut
     minimizeAnimation: "scale",
     sleepPreventionMode: "never",
     showAppDeveloperSources: false,
+    enableCursorAgent: false,
     themeSource: "system",
     updateChannel: "stable",
     updatePolicy: "prompt"
@@ -265,6 +273,7 @@ test("DesktopPreferencesService applies authoritative theme updates from the eve
   assert.deepEqual(client.updatedRequests, [
     {
       agentComposerDefaultsByProvider: {},
+      agentComposerDefaultsByAgentTarget: {},
       agentGuiConversationRailCollapsedByProvider: {},
       agentConversationDetailMode: "coding",
       agentDockLayout: "unified",
@@ -279,6 +288,7 @@ test("DesktopPreferencesService applies authoritative theme updates from the eve
       minimizeAnimation: "scale",
       sleepPreventionMode: "never",
       showAppDeveloperSources: false,
+      enableCursorAgent: false,
       themeSource: "dark",
       updateChannel: "stable",
       updatePolicy: "prompt"
@@ -297,6 +307,7 @@ test("DesktopPreferencesService applies authoritative theme updates from the eve
 
   client.emitDesktopPreferencesUpdated({
     agentComposerDefaultsByProvider: {},
+    agentComposerDefaultsByAgentTarget: {},
     agentGuiConversationRailCollapsedByProvider: {},
     agentConversationDetailMode: "coding",
     agentDockLayout: "unified",
@@ -311,6 +322,7 @@ test("DesktopPreferencesService applies authoritative theme updates from the eve
     minimizeAnimation: "scale",
     sleepPreventionMode: "never",
     showAppDeveloperSources: false,
+    enableCursorAgent: false,
     themeSource: "dark",
     updateChannel: "stable",
     updatePolicy: "prompt"
@@ -393,6 +405,7 @@ test("DesktopPreferencesService publishes prevent sleep preference writes", asyn
   assert.deepEqual(client.updatedRequests, [
     {
       agentComposerDefaultsByProvider: {},
+      agentComposerDefaultsByAgentTarget: {},
       agentGuiConversationRailCollapsedByProvider: {},
       agentConversationDetailMode: "coding",
       agentDockLayout: "unified",
@@ -407,6 +420,7 @@ test("DesktopPreferencesService publishes prevent sleep preference writes", asyn
       minimizeAnimation: "scale",
       sleepPreventionMode: "whileAgentRunning",
       showAppDeveloperSources: false,
+      enableCursorAgent: false,
       themeSource: "system",
       updateChannel: "stable",
       updatePolicy: "prompt"
@@ -416,6 +430,7 @@ test("DesktopPreferencesService publishes prevent sleep preference writes", asyn
 
   client.emitDesktopPreferencesUpdated({
     agentComposerDefaultsByProvider: {},
+    agentComposerDefaultsByAgentTarget: {},
     agentGuiConversationRailCollapsedByProvider: {},
     agentConversationDetailMode: "coding",
     agentDockLayout: "unified",
@@ -430,6 +445,7 @@ test("DesktopPreferencesService publishes prevent sleep preference writes", asyn
     minimizeAnimation: "scale",
     sleepPreventionMode: "whileAgentRunning",
     showAppDeveloperSources: false,
+    enableCursorAgent: false,
     themeSource: "system",
     updateChannel: "stable",
     updatePolicy: "prompt"
@@ -462,6 +478,7 @@ test("DesktopPreferencesService publishes update preference writes", async () =>
   assert.deepEqual(client.updatedRequests, [
     {
       agentComposerDefaultsByProvider: {},
+      agentComposerDefaultsByAgentTarget: {},
       agentGuiConversationRailCollapsedByProvider: {},
       agentConversationDetailMode: "coding",
       agentDockLayout: "unified",
@@ -476,6 +493,7 @@ test("DesktopPreferencesService publishes update preference writes", async () =>
       minimizeAnimation: "scale",
       sleepPreventionMode: "never",
       showAppDeveloperSources: false,
+      enableCursorAgent: false,
       themeSource: "system",
       updateChannel: "stable",
       updatePolicy: "auto"
@@ -485,6 +503,7 @@ test("DesktopPreferencesService publishes update preference writes", async () =>
 
   client.emitDesktopPreferencesUpdated({
     agentComposerDefaultsByProvider: {},
+    agentComposerDefaultsByAgentTarget: {},
     agentGuiConversationRailCollapsedByProvider: {},
     agentConversationDetailMode: "coding",
     agentDockLayout: "unified",
@@ -499,6 +518,7 @@ test("DesktopPreferencesService publishes update preference writes", async () =>
     minimizeAnimation: "scale",
     sleepPreventionMode: "never",
     showAppDeveloperSources: false,
+    enableCursorAgent: false,
     themeSource: "system",
     updateChannel: "stable",
     updatePolicy: "auto"
@@ -624,6 +644,7 @@ test("DesktopPreferencesService publishes dock placement preference writes", asy
   assert.deepEqual(client.updatedRequests, [
     {
       agentComposerDefaultsByProvider: {},
+      agentComposerDefaultsByAgentTarget: {},
       agentGuiConversationRailCollapsedByProvider: {},
       agentConversationDetailMode: "coding",
       agentDockLayout: "unified",
@@ -638,6 +659,7 @@ test("DesktopPreferencesService publishes dock placement preference writes", asy
       minimizeAnimation: "scale",
       sleepPreventionMode: "never",
       showAppDeveloperSources: false,
+      enableCursorAgent: false,
       themeSource: "system",
       updateChannel: "stable",
       updatePolicy: "prompt"
@@ -647,6 +669,7 @@ test("DesktopPreferencesService publishes dock placement preference writes", asy
 
   client.emitDesktopPreferencesUpdated({
     agentComposerDefaultsByProvider: {},
+    agentComposerDefaultsByAgentTarget: {},
     agentGuiConversationRailCollapsedByProvider: {},
     agentConversationDetailMode: "coding",
     agentDockLayout: "unified",
@@ -661,6 +684,7 @@ test("DesktopPreferencesService publishes dock placement preference writes", asy
     minimizeAnimation: "scale",
     sleepPreventionMode: "never",
     showAppDeveloperSources: false,
+    enableCursorAgent: false,
     themeSource: "system",
     updateChannel: "stable",
     updatePolicy: "prompt"
@@ -696,6 +720,7 @@ test("DesktopPreferencesService publishes workbench window snapping preference w
   assert.deepEqual(client.updatedRequests, [
     {
       agentComposerDefaultsByProvider: {},
+      agentComposerDefaultsByAgentTarget: {},
       agentGuiConversationRailCollapsedByProvider: {},
       agentConversationDetailMode: "coding",
       agentDockLayout: "unified",
@@ -710,6 +735,7 @@ test("DesktopPreferencesService publishes workbench window snapping preference w
       minimizeAnimation: "scale",
       sleepPreventionMode: "never",
       showAppDeveloperSources: false,
+      enableCursorAgent: false,
       themeSource: "system",
       updateChannel: "stable",
       updatePolicy: "prompt",
@@ -784,6 +810,7 @@ test("DesktopPreferencesService applies HTTP-confirmed authoritative preferences
       initialized: true,
       preferences: {
         agentComposerDefaultsByProvider: {},
+        agentComposerDefaultsByAgentTarget: {},
         agentGuiConversationRailCollapsedByProvider: {},
         agentConversationDetailMode: "coding",
         agentDockLayout: "unified",
@@ -798,6 +825,7 @@ test("DesktopPreferencesService applies HTTP-confirmed authoritative preferences
         minimizeAnimation: "scale",
         sleepPreventionMode: "never",
         showAppDeveloperSources: false,
+        enableCursorAgent: false,
         themeSource: "system",
         updateChannel: "stable",
         updatePolicy: "prompt"
@@ -807,6 +835,7 @@ test("DesktopPreferencesService applies HTTP-confirmed authoritative preferences
       initialized: true,
       preferences: {
         agentComposerDefaultsByProvider: {},
+        agentComposerDefaultsByAgentTarget: {},
         agentGuiConversationRailCollapsedByProvider: {},
         agentConversationDetailMode: "coding",
         agentDockLayout: "unified",
@@ -821,6 +850,7 @@ test("DesktopPreferencesService applies HTTP-confirmed authoritative preferences
         minimizeAnimation: "scale",
         sleepPreventionMode: "never",
         showAppDeveloperSources: false,
+        enableCursorAgent: false,
         themeSource: "system",
         updateChannel: "stable",
         updatePolicy: "prompt"
@@ -875,6 +905,7 @@ test("DesktopPreferencesService rejects mismatched App Center source confirmatio
       initialized: true,
       preferences: {
         agentComposerDefaultsByProvider: {},
+        agentComposerDefaultsByAgentTarget: {},
         agentGuiConversationRailCollapsedByProvider: {},
         agentConversationDetailMode: "coding",
         agentDockLayout: "unified",
@@ -889,6 +920,7 @@ test("DesktopPreferencesService rejects mismatched App Center source confirmatio
         minimizeAnimation: "scale",
         sleepPreventionMode: "never",
         showAppDeveloperSources: false,
+        enableCursorAgent: false,
         themeSource: "system",
         updateChannel: "stable",
         updatePolicy: "prompt"
@@ -898,6 +930,7 @@ test("DesktopPreferencesService rejects mismatched App Center source confirmatio
       initialized: true,
       preferences: {
         agentComposerDefaultsByProvider: {},
+        agentComposerDefaultsByAgentTarget: {},
         agentGuiConversationRailCollapsedByProvider: {},
         agentConversationDetailMode: "coding",
         agentDockLayout: "unified",
@@ -912,6 +945,7 @@ test("DesktopPreferencesService rejects mismatched App Center source confirmatio
         minimizeAnimation: "scale",
         sleepPreventionMode: "never",
         showAppDeveloperSources: false,
+        enableCursorAgent: false,
         themeSource: "system",
         updateChannel: "stable",
         updatePolicy: "prompt"
@@ -949,7 +983,7 @@ test("DesktopPreferencesService rejects mismatched App Center source confirmatio
   service.dispose();
 });
 
-test("DesktopPreferencesService remembers agent composer defaults per provider", async () => {
+test("DesktopPreferencesService remembers agent composer defaults per agent target", async () => {
   const client = createDesktopPreferencesClient({});
   const service = new DesktopPreferencesService({
     applyLocale() {},
@@ -964,18 +998,24 @@ test("DesktopPreferencesService remembers agent composer defaults per provider",
   });
   await settle();
 
-  const rememberPromise = service.rememberAgentComposerDefaults("codex", {
-    model: " gpt-5 ",
-    permissionModeId: " full-access ",
-    reasoningEffort: " high "
-  });
+  const rememberPromise = service.rememberAgentComposerDefaultsForAgentTarget(
+    " local:codex ",
+    {
+      model: " gpt-5 ",
+      permissionModeId: " full-access ",
+      reasoningEffort: " high ",
+      speed: " fast "
+    }
+  );
 
   assert.deepEqual(client.updatedRequests.at(-1), {
-    agentComposerDefaultsByProvider: {
-      codex: {
+    agentComposerDefaultsByProvider: {},
+    agentComposerDefaultsByAgentTarget: {
+      "local:codex": {
         model: "gpt-5",
         permissionModeId: "full-access",
-        reasoningEffort: "high"
+        reasoningEffort: "high",
+        speed: "fast"
       }
     },
     agentGuiConversationRailCollapsedByProvider: {},
@@ -992,6 +1032,7 @@ test("DesktopPreferencesService remembers agent composer defaults per provider",
     minimizeAnimation: "scale",
     sleepPreventionMode: "never",
     showAppDeveloperSources: false,
+    enableCursorAgent: false,
     themeSource: "system",
     updateChannel: "stable",
     updatePolicy: "prompt"
@@ -999,9 +1040,36 @@ test("DesktopPreferencesService remembers agent composer defaults per provider",
   client.emitDesktopPreferencesUpdated(client.updatedRequests.at(-1)!);
 
   await rememberPromise;
-  assert.deepEqual(service.store.agentComposerDefaultsByProvider, {
-    codex: {
+  assert.deepEqual(service.store.agentComposerDefaultsByAgentTarget, {
+    "local:codex": {
       model: "gpt-5",
+      permissionModeId: "full-access",
+      reasoningEffort: "high",
+      speed: "fast"
+    }
+  });
+
+  const partialRememberPromise =
+    service.rememberAgentComposerDefaultsForAgentTarget("local:codex", {
+      model: "gpt-5-codex",
+      // An explicit null clears the remembered value (user reset the field);
+      // untouched fields stay intact.
+      speed: null
+    });
+  const mergedRequest = client.updatedRequests.at(-1)!;
+  assert.deepEqual(mergedRequest.agentComposerDefaultsByAgentTarget, {
+    "local:codex": {
+      model: "gpt-5-codex",
+      permissionModeId: "full-access",
+      reasoningEffort: "high"
+    }
+  });
+  client.emitDesktopPreferencesUpdated(mergedRequest);
+
+  await partialRememberPromise;
+  assert.deepEqual(service.store.agentComposerDefaultsByAgentTarget, {
+    "local:codex": {
+      model: "gpt-5-codex",
       permissionModeId: "full-access",
       reasoningEffort: "high"
     }
@@ -1032,6 +1100,7 @@ test("DesktopPreferencesService remembers agent GUI conversation rail collapsed 
 
   assert.deepEqual(client.updatedRequests.at(-1), {
     agentComposerDefaultsByProvider: {},
+    agentComposerDefaultsByAgentTarget: {},
     agentGuiConversationRailCollapsedByProvider: {
       codex: true
     },
@@ -1048,6 +1117,7 @@ test("DesktopPreferencesService remembers agent GUI conversation rail collapsed 
     minimizeAnimation: "scale",
     sleepPreventionMode: "never",
     showAppDeveloperSources: false,
+    enableCursorAgent: false,
     themeSource: "system",
     updateChannel: "stable",
     updatePolicy: "prompt"
@@ -1145,6 +1215,7 @@ function createDesktopPreferencesClient(
       initialized: true,
       preferences: {
         agentComposerDefaultsByProvider: {},
+        agentComposerDefaultsByAgentTarget: {},
         agentGuiConversationRailCollapsedByProvider: {},
         agentConversationDetailMode: "coding",
         agentDockLayout: "unified",
@@ -1159,6 +1230,7 @@ function createDesktopPreferencesClient(
         minimizeAnimation: "scale",
         sleepPreventionMode: "never",
         showAppDeveloperSources: false,
+        enableCursorAgent: false,
         themeSource: "system",
         updateChannel: "stable",
         updatePolicy: "prompt"

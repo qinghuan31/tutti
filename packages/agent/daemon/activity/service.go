@@ -50,21 +50,60 @@ type sessionEntry struct {
 }
 
 type Store struct {
-	mu             sync.RWMutex
-	rooms          map[string]*sessionEntry
-	client         ReadRepository
-	syncer         *sessionSyncer
-	syncStateStore SyncStateStore
-	updateListener func(roomID string, snapshot WorkspaceAgentSnapshot)
-	startOnce      sync.Once
+	mu                 sync.RWMutex
+	rooms              map[string]*sessionEntry
+	client             ReadRepository
+	syncer             *sessionSyncer
+	syncStateStore     SyncStateStore
+	messageCursorStore MessageCursorStore
+	syncBackoff        SyncBackoffConfig
+	updateListener     func(roomID string, snapshot WorkspaceAgentSnapshot)
+	startOnce          sync.Once
 }
 
 type Option func(*Store)
 
+// WithSyncStateStore injects a persistence backend for per-session activity
+// sync states. Loaded states seed TrackRoom, updates are written through on
+// every sync-state transition, and entries are deleted when a session is
+// hidden. Without this option sync states live in memory only.
+//
+// Store keys are the scope identifier passed to TrackRoom: tutti side =
+// workspace ID, external daemons (tsh) = control-plane room ID; workspace ≡
+// room, one-to-one, no implicit translation.
 func WithSyncStateStore(store SyncStateStore) Option {
 	return func(svc *Store) {
 		if svc != nil {
 			svc.syncStateStore = store
+		}
+	}
+}
+
+// WithMessageCursorStore injects a persistence backend for per-session message
+// sync cursors. Loaded cursors seed TrackRoom so the syncer resumes message
+// pulls where it left off, cursor advances are written through, and entries
+// are deleted when a session is hidden. Without this option cursors live in
+// memory only.
+//
+// Store keys are the scope identifier passed to TrackRoom: tutti side =
+// workspace ID, external daemons (tsh) = control-plane room ID; workspace ≡
+// room, one-to-one, no implicit translation.
+func WithMessageCursorStore(store MessageCursorStore) Option {
+	return func(svc *Store) {
+		if svc != nil {
+			svc.messageCursorStore = store
+		}
+	}
+}
+
+// WithSyncBackoff enables per-session exponential backoff for failed message
+// syncs in the background syncer. The zero config disables backoff, which is
+// the default and matches historical behavior (every sync tick retries
+// immediately). Use DefaultSyncBackoffConfig for field-proven values.
+func WithSyncBackoff(cfg SyncBackoffConfig) Option {
+	return func(svc *Store) {
+		if svc != nil {
+			svc.syncBackoff = cfg
 		}
 	}
 }
@@ -98,6 +137,7 @@ func (s *Store) TrackRoom(roomID string) {
 		return
 	}
 	loadedSyncStates := s.loadStoredSyncStates(roomID)
+	loadedCursors := s.loadStoredMessageCursors(roomID)
 
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -113,6 +153,13 @@ func (s *Store) TrackRoom(roomID string) {
 		}
 		for agentSessionID, syncState := range loadedSyncStates {
 			entry.syncStates[agentSessionID] = syncEntryFromState(syncState)
+		}
+		for agentSessionID, cursor := range loadedCursors {
+			agentSessionID = strings.TrimSpace(agentSessionID)
+			if agentSessionID == "" || cursor == 0 {
+				continue
+			}
+			entry.remoteMessageVersionBySession[agentSessionID] = cursor
 		}
 		s.rooms[roomID] = entry
 	}
@@ -440,6 +487,16 @@ func (s *Store) HideAgentSession(roomID string, agentSessionID string) {
 			)
 		}
 	}
+	if s.messageCursorStore != nil {
+		if err := s.messageCursorStore.DeleteMessageCursor(context.Background(), roomID, agentSessionID); err != nil {
+			slog.Warn("agent activity message cursor delete failed",
+				"event", "agent_activity.message_cursor.delete_failed",
+				"room_id", roomID,
+				"agent_session_id", agentSessionID,
+				"error", err,
+			)
+		}
+	}
 	changed := !workspaceAgentSnapshotBusinessEqual(before, snapshotFromEntryLocked(entry))
 	entry.mu.Unlock()
 	if changed {
@@ -451,6 +508,7 @@ func statePatchFromSessionState(agentSessionID string, state WorkspaceAgentSessi
 	patch := WorkspaceAgentStatePatch{
 		AgentSessionID:     strings.TrimSpace(agentSessionID),
 		AgentTargetID:      strings.TrimSpace(state.AgentTargetID),
+		DeviceID:           strings.TrimSpace(state.DeviceID),
 		Provider:           strings.TrimSpace(state.Provider),
 		ProviderSessionID:  strings.TrimSpace(state.ProviderSessionID),
 		Model:              strings.TrimSpace(state.Model),
@@ -535,17 +593,7 @@ func (s *Store) MarkActivitySyncPending(
 	messageUpdateCount int,
 ) (WorkspaceAgentSyncState, bool) {
 	return s.updateActivitySyncState(roomID, agentSessionID, func(current *agentSessionSyncState, now int64) WorkspaceAgentSyncState {
-		current.pendingReports++
-		current.state.AgentSessionID = strings.TrimSpace(agentSessionID)
-		current.state.Status = WorkspaceAgentSyncStatusPending
-		current.state.PendingTimelineItemCount += max(0, timelineItemCount)
-		current.state.PendingStatePatchCount += max(0, statePatchCount)
-		current.state.PendingMessageUpdateCount += max(0, messageUpdateCount)
-		current.state.AttemptCount++
-		current.state.FailedReportCount = current.failedReports
-		current.state.LastAttemptAtUnixMS = now
-		current.state.UpdatedAtUnixMS = now
-		return current.state
+		return applyActivitySyncPending(current, agentSessionID, timelineItemCount, statePatchCount, messageUpdateCount, now)
 	})
 }
 
@@ -557,27 +605,7 @@ func (s *Store) MarkActivitySyncSucceeded(
 	messageUpdateCount int,
 ) (WorkspaceAgentSyncState, bool) {
 	return s.updateActivitySyncState(roomID, agentSessionID, func(current *agentSessionSyncState, now int64) WorkspaceAgentSyncState {
-		if current.pendingReports > 0 {
-			current.pendingReports--
-		}
-		current.state.AgentSessionID = strings.TrimSpace(agentSessionID)
-		current.state.PendingTimelineItemCount = max(0, current.state.PendingTimelineItemCount-max(0, timelineItemCount))
-		current.state.PendingStatePatchCount = max(0, current.state.PendingStatePatchCount-max(0, statePatchCount))
-		current.state.PendingMessageUpdateCount = max(0, current.state.PendingMessageUpdateCount-max(0, messageUpdateCount))
-		current.failedReports = 0
-		current.state.FailedReportCount = 0
-		current.state.LastError = ""
-		if current.pendingReports == 0 {
-			current.state.Status = WorkspaceAgentSyncStatusSynced
-			current.state.PendingTimelineItemCount = 0
-			current.state.PendingStatePatchCount = 0
-			current.state.PendingMessageUpdateCount = 0
-			current.state.LastSyncedAtUnixMS = now
-		} else {
-			current.state.Status = WorkspaceAgentSyncStatusPending
-		}
-		current.state.UpdatedAtUnixMS = now
-		return current.state
+		return applyActivitySyncSucceeded(current, agentSessionID, timelineItemCount, statePatchCount, messageUpdateCount, now)
 	})
 }
 
@@ -590,18 +618,7 @@ func (s *Store) MarkActivitySyncFailed(
 	err error,
 ) (WorkspaceAgentSyncState, bool) {
 	return s.updateActivitySyncState(roomID, agentSessionID, func(current *agentSessionSyncState, now int64) WorkspaceAgentSyncState {
-		if current.pendingReports > 0 {
-			current.pendingReports--
-		}
-		current.failedReports++
-		current.state.AgentSessionID = strings.TrimSpace(agentSessionID)
-		current.state.Status = WorkspaceAgentSyncStatusFailed
-		current.state.FailedReportCount = current.failedReports
-		if err != nil {
-			current.state.LastError = strings.TrimSpace(err.Error())
-		}
-		current.state.UpdatedAtUnixMS = now
-		return current.state
+		return applyActivitySyncFailed(current, agentSessionID, err, now)
 	})
 }
 
@@ -828,6 +845,7 @@ func applyStatePatchLocked(entry *sessionEntry, source EventSource, patch Worksp
 		session := WorkspaceAgentSession{
 			AgentSessionID:     sessionID,
 			AgentTargetID:      firstNonEmptyString(patch.AgentTargetID, source.AgentTargetID),
+			DeviceID:           firstNonEmptyString(patch.DeviceID, source.DeviceID),
 			UserID:             strings.TrimSpace(source.UserID),
 			Provider:           firstNonEmptyString(patch.Provider, source.Provider),
 			ProviderSessionID:  firstNonEmptyString(patch.ProviderSessionID, source.ProviderSessionID),
@@ -875,6 +893,7 @@ func applyStatePatchLocked(entry *sessionEntry, source EventSource, patch Worksp
 	}
 	session.AgentSessionID = firstNonEmptyString(session.AgentSessionID, sessionID)
 	session.AgentTargetID = firstNonEmptyString(patch.AgentTargetID, session.AgentTargetID, source.AgentTargetID)
+	session.DeviceID = firstNonEmptyString(patch.DeviceID, session.DeviceID, source.DeviceID)
 	session.Provider = firstNonEmptyString(patch.Provider, session.Provider, source.Provider)
 	session.ProviderSessionID = firstNonEmptyString(patch.ProviderSessionID, session.ProviderSessionID, source.ProviderSessionID)
 	session.SessionOrigin = firstNonEmptyString(strings.TrimSpace(source.SessionOrigin), session.SessionOrigin)
@@ -1490,15 +1509,8 @@ func statePatchFromActivityEvent(source EventSource, event activityshared.Event,
 }
 
 func statePatchLastError(event activityshared.Event) string {
-	switch event.Type {
-	case activityshared.EventSessionUpdated:
-		if strings.TrimSpace(event.Payload.EffectiveStatus) == string(activityshared.SessionStatusPaused) {
-			return ""
-		}
-	case activityshared.EventTurnCompleted:
-		if strings.TrimSpace(event.Payload.TurnOutcome) == string(activityshared.TurnOutcomeInterrupted) {
-			return ""
-		}
+	if event.Type != activityshared.EventSessionFailed && event.Type != activityshared.EventTurnFailed {
+		return ""
 	}
 	return activityshared.BestEffortErrorMessage(event.Payload)
 }
@@ -1722,8 +1734,11 @@ func (s *Store) updateActivitySyncState(
 	}
 	next := update(current, time.Now().UnixMilli())
 	current.state = next
-	entry.mu.Unlock()
+	// Persist while holding entry.mu so sync-state writes serialize with
+	// HideAgentSession's delete (also under entry.mu): a save must never land
+	// after the delete and resurrect a hidden session's sync state.
 	s.saveSyncState(roomID, next)
+	entry.mu.Unlock()
 	s.notifyRoomUpdate(roomID)
 	return next, true
 }
@@ -1744,6 +1759,36 @@ func (s *Store) loadStoredSyncStates(roomID string) map[string]WorkspaceAgentSyn
 	return states
 }
 
+func (s *Store) loadStoredMessageCursors(roomID string) map[string]uint64 {
+	if s == nil || s.messageCursorStore == nil {
+		return nil
+	}
+	cursors, err := s.messageCursorStore.LoadRoomMessageCursors(context.Background(), roomID)
+	if err != nil {
+		slog.Warn("agent activity message cursor load failed",
+			"event", "agent_activity.message_cursor.load_failed",
+			"room_id", strings.TrimSpace(roomID),
+			"error", err,
+		)
+		return nil
+	}
+	return cursors
+}
+
+func (s *Store) saveMessageCursor(roomID, agentSessionID string, version uint64) {
+	if s == nil || s.messageCursorStore == nil {
+		return
+	}
+	if err := s.messageCursorStore.SaveMessageCursor(context.Background(), roomID, agentSessionID, version); err != nil {
+		slog.Warn("agent activity message cursor save failed",
+			"event", "agent_activity.message_cursor.save_failed",
+			"room_id", strings.TrimSpace(roomID),
+			"agent_session_id", strings.TrimSpace(agentSessionID),
+			"error", err,
+		)
+	}
+}
+
 func (s *Store) saveSyncState(roomID string, syncState WorkspaceAgentSyncState) {
 	if s == nil || s.syncStateStore == nil {
 		return
@@ -1756,6 +1801,78 @@ func (s *Store) saveSyncState(roomID string, syncState WorkspaceAgentSyncState) 
 			"error", err,
 		)
 	}
+}
+
+func applyActivitySyncPending(
+	current *agentSessionSyncState,
+	agentSessionID string,
+	timelineItemCount int,
+	statePatchCount int,
+	messageUpdateCount int,
+	now int64,
+) WorkspaceAgentSyncState {
+	current.pendingReports++
+	current.state.AgentSessionID = strings.TrimSpace(agentSessionID)
+	current.state.Status = WorkspaceAgentSyncStatusPending
+	current.state.PendingTimelineItemCount += max(0, timelineItemCount)
+	current.state.PendingStatePatchCount += max(0, statePatchCount)
+	current.state.PendingMessageUpdateCount += max(0, messageUpdateCount)
+	current.state.AttemptCount++
+	current.state.FailedReportCount = current.failedReports
+	current.state.LastAttemptAtUnixMS = now
+	current.state.UpdatedAtUnixMS = now
+	return current.state
+}
+
+func applyActivitySyncSucceeded(
+	current *agentSessionSyncState,
+	agentSessionID string,
+	timelineItemCount int,
+	statePatchCount int,
+	messageUpdateCount int,
+	now int64,
+) WorkspaceAgentSyncState {
+	if current.pendingReports > 0 {
+		current.pendingReports--
+	}
+	current.state.AgentSessionID = strings.TrimSpace(agentSessionID)
+	current.state.PendingTimelineItemCount = max(0, current.state.PendingTimelineItemCount-max(0, timelineItemCount))
+	current.state.PendingStatePatchCount = max(0, current.state.PendingStatePatchCount-max(0, statePatchCount))
+	current.state.PendingMessageUpdateCount = max(0, current.state.PendingMessageUpdateCount-max(0, messageUpdateCount))
+	current.failedReports = 0
+	current.state.FailedReportCount = 0
+	current.state.LastError = ""
+	if current.pendingReports == 0 {
+		current.state.Status = WorkspaceAgentSyncStatusSynced
+		current.state.PendingTimelineItemCount = 0
+		current.state.PendingStatePatchCount = 0
+		current.state.PendingMessageUpdateCount = 0
+		current.state.LastSyncedAtUnixMS = now
+	} else {
+		current.state.Status = WorkspaceAgentSyncStatusPending
+	}
+	current.state.UpdatedAtUnixMS = now
+	return current.state
+}
+
+func applyActivitySyncFailed(
+	current *agentSessionSyncState,
+	agentSessionID string,
+	err error,
+	now int64,
+) WorkspaceAgentSyncState {
+	if current.pendingReports > 0 {
+		current.pendingReports--
+	}
+	current.failedReports++
+	current.state.AgentSessionID = strings.TrimSpace(agentSessionID)
+	current.state.Status = WorkspaceAgentSyncStatusFailed
+	current.state.FailedReportCount = current.failedReports
+	if err != nil {
+		current.state.LastError = strings.TrimSpace(err.Error())
+	}
+	current.state.UpdatedAtUnixMS = now
+	return current.state
 }
 
 func syncEntryFromState(syncState WorkspaceAgentSyncState) *agentSessionSyncState {
@@ -1961,7 +2078,18 @@ func (s *Store) appendSessionMessages(
 	}
 
 	entry.mu.Lock()
+	// The locked append resolves provider aliases, so read the cursor under
+	// the canonical session id.
+	canonicalID := resolveKnownOrProviderAliasSessionID(entry.state.Sessions, agentSessionID, "", "", "", "")
+	cursorBefore := entry.remoteMessageVersionBySession[canonicalID]
 	changed := appendSessionMessagesLocked(entry, agentSessionID, messages, latestVersion)
+	cursorAfter := entry.remoteMessageVersionBySession[canonicalID]
+	// Persist while holding entry.mu so cursor writes serialize with
+	// HideAgentSession's delete (also under entry.mu): a save must never land
+	// after the delete and resurrect a hidden session's cursor.
+	if cursorAfter > cursorBefore && !isHiddenAgentSession(entry, canonicalID) {
+		s.saveMessageCursor(roomID, canonicalID, cursorAfter)
+	}
 	entry.mu.Unlock()
 	if changed {
 		s.notifyRoomUpdate(roomID)

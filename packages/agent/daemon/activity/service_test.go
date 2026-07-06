@@ -964,6 +964,29 @@ func TestStoreAppliesRuntimeStatusEventsImmediately(t *testing.T) {
 	}
 }
 
+func TestStatePatchFromActivityEventIgnoresCompletedTurnLastError(t *testing.T) {
+	event := activityshared.NewTurnCompleted(activityshared.EventContext{
+		EventID:           "turn-completed",
+		Provider:          activityshared.ProviderClaudeCode,
+		ProviderSessionID: "provider-session",
+		AgentSessionID:    "agent-session",
+		CWD:               "/workspace/room-1",
+		OccurredAtUnixMS:  1710000000200,
+	}, "turn-1", activityshared.TurnOutcomeCompleted)
+	event.Payload.Metadata = map[string]any{
+		"lastError":  "end_turn",
+		"stopReason": "end_turn",
+	}
+
+	patch, ok := statePatchFromActivityEvent(EventSource{}, event, "agent-session", event.OccurredAtUnixMS)
+	if !ok {
+		t.Fatal("statePatchFromActivityEvent ok = false, want true")
+	}
+	if patch.LastError != "" {
+		t.Fatalf("last error = %q, want empty for completed turn", patch.LastError)
+	}
+}
+
 func TestStoreDoesNotAdvanceUpdatedAtForPassiveSessionUpdateEvent(t *testing.T) {
 	svc := New(nil)
 	svc.TrackRoom("room-1")

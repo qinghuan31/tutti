@@ -382,7 +382,7 @@ export const en = {
       providerGateComingSoonTitle: "{{provider}} is coming soon",
       providerGateComingSoonDescription:
         "{{provider}} is not available yet. We will enable this agent when it is ready.",
-      providerGateComingSoonAction: "Coming soon",
+      providerGateComingSoonAction: "coming soon",
       providerGateUnavailableTitle: "{{provider}} is not ready yet",
       providerGateUnavailableDescription:
         "We could not confirm that {{provider}} is ready. Try checking again.",
@@ -460,6 +460,23 @@ export const en = {
             label: "Full access",
             description:
               "Unrestricted access to the internet and any file on your computer"
+          }
+        },
+        cursor: {
+          "read-only": {
+            label: "Read-only",
+            description:
+              "Cursor plans and reads only. Proposes changes without making them."
+          },
+          agent: {
+            label: "Ask for approval",
+            description:
+              "Full tool access. Cursor asks before running commands or other risky actions."
+          },
+          "full-access": {
+            label: "Full access",
+            description:
+              "Runs commands without asking, unless explicitly denied by your Cursor permission rules."
           }
         },
         nexight: {

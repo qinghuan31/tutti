@@ -21,6 +21,7 @@ import {
   TooltipTrigger
 } from "@tutti-os/ui-system";
 import type { DesktopI18nKey } from "@shared/i18n";
+import { useDesktopPreferencesService } from "@renderer/features/desktop-preferences";
 import { useTranslation, type TranslateFn } from "@renderer/i18n";
 import { cn } from "@renderer/lib/format";
 import type {
@@ -58,6 +59,7 @@ const providerLabelKeys = {
   "claude-code":
     "workspace.workbenchDesktop.agentProviders.manageProviderClaudeCode",
   codex: "workspace.workbenchDesktop.agentProviders.manageProviderCodex",
+  cursor: "workspace.workbenchDesktop.agentProviders.manageProviderCursor",
   gemini: "workspace.workbenchDesktop.agentProviders.manageProviderGemini",
   hermes: "workspace.workbenchDesktop.agentProviders.manageProviderHermes",
   nexight: "workspace.workbenchDesktop.agentProviders.manageProviderTutti",
@@ -87,6 +89,14 @@ export function DesktopAgentProviderManageDialog({
   workspaceId
 }: DesktopAgentProviderManageDialogProps) {
   const { t } = useTranslation();
+  const { state: desktopPreferencesState } = useDesktopPreferencesService();
+  const hiddenProviders = useMemo<ReadonlySet<WorkspaceAgentProvider>>(
+    () =>
+      new Set<WorkspaceAgentProvider>(
+        desktopPreferencesState.enableCursorAgent ? [] : ["cursor"]
+      ),
+    [desktopPreferencesState.enableCursorAgent]
+  );
   const rowElementsRef = useRef(
     new Map<WorkspaceAgentProvider, HTMLDivElement>()
   );
@@ -106,11 +116,12 @@ export function DesktopAgentProviderManageDialog({
   const rows = useMemo(
     () =>
       projectDesktopAgentProviderManageRows({
+        hiddenProviders,
         isLoading: snapshot.isLoading,
         pendingActions,
         statuses: snapshot.statuses
       }),
-    [pendingActions, snapshot.isLoading, snapshot.statuses]
+    [hiddenProviders, pendingActions, snapshot.isLoading, snapshot.statuses]
   );
 
   useEffect(() => {

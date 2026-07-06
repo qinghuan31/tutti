@@ -2,10 +2,7 @@ package agentsessionstore
 
 import (
 	"encoding/json"
-	"errors"
-	"fmt"
 	"net/http"
-	"strings"
 	"time"
 )
 
@@ -53,10 +50,15 @@ type ReportActivityReply struct {
 type ReportSessionStateInput struct {
 	WorkspaceID    string
 	AgentSessionID string
-	SessionOrigin  string
-	Connector      *ConnectorInfo
-	Source         EventSource
-	State          WorkspaceAgentSessionStateUpdate
+	// AgentTargetID and DeviceID are optional metadata; when set they are
+	// propagated into the request source/state so remote controlplanes can
+	// attribute the session. Empty values leave the request unchanged.
+	AgentTargetID string
+	DeviceID      string
+	SessionOrigin string
+	Connector     *ConnectorInfo
+	Source        EventSource
+	State         WorkspaceAgentSessionStateUpdate
 }
 
 type ReportSessionStateReply struct {
@@ -95,6 +97,7 @@ func (r *ReportSessionStateReply) UnmarshalJSON(data []byte) error {
 
 type WorkspaceAgentSessionStateUpdate struct {
 	AgentTargetID      string                            `json:"agentTargetId,omitempty"`
+	DeviceID           string                            `json:"deviceId,omitempty"`
 	Provider           string                            `json:"provider,omitempty"`
 	ProviderSessionID  string                            `json:"providerSessionId,omitempty"`
 	Model              string                            `json:"model,omitempty"`
@@ -159,10 +162,15 @@ type WorkspaceAgentInteractivePrompt struct {
 type ReportSessionMessagesInput struct {
 	WorkspaceID    string
 	AgentSessionID string
-	SessionOrigin  string
-	Connector      *ConnectorInfo
-	Source         EventSource
-	Updates        []WorkspaceAgentSessionMessageUpdate
+	// AgentTargetID and DeviceID are optional metadata; when set they are
+	// propagated into the request source so remote controlplanes can
+	// attribute the session. Empty values leave the request unchanged.
+	AgentTargetID string
+	DeviceID      string
+	SessionOrigin string
+	Connector     *ConnectorInfo
+	Source        EventSource
+	Updates       []WorkspaceAgentSessionMessageUpdate
 }
 
 type ReportSessionMessagesReply struct {
@@ -209,9 +217,12 @@ type WorkspaceAgentSessionMessageUpdate struct {
 type ListSessionMessagesInput struct {
 	WorkspaceID    string
 	AgentSessionID string
-	AfterVersion   uint64
-	Limit          int
-	SessionOrigin  string
+	// DeviceID optionally scopes the query to sessions reported by a device.
+	// Empty means no device filter (historical behavior).
+	DeviceID      string
+	AfterVersion  uint64
+	Limit         int
+	SessionOrigin string
 }
 
 type ListSessionMessagesReply struct {
@@ -334,14 +345,18 @@ type EventSource struct {
 	ProviderSessionID string `json:"providerSessionId,omitempty"`
 	AgentID           string `json:"agentId,omitempty"`
 	AgentTargetID     string `json:"agentTargetId,omitempty"`
-	CWD               string `json:"cwd,omitempty"`
-	SessionOrigin     string `json:"sessionOrigin,omitempty"`
-	UserID            string `json:"-"`
+	// DeviceID optionally identifies the reporting device so multi-device
+	// controlplanes can attribute and scope sessions. Empty means unset.
+	DeviceID      string `json:"deviceId,omitempty"`
+	CWD           string `json:"cwd,omitempty"`
+	SessionOrigin string `json:"sessionOrigin,omitempty"`
+	UserID        string `json:"-"`
 }
 
 type WorkspaceAgentStatePatch struct {
 	AgentSessionID            string                            `json:"agentSessionId"`
 	AgentTargetID             string                            `json:"agentTargetId,omitempty"`
+	DeviceID                  string                            `json:"deviceId,omitempty"`
 	Provider                  string                            `json:"provider,omitempty"`
 	ProviderSessionID         string                            `json:"providerSessionId,omitempty"`
 	Model                     string                            `json:"model,omitempty"`
@@ -479,6 +494,9 @@ type ListAgentsInput struct {
 	WorkspaceID   string
 	SessionOrigin string
 	UserID        string
+	// DeviceID optionally scopes the query to sessions reported by a device.
+	// Empty means no device filter (historical behavior).
+	DeviceID string
 }
 
 type WorkspaceAgentSnapshot struct {
@@ -504,6 +522,7 @@ type WorkspaceAgentSession struct {
 	ID                 uint64                            `json:"id"`
 	AgentSessionID     string                            `json:"agentSessionId"`
 	AgentTargetID      string                            `json:"agentTargetId,omitempty"`
+	DeviceID           string                            `json:"deviceId,omitempty"`
 	PresenceID         uint64                            `json:"presenceId"`
 	UserID             string                            `json:"userId"`
 	Provider           string                            `json:"provider"`
@@ -529,6 +548,7 @@ func (s WorkspaceAgentSession) MarshalJSON() ([]byte, error) {
 		ID                 uint64                            `json:"id"`
 		AgentSessionID     string                            `json:"agentSessionId"`
 		AgentTargetID      string                            `json:"agentTargetId,omitempty"`
+		DeviceID           string                            `json:"deviceId,omitempty"`
 		PresenceID         uint64                            `json:"presenceId"`
 		UserID             string                            `json:"userId"`
 		Provider           string                            `json:"provider"`
@@ -552,6 +572,7 @@ func (s WorkspaceAgentSession) MarshalJSON() ([]byte, error) {
 		ID:                 s.ID,
 		AgentSessionID:     s.AgentSessionID,
 		AgentTargetID:      s.AgentTargetID,
+		DeviceID:           s.DeviceID,
 		PresenceID:         s.PresenceID,
 		UserID:             s.UserID,
 		Provider:           s.Provider,
@@ -644,6 +665,8 @@ func (s *WorkspaceAgentSession) UnmarshalJSON(data []byte) error {
 		AgentSessionIDSnake    string                   `json:"agent_session_id"`
 		AgentTargetID          string                   `json:"agentTargetId"`
 		AgentTargetIDSnake     string                   `json:"agent_target_id"`
+		DeviceID               string                   `json:"deviceId"`
+		DeviceIDSnake          string                   `json:"device_id"`
 		AgentID                string                   `json:"agentId"`
 		AgentIDSnake           string                   `json:"agent_id"`
 		PresenceID             flexibleUint64           `json:"presenceId"`
@@ -686,6 +709,7 @@ func (s *WorkspaceAgentSession) UnmarshalJSON(data []byte) error {
 			raw.AgentIDSnake,
 		),
 		AgentTargetID: firstNonEmptyString(raw.AgentTargetID, raw.AgentTargetIDSnake),
+		DeviceID:      firstNonEmptyString(raw.DeviceID, raw.DeviceIDSnake),
 		PresenceID:    uint64(firstNonZeroFlexibleUint64(raw.PresenceID, raw.PresenceIDSnake)),
 		UserID:        firstNonEmptyString(raw.UserID, raw.UserIDSnake),
 		Provider:      raw.Provider,
@@ -713,24 +737,6 @@ func (s *WorkspaceAgentSession) UnmarshalJSON(data []byte) error {
 		SyncState:       cloneSyncState(raw.SyncState),
 	}
 	return nil
-}
-
-func firstNonZeroFlexibleInt64(values ...flexibleInt64) flexibleInt64 {
-	for _, value := range values {
-		if value != 0 {
-			return value
-		}
-	}
-	return 0
-}
-
-func firstNonZeroFlexibleUint64(values ...flexibleUint64) flexibleUint64 {
-	for _, value := range values {
-		if value != 0 {
-			return value
-		}
-	}
-	return 0
 }
 
 func (i *WorkspaceAgentTimelineItem) UnmarshalJSON(data []byte) error {
@@ -776,81 +782,4 @@ func (i *WorkspaceAgentTimelineItem) UnmarshalJSON(data []byte) error {
 		CreatedAtUnixMS:  int64(raw.CreatedAtUnixMS),
 	}
 	return nil
-}
-
-type HTTPError struct {
-	StatusCode int
-	Body       string
-	Header     http.Header
-}
-
-func (e HTTPError) Error() string {
-	if strings.TrimSpace(e.Body) == "" {
-		return fmt.Sprintf("agent activity request failed (%d)", e.StatusCode)
-	}
-	return fmt.Sprintf("agent activity request failed (%d): %s", e.StatusCode, e.Body)
-}
-
-type requestBodySizedError struct {
-	err              error
-	requestBodyBytes int
-}
-
-func (e requestBodySizedError) Error() string {
-	return e.err.Error()
-}
-
-func (e requestBodySizedError) Unwrap() error {
-	return e.err
-}
-
-func (e requestBodySizedError) RequestBodyBytes() int {
-	return e.requestBodyBytes
-}
-
-func WithRequestBodyBytes(err error, requestBodyBytes int) error {
-	if err == nil || requestBodyBytes <= 0 {
-		return err
-	}
-	var sized interface{ RequestBodyBytes() int }
-	if errors.As(err, &sized) && sized.RequestBodyBytes() > 0 {
-		return err
-	}
-	return requestBodySizedError{
-		err:              err,
-		requestBodyBytes: requestBodyBytes,
-	}
-}
-
-func RequestBodyBytesFromError(err error) (int, bool) {
-	if err == nil {
-		return 0, false
-	}
-	var sized interface{ RequestBodyBytes() int }
-	if !errors.As(err, &sized) {
-		return 0, false
-	}
-	requestBodyBytes := sized.RequestBodyBytes()
-	if requestBodyBytes <= 0 {
-		return 0, false
-	}
-	return requestBodyBytes, true
-}
-
-func firstNonEmptyString(values ...string) string {
-	for _, value := range values {
-		if trimmed := strings.TrimSpace(value); trimmed != "" {
-			return trimmed
-		}
-	}
-	return ""
-}
-
-func firstNonZeroInt(values ...int) int {
-	for _, value := range values {
-		if value != 0 {
-			return value
-		}
-	}
-	return 0
 }

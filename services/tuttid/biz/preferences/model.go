@@ -24,6 +24,7 @@ const (
 	DefaultDesktopMinimizeAnimation           = "scale"
 	DefaultDesktopSleepPreventionMode         = "never"
 	DefaultDesktopShowAppDeveloperSources     = false
+	DefaultDesktopEnableCursorAgent           = false
 	DefaultDesktopThemeSource                 = "dark"
 	DefaultDesktopUpdateChannel               = "rc"
 	DefaultDesktopUpdatePolicy                = "prompt"
@@ -33,6 +34,7 @@ const (
 
 type DesktopPreferences struct {
 	AgentComposerDefaultsByProvider             map[string]AgentComposerDefaults
+	AgentComposerDefaultsByAgentTarget          map[string]AgentComposerDefaults
 	AgentGUIConversationRailCollapsedByProvider map[string]bool
 	AgentConversationDetailMode                 string
 	AgentDockLayout                             string
@@ -41,6 +43,7 @@ type DesktopPreferences struct {
 	DefaultAgentProvider                        string
 	DockIconStyle                               string
 	DockPlacement                               string
+	EnableCursorAgent                           bool
 	FileDefaultOpenersByExtension               map[string]string
 	Initialized                                 bool
 	Locale                                      string
@@ -58,11 +61,27 @@ type AgentComposerDefaults struct {
 	Model            string
 	PermissionModeID string
 	ReasoningEffort  string
+	Speed            string
+}
+
+func (d AgentComposerDefaults) IsZero() bool {
+	return d.Model == "" && d.PermissionModeID == "" && d.ReasoningEffort == "" && d.Speed == ""
+}
+
+// LocalAgentTargetIDForProvider maps a provider to the id of its built-in
+// local agent target (see biz/agenttarget.IDLocalCodex and friends).
+func LocalAgentTargetIDForProvider(provider string) string {
+	normalized := agentproviderbiz.Normalize(provider)
+	if normalized == "" {
+		return ""
+	}
+	return "local:" + normalized
 }
 
 func DefaultDesktopPreferences() DesktopPreferences {
 	return DesktopPreferences{
 		AgentComposerDefaultsByProvider:             map[string]AgentComposerDefaults{},
+		AgentComposerDefaultsByAgentTarget:          map[string]AgentComposerDefaults{},
 		AgentGUIConversationRailCollapsedByProvider: map[string]bool{},
 		AgentConversationDetailMode:                 DefaultDesktopAgentConversationDetailMode,
 		AgentDockLayout:                             DefaultDesktopAgentDockLayout,
@@ -71,6 +90,7 @@ func DefaultDesktopPreferences() DesktopPreferences {
 		DefaultAgentProvider:                        DefaultDesktopDefaultAgentProvider,
 		DockIconStyle:                               DefaultDesktopDockIconStyle,
 		DockPlacement:                               DefaultDesktopDockPlacement,
+		EnableCursorAgent:                           DefaultDesktopEnableCursorAgent,
 		FileDefaultOpenersByExtension: map[string]string{
 			"htm":   "appBrowser",
 			"html":  "appBrowser",

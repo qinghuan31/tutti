@@ -31,11 +31,13 @@ const (
 	claudeSDKSidecarAdapterName    = "claude-agent-sdk"
 	claudeSDKSidecarDefaultNodeArg = "--experimental-strip-types"
 	claudeSDKDefaultContextWindow  = int64(200000)
+	claudeSDK1MContextWindow       = int64(1000000)
 	claudeSDKAuthRefreshLogPrefix  = "CLAUDE_CODE_AUTH_REFRESH_DEBUG"
 )
 
 type ClaudeCodeSDKAdapter struct {
 	transport ProcessTransport
+	preparer  ProviderLaunchPreparer
 
 	mu          sync.Mutex
 	sessions    map[string]*claudeSDKAdapterSession
@@ -130,6 +132,13 @@ func (*ClaudeCodeSDKAdapter) Provider() string {
 	return ProviderClaudeCode
 }
 
+func (a *ClaudeCodeSDKAdapter) SetProviderLaunchPreparer(preparer ProviderLaunchPreparer) {
+	if a == nil {
+		return
+	}
+	a.preparer = preparer
+}
+
 func (a *ClaudeCodeSDKAdapter) Start(ctx context.Context, session Session) ([]activityshared.Event, error) {
 	if a == nil || a.transport == nil {
 		return nil, ErrSessionDisconnected
@@ -141,7 +150,7 @@ func (a *ClaudeCodeSDKAdapter) Start(ctx context.Context, session Session) ([]ac
 	if err != nil {
 		return nil, err
 	}
-	conn, err := a.transport.Start(ctx, ProcessSpec{
+	spec, cleanup, err := prepareProviderLaunch(ctx, a.preparer, session, ProcessSpec{
 		Provider:       ProviderClaudeCode,
 		AgentSessionID: session.AgentSessionID,
 		RoomID:         session.RoomID,
@@ -153,6 +162,12 @@ func (a *ClaudeCodeSDKAdapter) Start(ctx context.Context, session Session) ([]ac
 	if err != nil {
 		return nil, err
 	}
+	conn, err := a.transport.Start(ctx, spec)
+	if err != nil {
+		cleanupPreparedLaunch(cleanup)
+		return nil, err
+	}
+	conn = wrapProviderLaunchCleanup(conn, cleanup)
 	adapterSession := &claudeSDKAdapterSession{
 		conn:              conn,
 		reader:            &claudeSDKLineReader{conn: conn},
@@ -1755,7 +1770,7 @@ func claudeSDKUsageUpdate(payload map[string]any, previous acpUsageState, contex
 				total = previous.contextWindowTokens
 			}
 			if total <= 0 {
-				total = claudeSDKDefaultContextWindow
+				total = claudeSDKAssumedContextWindow(contextModel)
 			}
 			contextWindow = clonePayload(contextWindow)
 			contextWindow["totalTokens"] = total
@@ -1784,7 +1799,7 @@ func claudeSDKUsageUpdate(payload map[string]any, previous acpUsageState, contex
 		total = previous.contextWindowTokens
 	}
 	if total <= 0 {
-		total = claudeSDKDefaultContextWindow
+		total = claudeSDKAssumedContextWindow(contextModel)
 	}
 	return map[string]any{
 		"sessionUpdate": "usage_update",
@@ -1793,6 +1808,26 @@ func claudeSDKUsageUpdate(payload map[string]any, previous acpUsageState, contex
 			"totalTokens": total,
 		},
 	}
+}
+
+// claudeSDKAssumedContextWindow picks the context-window size to assume when
+// the Claude Agent SDK hasn't yet reported an authoritative per-model window
+// for this turn (claudeSDKContextWindowTokens returns 0, e.g. every streamed
+// usage delta before the turn's final "result" message carries modelUsage)
+// and there's no matching previously-known window to carry forward
+// (claudeSDKCanReusePreviousContextWindow). Model IDs/aliases across the
+// Claude Code ecosystem mark 1M-context variants with a "[1m]" suffix (see
+// claudeCodeACPModelAliases's "sonnet[1m]" and
+// claudeCodeLegacyACPModelCandidates's "opus[1m]" in standard_acp_adapter.go,
+// and user-configured aliases such as "claude-fable-5[1m]"). Honor that
+// convention here too, so a brand-new session/turn on a 1M-context model
+// doesn't render the usage popover against the base 200k denominator for the
+// entire duration of the turn.
+func claudeSDKAssumedContextWindow(contextModel string) int64 {
+	if strings.Contains(strings.ToLower(claudeSDKCanonicalModel(contextModel)), "[1m]") {
+		return claudeSDK1MContextWindow
+	}
+	return claudeSDKDefaultContextWindow
 }
 
 func claudeSDKCanReusePreviousContextWindow(previous acpUsageState, contextModel string) bool {

@@ -1297,6 +1297,60 @@ func TestClaudeCodeSDKAdapterStartSendsInitialSettings(t *testing.T) {
 	}
 }
 
+func TestClaudeCodeSDKAdapterProviderLaunchPrepareMutatesSpecAndCleansUpOnClose(t *testing.T) {
+	conn := &scriptedClaudeSDKConnection{
+		frames: []ProcessFrame{{
+			Stdout: []byte(`{"type":"session_started","payload":{"providerSessionId":"provider-session-1"}}` + "\n"),
+		}},
+	}
+	transport := &recordingClaudeSDKTransport{conn: conn}
+	adapter := NewClaudeCodeSDKAdapter(transport)
+	cleanupCalls := 0
+	adapter.SetProviderLaunchPreparer(func(_ context.Context, input ProviderLaunchPrepareInput) (ProviderLaunchPrepareResult, error) {
+		if input.Provider != ProviderClaudeCode {
+			t.Fatalf("Provider = %q, want %q", input.Provider, ProviderClaudeCode)
+		}
+		if !input.DirectStart {
+			t.Fatal("DirectStart = false, want true for Claude SDK")
+		}
+		return ProviderLaunchPrepareResult{
+			Command: []string{"prepared-node", "sidecar.ts"},
+			Env:     append(append([]string(nil), input.Env...), "HOOK_ENV=1"),
+			CWD:     "/prepared/claude-sdk",
+			Cleanup: func(context.Context) error {
+				cleanupCalls++
+				return nil
+			},
+		}, nil
+	})
+	session := standardTestSession(ProviderClaudeCode)
+	session.Env = []string{"SESSION_ENV=1"}
+	session.ProviderSessionID = "provider-session-1"
+
+	if _, err := adapter.Start(context.Background(), session); err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+	if cleanupCalls != 0 {
+		t.Fatalf("cleanup calls before close = %d, want 0", cleanupCalls)
+	}
+	if !slices.Equal(transport.spec.Command, []string{"prepared-node", "sidecar.ts"}) {
+		t.Fatalf("Command = %#v", transport.spec.Command)
+	}
+	if transport.spec.CWD != "/prepared/claude-sdk" {
+		t.Fatalf("CWD = %q", transport.spec.CWD)
+	}
+	if !containsString(transport.spec.Env, "SESSION_ENV=1") || !containsString(transport.spec.Env, "HOOK_ENV=1") {
+		t.Fatalf("Env = %#v, want session and hook env", transport.spec.Env)
+	}
+
+	if err := adapter.Close(context.Background(), session); err != nil {
+		t.Fatalf("Close: %v", err)
+	}
+	if cleanupCalls != 1 {
+		t.Fatalf("cleanup calls after close = %d, want 1", cleanupCalls)
+	}
+}
+
 func TestClaudeSDKSidecarCommandUsesVendoredEntryWithManagedNodeEnv(t *testing.T) {
 	t.Setenv(claudeSDKSidecarCommandEnv, "")
 	t.Setenv(claudeSDKSidecarEntryPathEnv, "")
@@ -1939,6 +1993,86 @@ func TestClaudeCodeSDKAdapterMapsModelUsageContextWindowMap(t *testing.T) {
 	}
 	if got, ok := acpInt64Value(contextWindow["totalTokens"]); !ok || got != 1_000_000 {
 		t.Fatalf("totalTokens = %#v, want model usage context window", contextWindow["totalTokens"])
+	}
+}
+
+// TestClaudeCodeSDKAdapterAssumes1MWindowForOneMillionModelAliasBeforeResult
+// reproduces the context-usage popover bug reported after PR #749: on a
+// "[1m]" (1M-context) model alias, every usage_updated delta streamed before
+// the turn's final result message (the only one carrying an authoritative
+// modelUsage.contextWindow) used to fall back to the flat 200k default,
+// so the popover showed e.g. "38,551 / 200,000 (19%)" for a model whose real
+// window is 1,000,000 — for the entire duration of the turn. Once the final
+// message with modelUsage landed, the total would jump to 1,000,000, only to
+// reset back to the wrong 200k default on the next turn/session. This test
+// pins the fix: even the very first, modelUsage-less delta on a "[1m]" alias
+// must assume the 1,000,000 window, not the flat 200k default.
+func TestClaudeCodeSDKAdapterAssumes1MWindowForOneMillionModelAliasBeforeResult(t *testing.T) {
+	adapter := NewClaudeCodeSDKAdapter(nil)
+	session := standardTestSession(ProviderClaudeCode)
+	adapterSession := &claudeSDKAdapterSession{liveState: newClaudeSDKLiveState()}
+	adapter.storeSession(session.AgentSessionID, adapterSession)
+	// Mirrors a user-configured custom model alias such as the reported
+	// "claude-fable-5[1m]", following the same "[1m]" suffix convention as
+	// the built-in "opus[1m]"/"sonnet[1m]" aliases.
+	adapterSession.applyConfigOption("model", "claude-fable-5[1m]")
+
+	// First streamed usage delta of a brand-new turn/session: no
+	// modelUsage yet (previous.contextKnown is false), matching the
+	// "agent session Claude SDK usage update" log lines observed at
+	// current_context_known=false in the field report.
+	events, terminal, err := adapter.sidecarTurnEvents(adapterSession, session, "turn-1", claudeSDKSidecarEvent{
+		Type: "usage_updated",
+		Payload: map[string]any{
+			"turnId": "turn-1",
+			"usage": map[string]any{
+				"input_tokens":  30_000,
+				"output_tokens": 8_551,
+			},
+		},
+	})
+	if err != nil || terminal {
+		t.Fatalf("usage_updated terminal=%v err=%v", terminal, err)
+	}
+	if len(events) != 1 || events[0].Type != activityshared.EventSessionUpdated {
+		t.Fatalf("usage events = %#v, want session.updated", events)
+	}
+	state := adapter.SessionState(session)
+	usage, _ := state.RuntimeContext["usage"].(map[string]any)
+	contextWindow, _ := usage["contextWindow"].(map[string]any)
+	if got, ok := acpInt64Value(contextWindow["totalTokens"]); !ok || got != 1_000_000 {
+		t.Fatalf("totalTokens = %#v, want assumed 1,000,000 window for a [1m] model alias before modelUsage is known", contextWindow["totalTokens"])
+	}
+
+	// The turn's final result message now reports the authoritative
+	// modelUsage window: it must agree with the assumed value, not flip
+	// the denominator mid-turn.
+	events, terminal, err = adapter.sidecarTurnEvents(adapterSession, session, "turn-1", claudeSDKSidecarEvent{
+		Type: "usage_updated",
+		Payload: map[string]any{
+			"turnId": "turn-1",
+			"usage": map[string]any{
+				"input_tokens":  32_000,
+				"output_tokens": 8_859,
+			},
+			"modelUsage": map[string]any{
+				"claude-fable-5[1m]": map[string]any{
+					"contextWindow": 1_000_000,
+				},
+			},
+		},
+	})
+	if err != nil || terminal {
+		t.Fatalf("usage_updated (final) terminal=%v err=%v", terminal, err)
+	}
+	if len(events) != 1 {
+		t.Fatalf("usage events (final) = %#v", events)
+	}
+	state = adapter.SessionState(session)
+	usage, _ = state.RuntimeContext["usage"].(map[string]any)
+	contextWindow, _ = usage["contextWindow"].(map[string]any)
+	if got, ok := acpInt64Value(contextWindow["totalTokens"]); !ok || got != 1_000_000 {
+		t.Fatalf("totalTokens (final) = %#v, want 1,000,000 from modelUsage", contextWindow["totalTokens"])
 	}
 }
 

@@ -170,7 +170,10 @@ select with a handoff affordance. Handoff is a workbench launch, not an
 in-session provider switch: AgentGUI serializes the active session as a single
 `agent-session` mention in a draft prompt, passes the selected provider target
 through the host launch callback, and the desktop workbench opens a new empty
-composer for that target via the existing draft prefill activation path.
+composer for that target via the existing draft prefill activation path. The
+prefill activation provider is authoritative for the new workbench panel's
+initial provider chrome, so choosing Codex from a Claude Code session must open
+a Codex panel before the draft prefill effect runs.
 When provider selection happens from the empty-home composer or title control
 while the rail is already scoped to a provider target in multi-provider scope,
 it must update the rail conversation filter to the matching agent target so the
@@ -192,6 +195,10 @@ launch preparation.
 UI affordances that aggregate across providers, such as rail provider filters
 and composer provider switching, are always part of the unified AgentGUI
 surface and do not belong to durable AgentGUI node data.
+Provider rail containers and tiles are interactive workbench chrome: they must
+explicitly release host/window drag regions with `nodrag` and
+`-webkit-app-region: no-drag`, otherwise clicks near the window edge can be
+captured as drag gestures before AgentGUI sees the provider filter action.
 Provider-scoped rail footer affordances, such as usage limits and environment
 setup, follow the rail's active provider filter target in multi-provider scope;
 when the rail filter is `All`, they should stay hidden because there is no
@@ -808,9 +815,11 @@ User-visible rules:
   desktop default provider, or composer-default preferences. All-filter clicks
   must only clear the `agentTargetId` constraint. Provider target rail clicks
   may update the home composer launch target only when there is no active
-  conversation; active conversations keep owning their displayed target. React
-  view components must not dispatch separate filter and home-composer target
-  actions for one rail click.
+  conversation; active conversations keep owning their displayed target until
+  the target-filtered list initializes. If that target list is empty, AgentGUI
+  should unactivate the current conversation and show the selected target's
+  new-conversation empty composer. React view components must not dispatch
+  separate filter and home-composer target actions for one rail click.
   Apply them only for multi-provider conversation scopes. Single-provider
   panels should let the node provider constrain the query and collapse target
   filter actions back to All in the controller.
@@ -1237,13 +1246,14 @@ AgentGUI so Codex and Claude Code can use service-backed agent targets. An empty
 snapshot still resolves to omitted `providerTargets`, letting AgentGUI preserve
 the static catalog for picker/display compatibility instead of hiding the rail.
 Future providers in the static provider catalog, such as Tutti, Hermes, and
-OpenClaw, must render as disabled/coming-soon targets rather than clickable
-launch targets until their real `/agents` targets are supported.
+OpenClaw, must render as selectable disabled/coming-soon targets: provider rail
+clicks may select their empty composer state, but launch/send controls stay
+disabled until their real `/agents` targets are supported.
 Static catalog targets do not change the legacy activation contract: AgentGUI
-does not persist or send their `providerTargetRef`. For system local Codex and
-Claude Code targets, the synthesized targets may expose `local:codex` and
-`local:claude-code` as `agentTargetId`, matching the legacy local
-`providerTargetId` format so old node state can fall back without remapping.
+does not persist or send their `providerTargetRef`. Synthesized local targets
+may expose stable `local:<provider>` values as `agentTargetId`, including
+coming-soon placeholders, so the conversation rail can scope to an empty
+provider-specific list without falling back to All.
 
 ### Conversation Projection
 

@@ -13,6 +13,8 @@ import type {
 export interface DesktopAgentsServiceDependencies {
   now?: () => number;
   resolveAgentIconUrl?: (provider: string) => string;
+  /** Feature gate: gated providers keep their targets but are forced disabled (coming soon). */
+  isAgentTargetProviderGated?: (provider: string) => boolean;
   tuttidClient: Pick<TuttidClient, "listAgentTargets">;
 }
 
@@ -83,7 +85,11 @@ export class DesktopAgentsService implements IAgentsService {
     }
     const agentTargets = mapAgentTargetsToPresentations(response.targets, {
       resolveAgentIconUrl: this.dependencies.resolveAgentIconUrl
-    });
+    }).map((target) =>
+      this.dependencies.isAgentTargetProviderGated?.(target.provider) === true
+        ? { ...target, enabled: false }
+        : target
+    );
     const nextSnapshot: AgentsSnapshot = {
       agentTargets,
       capturedAtUnixMs: this.dependencies.now?.() ?? Date.now(),

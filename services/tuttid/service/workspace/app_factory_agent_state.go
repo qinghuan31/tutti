@@ -8,7 +8,6 @@ import (
 	"strings"
 
 	agentsessionstore "github.com/tutti-os/tutti/packages/agent/daemon/activity"
-	agentactivityprojection "github.com/tutti-os/tutti/packages/agent/daemon/activity/projection"
 	agentactivitybiz "github.com/tutti-os/tutti/services/tuttid/biz/agentactivity"
 	workspacebiz "github.com/tutti-os/tutti/services/tuttid/biz/workspace"
 )
@@ -123,13 +122,16 @@ func (s *AppFactoryService) reconcileFromPersistedAgentSession(ctx context.Conte
 	if !ok {
 		return false, nil
 	}
-	status := normalizeFactoryAgentSessionStatus(
-		agentactivityprojection.CanonicalSessionStatus(session.Status, session.CurrentPhase),
-	)
-	if status == "" {
-		return s.reconcileCompletedAgentSessionMessages(ctx, workspaceID, job)
+	if status := normalizePersistedFactoryAgentSessionStatus(session.Status); status != "" {
+		return true, s.handleAgentSessionTerminalState(ctx, workspaceID, agentSessionID, status, session.LastError)
 	}
-	return true, s.handleAgentSessionTerminalState(ctx, workspaceID, agentSessionID, status, session.LastError)
+	if strings.ToLower(strings.TrimSpace(session.CurrentPhase)) == "failed" {
+		return true, s.handleAgentSessionTerminalState(ctx, workspaceID, agentSessionID, "failed", session.LastError)
+	}
+	if isPersistedFactoryAgentSessionActive(session.Status, session.CurrentPhase) {
+		return true, nil
+	}
+	return s.reconcileCompletedAgentSessionMessages(ctx, workspaceID, job)
 }
 
 func (s *AppFactoryService) reconcileCompletedAgentSessionMessages(ctx context.Context, workspaceID string, job workspacebiz.AppFactoryJob) (bool, error) {
@@ -152,15 +154,8 @@ func (s *AppFactoryService) agentSessionHasCompletedFactoryOutput(workspaceID st
 		switch normalizeFactoryAgentSessionStatus(session.Status) {
 		case "completed":
 			return true
-		case "canceled":
-			return false
-		case "failed":
-			return false
 		default:
-			if strings.ToLower(strings.TrimSpace(session.Status)) != "active" ||
-				strings.ToLower(strings.TrimSpace(session.CurrentPhase)) != "idle" {
-				return false
-			}
+			return false
 		}
 	}
 	page, ok := s.AgentMessageReader.ListSessionMessages(agentactivitybiz.ListSessionMessagesInput{
@@ -173,7 +168,7 @@ func (s *AppFactoryService) agentSessionHasCompletedFactoryOutput(workspaceID st
 		return false
 	}
 	latest := page.Messages[0]
-	return isCompletedAssistantTextMessage(latest.Role, latest.Kind, latest.Status)
+	return isCompletedAssistantTextMessage(latest.Role, latest.Kind, latest.Status, latest.Payload)
 }
 
 func (s *AppFactoryService) runValidation(ctx context.Context, workspaceID string, job workspacebiz.AppFactoryJob) (workspacebiz.AppFactoryJob, error) {
@@ -274,7 +269,7 @@ func isRecoverablePreValidationAgentFailure(job workspacebiz.AppFactoryJob) bool
 
 func normalizeFactoryAgentSessionStatus(status string) string {
 	switch strings.ToLower(strings.TrimSpace(status)) {
-	case "completed", "complete", "succeeded", "success":
+	case "completed", "complete", "ended", "succeeded", "success":
 		return "completed"
 	case "canceled":
 		return "canceled"
@@ -287,6 +282,19 @@ func normalizeFactoryAgentSessionStatus(status string) string {
 
 func normalizePersistedFactoryAgentSessionStatus(status string) string {
 	return normalizeFactoryAgentSessionStatus(status)
+}
+
+func isPersistedFactoryAgentSessionActive(status string, currentPhase string) bool {
+	switch strings.ToLower(strings.TrimSpace(status)) {
+	case "active", "created", "queued", "running", "working", "waiting":
+		return true
+	}
+	switch strings.ToLower(strings.TrimSpace(currentPhase)) {
+	case "idle", "working", "running", "streaming", "waiting", "waiting_approval", "awaiting_approval", "waiting_input":
+		return true
+	default:
+		return false
+	}
 }
 
 func factoryAgentTerminalStatus(state agentsessionstore.WorkspaceAgentSessionStateUpdate) string {
@@ -311,17 +319,40 @@ func factoryAgentTerminalStatus(state agentsessionstore.WorkspaceAgentSessionSta
 
 func factoryAgentMessageUpdatesContainCompletedAssistantText(updates []agentsessionstore.WorkspaceAgentSessionMessageUpdate) bool {
 	for _, update := range updates {
-		if isCompletedAssistantTextMessage(update.Role, update.Kind, update.Status) {
+		if isCompletedAssistantTextMessage(update.Role, update.Kind, update.Status, update.Payload) {
 			return true
 		}
 	}
 	return false
 }
 
-func isCompletedAssistantTextMessage(role string, kind string, status string) bool {
+// isCompletedAssistantTextMessage reports whether a message update looks like
+// the agent's completed final answer text. System notices (skill/context
+// budget warnings, model reroutes, compaction banners, etc.) are reported
+// through the same role=assistant/kind=text/status=completed shape as real
+// task narration — see acpSystemNoticeEvent in
+// packages/agent/daemon/runtime/acp_update_events.go, which always tags its
+// payload with "kind": "agent_system_notice". Treating one of those as the
+// signal that the whole App Factory job finished caused jobs to be marked
+// failed within seconds of creation (validating against a manifest the
+// agent hadn't written yet) while the agent kept working in the background
+// and went on to succeed. Excluding tagged system notices here keeps the
+// heuristic scoped to genuine assistant output.
+func isCompletedAssistantTextMessage(role string, kind string, status string, payload map[string]any) bool {
+	if isAppFactorySystemNoticeMessagePayload(payload) {
+		return false
+	}
 	return strings.ToLower(strings.TrimSpace(role)) == "assistant" &&
 		strings.ToLower(strings.TrimSpace(kind)) == "text" &&
 		strings.ToLower(strings.TrimSpace(status)) == "completed"
+}
+
+func isAppFactorySystemNoticeMessagePayload(payload map[string]any) bool {
+	if len(payload) == 0 {
+		return false
+	}
+	kind, _ := payload["kind"].(string)
+	return strings.EqualFold(strings.TrimSpace(kind), "agent_system_notice")
 }
 
 func firstNonEmptyString(values ...string) string {

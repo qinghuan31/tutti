@@ -34,6 +34,7 @@ import {
   useWorkspaceAppCenterService,
   workspaceAppCenterNodeID
 } from "@renderer/features/workspace-app-center";
+import { useDesktopPreferencesService } from "@renderer/features/desktop-preferences";
 import { useTranslation } from "@renderer/i18n";
 import {
   isWorkspaceAgentGuiComingSoonProvider,
@@ -84,6 +85,14 @@ export function WorkspaceLaunchpadOverlay({
     () => agentProviderStatusService.getSnapshot()
   );
   const { t } = useTranslation();
+  const { state: desktopPreferencesState } = useDesktopPreferencesService();
+  const hiddenAgentProviders = useMemo<ReadonlySet<WorkspaceAgentProvider>>(
+    () =>
+      new Set<WorkspaceAgentProvider>(
+        desktopPreferencesState.enableCursorAgent ? [] : ["cursor"]
+      ),
+    [desktopPreferencesState.enableCursorAgent]
+  );
   const wasOpenRef = useRef(false);
   const launchpadAnalytics = useMemo(
     () =>
@@ -116,6 +125,7 @@ export function WorkspaceLaunchpadOverlay({
       buildWorkbenchLaunchpadItems<WorkspaceAgentProvider>({
         agentDescriptors: resolveLaunchpadAgentDescriptors({
           defaultProvider: agentProviderSnapshot.defaultProvider,
+          hiddenProviders: hiddenAgentProviders,
           launchpadDockIcons,
           statusByProvider,
           t
@@ -177,6 +187,7 @@ export function WorkspaceLaunchpadOverlay({
       agentProviderSnapshot.defaultProvider,
       appCenterState.apps,
       launchpadDockIcons,
+      hiddenAgentProviders,
       statusByProvider,
       t
     ]
@@ -332,12 +343,14 @@ function resolveLaunchpadAnalyticsItem(
 
 function resolveLaunchpadAgentDescriptors(input: {
   defaultProvider: WorkspaceAgentProvider | null;
+  hiddenProviders: ReadonlySet<WorkspaceAgentProvider>;
   launchpadDockIcons: ReturnType<typeof resolveWorkspaceDockIconSet>;
   statusByProvider: ReadonlyMap<WorkspaceAgentProvider, AgentProviderStatus>;
   t: WorkspaceLaunchpadTranslate;
 }): readonly WorkbenchLaunchpadAgentDescriptor<WorkspaceAgentProvider>[] {
   const provider = resolveLaunchpadDefaultAgentProvider({
     defaultProvider: input.defaultProvider,
+    hiddenProviders: input.hiddenProviders,
     statusByProvider: input.statusByProvider
   });
   return [
@@ -393,22 +406,33 @@ function resolveLaunchpadAgentDescriptor(input: {
 
 function resolveLaunchpadDefaultAgentProvider(input: {
   defaultProvider: WorkspaceAgentProvider | null;
+  hiddenProviders: ReadonlySet<WorkspaceAgentProvider>;
   statusByProvider: ReadonlyMap<WorkspaceAgentProvider, AgentProviderStatus>;
 }): WorkspaceAgentProvider {
-  const defaultProvider = isLaunchpadAgentProvider(input.defaultProvider)
-    ? input.defaultProvider
-    : null;
+  const defaultProvider =
+    isLaunchpadAgentProvider(input.defaultProvider) &&
+    !input.hiddenProviders.has(input.defaultProvider)
+      ? input.defaultProvider
+      : null;
   if (
     defaultProvider &&
     input.statusByProvider.get(defaultProvider)?.availability.status === "ready"
   ) {
     return defaultProvider;
   }
-  const readyProvider = workspaceAgentGuiProviders.find(
+  const visibleProviders = workspaceAgentGuiProviders.filter(
+    (provider) => !input.hiddenProviders.has(provider)
+  );
+  const readyProvider = visibleProviders.find(
     (provider) =>
       input.statusByProvider.get(provider)?.availability.status === "ready"
   );
-  return readyProvider ?? defaultProvider ?? workspaceAgentGuiProviders[0];
+  return (
+    readyProvider ??
+    defaultProvider ??
+    visibleProviders[0] ??
+    workspaceAgentGuiProviders[0]
+  );
 }
 
 function isLaunchpadAgentProvider(

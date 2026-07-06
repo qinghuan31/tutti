@@ -2,8 +2,12 @@ package workspace
 
 import (
 	"context"
+	"database/sql"
+	"errors"
 	"fmt"
 	"time"
+
+	preferencesbiz "github.com/tutti-os/tutti/services/tuttid/biz/preferences"
 )
 
 func (s *SQLiteStore) applyDesktopPreferencesV1(ctx context.Context) error {
@@ -141,6 +145,38 @@ INSERT INTO tuttid_schema_migrations (id, applied_at_unix_ms)
 `, schemaMigrationDesktopPreferencesShowAppDeveloperSourcesV1, now)
 	if err != nil {
 		return fmt.Errorf("record desktop app developer sources migration: %w", err)
+	}
+
+	return nil
+}
+
+func (s *SQLiteStore) applyDesktopPreferencesEnableCursorAgentV1(ctx context.Context) error {
+	applied, err := s.hasMigration(ctx, schemaMigrationDesktopPreferencesEnableCursorAgentV1)
+	if err != nil {
+		return err
+	}
+	if applied {
+		return nil
+	}
+
+	now := unixMs(time.Now().UTC())
+	hasEnableCursorAgent, err := s.hasColumn(ctx, "desktop_preferences", "enable_cursor_agent")
+	if err != nil {
+		return err
+	}
+	if !hasEnableCursorAgent {
+		if _, err := s.db.ExecContext(ctx, `
+ALTER TABLE desktop_preferences
+  ADD COLUMN enable_cursor_agent INTEGER NOT NULL DEFAULT 0;`); err != nil {
+			return fmt.Errorf("migrate workspace database for desktop enable cursor agent: %w", err)
+		}
+	}
+	_, err = s.db.ExecContext(ctx, `
+INSERT INTO tuttid_schema_migrations (id, applied_at_unix_ms)
+  VALUES (?, ?);
+`, schemaMigrationDesktopPreferencesEnableCursorAgentV1, now)
+	if err != nil {
+		return fmt.Errorf("record desktop enable cursor agent migration: %w", err)
 	}
 
 	return nil
@@ -535,6 +571,94 @@ INSERT INTO tuttid_schema_migrations (id, applied_at_unix_ms)
 	}
 
 	return nil
+}
+
+func (s *SQLiteStore) applyDesktopPreferencesAgentComposerDefaultsByAgentTargetV1(ctx context.Context) error {
+	applied, err := s.hasMigration(ctx, schemaMigrationDesktopPreferencesAgentComposerDefaultsByAgentTargetV1)
+	if err != nil {
+		return err
+	}
+	if applied {
+		return nil
+	}
+
+	now := unixMs(time.Now().UTC())
+	hasColumn, err := s.hasColumn(ctx, "desktop_preferences", "agent_composer_defaults_by_agent_target_json")
+	if err != nil {
+		return err
+	}
+	if !hasColumn {
+		if _, err := s.db.ExecContext(ctx, `
+ALTER TABLE desktop_preferences
+  ADD COLUMN agent_composer_defaults_by_agent_target_json TEXT NOT NULL DEFAULT '{}';`); err != nil {
+			return fmt.Errorf("migrate workspace database for desktop agent composer defaults by agent target: %w", err)
+		}
+	}
+	if err := s.backfillAgentComposerDefaultsByAgentTarget(ctx); err != nil {
+		return fmt.Errorf("migrate workspace database for desktop agent composer defaults by agent target: %w", err)
+	}
+	_, err = s.db.ExecContext(ctx, `
+INSERT INTO tuttid_schema_migrations (id, applied_at_unix_ms)
+  VALUES (?, ?);
+`, schemaMigrationDesktopPreferencesAgentComposerDefaultsByAgentTargetV1, now)
+	if err != nil {
+		return fmt.Errorf("migrate workspace database for desktop agent composer defaults by agent target: %w", err)
+	}
+
+	return nil
+}
+
+// backfillAgentComposerDefaultsByAgentTarget copies the legacy provider-keyed
+// composer defaults onto their local agent target ids exactly once. After
+// this data migration nothing reads the legacy column anymore, so remembered
+// defaults (including explicit clears) are fully owned by the new column.
+func (s *SQLiteStore) backfillAgentComposerDefaultsByAgentTarget(ctx context.Context) error {
+	row := s.db.QueryRowContext(ctx, `
+SELECT agent_composer_defaults_by_provider_json, agent_composer_defaults_by_agent_target_json
+FROM desktop_preferences
+WHERE id = ?
+`, desktopPreferencesRowID)
+	var legacyJSON string
+	var byAgentTargetJSON string
+	if err := row.Scan(&legacyJSON, &byAgentTargetJSON); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil
+		}
+		return err
+	}
+
+	byAgentTarget, err := decodeAgentComposerDefaultsByProvider(byAgentTargetJSON)
+	if err != nil {
+		return err
+	}
+	if len(byAgentTarget) > 0 {
+		return nil
+	}
+	legacy, err := decodeAgentComposerDefaultsByProvider(legacyJSON)
+	if err != nil {
+		return err
+	}
+	migrated := map[string]preferencesbiz.AgentComposerDefaults{}
+	for provider, defaults := range legacy {
+		agentTargetID := preferencesbiz.LocalAgentTargetIDForProvider(provider)
+		if agentTargetID == "" || defaults.IsZero() {
+			continue
+		}
+		migrated[agentTargetID] = defaults
+	}
+	if len(migrated) == 0 {
+		return nil
+	}
+	migratedJSON, err := encodeAgentComposerDefaultsByProvider(migrated)
+	if err != nil {
+		return err
+	}
+	_, err = s.db.ExecContext(ctx, `
+UPDATE desktop_preferences
+SET agent_composer_defaults_by_agent_target_json = ?
+WHERE id = ?
+`, migratedJSON, desktopPreferencesRowID)
+	return err
 }
 
 func (s *SQLiteStore) applyDesktopPreferencesBrowserUseConnectionModeV1(ctx context.Context) error {

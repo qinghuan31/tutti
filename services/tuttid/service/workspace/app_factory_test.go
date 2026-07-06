@@ -29,6 +29,10 @@ type workspaceAppFactoryPublisherStub struct {
 	workspaces []string
 }
 
+type appFactoryAgentTargetStoreStub struct {
+	targets map[string]agenttargetbiz.Target
+}
+
 type factoryAgentSessionServiceStub struct {
 	createdWorkspaceID string
 	createInput        agentservice.CreateSessionInput
@@ -76,6 +80,38 @@ func (s factoryAgentSessionReaderStub) ListSessions(workspaceID string) ([]agent
 func (s factoryAgentMessageReaderStub) ListSessionMessages(input agentactivitybiz.ListSessionMessagesInput) (agentservice.SessionMessagesPage, bool) {
 	page, ok := s.pages[appFactoryJobStoreKey(input.WorkspaceID, input.AgentSessionID)]
 	return page, ok
+}
+
+func newAppFactoryAgentTargetStoreStub() appFactoryAgentTargetStoreStub {
+	targets := make(map[string]agenttargetbiz.Target)
+	for _, target := range agenttargetbiz.DefaultSystemTargets(1) {
+		targets[target.ID] = target
+	}
+	return appFactoryAgentTargetStoreStub{targets: targets}
+}
+
+func (s appFactoryAgentTargetStoreStub) GetAgentTarget(_ context.Context, id string) (agenttargetbiz.Target, error) {
+	target, ok := s.targets[strings.TrimSpace(id)]
+	if !ok {
+		return agenttargetbiz.Target{}, workspacedata.ErrAgentTargetNotFound
+	}
+	return target, nil
+}
+
+func (s appFactoryAgentTargetStoreStub) ListAgentTargets(context.Context) ([]agenttargetbiz.Target, error) {
+	targets := make([]agenttargetbiz.Target, 0, len(s.targets))
+	for _, target := range s.targets {
+		targets = append(targets, target)
+	}
+	return targets, nil
+}
+
+func (appFactoryAgentTargetStoreStub) PutAgentTarget(_ context.Context, target agenttargetbiz.Target) (agenttargetbiz.Target, error) {
+	return target, nil
+}
+
+func (appFactoryAgentTargetStoreStub) DeleteAgentTarget(context.Context, string) error {
+	return nil
 }
 
 func newAppFactoryStoreStub() *appFactoryStoreStub {
@@ -161,7 +197,7 @@ func (s workspaceRootResolverStub) ResolveWorkspaceRoot(context.Context, string)
 	return s.root, nil
 }
 
-func TestAppFactoryServiceGetProviderComposerOptionsUsesFactoryDraftContext(t *testing.T) {
+func TestAppFactoryServiceGetAgentTargetComposerOptionsUsesFactoryDraftContext(t *testing.T) {
 	t.Parallel()
 
 	ctx := context.Background()
@@ -169,15 +205,16 @@ func TestAppFactoryServiceGetProviderComposerOptionsUsesFactoryDraftContext(t *t
 	sessions := &factoryAgentSessionServiceStub{}
 	service := AppFactoryService{
 		AgentSessionService: sessions,
+		AgentTargetStore:    newAppFactoryAgentTargetStoreStub(),
 		StateDir:            stateDir,
 		WorkspaceStore: &catalogStoreStub{
 			getWorkspace: workspacebiz.Summary{ID: "ws-1", Name: "Workspace"},
 		},
 	}
 
-	options, err := service.GetProviderComposerOptions(ctx, "ws-1", AppFactoryProviderComposerOptionsInput{
-		Locale:   "zh-CN",
-		Provider: "claude-code",
+	options, err := service.GetAgentTargetComposerOptions(ctx, "ws-1", AppFactoryAgentTargetComposerOptionsInput{
+		AgentTargetID: agenttargetbiz.IDLocalClaudeCode,
+		Locale:        "zh-CN",
 		Settings: agentservice.ComposerSettings{
 			Model:            "sonnet",
 			PermissionModeID: "default",
@@ -185,7 +222,7 @@ func TestAppFactoryServiceGetProviderComposerOptionsUsesFactoryDraftContext(t *t
 		},
 	})
 	if err != nil {
-		t.Fatalf("GetProviderComposerOptions() error = %v", err)
+		t.Fatalf("GetAgentTargetComposerOptions() error = %v", err)
 	}
 
 	expectedCwd := filepath.Join(stateDir, "apps", "factory", "composer", "ws-1", "draft")
@@ -200,6 +237,9 @@ func TestAppFactoryServiceGetProviderComposerOptionsUsesFactoryDraftContext(t *t
 	}
 	if sessions.composerInput.Provider != "claude-code" {
 		t.Fatalf("composer provider = %q, want claude-code", sessions.composerInput.Provider)
+	}
+	if sessions.composerInput.AgentTargetID != agenttargetbiz.IDLocalClaudeCode {
+		t.Fatalf("composer agentTargetId = %q, want %q", sessions.composerInput.AgentTargetID, agenttargetbiz.IDLocalClaudeCode)
 	}
 	if sessions.composerInput.Locale != "zh-CN" {
 		t.Fatalf("composer locale = %q, want zh-CN", sessions.composerInput.Locale)
@@ -222,6 +262,7 @@ func TestAppFactoryServiceCreateUsesDraftDirAndReferenceContext(t *testing.T) {
 	service := AppFactoryService{
 		Store:               store,
 		AgentSessionService: sessions,
+		AgentTargetStore:    newAppFactoryAgentTargetStoreStub(),
 		StateDir:            stateDir,
 		WorkspaceRootResolver: workspaceRootResolverStub{root: workspacefiles.WorkspaceRoot{
 			LogicalRoot:  "/workspace",
@@ -233,6 +274,7 @@ func TestAppFactoryServiceCreateUsesDraftDirAndReferenceContext(t *testing.T) {
 	}
 
 	job, err := service.Create(ctx, "ws-1", CreateAppFactoryJobInput{
+		AgentTargetID:    agenttargetbiz.IDLocalCodex,
 		DisplayName:      "Weather Watch",
 		Model:            "gpt-5",
 		PermissionModeID: "auto",
@@ -444,8 +486,9 @@ func TestAppFactoryServiceCreateUsesDraftDirAndReferenceContext(t *testing.T) {
 	}
 
 	secondJob, err := service.Create(ctx, "ws-1", CreateAppFactoryJobInput{
-		DisplayName: "Second App",
-		Prompt:      "Create another app.",
+		AgentTargetID: agenttargetbiz.IDLocalCodex,
+		DisplayName:   "Second App",
+		Prompt:        "Create another app.",
 	})
 	if err != nil {
 		t.Fatalf("Create(second) error = %v", err)
@@ -459,28 +502,19 @@ func TestAppFactoryServiceCreateLaunchesSessionsWithAgentTargetID(t *testing.T) 
 	t.Parallel()
 
 	tests := []struct {
-		name         string
-		provider     string
-		wantTargetID string
-		wantProvider string
+		name          string
+		agentTargetID string
+		wantProvider  string
 	}{
 		{
-			name:         "codex",
-			provider:     "codex",
-			wantTargetID: agenttargetbiz.IDLocalCodex,
-			wantProvider: "codex",
+			name:          "codex",
+			agentTargetID: agenttargetbiz.IDLocalCodex,
+			wantProvider:  "codex",
 		},
 		{
-			name:         "claude code",
-			provider:     "claude-code",
-			wantTargetID: agenttargetbiz.IDLocalClaudeCode,
-			wantProvider: "claude-code",
-		},
-		{
-			name:         "default provider",
-			provider:     "",
-			wantTargetID: agenttargetbiz.IDLocalCodex,
-			wantProvider: "codex",
+			name:          "claude code",
+			agentTargetID: agenttargetbiz.IDLocalClaudeCode,
+			wantProvider:  "claude-code",
 		},
 	}
 	for _, tt := range tests {
@@ -491,6 +525,7 @@ func TestAppFactoryServiceCreateLaunchesSessionsWithAgentTargetID(t *testing.T) 
 			service := AppFactoryService{
 				Store:               newAppFactoryStoreStub(),
 				AgentSessionService: sessions,
+				AgentTargetStore:    newAppFactoryAgentTargetStoreStub(),
 				StateDir:            t.TempDir(),
 				WorkspaceRootResolver: workspaceRootResolverStub{root: workspacefiles.WorkspaceRoot{
 					LogicalRoot:  "/workspace",
@@ -502,9 +537,9 @@ func TestAppFactoryServiceCreateLaunchesSessionsWithAgentTargetID(t *testing.T) 
 			}
 
 			job, err := service.Create(context.Background(), "ws-1", CreateAppFactoryJobInput{
-				DisplayName: "Target App",
-				Prompt:      "Create an app.",
-				Provider:    tt.provider,
+				AgentTargetID: tt.agentTargetID,
+				DisplayName:   "Target App",
+				Prompt:        "Create an app.",
 			})
 			if err != nil {
 				t.Fatalf("Create() error = %v", err)
@@ -512,8 +547,8 @@ func TestAppFactoryServiceCreateLaunchesSessionsWithAgentTargetID(t *testing.T) 
 			if job.Status != workspacebiz.AppFactoryJobStatusGenerating {
 				t.Fatalf("status = %q, want generating", job.Status)
 			}
-			if sessions.createInput.AgentTargetID != tt.wantTargetID {
-				t.Fatalf("CreateSession agentTargetId = %q, want %q", sessions.createInput.AgentTargetID, tt.wantTargetID)
+			if sessions.createInput.AgentTargetID != tt.agentTargetID {
+				t.Fatalf("CreateSession agentTargetId = %q, want %q", sessions.createInput.AgentTargetID, tt.agentTargetID)
 			}
 			if sessions.createInput.Provider != tt.wantProvider {
 				t.Fatalf("CreateSession provider = %q, want %q", sessions.createInput.Provider, tt.wantProvider)
@@ -758,7 +793,7 @@ printf '%s\n' "$TUTTI_APP_TOOLCHAIN_ROOT" > "$TUTTI_APP_DATA_DIR/toolchain-root.
 	}
 }
 
-func TestAppFactoryServiceReconcileIdleCompletedAgentSessionStartsValidation(t *testing.T) {
+func TestAppFactoryServiceReconcileIdleCompletedAgentSessionKeepsGenerating(t *testing.T) {
 	t.Parallel()
 
 	ctx := context.Background()
@@ -819,11 +854,11 @@ func TestAppFactoryServiceReconcileIdleCompletedAgentSessionStartsValidation(t *
 	if err != nil {
 		t.Fatalf("GetAppFactoryJob() error = %v", err)
 	}
-	if job.Status != workspacebiz.AppFactoryJobStatusFailed {
-		t.Fatalf("status = %q, want failed validation", job.Status)
+	if job.Status != workspacebiz.AppFactoryJobStatusGenerating {
+		t.Fatalf("status = %q, want generating", job.Status)
 	}
-	if strings.TrimSpace(job.ValidationResultJSON) == "" {
-		t.Fatal("validation result is empty, want failed validation result")
+	if strings.TrimSpace(job.ValidationResultJSON) != "" {
+		t.Fatalf("validation result = %q, want empty", job.ValidationResultJSON)
 	}
 }
 
@@ -855,7 +890,7 @@ func TestAppFactoryServiceReconcileRecoversPreValidationFailure(t *testing.T) {
 				appFactoryJobStoreKey("ws-1", "session-1"): {
 					ID:           "session-1",
 					WorkspaceID:  "ws-1",
-					Status:       "active",
+					Status:       "completed",
 					CurrentPhase: "idle",
 				},
 			},
@@ -1943,4 +1978,140 @@ func appFactoryManifestForMetadataTest(appID string, version string, name string
 	manifest.Name = name
 	manifest.Description = description
 	return manifest
+}
+
+// systemNoticeMessagePayload reproduces the exact payload shape codex/ACP
+// system notices are persisted with (see acpSystemNoticeEvent in
+// packages/agent/daemon/runtime/acp_update_events.go), e.g. the
+// "Skill descriptions were shortened to fit the 2% skills context budget."
+// warning observed in a real App Factory job (答案之书) that was marked
+// failed within ~6 seconds of creation, before the agent had written any
+// app files.
+func systemNoticeMessagePayload() map[string]any {
+	return map[string]any{
+		"kind":       "agent_system_notice",
+		"noticeKind": "warning",
+		"severity":   "warning",
+		"title":      "Skill descriptions were shortened to fit the 2% skills context budget.",
+		"source":     "runtime",
+	}
+}
+
+func TestIsCompletedAssistantTextMessageIgnoresSystemNotice(t *testing.T) {
+	t.Parallel()
+
+	if isCompletedAssistantTextMessage("assistant", "text", "completed", systemNoticeMessagePayload()) {
+		t.Fatal("system notice message was treated as completed assistant text, want ignored")
+	}
+	if !isCompletedAssistantTextMessage("assistant", "text", "completed", nil) {
+		t.Fatal("genuine completed assistant text message was ignored, want treated as completed")
+	}
+	if !isCompletedAssistantTextMessage("assistant", "text", "completed", map[string]any{"content": "done"}) {
+		t.Fatal("genuine completed assistant text message with unrelated payload was ignored, want treated as completed")
+	}
+}
+
+func TestFactoryAgentMessageUpdatesContainCompletedAssistantTextIgnoresSystemNotice(t *testing.T) {
+	t.Parallel()
+
+	updates := []agentsessionstore.WorkspaceAgentSessionMessageUpdate{
+		{
+			Role:    "assistant",
+			Kind:    "text",
+			Status:  "completed",
+			Payload: systemNoticeMessagePayload(),
+		},
+	}
+	if factoryAgentMessageUpdatesContainCompletedAssistantText(updates) {
+		t.Fatal("system notice update was treated as completed assistant text, want ignored")
+	}
+
+	updates = append(updates, agentsessionstore.WorkspaceAgentSessionMessageUpdate{
+		Role:   "assistant",
+		Kind:   "text",
+		Status: "completed",
+	})
+	if !factoryAgentMessageUpdatesContainCompletedAssistantText(updates) {
+		t.Fatal("genuine completed assistant text update was ignored, want treated as completed")
+	}
+}
+
+// TestAppFactoryServiceObserveAgentSessionMessagesIgnoresSystemNoticeForCompletionDetection
+// reproduces the exact false-failure sequence found in a real diagnostic log
+// bundle (tutti-logs-20260706-012540.zip) for the "答案之书" App Factory job:
+// the codex agent emitted only a "skills context budget" system notice
+// (role=assistant, kind=text, status=completed) a few seconds into a job,
+// long before writing any app files. Before this fix, that notice alone was
+// enough to make the App Factory service believe the agent session had
+// completed and immediately run validation — failing with "read app
+// manifest: ... no such file or directory" while the agent kept working (and
+// went on to succeed) in the background. The job's status then stayed
+// "failed" forever with no way to reconcile once the agent actually
+// finished.
+func TestAppFactoryServiceObserveAgentSessionMessagesIgnoresSystemNoticeForCompletionDetection(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	store := newAppFactoryStoreStub()
+	draftDir := t.TempDir()
+	if err := store.PutAppFactoryJob(ctx, workspacebiz.AppFactoryJob{
+		AgentSessionID: "session-1",
+		AppID:          "app_1",
+		DraftDir:       draftDir,
+		JobID:          "job-1",
+		Status:         workspacebiz.AppFactoryJobStatusGenerating,
+		WorkspaceID:    "ws-1",
+	}); err != nil {
+		t.Fatalf("PutAppFactoryJob() error = %v", err)
+	}
+	publisher := &workspaceAppFactoryPublisherStub{}
+	service := AppFactoryService{
+		Store:     store,
+		AppStore:  newAppStoreStub(),
+		Publisher: publisher,
+		// Even if the session's reported canonical status momentarily reads
+		// "completed" (the suspected upstream race), the observer must not
+		// act on it when the only new message is a system notice.
+		AgentSessionReader: factoryAgentSessionReaderStub{
+			sessions: map[string]agentservice.PersistedSession{
+				appFactoryJobStoreKey("ws-1", "session-1"): {
+					ID:          "session-1",
+					WorkspaceID: "ws-1",
+					Status:      "completed",
+				},
+			},
+		},
+		AgentMessageReader: factoryAgentMessageReaderStub{},
+	}
+
+	service.ObserveAgentSessionMessages(ctx, agentsessionstore.ReportSessionMessagesInput{
+		WorkspaceID:    "ws-1",
+		AgentSessionID: "session-1",
+		Updates: []agentsessionstore.WorkspaceAgentSessionMessageUpdate{
+			{
+				MessageID: "notice-1",
+				Role:      "assistant",
+				Kind:      "text",
+				Status:    "completed",
+				Payload:   systemNoticeMessagePayload(),
+			},
+		},
+	}, agentsessionstore.ReportSessionMessagesReply{AcceptedCount: 1})
+
+	// The guard in ObserveAgentSessionMessages returns synchronously (no
+	// goroutine spawned) when the update slice contains no genuine completed
+	// assistant text, so the job status is safe to assert immediately.
+	job, err := store.GetAppFactoryJob(ctx, "ws-1", "job-1")
+	if err != nil {
+		t.Fatalf("GetAppFactoryJob() error = %v", err)
+	}
+	if job.Status != workspacebiz.AppFactoryJobStatusGenerating {
+		t.Fatalf("status = %q, want generating (job must not fail on a system notice alone)", job.Status)
+	}
+	if strings.TrimSpace(job.FailureReason) != "" {
+		t.Fatalf("failure reason = %q, want empty", job.FailureReason)
+	}
+	if len(publisher.published) != 0 {
+		t.Fatalf("published updates = %d, want 0", len(publisher.published))
+	}
 }

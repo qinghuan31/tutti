@@ -64,6 +64,7 @@ type ComposerSettings struct {
 }
 
 type ComposerOptionsInput struct {
+	AgentTargetID            string
 	Cwd                      string
 	Locale                   string
 	Provider                 string
@@ -111,6 +112,19 @@ type ComposerOptions struct {
 
 func (s *Service) GetComposerOptions(ctx context.Context, input ComposerOptionsInput) (ComposerOptions, error) {
 	provider := agentprovider.Normalize(input.Provider)
+	agentTargetID := strings.TrimSpace(input.AgentTargetID)
+	if agentTargetID != "" {
+		launch, err := s.resolveCreateSessionLaunch(ctx, CreateSessionInput{
+			AgentTargetID: agentTargetID,
+			Provider:      provider,
+		})
+		if err != nil {
+			return ComposerOptions{}, err
+		}
+		provider = agentprovider.Normalize(launch.Provider)
+		input.Provider = provider
+		input.AgentTargetID = agentTargetID
+	}
 	if provider == "" {
 		return ComposerOptions{}, ErrInvalidArgument
 	}
@@ -143,6 +157,9 @@ func (s *Service) GetComposerOptions(ctx context.Context, input ComposerOptionsI
 		"reasoningEffort":  nullableString(effectiveSettings.ReasoningEffort),
 		"speed":            nullableString(effectiveSettings.Speed),
 	}
+	if agentTargetID != "" {
+		runtimeContext["agentTargetId"] = agentTargetID
+	}
 	skills := s.discoverComposerSkillOptions(provider, input.Cwd, nil)
 	capabilityCatalog := []ComposerCapabilityOption{}
 	capabilityErrors := []string(nil)
@@ -172,7 +189,7 @@ func (s *Service) GetComposerOptions(ctx context.Context, input ComposerOptionsI
 		Skills:            skills,
 		CapabilityCatalog: capabilityCatalog,
 	}
-	if provider == agentprovider.ClaudeCode {
+	if composerProfileFor(provider).LiveModelDiscovery {
 		var err error
 		options, err = s.mergeLiveComposerModelsForComposerOptions(ctx, input, effectiveSettings, options)
 		if err != nil {
@@ -191,19 +208,11 @@ func composerOptionsIncludeCapabilityCatalog(input ComposerOptionsInput) bool {
 // adapter-reported runtimeContext.capabilities takes precedence (GUI-side
 // resolution). Keys mirror packages/agent/daemon/runtime/capabilities.go.
 func composerProviderCapabilities(provider string) []string {
-	var capabilities []string
-	switch agentprovider.Normalize(provider) {
-	case agentprovider.ClaudeCode:
-		capabilities = []string{"imageInput", "skills", "compact", "tokenUsage", "rateLimits", "planMode", "interrupt"}
-	case agentprovider.Codex:
-		// planMode pre-session optimism: the adapter re-negotiates at session
-		// start (collaborationMode/list) and drops it for older binaries.
-		capabilities = []string{"imageInput", "skills", "compact", "tokenUsage", "rateLimits", "planMode", "interrupt"}
-	case agentprovider.Gemini, agentprovider.Hermes, agentprovider.Nexight, agentprovider.OpenClaw:
-		capabilities = []string{"interrupt"}
-	default:
+	if !composerProfileKnown(provider) {
 		return nil
 	}
+	profile := composerProfileFor(provider)
+	capabilities := append([]string(nil), profile.Capabilities...)
 	// Browser use is delivered as a default MCP server to every provider, so the
 	// composer advertises it up front when enabled. Live sessions re-report it
 	// from session env (runtime adapters), which takes precedence in the GUI.
@@ -267,12 +276,7 @@ func composerDefaultSpeed(provider string) string {
 }
 
 func composerDefaultReasoningEffort(provider string) string {
-	switch provider {
-	case agentprovider.Codex, agentprovider.ClaudeCode:
-		return "high"
-	default:
-		return ""
-	}
+	return composerProfileFor(provider).DefaultReasoningEffort
 }
 
 func composerDefaultModel(
@@ -302,26 +306,29 @@ func composerDefaultModel(
 }
 
 func composerConfigOptions(provider string, settings ComposerSettings, modelOptions []map[string]string) []map[string]any {
-	if !composerOptionsProviderSupportsSettings(provider) {
+	profile := composerProfileFor(provider)
+	if !profile.ModelSelection && !profile.ReasoningEffort && !profile.Speed {
 		return []map[string]any{}
 	}
 	if modelOptions == nil {
 		modelOptions = composerSelectedModelOptions(settings.Model)
 	}
 	options := make([]map[string]any, 0, 3)
-	if len(modelOptions) > 0 {
+	if profile.ModelSelection && len(modelOptions) > 0 {
 		options = append(options, map[string]any{
 			"currentValue": nullableString(settings.Model),
 			"id":           "model",
 			"options":      modelOptions,
 		})
 	}
-	options = append(options, map[string]any{
-		"currentValue": nullableString(settings.ReasoningEffort),
-		"id":           reasoningConfigOptionID(provider),
-		"options":      reasoningEffortOptions(provider, settings.ReasoningEffort),
-	})
-	if speedProviderSupportsSpeed(provider) {
+	if profile.ReasoningEffort {
+		options = append(options, map[string]any{
+			"currentValue": nullableString(settings.ReasoningEffort),
+			"id":           reasoningConfigOptionID(provider),
+			"options":      reasoningEffortOptions(provider, settings.ReasoningEffort),
+		})
+	}
+	if profile.Speed {
 		options = append(options, map[string]any{
 			"currentValue": nullableString(settings.Speed),
 			"id":           speedConfigOptionID(provider),
@@ -392,9 +399,9 @@ func normalizeComposerModelForProvider(provider string, model string) string {
 }
 
 // clampComposerModelForProvider clears model overrides for providers without
-// composer settings support so stale persisted values never reach the runtime.
+// model selection support so stale persisted values never reach the runtime.
 func clampComposerModelForProvider(provider string, model string) string {
-	if !agentprovider.SupportsComposerSettings(agentprovider.Normalize(provider)) {
+	if !composerProfileFor(provider).ModelSelection {
 		return ""
 	}
 	return strings.TrimSpace(model)
@@ -462,16 +469,7 @@ func normalizeComposerSettingsPointerForProvider(provider string, settings *Comp
 }
 
 func defaultPermissionModeIDForProvider(provider string) string {
-	switch agentprovider.Normalize(provider) {
-	case agentprovider.ClaudeCode:
-		return "default"
-	case agentprovider.Codex, agentprovider.Nexight:
-		return "auto"
-	case agentprovider.Gemini, agentprovider.Hermes:
-		return "yolo"
-	default:
-		return ""
-	}
+	return composerProfileFor(provider).DefaultPermissionModeID
 }
 
 func normalizePermissionModeIDForProvider(provider string, value string) string {
@@ -484,43 +482,12 @@ func normalizePermissionModeIDForProvider(provider string, value string) string 
 }
 
 func permissionConfigForProvider(provider string) PermissionConfig {
-	switch agentprovider.Normalize(provider) {
-	case agentprovider.Codex, agentprovider.Nexight:
-		return PermissionConfig{
-			Configurable: true,
-			Modes: []PermissionModeOption{
-				{ID: "read-only", Semantic: PermissionModeSemanticAskBeforeWrite},
-				{ID: "auto", Semantic: PermissionModeSemanticAuto},
-				{ID: "full-access", Semantic: PermissionModeSemanticFullAccess},
-			},
-		}
-	case agentprovider.ClaudeCode:
-		return PermissionConfig{
-			Configurable: true,
-			Modes: []PermissionModeOption{
-				{ID: "default", Semantic: PermissionModeSemanticAskBeforeWrite},
-				{ID: "acceptEdits", Semantic: PermissionModeSemanticAcceptEdits},
-				{ID: "dontAsk", Semantic: PermissionModeSemanticLockedDown},
-				{ID: "bypassPermissions", Semantic: PermissionModeSemanticFullAccess},
-			},
-		}
-	case agentprovider.Gemini, agentprovider.Hermes:
-		return PermissionConfig{
-			Configurable: false,
-			Modes: []PermissionModeOption{
-				{ID: "yolo", Semantic: PermissionModeSemanticUnconfigurable},
-			},
-		}
-	case agentprovider.OpenClaw:
-		return PermissionConfig{
-			Configurable: false,
-			Modes:        []PermissionModeOption{},
-		}
-	default:
-		return PermissionConfig{
-			Configurable: false,
-			Modes:        []PermissionModeOption{},
-		}
+	profile := composerProfileFor(provider)
+	modes := make([]PermissionModeOption, len(profile.PermissionModes))
+	copy(modes, profile.PermissionModes)
+	return PermissionConfig{
+		Configurable: profile.PermissionConfigurable,
+		Modes:        modes,
 	}
 }
 
@@ -537,17 +504,8 @@ func permissionModeConfigHasModeID(config PermissionConfig, modeID string) bool 
 	return false
 }
 
-func composerOptionsProviderSupportsSettings(provider string) bool {
-	return agentprovider.SupportsComposerSettings(provider)
-}
-
 func composerOptionsProviderUsesModelCatalog(provider string) bool {
-	switch agentprovider.Normalize(provider) {
-	case agentprovider.Codex, agentprovider.Gemini:
-		return true
-	default:
-		return false
-	}
+	return composerProfileFor(provider).UsesModelCatalog
 }
 
 func composerModelConfig(provider string, selected string, options []map[string]string) ComposerConfigOption {
@@ -572,7 +530,7 @@ func composerModelConfig(provider string, selected string, options []map[string]
 	}
 	selected = strings.TrimSpace(selected)
 	return ComposerConfigOption{
-		Configurable: composerOptionsProviderSupportsSettings(provider),
+		Configurable: composerProfileFor(provider).ModelSelection,
 		CurrentValue: selected,
 		DefaultValue: selected,
 		Options:      values,
@@ -602,7 +560,7 @@ func composerReasoningConfig(provider string, selected string, locale string) Co
 		})
 	}
 	return ComposerConfigOption{
-		Configurable: composerOptionsProviderSupportsSettings(provider),
+		Configurable: composerProfileFor(provider).ReasoningEffort,
 		CurrentValue: selected,
 		DefaultValue: selected,
 		Options:      options,
@@ -687,12 +645,7 @@ const (
 //     The daemon maps Tutti's `standard` / `fast` speed tiers onto the bridge's
 //     live `off` / `on` config values.
 func speedProviderSupportsSpeed(provider string) bool {
-	switch agentprovider.Normalize(provider) {
-	case agentprovider.Codex, agentprovider.ClaudeCode:
-		return composerOptionsProviderSupportsSettings(provider)
-	default:
-		return false
-	}
+	return composerProfileFor(provider).Speed
 }
 
 // speedConfigOptionID is the live config-option id the adapter sets. Codex maps
@@ -790,7 +743,7 @@ func reasoningEffortValuesForProvider(provider string) []string {
 
 func normalizeReasoningEffortForProvider(provider string, value string) string {
 	provider = agentprovider.Normalize(provider)
-	if !agentprovider.SupportsComposerSettings(provider) {
+	if !composerProfileFor(provider).ReasoningEffort {
 		return ""
 	}
 	normalized := strings.TrimSpace(value)

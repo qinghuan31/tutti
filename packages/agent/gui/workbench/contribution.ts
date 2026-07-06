@@ -199,12 +199,13 @@ export function createAgentGuiWorkbenchContribution(
                   typeId: agentGuiWorkbenchTypeId
                 });
               },
-              provider: agentGuiWorkbenchProviderFromInstanceId(
-                context.instanceId
-              )
+              provider:
+                providerFromActivation(context.activation) ??
+                agentGuiWorkbenchProviderFromInstanceId(context.instanceId)
             }
           ),
         renderHeader: ({
+          activation,
           dragHandleProps,
           displayMode,
           externalNodeState,
@@ -214,7 +215,9 @@ export function createAgentGuiWorkbenchContribution(
           surfaceSize,
           windowActions
         }) => {
-          const provider = agentGuiWorkbenchProviderFromInstanceId(instanceId);
+          const provider =
+            providerFromActivation(activation) ??
+            agentGuiWorkbenchProviderFromInstanceId(instanceId);
           const headerTitle = copy.nodeTitle;
           const rawWorkbenchState = (externalNodeState ??
             node.data.runtimeNodeState) as
@@ -702,6 +705,16 @@ function providerFromState(state: unknown): AgentGuiWorkbenchProvider | null {
   }
   const provider = (state as { provider?: unknown }).provider;
   return isAgentGuiWorkbenchProvider(provider) ? provider : null;
+}
+
+function providerFromActivation(
+  activation: unknown
+): AgentGuiWorkbenchProvider | null {
+  if (!activation || typeof activation !== "object") {
+    return null;
+  }
+  const payload = (activation as { payload?: unknown }).payload;
+  return providerFromState(payload);
 }
 
 function resolveAgentGuiWorkbenchLaunchPayload(

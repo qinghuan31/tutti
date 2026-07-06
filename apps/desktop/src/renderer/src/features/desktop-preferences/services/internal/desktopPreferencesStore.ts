@@ -1,5 +1,6 @@
 import type { DesktopLocale } from "@shared/i18n";
 import type {
+  DesktopAgentComposerDefaultsByAgentTarget,
   DesktopAgentComposerDefaultsByProvider,
   DesktopAgentGuiConversationRailCollapsedByProvider,
   DesktopAgentConversationDetailMode,
@@ -21,6 +22,7 @@ import type { DesktopPreferencesStoreState } from "../desktopPreferencesTypes.ts
 
 export function createDesktopPreferencesStore(input: {
   agentComposerDefaultsByProvider?: DesktopAgentComposerDefaultsByProvider;
+  agentComposerDefaultsByAgentTarget?: DesktopAgentComposerDefaultsByAgentTarget;
   agentGuiConversationRailCollapsedByProvider?: DesktopAgentGuiConversationRailCollapsedByProvider;
   agentConversationDetailMode: DesktopAgentConversationDetailMode;
   appCatalogChannel: DesktopAppCatalogChannel;
@@ -33,6 +35,7 @@ export function createDesktopPreferencesStore(input: {
   minimizeAnimation: DesktopMinimizeAnimation;
   sleepPreventionMode: DesktopSleepPreventionMode;
   showAppDeveloperSources: boolean;
+  enableCursorAgent: boolean;
   theme: DesktopThemeState;
   updateChannel: DesktopUpdateChannel;
   updatePolicy: DesktopUpdatePolicy;
@@ -49,12 +52,15 @@ export function createDesktopPreferencesStore(input: {
     changingMinimizeAnimation: null,
     changingSleepPreventionMode: null,
     changingShowAppDeveloperSources: null,
+    changingEnableCursorAgent: null,
     changingThemeSource: null,
     changingUpdateChannel: null,
     changingUpdatePolicy: null,
     changingWorkbenchWindowSnapping: null,
     agentComposerDefaultsByProvider:
       input.agentComposerDefaultsByProvider ?? {},
+    agentComposerDefaultsByAgentTarget:
+      input.agentComposerDefaultsByAgentTarget ?? {},
     agentGuiConversationRailCollapsedByProvider:
       input.agentGuiConversationRailCollapsedByProvider ?? {},
     agentConversationDetailMode: input.agentConversationDetailMode,
@@ -68,6 +74,7 @@ export function createDesktopPreferencesStore(input: {
     minimizeAnimation: input.minimizeAnimation,
     sleepPreventionMode: input.sleepPreventionMode,
     showAppDeveloperSources: input.showAppDeveloperSources,
+    enableCursorAgent: input.enableCursorAgent,
     theme: input.theme,
     updateChannel: input.updateChannel,
     updatePolicy: input.updatePolicy,

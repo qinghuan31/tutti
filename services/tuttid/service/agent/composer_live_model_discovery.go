@@ -70,22 +70,23 @@ func (s *Service) awaitClaudeStartupSlot(ctx context.Context, provider string) (
 	return s.claudeStartup().release, nil
 }
 
-// liveClaudeModelOptionsFromRunningSession returns the model list already
-// advertised by a live Claude session in the workspace, if any. It lets model
-// discovery reuse an in-flight conversation instead of spawning a second,
-// credential-sharing process next to it.
-func (s *Service) liveClaudeModelOptionsFromRunningSession(workspaceID string) ([]ComposerConfigOptionValue, bool) {
-	hasClaudeSession := false
+// liveModelOptionsFromRunningSession returns the model list already
+// advertised by a live session of the provider in the workspace, if any. It
+// lets model discovery reuse an in-flight conversation instead of spawning a
+// second process next to it.
+func (s *Service) liveModelOptionsFromRunningSession(workspaceID string, provider string) ([]ComposerConfigOptionValue, bool) {
+	provider = agentprovider.Normalize(provider)
+	hasProviderSession := false
 	for _, session := range s.controller().Sessions(workspaceID) {
-		if agentprovider.Normalize(session.Provider) != agentprovider.ClaudeCode {
+		if agentprovider.Normalize(session.Provider) != provider {
 			continue
 		}
-		hasClaudeSession = true
+		hasProviderSession = true
 		if options := extractModelOptionsFromRuntimeContext(session.RuntimeContext); len(options) > 0 {
 			return options, true
 		}
 	}
-	return nil, hasClaudeSession
+	return nil, hasProviderSession
 }
 
 var liveComposerModelDiscoveryGroup singleflight.Group
@@ -95,6 +96,7 @@ var errLiveModelDiscoveryAlreadyAttempted = errors.New("live model discovery alr
 
 func (s *Service) discoverLiveComposerModels(
 	ctx context.Context,
+	provider string,
 	workspaceID string,
 	cwd string,
 	settings ComposerSettings,
@@ -103,7 +105,7 @@ func (s *Service) discoverLiveComposerModels(
 	if workspaceID == "" {
 		return nil, ErrInvalidArgument
 	}
-	provider := agentprovider.ClaudeCode
+	provider = agentprovider.Normalize(provider)
 	cacheKey := composerLiveModelCacheKey(provider, workspaceID, cwd)
 	resultCh := liveComposerModelDiscoveryGroup.DoChan(cacheKey, func() (any, error) {
 		now := time.Now().UTC()
@@ -113,7 +115,7 @@ func (s *Service) discoverLiveComposerModels(
 		if !s.markLiveModelDiscoveryAttempted(cacheKey) {
 			return nil, errLiveModelDiscoveryAlreadyAttempted
 		}
-		discovered, discoverErr := s.discoverLiveComposerModelsUncached(ctx, workspaceID, cwd, settings)
+		discovered, discoverErr := s.discoverLiveComposerModelsUncached(ctx, provider, workspaceID, cwd, settings)
 		if discoverErr != nil {
 			return nil, discoverErr
 		}
@@ -151,11 +153,11 @@ func (s *Service) markLiveModelDiscoveryAttempted(cacheKey string) bool {
 
 func (s *Service) discoverLiveComposerModelsUncached(
 	ctx context.Context,
+	provider string,
 	workspaceID string,
 	cwd string,
 	settings ComposerSettings,
 ) ([]ComposerConfigOptionValue, error) {
-	provider := agentprovider.ClaudeCode
 	resolvedCwd := strings.TrimSpace(cwd)
 	if resolvedCwd != "" {
 		resolved, err := s.resolveCwd(ctx, &resolvedCwd)
@@ -164,10 +166,17 @@ func (s *Service) discoverLiveComposerModelsUncached(
 		}
 		resolvedCwd = resolved
 	}
-	if reused, hasClaudeSession := s.liveClaudeModelOptionsFromRunningSession(workspaceID); hasClaudeSession {
+	if reused, hasProviderSession := s.liveModelOptionsFromRunningSession(workspaceID, provider); hasProviderSession {
 		if len(reused) > 0 {
 			return reused, nil
 		}
+		return nil, errLiveModelDiscoveryAlreadyAttempted
+	}
+	// Spawning a hidden probe session is opt-in per provider: it creates a
+	// real provider session (and, for account-backed CLIs, server-side
+	// artifacts), so providers without the flag only ever reuse running
+	// sessions.
+	if !composerProfileFor(provider).LiveModelProbeSession {
 		return nil, errLiveModelDiscoveryAlreadyAttempted
 	}
 	if err := s.ensureProviderRuntimeInstalled(ctx, provider); err != nil {
@@ -427,7 +436,7 @@ func (s *Service) mergeLiveComposerModelsForComposerOptions(
 	effectiveSettings ComposerSettings,
 	options ComposerOptions,
 ) (ComposerOptions, error) {
-	provider := agentprovider.ClaudeCode
+	provider := agentprovider.Normalize(input.Provider)
 	var liveModels []ComposerConfigOptionValue
 	modelSource := "claude-static"
 	if strings.TrimSpace(input.WorkspaceID) != "" {
@@ -436,16 +445,16 @@ func (s *Service) mergeLiveComposerModelsForComposerOptions(
 		if ok {
 			liveModels = cached
 			modelSource = "acp-live-discovery"
-		} else if reused, hasClaudeSession := s.liveClaudeModelOptionsFromRunningSession(input.WorkspaceID); hasClaudeSession {
+		} else if reused, hasProviderSession := s.liveModelOptionsFromRunningSession(input.WorkspaceID, provider); hasProviderSession {
 			if len(reused) > 0 {
 				liveModels = reused
 				s.setLiveComposerModelOptions(provider, input.WorkspaceID, input.Cwd, now, reused)
 				modelSource = "acp-live-discovery"
 			}
-			// If a real Claude session exists but has not advertised a model list
-			// yet, do not spawn a hidden discovery session next to it.
+			// If a real provider session exists but has not advertised a model
+			// list yet, do not spawn a hidden discovery session next to it.
 		} else {
-			discovered, err := s.discoverLiveComposerModels(ctx, input.WorkspaceID, input.Cwd, effectiveSettings)
+			discovered, err := s.discoverLiveComposerModels(ctx, provider, input.WorkspaceID, input.Cwd, effectiveSettings)
 			if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
 				return ComposerOptions{}, err
 			}
@@ -457,6 +466,11 @@ func (s *Service) mergeLiveComposerModelsForComposerOptions(
 	}
 	if len(liveModels) > 0 {
 		return mergeComposerModelsIntoComposerOptions(options, liveModels, modelSource), nil
+	}
+	if provider != agentprovider.ClaudeCode {
+		// Without a live list there is nothing trustworthy to offer beyond
+		// the currently selected model; keep the static single-entry select.
+		return options, nil
 	}
 	staticModels := staticClaudeComposerModelOptions(effectiveSettings.Model)
 	if len(staticModels) > 0 {

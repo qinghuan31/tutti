@@ -1,5 +1,8 @@
 import { createElement, type CSSProperties, type ReactNode } from "react";
-import type { AgentGUIProviderTarget } from "@tutti-os/agent-gui";
+import type {
+  AgentGUIProvider,
+  AgentGUIProviderTarget
+} from "@tutti-os/agent-gui";
 import {
   createAgentGuiWorkbenchContribution,
   resolveAgentGuiUnifiedDockLaunchPayload
@@ -67,6 +70,7 @@ export function createWorkspaceAgentGuiContribution(input: {
   >[0]["onCapabilitySettingsRequest"];
   providerTargets?: readonly AgentGUIProviderTarget[];
   providerTargetsLoading?: boolean;
+  comingSoonAgentProviders?: readonly AgentGUIProvider[];
   tuttidClient: TuttidClient;
   platformApi: Pick<
     DesktopPlatformApi,
@@ -148,6 +152,7 @@ export function createWorkspaceAgentGuiContribution(input: {
       previewMode: options?.previewMode,
       providerTargets: input.providerTargets,
       providerTargetsLoading: input.providerTargetsLoading,
+      comingSoonAgentProviders: input.comingSoonAgentProviders,
       defaultProviderTargetId: input.defaultProviderTargetId,
       contextMentionProviders:
         agentGUIWorkbenchHostInput.contextMentionProviders,

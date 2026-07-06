@@ -354,7 +354,7 @@ export const zhCN = {
       providerGateComingSoonTitle: "{{provider}} 即将上线",
       providerGateComingSoonDescription:
         "{{provider}} 暂未开放。准备好后即可在这里使用这个 Agent。",
-      providerGateComingSoonAction: "即将上线",
+      providerGateComingSoonAction: "coming soon",
       providerGateUnavailableTitle: "{{provider}} 暂时还不可用",
       providerGateUnavailableDescription:
         "我们还不能确认 {{provider}} 已准备好，可以再检测一次。",
@@ -426,6 +426,22 @@ export const zhCN = {
           "full-access": {
             label: "完全访问权限",
             description: "可不受限制地访问互联网和您电脑上的任何文件"
+          }
+        },
+        cursor: {
+          "read-only": {
+            label: "只读",
+            description: "Cursor 只读取和规划，提出修改建议但不做任何更改。"
+          },
+          agent: {
+            label: "请求批准",
+            description:
+              "完整工具权限；Cursor 在运行命令等高风险操作前会先询问你。"
+          },
+          "full-access": {
+            label: "完全访问",
+            description:
+              "无需询问直接运行命令，除非被你的 Cursor 权限规则明确拒绝。"
           }
         },
         nexight: {

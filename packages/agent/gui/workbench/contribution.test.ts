@@ -22,6 +22,7 @@ import {
   resolveAgentGuiWorkbenchContributionCopy
 } from "./contribution.ts";
 import {
+  agentGuiWorkbenchPrefillPromptActivationType,
   agentGuiWorkbenchUnifiedDockEntryId,
   agentGuiWorkbenchTypeId
 } from "./launch.ts";
@@ -548,6 +549,48 @@ describe("agent GUI workbench contribution copy", () => {
     );
     expect(screen.queryByText("Codex")).toBeNull();
     expect(screen.queryByTestId("agent-gui-window-title-icon")).toBeNull();
+  });
+
+  it("uses prefill activation provider for handoff body rendering", () => {
+    const renderBody = vi.fn(() => null);
+    const contribution = createTestAgentGuiWorkbenchContribution({
+      renderBody,
+      workspaceId: "workspace-1"
+    });
+
+    contribution.nodes?.[0]?.renderBody?.({
+      activation: {
+        payload: {
+          agentTargetId: "local:codex",
+          draftPrompt: "Continue from this session",
+          provider: "codex"
+        },
+        sequence: 12,
+        type: agentGuiWorkbenchPrefillPromptActivationType
+      },
+      externalNodeState: null,
+      externalWorkspaceState: null,
+      instanceId: "agent-gui:claude-code:panel:handoff-source",
+      instanceKey: null,
+      node: {
+        data: {
+          runtimeNodeState: null
+        },
+        displayMode: "floating",
+        frame: { height: 560, width: 1040, x: 0, y: 0 },
+        id: "agent-gui-node-1",
+        title: "Agent"
+      }
+    } as Parameters<
+      NonNullable<(typeof contribution.nodes)[number]["renderBody"]>
+    >[0]);
+
+    expect(renderBody).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        provider: "codex"
+      })
+    );
   });
 
   it("opens at the default width and 70 percent height when the workbench area can fit the default frame", () => {

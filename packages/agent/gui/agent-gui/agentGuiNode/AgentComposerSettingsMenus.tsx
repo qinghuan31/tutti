@@ -1,4 +1,5 @@
 import {
+  Fragment,
   cloneElement,
   useEffect,
   useMemo,
@@ -619,13 +620,32 @@ export function AgentModelReasoningDropdown({
         {menu.model.show ? (
           <>
             <DropdownMenuLabel>{labels.modelSelectionLabel}</DropdownMenuLabel>
-            <ComposerMenuOptionItems
-              options={menu.model.options}
-              selectedValue={menu.model.selectedValue}
-              descriptionPresentation="model-tooltip"
-              tooltipsEnabled={!previewMode}
-              onSelect={(value) => applySettingsChange({ model: value })}
-            />
+            {menu.model.groups.length > 0 ? (
+              menu.model.groups.map((group, index) => (
+                <Fragment key={group.label ?? `ungrouped-${index}`}>
+                  {group.label !== null ? (
+                    <DropdownMenuLabel className="text-xs text-[var(--agent-gui-text-tertiary)]">
+                      {group.label}
+                    </DropdownMenuLabel>
+                  ) : null}
+                  <ComposerMenuOptionItems
+                    options={group.options}
+                    selectedValue={menu.model.selectedValue}
+                    descriptionPresentation="model-tooltip"
+                    tooltipsEnabled={!previewMode}
+                    onSelect={(value) => applySettingsChange({ model: value })}
+                  />
+                </Fragment>
+              ))
+            ) : (
+              <ComposerMenuOptionItems
+                options={menu.model.options}
+                selectedValue={menu.model.selectedValue}
+                descriptionPresentation="model-tooltip"
+                tooltipsEnabled={!previewMode}
+                onSelect={(value) => applySettingsChange({ model: value })}
+              />
+            )}
           </>
         ) : null}
         {menu.model.show && (menu.reasoning.show || menu.speed.show) ? (

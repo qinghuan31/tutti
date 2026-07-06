@@ -999,6 +999,8 @@ function normalizeWorkspaceAgentProvider(
       return "claude-code";
     case "codex":
       return "codex";
+    case "cursor":
+      return "cursor";
     default:
       return null;
   }
@@ -1189,6 +1191,8 @@ function resolveAgentSessionProviderLabel(provider?: string | null): string {
       return "Claude Code";
     case "codex":
       return "Codex";
+    case "cursor":
+      return "Cursor";
     case "gemini":
       return "Gemini CLI";
     case "hermes":

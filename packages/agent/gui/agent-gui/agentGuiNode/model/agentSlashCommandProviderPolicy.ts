@@ -103,6 +103,13 @@ const CLAUDE_CODE_FALLBACK_COMMANDS: readonly AgentSessionCommand[] = [
   ...ACP_FALLBACK_COMMANDS,
   { name: REVIEW_COMMAND }
 ];
+// Cursor has no usage/quota surface (`status`) or speed dimension (`fast`);
+// `compact` stays capability-gated and `goal` is intercepted generically by
+// the standard ACP adapter.
+const CURSOR_FALLBACK_COMMANDS: readonly AgentSessionCommand[] = [
+  { name: "compact" },
+  { name: "goal" }
+];
 const CLAUDE_CODE_SLASH_PALETTE_COMMANDS = new Set([
   "compact",
   "context",
@@ -127,7 +134,7 @@ const COMPUTER_USE_CAPABILITY_COMMAND: AgentSlashCommandCapability = {
 const PLAN_MODE_COMMAND: AgentSessionCommand = { name: "plan" };
 
 const PROVIDER_SLASH_POLICY: Record<
-  "codex" | "claude-code",
+  "codex" | "claude-code" | "cursor",
   ProviderSlashPolicy
 > = {
   codex: {
@@ -139,19 +146,28 @@ const PROVIDER_SLASH_POLICY: Record<
     immediateCommands: new Set(["compact", "context", "usage"]),
     reviewPickerCommands: new Set([REVIEW_COMMAND]),
     fallbackCommands: CLAUDE_CODE_FALLBACK_COMMANDS
+  },
+  cursor: {
+    immediateCommands: new Set(),
+    reviewPickerCommands: new Set(),
+    fallbackCommands: CURSOR_FALLBACK_COMMANDS
   }
 };
 
 function providerSlashPolicy(
   provider: AgentSlashCommandProvider
 ): ProviderSlashPolicy | undefined {
-  return provider === "codex" || provider === "claude-code"
+  return provider === "codex" ||
+    provider === "claude-code" ||
+    provider === "cursor"
     ? PROVIDER_SLASH_POLICY[provider]
     : undefined;
 }
 
 function isACPProvider(provider: AgentSlashCommandProvider): boolean {
-  return provider === "codex" || provider === "claude-code";
+  return (
+    provider === "codex" || provider === "claude-code" || provider === "cursor"
+  );
 }
 
 export function resolveSlashCommandsForProvider({

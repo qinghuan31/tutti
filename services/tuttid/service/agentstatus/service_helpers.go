@@ -487,6 +487,8 @@ func parseAuthStatusCommandOutput(provider string, output []byte) (AuthInfo, boo
 		return parseClaudeAuthStatusOutput(output)
 	case agentprovider.Codex:
 		return parseCodexAuthStatusOutput(output)
+	case agentprovider.Cursor:
+		return parseCursorAuthStatusOutput(output)
 	default:
 		return AuthInfo{}, false
 	}
@@ -510,6 +512,27 @@ func parseCodexAuthStatusOutput(output []byte) (AuthInfo, bool) {
 		return AuthInfo{Status: AuthRequired}, true
 	}
 	if strings.Contains(normalized, "logged in") {
+		return AuthInfo{Status: AuthAuthenticated}, true
+	}
+	return AuthInfo{}, false
+}
+
+// parseCursorAuthStatusOutput interprets `cursor-agent status` output, which
+// reports the login state as human-readable text (e.g. "Logged in as
+// user@example.com" / "Not logged in. Run cursor-agent login").
+func parseCursorAuthStatusOutput(output []byte) (AuthInfo, bool) {
+	normalized := strings.ToLower(string(bytes.TrimSpace(output)))
+	if normalized == "" {
+		return AuthInfo{}, false
+	}
+	if strings.Contains(normalized, "not logged in") ||
+		strings.Contains(normalized, "logged out") ||
+		strings.Contains(normalized, "not authenticated") ||
+		strings.Contains(normalized, "unauthenticated") {
+		return AuthInfo{Status: AuthRequired}, true
+	}
+	if strings.Contains(normalized, "logged in") ||
+		strings.Contains(normalized, "authenticated") {
 		return AuthInfo{Status: AuthAuthenticated}, true
 	}
 	return AuthInfo{}, false

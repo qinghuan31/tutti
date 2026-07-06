@@ -32,6 +32,7 @@ test("desktop preferences client resolves writes from the authoritative event", 
       minimizeAnimation: "scale",
       sleepPreventionMode: "never",
       showAppDeveloperSources: false,
+      enableCursorAgent: false,
       themeSource: "dark",
       updateChannel: "stable",
       updatePolicy: "prompt"
@@ -57,6 +58,7 @@ test("desktop preferences client resolves writes from the authoritative event", 
           minimizeAnimation: "scale",
           sleepPreventionMode: "never",
           showAppDeveloperSources: false,
+          enableCursorAgent: false,
           themeSource: "dark",
           updateChannel: "stable",
           updatePolicy: "prompt"
@@ -84,6 +86,7 @@ test("desktop preferences client resolves writes from the authoritative event", 
       minimizeAnimation: "scale",
       sleepPreventionMode: "never",
       showAppDeveloperSources: false,
+      enableCursorAgent: false,
       themeSource: "dark",
       updateChannel: "stable",
       updatePolicy: "prompt"
@@ -106,6 +109,7 @@ test("desktop preferences client resolves writes from the authoritative event", 
     minimizeAnimation: "scale",
     sleepPreventionMode: "never",
     showAppDeveloperSources: false,
+    enableCursorAgent: false,
     themeSource: "dark",
     updateChannel: "stable",
     updatePolicy: "prompt"
@@ -140,6 +144,7 @@ test("desktop preferences client distinguishes agent GUI conversation rail prefe
       minimizeAnimation: "scale",
       sleepPreventionMode: "never",
       showAppDeveloperSources: false,
+      enableCursorAgent: false,
       themeSource: "dark",
       updateChannel: "stable",
       updatePolicy: "prompt"
@@ -170,6 +175,7 @@ test("desktop preferences client distinguishes agent GUI conversation rail prefe
       minimizeAnimation: "scale",
       sleepPreventionMode: "never",
       showAppDeveloperSources: false,
+      enableCursorAgent: false,
       themeSource: "dark",
       updateChannel: "stable",
       updatePolicy: "prompt"
@@ -198,6 +204,7 @@ test("desktop preferences client distinguishes agent GUI conversation rail prefe
       minimizeAnimation: "scale",
       sleepPreventionMode: "never",
       showAppDeveloperSources: false,
+      enableCursorAgent: false,
       themeSource: "dark",
       updateChannel: "stable",
       updatePolicy: "prompt"
@@ -222,6 +229,7 @@ test("desktop preferences client distinguishes agent GUI conversation rail prefe
     minimizeAnimation: "scale",
     sleepPreventionMode: "never",
     showAppDeveloperSources: false,
+    enableCursorAgent: false,
     themeSource: "dark",
     updateChannel: "stable",
     updatePolicy: "prompt"
@@ -262,6 +270,7 @@ test("desktop preferences client fans out authoritative preference updates", asy
       minimizeAnimation: "scale",
       sleepPreventionMode: "never",
       showAppDeveloperSources: false,
+      enableCursorAgent: false,
       themeSource: "dark",
       updateChannel: "stable",
       updatePolicy: "prompt"
@@ -285,6 +294,7 @@ test("desktop preferences client fans out authoritative preference updates", asy
       minimizeAnimation: "scale",
       sleepPreventionMode: "never",
       showAppDeveloperSources: false,
+      enableCursorAgent: false,
       themeSource: "dark",
       updateChannel: "stable",
       updatePolicy: "prompt"
@@ -319,6 +329,7 @@ test("desktop preferences client rejects pending writes when disposed", async ()
       minimizeAnimation: "scale",
       sleepPreventionMode: "never",
       showAppDeveloperSources: false,
+      enableCursorAgent: false,
       themeSource: "dark",
       updateChannel: "stable",
       updatePolicy: "prompt"
@@ -350,6 +361,7 @@ test("desktop preferences client confirms writes from HTTP when the event does n
       minimizeAnimation: "scale",
       sleepPreventionMode: "never",
       showAppDeveloperSources: false,
+      enableCursorAgent: false,
       themeSource: "dark",
       updateChannel: "stable",
       updatePolicy: "prompt"
@@ -381,6 +393,7 @@ test("desktop preferences client confirms writes from HTTP when the event does n
       minimizeAnimation: "scale",
       sleepPreventionMode: "never",
       showAppDeveloperSources: false,
+      enableCursorAgent: false,
       themeSource: "dark",
       updateChannel: "stable",
       updatePolicy: "prompt"
@@ -403,6 +416,7 @@ test("desktop preferences client confirms writes from HTTP when the event does n
     minimizeAnimation: "scale",
     sleepPreventionMode: "never",
     showAppDeveloperSources: false,
+    enableCursorAgent: false,
     themeSource: "dark",
     updateChannel: "stable",
     updatePolicy: "prompt"
@@ -431,6 +445,7 @@ test("desktop preferences client notifies subscribers when HTTP confirmation suc
       minimizeAnimation: "scale",
       sleepPreventionMode: "never",
       showAppDeveloperSources: false,
+      enableCursorAgent: false,
       themeSource: "dark",
       updateChannel: "stable",
       updatePolicy: "prompt"
@@ -467,6 +482,7 @@ test("desktop preferences client notifies subscribers when HTTP confirmation suc
       minimizeAnimation: "scale",
       sleepPreventionMode: "never",
       showAppDeveloperSources: false,
+      enableCursorAgent: false,
       themeSource: "dark",
       updateChannel: "stable",
       updatePolicy: "prompt"
@@ -490,6 +506,7 @@ test("desktop preferences client notifies subscribers when HTTP confirmation suc
       minimizeAnimation: "scale",
       sleepPreventionMode: "never",
       showAppDeveloperSources: false,
+      enableCursorAgent: false,
       themeSource: "dark",
       updateChannel: "stable",
       updatePolicy: "prompt"
@@ -518,6 +535,7 @@ test("desktop preferences client rejects writes when the authoritative state can
       minimizeAnimation: "scale",
       sleepPreventionMode: "never",
       showAppDeveloperSources: false,
+      enableCursorAgent: false,
       themeSource: "system",
       updateChannel: "stable",
       updatePolicy: "prompt"
@@ -549,6 +567,7 @@ test("desktop preferences client rejects writes when the authoritative state can
       minimizeAnimation: "scale",
       sleepPreventionMode: "never",
       showAppDeveloperSources: false,
+      enableCursorAgent: false,
       themeSource: "dark",
       updateChannel: "stable",
       updatePolicy: "prompt"
@@ -589,6 +608,7 @@ test("desktop preferences client coalesces concurrent identical writes", async (
       minimizeAnimation: "scale",
       sleepPreventionMode: "never",
       showAppDeveloperSources: false,
+      enableCursorAgent: false,
       themeSource: "dark",
       updateChannel: "stable",
       updatePolicy: "prompt"
@@ -611,6 +631,7 @@ test("desktop preferences client coalesces concurrent identical writes", async (
       minimizeAnimation: "scale",
       sleepPreventionMode: "never",
       showAppDeveloperSources: false,
+      enableCursorAgent: false,
       themeSource: "dark",
       updateChannel: "stable",
       updatePolicy: "prompt"
@@ -637,6 +658,7 @@ test("desktop preferences client coalesces concurrent identical writes", async (
       minimizeAnimation: "scale",
       sleepPreventionMode: "never",
       showAppDeveloperSources: false,
+      enableCursorAgent: false,
       themeSource: "dark",
       updateChannel: "stable",
       updatePolicy: "prompt"
@@ -671,6 +693,7 @@ function createFakeTuttidClient(
       minimizeAnimation: "scale",
       sleepPreventionMode: "never",
       showAppDeveloperSources: false,
+      enableCursorAgent: false,
       themeSource: "system",
       updateChannel: "stable",
       updatePolicy: "prompt"

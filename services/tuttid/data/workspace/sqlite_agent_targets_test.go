@@ -17,14 +17,17 @@ func TestSQLiteStoreSeedsSystemAgentTargets(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ListAgentTargets() error = %v", err)
 	}
-	if len(targets) != 2 {
-		t.Fatalf("ListAgentTargets() len = %d, want 2", len(targets))
+	if len(targets) != 3 {
+		t.Fatalf("ListAgentTargets() len = %d, want 3", len(targets))
 	}
 	if targets[0].ID != agenttargetbiz.IDLocalCodex || targets[0].Provider != "codex" {
 		t.Fatalf("first target = %#v, want local codex", targets[0])
 	}
 	if targets[1].ID != agenttargetbiz.IDLocalClaudeCode || targets[1].Provider != "claude-code" {
 		t.Fatalf("second target = %#v, want local claude-code", targets[1])
+	}
+	if targets[2].ID != agenttargetbiz.IDLocalCursor || targets[2].Provider != "cursor" {
+		t.Fatalf("third target = %#v, want local cursor", targets[2])
 	}
 	for _, target := range targets {
 		if target.Source != agenttargetbiz.SourceSystem {

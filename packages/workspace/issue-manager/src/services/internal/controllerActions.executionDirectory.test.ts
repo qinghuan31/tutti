@@ -123,7 +123,7 @@ test("controller actions fall back to the remembered default project when runnin
     nodeState: {
       issueSearchQuery: "",
       issueStatusFilter: "all",
-      selectedAgentProvider: "codex",
+      selectedAgentTargetId: "local:codex",
       selectedIssueId: "issue-1",
       selectedTaskId: "task-1"
     },
@@ -175,7 +175,7 @@ test("controller actions do not override an explicitly selected execution direct
     nodeState: {
       issueSearchQuery: "",
       issueStatusFilter: "all",
-      selectedAgentProvider: "codex",
+      selectedAgentTargetId: "local:codex",
       selectedExecutionDirectory: "/workspace/picked-by-user",
       selectedIssueId: "issue-1",
       selectedTaskId: "task-1"
@@ -217,7 +217,7 @@ test("controller actions fall back to the remembered default project when starti
     nodeState: {
       issueSearchQuery: "",
       issueStatusFilter: "all",
-      selectedAgentProvider: "codex",
+      selectedAgentTargetId: "local:codex",
       selectedIssueId: "issue-1",
       selectedTaskId: null
     }

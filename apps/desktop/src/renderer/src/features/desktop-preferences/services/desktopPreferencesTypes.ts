@@ -1,5 +1,6 @@
 import type { DesktopLocale } from "@shared/i18n";
 import type {
+  DesktopAgentComposerDefaultsByAgentTarget,
   DesktopAgentComposerDefaultsByProvider,
   DesktopAgentGuiConversationRailCollapsedByProvider,
   DesktopAgentConversationDetailMode,
@@ -28,11 +29,13 @@ export interface DesktopPreferencesStoreState {
   changingMinimizeAnimation: DesktopMinimizeAnimation | null;
   changingSleepPreventionMode: DesktopSleepPreventionMode | null;
   changingShowAppDeveloperSources: boolean | null;
+  changingEnableCursorAgent: boolean | null;
   changingThemeSource: DesktopThemeSource | null;
   changingUpdateChannel: DesktopUpdateChannel | null;
   changingUpdatePolicy: DesktopUpdatePolicy | null;
   changingWorkbenchWindowSnapping: DesktopWorkbenchWindowSnapping | null;
   agentComposerDefaultsByProvider: DesktopAgentComposerDefaultsByProvider;
+  agentComposerDefaultsByAgentTarget: DesktopAgentComposerDefaultsByAgentTarget;
   agentGuiConversationRailCollapsedByProvider: DesktopAgentGuiConversationRailCollapsedByProvider;
   agentConversationDetailMode: DesktopAgentConversationDetailMode;
   appCatalogChannel: DesktopAppCatalogChannel;
@@ -45,6 +48,7 @@ export interface DesktopPreferencesStoreState {
   minimizeAnimation: DesktopMinimizeAnimation;
   sleepPreventionMode: DesktopSleepPreventionMode;
   showAppDeveloperSources: boolean;
+  enableCursorAgent: boolean;
   theme: DesktopThemeState;
   updateChannel: DesktopUpdateChannel;
   updatePolicy: DesktopUpdatePolicy;
@@ -62,11 +66,13 @@ export interface DesktopPreferencesReadableStoreState {
   readonly changingMinimizeAnimation: DesktopMinimizeAnimation | null;
   readonly changingSleepPreventionMode: DesktopSleepPreventionMode | null;
   readonly changingShowAppDeveloperSources: boolean | null;
+  readonly changingEnableCursorAgent: boolean | null;
   readonly changingThemeSource: DesktopThemeSource | null;
   readonly changingUpdateChannel: DesktopUpdateChannel | null;
   readonly changingUpdatePolicy: DesktopUpdatePolicy | null;
   readonly changingWorkbenchWindowSnapping: DesktopWorkbenchWindowSnapping | null;
   readonly agentComposerDefaultsByProvider: DesktopAgentComposerDefaultsByProvider;
+  readonly agentComposerDefaultsByAgentTarget: DesktopAgentComposerDefaultsByAgentTarget;
   readonly agentGuiConversationRailCollapsedByProvider: DesktopAgentGuiConversationRailCollapsedByProvider;
   readonly agentConversationDetailMode: DesktopAgentConversationDetailMode;
   readonly appCatalogChannel: DesktopAppCatalogChannel;
@@ -79,6 +85,7 @@ export interface DesktopPreferencesReadableStoreState {
   readonly minimizeAnimation: DesktopMinimizeAnimation;
   readonly sleepPreventionMode: DesktopSleepPreventionMode;
   readonly showAppDeveloperSources: boolean;
+  readonly enableCursorAgent: boolean;
   readonly theme: DesktopThemeState;
   readonly updateChannel: DesktopUpdateChannel;
   readonly updatePolicy: DesktopUpdatePolicy;

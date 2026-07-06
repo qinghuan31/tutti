@@ -128,6 +128,54 @@ func (p *pendingACPRequest) resolvePermissionOptionID(optionID string) (string, 
 	return "", false
 }
 
+// acpPermissionRequestDecisionOptionID parses a raw session/request_permission
+// params payload and resolves the decision token onto the concrete optionId
+// the request advertises, for auto-approve tiers.
+func acpPermissionRequestDecisionOptionID(raw json.RawMessage, decision string) (string, bool) {
+	var params struct {
+		Options []map[string]any `json:"options"`
+	}
+	if err := json.Unmarshal(raw, &params); err != nil {
+		return "", false
+	}
+	return resolveACPPermissionDecisionOptionID(params.Options, decision)
+}
+
+// resolveACPPermissionDecisionOptionID maps a decision token ("approved" /
+// "denied") onto the concrete optionId an incoming permission request
+// advertises (e.g. "allow-once" / "reject-once"), for auto-approve tiers that
+// respond without building a pending prompt. Returns ("", false) when the
+// request advertises no matching option.
+func resolveACPPermissionDecisionOptionID(options []map[string]any, decision string) (string, bool) {
+	aliases := permissionOptionDecisionAliases(decision)
+	if len(aliases) == 0 {
+		return "", false
+	}
+	for _, option := range options {
+		resolvedOptionID := firstNonEmpty(asString(option["optionId"]), asString(option["id"]))
+		if resolvedOptionID == "" {
+			continue
+		}
+		for _, value := range []string{
+			resolvedOptionID,
+			asString(option["kind"]),
+			asString(option["name"]),
+			asString(option["label"]),
+		} {
+			token := normalizePermissionOptionToken(value)
+			if token == "" {
+				continue
+			}
+			for _, alias := range aliases {
+				if token == alias {
+					return resolvedOptionID, true
+				}
+			}
+		}
+	}
+	return "", false
+}
+
 func permissionOptionDecision(value string) string {
 	switch normalizePermissionOptionToken(value) {
 	case "approve", "approved", "allow", "allowed", "allowonce", "accept", "accepted", "acceptedits", "confirm", "confirmed", "ok", "proceed", "yes":

@@ -228,7 +228,12 @@ function createPreferencesKey(
     preferences.workbenchWindowSnapping
   );
   return [
-    stableAgentComposerDefaultsKey(preferences.agentComposerDefaultsByProvider),
+    // agentComposerDefaultsByProvider is deliberately excluded: the daemon
+    // freezes that legacy field (client input is ignored), so including it
+    // would make authoritative responses never match pending updates.
+    stableAgentComposerDefaultsByAgentTargetKey(
+      preferences.agentComposerDefaultsByAgentTarget
+    ),
     stableAgentGuiConversationRailCollapsedByProviderKey(
       preferences.agentGuiConversationRailCollapsedByProvider
     ),
@@ -247,6 +252,7 @@ function createPreferencesKey(
     preferences.locale,
     preferences.sleepPreventionMode,
     preferences.showAppDeveloperSources ? "app-sources:on" : "app-sources:off",
+    preferences.enableCursorAgent ? "cursor-agent:on" : "cursor-agent:off",
     preferences.themeSource,
     preferences.updateChannel,
     preferences.updatePolicy,
@@ -260,8 +266,14 @@ function preferencesEqual(
   right: PutDesktopPreferencesRequest["preferences"]
 ): boolean {
   return (
-    stableAgentComposerDefaultsKey(left.agentComposerDefaultsByProvider) ===
-      stableAgentComposerDefaultsKey(right.agentComposerDefaultsByProvider) &&
+    // agentComposerDefaultsByProvider is deliberately excluded (frozen
+    // server-side; see createPreferencesKey).
+    stableAgentComposerDefaultsByAgentTargetKey(
+      left.agentComposerDefaultsByAgentTarget
+    ) ===
+      stableAgentComposerDefaultsByAgentTargetKey(
+        right.agentComposerDefaultsByAgentTarget
+      ) &&
     stableAgentGuiConversationRailCollapsedByProviderKey(
       left.agentGuiConversationRailCollapsedByProvider
     ) ===
@@ -292,6 +304,7 @@ function preferencesEqual(
     left.sleepPreventionMode === right.sleepPreventionMode &&
     (left.showAppDeveloperSources ?? false) ===
       (right.showAppDeveloperSources ?? false) &&
+    (left.enableCursorAgent ?? false) === (right.enableCursorAgent ?? false) &&
     left.themeSource === right.themeSource &&
     left.updateChannel === right.updateChannel &&
     left.updatePolicy === right.updatePolicy &&
@@ -305,36 +318,49 @@ function preferencesEqual(
 const desktopAgentProviderKeys = [
   "claude-code",
   "codex",
+  "cursor",
   "nexight",
   "gemini",
   "hermes",
   "openclaw"
 ] as const;
 
-function stableAgentComposerDefaultsKey(value: unknown): string {
+function stableAgentComposerDefaultsByAgentTargetKey(value: unknown): string {
   if (!value || typeof value !== "object") {
     return "{}";
   }
   const input = value as Record<string, unknown>;
   const output: Record<string, Record<string, string>> = {};
-  for (const provider of desktopAgentProviderKeys) {
-    const defaults = input[provider];
-    if (!defaults || typeof defaults !== "object") {
+  for (const agentTargetId of Object.keys(input).sort()) {
+    const normalizedAgentTargetId = normalizeOptionalText(agentTargetId);
+    if (!normalizedAgentTargetId) {
       continue;
     }
-    const fields = defaults as Record<string, unknown>;
-    const normalizedDefaults: Record<string, string> = {};
-    for (const key of ["model", "permissionModeId", "reasoningEffort"]) {
-      const normalized = normalizeOptionalText(fields[key]);
-      if (normalized) {
-        normalizedDefaults[key] = normalized;
-      }
-    }
-    if (Object.keys(normalizedDefaults).length > 0) {
-      output[provider] = normalizedDefaults;
+    const normalizedDefaults = stableAgentComposerDefaultsEntry(
+      input[agentTargetId]
+    );
+    if (normalizedDefaults) {
+      output[normalizedAgentTargetId] = normalizedDefaults;
     }
   }
   return JSON.stringify(output);
+}
+
+function stableAgentComposerDefaultsEntry(
+  defaults: unknown
+): Record<string, string> | null {
+  if (!defaults || typeof defaults !== "object") {
+    return null;
+  }
+  const fields = defaults as Record<string, unknown>;
+  const normalizedDefaults: Record<string, string> = {};
+  for (const key of ["model", "permissionModeId", "reasoningEffort", "speed"]) {
+    const normalized = normalizeOptionalText(fields[key]);
+    if (normalized) {
+      normalizedDefaults[key] = normalized;
+    }
+  }
+  return Object.keys(normalizedDefaults).length > 0 ? normalizedDefaults : null;
 }
 
 function stableAgentGuiConversationRailCollapsedByProviderKey(

@@ -73,6 +73,7 @@ type scriptedAppServerConnection struct {
 	childNicknames               map[string]string // thread/read agentNickname responses by threadId
 	turnStartEntered             chan struct{}
 	turnStartRelease             chan struct{}
+	threadName                   string
 	commandApproval              bool
 	userInputRequest             bool
 	reviewInline                 bool          // stream review output as inline reasoning/command items
@@ -85,6 +86,7 @@ type scriptedAppServerConnection struct {
 	goalStartsTurn               bool
 	goalTurnsStarted             int
 	goalCompletionAfterTurns     int
+	goalTurnFailAtTurn           int // goal-driven turn number (1-based) that settles as "failed" instead of "completed"
 	goalCleared                  bool
 	replayTokenUsageOnResume     bool // mirror real codex: emit token usage during thread/resume
 	threadResumeError            bool // fail thread/resume with an RPC error
@@ -445,8 +447,14 @@ func (c *scriptedAppServerConnection) Send(data []byte) error {
 					map[string]any{"step": "Run tests", "status": "inProgress"},
 				},
 			})
+			c.mu.Lock()
+			threadName := c.threadName
+			c.mu.Unlock()
+			if threadName == "" {
+				threadName = "Inspect repository structure"
+			}
 			c.notify(appServerNotifyThreadNameUpdated, map[string]any{
-				"threadId": "codex-thread-1", "threadName": "Inspect repository structure",
+				"threadId": "codex-thread-1", "threadName": threadName,
 			})
 			if hold {
 				continue
@@ -541,6 +549,9 @@ func (c *scriptedAppServerConnection) Send(data []byte) error {
 			if goalStartsTurn && goalTurnNumber > 0 {
 				turnID := fmt.Sprintf("turn-goal-%d", goalTurnNumber)
 				itemID := fmt.Sprintf("item-goal-%d", goalTurnNumber)
+				c.mu.Lock()
+				failThisTurn := c.goalTurnFailAtTurn > 0 && goalTurnNumber == c.goalTurnFailAtTurn
+				c.mu.Unlock()
 				messageText := "I'll work on the goal."
 				if goalStatus == "complete" && goalTurnNumber > 1 {
 					messageText = "Goal complete."
@@ -549,6 +560,22 @@ func (c *scriptedAppServerConnection) Send(data []byte) error {
 					"threadId": "codex-thread-1",
 					"turn":     map[string]any{"id": turnID, "status": "inProgress", "items": []any{}},
 				})
+				if failThisTurn {
+					// Simulate a mid-goal turn ending in a transient failure
+					// (a tool or model error) while the goal itself remains
+					// "active" per codex's own thread state: the turn
+					// settles failed but the goal is not paused/completed.
+					c.notify(appServerNotifyTurnCompleted, map[string]any{
+						"threadId": "codex-thread-1",
+						"turn": map[string]any{
+							"id":     turnID,
+							"status": "failed",
+							"items":  []any{},
+							"error":  map[string]any{"message": "transient tool failure"},
+						},
+					})
+					continue
+				}
 				c.notify(appServerNotifyAgentMessageDelta, map[string]any{
 					"threadId": "codex-thread-1", "turnId": turnID, "itemId": itemID, "delta": messageText,
 				})
@@ -824,6 +851,57 @@ func TestCodexAppServerAdapterWireFormatOmitsJSONRPCVersion(t *testing.T) {
 			if _, found := message["jsonrpc"]; found {
 				t.Fatalf("sent message includes jsonrpc version header: %s", line)
 			}
+		}
+	}
+}
+
+func TestCodexAppServerAdapterExecRoutesAgentTargetMention(t *testing.T) {
+	t.Parallel()
+
+	adapter, transport, session := startedAppServerAdapter(t)
+	prompt := "让 [@Codex](mention://agent-target/local:codex?workspaceId=workspace-1) 来 review"
+
+	events, err := adapter.Exec(context.Background(), session, textPrompt(prompt), "", "turn-agent-target", nil, nil)
+	if err != nil {
+		t.Fatalf("Exec: %v", err)
+	}
+
+	turnStart := appServerRequestParams(t, transport.conn, appServerMethodTurnStart)
+	input, _ := turnStart["input"].([]any)
+	if len(input) != 2 {
+		t.Fatalf("turn/start input = %#v, want user prompt plus internal routing prompt", turnStart["input"])
+	}
+	first, _ := input[0].(map[string]any)
+	if asString(first["text"]) != prompt {
+		t.Fatalf("turn/start user text = %q, want %q", asString(first["text"]), prompt)
+	}
+	last, _ := input[len(input)-1].(map[string]any)
+	if asString(last["text"]) != tuttiMentionRoutingReminder {
+		t.Fatalf("turn/start routing text = %q, want %q", asString(last["text"]), tuttiMentionRoutingReminder)
+	}
+
+	userContent := firstUserMessageContent(t, events)
+	if userContent != prompt || strings.Contains(userContent, "system-reminder") {
+		t.Fatalf("user activity content = %q, want original prompt only", userContent)
+	}
+}
+
+func TestCodexAppServerAdapterDoesNotProjectInternalMentionRoutingTitle(t *testing.T) {
+	t.Parallel()
+
+	adapter, transport, session := startedAppServerAdapter(t)
+	transport.conn.mu.Lock()
+	transport.conn.threadName = tuttiMentionRoutingReminder
+	transport.conn.mu.Unlock()
+
+	events, err := adapter.Exec(context.Background(), session, textPrompt("inspect repo"), "", "turn-internal-title", nil, nil)
+	if err != nil {
+		t.Fatalf("Exec: %v", err)
+	}
+
+	for _, event := range events {
+		if event.Type == activityshared.EventSessionUpdated && event.Payload.Title == tuttiMentionRoutingReminder {
+			t.Fatalf("events = %#v, want internal mention routing title excluded from title updates", events)
 		}
 	}
 }
@@ -1840,6 +1918,56 @@ func TestCodexAppServerAdapterExecSteersActiveTurn(t *testing.T) {
 	}
 }
 
+func TestCodexAppServerAdapterSteerRoutesAgentTargetMention(t *testing.T) {
+	t.Parallel()
+
+	adapter, transport, session := startedAppServerAdapter(t)
+	transport.conn.holdTurn = true
+
+	execDone := make(chan struct{})
+	go func() {
+		_, _ = adapter.Exec(context.Background(), session, textPrompt("long task"), "", "turn-local-1", nil, nil)
+		close(execDone)
+	}()
+	waitForCondition(t, func() bool {
+		return adapter.sessionActiveTurnID(session.AgentSessionID) == "turn-1"
+	})
+
+	prompt := "让 [@Codex](mention://agent-target/local:codex?workspaceId=workspace-1) 来看下"
+	events, err := adapter.Exec(context.Background(), session, textPrompt(prompt), "", "turn-agent-target-steer", nil, nil)
+	if err != nil {
+		t.Fatalf("steer Exec: %v", err)
+	}
+	steer := appServerRequestParams(t, transport.conn, appServerMethodTurnSteer)
+	if asString(steer["expectedTurnId"]) != "turn-1" {
+		t.Fatalf("turn/steer params = %#v", steer)
+	}
+	input, _ := steer["input"].([]any)
+	if len(input) != 2 {
+		t.Fatalf("turn/steer input = %#v, want user prompt plus internal routing prompt", steer["input"])
+	}
+	first, _ := input[0].(map[string]any)
+	if asString(first["text"]) != prompt {
+		t.Fatalf("turn/steer user text = %q, want %q", asString(first["text"]), prompt)
+	}
+	last, _ := input[len(input)-1].(map[string]any)
+	if asString(last["text"]) != tuttiMentionRoutingReminder {
+		t.Fatalf("turn/steer routing text = %q, want %q", asString(last["text"]), tuttiMentionRoutingReminder)
+	}
+
+	userContent := firstUserMessageContent(t, events)
+	if userContent != prompt || strings.Contains(userContent, "system-reminder") {
+		t.Fatalf("user activity content = %q, want original prompt only", userContent)
+	}
+
+	transport.conn.completePendingTurn()
+	select {
+	case <-execDone:
+	case <-time.After(5 * time.Second):
+		t.Fatalf("original Exec did not finish")
+	}
+}
+
 // --- approval and interactive tests ---
 
 func TestCodexAppServerAdapterCommandApprovalApprove(t *testing.T) {
@@ -2469,7 +2597,7 @@ func TestCodexAppServerAdapterSlashGoalContinuesUntilTerminalGoal(t *testing.T) 
 
 	var sinkMu sync.Mutex
 	sinkEvents := []activityshared.Event{}
-	adapter.SetSessionEventSink(func(agentSessionID string, events []activityshared.Event) {
+	adapter.SetSessionEventSink(func(_ string, events []activityshared.Event) {
 		sinkMu.Lock()
 		defer sinkMu.Unlock()
 		sinkEvents = append(sinkEvents, events...)
@@ -2538,6 +2666,94 @@ func TestCodexAppServerAdapterSlashGoalContinuesUntilTerminalGoal(t *testing.T) 
 	}
 }
 
+// A mid-goal turn that settles failed (a transient tool/model error) while
+// codex's own thread state still reports the goal active must not strand the
+// goal: the continuation nudge has to fire on a failed settle exactly like it
+// does on a clean completion, or the goal stops advancing for good with no
+// further signal ("goal 执行一半不动了").
+func TestCodexAppServerAdapterGoalContinuesAfterMidGoalTurnFailure(t *testing.T) {
+	t.Parallel()
+
+	adapter, transport, session := startedAppServerAdapter(t)
+	adapter.goalContinuationGraceWindow = 50 * time.Millisecond
+	transport.conn.goalStartsTurn = true
+	transport.conn.goalTurnFailAtTurn = 2
+	transport.conn.goalCompletionAfterTurns = 3
+
+	var sinkMu sync.Mutex
+	sinkEvents := []activityshared.Event{}
+	adapter.SetSessionEventSink(func(agentSessionID string, events []activityshared.Event) {
+		sinkMu.Lock()
+		defer sinkMu.Unlock()
+		sinkEvents = append(sinkEvents, events...)
+	})
+
+	events, err := adapter.Exec(context.Background(), session, []PromptContentBlock{{
+		Type: "text", Text: "/goal finish the DrawingML pass",
+	}}, "", "turn-local-goal", nil, nil)
+	if err != nil {
+		t.Fatalf("Exec: %v", err)
+	}
+	if completed := eventsOfType(events, activityshared.EventTurnCompleted); len(completed) != 1 {
+		t.Fatalf("first goal turn completed events = %d, want 1", len(completed))
+	}
+
+	// The second turn (adopted, codex-driven) settles failed. Without the
+	// fix, finalizeSettledTurn only nudged on a clean completion, so this
+	// failed settle would never schedule a continuation and the goal would
+	// hang here forever.
+	deadline := time.Now().Add(5 * time.Second)
+	for {
+		sinkMu.Lock()
+		failedSeen := false
+		for _, event := range sinkEvents {
+			if event.Type == activityshared.EventTurnFailed {
+				failedSeen = true
+			}
+		}
+		sinkMu.Unlock()
+		if failedSeen {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("adopted continuation turn did not settle failed")
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+
+	// The nudge must still fire after the failed settle and drive the goal to
+	// its third, successful turn.
+	deadline = time.Now().Add(5 * time.Second)
+	for {
+		sinkMu.Lock()
+		adoptedCompleted := ""
+		for _, event := range sinkEvents {
+			if event.Type == activityshared.EventMessageAppended &&
+				event.Payload.Role == activityshared.MessageRoleAssistant &&
+				event.Payload.Metadata["streamState"] == messageStreamStateCompleted {
+				adoptedCompleted = event.Payload.Content
+			}
+		}
+		sinkMu.Unlock()
+		if adoptedCompleted == "Goal complete." {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("goal did not continue past the failed turn to completion")
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+
+	// initial /goal (turn 1) + nudge after turn 1 (turn 2, fails) + nudge
+	// after turn 2's failure (turn 3, completes the goal). The nudge
+	// scheduled after turn 3 sees the goal already "complete" and returns
+	// before sending a fourth RPC.
+	goalSets := appServerRequestParamsList(t, transport.conn, appServerMethodThreadGoalSet)
+	if len(goalSets) != 3 {
+		t.Fatalf("goal/set requests = %d, want 3", len(goalSets))
+	}
+}
+
 // A server-initiated turn/started with no registered turn context and no goal
 // keeps the legacy drop behavior (stray turns such as compaction).
 func TestCodexAppServerAdapterUnownedTurnIgnoredWithoutGoal(t *testing.T) {
@@ -2546,7 +2762,7 @@ func TestCodexAppServerAdapterUnownedTurnIgnoredWithoutGoal(t *testing.T) {
 	adapter, _, session := startedAppServerAdapter(t)
 	var sinkMu sync.Mutex
 	sinkEvents := []activityshared.Event{}
-	adapter.SetSessionEventSink(func(agentSessionID string, events []activityshared.Event) {
+	adapter.SetSessionEventSink(func(_ string, events []activityshared.Event) {
 		sinkMu.Lock()
 		defer sinkMu.Unlock()
 		sinkEvents = append(sinkEvents, events...)
@@ -3013,7 +3229,7 @@ func TestCodexAppServerAdapterGoalUpdateNotificationEmitsSessionEvent(t *testing
 	adapter, _, session := startedAppServerAdapter(t)
 	var sinkMu sync.Mutex
 	sinkEvents := []activityshared.Event{}
-	adapter.SetSessionEventSink(func(agentSessionID string, events []activityshared.Event) {
+	adapter.SetSessionEventSink(func(_ string, events []activityshared.Event) {
 		sinkMu.Lock()
 		defer sinkMu.Unlock()
 		sinkEvents = append(sinkEvents, events...)
@@ -3596,6 +3812,67 @@ func TestCodexAppServerAdapterApplyPermissionModeUpdatesState(t *testing.T) {
 	state := adapter.SessionState(session)
 	if asString(state.RuntimeContext["mode"]) != "full-access" {
 		t.Fatalf("mode = %#v, want full-access", state.RuntimeContext["mode"])
+	}
+}
+
+// TestCodexAppServerAdapterApplyPermissionModeSucceedsMidTurnAndAppliesNextTurn
+// locks in the contract the composer UI's live permission-mode switch now
+// relies on: the app-server protocol has no RPC to change approval/sandbox
+// policy for a turn that's already running, so ApplyPermissionMode must still
+// succeed while a turn is in flight (rather than error or block), and the
+// new policy must only take effect starting with the *next* turn/start --
+// matching the "applies starting with your next message" copy shown to the
+// user when they change permission mode mid-turn.
+func TestCodexAppServerAdapterApplyPermissionModeSucceedsMidTurnAndAppliesNextTurn(t *testing.T) {
+	t.Parallel()
+
+	adapter, transport, session := startedAppServerAdapter(t)
+	session.PermissionModeID = "read-only"
+	transport.conn.holdTurn = true
+
+	execDone := make(chan struct{})
+	go func() {
+		_, _ = adapter.Exec(context.Background(), session, []PromptContentBlock{{
+			Type: "text", Text: "go",
+		}}, "", "turn-local-1", nil, nil)
+		close(execDone)
+	}()
+	waitForCondition(t, func() bool {
+		return adapter.sessionActiveTurnID(session.AgentSessionID) == "turn-1"
+	})
+
+	firstTurnStart := appServerRequestParams(t, transport.conn, appServerMethodTurnStart)
+	if asString(firstTurnStart["approvalPolicy"]) != "on-request" {
+		t.Fatalf("first turn/start approvalPolicy = %#v, want on-request", firstTurnStart["approvalPolicy"])
+	}
+
+	session.PermissionModeID = "full-access"
+	if err := adapter.ApplyPermissionMode(context.Background(), session); err != nil {
+		t.Fatalf("ApplyPermissionMode mid-turn: %v", err)
+	}
+
+	transport.conn.completePendingTurn()
+	<-execDone
+
+	// The turn that was already running is unaffected by the change: exactly
+	// one turn/start was sent for it.
+	if turnStarts := appServerRequestParamsList(t, transport.conn, appServerMethodTurnStart); len(turnStarts) != 1 {
+		t.Fatalf("turn/start calls = %d, want 1 before the next turn", len(turnStarts))
+	}
+
+	transport.conn.holdTurn = false
+	if _, err := adapter.Exec(context.Background(), session, []PromptContentBlock{{
+		Type: "text", Text: "go again",
+	}}, "", "turn-local-2", nil, nil); err != nil {
+		t.Fatalf("Exec (second turn): %v", err)
+	}
+
+	turnStarts := appServerRequestParamsList(t, transport.conn, appServerMethodTurnStart)
+	if len(turnStarts) != 2 {
+		t.Fatalf("turn/start calls = %d, want 2 after the next turn", len(turnStarts))
+	}
+	if asString(turnStarts[1]["approvalPolicy"]) != "never" {
+		t.Fatalf("second turn/start approvalPolicy = %#v, want never", turnStarts[1]["approvalPolicy"])
 	}
 }
 

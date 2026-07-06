@@ -4,11 +4,78 @@ import type { AgentSessionPermissionConfig } from "../../../shared/agentSessionT
 import type { AgentGUINodeData } from "../../../types";
 import {
   buildNodeDefaultComposerSettings,
+  composerOptionsMissingLiveModelValues,
+  liveModelOptionValuesFromRuntimeContext,
   nodeDataFromComposerSettings,
   permissionModeOptions,
   readNodeDefaultDraftPrompt,
   readNodeDefaultDraftSettings
 } from "./agentGuiController.composerHelpers";
+import type { AgentActivityComposerOptions } from "@tutti-os/agent-activity-core";
+
+describe("live model options from runtime context", () => {
+  const cursorRuntimeContext = {
+    configOptions: [
+      { id: "mode", options: [{ value: "agent", name: "Agent" }] },
+      {
+        id: "model",
+        currentValue: "composer-2.5[fast=true]",
+        options: [
+          { value: "default[]", name: "Auto" },
+          { value: "composer-2.5[fast=true]", name: "composer-2.5" },
+          { value: "gpt-5.2[reasoning=medium,fast=false]", name: "gpt-5.2" }
+        ]
+      }
+    ]
+  };
+
+  it("extracts advertised model values", () => {
+    expect(
+      liveModelOptionValuesFromRuntimeContext(cursorRuntimeContext)
+    ).toEqual([
+      "default[]",
+      "composer-2.5[fast=true]",
+      "gpt-5.2[reasoning=medium,fast=false]"
+    ]);
+    expect(liveModelOptionValuesFromRuntimeContext(null)).toEqual([]);
+    expect(liveModelOptionValuesFromRuntimeContext({})).toEqual([]);
+    expect(
+      liveModelOptionValuesFromRuntimeContext({ configOptions: "nope" })
+    ).toEqual([]);
+  });
+
+  it("detects composer options missing live models and quiesces once merged", () => {
+    const staleOptions = {
+      provider: "cursor",
+      models: [
+        { value: "composer-2.5[fast=true]", label: "composer-2.5[fast=true]" }
+      ],
+      reasoningEfforts: [],
+      speeds: [],
+      skills: [],
+      loadedAtUnixMs: 1
+    } as unknown as AgentActivityComposerOptions;
+    const mergedOptions = {
+      ...staleOptions,
+      models: [
+        { value: "default[]", label: "Auto" },
+        { value: "composer-2.5[fast=true]", label: "composer-2.5" },
+        { value: "gpt-5.2[reasoning=medium,fast=false]", label: "gpt-5.2" }
+      ]
+    } as unknown as AgentActivityComposerOptions;
+    const liveValues =
+      liveModelOptionValuesFromRuntimeContext(cursorRuntimeContext);
+
+    expect(
+      composerOptionsMissingLiveModelValues(staleOptions, liveValues)
+    ).toBe(true);
+    expect(
+      composerOptionsMissingLiveModelValues(mergedOptions, liveValues)
+    ).toBe(false);
+    expect(composerOptionsMissingLiveModelValues(null, liveValues)).toBe(false);
+    expect(composerOptionsMissingLiveModelValues(staleOptions, [])).toBe(false);
+  });
+});
 
 describe("permissionModeOptions", () => {
   afterEach(() => {

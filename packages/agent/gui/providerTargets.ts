@@ -7,6 +7,7 @@ import type {
 const agentGUIProviderTargetStaticLabels: Record<AgentGUIProvider, string> = {
   "claude-code": "Claude Code",
   codex: "Codex",
+  cursor: "Cursor",
   gemini: "Gemini",
   hermes: "Hermes",
   nexight: "Tutti Agent",
@@ -16,6 +17,7 @@ const agentGUIProviderTargetStaticLabels: Record<AgentGUIProvider, string> = {
 export const agentGUIDefaultTargetProviders = [
   "codex",
   "claude-code",
+  "cursor",
   "nexight",
   "hermes",
   "openclaw"
@@ -91,10 +93,14 @@ export function localAgentGUIAgentTargetId(
       return "local:codex";
     case "claude-code":
       return "local:claude-code";
+    case "cursor":
+      return "local:cursor";
     case "hermes":
       return "local:hermes";
     case "nexight":
       return "local:nexight";
+    case "openclaw":
+      return "local:openclaw";
     default:
       return null;
   }

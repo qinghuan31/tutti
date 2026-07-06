@@ -359,16 +359,16 @@ export function createDesktopTuttidClient(
         agentSessionID
       );
     },
-    async getWorkspaceAppFactoryProviderComposerOptions(
+    async getWorkspaceAppFactoryAgentTargetComposerOptions(
       workspaceID,
-      provider,
+      agentTargetID,
       request
     ) {
       return (
         await resolveClient()
-      ).getWorkspaceAppFactoryProviderComposerOptions(
+      ).getWorkspaceAppFactoryAgentTargetComposerOptions(
         workspaceID,
-        provider,
+        agentTargetID,
         request
       );
     },

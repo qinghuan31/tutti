@@ -110,6 +110,22 @@ func DefaultRegistry() Registry {
 			Install:            codexCLIInstallerSpec(),
 			LoginArgs:          []string{"login", "-c", codexServiceTierOverride},
 		},
+		agentprovider.Cursor: {
+			Provider: agentprovider.Cursor,
+			// Cursor's official installer has shipped the CLI as `cursor-agent`
+			// and, more recently, as `agent`; probe both names.
+			BinaryNames:       []string{"cursor-agent", "agent"},
+			AdapterCommand:    []string{"cursor-agent", "acp"},
+			AuthStatusCommand: []string{"status"},
+			AuthMarkerPaths:   []string{"~/.cursor/cli-config.json"},
+			Install: InstallerSpec{
+				Kind:           InstallerKindOfficialScript,
+				DisplayCommand: "curl https://cursor.com/install -fsS | bash",
+				ScriptURL:      "https://cursor.com/install",
+				ScriptShell:    "bash",
+			},
+			LoginArgs: []string{"login"},
+		},
 		agentprovider.Nexight: {
 			Provider:           agentprovider.Nexight,
 			SupportStatus:      ProviderSupportStatusUnsupported,

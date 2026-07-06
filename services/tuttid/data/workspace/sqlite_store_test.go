@@ -1752,7 +1752,7 @@ func TestSQLiteStoreListSessionSectionPagesByRailSectionKey(t *testing.T) {
 			OccurredAtUnixMS: 100,
 		},
 	} {
-		if _, err := store.ReportSessionState(ctx, input); err != nil {
+		if err := reportSessionStateWithStableUpdatedAt(ctx, store, input); err != nil {
 			t.Fatalf("ReportSessionState(%s) error = %v", input.AgentSessionID, err)
 		}
 	}
@@ -1863,7 +1863,7 @@ func TestSQLiteStoreListSessionSectionFiltersAgentTargetBeforePagination(t *test
 		})
 	}
 	for _, input := range reports {
-		if _, err := store.ReportSessionState(ctx, input); err != nil {
+		if err := reportSessionStateWithStableUpdatedAt(ctx, store, input); err != nil {
 			t.Fatalf("ReportSessionState(%s) error = %v", input.AgentSessionID, err)
 		}
 	}
@@ -1966,6 +1966,18 @@ func activitySessionIDs(sessions []agentactivitybiz.Session) []string {
 		ids = append(ids, session.ID)
 	}
 	return ids
+}
+
+func reportSessionStateWithStableUpdatedAt(
+	ctx context.Context,
+	store *SQLiteStore,
+	input agentactivitybiz.SessionStateReport,
+) error {
+	if _, err := store.ReportSessionState(ctx, input); err != nil {
+		return err
+	}
+	time.Sleep(2 * time.Millisecond)
+	return nil
 }
 
 func TestSQLiteStoreClearAgentActivitySessionsHardDeletesTombstones(t *testing.T) {

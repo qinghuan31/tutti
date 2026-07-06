@@ -150,7 +150,9 @@ export function toAgentNodeTitle(
               ? "openclaw"
               : provider === "hermes"
                 ? "hermes"
-                : "codex";
+                : provider === "cursor"
+                  ? "cursor"
+                  : "codex";
   return `${providerTitle} · ${model ?? translate("common.defaultModel")}`;
 }
 

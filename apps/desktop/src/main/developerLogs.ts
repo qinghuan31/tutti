@@ -68,7 +68,7 @@ type DeveloperDiagnosticsArtifact =
       clearable: false;
       agentSessionID: string;
       path: string;
-      provider: "claude-code" | "codex";
+      provider: "claude-code" | "codex" | "cursor";
       workspaceID: string;
     }
   | {

@@ -4728,6 +4728,7 @@ aside.workspace-agents-status-panel
   background: var(--agent-gui-session-sidepanel-background);
   overflow: hidden;
   transition: width 180ms cubic-bezier(0.22, 1, 0.36, 1);
+  -webkit-app-region: no-drag;
 }
 
 .agent-gui-node__provider-rail-panel::after {
@@ -5721,7 +5722,7 @@ button.agent-gui-node__conversation-section-toggle:hover
   flex: 0 0 14px;
   width: 14px;
   height: 14px;
-  color: var(--text-secondary);
+  color: var(--text-tertiary);
   background-color: currentColor;
   mask: var(--agent-gui-conversation-provider-icon-url) center / contain
     no-repeat;
@@ -7860,6 +7861,10 @@ html[data-theme="light"] [data-message-center-item-id].agent-gui-edge-glow {
   color: var(--text-primary);
 }
 
+.agent-gui-node__composer-handoff-icon[data-disabled="true"] {
+  color: var(--agent-gui-text-tertiary);
+}
+
 .agent-gui-node__composer-handoff-icon-static,
 .agent-gui-node__composer-handoff-icon-animated {
   width: 18px;
@@ -7887,6 +7892,11 @@ html[data-theme="light"] [data-message-center-item-id].agent-gui-edge-glow {
 
 .agent-gui-node__composer-handoff-icon-animated[data-active="true"] {
   opacity: 1;
+}
+
+.agent-gui-node__composer-handoff-icon[data-disabled="true"]
+  .agent-gui-node__composer-handoff-icon-animated {
+  opacity: 0;
 }
 
 :root[data-theme="dark"] .agent-gui-node__composer-handoff-icon-animated {
@@ -8324,6 +8334,7 @@ html[data-theme="light"] [data-message-center-item-id].agent-gui-edge-glow {
   padding: 0 0 12px;
   overflow-x: hidden;
   overflow-y: auto;
+  -webkit-app-region: no-drag;
 }
 
 .agent-gui-node__provider-rail-tile {
@@ -8341,6 +8352,7 @@ html[data-theme="light"] [data-message-center-item-id].agent-gui-edge-glow {
   font-weight: 600;
   line-height: 14px;
   text-align: center;
+  -webkit-app-region: no-drag;
 }
 
 .agent-gui-node__provider-rail-tile + .agent-gui-node__provider-rail-tile {
