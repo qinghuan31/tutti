@@ -274,6 +274,7 @@ export type AgentActivityUpdatedPayloadV1 =
         lastError?: string;
         startedAtUnixMs?: number;
         endedAtUnixMs?: number;
+        runtimeContext?: Record<string, unknown>;
         submitAvailability?: {
           state: string;
           reason?: string;

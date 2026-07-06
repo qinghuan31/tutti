@@ -312,6 +312,7 @@ type agentActivityStatePatchData struct {
 	LastError          string                               `json:"lastError,omitempty"`
 	StartedAtUnixMS    *int64                               `json:"startedAtUnixMs,omitempty"`
 	EndedAtUnixMS      *int64                               `json:"endedAtUnixMs,omitempty"`
+	RuntimeContext     map[string]any                       `json:"runtimeContext,omitempty"`
 	SubmitAvailability *agentActivitySubmitAvailabilityData `json:"submitAvailability,omitempty"`
 	Turn               *agentActivityStateTurnData          `json:"turn,omitempty"`
 }

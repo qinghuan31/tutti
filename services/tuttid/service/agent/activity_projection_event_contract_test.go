@@ -48,8 +48,18 @@ func TestActivityStatePatchEventPayloadPassesEventCatalogValidation(t *testing.T
 			WorkspaceID:    "workspace-1",
 			AgentSessionID: "agent-session-1",
 			State: agentsessionstore.WorkspaceAgentSessionStateUpdate{
-				Provider:         "codex",
-				CurrentPhase:     "idle",
+				Provider:     "codex",
+				CurrentPhase: "idle",
+				// backgroundAgents must survive the push channel: the GUI
+				// derives the background_agent submit block from it, and the
+				// only other carrier is a manual reconcile fetch.
+				RuntimeContext: map[string]any{
+					"model": "gpt-5.5",
+					"backgroundAgents": map[string]any{
+						"count": 1,
+						"items": []any{map[string]any{"status": "running"}},
+					},
+				},
 				OccurredAtUnixMS: 2000,
 				SubmitAvailability: &agentsessionstore.WorkspaceAgentSubmitAvailability{
 					State: "available",
@@ -72,7 +82,13 @@ func TestActivityStatePatchEventPayloadPassesEventCatalogValidation(t *testing.T
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
 
-			payload := wrapAgentActivityUpdatedEnvelope(t, input, activityStatePatchEventPayload(input, 1000))
+			data := activityStatePatchEventPayload(input, 1000)
+			if input.State.RuntimeContext != nil {
+				if _, ok := data["runtimeContext"].(map[string]any); !ok {
+					t.Fatalf("payload runtimeContext = %#v, want map", data["runtimeContext"])
+				}
+			}
+			payload := wrapAgentActivityUpdatedEnvelope(t, input, data)
 			if err := catalog.ValidatePublish(
 				eventstream.TopicAgentActivityUpdated,
 				eventstream.DirectionServerToClient,
