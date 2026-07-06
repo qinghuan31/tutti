@@ -40,6 +40,7 @@ import type {
   AgentModelCatalogInvalidatedEvent,
   AgentActivityStreamEvent,
   AgentActivityMessageUpdate,
+  AgentSession,
   AgentSessionCommand,
   AgentSessionComposerSettings,
   AgentSessionPermissionConfig,
@@ -4293,6 +4294,8 @@ export function useAgentGUINodeController({
   const handledOpenSessionSequenceRef = useRef<number | null>(null);
   const pendingOpenSessionRequestRef =
     useRef<AgentGUIOpenSessionRequest | null>(null);
+  const explicitlyOpenedConversationIdsRef = useRef(new Set<string>());
+  const railPinnedTransientConversationIdsRef = useRef(new Set<string>());
   const selectedConversationNotFoundRetryIdsRef = useRef(new Set<string>());
   const selectedConversationNotFoundRetryTimerRef = useRef<number | null>(null);
   const sessionStateSnapshotCauseBySessionIdRef = useRef<
@@ -4448,6 +4451,93 @@ export function useAgentGUINodeController({
       setTransientConversationState(next);
     },
     []
+  );
+
+  const conversationSummaryFromRuntimeSession = useCallback(
+    (session: AgentActivitySession): AgentGUIConversationSummary => {
+      const updatedAtUnixMs = session.updatedAtUnixMs ?? Date.now();
+      const projectedSession: AgentSession = {
+        workspaceId: session.workspaceId,
+        agentSessionId: session.agentSessionId,
+        agentTargetId: session.agentTargetId ?? null,
+        provider: session.provider as AgentSession["provider"],
+        providerSessionId: session.providerSessionId ?? session.agentSessionId,
+        resumable: session.resumable,
+        cwd: session.cwd,
+        status: session.status,
+        title: session.title,
+        pinnedAtUnixMs: session.pinnedAtUnixMs ?? null,
+        createdAtUnixMs: session.createdAtUnixMs ?? updatedAtUnixMs,
+        updatedAtUnixMs
+      };
+      return conversationSummaryFromAgentSession(projectedSession, {
+        isNoProjectPath: isNoProjectPathRef.current,
+        userProjects: userProjectsRef.current
+      });
+    },
+    []
+  );
+
+  const ensureTransientOpenSessionConversation = useCallback(
+    (agentSessionId: string) => {
+      const normalizedAgentSessionId = agentSessionId.trim();
+      if (!normalizedAgentSessionId) {
+        return;
+      }
+      if (
+        resolveConversationSummaryById(
+          conversationsRef.current,
+          normalizedAgentSessionId,
+          transientConversationRef.current
+        )
+      ) {
+        return;
+      }
+      const snapshotSession = agentActivitySnapshotRef.current.sessions.find(
+        (session) =>
+          session.agentSessionId.trim() === normalizedAgentSessionId &&
+          session.visible !== false
+      );
+      if (snapshotSession) {
+        setTransientConversation(
+          conversationSummaryFromRuntimeSession(snapshotSession)
+        );
+        return;
+      }
+      void agentActivityRuntime
+        .getSession(workspaceId, normalizedAgentSessionId)
+        .then((session) => {
+          const shouldKeepTransient =
+            explicitlyOpenedConversationIdsRef.current.has(
+              normalizedAgentSessionId
+            ) ||
+            railPinnedTransientConversationIdsRef.current.has(
+              normalizedAgentSessionId
+            );
+          if (
+            !isMountedRef.current ||
+            activeConversationIdRef.current !== normalizedAgentSessionId ||
+            !shouldKeepTransient ||
+            resolveConversationSummaryById(
+              conversationsRef.current,
+              normalizedAgentSessionId,
+              transientConversationRef.current
+            )
+          ) {
+            return;
+          }
+          setTransientConversation(
+            conversationSummaryFromRuntimeSession(session)
+          );
+        })
+        .catch(() => {});
+    },
+    [
+      agentActivityRuntime,
+      conversationSummaryFromRuntimeSession,
+      setTransientConversation,
+      workspaceId
+    ]
   );
 
   // NOTE: project metadata is intentionally NOT written back into the shared
@@ -4965,6 +5055,8 @@ export function useAgentGUINodeController({
             ? { ...current, hasUnreadCompletion: false }
             : current
         );
+      } else if (transientConversationRef.current) {
+        setTransientConversation(null);
       }
       persistActiveConversation(normalized);
     },
@@ -4973,7 +5065,8 @@ export function useAgentGUINodeController({
       clearSelectedConversationNotFoundRetry,
       conversationListQuery,
       markSelectedConversationDetailPending,
-      persistActiveConversation
+      persistActiveConversation,
+      setTransientConversation
     ]
   );
 
@@ -5127,6 +5220,8 @@ export function useAgentGUINodeController({
         id,
         transientConversationRef.current
       ) !== null;
+    const resolveCanonicalId = (id: string) =>
+      resolveConversationSummaryById(conversations, id, null) !== null;
 
     const inSnapshot = (id: string) =>
       agentActivitySnapshotRef.current.sessions.some(
@@ -5136,30 +5231,12 @@ export function useAgentGUINodeController({
     // Open session request takes highest priority
     if (hasExplicitOpenSessionRequest) {
       const requestedId = pendingOpenSessionRequest!.agentSessionId.trim();
-      if (resolveId(requestedId)) {
-        pendingOpenSessionRequestRef.current = null;
-        selectConversation(requestedId, { reloadConversations: false });
-        return;
-      }
       if (!hasLoadedConversations) return;
-      if (inSnapshot(requestedId)) return;
-      if (intent.tag !== "resolving" || intent.id !== requestedId) {
-        setIntent({ tag: "resolving", id: requestedId });
-        void syncConversationListProjection(requestedId);
-        return;
-      }
-      if (!isAgentGUIConversationListRefreshing(conversationListQuery)) {
-        pendingOpenSessionRequestRef.current = null;
-        const fallback = selectAgentGUIConversationId(
-          conversations,
-          activeConversationIdRef.current
-        );
-        if (fallback) {
-          selectConversation(fallback, { reloadConversations: false });
-        } else {
-          setIntent({ tag: "home" });
-        }
-      }
+      explicitlyOpenedConversationIdsRef.current.add(requestedId);
+      railPinnedTransientConversationIdsRef.current.add(requestedId);
+      pendingOpenSessionRequestRef.current = null;
+      selectConversation(requestedId, { reloadConversations: false });
+      ensureTransientOpenSessionConversation(requestedId);
       return;
     }
 
@@ -5170,7 +5247,29 @@ export function useAgentGUINodeController({
 
       case "active":
         // Only demote when list is fully loaded, to avoid races during reload.
-        if (resolveId(intent.id) || !hasLoadedConversations) return;
+        if (resolveCanonicalId(intent.id)) {
+          explicitlyOpenedConversationIdsRef.current.delete(intent.id);
+          railPinnedTransientConversationIdsRef.current.delete(intent.id);
+          return;
+        }
+        if (resolveId(intent.id)) {
+          return;
+        }
+        if (!hasLoadedConversations) return;
+        if (
+          inSnapshot(intent.id) &&
+          activeConversationIdRef.current === intent.id
+        ) {
+          railPinnedTransientConversationIdsRef.current.add(intent.id);
+          ensureTransientOpenSessionConversation(intent.id);
+          return;
+        }
+        if (
+          explicitlyOpenedConversationIdsRef.current.has(intent.id) &&
+          activeConversationIdRef.current === intent.id
+        ) {
+          return;
+        }
         // Session was removed from list after load — re-check
         setIntent({ tag: "requested", id: intent.id });
         return;
@@ -5187,7 +5286,14 @@ export function useAgentGUINodeController({
           selectConversation(intent.id, { reloadConversations: false });
           return;
         }
-        if (inSnapshot(intent.id)) return;
+        if (inSnapshot(intent.id)) {
+          if (activeConversationIdRef.current === intent.id) {
+            railPinnedTransientConversationIdsRef.current.add(intent.id);
+            ensureTransientOpenSessionConversation(intent.id);
+            setIntent({ tag: "active", id: intent.id });
+          }
+          return;
+        }
         setIntent({ tag: "resolving", id: intent.id });
         void syncConversationListProjection(intent.id);
         return;
@@ -5215,6 +5321,7 @@ export function useAgentGUINodeController({
     intent,
     conversations,
     hasLoadedConversations,
+    ensureTransientOpenSessionConversation,
     openSessionRequest,
     previewMode,
     syncConversationListProjection,
@@ -9687,12 +9794,14 @@ export function useAgentGUINodeController({
     null
   );
   const visibleConversations = useMemo(() => {
-    const source = isLoadingConversations
-      ? mergeVisibleConversations(
-          conversations,
-          transientConversationRef.current
-        )
-      : conversations;
+    const transient = transientConversationRef.current;
+    const source =
+      transient &&
+      (isLoadingConversations ||
+        explicitlyOpenedConversationIdsRef.current.has(transient.id) ||
+        railPinnedTransientConversationIdsRef.current.has(transient.id))
+        ? mergeVisibleConversations(conversations, transient)
+        : conversations;
     const mapped = source.map((conversation) => {
       const withRuntime = mergeConversationSummaryWithRuntimeSession({
         conversation,

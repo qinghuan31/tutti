@@ -3670,9 +3670,10 @@ function stabilizeConversationSectionItems(
   return changed ? stable : previous;
 }
 
-function updateConversationSectionsFromSummaries(
+export function updateConversationSectionsFromSummaries(
   previous: ConversationSection[] | null,
-  conversations: readonly AgentGUINodeViewModel["conversations"][number][]
+  conversations: readonly AgentGUINodeViewModel["conversations"][number][],
+  options: { sectionConversationsLabel: string }
 ): ConversationSection[] | null {
   if (!previous || conversations.length === 0) {
     return previous;
@@ -3680,10 +3681,27 @@ function updateConversationSectionsFromSummaries(
   const summariesById = new Map(
     conversations.map((conversation) => [conversation.id, conversation])
   );
+  const summarySectionItemsById = new Map<
+    string,
+    AgentGUINodeViewModel["conversations"]
+  >();
+  for (const conversation of conversations) {
+    if ((conversation.pinnedAtUnixMs ?? 0) > 0) {
+      continue;
+    }
+    const sectionId = conversation.project
+      ? `project:${normalizeConversationProjectPath(conversation.project.path)}`
+      : "conversations";
+    const items = summarySectionItemsById.get(sectionId) ?? [];
+    items.push(conversation);
+    summarySectionItemsById.set(sectionId, items);
+  }
+  const seenIds = new Set<string>();
   let changed = false;
   const nextSections = previous.map((section) => {
     let sectionChanged = false;
     const items = section.items.map((item) => {
+      seenIds.add(item.id);
       const summary = summariesById.get(item.id);
       if (!summary) {
         return item;
@@ -3698,16 +3716,86 @@ function updateConversationSectionsFromSummaries(
       sectionChanged = true;
       return nextItem;
     });
-    if (!sectionChanged) {
-      return section;
+    const nextSection = sectionChanged
+      ? {
+          ...section,
+          items
+        }
+      : section;
+    const summaryItems = summarySectionItemsById.get(section.id) ?? [];
+    if (section.kind === "pinned" || summaryItems.length === 0) {
+      if (sectionChanged) {
+        changed = true;
+      }
+      return nextSection;
+    }
+    const summaryIds = new Set(summaryItems.map((item) => item.id));
+    const mergedItems = [
+      ...summaryItems.map((item) => ({
+        ...item,
+        project: section.project
+      })),
+      ...items.filter((item) => !summaryIds.has(item.id))
+    ];
+    const stableItems = stabilizeConversationSectionItems(items, mergedItems);
+    if (stableItems === items) {
+      if (sectionChanged) {
+        changed = true;
+      }
+      return nextSection;
     }
     changed = true;
     return {
-      ...section,
-      items
+      ...nextSection,
+      items: stableItems
     };
   });
-  return changed ? nextSections : (previous as ConversationSection[]);
+
+  // A conversation can go from not-existing to existing between two runtime
+  // section fetches (e.g. the optimistic pre-activation entry created by
+  // the first-message flow, whose id never changes once the real backend
+  // session lands). The loop above only patches items that are already
+  // present in some section; without this, such a conversation would never
+  // appear in the sidebar until the next full runtimeListSessionSections
+  // refetch happens to include it, which -- because that refetch is keyed
+  // off conversation membership -- may never happen again for the same id.
+  const existingSectionIds = new Set(nextSections.map((section) => section.id));
+  const newConversations = [...summarySectionItemsById.entries()].flatMap(
+    ([sectionId, items]) =>
+      existingSectionIds.has(sectionId)
+        ? []
+        : items.filter((conversation) => !seenIds.has(conversation.id))
+  );
+  if (newConversations.length === 0) {
+    return changed ? nextSections : previous;
+  }
+
+  const sectionsWithInsertions = [...nextSections];
+  for (const conversation of newConversations) {
+    const targetSectionId = conversation.project
+      ? `project:${normalizeConversationProjectPath(conversation.project.path)}`
+      : "conversations";
+    const targetIndex = sectionsWithInsertions.findIndex(
+      (section) => section.id === targetSectionId
+    );
+    const target =
+      targetIndex !== -1 ? sectionsWithInsertions[targetIndex] : undefined;
+    if (targetIndex !== -1 && target) {
+      sectionsWithInsertions[targetIndex] = {
+        ...target,
+        items: [...target.items, conversation]
+      };
+      continue;
+    }
+    sectionsWithInsertions.push({
+      id: targetSectionId,
+      kind: conversation.project ? "project" : "conversations",
+      label: conversation.project?.label ?? options.sectionConversationsLabel,
+      project: conversation.project ?? null,
+      items: [conversation]
+    });
+  }
+  return sectionsWithInsertions;
 }
 
 function projectRuntimeSectionsToConversationSections(input: {
@@ -4061,6 +4149,7 @@ function useAgentGUIConversationRail({
   const [sectionPageStates, setSectionPageStates] = useState<
     ReadonlyMap<string, ConversationRailSectionPageState>
   >(() => new Map());
+  const conversationsRef = useRef(conversations);
   const pagingRequestSequenceRef = useRef(0);
   const pagingAbortControllersRef = useRef(new Map<string, AbortController>());
   const runtimeListSessionSections = agentActivityRuntime.listSessionSections;
@@ -4092,6 +4181,10 @@ function useAgentGUIConversationRail({
     }),
     [labels.sectionConversations, labels.sectionPinned]
   );
+
+  useEffect(() => {
+    conversationsRef.current = conversations;
+  }, [conversations]);
 
   useEffect(() => {
     pagingRequestSequenceRef.current += 1;
@@ -4146,8 +4239,16 @@ function useAgentGUIConversationRail({
           sections: page.sections,
           workspaceId: page.workspaceId
         });
+        const sectionsWithSummaries = updateConversationSectionsFromSummaries(
+          sections,
+          conversationsRef.current,
+          { sectionConversationsLabel: labels.sectionConversations }
+        );
         setRuntimeRailSections((current) =>
-          stabilizeConversationSections(current, sections)
+          stabilizeConversationSections(
+            current,
+            sectionsWithSummaries ?? sections
+          )
         );
         setSectionPageStates(() => {
           const next = new Map<string, ConversationRailSectionPageState>();
@@ -4176,6 +4277,7 @@ function useAgentGUIConversationRail({
   }, [
     conversationFilter,
     conversationMembershipKey,
+    labels.sectionConversations,
     runtimeListSessionSections,
     runtimeSectionsEnabled,
     sectionProjectionLabels,
@@ -4189,9 +4291,11 @@ function useAgentGUIConversationRail({
       return;
     }
     setRuntimeRailSections((current) =>
-      updateConversationSectionsFromSummaries(current, conversations)
+      updateConversationSectionsFromSummaries(current, conversations, {
+        sectionConversationsLabel: labels.sectionConversations
+      })
     );
-  }, [conversations, runtimeSectionsEnabled]);
+  }, [conversations, labels.sectionConversations, runtimeSectionsEnabled]);
 
   const loadMoreSectionConversations = useCallback(
     (section: ConversationSection) => {
@@ -4906,9 +5010,23 @@ const AgentGUIConversationRailSection = memo(
     const visibleItemCount = isSectionCollapsed
       ? 0
       : Math.min(visibleItemLimit, section.items.length);
-    const visibleItems = isSectionCollapsed
-      ? []
-      : section.items.slice(0, visibleItemCount);
+    const visibleItems = useMemo(() => {
+      if (isSectionCollapsed) {
+        return [];
+      }
+      const baseItems = section.items.slice(0, visibleItemCount);
+      const activeId = activeConversationId?.trim() ?? "";
+      if (!activeId || baseItems.some((item) => item.id === activeId)) {
+        return baseItems;
+      }
+      const activeItem = section.items.find((item) => item.id === activeId);
+      return activeItem ? [...baseItems, activeItem] : baseItems;
+    }, [
+      activeConversationId,
+      isSectionCollapsed,
+      section.items,
+      visibleItemCount
+    ]);
     const canShowMore =
       !isSectionCollapsed &&
       (visibleItemCount < section.items.length || sectionHasMore);
