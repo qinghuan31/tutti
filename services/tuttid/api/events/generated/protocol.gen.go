@@ -6,13 +6,14 @@ import "encoding/json"
 
 const (
 	BusinessEventProtocolVersion = 1
-	BusinessEventCatalogRevision = "sha256:65ced38362860962"
+	BusinessEventCatalogRevision = "sha256:26ef2e1a905ebcee"
 )
 
 type Topic string
 
 const (
 	TopicAgentActivityUpdated                  Topic = "agent.activity.updated"
+	TopicAgentModelCatalogInvalidated          Topic = "agent.model.catalog.invalidated"
 	TopicAnalyticsDebugReported                Topic = "analytics.debug.reported"
 	TopicPreferencesDesktopUpdateRequested     Topic = "preferences.desktop.update.requested"
 	TopicPreferencesDesktopUpdated             Topic = "preferences.desktop.updated"
@@ -210,6 +211,11 @@ type AgentActivityUpdatedPayload struct {
 	Data           any     `json:"data"`
 }
 
+type AgentModelCatalogInvalidatedPayload struct {
+	Providers        []string `json:"providers"`
+	OccurredAtUnixMs int      `json:"occurredAtUnixMs"`
+}
+
 type AnalyticsDebugReportedPayload struct {
 	Events []struct {
 		Name     string         `json:"name"`
@@ -260,6 +266,15 @@ type AgentActivityUpdatedEvent struct {
 	EmittedAt string                      `json:"emittedAt"`
 	Scope     *EventScope                 `json:"scope,omitempty"`
 	Payload   AgentActivityUpdatedPayload `json:"payload"`
+}
+
+type AgentModelCatalogInvalidatedEvent struct {
+	ID        string                              `json:"id"`
+	Topic     Topic                               `json:"topic"`
+	Version   int                                 `json:"version"`
+	EmittedAt string                              `json:"emittedAt"`
+	Scope     *EventScope                         `json:"scope,omitempty"`
+	Payload   AgentModelCatalogInvalidatedPayload `json:"payload"`
 }
 
 type AnalyticsDebugReportedEvent struct {
@@ -392,6 +407,13 @@ var BusinessEventDefinitions = []EventDefinition{
 		Scope:     ScopeNameWorkspace,
 	},
 	{
+		Topic:     TopicAgentModelCatalogInvalidated,
+		Version:   1,
+		Direction: DirectionServerToClient,
+		Owner:     "agent",
+		Scope:     ScopeNameGlobal,
+	},
+	{
 		Topic:     TopicAnalyticsDebugReported,
 		Version:   1,
 		Direction: DirectionServerToClient,
@@ -444,13 +466,14 @@ var BusinessEventDefinitions = []EventDefinition{
 
 var businessEventDefinitionByTopic = map[Topic]EventDefinition{
 	TopicAgentActivityUpdated:                  BusinessEventDefinitions[0],
-	TopicAnalyticsDebugReported:                BusinessEventDefinitions[1],
-	TopicPreferencesDesktopUpdateRequested:     BusinessEventDefinitions[2],
-	TopicPreferencesDesktopUpdated:             BusinessEventDefinitions[3],
-	TopicWorkspaceAppUpdated:                   BusinessEventDefinitions[4],
-	TopicWorkspaceAppfactoryJobUpdated:         BusinessEventDefinitions[5],
-	TopicWorkspaceIssueUpdated:                 BusinessEventDefinitions[6],
-	TopicWorkspaceWorkbenchNodeLaunchRequested: BusinessEventDefinitions[7],
+	TopicAgentModelCatalogInvalidated:          BusinessEventDefinitions[1],
+	TopicAnalyticsDebugReported:                BusinessEventDefinitions[2],
+	TopicPreferencesDesktopUpdateRequested:     BusinessEventDefinitions[3],
+	TopicPreferencesDesktopUpdated:             BusinessEventDefinitions[4],
+	TopicWorkspaceAppUpdated:                   BusinessEventDefinitions[5],
+	TopicWorkspaceAppfactoryJobUpdated:         BusinessEventDefinitions[6],
+	TopicWorkspaceIssueUpdated:                 BusinessEventDefinitions[7],
+	TopicWorkspaceWorkbenchNodeLaunchRequested: BusinessEventDefinitions[8],
 }
 
 var ClientToServerTopics = []Topic{
@@ -459,6 +482,7 @@ var ClientToServerTopics = []Topic{
 
 var ServerToClientTopics = []Topic{
 	TopicAgentActivityUpdated,
+	TopicAgentModelCatalogInvalidated,
 	TopicAnalyticsDebugReported,
 	TopicPreferencesDesktopUpdated,
 	TopicWorkspaceAppUpdated,
@@ -490,6 +514,8 @@ func IsServerToClientTopic(topic Topic) bool {
 	switch topic {
 	case TopicAgentActivityUpdated:
 		return true
+	case TopicAgentModelCatalogInvalidated:
+		return true
 	case TopicAnalyticsDebugReported:
 		return true
 	case TopicPreferencesDesktopUpdated:
@@ -511,6 +537,8 @@ func PayloadPrototypeForTopic(topic Topic) (any, bool) {
 	switch topic {
 	case TopicAgentActivityUpdated:
 		return &AgentActivityUpdatedPayload{}, true
+	case TopicAgentModelCatalogInvalidated:
+		return &AgentModelCatalogInvalidatedPayload{}, true
 	case TopicAnalyticsDebugReported:
 		return &AnalyticsDebugReportedPayload{}, true
 	case TopicPreferencesDesktopUpdateRequested:
@@ -534,6 +562,8 @@ func EventPrototypeForTopic(topic Topic) (any, bool) {
 	switch topic {
 	case TopicAgentActivityUpdated:
 		return &AgentActivityUpdatedEvent{}, true
+	case TopicAgentModelCatalogInvalidated:
+		return &AgentModelCatalogInvalidatedEvent{}, true
 	case TopicAnalyticsDebugReported:
 		return &AnalyticsDebugReportedEvent{}, true
 	case TopicPreferencesDesktopUpdateRequested:

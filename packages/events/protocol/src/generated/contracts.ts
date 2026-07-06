@@ -8,6 +8,7 @@ export type BusinessEventScopeName = "global" | "desktop" | "workspace";
 
 export type BusinessEventTopic =
   | "agent.activity.updated"
+  | "agent.model.catalog.invalidated"
   | "analytics.debug.reported"
   | "preferences.desktop.update.requested"
   | "preferences.desktop.updated"
@@ -294,6 +295,11 @@ export type AgentActivityUpdatedPayloadV1 =
       };
     };
 
+export interface AgentModelCatalogInvalidatedPayloadV1 {
+  providers: readonly string[];
+  occurredAtUnixMs: number;
+}
+
 export interface AnalyticsDebugReportedPayloadV1 {
   events: readonly {
     name: string;
@@ -353,6 +359,12 @@ export type AgentActivityUpdatedEventV1 = BusinessEventEnvelopeV1<
   1
 >;
 
+export type AgentModelCatalogInvalidatedEventV1 = BusinessEventEnvelopeV1<
+  "agent.model.catalog.invalidated",
+  AgentModelCatalogInvalidatedPayloadV1,
+  1
+>;
+
 export type AnalyticsDebugReportedEventV1 = BusinessEventEnvelopeV1<
   "analytics.debug.reported",
   AnalyticsDebugReportedPayloadV1,
@@ -400,6 +412,7 @@ export type ClientToServerEventTopic = "preferences.desktop.update.requested";
 
 export type ServerToClientEventTopic =
   | "agent.activity.updated"
+  | "agent.model.catalog.invalidated"
   | "analytics.debug.reported"
   | "preferences.desktop.updated"
   | "workspace.app.updated"
@@ -411,6 +424,7 @@ export type ClientToServerEventV1 = PreferencesDesktopUpdateRequestedEventV1;
 
 export type ServerToClientEventV1 =
   | AgentActivityUpdatedEventV1
+  | AgentModelCatalogInvalidatedEventV1
   | AnalyticsDebugReportedEventV1
   | PreferencesDesktopUpdatedEventV1
   | WorkspaceAppUpdatedEventV1

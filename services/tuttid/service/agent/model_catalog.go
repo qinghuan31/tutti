@@ -77,6 +77,26 @@ func (c *CachedAgentModelCatalog) ListModels(ctx context.Context, provider strin
 	}
 }
 
+// Invalidate drops the cached model list for the given providers so the next
+// ListModels call re-queries the provider CLI. Used when provider auth or
+// config files change on disk (for example via an external credential
+// switcher) and the cached list may reflect the previous account.
+func (c *CachedAgentModelCatalog) Invalidate(providers ...string) {
+	if c == nil {
+		return
+	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	for _, provider := range providers {
+		switch agentprovider.Normalize(provider) {
+		case agentprovider.Codex:
+			c.codexCache = nil
+		case agentprovider.Gemini:
+			c.geminiCache = nil
+		}
+	}
+}
+
 func (c *CachedAgentModelCatalog) listCodexModels(ctx context.Context) (AgentModelCatalogResult, error) {
 	now := c.now()
 	if cached := c.readCodexCache(now); cached != nil {
