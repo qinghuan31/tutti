@@ -356,3 +356,92 @@ describe("AgentQueuedPromptRuntime", () => {
     vi.useRealTimers();
   });
 });
+
+describe("queue suspension (user stop)", () => {
+  it("suspends and resumes a queue with prompts", () => {
+    const runtime = createAgentQueuedPromptRuntime();
+    runtime.enqueue({
+      workspaceId: "ws-1",
+      agentSessionId: "session-1",
+      prompt: prompt("p1")
+    });
+    runtime.suspendQueue({
+      workspaceId: "ws-1",
+      agentSessionId: "session-1",
+      reason: "user_stop"
+    });
+    expect(
+      runtime.getSessionSnapshot({
+        workspaceId: "ws-1",
+        agentSessionId: "session-1"
+      }).suspendReason
+    ).toBe("user_stop");
+    runtime.resumeQueue({ workspaceId: "ws-1", agentSessionId: "session-1" });
+    expect(
+      runtime.getSessionSnapshot({
+        workspaceId: "ws-1",
+        agentSessionId: "session-1"
+      }).suspendReason
+    ).toBeNull();
+  });
+
+  it("keeps suspension across later enqueues", () => {
+    const runtime = createAgentQueuedPromptRuntime();
+    runtime.enqueue({
+      workspaceId: "ws-1",
+      agentSessionId: "session-1",
+      prompt: prompt("p1")
+    });
+    runtime.suspendQueue({
+      workspaceId: "ws-1",
+      agentSessionId: "session-1",
+      reason: "user_stop"
+    });
+    runtime.enqueue({
+      workspaceId: "ws-1",
+      agentSessionId: "session-1",
+      prompt: prompt("p2")
+    });
+    expect(
+      runtime.getSessionSnapshot({
+        workspaceId: "ws-1",
+        agentSessionId: "session-1"
+      }).suspendReason
+    ).toBe("user_stop");
+  });
+
+  it("suspending an empty queue is a no-op", () => {
+    const runtime = createAgentQueuedPromptRuntime();
+    runtime.suspendQueue({
+      workspaceId: "ws-1",
+      agentSessionId: "session-1",
+      reason: "user_stop"
+    });
+    expect(Object.keys(runtime.getSnapshot().queuesByKey)).toEqual([]);
+  });
+
+  it("promotePrompt clears suspension (explicit send-now intent)", () => {
+    const runtime = createAgentQueuedPromptRuntime();
+    runtime.enqueue({
+      workspaceId: "ws-1",
+      agentSessionId: "session-1",
+      prompt: prompt("p1")
+    });
+    runtime.suspendQueue({
+      workspaceId: "ws-1",
+      agentSessionId: "session-1",
+      reason: "user_stop"
+    });
+    runtime.promotePrompt({
+      workspaceId: "ws-1",
+      agentSessionId: "session-1",
+      promptId: "p1"
+    });
+    const queue = runtime.getSessionSnapshot({
+      workspaceId: "ws-1",
+      agentSessionId: "session-1"
+    });
+    expect(queue.suspendReason).toBeNull();
+    expect(queue.sendNextPromptId).toBe("p1");
+  });
+});

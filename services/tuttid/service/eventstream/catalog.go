@@ -315,29 +315,37 @@ type agentActivityMessageData struct {
 
 type agentActivityStatePatchData struct {
 	agentActivityUpdatedDataHeader
-	LastEventUnixMS  *int64                      `json:"lastEventUnixMs"`
-	OccurredAtUnixMS *int64                      `json:"occurredAtUnixMs,omitempty"`
-	Provider         string                      `json:"provider,omitempty"`
-	AgentTargetID    string                      `json:"agentTargetId,omitempty"`
-	ProviderSession  string                      `json:"providerSessionId,omitempty"`
-	Model            string                      `json:"model,omitempty"`
-	CWD              string                      `json:"cwd,omitempty"`
-	Title            string                      `json:"title,omitempty"`
-	LifecycleStatus  string                      `json:"lifecycleStatus,omitempty"`
-	CurrentPhase     string                      `json:"currentPhase,omitempty"`
-	LastError        string                      `json:"lastError,omitempty"`
-	StartedAtUnixMS  *int64                      `json:"startedAtUnixMs,omitempty"`
-	EndedAtUnixMS    *int64                      `json:"endedAtUnixMs,omitempty"`
-	Turn             *agentActivityStateTurnData `json:"turn,omitempty"`
+	LastEventUnixMS    *int64                               `json:"lastEventUnixMs"`
+	OccurredAtUnixMS   *int64                               `json:"occurredAtUnixMs,omitempty"`
+	Provider           string                               `json:"provider,omitempty"`
+	AgentTargetID      string                               `json:"agentTargetId,omitempty"`
+	ProviderSession    string                               `json:"providerSessionId,omitempty"`
+	Model              string                               `json:"model,omitempty"`
+	CWD                string                               `json:"cwd,omitempty"`
+	Title              string                               `json:"title,omitempty"`
+	LifecycleStatus    string                               `json:"lifecycleStatus,omitempty"`
+	CurrentPhase       string                               `json:"currentPhase,omitempty"`
+	LastError          string                               `json:"lastError,omitempty"`
+	StartedAtUnixMS    *int64                               `json:"startedAtUnixMs,omitempty"`
+	EndedAtUnixMS      *int64                               `json:"endedAtUnixMs,omitempty"`
+	RuntimeContext     map[string]any                       `json:"runtimeContext,omitempty"`
+	SubmitAvailability *agentActivitySubmitAvailabilityData `json:"submitAvailability,omitempty"`
+	Turn               *agentActivityStateTurnData          `json:"turn,omitempty"`
 }
 
 type agentActivityStateTurnData struct {
-	TurnID            string `json:"turnId"`
-	Phase             string `json:"phase,omitempty"`
-	Outcome           string `json:"outcome,omitempty"`
-	FileChanges       any    `json:"fileChanges,omitempty"`
-	StartedAtUnixMS   *int64 `json:"startedAtUnixMs,omitempty"`
-	CompletedAtUnixMS *int64 `json:"completedAtUnixMs,omitempty"`
+	TurnID             string                               `json:"turnId"`
+	Phase              string                               `json:"phase,omitempty"`
+	Outcome            string                               `json:"outcome,omitempty"`
+	FileChanges        any                                  `json:"fileChanges,omitempty"`
+	StartedAtUnixMS    *int64                               `json:"startedAtUnixMs,omitempty"`
+	CompletedAtUnixMS  *int64                               `json:"completedAtUnixMs,omitempty"`
+	SubmitAvailability *agentActivitySubmitAvailabilityData `json:"submitAvailability,omitempty"`
+}
+
+type agentActivitySubmitAvailabilityData struct {
+	State  string `json:"state"`
+	Reason string `json:"reason,omitempty"`
 }
 
 type workbenchNodeLaunchRequestedPayload struct {
@@ -628,10 +636,17 @@ func validateAgentActivityUpdatedData(decoded agentActivityUpdatedPayload) error
 	if strings.TrimSpace(header.EventType) != eventType {
 		return fmt.Errorf("data.eventType must match eventType")
 	}
+	// Data payloads are decoded tolerantly (unknown fields ignored): the
+	// agent activity data objects evolve additively, and a strict decoder
+	// here turns a producer-side field addition into a dropped event — the
+	// GUI then silently misses state (a dropped settle patch reads as "the
+	// turn never finished"). Producer/schema agreement is pinned by the
+	// payload->ValidatePublish contract tests instead. The envelope and all
+	// other topics stay strict.
 	switch eventType {
 	case "session_update":
 		var data agentActivitySessionUpdateData
-		if err := decodeJSONStrict(decoded.Data, &data); err != nil {
+		if err := json.Unmarshal(decoded.Data, &data); err != nil {
 			return fmt.Errorf("decode session_update data: %w", err)
 		}
 		if data.LastEventUnixMS == nil {
@@ -639,7 +654,7 @@ func validateAgentActivityUpdatedData(decoded agentActivityUpdatedPayload) error
 		}
 	case "session_deleted":
 		var data agentActivitySessionDeletedData
-		if err := decodeJSONStrict(decoded.Data, &data); err != nil {
+		if err := json.Unmarshal(decoded.Data, &data); err != nil {
 			return fmt.Errorf("decode session_deleted data: %w", err)
 		}
 		if data.DeletedAtUnixMS == nil {
@@ -647,7 +662,7 @@ func validateAgentActivityUpdatedData(decoded agentActivityUpdatedPayload) error
 		}
 	case "message_update":
 		var data agentActivityMessageUpdateData
-		if err := decodeJSONStrict(decoded.Data, &data); err != nil {
+		if err := json.Unmarshal(decoded.Data, &data); err != nil {
 			return fmt.Errorf("decode message_update data: %w", err)
 		}
 		if data.LatestVersion == nil {
@@ -693,7 +708,7 @@ func validateAgentActivityUpdatedData(decoded agentActivityUpdatedPayload) error
 		}
 	case "state_patch":
 		var data agentActivityStatePatchData
-		if err := decodeJSONStrict(decoded.Data, &data); err != nil {
+		if err := json.Unmarshal(decoded.Data, &data); err != nil {
 			return fmt.Errorf("decode state_patch data: %w", err)
 		}
 		if data.LastEventUnixMS == nil {
@@ -701,6 +716,13 @@ func validateAgentActivityUpdatedData(decoded agentActivityUpdatedPayload) error
 		}
 		if data.Turn != nil && strings.TrimSpace(data.Turn.TurnID) == "" {
 			return fmt.Errorf("data.turn.turnId is required")
+		}
+		if data.SubmitAvailability != nil && strings.TrimSpace(data.SubmitAvailability.State) == "" {
+			return fmt.Errorf("data.submitAvailability.state is required")
+		}
+		if data.Turn != nil && data.Turn.SubmitAvailability != nil &&
+			strings.TrimSpace(data.Turn.SubmitAvailability.State) == "" {
+			return fmt.Errorf("data.turn.submitAvailability.state is required")
 		}
 	}
 	return nil
