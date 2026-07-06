@@ -999,13 +999,12 @@ would strand the queued prompt until another unrelated activity event. The
 retry block still prevents immediately re-claiming against the exact same
 pre-send ready state.
 
-AgentGuiNode busy state must treat turn lifecycle as the primary proof of live
-work. A stale control-state `submitAvailability.blocked(active_turn)` may arrive
-after the daemon has already published `turnLifecycle.activeTurnId = null` and a
-settled phase; that blocked value alone must not keep the composer loading or
-force follow-up prompts into the local queue. Only count an active-turn submit
-block as busy while the control state's lifecycle still has an active turn or a
-live phase.
+AgentGuiNode busy state depends on daemon/runtime control state being internally
+consistent. When a submitted turn finishes, runtime `finishTurn` must clear that
+turn's active-turn submit block unless another tracked foreground turn is still
+active. Do not preserve an untracked synthetic/live lifecycle over the finishing
+turn: that leaves `submitAvailability.blocked(active_turn)` without real work
+and makes the composer stay loading after the provider has completed.
 
 Preview-mode AgentGUI surfaces are read-only for this runtime: they may render an
 existing queue if injected into the same context, but they must not enqueue,
