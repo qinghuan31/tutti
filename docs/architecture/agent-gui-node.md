@@ -716,6 +716,18 @@ Daemon terminal turn reports must settle the tuple atomically: clear
 Message Center and AgentGUI should keep AgentActivityRuntime as the source of
 truth instead of guessing that a completed turn with stale active-turn fields is
 safe to treat as finished.
+
+`submitAvailability` on the wire is a daemon-derived value, not independent
+state. Consumers that make decisions (queued-prompt drain, composer busy)
+must derive it locally with `deriveSubmitAvailability` from
+`@tutti-os/agent-activity-core` (turn lifecycle + `runtimeContext.
+backgroundAgents`, mirroring `submitAvailabilityForAuthoritySession` in
+`packages/agent/daemon/runtime/controller.go`), so a stale wire copy can never
+contradict the lifecycle. The wire value remains for display and for records
+without a lifecycle (non-migrated providers keep their status-token
+fallbacks). The Go/TS derivations are pinned to each other by the parity
+tables in `packages/agent/daemon/runtime/submit_availability_parity_test.go`
+and `packages/agent/activity-core/src/selectors.test.ts`.
 When a runtime snapshot regresses after a terminal turn, first inspect
 `agent.activity.reconcile.trace` for the exact source that upserted the older
 session state. Reconcile fixes should target that owner and ordering path; do
@@ -1025,6 +1037,15 @@ turn's active-turn submit block unless another tracked foreground turn is still
 active. Do not preserve an untracked synthetic/live lifecycle over the finishing
 turn: that leaves `submitAvailability.blocked(active_turn)` without real work
 and makes the composer stay loading after the provider has completed.
+
+A user stop is an intent, not just a turn cancel: `interruptCurrentTurn`
+suspends the session's prompt queue (`suspendReason: "user_stop"`) before
+issuing the cancel, so the drainer must not fire the next queued prompt the
+moment the session becomes available. Only an explicit user send lifts the
+hold — composer submit calls `resumeQueue`, and `promotePrompt` ("send now"
+on a queued item) clears the suspension in the queue core. The drainer's own
+send-next interrupt path never suspends: intent is captured at its source,
+never inferred from the cancel outcome.
 
 Preview-mode AgentGUI surfaces are read-only for this runtime: they may render an
 existing queue if injected into the same context, but they must not enqueue,

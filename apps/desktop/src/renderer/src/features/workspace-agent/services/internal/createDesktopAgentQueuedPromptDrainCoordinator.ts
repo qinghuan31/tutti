@@ -1,3 +1,9 @@
+import {
+  deriveSubmitAvailability,
+  isLiveTurnLifecyclePhase,
+  resolveSubmitAvailability,
+  runtimeContextHasLiveBackgroundAgents
+} from "@tutti-os/agent-activity-core";
 import type {
   AgentActivityRuntime,
   AgentQueuedPromptQueueSnapshot,
@@ -18,6 +24,7 @@ interface DesktopQueuedPromptReadyQueue {
 interface DesktopQueuedPromptSkipReason {
   agentSessionId: string;
   activeTurnId?: string | null;
+  availabilityProbe?: DesktopQueuedPromptAvailabilityProbe;
   blockedByRetryBlock?: boolean;
   claimOwnerId?: string | null;
   currentPhase?: unknown;
@@ -29,7 +36,25 @@ interface DesktopQueuedPromptSkipReason {
   status?: unknown;
   submitAvailabilityReason?: unknown;
   submitAvailabilityState?: unknown;
+  suspendReason?: string | null;
   turnLifecyclePhase?: unknown;
+}
+
+// Diagnostic-only probe (temporary instrumentation): compares the wire
+// submitAvailability with a value derived from turnLifecycle +
+// runtimeContext.backgroundAgents, to validate two hypotheses in the field:
+// (1) the wire value goes stale while the lifecycle stays correct, and
+// (2) backgroundAgents never reaches this record over the push channel.
+interface DesktopQueuedPromptAvailabilityProbe {
+  backgroundAgents: {
+    present: boolean;
+    count: number | null;
+    liveItemCount: number | null;
+  };
+  derivedReason: string | null;
+  derivedState: string | null;
+  wireReason: string | null;
+  wireState: string | null;
 }
 
 interface DesktopQueuedPromptSendNextInterrupt {
@@ -50,6 +75,12 @@ export function createDesktopAgentQueuedPromptDrainCoordinator({
   workspaceId
 }: CreateDesktopAgentQueuedPromptDrainCoordinatorInput): () => void {
   const ownerId = `desktop-agent-gui-queued-prompt-drain-coordinator:${workspaceId}`;
+  const logDrainer = (event: string, details: Record<string, unknown>): void =>
+    reportDesktopQueuedPromptDrainerDiagnostic(
+      agentActivityRuntime,
+      event,
+      details
+    );
   let disposed = false;
   let draining = false;
   let scheduled = false;
@@ -75,7 +106,7 @@ export function createDesktopAgentQueuedPromptDrainCoordinator({
       scheduleDrain();
     }
   );
-  logDesktopQueuedPromptDrainer("started", {
+  logDrainer("started", {
     workspaceId,
     ownerId
   });
@@ -92,7 +123,7 @@ export function createDesktopAgentQueuedPromptDrainCoordinator({
           return;
         }
         activitySnapshot = agentActivityRuntime.getSnapshot(workspaceId);
-        logDesktopQueuedPromptDrainer("scan", {
+        logDrainer("scan", {
           workspaceId,
           ownerId,
           queues: summarizeQueueSnapshot(queueSnapshot, workspaceId),
@@ -113,7 +144,7 @@ export function createDesktopAgentQueuedPromptDrainCoordinator({
             interruptKey,
             sendNextInterrupt.sessionStateUpdatedAtUnixMs
           );
-          logDesktopQueuedPromptDrainer("send-next-interrupt-start", {
+          logDrainer("send-next-interrupt-start", {
             workspaceId,
             ownerId,
             agentSessionId: sendNextInterrupt.queue.agentSessionId,
@@ -126,7 +157,7 @@ export function createDesktopAgentQueuedPromptDrainCoordinator({
               workspaceId,
               agentSessionId: sendNextInterrupt.queue.agentSessionId
             });
-            logDesktopQueuedPromptDrainer("send-next-interrupt-complete", {
+            logDrainer("send-next-interrupt-complete", {
               workspaceId,
               ownerId,
               agentSessionId: sendNextInterrupt.queue.agentSessionId,
@@ -136,7 +167,7 @@ export function createDesktopAgentQueuedPromptDrainCoordinator({
               sessionStatus: result.session?.status ?? null
             });
           } catch (error) {
-            logDesktopQueuedPromptDrainer("send-next-interrupt-error", {
+            logDrainer("send-next-interrupt-error", {
               workspaceId,
               ownerId,
               agentSessionId: sendNextInterrupt.queue.agentSessionId,
@@ -153,7 +184,7 @@ export function createDesktopAgentQueuedPromptDrainCoordinator({
         );
         const readyQueue = readyQueueResult.readyQueue;
         if (!readyQueue) {
-          logDesktopQueuedPromptDrainer("skip-not-ready", {
+          logDrainer("skip-not-ready", {
             workspaceId,
             ownerId,
             skipped: readyQueueResult.skipped
@@ -168,10 +199,17 @@ export function createDesktopAgentQueuedPromptDrainCoordinator({
         if (!claimResult) {
           continue;
         }
-        logDesktopQueuedPromptDrainer("send-start", {
+        const readySession = findActivitySession(
+          activitySnapshot,
+          readyQueue.queue.agentSessionId
+        );
+        logDrainer("send-start", {
           workspaceId,
           ownerId,
           agentSessionId: readyQueue.queue.agentSessionId,
+          availabilityProbe: readySession
+            ? describeSessionAvailabilityProbe(readySession)
+            : null,
           queuedPromptId: claimResult.prompt.id,
           claimId: claimResult.claim.claimId,
           sessionStateUpdatedAtUnixMs: readyQueue.sessionStateUpdatedAtUnixMs
@@ -193,7 +231,7 @@ export function createDesktopAgentQueuedPromptDrainCoordinator({
           sendNextInterruptBlocks.delete(
             queueKey(workspaceId, readyQueue.queue.agentSessionId)
           );
-          logDesktopQueuedPromptDrainer("send-complete-claim", {
+          logDrainer("send-complete-claim", {
             workspaceId,
             ownerId,
             agentSessionId: readyQueue.queue.agentSessionId,
@@ -204,7 +242,7 @@ export function createDesktopAgentQueuedPromptDrainCoordinator({
         } catch (error) {
           const retryBlockVersion = readyQueue.sessionStateUpdatedAtUnixMs;
           const activeTurnConflict = isActiveTurnConflictError(error);
-          logDesktopQueuedPromptDrainer("send-error", {
+          logDrainer("send-error", {
             workspaceId,
             ownerId,
             agentSessionId: readyQueue.queue.agentSessionId,
@@ -253,7 +291,7 @@ export function createDesktopAgentQueuedPromptDrainCoordinator({
     disposed = true;
     unsubscribeActivity();
     unsubscribeQueue();
-    logDesktopQueuedPromptDrainer("stopped", {
+    logDrainer("stopped", {
       workspaceId,
       ownerId,
       releaseClaimsOnDispose: false
@@ -348,6 +386,18 @@ function findReadyQueue(
       });
       continue;
     }
+    if (queue.suspendReason) {
+      // User intent gate: a stopped session holds its queue until an
+      // explicit user send lifts the suspension. Availability alone is not
+      // permission to dispatch.
+      skipped.push({
+        agentSessionId: queue.agentSessionId,
+        promptId: queuedPrompt.id,
+        reason: "suspended",
+        suspendReason: queue.suspendReason
+      });
+      continue;
+    }
     if (queuedPrompt.id === queue.failedPromptId) {
       skipped.push({
         agentSessionId: queue.agentSessionId,
@@ -371,6 +421,7 @@ function findReadyQueue(
       skipped.push({
         agentSessionId: queue.agentSessionId,
         activeTurnId: session.turnLifecycle?.activeTurnId ?? null,
+        availabilityProbe: describeSessionAvailabilityProbe(session),
         currentPhase: session.currentPhase,
         promptId: queuedPrompt.id,
         reason: "session-not-ready",
@@ -424,11 +475,12 @@ function sessionCanReceiveInput(session: AgentActivitySession): boolean {
   if (sessionLooksBusy(session)) {
     return false;
   }
-  const submitState = session.submitAvailability?.state;
-  if (!submitState || submitState === "available") {
-    return true;
-  }
-  return false;
+  // The turn lifecycle is the source of truth (ADR 0008): derive
+  // availability locally instead of trusting the wire submitAvailability —
+  // a dropped or stale patch can leave the wire copy contradicting the
+  // lifecycle, which would strand the queue forever. Unknown wire block
+  // reasons and lifecycle-less records keep the wire value.
+  return resolveSubmitAvailability(session).state === "available";
 }
 
 function sessionLooksBusy(session: AgentActivitySession): boolean {
@@ -453,24 +505,57 @@ function sessionLooksBusy(session: AgentActivitySession): boolean {
     currentPhase === "submitted" ||
     currentPhase === "running" ||
     currentPhase === "working" ||
-    currentPhase === "waiting"
+    currentPhase === "waiting" ||
+    Boolean(lifecycle?.activeTurnId)
   );
 }
 
-function isLiveTurnLifecyclePhase(phase: unknown): boolean {
-  switch (normalizeActivityToken(phase)) {
-    case "submitted":
-    case "running":
-    case "waiting_approval":
-    case "waiting_input":
-    case "working":
-    case "streaming":
-    case "waiting":
-    case "awaiting_approval":
-      return true;
-    default:
-      return false;
+// Diagnostic probe (temporary instrumentation): report the wire
+// submitAvailability next to the locally derived value so field logs show
+// where they diverge. Decisions use deriveSubmitAvailability directly.
+function describeSessionAvailabilityProbe(
+  session: AgentActivitySession
+): DesktopQueuedPromptAvailabilityProbe {
+  const derived = deriveSubmitAvailability(session);
+  return {
+    backgroundAgents: backgroundAgentsProbe(session),
+    derivedReason: derived?.reason ?? null,
+    derivedState: derived?.state ?? null,
+    wireReason: session.submitAvailability?.reason ?? null,
+    wireState: session.submitAvailability?.state ?? null
+  };
+}
+
+function backgroundAgentsProbe(
+  session: AgentActivitySession
+): DesktopQueuedPromptAvailabilityProbe["backgroundAgents"] {
+  const runtimeContext = session.runtimeContext as
+    | Record<string, unknown>
+    | undefined;
+  const backgroundAgents = runtimeContext?.backgroundAgents as
+    | { count?: unknown; items?: unknown }
+    | undefined;
+  if (!backgroundAgents || typeof backgroundAgents !== "object") {
+    return { present: false, count: null, liveItemCount: null };
   }
+  const count =
+    typeof backgroundAgents.count === "number" ? backgroundAgents.count : null;
+  const items = Array.isArray(backgroundAgents.items)
+    ? backgroundAgents.items
+    : null;
+  const liveItemCount =
+    items === null
+      ? null
+      : items.filter(
+          (item) =>
+            !!item &&
+            typeof item === "object" &&
+            Object.keys(item).length > 0 &&
+            runtimeContextHasLiveBackgroundAgents({
+              backgroundAgents: { count: 0, items: [item] }
+            })
+        ).length;
+  return { present: true, count, liveItemCount };
 }
 
 function sessionActivityVersion(
@@ -514,12 +599,46 @@ function rawErrorMessage(error: unknown): string | null {
   return null;
 }
 
-function logDesktopQueuedPromptDrainer(
+// Drain decisions (especially skip reasons) are invisible without this: a
+// stranded queue looks like "nothing happened". Route them through the
+// activity runtime's diagnostic channel so they land in the desktop log.
+function reportDesktopQueuedPromptDrainerDiagnostic(
+  runtime: AgentActivityRuntime,
   event: string,
   details: Record<string, unknown>
 ): void {
-  void event;
-  void details;
+  const reportDiagnostic = runtime.reportDiagnostic;
+  if (!reportDiagnostic) {
+    return;
+  }
+  try {
+    void Promise.resolve(
+      reportDiagnostic.call(runtime, {
+        details,
+        event: `agent.gui.queued_prompt_drain.${event}`,
+        level: desktopQueuedPromptDrainerDiagnosticLevel(event),
+        source: "agent-gui",
+        workspaceId:
+          typeof details.workspaceId === "string"
+            ? details.workspaceId
+            : undefined
+      })
+    ).catch(() => {});
+  } catch {
+    // Diagnostic logging must never affect queue draining.
+  }
+}
+
+function desktopQueuedPromptDrainerDiagnosticLevel(
+  event: string
+): "debug" | "info" | "warn" {
+  if (event === "send-error" || event === "send-next-interrupt-error") {
+    return "warn";
+  }
+  if (event === "scan") {
+    return "debug";
+  }
+  return "info";
 }
 
 function summarizeQueueSnapshot(

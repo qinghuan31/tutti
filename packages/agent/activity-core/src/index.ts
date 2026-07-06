@@ -9,6 +9,7 @@ export {
   cloneAgentActivitySnapshot,
   createAgentActivityController,
   createEmptyAgentActivitySnapshot,
+  setAgentActivityStoreDiagnosticSink,
   type AgentActivityController,
   type AgentActivitySnapshotListener,
   type CreateAgentActivityControllerInput
@@ -26,11 +27,21 @@ export {
   type LoadAllAgentSessionMessagesResult
 } from "./pagination.ts";
 export {
+  deriveSubmitAvailability,
+  DERIVED_SUBMIT_BLOCK_REASONS,
+  isLiveTurnLifecyclePhase,
+  isWaitingTurnLifecyclePhase,
+  LIVE_TURN_LIFECYCLE_PHASES,
   normalizeAgentActivityDisplayStatus,
   resolveLatestAgentActivityMessageDisplayStatus,
+  resolveSubmitAvailability,
+  runtimeContextHasLiveBackgroundAgents,
   selectNeedsAttentionCount,
   selectNeedsAttentionItems,
-  selectSessionDisplayStatuses
+  selectSessionDisplayStatuses,
+  type DerivedSubmitAvailability,
+  type DeriveSubmitAvailabilityInput,
+  type ResolveSubmitAvailabilityInput
 } from "./selectors.ts";
 export {
   resolveAgentActivityUsage,
