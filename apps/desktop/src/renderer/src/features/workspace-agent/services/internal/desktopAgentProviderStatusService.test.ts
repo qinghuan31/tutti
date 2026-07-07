@@ -981,6 +981,75 @@ test("runAction refreshes when the action is a refresh action", async () => {
   assert.deepEqual(statusCalls, [undefined, ["codex"]]);
 });
 
+test("refresh verifies Cursor unknown status with the runtime probe", async () => {
+  const probeCalls: WorkspaceAgentProvider[] = [];
+  const service = new DesktopAgentProviderStatusService({
+    tuttidClient: createTuttidClient({
+      onProbeRequest: (provider) => probeCalls.push(provider),
+      probes: [
+        {
+          binaryPath: "/usr/local/bin/agent",
+          checkedAt: "2026-06-02T08:00:01.000Z",
+          command: ["agent", "acp"],
+          provider: "cursor",
+          status: "ready"
+        }
+      ],
+      snapshots: [
+        createStatusResponse([
+          createProviderStatus({
+            actions: [{ id: "refresh", kind: "refresh" }],
+            availability: "unknown",
+            provider: "cursor"
+          })
+        ])
+      ]
+    }),
+    terminalCommandRunner: {
+      async runTerminalCommand() {}
+    }
+  });
+
+  await service.refresh(["cursor"]);
+
+  const status = service.getStatus("cursor");
+  assert.equal(status?.availability.status, "ready");
+  assert.equal(status?.availability.reasonCode, undefined);
+  assert.equal(status?.availability.checkedAt, "2026-06-02T08:00:01.000Z");
+  assert.equal(status?.cli.installed, true);
+  assert.equal(status?.adapter.installed, true);
+  assert.deepEqual(status?.adapter.command, ["agent", "acp"]);
+  assert.equal(status?.auth.status, "authenticated");
+  assert.deepEqual(status?.actions, []);
+  assert.deepEqual(probeCalls, ["cursor"]);
+});
+
+test("refresh does not runtime-probe non-Cursor unknown statuses", async () => {
+  const probeCalls: WorkspaceAgentProvider[] = [];
+  const service = new DesktopAgentProviderStatusService({
+    tuttidClient: createTuttidClient({
+      onProbeRequest: (provider) => probeCalls.push(provider),
+      snapshots: [
+        createStatusResponse([
+          createProviderStatus({
+            actions: [{ id: "refresh", kind: "refresh" }],
+            availability: "unknown",
+            provider: "codex"
+          })
+        ])
+      ]
+    }),
+    terminalCommandRunner: {
+      async runTerminalCommand() {}
+    }
+  });
+
+  await service.refresh(["codex"]);
+
+  assert.equal(service.getStatus("codex")?.availability.status, "unknown");
+  assert.deepEqual(probeCalls, []);
+});
+
 test("provider-scoped refresh merges the returned status into the existing snapshot", async () => {
   const statusCalls: Array<readonly WorkspaceAgentProvider[] | undefined> = [];
   const service = new DesktopAgentProviderStatusService({

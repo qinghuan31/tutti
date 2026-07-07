@@ -49,10 +49,6 @@ type Provider struct {
 	preferences     DesktopPreferencesReader
 }
 
-func NewProvider(workspaces cliservice.WorkspaceCatalog, sessions AgentSessions) Provider {
-	return Provider{workspaces: workspaces, sessions: sessions}
-}
-
 func NewProviderWithLaunchPublisher(
 	workspaces cliservice.WorkspaceCatalog,
 	sessions AgentSessions,

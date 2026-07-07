@@ -1341,6 +1341,13 @@ describe("agent GUI workbench contribution copy", () => {
   it("renders the expanded workbench header as a rail titlebar plus detail title", () => {
     const contribution = createTestAgentGuiWorkbenchContribution({
       renderBody: () => null,
+      resolveDockPopupIdentity: (state) =>
+        state?.lastActiveAgentSessionId === "session-1"
+          ? {
+              iconUrl: "tutti-asset://agent/codex-session.png",
+              title: "Current session title"
+            }
+          : null,
       resolveDockPopupTitle: (state) =>
         state?.lastActiveAgentSessionId === "session-1"
           ? "Current session title"
@@ -1418,6 +1425,9 @@ describe("agent GUI workbench contribution copy", () => {
       screen.getByTestId("agent-gui-window-detail-title")
     ).toHaveTextContent("Current session title");
     expect(
+      screen.getByTestId("agent-gui-window-detail-title-icon")
+    ).toHaveAttribute("src", "tutti-asset://agent/codex-session.png");
+    expect(
       screen.queryByRole("button", { name: "window actions" })
     ).not.toBeInTheDocument();
     expect(
@@ -1479,14 +1489,14 @@ describe("agent GUI workbench contribution copy", () => {
     });
   });
 
-  it("draws a subtle divider below the workbench detail titlebar", () => {
+  it("draws a subtle divider below the workbench detail titlebar only for an active session", () => {
     const css = readFileSync(resolve("app/renderer/agentactivity.css"), "utf8");
 
     expect(css).toMatch(
       /--agent-gui-workbench-header-divider:\s*color-mix\(\s*in srgb,\s*var\(--text-primary\)\s+4%,\s*transparent\s*\);/s
     );
     expect(css).toMatch(
-      /\.agent-gui-workbench-header::after\s*{[^}]*left:\s*var\(--agent-gui-workbench-header-rail-width\);[^}]*height:\s*1px;[^}]*background:\s*var\(--agent-gui-workbench-header-divider\);/s
+      /\.agent-gui-workbench-header\[data-agent-gui-workbench-header-has-session="true"\]::after\s*{[^}]*left:\s*var\(--agent-gui-workbench-header-rail-width\);[^}]*height:\s*1px;[^}]*background:\s*var\(--agent-gui-workbench-header-divider\);/s
     );
     expect(css).toMatch(
       /\.agent-gui-workbench-header\[data-agent-gui-workbench-header-collapsed="true"\]::after\s*{[^}]*left:\s*0;/s

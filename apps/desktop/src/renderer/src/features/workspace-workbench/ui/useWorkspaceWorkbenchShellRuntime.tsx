@@ -138,25 +138,30 @@ export function useWorkspaceWorkbenchShellRuntime({
   const agentGuiProviderTargetsLoading = agentGuiProviderTargets === undefined;
   // An empty daemon /agents target list means "no service-backed targets are
   // available yet", not "hide the Codex/Claude AgentGUI rail tiles".
-  const resolvedAgentGuiProviderTargets = useMemo(
-    () => {
-      const targets =
-        agentGuiProviderTargets && agentGuiProviderTargets.length > 0
-          ? agentGuiProviderTargets
-          : undefined;
-      if (!targets) {
-        return undefined;
-      }
-      return filterWorkspaceAgentGuiProviderTargets(targets, {
-        tuttiAgentSwitchEnabled:
-          workspaceSettingsState.tuttiAgentSwitchEnabled === true
-      });
-    },
-    [agentGuiProviderTargets, workspaceSettingsState.tuttiAgentSwitchEnabled]
-  );
+  const resolvedAgentGuiProviderTargets = useMemo(() => {
+    const targets =
+      agentGuiProviderTargets && agentGuiProviderTargets.length > 0
+        ? agentGuiProviderTargets
+        : undefined;
+    if (!targets) {
+      return undefined;
+    }
+    return filterWorkspaceAgentGuiProviderTargets(targets, {
+      tuttiAgentSwitchEnabled:
+        workspaceSettingsState.tuttiAgentSwitchEnabled === true
+    });
+  }, [agentGuiProviderTargets, workspaceSettingsState.tuttiAgentSwitchEnabled]);
   const comingSoonAgentProviders = useMemo<readonly AgentGUIProvider[]>(
-    () => (desktopPreferencesState.enableCursorAgent ? [] : ["cursor"]),
-    [desktopPreferencesState.enableCursorAgent]
+    () => [
+      ...(desktopPreferencesState.enableCursorAgent ? [] : ["cursor" as const]),
+      ...(desktopPreferencesState.enableOpenCodeAgent
+        ? []
+        : ["opencode" as const])
+    ],
+    [
+      desktopPreferencesState.enableCursorAgent,
+      desktopPreferencesState.enableOpenCodeAgent
+    ]
   );
   const defaultAgentTargetId = useMemo(
     () =>

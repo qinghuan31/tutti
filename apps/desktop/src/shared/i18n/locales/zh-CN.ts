@@ -143,6 +143,22 @@ export const zhCN = {
       openSessionUnavailableDescription: "这个 Agent 会话已不存在或无法打开。",
       openSessionUnavailableTitle: "会话不可用"
     },
+    accountMenu: {
+      title: "Tutti Agent",
+      member: "管理订阅",
+      creditsBalance: "积分余额",
+      accountCenter: "账户设置",
+      free: "Free",
+      signIn: "登录",
+      signOut: "退出登录",
+      loading: "加载中",
+      unavailable: "--",
+      dataUnavailable: "部分账号数据暂不可用",
+      rewardToastTitle: "新用户积分",
+      rewardToastCreditsUnit: "积分",
+      rewardToastDescription: "已添加到账户余额",
+      rewardToastClose: "关闭积分奖励通知"
+    },
     agentEnv: {
       configTitle: "{{provider}} 环境",
       wizardDescription:
@@ -704,6 +720,10 @@ export const zhCN = {
           "在应用内展示 Cursor Agent。Cursor 支持处于预览阶段，默认关闭。",
         enableCursorAgentLabel: "启用 Cursor Agent",
         enableCursorAgentSaveFailed: "暂时无法更新 Cursor Agent 设置。",
+        enableOpenCodeAgentDescription:
+          "在应用内展示 OpenCode Agent。OpenCode 支持处于预览阶段，默认关闭。",
+        enableOpenCodeAgentLabel: "启用 OpenCode Agent",
+        enableOpenCodeAgentSaveFailed: "暂时无法更新 OpenCode Agent 设置。",
         exportLogs: "导出日志",
         exportLogsDialogTitle: "导出日志",
         exportLogsFileType: "Zip 压缩包",
@@ -834,6 +854,8 @@ export const zhCN = {
         manageProviderHermes: "Hermes",
         manageProviderNexight: "Tutti Agent",
         manageProviderOpenClaw: "OpenClaw",
+        manageProviderOpenCode: "OpenCode",
+        manageProviderTutti: "Tutti",
         manageProviderTuttiAgent: "Tutti Agent",
         manageStatusAuthRequired: "需要登录",
         manageStatusAvailable: "可连接",

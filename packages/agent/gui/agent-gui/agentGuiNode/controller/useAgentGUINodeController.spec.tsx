@@ -855,6 +855,160 @@ describe("useAgentGUINodeController", () => {
     );
   });
 
+  it("carries the home composer draft over to an agent with an empty input", async () => {
+    installAgentHostApi({
+      list: vi.fn(async () => ({ presences: [], sessions: [] })),
+      listSessionTimeline: vi.fn(async () => ({ timelineItems: [] })),
+      subscribeEvents: vi.fn(() => vi.fn())
+    });
+
+    const { result } = renderHook(() =>
+      useAgentGUINodeController({
+        workspaceId: "room-1",
+        currentUserId: "user-1",
+        workspacePath: "/workspace",
+        avoidGroupingEdits: false,
+        data: agentGuiData(null, "codex", {
+          agentTargetId: "local:codex"
+        }),
+        providerTargets: [
+          {
+            targetId: "local:codex",
+            agentTargetId: "local:codex",
+            provider: "codex",
+            ref: { kind: "local-provider", provider: "codex" },
+            label: "Codex"
+          },
+          {
+            targetId: "local:claude-code",
+            agentTargetId: "local:claude-code",
+            provider: "claude-code",
+            ref: { kind: "local-provider", provider: "claude-code" },
+            label: "Claude Code"
+          }
+        ],
+        onDataChange: vi.fn()
+      })
+    );
+
+    act(() => {
+      result.current.actions.updateDraftContent(draftContent("carry me over"));
+    });
+    expect(result.current.viewModel.draftPrompt).toBe("carry me over");
+
+    act(() => {
+      result.current.actions.selectHomeComposerAgentTarget({
+        provider: "claude-code",
+        providerTargetId: "local:claude-code"
+      });
+    });
+
+    await waitFor(() => {
+      expect(result.current.viewModel.selectedProviderTarget.provider).toBe(
+        "claude-code"
+      );
+    });
+    // Empty target inherits the current input.
+    expect(result.current.viewModel.draftPrompt).toBe("carry me over");
+
+    // The target the user typed under keeps its own draft.
+    act(() => {
+      result.current.actions.selectHomeComposerAgentTarget({
+        provider: "codex",
+        providerTargetId: "local:codex"
+      });
+    });
+    await waitFor(() => {
+      expect(result.current.viewModel.selectedProviderTarget.provider).toBe(
+        "codex"
+      );
+    });
+    expect(result.current.viewModel.draftPrompt).toBe("carry me over");
+  });
+
+  it("keeps an agent's own draft instead of overwriting it on switch", async () => {
+    installAgentHostApi({
+      list: vi.fn(async () => ({ presences: [], sessions: [] })),
+      listSessionTimeline: vi.fn(async () => ({ timelineItems: [] })),
+      subscribeEvents: vi.fn(() => vi.fn())
+    });
+
+    const { result } = renderHook(() =>
+      useAgentGUINodeController({
+        workspaceId: "room-1",
+        currentUserId: "user-1",
+        workspacePath: "/workspace",
+        avoidGroupingEdits: false,
+        data: agentGuiData(null, "codex", {
+          agentTargetId: "local:codex"
+        }),
+        providerTargets: [
+          {
+            targetId: "local:codex",
+            agentTargetId: "local:codex",
+            provider: "codex",
+            ref: { kind: "local-provider", provider: "codex" },
+            label: "Codex"
+          },
+          {
+            targetId: "local:claude-code",
+            agentTargetId: "local:claude-code",
+            provider: "claude-code",
+            ref: { kind: "local-provider", provider: "claude-code" },
+            label: "Claude Code"
+          }
+        ],
+        onDataChange: vi.fn()
+      })
+    );
+
+    // Give Claude Code its own draft first.
+    act(() => {
+      result.current.actions.selectHomeComposerAgentTarget({
+        provider: "claude-code",
+        providerTargetId: "local:claude-code"
+      });
+    });
+    await waitFor(() => {
+      expect(result.current.viewModel.selectedProviderTarget.provider).toBe(
+        "claude-code"
+      );
+    });
+    act(() => {
+      result.current.actions.updateDraftContent(draftContent("claude draft"));
+    });
+
+    // Type something under Codex, then switch back to Claude Code.
+    act(() => {
+      result.current.actions.selectHomeComposerAgentTarget({
+        provider: "codex",
+        providerTargetId: "local:codex"
+      });
+    });
+    await waitFor(() => {
+      expect(result.current.viewModel.selectedProviderTarget.provider).toBe(
+        "codex"
+      );
+    });
+    act(() => {
+      result.current.actions.updateDraftContent(draftContent("codex draft"));
+    });
+
+    act(() => {
+      result.current.actions.selectHomeComposerAgentTarget({
+        provider: "claude-code",
+        providerTargetId: "local:claude-code"
+      });
+    });
+    await waitFor(() => {
+      expect(result.current.viewModel.selectedProviderTarget.provider).toBe(
+        "claude-code"
+      );
+    });
+    // Claude Code keeps its own draft; it is not clobbered by the Codex input.
+    expect(result.current.viewModel.draftPrompt).toBe("claude draft");
+  });
+
   it("syncs a scoped rail target when switching the empty composer provider", async () => {
     installAgentHostApi({
       list: vi.fn(async () => ({
@@ -977,6 +1131,63 @@ describe("useAgentGUINodeController", () => {
     expect(result.current.viewModel.providerReadinessGate?.status).toBe(
       "auth_required"
     );
+  });
+
+  it("moves the empty home composer to the first ready provider while startup detection continues", async () => {
+    installAgentHostApi({
+      list: vi.fn(async () => ({ presences: [], sessions: [] })),
+      listSessionTimeline: vi.fn(async () => ({ timelineItems: [] })),
+      subscribeEvents: vi.fn(() => vi.fn())
+    });
+    const onDataChange = vi.fn();
+    const initialData = agentGuiData(null, "codex");
+
+    const { result } = renderHook(() =>
+      useAgentGUINodeController({
+        workspaceId: "room-1",
+        currentUserId: "user-1",
+        workspacePath: "/workspace",
+        avoidGroupingEdits: false,
+        data: initialData,
+        providerTargets: [
+          {
+            targetId: "local:codex",
+            agentTargetId: "local:codex",
+            provider: "codex",
+            ref: { kind: "local", provider: "codex" },
+            label: "Codex"
+          },
+          {
+            targetId: "local:claude-code",
+            agentTargetId: "local:claude-code",
+            provider: "claude-code",
+            ref: { kind: "local", provider: "claude-code" },
+            label: "Claude Code"
+          }
+        ],
+        providerReadinessGates: {
+          codex: { status: "checking" },
+          "claude-code": null
+        },
+        onDataChange
+      })
+    );
+
+    await waitFor(() => {
+      expect(result.current.viewModel.selectedProviderTarget.provider).toBe(
+        "claude-code"
+      );
+    });
+    const nextData = onDataChange.mock.calls.reduce(
+      (current, [updater]) => updater(current),
+      initialData
+    );
+    expect(nextData).toMatchObject({
+      agentTargetId: "local:claude-code",
+      provider: "claude-code"
+    });
+    expect(nextData.providerTargetId ?? null).toBeNull();
+    expect(result.current.viewModel.providerReadinessGate).toBeNull();
   });
 
   it("selects provider-only rail targets for the empty composer", async () => {
@@ -3165,6 +3376,102 @@ describe("useAgentGUINodeController", () => {
     });
     expect(activate).not.toHaveBeenCalled();
     expect(exec).not.toHaveBeenCalled();
+  });
+
+  it("scopes the rail to the handoff target for prefilled draft prompts", async () => {
+    const unactivate = vi.fn(async () => undefined);
+    installAgentHostApi({
+      list: vi.fn(async () =>
+        snapshotWithSession("session-1", {
+          agentTargetId: "local:codex",
+          provider: "codex"
+        })
+      ),
+      listSessionTimeline: vi.fn(async () => ({ timelineItems: [] })),
+      subscribeEvents: vi.fn(() => vi.fn()),
+      unactivate
+    });
+    const onDataChange = vi.fn();
+
+    type PrefillPromptRequest = Parameters<
+      typeof useAgentGUINodeController
+    >[0]["prefillPromptRequest"];
+    const { result, rerender } = renderHook(
+      (props: { prefillPromptRequest?: PrefillPromptRequest }) =>
+        useAgentGUINodeController({
+          workspaceId: "room-1",
+          currentUserId: "user-1",
+          workspacePath: "/workspace",
+          avoidGroupingEdits: false,
+          data: agentGuiData("session-1", "codex", {
+            agentTargetId: "local:codex"
+          }),
+          providerTargets: [
+            {
+              targetId: "local:codex",
+              agentTargetId: "local:codex",
+              provider: "codex",
+              ref: { kind: "local-provider", provider: "codex" },
+              label: "Codex"
+            },
+            {
+              targetId: "local:cursor",
+              agentTargetId: "local:cursor",
+              provider: "cursor",
+              ref: { kind: "local-provider", provider: "cursor" },
+              label: "Cursor"
+            }
+          ],
+          onDataChange,
+          ...props
+        }),
+      {
+        initialProps: {
+          prefillPromptRequest: null as PrefillPromptRequest
+        }
+      }
+    );
+
+    rerender({
+      prefillPromptRequest: {
+        agentTargetId: "local:cursor",
+        draftPrompt: " Continue in Cursor ",
+        provider: "cursor",
+        sequence: 1
+      }
+    });
+
+    await waitFor(() => {
+      expect(result.current.viewModel.activeConversationId).toBe(null);
+      expect(result.current.viewModel.draftPrompt).toBe("Continue in Cursor");
+      expect(result.current.viewModel.conversationFilter).toEqual({
+        kind: "agentTarget",
+        agentTargetId: "local:cursor"
+      });
+      expect(result.current.viewModel.selectedProviderTarget).toMatchObject({
+        provider: "cursor",
+        targetId: "local:cursor"
+      });
+    });
+
+    expect(unactivate).toHaveBeenCalledWith({
+      agentSessionId: "session-1",
+      workspaceId: "room-1"
+    });
+    const nextData = onDataChange.mock.calls
+      .map(([updater]) =>
+        updater(
+          agentGuiData("session-1", "codex", {
+            agentTargetId: "local:codex"
+          })
+        )
+      )
+      .find((candidate) => candidate.provider === "cursor");
+    expect(nextData).toMatchObject({
+      provider: "cursor",
+      agentTargetId: "local:cursor",
+      lastActiveAgentSessionId: null
+    });
   });
 
   it("tracks active conversation project setting changes through the host reporter", async () => {
@@ -11603,7 +11910,18 @@ describe("useAgentGUINodeController", () => {
 
   it("shows a warning tip when an active session settings update requires a new session", async () => {
     const updateSettings = vi.fn(async () => {
-      throw createAppError("agent.settings_require_new_session");
+      throw Object.assign(
+        new Error(
+          "agent session settings update requires a new session to preserve context"
+        ),
+        {
+          code: "invalid_request",
+          name: "TuttidProtocolError",
+          reason: "agent.settings_require_new_session",
+          retryable: false,
+          statusCode: 400
+        }
+      );
     });
     const onShowMessage = vi.fn();
     installAgentHostApi({
@@ -11678,7 +11996,7 @@ describe("useAgentGUINodeController", () => {
         "warning"
       );
     });
-    expect(result.current.viewModel.detailError).toBe(
+    expect(result.current.viewModel.detailError).not.toBe(
       "This model can only be used in a new session to preserve context."
     );
     expect(

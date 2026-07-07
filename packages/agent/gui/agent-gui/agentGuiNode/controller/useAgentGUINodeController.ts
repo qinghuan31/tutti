@@ -101,6 +101,7 @@ import type {
   OpenclawGatewayViewState
 } from "../model/agentGuiNodeTypes";
 import {
+  agentComposerDraftHasContent,
   agentPromptContentDisplayText,
   agentPromptContentHasImage,
   agentPromptContentToComposerDraft,
@@ -386,6 +387,18 @@ function composerTargetDataFromProviderTarget(input: {
       composerOverridesByAgentTargetId
     }
   };
+}
+
+function isExplicitAgentGUIProviderTarget(
+  target: AgentGUIProviderTarget,
+  explicitTargets: readonly AgentGUIProviderTarget[]
+): boolean {
+  return explicitTargets.some(
+    (candidate) =>
+      candidate.provider === target.provider &&
+      candidate.targetId === target.targetId &&
+      agentGUIProviderTargetRefsEqual(candidate.ref, target.ref)
+  );
 }
 
 function composerTargetDataFromNodeData(
@@ -1178,8 +1191,28 @@ function limitDiagnosticText(value: string): string {
 function getAgentGUIErrorCode(error: unknown): AppErrorCode | null {
   return (
     getAppErrorCode(error) ??
+    inferAgentGUIErrorCodeFromReason(getAgentGUIErrorReason(error)) ??
     inferAgentGUIErrorCodeFromMessage(getAgentGUIRawErrorMessage(error))
   );
+}
+
+function getAgentGUIErrorReason(error: unknown): string | null {
+  if (!error || typeof error !== "object") {
+    return null;
+  }
+  const reason = (error as { reason?: unknown }).reason;
+  return typeof reason === "string" && reason.trim() ? reason.trim() : null;
+}
+
+function inferAgentGUIErrorCodeFromReason(
+  reason: string | null
+): AppErrorCode | null {
+  switch (reason) {
+    case AGENT_SETTINGS_REQUIRE_NEW_SESSION_ERROR:
+      return AGENT_SETTINGS_REQUIRE_NEW_SESSION_ERROR as AppErrorCode;
+    default:
+      return null;
+  }
 }
 
 function inferAgentGUIErrorCodeFromMessage(
@@ -3706,6 +3739,10 @@ export function useAgentGUINodeController({
   onShowMessage
 }: UseAgentGUINodeControllerInput) {
   const agentActivityRuntime = useAgentActivityRuntime();
+  // Stable identity of the injected runtime; drives the conversation-list query
+  // key and every session-view ref so local/shared runtimes stay isolated.
+  const agentActivityRuntimeOrigin =
+    agentActivityRuntime.origin?.trim() || AGENT_GUI_RUNTIME_SESSION_ORIGIN;
   const agentQueuedPromptRuntime = useAgentQueuedPromptRuntime();
   const agentHostApi = useAgentHostApi();
   const agentActivitySnapshot = useAgentActivitySnapshot(workspaceId);
@@ -3826,6 +3863,18 @@ export function useAgentGUINodeController({
   const effectiveSelectedProviderTargetIsExplicit = homeComposerTargetOverride
     ? homeComposerTargetOverrideIsExplicit
     : selectedProviderTargetIsExplicit;
+  const firstReadyHomeComposerProviderTarget = useMemo(() => {
+    if (!providerReadinessGates) {
+      return null;
+    }
+    return (
+      normalizedProviderTargets.find(
+        (target) =>
+          target.disabled !== true &&
+          providerReadinessGates[target.provider] === null
+      ) ?? null
+    );
+  }, [normalizedProviderTargets, providerReadinessGates]);
   const nodeComposerTargetResolvedByProviderTarget =
     agentGUINodeDataHasComposerTarget(data) &&
     ((normalizeOptionalText(data.agentTargetId) !== null &&
@@ -3914,9 +3963,18 @@ export function useAgentGUINodeController({
         workspaceId,
         userId,
         provider: data.provider,
-        sessionOrigin: AGENT_GUI_RUNTIME_SESSION_ORIGIN
+        // Identity derives from the injected runtime so local/shared runtimes
+        // for the same workspace produce distinct query keys. Legacy runtimes
+        // without an origin fall back to the default origin (no key change).
+        sessionOrigin: agentActivityRuntimeOrigin
       };
-    }, [currentUserId, data.provider, conversationFilter, workspaceId]);
+    }, [
+      agentActivityRuntimeOrigin,
+      currentUserId,
+      data.provider,
+      conversationFilter,
+      workspaceId
+    ]);
   const conversationListState = useAgentGuiConversationList(
     conversationListQuery
   );
@@ -4064,9 +4122,10 @@ export function useAgentGUINodeController({
   const sessionViewRef = useCallback(
     (agentSessionId: string | null | undefined) => ({
       workspaceId,
-      agentSessionId
+      agentSessionId,
+      origin: agentActivityRuntimeOrigin
     }),
-    [workspaceId]
+    [agentActivityRuntimeOrigin, workspaceId]
   );
   const activeSessionView = useAgentSessionView(
     sessionViewRef(activeConversationId)
@@ -4964,11 +5023,26 @@ export function useAgentGUINodeController({
   }, [conversationListQuery, conversations, previewMode]);
   const persistActiveConversation = useCallback(
     (agentSessionId: string | null) => {
-      onDataChangeRef.current((current) =>
-        current.lastActiveAgentSessionId === agentSessionId
-          ? current
-          : { ...current, lastActiveAgentSessionId: agentSessionId }
-      );
+      onDataChangeRef.current((current) => {
+        // Clearing the active session (returning to the home/new-composer state)
+        // must also drop the persisted title. Otherwise the window/dock header
+        // falls back to `lastActiveConversationTitle` and keeps showing the
+        // previous session's title — including after switching to a different
+        // provider that has no active conversation.
+        const nextTitle =
+          agentSessionId === null ? null : current.lastActiveConversationTitle;
+        if (
+          current.lastActiveAgentSessionId === agentSessionId &&
+          (current.lastActiveConversationTitle ?? null) === (nextTitle ?? null)
+        ) {
+          return current;
+        }
+        return {
+          ...current,
+          lastActiveAgentSessionId: agentSessionId,
+          lastActiveConversationTitle: nextTitle
+        };
+      });
     },
     []
   );
@@ -7180,6 +7254,7 @@ export function useAgentGUINodeController({
   useWatchAgentSession({
     workspaceId,
     agentSessionId: activeConversationId,
+    origin: agentActivityRuntimeOrigin,
     enabled: !previewMode && activeConversationId !== null,
     onSubscribe: () => {
       if (!activeConversationId) {
@@ -7222,6 +7297,7 @@ export function useAgentGUINodeController({
   useWatchAgentSessions({
     workspaceId,
     agentSessionIds: backgroundWatchedConversationIds,
+    origin: agentActivityRuntimeOrigin,
     enabled: backgroundWatchedConversationIds.length > 0,
     onEvents: (events) => {
       handleBackgroundActivityStreamEvents(events);
@@ -7998,13 +8074,59 @@ export function useAgentGUINodeController({
     setIsLoadingMessages(false);
     setDetailError(null);
     const selectedTargetData = selectedComposerTargetDataRef.current;
-    const targetProvider =
-      prefillPromptRequest.provider ?? selectedTargetData.provider;
-    const targetAgentTargetId =
-      prefillPromptRequest.agentTargetId ?? selectedTargetData.agentTargetId;
+    const prefillTargetHinted =
+      Boolean(prefillPromptRequest.provider) ||
+      Boolean(prefillPromptRequest.agentTargetId);
+    const prefillTarget = prefillTargetHinted
+      ? resolveAgentGUIProviderTarget({
+          agentTargetId: prefillPromptRequest.agentTargetId,
+          defaultProviderTargetId,
+          provider:
+            prefillPromptRequest.provider ?? selectedTargetData.provider,
+          providerTargets: normalizedProviderTargets,
+          useStaticCatalog: shouldUseStaticProviderTargets
+        })
+      : null;
+    const targetData = prefillTarget
+      ? composerTargetDataFromProviderTarget({
+          current: dataRef.current,
+          isExplicit: isExplicitAgentGUIProviderTarget(
+            prefillTarget,
+            normalizedExplicitProviderTargets
+          ),
+          target: prefillTarget
+        })
+      : selectedTargetData;
+    if (prefillTarget) {
+      setHomeComposerTargetOverride(prefillTarget);
+      setConversationFilter(
+        targetData.agentTargetId
+          ? { kind: "agentTarget", agentTargetId: targetData.agentTargetId }
+          : { kind: "all" }
+      );
+      onDataChangeRef.current((current) => {
+        const nextTargetData = composerTargetDataFromProviderTarget({
+          current,
+          isExplicit: isExplicitAgentGUIProviderTarget(
+            prefillTarget,
+            normalizedExplicitProviderTargets
+          ),
+          target: prefillTarget
+        });
+        const nextData: AgentGUINodeData = {
+          ...nextTargetData.data,
+          lastActiveAgentSessionId: null
+        };
+        dataRef.current = nextData;
+        return nextData;
+      });
+    }
     setDraftBySessionId((current) => ({
       ...current,
-      [nodeDefaultDraftContentKey(targetProvider, targetAgentTargetId)]: {
+      [nodeDefaultDraftContentKey(
+        targetData.provider,
+        targetData.agentTargetId
+      )]: {
         ...emptyAgentComposerDraft(),
         prompt: draftPrompt
       }
@@ -8017,10 +8139,14 @@ export function useAgentGUINodeController({
   }, [
     activation,
     agentActivityRuntime,
+    defaultProviderTargetId,
     loadDraftComposerOptions,
+    normalizedExplicitProviderTargets,
+    normalizedProviderTargets,
     persistActiveConversation,
     prefillPromptRequest,
     previewMode,
+    shouldUseStaticProviderTargets,
     workspaceId
   ]);
 
@@ -9139,10 +9265,12 @@ export function useAgentGUINodeController({
             force: true
           });
           const message = getAgentGUIErrorMessage(error);
-          if (
-            isSettingsRequireNewSessionErrorCode(getAgentGUIErrorCode(error))
-          ) {
+          const requiresNewSession = isSettingsRequireNewSessionErrorCode(
+            getAgentGUIErrorCode(error)
+          );
+          if (requiresNewSession) {
             onShowMessageRef.current?.(message, "warning");
+            return;
           }
           if (isCurrentConversation(agentSessionId)) {
             reportAgentGUIRuntimeError({
@@ -11311,6 +11439,47 @@ export function useAgentGUINodeController({
         isExplicit: nextTargetIsExplicit,
         target: nextTarget
       });
+      // When switching to another agent from the home composer, carry the
+      // current input over to the target being switched to — but only if that
+      // target's own input box is still empty, so we never clobber a draft the
+      // user already started there.
+      if (activeConversationIdRef.current === null) {
+        const currentTargetData = selectedComposerTargetDataRef.current;
+        const currentDraftKey = nodeDefaultDraftContentKey(
+          currentTargetData.provider,
+          currentTargetData.agentTargetId
+        );
+        const nextDraftKey = nodeDefaultDraftContentKey(
+          nextTargetData.provider,
+          nextTargetData.agentTargetId
+        );
+        if (currentDraftKey !== nextDraftKey) {
+          const drafts = draftBySessionIdRef.current;
+          const currentDraft =
+            drafts[currentDraftKey] ?? EMPTY_AGENT_COMPOSER_DRAFT;
+          const nextDraft = readNodeDefaultDraftContent({
+            data: {
+              ...dataRef.current,
+              provider: nextTargetData.provider,
+              agentTargetId: nextTargetData.agentTargetId
+            },
+            drafts
+          });
+          if (
+            agentComposerDraftHasContent(currentDraft) &&
+            !agentComposerDraftHasContent(nextDraft)
+          ) {
+            draftBySessionIdRef.current = {
+              ...drafts,
+              [nextDraftKey]: currentDraft
+            };
+            setDraftBySessionId((current) => ({
+              ...current,
+              [nextDraftKey]: currentDraft
+            }));
+          }
+        }
+      }
       const shouldSyncScopedRailFilter =
         conversationFilterRef.current.kind === "agentTarget";
       setHomeComposerTargetOverride(nextTarget);
@@ -11377,6 +11546,59 @@ export function useAgentGUINodeController({
       shouldUseStaticProviderTargets
     ]
   );
+  useEffect(() => {
+    if (
+      previewMode ||
+      activeConversationId !== null ||
+      conversationFilter.kind !== "all" ||
+      homeComposerTargetOverride !== null ||
+      agentGUINodeDataHasComposerTarget(data) ||
+      !providerReadinessGates ||
+      !firstReadyHomeComposerProviderTarget
+    ) {
+      return;
+    }
+    if (
+      firstReadyHomeComposerProviderTarget.provider ===
+        effectiveSelectedProviderTarget.provider &&
+      firstReadyHomeComposerProviderTarget.targetId ===
+        effectiveSelectedProviderTarget.targetId &&
+      agentGUIProviderTargetRefsEqual(
+        firstReadyHomeComposerProviderTarget.ref,
+        effectiveSelectedProviderTarget.ref
+      )
+    ) {
+      return;
+    }
+    if (
+      !Object.prototype.hasOwnProperty.call(
+        providerReadinessGates,
+        effectiveSelectedProviderTarget.provider
+      )
+    ) {
+      return;
+    }
+    const selectedGate =
+      providerReadinessGates[effectiveSelectedProviderTarget.provider];
+    if (!selectedGate) {
+      return;
+    }
+
+    selectHomeComposerAgentTarget({
+      provider: firstReadyHomeComposerProviderTarget.provider,
+      providerTargetId: firstReadyHomeComposerProviderTarget.targetId
+    });
+  }, [
+    activeConversationId,
+    conversationFilter.kind,
+    data,
+    effectiveSelectedProviderTarget,
+    firstReadyHomeComposerProviderTarget,
+    homeComposerTargetOverride,
+    previewMode,
+    providerReadinessGates,
+    selectHomeComposerAgentTarget
+  ]);
   const selectConversationFilterTarget = useCallback(
     (input: {
       provider: AgentGUIProvider;

@@ -85,8 +85,6 @@ import {
 import { useDesktopManagedAgentsState } from "./useDesktopManagedAgentsState.ts";
 import { projectDesktopAgentProviderReadinessGates } from "../services/internal/desktopAgentProviderReadinessGate.ts";
 import { useAccountService } from "../../workspace-workbench/ui/useAccountService.ts";
-import { useWorkspaceWorkbenchHostService } from "../../workspace-workbench/ui/useWorkspaceWorkbenchHostService.ts";
-import { useWorkspaceSettingsService } from "../../workspace-workbench/ui/useWorkspaceSettingsService.ts";
 
 export const DESKTOP_AGENT_GUI_CONVERSATION_RAIL_TOGGLE_EVENT =
   AGENT_GUI_WORKBENCH_CONVERSATION_RAIL_TOGGLE_EVENT;
@@ -151,11 +149,6 @@ function resolveComputerUseAuthorizationState(
 const DESKTOP_AGENT_GUI_AGENT_SETTINGS = {
   avoidGroupingEdits: false
 } satisfies NonNullable<AgentGUIProps["agentSettings"]>;
-const debugRegistrationCreditsToastStorageKey =
-  "tutti.agentGui.debugRegistrationCreditsToast";
-const debugRegistrationCreditsToastID =
-  "debug:registrationCreditsToastShown:local";
-const registrationCreditsToastAutoDismissMs = 120_000;
 const DESKTOP_AGENT_GUI_NOOP = (): void => {};
 function handleDesktopAgentGUIShowMessage(
   message: string,
@@ -166,25 +159,6 @@ function handleDesktopAgentGUIShowMessage(
     return;
   }
   Toast.tips(message);
-}
-
-function readDebugRegistrationCreditsToastEnabled(): boolean {
-  try {
-    return (
-      window.localStorage.getItem(debugRegistrationCreditsToastStorageKey) ===
-      "1"
-    );
-  } catch {
-    return false;
-  }
-}
-
-function clearDebugRegistrationCreditsToast(): void {
-  try {
-    window.localStorage.removeItem(debugRegistrationCreditsToastStorageKey);
-  } catch {
-    // Ignore storage access failures; this is a local debug-only switch.
-  }
 }
 
 const AGENT_PROBE_REFRESH_DEBOUNCE_MS = 300;
@@ -308,14 +282,8 @@ function DesktopAgentGUIWorkbenchBodyImpl({
   const { service: desktopPreferencesService, state: desktopPreferencesState } =
     useDesktopPreferencesService();
   const { service: accountService, state: accountState } = useAccountService();
-  const workbenchHostService = useWorkspaceWorkbenchHostService();
-  const { service: workspaceSettingsService } = useWorkspaceSettingsService();
   const previousAccountLoginStatusRef = useRef<string | null>(null);
   const previousAccountUserIdRef = useRef<string | null>(null);
-  const [
-    debugRegistrationCreditsToastEnabled,
-    setDebugRegistrationCreditsToastEnabled
-  ] = useState(readDebugRegistrationCreditsToastEnabled);
   const [computerUseStatus, setComputerUseStatus] =
     useState<DesktopComputerUseStatus | null>(null);
   const appCenterState = useSnapshot(appCenterService.store);
@@ -513,123 +481,6 @@ function DesktopAgentGUIWorkbenchBodyImpl({
     [accountService, agentProviderStatusService, context.host, workspaceId]
   );
   const accountUserId = accountState.user?.user_id ?? null;
-  useEffect(() => {
-    void accountService.refreshUserInfo();
-    void accountService.refreshProductSummary();
-  }, [accountService]);
-  const accountMenuState = useMemo<AgentGUIProps["accountMenuState"]>(() => {
-    const summary = accountState.productSummary;
-    const summaryUser = summary?.user ?? null;
-    const user = summaryUser ?? accountState.user;
-    const membershipLabel =
-      summary?.membership?.display_name?.trim() ||
-      summary?.membership?.tier_key?.trim() ||
-      "";
-    const availableCredits = summary?.credits?.available_credits;
-    const creditsLabel =
-      typeof availableCredits === "number" && Number.isFinite(availableCredits)
-        ? new Intl.NumberFormat(locale).format(availableCredits)
-        : null;
-    const debugRegistrationCreditsReward =
-      user && debugRegistrationCreditsToastEnabled
-        ? {
-            id: debugRegistrationCreditsToastID,
-            grant_no: "debug-registration-credits-toast",
-            credits: 500,
-            created_at: new Date().toISOString()
-          }
-        : null;
-    const registrationCreditsReward =
-      summary?.registration_credits_reward ?? debugRegistrationCreditsReward;
-    const registrationCreditsLabel =
-      typeof registrationCreditsReward?.credits === "number" &&
-      Number.isFinite(registrationCreditsReward.credits)
-        ? new Intl.NumberFormat(locale).format(
-            registrationCreditsReward.credits
-          )
-        : null;
-    const links = summary?.links ?? {
-      plan_url: "https://tutti.sh/profile/plan",
-      usage_url: "https://tutti.sh/profile/usage",
-      settings_url: "https://tutti.sh/profile/settings"
-    };
-    return {
-      user: user
-        ? {
-            userId: user.user_id,
-            name: user.name,
-            email: user.email,
-            avatar: user.avatar
-          }
-        : null,
-      membershipLabel,
-      creditsLabel,
-      loading: accountState.productSummaryLoading,
-      error: user ? null : accountState.productSummaryError,
-      partialError: summary?.partial_error != null,
-      registrationCreditsToast:
-        registrationCreditsReward && registrationCreditsLabel
-          ? {
-              id: registrationCreditsReward.id,
-              creditsLabel: registrationCreditsLabel,
-              visible: true,
-              autoDismissMs: registrationCreditsToastAutoDismissMs,
-              onDismiss() {
-                if (
-                  registrationCreditsReward.id ===
-                  debugRegistrationCreditsToastID
-                ) {
-                  clearDebugRegistrationCreditsToast();
-                  setDebugRegistrationCreditsToastEnabled(false);
-                  return;
-                }
-                void accountService.dismissRegistrationCreditsReward(
-                  registrationCreditsReward.id
-                );
-              }
-            }
-          : null,
-      links: {
-        planUrl: links.plan_url,
-        usageUrl: links.usage_url,
-        settingsUrl: links.settings_url
-      },
-      onOpenChange(open) {
-        if (open) {
-          void accountService.refreshUserInfo();
-          void accountService.refreshProductSummary({ force: true });
-        }
-      },
-      onLogin() {
-        void accountService.startLogin();
-      },
-      onLogout() {
-        void accountService.logout();
-      },
-      onSettings() {
-        workspaceSettingsService.openPanel(
-          { id: workspaceId },
-          {
-            section: "account"
-          }
-        );
-      },
-      onOpenExternal(url) {
-        void workbenchHostService.openExternal(url);
-      }
-    };
-  }, [
-    accountService,
-    accountState.productSummary,
-    accountState.productSummaryError,
-    accountState.productSummaryLoading,
-    accountState.user,
-    debugRegistrationCreditsToastEnabled,
-    locale,
-    workbenchHostService,
-    workspaceId,
-    workspaceSettingsService
-  ]);
   useEffect(() => {
     const previousLoginStatus = previousAccountLoginStatusRef.current;
     const previousUserId = previousAccountUserIdRef.current;
@@ -937,7 +788,8 @@ function DesktopAgentGUIWorkbenchBodyImpl({
     setWorkspaceAgentProbes((current) => ({
       isLoadingAvailability: current?.snapshot === null,
       isLoadingUsage: true,
-      snapshot: current?.snapshot ?? null
+      snapshot: current?.snapshot ?? null,
+      usageLoadFailed: current?.usageLoadFailed ?? false
     }));
     void agentProbeApi
       .list({
@@ -956,7 +808,8 @@ function DesktopAgentGUIWorkbenchBodyImpl({
           snapshot: mergeDesktopAgentProbeSnapshots(
             current?.snapshot ?? null,
             snapshot
-          )
+          ),
+          usageLoadFailed: false
         }));
       })
       .catch((error) => {
@@ -966,7 +819,8 @@ function DesktopAgentGUIWorkbenchBodyImpl({
         setWorkspaceAgentProbes((current) => ({
           isLoadingAvailability: false,
           isLoadingUsage: false,
-          snapshot: current?.snapshot ?? null
+          snapshot: current?.snapshot ?? null,
+          usageLoadFailed: true
         }));
         void runtimeApi?.logTerminalDiagnostic({
           details: {
@@ -1313,7 +1167,6 @@ function DesktopAgentGUIWorkbenchBodyImpl({
         renderProviderRailEmpty={renderProviderRailEmpty}
         comingSoonProviders={comingSoonAgentProviders}
         providerReadinessGates={providerReadinessGates}
-        accountMenuState={accountMenuState}
         defaultProviderTargetId={defaultProviderTargetId}
         workspaceAgentProbes={workspaceAgentProbes}
         onAgentProbeDemandChange={
