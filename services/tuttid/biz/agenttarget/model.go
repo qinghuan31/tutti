@@ -12,9 +12,10 @@ import (
 )
 
 const (
-	IDLocalCodex      = "local:codex"
-	IDLocalClaudeCode = "local:claude-code"
-	IDLocalCursor     = "local:cursor"
+	IDLocalCodex       = "local:codex"
+	IDLocalClaudeCode  = "local:claude-code"
+	IDLocalCursor      = "local:cursor"
+	IDLocalAntigravity = "local:antigravity"
 
 	LaunchRefTypeLocalCLI = "local_cli"
 
@@ -80,6 +81,18 @@ func DefaultSystemTargets(nowUnixMS int64) []Target {
 			Enabled:         true,
 			Source:          SourceSystem,
 			SortOrder:       30,
+			CreatedAtUnixMS: nowUnixMS,
+			UpdatedAtUnixMS: nowUnixMS,
+		},
+		{
+			ID:              IDLocalAntigravity,
+			Provider:        agentproviderbiz.Antigravity,
+			LaunchRefJSON:   MustLocalCLILaunchRefJSON(agentproviderbiz.Antigravity),
+			Name:            "Antigravity",
+			IconKey:         "antigravity",
+			Enabled:         true,
+			Source:          SourceSystem,
+			SortOrder:       40,
 			CreatedAtUnixMS: nowUnixMS,
 			UpdatedAtUnixMS: nowUnixMS,
 		},
@@ -209,6 +222,8 @@ func normalizeFirstIterationProvider(value string) string {
 		return agentproviderbiz.ClaudeCode
 	case agentproviderbiz.Cursor:
 		return agentproviderbiz.Cursor
+	case agentproviderbiz.Antigravity:
+		return agentproviderbiz.Antigravity
 	default:
 		return ""
 	}
