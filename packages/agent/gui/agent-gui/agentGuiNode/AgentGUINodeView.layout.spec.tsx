@@ -500,6 +500,60 @@ describe("AgentGUINodeView layout persistence", () => {
     expect(actions.selectHomeComposerAgentTarget).not.toHaveBeenCalled();
   });
 
+  it("requests composer focus after switching the provider rail target", async () => {
+    const actions = createActions();
+    const claudeTarget = createLocalAgentGUIProviderTarget("claude-code");
+    renderAgentGUINodeView({
+      actions,
+      viewModel: {
+        ...createViewModel(),
+        providerTargets: [
+          createLocalAgentGUIProviderTarget("codex"),
+          claudeTarget
+        ]
+      }
+    });
+
+    expect(composerMock.calls.at(-1)?.composerFocusRequestSequence).toBeNull();
+
+    fireEvent.click(screen.getByRole("tab", { name: "Claude Code" }));
+
+    await waitFor(() => {
+      expect(composerMock.calls.at(-1)?.composerFocusRequestSequence).toBe(1);
+    });
+  });
+
+  it("requests composer focus after switching the provider rail to All", async () => {
+    const actions = createActions();
+    const codexTarget = createLocalAgentGUIProviderTarget("codex");
+    renderAgentGUINodeView({
+      actions,
+      viewModel: {
+        ...createViewModel(),
+        conversationFilter: {
+          kind: "agentTarget",
+          agentTargetId: codexTarget.agentTargetId ?? ""
+        },
+        selectedProviderTarget: codexTarget,
+        providerTargets: [
+          codexTarget,
+          createLocalAgentGUIProviderTarget("claude-code")
+        ]
+      }
+    });
+
+    expect(composerMock.calls.at(-1)?.composerFocusRequestSequence).toBeNull();
+
+    fireEvent.click(screen.getByRole("tab", { name: "All" }));
+
+    expect(actions.updateConversationFilter).toHaveBeenCalledWith({
+      kind: "all"
+    });
+    await waitFor(() => {
+      expect(composerMock.calls.at(-1)?.composerFocusRequestSequence).toBe(1);
+    });
+  });
+
   it("keeps unavailable provider rail targets disabled and non-selectable", () => {
     const actions = createActions();
     const tuttiTarget = {
