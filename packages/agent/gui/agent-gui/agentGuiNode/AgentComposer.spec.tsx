@@ -3861,7 +3861,19 @@ describe("AgentComposer", () => {
     ).not.toBeInTheDocument();
   });
 
-  it("keeps pasted large text compact and submits the full text", () => {
+  it("lands pasted large text as a file and submits a pasted-text file block", async () => {
+    type UploadResult = AgentActivityRuntimeUploadPromptContentResult;
+    let resolveUpload: (result: UploadResult) => void = () => undefined;
+    const uploadPromptContent = vi.fn(
+      () =>
+        new Promise<UploadResult>((resolve) => {
+          resolveUpload = resolve;
+        })
+    );
+    setAgentActivityRuntimeForTests({
+      uploadPromptContent
+    } as unknown as AgentActivityRuntime);
+
     let draftContent = createDraft("");
     const onDraftContentChange = vi.fn((nextDraft: AgentComposerDraft) => {
       draftContent = nextDraft;
@@ -3901,39 +3913,72 @@ describe("AgentComposer", () => {
     const { rerender } = render(renderComposer());
 
     fireEvent.click(screen.getByTestId("mock-paste-large-text"));
-    rerender(renderComposer());
 
-    expect(draftContent).toEqual(
-      createDraft(
-        "",
-        [],
-        [],
-        [
-          {
-            id: "pasted-text-1",
-            name: "pasted-text-1.txt",
-            text: "first pasted line\nsecond pasted line",
-            sizeBytes: 36
-          }
-        ]
-      )
-    );
+    // Phase 1: uploads the pasted text as UTF-8 base64 in a file block.
+    expect(uploadPromptContent).toHaveBeenCalledWith({
+      workspaceId: "workspace-1",
+      content: [
+        {
+          type: "file",
+          data: "Zmlyc3QgcGFzdGVkIGxpbmUKc2Vjb25kIHBhc3RlZCBsaW5l",
+          mimeType: "text/plain",
+          name: "pasted-text.txt"
+        }
+      ]
+    });
+    expect(draftContent.largeTexts?.[0]).toMatchObject({
+      text: "first pasted line\nsecond pasted line",
+      uploading: true
+    });
+    expect(draftContent.largeTexts?.[0]?.id).toEqual(expect.any(String));
+
+    // Phase 2: uploading → spinner shown, submit blocked.
+    rerender(renderComposer());
+    expect(
+      screen.getByTestId("agent-gui-composer-large-text-upload-spinner")
+    ).toBeInTheDocument();
     expect(
       screen.getByTestId("agent-gui-composer-large-text-draft")
     ).toHaveTextContent("pasted-text-1.txt");
+    expect(screen.getByRole("button", { name: "发送" })).toBeDisabled();
 
-    fireEvent.click(screen.getByRole("button", { name: "发送" }));
+    // Phase 3: upload resolves → path filled, uploading cleared.
+    resolveUpload({
+      content: [
+        {
+          type: "file",
+          path: "/archive/aa/deadbeef.txt",
+          name: "pasted-text.txt",
+          sizeBytes: 36
+        }
+      ]
+    });
+    await waitFor(() =>
+      expect(draftContent.largeTexts?.[0]).toMatchObject({
+        path: "/archive/aa/deadbeef.txt",
+        uploading: false
+      })
+    );
+    rerender(renderComposer());
 
+    const sendButton = screen.getByRole("button", { name: "发送" });
+    expect(sendButton).not.toBeDisabled();
+    fireEvent.click(sendButton);
+
+    // Submit carries a structured pasted-text file block — no inlined body and
+    // no instruction copy (the instruction is injected later, at send time).
     expect(onSubmit).toHaveBeenCalledWith(
       [
         {
-          type: "text",
-          text: "Pasted text attachment: pasted-text-1.txt\n\nfirst pasted line\nsecond pasted line"
+          type: "file",
+          kind: "pasted-text",
+          path: "/archive/aa/deadbeef.txt",
+          name: "pasted-text-1.txt",
+          sizeBytes: 36
         }
       ],
       "[pasted-text-1.txt · 36 B]"
     );
-    expect(onDraftContentChange).toHaveBeenLastCalledWith(createDraft(""));
   });
 
   it("uploads pasted images immediately and submits the staged path", async () => {

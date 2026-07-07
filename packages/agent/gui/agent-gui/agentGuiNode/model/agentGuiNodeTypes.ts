@@ -108,7 +108,19 @@ export interface AgentComposerDraftLargeText {
   name: string;
   text: string;
   sizeBytes?: number;
+  path?: string;
+  uploading?: boolean;
+  uploadError?: string;
 }
+
+/**
+ * Marks a prompt `file` content block as a pasted-text attachment (as opposed
+ * to a user-attached file). Carried on the block `kind` so the round-trip
+ * (submit → queue → edit-restore) can rebuild a large-text chip instead of a
+ * regular file chip, and so the codex-style "read this file" instruction is
+ * materialized only for these blocks at send time.
+ */
+export const AGENT_PASTED_TEXT_BLOCK_KIND = "pasted-text";
 
 export interface AgentComposerDraft {
   prompt: string;

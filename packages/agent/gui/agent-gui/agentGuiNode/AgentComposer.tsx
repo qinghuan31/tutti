@@ -199,11 +199,28 @@ const DOCK_COMPOSER_INPUT_BORDER_HEIGHT = 2;
 const DOCK_COMPOSER_INPUT_PADDING_BLOCK_HEIGHT = 24;
 const AGENT_COMPOSER_PASTED_TEXT_FILE_PREFIX = "pasted-text";
 
+const AGENT_COMPOSER_PASTED_TEXT_MIME = "text/plain";
+
 function agentComposerTextByteLength(text: string): number {
   if (typeof TextEncoder !== "undefined") {
     return new TextEncoder().encode(text).byteLength;
   }
   return text.length;
+}
+
+/**
+ * Base64-encode UTF-8 text for upload. A bare `btoa(text)` throws on any
+ * non-Latin1 character (e.g. CJK), so encode to UTF-8 bytes first and feed the
+ * bytes to `btoa` in chunks to avoid overflowing the argument list.
+ */
+function agentComposerTextToBase64(text: string): string {
+  const bytes = new TextEncoder().encode(text);
+  let binary = "";
+  const CHUNK = 0x8000;
+  for (let i = 0; i < bytes.length; i += CHUNK) {
+    binary += String.fromCharCode(...bytes.subarray(i, i + CHUNK));
+  }
+  return btoa(binary);
 }
 
 /**
@@ -1120,7 +1137,6 @@ export function AgentComposer({
   const draftFilesRef = useRef<AgentComposerDraftFile[]>(draftFiles);
   const draftLargeTextsRef =
     useRef<AgentComposerDraftLargeText[]>(draftLargeTexts);
-  const nextDraftLargeTextIndexRef = useRef(draftLargeTexts.length);
   const promptTipRef = useRef<HTMLSpanElement | null>(null);
   const mentionControllerRef = useRef<AgentMentionSearchController | null>(
     null
@@ -1431,10 +1447,6 @@ export function AgentComposer({
 
   useEffect(() => {
     draftLargeTextsRef.current = draftLargeTexts;
-    nextDraftLargeTextIndexRef.current = Math.max(
-      nextDraftLargeTextIndexRef.current,
-      draftLargeTexts.length
-    );
   }, [draftLargeTexts]);
 
   useEffect(() => {
@@ -1683,6 +1695,12 @@ export function AgentComposer({
         (file) => file.uploading
       );
       const hasFailedFiles = currentDraftFiles.some((file) => file.uploadError);
+      const hasUploadingLargeTexts = currentDraftLargeTexts.some(
+        (item) => item.uploading
+      );
+      const hasFailedLargeTexts = currentDraftLargeTexts.some(
+        (item) => item.uploadError
+      );
       if (
         isSelectedProjectMissing ||
         submitDisabled ||
@@ -1690,6 +1708,8 @@ export function AgentComposer({
         hasFailedImages ||
         hasUploadingFiles ||
         hasFailedFiles ||
+        hasUploadingLargeTexts ||
+        hasFailedLargeTexts ||
         (disabled && !canQueueWhileBusy) ||
         (isSendingTurn && !canSubmitWhileSending)
       ) {
@@ -2378,15 +2398,27 @@ export function AgentComposer({
       if (!normalizedText.trim()) {
         return;
       }
-      const nextIndex = nextDraftLargeTextIndexRef.current + 1;
-      nextDraftLargeTextIndexRef.current = nextIndex;
+      const uploadPromptContent =
+        agentActivityRuntime?.uploadPromptContent &&
+        (agentActivityRuntime.promptContentUploadSupport?.file ?? true)
+          ? agentActivityRuntime.uploadPromptContent
+          : undefined;
+      if (!uploadPromptContent) {
+        // Landing is unsupported by this runtime; the editor keeps the paste
+        // inline (it only wires onPasteLargeText when landing is available).
+        return;
+      }
+      const id = crypto.randomUUID();
+      const name = `${AGENT_COMPOSER_PASTED_TEXT_FILE_PREFIX}.txt`;
+      const sizeBytes = agentComposerTextByteLength(normalizedText);
       const nextDraftLargeTexts = [
         ...draftLargeTextsRef.current,
         {
-          id: `${AGENT_COMPOSER_PASTED_TEXT_FILE_PREFIX}-${nextIndex}`,
-          name: `${AGENT_COMPOSER_PASTED_TEXT_FILE_PREFIX}-${nextIndex}.txt`,
+          id,
+          name,
           text: normalizedText,
-          sizeBytes: agentComposerTextByteLength(normalizedText)
+          sizeBytes,
+          uploading: true
         }
       ];
       draftLargeTextsRef.current = nextDraftLargeTexts;
@@ -2396,8 +2428,62 @@ export function AgentComposer({
         files: draftFilesRef.current,
         largeTexts: nextDraftLargeTexts
       });
+      void uploadPromptContent({
+        workspaceId,
+        content: [
+          {
+            type: "file",
+            data: agentComposerTextToBase64(normalizedText),
+            mimeType: AGENT_COMPOSER_PASTED_TEXT_MIME,
+            name
+          }
+        ]
+      })
+        .then((result) => {
+          const uploadedFile = result.content.find(
+            (block) => block.type === "file"
+          );
+          const uploadedPath = uploadedFile?.path?.trim() ?? "";
+          if (!uploadedPath) {
+            throw new Error("Prompt text upload completed without path.");
+          }
+          const uploadedDraftLargeTexts = draftLargeTextsRef.current.map(
+            (item) =>
+              item.id === id
+                ? {
+                    ...item,
+                    path: uploadedPath,
+                    sizeBytes: uploadedFile?.sizeBytes ?? item.sizeBytes,
+                    uploading: false
+                  }
+                : item
+          );
+          draftLargeTextsRef.current = uploadedDraftLargeTexts;
+          onDraftContentChange({
+            prompt: draftPromptRef.current,
+            images: draftImagesRef.current,
+            files: draftFilesRef.current,
+            largeTexts: uploadedDraftLargeTexts
+          });
+        })
+        .catch((error: unknown) => {
+          const message =
+            error instanceof Error ? error.message : String(error);
+          const failedDraftLargeTexts = draftLargeTextsRef.current.map((item) =>
+            item.id === id
+              ? { ...item, uploading: false, uploadError: message }
+              : item
+          );
+          draftLargeTextsRef.current = failedDraftLargeTexts;
+          onDraftContentChange({
+            prompt: draftPromptRef.current,
+            images: draftImagesRef.current,
+            files: draftFilesRef.current,
+            largeTexts: failedDraftLargeTexts
+          });
+        });
     },
-    [onDraftContentChange]
+    [agentActivityRuntime, onDraftContentChange, workspaceId]
   );
 
   const applyReferencePickResult = useCallback(
@@ -3077,6 +3163,12 @@ export function AgentComposer({
   const hasFailedDraftImages = draftImages.some((image) => image.uploadError);
   const hasUploadingDraftFiles = draftFiles.some((file) => file.uploading);
   const hasFailedDraftFiles = draftFiles.some((file) => file.uploadError);
+  const hasUploadingDraftLargeTexts = draftLargeTexts.some(
+    (item) => item.uploading
+  );
+  const hasFailedDraftLargeTexts = draftLargeTexts.some(
+    (item) => item.uploadError
+  );
   const isQueueMode = canQueueWhileBusy && hasDraftContent;
   const shouldShowStopButton = showStopButton && !isQueueMode;
   const sendButtonState = isQueueMode
@@ -3170,6 +3262,8 @@ export function AgentComposer({
         hasFailedDraftImages ||
         hasUploadingDraftFiles ||
         hasFailedDraftFiles ||
+        hasUploadingDraftLargeTexts ||
+        hasFailedDraftLargeTexts ||
         sendButtonBusy
       }
       aria-label={labels.send}
@@ -3369,31 +3463,52 @@ export function AgentComposer({
                     className="mb-2 flex max-w-[520px] flex-wrap gap-2"
                     data-testid="agent-gui-composer-file-drafts"
                   >
-                    {visibleDraftLargeTexts.map((item) => (
-                      <div
-                        key={item.id}
-                        className="group inline-flex max-w-full items-center gap-2 rounded-[6px] border border-[var(--line-1)] bg-[var(--background-fronted)] px-2 py-1 text-xs text-[var(--text-primary)]"
-                        data-testid="agent-gui-composer-large-text-draft"
-                        title={item.name}
-                      >
-                        <span
-                          className="size-2 shrink-0 rounded-full bg-[var(--text-tertiary)]"
-                          aria-hidden
-                        />
-                        <span className="min-w-0 max-w-[220px] truncate">
-                          {item.name}
-                        </span>
-                        <button
-                          type="button"
-                          className="inline-flex size-5 shrink-0 items-center justify-center rounded-full text-[var(--text-secondary)] transition hover:bg-[var(--transparency-hover)] hover:text-[var(--text-primary)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:color-mix(in_srgb,var(--text-primary)_34%,transparent)]"
-                          aria-label={labels.removeMention}
-                          title={labels.removeMention}
-                          onClick={() => removeDraftLargeText(item.id)}
+                    {visibleDraftLargeTexts.map((item, index) => {
+                      const displayName = `${AGENT_COMPOSER_PASTED_TEXT_FILE_PREFIX}-${index + 1}.txt`;
+                      return (
+                        <div
+                          key={item.id}
+                          className={cn(
+                            "group inline-flex max-w-full items-center gap-2 rounded-[6px] border border-[var(--line-1)] bg-[var(--background-fronted)] px-2 py-1 text-xs text-[var(--text-primary)]",
+                            item.uploadError &&
+                              "border-[color:color-mix(in_srgb,var(--danger)_55%,var(--line-1))]"
+                          )}
+                          data-testid="agent-gui-composer-large-text-draft"
+                          data-uploading={item.uploading ? "true" : undefined}
+                          data-upload-error={
+                            item.uploadError ? "true" : undefined
+                          }
+                          title={displayName}
                         >
-                          <X size={12} strokeWidth={2.4} aria-hidden />
-                        </button>
-                      </div>
-                    ))}
+                          {item.uploading ? (
+                            <Spinner
+                              className="shrink-0 text-[var(--text-primary)]"
+                              size={14}
+                              strokeWidth={2.4}
+                              trackColor="var(--transparency-hover)"
+                              testId="agent-gui-composer-large-text-upload-spinner"
+                            />
+                          ) : (
+                            <span
+                              className="size-2 shrink-0 rounded-full bg-[var(--text-tertiary)]"
+                              aria-hidden
+                            />
+                          )}
+                          <span className="min-w-0 max-w-[220px] truncate">
+                            {displayName}
+                          </span>
+                          <button
+                            type="button"
+                            className="inline-flex size-5 shrink-0 items-center justify-center rounded-full text-[var(--text-secondary)] transition hover:bg-[var(--transparency-hover)] hover:text-[var(--text-primary)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:color-mix(in_srgb,var(--text-primary)_34%,transparent)]"
+                            aria-label={labels.removeMention}
+                            title={labels.removeMention}
+                            onClick={() => removeDraftLargeText(item.id)}
+                          >
+                            <X size={12} strokeWidth={2.4} aria-hidden />
+                          </button>
+                        </div>
+                      );
+                    })}
                     {visibleDraftFiles.map((file) => (
                       <div
                         key={file.id}
@@ -3468,7 +3583,11 @@ export function AgentComposer({
                     promptImagesSupported={promptImagesSupported}
                     onPromptImagesUnsupported={onPromptImagesUnsupported}
                     onPasteImages={handlePastedImages}
-                    onPasteLargeText={handlePastedLargeText}
+                    onPasteLargeText={
+                      promptFileUploadSupported
+                        ? handlePastedLargeText
+                        : undefined
+                    }
                     getReferenceForFile={getReferenceForFile}
                     onDropFiles={
                       promptFilesSupported

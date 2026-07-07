@@ -597,7 +597,9 @@ export const en = {
       planImplementationSkip: "Stay in Plan Mode",
       noRunningResponse: "No running response to stop.",
       composerTextMenu: "Composer text actions",
-      pastedTextPromptAttachment: "Pasted text attachment: {{name}}",
+      pastedTextFilesHeader: "Referenced pasted text files:",
+      pastedTextFileLine:
+        "- pasted text file: {{path}}. Read this file before continuing.",
       copyMessage: "Copy message",
       copyImage: "Copy image",
       messageCopied: "Copied",

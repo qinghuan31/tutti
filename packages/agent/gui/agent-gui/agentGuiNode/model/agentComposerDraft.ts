@@ -1,5 +1,4 @@
 import type { AgentPromptContentBlock } from "../../../shared/contracts/dto";
-import { translate } from "../../../i18n/index";
 import type {
   AgentComposerDraft,
   AgentComposerDraftFile,
@@ -7,6 +6,7 @@ import type {
   AgentComposerDraftImage,
   AgentGUIProviderSkillOption
 } from "./agentGuiNodeTypes";
+import { AGENT_PASTED_TEXT_BLOCK_KIND } from "./agentGuiNodeTypes";
 import {
   promptForProviderSkills,
   skillTriggerForPrefix
@@ -32,7 +32,10 @@ export function agentComposerDraftHasContent(
     draft.prompt.trim() !== "" ||
     draft.images.length > 0 ||
     (draft.files?.length ?? 0) > 0 ||
-    (draft.largeTexts?.some((item) => item.text.trim() !== "") ?? false)
+    (draft.largeTexts?.some(
+      (item) => item.text.trim() !== "" || Boolean(item.path)
+    ) ??
+      false)
   );
 }
 
@@ -88,7 +91,10 @@ export function normalizeAgentPromptContentBlocks(
         ...(typeof block.sizeBytes === "number"
           ? { sizeBytes: block.sizeBytes }
           : {}),
-        kind: "file"
+        kind:
+          block.kind === AGENT_PASTED_TEXT_BLOCK_KIND
+            ? AGENT_PASTED_TEXT_BLOCK_KIND
+            : "file"
       });
       continue;
     }
@@ -141,6 +147,9 @@ export function agentPromptContentToComposerDraft(
   idPrefix: string
 ): AgentComposerDraft {
   const normalizedContent = normalizeAgentPromptContentBlocks(content);
+  const largeTexts = agentPromptPastedTextBlocks(normalizedContent).map(
+    (block) => agentPromptPastedTextBlockToDraftLargeText(block)
+  );
   return {
     prompt: agentPromptContentDisplayText(normalizedContent),
     images: agentPromptContentImageBlocks(normalizedContent)
@@ -150,7 +159,22 @@ export function agentPromptContentToComposerDraft(
       ),
     files: agentPromptFileBlocks(normalizedContent).map((file, index) =>
       agentPromptFileBlockToDraftFile(file, idPrefix, index)
-    )
+    ),
+    ...(largeTexts.length > 0 ? { largeTexts } : {})
+  };
+}
+
+function agentPromptPastedTextBlockToDraftLargeText(
+  block: AgentPromptContentBlock & { type: "file" }
+): AgentComposerDraftLargeText {
+  return {
+    id: crypto.randomUUID(),
+    name: block.name?.trim() || "pasted-text.txt",
+    text: "",
+    ...(block.path ? { path: block.path } : {}),
+    ...(typeof block.sizeBytes === "number"
+      ? { sizeBytes: block.sizeBytes }
+      : {})
   };
 }
 
@@ -211,7 +235,7 @@ export function agentComposerDraftDisplayPrompt(
   draft: AgentComposerDraft
 ): string | undefined {
   const largeTexts = draft.largeTexts?.filter(
-    (item) => item.text.trim() !== ""
+    (item) => Boolean(item.path) && !item.uploading && !item.uploadError
   );
   if (!largeTexts?.length) {
     return undefined;
@@ -219,7 +243,7 @@ export function agentComposerDraftDisplayPrompt(
   const parts = [draft.prompt.trim()].filter(Boolean);
   parts.push(
     ...largeTexts.map((item, index) => {
-      const name = item.name.trim() || `pasted-text-${index + 1}.txt`;
+      const name = pastedTextDraftDisplayName(index);
       const sizeLabel =
         typeof item.sizeBytes === "number" && Number.isFinite(item.sizeBytes)
           ? ` · ${formatAgentComposerDraftBytes(item.sizeBytes)}`
@@ -236,7 +260,17 @@ function agentPromptFileBlocks(
   return normalizeAgentPromptContentBlocks(content).filter(
     (block): block is AgentPromptContentBlock & { type: "file" } =>
       block.type === "file" &&
+      !isPastedTextPromptBlock(block) &&
       (typeof block.path === "string" || typeof block.hostPath === "string")
+  );
+}
+
+function agentPromptPastedTextBlocks(
+  content: readonly AgentPromptContentBlock[]
+): Array<AgentPromptContentBlock & { type: "file" }> {
+  return normalizeAgentPromptContentBlocks(content).filter(
+    (block): block is AgentPromptContentBlock & { type: "file" } =>
+      isPastedTextPromptBlock(block) && typeof block.path === "string"
   );
 }
 
@@ -280,20 +314,81 @@ export function textPromptContent(prompt: string): AgentPromptContentBlock[] {
   return text ? [{ type: "text", text }] : [];
 }
 
+/**
+ * Display/label name for a pasted-text attachment, addressed purely by its
+ * position in the draft (`pasted-text-1.txt`, `pasted-text-2.txt`, …). The
+ * stored `item.name` is content-addressed and intentionally not used here, so
+ * labels never collide and always renumber with the list.
+ */
+export function pastedTextDraftDisplayName(index: number): string {
+  return `pasted-text-${index + 1}.txt`;
+}
+
+/**
+ * Pasted long text submits as a structured `file` block (content-addressed
+ * archive path) tagged with {@link AGENT_PASTED_TEXT_BLOCK_KIND}. Only landed
+ * items are emitted — same rule as images: still-uploading or errored items are
+ * dropped from submit (a visible error chip remains for the user to retry or
+ * remove). The codex-style "read this file" instruction is NOT added here; it
+ * is materialized in the controller at send time via
+ * {@link materializePastedTextInstructions} so translations never enter the
+ * model layer or the persisted/queued draft.
+ */
 function largeTextPromptContent(
   largeTexts: readonly AgentComposerDraftLargeText[]
 ): AgentPromptContentBlock[] {
   return largeTexts
-    .filter((item) => item.text.trim() !== "")
-    .map((item, index) => {
-      const name = item.name.trim() || `pasted-text-${index + 1}.txt`;
-      return {
-        type: "text" as const,
-        text: `${translate("agentHost.agentGui.pastedTextPromptAttachment", {
-          name
-        })}\n\n${item.text}`
-      };
-    });
+    .filter((item) => {
+      const path = item.path?.trim();
+      return Boolean(path) && !item.uploading && !item.uploadError;
+    })
+    .map((item, index) => ({
+      type: "file" as const,
+      kind: AGENT_PASTED_TEXT_BLOCK_KIND,
+      path: item.path,
+      name: pastedTextDraftDisplayName(index),
+      ...(typeof item.sizeBytes === "number"
+        ? { sizeBytes: item.sizeBytes }
+        : {})
+    }));
+}
+
+/**
+ * True when a prompt `file` block is a pasted-text attachment rather than a
+ * user-attached file.
+ */
+export function isPastedTextPromptBlock(
+  block: AgentPromptContentBlock
+): boolean {
+  return block.type === "file" && block.kind === AGENT_PASTED_TEXT_BLOCK_KIND;
+}
+
+/**
+ * Returns a copy of `content` with a codex-style instruction text block appended
+ * for the pasted-text file blocks it contains (placed at the tail, after the
+ * user's own content). The instruction copy is passed in already-translated so
+ * the model layer stays free of any i18n dependency. When there are no
+ * pasted-text blocks the input is returned unchanged.
+ */
+export function materializePastedTextInstructions(
+  content: readonly AgentPromptContentBlock[],
+  format: {
+    header: () => string;
+    line: (path: string) => string;
+  }
+): AgentPromptContentBlock[] {
+  const pastedPaths = content
+    .filter(isPastedTextPromptBlock)
+    .map((block) => block.path?.trim() ?? "")
+    .filter(Boolean);
+  if (pastedPaths.length === 0) {
+    return [...content];
+  }
+  const instruction = [
+    format.header(),
+    ...pastedPaths.map((path) => format.line(path))
+  ].join("\n");
+  return [...content, { type: "text", text: instruction }];
 }
 
 function formatAgentComposerDraftBytes(sizeBytes: number): string {
