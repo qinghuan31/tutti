@@ -36,7 +36,10 @@ export function isBuiltinGenerateRequired(changedFiles) {
   });
 }
 
-export function resolveGoValidationTargets(changedFiles) {
+export function resolveGoValidationTargets(
+  changedFiles,
+  { pathExists = existsSync } = {}
+) {
   const goFiles = changedFiles.filter(isGoValidationRelevant);
   if (goFiles.length === 0) {
     return null;
@@ -52,6 +55,9 @@ export function resolveGoValidationTargets(changedFiles) {
     }
 
     if (/(?:^|\/)go\.(?:mod|sum)$/u.test(file)) {
+      if (!pathExists(moduleRoot)) {
+        continue;
+      }
       addGoTarget(lintByModule, moduleRoot, "./...");
       addGoTarget(testByModule, moduleRoot, "./...");
       continue;
@@ -62,6 +68,9 @@ export function resolveGoValidationTargets(changedFiles) {
     }
 
     const packagePattern = goPackagePattern(moduleRoot, file);
+    if (!pathExists(join(moduleRoot, packagePattern.slice(2)))) {
+      continue;
+    }
     addGoTarget(lintByModule, moduleRoot, packagePattern);
     addGoTarget(testByModule, moduleRoot, `${packagePattern}/...`);
   }
