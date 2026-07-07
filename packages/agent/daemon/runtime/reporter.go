@@ -1,5 +1,4 @@
 //revive:disable:file-length-limit
-//nolint:unused // Retain migrated helpers until the next agent-daemon decomposition pass.
 package agentruntime
 
 import (
@@ -160,108 +159,6 @@ func reportSessionActivity(
 	input agentsessionstore.ReportActivityInput,
 ) (agentsessionstore.ReportActivityReply, error) {
 	return agentsessionstore.ReportActivityAsSessionUpdates(ctx, client, input)
-}
-
-type sessionMessageUpdateGroup struct {
-	agentSessionID string
-	updates        []agentsessionstore.WorkspaceAgentSessionMessageUpdate
-}
-
-func groupMessageUpdatesBySession(source agentsessionstore.EventSource, updates []agentsessionstore.WorkspaceAgentMessageUpdate) []sessionMessageUpdateGroup {
-	if len(updates) == 0 {
-		return nil
-	}
-	indexBySession := make(map[string]int)
-	groups := make([]sessionMessageUpdateGroup, 0)
-	for _, update := range updates {
-		agentSessionID := firstNonEmptyString(update.AgentSessionID, source.AgentID, source.ProviderSessionID)
-		if agentSessionID == "" {
-			continue
-		}
-		converted := sessionMessageUpdateFromActivityMessageUpdate(update)
-		if strings.TrimSpace(converted.MessageID) == "" {
-			continue
-		}
-		index, ok := indexBySession[agentSessionID]
-		if !ok {
-			index = len(groups)
-			indexBySession[agentSessionID] = index
-			groups = append(groups, sessionMessageUpdateGroup{agentSessionID: agentSessionID})
-		}
-		groups[index].updates = append(groups[index].updates, converted)
-	}
-	return groups
-}
-
-func sessionMessageUpdateFromActivityMessageUpdate(update agentsessionstore.WorkspaceAgentMessageUpdate) agentsessionstore.WorkspaceAgentSessionMessageUpdate {
-	payload := clonePayload(update.Payload)
-	if payload == nil {
-		payload = map[string]any{}
-	}
-	if update.Seq > 0 {
-		payload["seq"] = update.Seq
-	}
-	if update.CallID != "" {
-		payload["callId"] = strings.TrimSpace(update.CallID)
-	}
-	if update.ParentCallID != "" {
-		payload["parentCallId"] = strings.TrimSpace(update.ParentCallID)
-	}
-	if update.RootCallID != "" {
-		payload["rootCallId"] = strings.TrimSpace(update.RootCallID)
-	}
-	if update.Title != "" {
-		payload["title"] = strings.TrimSpace(update.Title)
-	}
-	if len(payload) == 0 {
-		payload = nil
-	}
-	return agentsessionstore.WorkspaceAgentSessionMessageUpdate{
-		MessageID:         strings.TrimSpace(update.MessageID),
-		TurnID:            strings.TrimSpace(update.TurnID),
-		Role:              strings.TrimSpace(update.Role),
-		Kind:              strings.TrimSpace(update.Kind),
-		Status:            strings.TrimSpace(update.Status),
-		Semantics:         cloneMessageSemantics(update.Semantics),
-		Payload:           payload,
-		OccurredAtUnixMS:  update.OccurredAtUnixMS,
-		StartedAtUnixMS:   update.StartedAtUnixMS,
-		CompletedAtUnixMS: update.CompletedAtUnixMS,
-	}
-}
-
-func sessionStateUpdateFromStatePatch(patch agentsessionstore.WorkspaceAgentStatePatch) agentsessionstore.WorkspaceAgentSessionStateUpdate {
-	out := agentsessionstore.WorkspaceAgentSessionStateUpdate{
-		Provider:           strings.TrimSpace(patch.Provider),
-		ProviderSessionID:  strings.TrimSpace(patch.ProviderSessionID),
-		Model:              strings.TrimSpace(patch.Model),
-		Settings:           clonePayload(patch.Settings),
-		RuntimeContext:     clonePayload(patch.RuntimeContext),
-		TurnLifecycle:      cloneTurnLifecycle(patch.TurnLifecycle),
-		SubmitAvailability: cloneSubmitAvailability(patch.SubmitAvailability),
-		PendingInteractive: cloneInteractivePrompt(patch.PendingInteractive),
-		CWD:                strings.TrimSpace(patch.CWD),
-		Title:              strings.TrimSpace(patch.Title),
-		LifecycleStatus:    strings.TrimSpace(patch.LifecycleStatus),
-		CurrentPhase:       strings.TrimSpace(patch.CurrentPhase),
-		LastError:          strings.TrimSpace(patch.LastError),
-		OccurredAtUnixMS:   patch.OccurredAtUnixMS,
-	}
-	if patch.Turn != nil {
-		out.Turn = &agentsessionstore.WorkspaceAgentTurnStateUpdate{
-			TurnID:             strings.TrimSpace(patch.Turn.TurnID),
-			ActiveTurnID:       cloneStringPointer(patch.Turn.ActiveTurnID),
-			Phase:              strings.TrimSpace(patch.Turn.Phase),
-			Outcome:            strings.TrimSpace(patch.Turn.Outcome),
-			Settling:           patch.Turn.Settling,
-			CompletedCommand:   cloneCompletedCommand(patch.Turn.CompletedCommand),
-			SubmitAvailability: cloneSubmitAvailability(patch.Turn.SubmitAvailability),
-			FileChanges:        clonePayload(patch.Turn.FileChanges),
-			StartedAtUnixMS:    patch.Turn.StartedAtUnixMS,
-			CompletedAtUnixMS:  patch.Turn.CompletedAtUnixMS,
-		}
-	}
-	return out
 }
 
 func validateReportActivityAccepted(input agentsessionstore.ReportActivityInput, reply agentsessionstore.ReportActivityReply) error {
@@ -828,14 +725,6 @@ func statePatchFromSessionEvent(source agentsessionstore.EventSource, event acti
 	return patch, true
 }
 
-func cloneMessageSemantics(value *agentsessionstore.WorkspaceAgentMessageSemantics) *agentsessionstore.WorkspaceAgentMessageSemantics {
-	if value == nil {
-		return nil
-	}
-	cloned := *value
-	return &cloned
-}
-
 func cloneStringPointer(value *string) *string {
 	if value == nil {
 		return nil
@@ -1349,104 +1238,6 @@ func withOwnerThreadID(payload map[string]any, event activityshared.Event) map[s
 		payload["ownerCallId"] = ownerCallID
 	}
 	return payload
-}
-
-func collapseReportTimelineItems(items []agentsessionstore.WorkspaceAgentTimelineItem) []agentsessionstore.WorkspaceAgentTimelineItem {
-	if len(items) <= 1 {
-		return items
-	}
-	out := make([]agentsessionstore.WorkspaceAgentTimelineItem, 0, len(items))
-	seen := make(map[string]int, len(items))
-	for _, item := range items {
-		eventID := strings.TrimSpace(item.EventID)
-		if eventID == "" {
-			out = append(out, item)
-			continue
-		}
-		if index, ok := seen[eventID]; ok {
-			out[index] = mergeReportTimelineItem(out[index], item)
-			continue
-		}
-		seen[eventID] = len(out)
-		out = append(out, item)
-	}
-	return out
-}
-
-func mergeReportTimelineItem(base agentsessionstore.WorkspaceAgentTimelineItem, incoming agentsessionstore.WorkspaceAgentTimelineItem) agentsessionstore.WorkspaceAgentTimelineItem {
-	merged := base
-	replaceState := reportTimelineItemRank(incoming) >= reportTimelineItemRank(base)
-	if merged.ID == 0 {
-		merged.ID = incoming.ID
-	}
-	merged.RoomID = firstNonEmptyString(merged.RoomID, incoming.RoomID)
-	merged.AgentSessionID = firstNonEmptyString(merged.AgentSessionID, incoming.AgentSessionID)
-	merged.TurnID = firstNonEmptyString(merged.TurnID, incoming.TurnID)
-	merged.EventSource = firstNonEmptyString(merged.EventSource, incoming.EventSource)
-	merged.EventID = firstNonEmptyString(merged.EventID, incoming.EventID)
-	merged.ActorType = firstNonEmptyString(merged.ActorType, incoming.ActorType)
-	merged.ActorID = firstNonEmptyString(merged.ActorID, incoming.ActorID)
-	merged.Role = firstNonEmptyString(merged.Role, incoming.Role)
-	merged.CallType = firstNonEmptyString(merged.CallType, incoming.CallType)
-	merged.CallID = firstNonEmptyString(merged.CallID, incoming.CallID)
-	merged.Name = firstNonEmptyString(merged.Name, incoming.Name)
-	if replaceState {
-		merged.ItemType = firstNonEmptyString(incoming.ItemType, merged.ItemType)
-		merged.Status = firstNonEmptyString(incoming.Status, merged.Status)
-	} else {
-		merged.ItemType = firstNonEmptyString(merged.ItemType, incoming.ItemType)
-		merged.Status = firstNonEmptyString(merged.Status, incoming.Status)
-	}
-	if incoming.OccurredAtUnixMS > 0 && (merged.OccurredAtUnixMS <= 0 || incoming.OccurredAtUnixMS < merged.OccurredAtUnixMS) {
-		merged.OccurredAtUnixMS = incoming.OccurredAtUnixMS
-	}
-	if incoming.CreatedAtUnixMS > 0 && (merged.CreatedAtUnixMS <= 0 || incoming.CreatedAtUnixMS < merged.CreatedAtUnixMS) {
-		merged.CreatedAtUnixMS = incoming.CreatedAtUnixMS
-	}
-	merged.Payload = mergeReportPayload(merged.Payload, incoming.Payload)
-	return merged
-}
-
-func reportTimelineItemRank(item agentsessionstore.WorkspaceAgentTimelineItem) int {
-	switch strings.ToLower(strings.TrimSpace(item.Status)) {
-	case "completed", "complete", "success", "succeeded", "failed", "failure", "error", "errored", "canceled":
-		return 3
-	case "waiting_approval", "waiting", "running", "streaming", "working":
-		return 2
-	}
-	switch strings.ToLower(strings.TrimSpace(item.ItemType)) {
-	case "call.completed", "call.failed", "call.errored":
-		return 3
-	case "call.started":
-		return 2
-	default:
-		return 1
-	}
-}
-
-func mergeReportPayload(base map[string]any, incoming map[string]any) map[string]any {
-	out := clonePayload(base)
-	if out == nil {
-		out = map[string]any{}
-	}
-	for key, value := range incoming {
-		if payloadValueIsEmpty(value) {
-			continue
-		}
-		if existing, ok := out[key]; ok {
-			existingMap, existingOK := existing.(map[string]any)
-			incomingMap, incomingOK := value.(map[string]any)
-			if existingOK && incomingOK {
-				out[key] = mergeReportPayload(existingMap, incomingMap)
-				continue
-			}
-		}
-		out[key] = clonePayloadValue(value)
-	}
-	if len(out) == 0 {
-		return nil
-	}
-	return out
 }
 
 func payloadValueIsEmpty(value any) bool {
