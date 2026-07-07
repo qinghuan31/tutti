@@ -82,8 +82,9 @@ func (s Service) Put(ctx context.Context, input PutInput) (preferencesbiz.Deskto
 	preferences, err := s.Store.PutDesktopPreferences(ctx, preferencesbiz.DesktopPreferences{
 		// The legacy provider-keyed defaults are frozen: client input is
 		// ignored so nothing writes the old field anymore; the stored value
-		// is only kept for downgrade compatibility.
-		AgentComposerDefaultsByProvider:             normalizeAgentComposerDefaultsByProvider(stored.AgentComposerDefaultsByProvider),
+		// is only kept for downgrade compatibility and should pass through
+		// unchanged.
+		AgentComposerDefaultsByProvider:             stored.AgentComposerDefaultsByProvider,
 		AgentComposerDefaultsByAgentTarget:          normalizeAgentComposerDefaultsByAgentTarget(agentComposerDefaultsByAgentTarget),
 		AgentGUIConversationRailCollapsedByProvider: normalizeAgentGUIConversationRailCollapsedByProvider(input.AgentGUIConversationRailCollapsedByProvider),
 		AgentConversationDetailMode:                 preferencesbiz.NormalizeDesktopAgentConversationDetailMode(input.AgentConversationDetailMode),
@@ -205,22 +206,6 @@ func normalizeAgentGUIConversationRailCollapsedByProvider(input map[string]bool)
 			continue
 		}
 		result[normalizedProvider] = collapsed
-	}
-	return result
-}
-
-func normalizeAgentComposerDefaultsByProvider(input map[string]preferencesbiz.AgentComposerDefaults) map[string]preferencesbiz.AgentComposerDefaults {
-	result := map[string]preferencesbiz.AgentComposerDefaults{}
-	for provider, defaults := range input {
-		normalizedProvider := agentproviderbiz.Normalize(provider)
-		if normalizedProvider == "" {
-			continue
-		}
-		normalizedDefaults := normalizeAgentComposerDefaults(defaults)
-		if normalizedDefaults.IsZero() {
-			continue
-		}
-		result[normalizedProvider] = normalizedDefaults
 	}
 	return result
 }
