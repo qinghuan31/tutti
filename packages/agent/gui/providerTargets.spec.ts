@@ -28,7 +28,8 @@ describe("agent gui provider targets", () => {
       "local:cursor",
       "local:nexight",
       "local:hermes",
-      "local:openclaw"
+      "local:openclaw",
+      "local:antigravity"
     ]);
     expect(createLocalAgentGUIProviderTarget("cursor")).toMatchObject({
       agentTargetId: "local:cursor",
@@ -250,7 +251,8 @@ describe("agent gui provider targets", () => {
       { disabled: false, provider: "cursor" },
       { disabled: true, provider: "nexight" },
       { disabled: true, provider: "hermes" },
-      { disabled: true, provider: "openclaw" }
+      { disabled: true, provider: "openclaw" },
+      { disabled: false, provider: "antigravity" }
     ]);
   });
 

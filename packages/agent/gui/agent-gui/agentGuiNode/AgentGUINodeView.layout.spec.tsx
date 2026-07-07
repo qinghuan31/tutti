@@ -1188,7 +1188,8 @@ describe("AgentGUINodeView layout persistence", () => {
       "Cursor",
       "Tutti",
       "Hermes",
-      "OpenClaw"
+      "OpenClaw",
+      "Antigravity"
     ]);
   });
 
