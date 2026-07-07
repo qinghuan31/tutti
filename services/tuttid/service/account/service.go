@@ -3,6 +3,7 @@ package account
 import (
 	"context"
 	"errors"
+	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
@@ -15,14 +16,27 @@ import (
 var ErrAttemptNotFound = errors.New("account login attempt not found")
 
 type Service struct {
-	AuthJSONPath   string
-	AccountBaseURL string
-	AppCallbackURL string
-	AuthLoginURL   string
+	AuthJSONPath                       string
+	AccountBaseURL                     string
+	AppCallbackURL                     string
+	AuthLoginURL                       string
+	CommerceBaseURL                    string
+	WebBaseURL                         string
+	RegistrationCreditsRewardStatePath string
+	HTTPClient                         *http.Client
+	// OnLoginCompleted runs after the desktop account login bridge has completed
+	// and the account auth.json is available. It must be best-effort: login status
+	// polling should not block on downstream provider credential bootstrap.
+	OnLoginCompleted func(context.Context)
+	// OnLogoutCompleted runs after the desktop account auth state has been
+	// cleared. It should avoid long-running work; downstream providers should
+	// clear local readiness markers before starting background network cleanup.
+	OnLogoutCompleted func(context.Context)
 
 	mu       sync.Mutex
 	client   *authbridge.Client
 	attempts map[string]*authbridge.LoginAttempt
+	rewardMu sync.Mutex
 }
 
 type LoginStart struct {
@@ -33,11 +47,13 @@ type LoginStart struct {
 
 func NewService(authJSONPath string) *Service {
 	return &Service{
-		AuthJSONPath:   firstNonEmpty(authJSONPath, filepath.Join(tuttitypes.DefaultStateDir(), "account", "auth.json")),
-		AccountBaseURL: os.Getenv("TUTTI_ACCOUNT_BASE_URL"),
-		AppCallbackURL: tuttitypes.DesktopLoginCallbackURL(),
-		AuthLoginURL:   os.Getenv("TUTTI_AUTH_LOGIN_URL"),
-		attempts:       map[string]*authbridge.LoginAttempt{},
+		AuthJSONPath:    firstNonEmpty(authJSONPath, filepath.Join(tuttitypes.DefaultStateDir(), "account", "auth.json")),
+		AccountBaseURL:  os.Getenv("TUTTI_ACCOUNT_BASE_URL"),
+		AppCallbackURL:  tuttitypes.DesktopLoginCallbackURL(),
+		AuthLoginURL:    os.Getenv("TUTTI_AUTH_LOGIN_URL"),
+		CommerceBaseURL: os.Getenv("TUTTI_COMMERCE_BASE_URL"),
+		WebBaseURL:      os.Getenv("TUTTI_WEB_BASE_URL"),
+		attempts:        map[string]*authbridge.LoginAttempt{},
 	}
 }
 
@@ -73,7 +89,17 @@ func (s *Service) LoginStatus(attemptID string) (authbridge.LoginStatus, error) 
 		delete(s.attempts, attempt.ID)
 		s.mu.Unlock()
 	}
+	if status.Status == "completed" {
+		s.notifyLoginCompleted()
+	}
 	return status, nil
+}
+
+func (s *Service) notifyLoginCompleted() {
+	if s.OnLoginCompleted == nil {
+		return
+	}
+	go s.OnLoginCompleted(context.Background())
 }
 
 func (s *Service) GetUserInfo(ctx context.Context) (*authbridge.UserInfo, error) {
@@ -84,12 +110,27 @@ func (s *Service) GetUserInfo(ctx context.Context) (*authbridge.UserInfo, error)
 	return client.GetUserInfo(ctx)
 }
 
+func (s *Service) GetProductSummary(ctx context.Context) (ProductSummary, error) {
+	return s.productSummary(ctx)
+}
+
 func (s *Service) Logout(ctx context.Context) error {
 	client, err := s.authClient()
 	if err != nil {
 		return err
 	}
-	return client.Logout(ctx)
+	if err := client.Logout(ctx); err != nil {
+		return err
+	}
+	s.notifyLogoutCompleted()
+	return nil
+}
+
+func (s *Service) notifyLogoutCompleted() {
+	if s.OnLogoutCompleted == nil {
+		return
+	}
+	s.OnLogoutCompleted(context.Background())
 }
 
 func (s *Service) authClient() (*authbridge.Client, error) {
@@ -103,6 +144,7 @@ func (s *Service) authClient() (*authbridge.Client, error) {
 		AuthJSONPath:   firstNonEmpty(s.AuthJSONPath, filepath.Join(tuttitypes.DefaultStateDir(), "account", "auth.json")),
 		AppCallbackURL: firstNonEmpty(s.AppCallbackURL, tuttitypes.DesktopLoginCallbackURL()),
 		AuthLoginURL:   s.AuthLoginURL,
+		HTTPClient:     s.HTTPClient,
 	})
 	if err != nil {
 		return nil, err

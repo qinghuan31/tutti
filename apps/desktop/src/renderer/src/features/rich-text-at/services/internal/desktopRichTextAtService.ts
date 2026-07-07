@@ -63,6 +63,8 @@ export interface DesktopRichTextAtServiceDependencies {
   ) => DesktopAgentSessionStatusView | null;
   /** Live getter for agent availability, used to hide unbound agent apps. */
   agentProviderStatuses?: () => readonly AgentProviderStatus[] | undefined;
+  /** Live getter for the renderer-local Tutti Agent entry switch. */
+  isTuttiAgentSwitchEnabled?: () => boolean;
 }
 
 interface WorkspaceFileAtItem {
@@ -175,7 +177,8 @@ export class DesktopRichTextAtService implements IDesktopRichTextAtService {
       createWorkspaceIssueAtContributor(dependencies.tuttidClient),
       createAgentTargetAtContributor({
         agentsService: dependencies.agentsService,
-        agentProviderStatuses: dependencies.agentProviderStatuses
+        agentProviderStatuses: dependencies.agentProviderStatuses,
+        isTuttiAgentSwitchEnabled: dependencies.isTuttiAgentSwitchEnabled
       }),
       createAgentSessionAtContributor(dependencies.tuttidClient),
       createWorkspaceAppAtContributor({
@@ -356,7 +359,11 @@ function workspaceAppAtItemsFromMentionCandidates(input: {
     if (excludedAppIds.has(appId.toLowerCase())) {
       continue;
     }
-    if (isLegacyAgentWorkspaceAppMentionId(appId)) {
+    if (
+      !shouldShowWorkspaceAppMentionCandidate({
+        appId
+      })
+    ) {
       continue;
     }
     const localization = findWorkspaceAppMentionLocalization(
@@ -417,13 +424,16 @@ const WORKSPACE_AGENT_APP_PROVIDER_BY_ID: Readonly<
   Record<string, WorkspaceAgentProvider>
 > = {
   "agent-claude-code": "claude-code",
-  "agent-codex": "codex"
+  "agent-codex": "codex",
+  "agent-tutti-agent": "tutti-agent"
 };
 
-function isLegacyAgentWorkspaceAppMentionId(appId: string): boolean {
-  return (
-    WORKSPACE_AGENT_APP_PROVIDER_BY_ID[appId.trim().toLowerCase()] !== undefined
-  );
+function shouldShowWorkspaceAppMentionCandidate(input: {
+  appId: string;
+}): boolean {
+  const provider =
+    WORKSPACE_AGENT_APP_PROVIDER_BY_ID[input.appId.trim().toLowerCase()];
+  return provider === undefined;
 }
 
 function shouldShowReadyAgentTarget(input: {
@@ -549,6 +559,14 @@ function builtInAgentWorkspaceAppMetadataFromResource(
   }
   if (appId === "agent-codex") {
     return catalogApps.agentCodex;
+  }
+  if (appId === "agent-tutti-agent") {
+    return {
+      // i18n-check-ignore: Provider brand name.
+      description: "Tutti Agent",
+      // i18n-check-ignore: Provider brand name.
+      name: "Tutti Agent"
+    };
   }
   return null;
 }
@@ -858,6 +876,7 @@ function workspaceIssueIdSearchKeyword(keyword: string): string | null {
 function createAgentTargetAtContributor(contributorInput: {
   agentsService?: Pick<IAgentsService, "load">;
   agentProviderStatuses?: () => readonly AgentProviderStatus[] | undefined;
+  isTuttiAgentSwitchEnabled?: () => boolean;
 }): DesktopRichTextAtContributor {
   return {
     capability: "agent-target",
@@ -881,6 +900,8 @@ function createAgentTargetAtContributor(contributorInput: {
             }
             return agentTargetAtItemsFromTargets({
               agentProviderStatuses: contributorInput.agentProviderStatuses?.(),
+              isTuttiAgentSwitchEnabled:
+                contributorInput.isTuttiAgentSwitchEnabled,
               keyword: searchInput.keyword,
               maxResults: searchInput.maxResults,
               targets: response.agentTargets,
@@ -919,6 +940,8 @@ function createAgentTargetAtContributor(contributorInput: {
               const item = agentTargetAtItemsFromTargets({
                 agentProviderStatuses:
                   contributorInput.agentProviderStatuses?.(),
+                isTuttiAgentSwitchEnabled:
+                  contributorInput.isTuttiAgentSwitchEnabled,
                 keyword: "",
                 targets: response.agentTargets,
                 workspaceId
@@ -945,6 +968,7 @@ function createAgentTargetAtContributor(contributorInput: {
 
 function agentTargetAtItemsFromTargets(input: {
   agentProviderStatuses?: readonly AgentProviderStatus[];
+  isTuttiAgentSwitchEnabled?: () => boolean;
   keyword: string;
   maxResults?: number;
   targets: readonly AgentTargetPresentation[];
@@ -956,6 +980,12 @@ function agentTargetAtItemsFromTargets(input: {
     .map((target): AgentTargetAtItem | null => {
       const provider = normalizeWorkspaceAgentProvider(target.provider);
       if (!provider) {
+        return null;
+      }
+      if (
+        provider === "tutti-agent" &&
+        input.isTuttiAgentSwitchEnabled?.() !== true
+      ) {
         return null;
       }
       if (
@@ -999,6 +1029,8 @@ function normalizeWorkspaceAgentProvider(
       return "claude-code";
     case "codex":
       return "codex";
+    case "tutti-agent":
+      return "tutti-agent";
     case "cursor":
       return "cursor";
     default:

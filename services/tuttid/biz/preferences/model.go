@@ -144,6 +144,15 @@ func IsDesktopAgentConversationDetailMode(value string) bool {
 	}
 }
 
+func IsDesktopDefaultAgentProvider(value string) bool {
+	switch strings.TrimSpace(value) {
+	case agentproviderbiz.ClaudeCode, agentproviderbiz.Codex:
+		return true
+	default:
+		return false
+	}
+}
+
 func IsDesktopAppCatalogChannel(value string) bool {
 	switch value {
 	case "production", "staging":

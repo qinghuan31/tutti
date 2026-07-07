@@ -1,4 +1,5 @@
 import type { WorkbenchHostDockEntryStateSource } from "@tutti-os/workbench-surface";
+import type { AgentGUIProviderTarget } from "@tutti-os/agent-gui";
 import type { AgentProviderStatus } from "@tutti-os/client-tuttid-ts";
 import type {
   AgentProviderStatusService,
@@ -30,6 +31,7 @@ const agentProviderDockBaseOrder = new Map<WorkspaceAgentGuiProvider, number>(
 export function createWorkspaceAgentProviderDockStateSource(input: {
   agentProviderStatusService: AgentProviderStatusService;
   i18n: WorkspaceWorkbenchDesktopI18nRuntime;
+  providerTargets?: readonly AgentGUIProviderTarget[];
   /** Feature gate: providers reported hidden never render a dock entry. */
   isAgentProviderHidden?: (provider: WorkspaceAgentGuiProvider) => boolean;
   subscribeAgentProviderVisibility?: (listener: () => void) => () => void;
@@ -44,6 +46,11 @@ export function createWorkspaceAgentProviderDockStateSource(input: {
       const provider = workspaceAgentGuiProviderFromIdentifier(entryId);
       if (!provider) {
         return null;
+      }
+      if (isAgentProviderHiddenByTargets(provider, input.providerTargets)) {
+        return {
+          visibility: "never"
+        };
       }
       const snapshot = input.agentProviderStatusService.getSnapshot();
       const status = input.agentProviderStatusService.getStatus(provider);
@@ -165,6 +172,18 @@ function shouldShowAgentProviderInDock(
     !isWorkspaceAgentGuiDockSuppressedProvider(provider) &&
     (isWorkspaceAgentGuiDefaultDockProvider(provider) ||
       status?.availability.status === "ready")
+  );
+}
+
+function isAgentProviderHiddenByTargets(
+  provider: WorkspaceAgentGuiProvider,
+  providerTargets: readonly AgentGUIProviderTarget[] | null | undefined
+): boolean {
+  if (provider !== "tutti-agent") {
+    return false;
+  }
+  return !providerTargets?.some(
+    (target) => target.provider === provider && target.disabled !== true
   );
 }
 

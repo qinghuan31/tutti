@@ -54,6 +54,12 @@ function createTransportClient(
     async getAccountUserInfo() {
       throw new Error("not used");
     },
+    async getAccountProductSummary() {
+      throw new Error("not used");
+    },
+    async dismissAccountRegistrationCreditsReward() {
+      throw new Error("not used");
+    },
     async logoutAccount() {
       throw new Error("not used");
     },

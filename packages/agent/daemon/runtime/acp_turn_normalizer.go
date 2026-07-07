@@ -110,6 +110,20 @@ func (n *acpTurnNormalizer) AppendThinkingChunk(session Session, turnID string, 
 	return []activityshared.Event{n.thinkingSnapshotEvent(session, turnID, messageStreamStateStreaming)}
 }
 
+// CurrentAssistantText returns the text of the assistant segment currently
+// accumulating (the turn's most recent one). Exec uses it to inspect the
+// trailing output when a turn ends right after an in-band error line. A
+// finalized segment returns "": once Finish closed it out (as the
+// auto-continue path does before retrying), its text must not leak into the
+// next attempt's inspection — a continuation that streams no new assistant
+// text would otherwise re-detect the previous attempt's error tail.
+func (n *acpTurnNormalizer) CurrentAssistantText() string {
+	if n == nil || n.assistantSegmentCompleted {
+		return ""
+	}
+	return n.assistantContent.String()
+}
+
 func (n *acpTurnNormalizer) ApplyAssistantFinalText(finalText string) {
 	if n == nil {
 		return

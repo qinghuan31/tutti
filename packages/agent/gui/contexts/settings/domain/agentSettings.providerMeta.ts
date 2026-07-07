@@ -3,6 +3,7 @@ import type { AgentProvider } from "./agentSettings";
 export const AGENT_PROVIDER_LABEL: Record<AgentProvider, string> = {
   "claude-code": "Claude Code",
   codex: "Codex",
+  "tutti-agent": "Tutti Agent",
   cursor: "Cursor",
   nexight: "Nexight",
   opencode: "OpenCode",
@@ -26,6 +27,10 @@ export const AGENT_PROVIDER_CAPABILITIES: Record<
   },
   codex: {
     runtimeObservation: "jsonl",
+    experimental: false
+  },
+  "tutti-agent": {
+    runtimeObservation: "provider-api",
     experimental: false
   },
   cursor: {

@@ -4,6 +4,7 @@ import type {
   DesktopAgentComposerDefaultsPatch,
   DesktopAgentConversationDetailMode,
   DesktopAgentProvider,
+  DesktopDefaultAgentProvider,
   DesktopAppCatalogChannel,
   DesktopBrowserUseConnectionMode,
   DesktopDockIconStyle,
@@ -23,8 +24,8 @@ export interface IDesktopPreferencesService {
   readonly store: DesktopPreferencesReadableStoreState;
 
   setDefaultAgentProvider(
-    provider: DesktopAgentProvider
-  ): Promise<DesktopAgentProvider>;
+    provider: DesktopDefaultAgentProvider
+  ): Promise<DesktopDefaultAgentProvider>;
   setAgentConversationDetailMode(
     mode: DesktopAgentConversationDetailMode
   ): Promise<DesktopAgentConversationDetailMode>;

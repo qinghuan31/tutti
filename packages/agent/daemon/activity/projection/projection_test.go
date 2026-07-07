@@ -462,6 +462,7 @@ func TestCanonicalSessionStatus(t *testing.T) {
 		{name: "failed lifecycle wins", lifecycle: "failed", phase: "idle", want: "failed"},
 		{name: "waiting phase", lifecycle: "active", phase: "waiting_input", want: "waiting"},
 		{name: "working phase", lifecycle: "active", phase: "streaming", want: "working"},
+		{name: "settled phase", lifecycle: "created", phase: "settled", want: "idle"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

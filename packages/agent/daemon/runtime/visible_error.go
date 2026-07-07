@@ -444,6 +444,8 @@ func visibleProviderName(provider string) string {
 		return "Claude Code"
 	case ProviderCodex:
 		return "Codex"
+	case ProviderTuttiAgent:
+		return "Tutti Agent"
 	case ProviderNexight:
 		return "Nexight"
 	case ProviderGemini:

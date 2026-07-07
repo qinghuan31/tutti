@@ -262,7 +262,9 @@ Use this shape for new entries:
   `make dev-gui` exits during startup before the desktop window is usable. The
   early form reports `pnpm <version> installation did not succeed`; the later
   form reaches `start electron app...` and then `make` exits while desktop logs
-  say `secondary tutti instance detected`.
+  say `secondary tutti instance detected`. Another early form exits while
+  checking prerequisites because a stale `pnpm` shim reports that its bundled
+  `../node/bin/node` no longer exists.
 - Quick checks:
   Run `DEV_GUI_SKIP_START=1 make dev-gui` to isolate prerequisite setup from
   Electron startup. If full startup exits after `start electron app...`, inspect
@@ -271,15 +273,19 @@ Use this shape for new entries:
 - Root cause:
   Shells launched by tools can put another `pnpm` earlier on `PATH` than
   corepack's shim, so `corepack prepare` succeeds but the script still validates
-  the wrong `pnpm`. Electron's single-instance lock also follows Electron
+  the wrong `pnpm`. That earlier shim can also be a symlink into a relocated
+  runtime cache, so invoking `pnpm --version` fails before the script has a
+  chance to run Corepack. Electron's single-instance lock also follows Electron
   userData; if development and production share userData, a running production
   app makes the dev app quit as a secondary instance. Agent shells launched from
   the packaged app may inherit `TUTTI_ENV=production`, so `make dev-gui` must
   force the development environment instead of preserving that inherited value.
 - Fix:
-  Prefer the corepack shim directory before checking or running `pnpm`, and set
-  development Electron userData to an environment-specific path before
-  requesting the single-instance lock. Ensure the dev-gui script exports
+  Probe `pnpm --version` without letting a broken shim abort startup, discover
+  Corepack from the active or locally installed Node runtime, prefer that
+  Corepack shim directory before checking or running `pnpm`, and set development
+  Electron userData to an environment-specific path before requesting the
+  single-instance lock. Ensure the dev-gui script exports
   `TUTTI_ENV=development` before resolving pid files, installing the dev CLI, or
   launching Electron.
 - Validation:
@@ -829,6 +835,43 @@ delimited by ---`, and the composer skill picker may show partial or
   [daemon_app_mentions.go](../../services/tuttid/api/daemon_app_mentions.go)
   [desktopRichTextAtService.ts](../../apps/desktop/src/renderer/src/features/rich-text-at/services/internal/desktopRichTextAtService.ts)
   [desktopAgentProviderStatusService.ts](../../apps/desktop/src/renderer/src/features/workspace-agent/services/internal/desktopAgentProviderStatusService.ts)
+
+### Agent GUI provider tab shows fused or stale conversations
+
+- Symptom:
+  Switching the Agent GUI aggregation rail between All, Cursor, Codex, or Claude
+  leaves the middle list and right detail panel out of sync. A provider tab can
+  still show other providers' sessions, or the right panel keeps the previous
+  agent after the middle list already changed.
+- Quick checks:
+  Inspect `workspace_agent_sessions.agent_target_id` for legacy Cursor rows. Old
+  Cursor imports may be missing `agent_target_id` while still carrying
+  `provider=cursor`. Confirm the active `conversationFilter` in the controller
+  and the per-query `agentGuiConversationListStore` projection for the selected
+  `local:<provider>` target.
+- Root cause:
+  Conversation retention in `agentGuiConversationListStore` previously kept
+  every targetless session under any agent-target tab. The rail also merged
+  unfiltered store conversations into runtime sections, and filter switches did
+  not always re-project the shared list or clear an active conversation outside
+  the new filter.
+- Fix:
+  Match agent-target tabs with `matchesAgentGUIConversationSummaryFilter`, using
+  `session.provider` as a fallback for legacy `local:<provider>` targets.
+  Backfill Cursor `agent_target_id` in daemon storage, re-project the list store
+  when `conversationFilter` changes, filter rail merges in `AgentGUINodeView`,
+  and open the selected target home composer when the active conversation no
+  longer matches the tab.
+- Validation:
+  Run
+  `pnpm --dir packages/agent/gui exec vitest run --environment jsdom agent-gui/agentGuiNode/model/agentGuiConversationFilter.spec.ts contexts/workspace/presentation/renderer/agentGuiConversationList/agentGuiConversationListStore.spec.ts agent-gui/agentGuiNode/controller/useAgentGUINodeController.spec.tsx -t "opens the selected target home composer when the active conversation is outside the new rail filter"`,
+  then `cd services/tuttid && go test ./data/workspace/...`.
+- References:
+  [agentGuiConversationFilter.ts](../../packages/agent/gui/agent-gui/agentGuiNode/model/agentGuiConversationFilter.ts)
+  [agentGuiConversationListStore.ts](../../packages/agent/gui/contexts/workspace/presentation/renderer/agentGuiConversationList/agentGuiConversationListStore.ts)
+  [useAgentGUINodeController.ts](../../packages/agent/gui/agent-gui/agentGuiNode/controller/useAgentGUINodeController.ts)
+  [AgentGUINodeView.tsx](../../packages/agent/gui/agent-gui/agentGuiNode/AgentGUINodeView.tsx)
+  [agent_store.go](../../services/tuttid/data/workspace/agent_store.go)
 
 ### Agent GUI no-project sessions appear under a user project
 

@@ -154,6 +154,7 @@ func NewDefaultControllerWithOptions(
 	adapters := []Adapter{
 		newDefaultClaudeCodeAdapter(transport, host, options.ProviderCommandResolver),
 		NewCodexAppServerAdapterWithHostMetadata(transport, host),
+		NewTuttiAgentAppServerAdapterWithHostMetadata(transport, host),
 		NewCursorAdapterWithHostMetadata(transport, host),
 		NewNexightAdapterWithHostMetadata(transport, host),
 		NewGeminiAdapterWithHostMetadata(transport, host),
@@ -430,7 +431,7 @@ func defaultPermissionModeIDForProvider(provider string) string {
 	switch strings.TrimSpace(provider) {
 	case ProviderClaudeCode:
 		return "default"
-	case ProviderCodex, ProviderNexight:
+	case ProviderCodex, ProviderTuttiAgent, ProviderNexight:
 		return "auto"
 	case ProviderCursor:
 		return "agent"
@@ -468,7 +469,7 @@ func permissionModeIDAllowedForProvider(provider string, mode string) bool {
 	switch strings.TrimSpace(provider) {
 	case ProviderClaudeCode:
 		return isClaudeCodePermissionModeID(mode)
-	case ProviderCodex, ProviderNexight:
+	case ProviderCodex, ProviderTuttiAgent, ProviderNexight:
 		switch strings.TrimSpace(mode) {
 		case "read-only", "auto", "full-access":
 			return true
@@ -2195,10 +2196,19 @@ func reconcileFinishedTurnStatus(session Session) Session {
 		session.SubmitAvailability = blockedSubmitAvailability("background_agent")
 		return session
 	}
-	if session.Status == SessionStatusWorking {
+	if sessionStatusShouldReconcileToReady(session.Status) {
 		session.Status = SessionStatusReady
 	}
 	return session
+}
+
+func sessionStatusShouldReconcileToReady(status string) bool {
+	switch strings.TrimSpace(strings.ToLower(status)) {
+	case "", "created", "submitted", "running", "streaming", SessionStatusWorking:
+		return true
+	default:
+		return false
+	}
 }
 
 func turnEventsAreTerminal(events []activityshared.Event) bool {

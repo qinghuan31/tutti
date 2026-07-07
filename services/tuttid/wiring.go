@@ -400,6 +400,12 @@ func buildDaemonAPI(ctx context.Context, store workspacedata.CatalogStore, analy
 	agentSidecarPreparer.CommandCatalog = cliRegistry
 
 	terminalService := &workspaceservice.TerminalService{}
+	accountService.OnLoginCompleted = func(ctx context.Context) {
+		agentsidecarservice.BootstrapTuttiAgentUserAuth(ctx)
+	}
+	accountService.OnLogoutCompleted = func(ctx context.Context) {
+		agentsidecarservice.LogoutTuttiAgentUserAuth(ctx)
+	}
 
 	// External credential switchers (for example cc-switch) rewrite provider
 	// auth/config files without notifying tuttid. Watch those files so cached

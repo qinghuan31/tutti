@@ -85,6 +85,23 @@ var composerProfiles = map[string]composerProfile{
 			{ID: "full-access", Semantic: PermissionModeSemanticFullAccess},
 		},
 	},
+	agentprovider.TuttiAgent: {
+		ModelSelection:         true,
+		UsesModelCatalog:       true,
+		ReasoningEffort:        true,
+		DefaultReasoningEffort: "high",
+		Speed:                  true,
+		// Tutti Agent is a Codex CLI fork and supports the same conservative
+		// pre-session capability set.
+		Capabilities:            composerFullCapabilities,
+		PermissionConfigurable:  true,
+		DefaultPermissionModeID: "auto",
+		PermissionModes: []PermissionModeOption{
+			{ID: "read-only", Semantic: PermissionModeSemanticAskBeforeWrite},
+			{ID: "auto", Semantic: PermissionModeSemanticAuto},
+			{ID: "full-access", Semantic: PermissionModeSemanticFullAccess},
+		},
+	},
 	agentprovider.Cursor: {
 		// Cursor advertises a live `model` config option over ACP
 		// (session/new configOptions, parameterized ids); the runtime adapter

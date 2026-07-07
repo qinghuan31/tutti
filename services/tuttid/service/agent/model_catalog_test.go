@@ -3,6 +3,9 @@ package agent
 import (
 	"context"
 	"errors"
+	"os"
+	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 )
@@ -103,5 +106,113 @@ func TestAgentModelCatalogCachesGeminiFallbackForShortTTL(t *testing.T) {
 	}
 	if lister.calls != 2 {
 		t.Fatalf("lister calls after fallback ttl = %d, want 2", lister.calls)
+	}
+}
+
+func TestAgentModelCatalogListsTuttiAgentModelsFromLiveLister(t *testing.T) {
+	now := time.UnixMilli(1000)
+	lister := &fakeAgentModelLister{
+		models: []AgentModelOption{{ID: "gpt-5.4", DisplayName: "GPT-5.4", IsDefault: true}},
+	}
+	catalog := &CachedAgentModelCatalog{
+		TuttiAgent: lister,
+		Now: func() time.Time {
+			return now
+		},
+	}
+
+	first, err := catalog.ListModels(context.Background(), "tutti-agent")
+	if err != nil {
+		t.Fatalf("first ListModels returned error: %v", err)
+	}
+	second, err := catalog.ListModels(context.Background(), "tutti-agent")
+	if err != nil {
+		t.Fatalf("second ListModels returned error: %v", err)
+	}
+
+	if lister.calls != 1 {
+		t.Fatalf("lister calls = %d, want 1", lister.calls)
+	}
+	if first.Provider != "tutti-agent" {
+		t.Fatalf("provider = %q, want tutti-agent", first.Provider)
+	}
+	if first.Source != "tutti-agent-cli" {
+		t.Fatalf("source = %q, want tutti-agent-cli", first.Source)
+	}
+	if len(first.Models) != 1 || first.Models[0].ID != "gpt-5.4" {
+		t.Fatalf("models = %#v, want gpt-5.4", first.Models)
+	}
+	if second.Models[0].ID != first.Models[0].ID {
+		t.Fatalf("cached model mismatch: first=%#v second=%#v", first, second)
+	}
+}
+
+func TestDefaultTuttiAgentModelListerUsesTuttiHomeAndClearsCodexHome(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	stateDir := filepath.Join(home, "state")
+	t.Setenv("TUTTI_STATE_DIR", stateDir)
+	userAgentHome := filepath.Join(home, ".tutti-agent")
+	if err := os.MkdirAll(userAgentHome, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(userAgentHome, "auth.json"), []byte(`{"tutti_llm":{"access_token":"access","refresh_token":"refresh"}}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	userConfig := strings.Join([]string{
+		`model_provider = "custom"`,
+		`model = "custom-model"`,
+		"",
+		"[model_providers.custom]",
+		`name = "Custom"`,
+		`base_url = "https://custom.example.test/v1"`,
+	}, "\n")
+	if err := os.WriteFile(filepath.Join(userAgentHome, "config.toml"), []byte(userConfig), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	lister := defaultTuttiAgentModelLister()
+	env, err := lister.PrepareEnv([]string{
+		"TUTTI_AGENT_HOME=" + filepath.Join(home, "ignored-agent-home"),
+		"CODEX_HOME=" + filepath.Join(home, "codex-home"),
+	})
+	if err != nil {
+		t.Fatalf("PrepareEnv() error = %v", err)
+	}
+	tuttiAgentHome := filepath.Join(stateDir, "agent-model-catalog", "tutti-agent-home")
+	if got, want := envValue(env, "TUTTI_AGENT_HOME"), tuttiAgentHome; got != want {
+		t.Fatalf("TUTTI_AGENT_HOME = %q, want %q", got, want)
+	}
+	if got := envValue(env, "CODEX_HOME"); got != "" {
+		t.Fatalf("CODEX_HOME = %q, want cleared", got)
+	}
+	if got := lister.ClientName; got != "tutti_agent" {
+		t.Fatalf("ClientName = %q, want tutti_agent", got)
+	}
+	authInfo, err := os.Lstat(filepath.Join(tuttiAgentHome, "auth.json"))
+	if err != nil {
+		t.Fatalf("catalog auth not exposed: %v", err)
+	}
+	if authInfo.Mode()&os.ModeSymlink == 0 {
+		t.Fatalf("catalog auth should be symlink, got mode %v", authInfo.Mode())
+	}
+	config, err := os.ReadFile(filepath.Join(tuttiAgentHome, "config.toml"))
+	if err != nil {
+		t.Fatalf("catalog config missing: %v", err)
+	}
+	configText := string(config)
+	if !strings.Contains(configText, `model_provider = "tutti-llm"`) ||
+		!strings.Contains(configText, `model = "gpt-5.4"`) ||
+		!strings.Contains(configText, "[model_providers.tutti-llm]") ||
+		!strings.Contains(configText, "[model_providers.custom]") ||
+		strings.Contains(configText, `model_provider = "custom"`) {
+		t.Fatalf("catalog config = %q, want pinned tutti-llm root provider while preserving custom provider block", configText)
+	}
+	userConfigAfterPrepare, err := os.ReadFile(filepath.Join(userAgentHome, "config.toml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(userConfigAfterPrepare) != userConfig {
+		t.Fatalf("user tutti-agent config was modified: %q", string(userConfigAfterPrepare))
 	}
 }

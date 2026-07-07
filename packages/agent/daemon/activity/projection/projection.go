@@ -380,6 +380,8 @@ func CanonicalSessionStatus(lifecycleStatus string, currentPhase string) string 
 		return "waiting"
 	case "working", "running", "streaming":
 		return "working"
+	case "idle", "settled":
+		return "idle"
 	}
 	switch lifecycleStatus {
 	case "working", "running", "streaming":

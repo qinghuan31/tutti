@@ -121,6 +121,32 @@ func TestDefaultRegistryUsesCodexCLILatestInstaller(t *testing.T) {
 	}
 }
 
+func TestDefaultRegistryUsesTuttiAgentManagedNPMInstaller(t *testing.T) {
+	specs, err := DefaultRegistry().Select([]string{"tutti-agent"})
+	if err != nil {
+		t.Fatalf("Select() error = %v", err)
+	}
+	if len(specs) != 1 {
+		t.Fatalf("len(specs) = %d, want 1", len(specs))
+	}
+	install := specs[0].Install
+	if install.Kind != InstallerKindManagedNPMPackage {
+		t.Fatalf("Install.Kind = %q, want %q", install.Kind, InstallerKindManagedNPMPackage)
+	}
+	if install.ManagedNPM == nil {
+		t.Fatalf("Install.ManagedNPM = nil, want managed npm installer spec")
+	}
+	if install.ManagedNPM.PackageName != "@tutti-os/tutti-agent" {
+		t.Fatalf("PackageName = %q, want @tutti-os/tutti-agent", install.ManagedNPM.PackageName)
+	}
+	if install.ManagedNPM.BinaryName != "tutti-agent" {
+		t.Fatalf("BinaryName = %q, want tutti-agent", install.ManagedNPM.BinaryName)
+	}
+	if !install.ManagedNPM.IncludeOptional {
+		t.Fatalf("IncludeOptional = false, want true")
+	}
+}
+
 func TestDefaultRegistryIncludesCursorSpec(t *testing.T) {
 	specs, err := DefaultRegistry().Select([]string{"cursor"})
 	if err != nil {

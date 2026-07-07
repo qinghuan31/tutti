@@ -6,12 +6,14 @@ import {
 const DESKTOP_WORKSPACE_APP_DEFAULT_ICON_URLS = {
   "agent-claude-code": tuttiAgentAssetUrls.claudeCode,
   "agent-codex": tuttiAgentAssetUrls.codex,
+  "agent-tutti-agent": tuttiAgentAssetUrls.tuttiAgent,
   "issue-manager": tuttiIssueAssetUrls.default
 } as const;
 
 export const SEEDED_DESKTOP_WORKSPACE_APP_ICON_IDS = [
   "agent-codex",
-  "agent-claude-code"
+  "agent-claude-code",
+  "agent-tutti-agent"
 ] as const;
 
 export function resolveDesktopWorkspaceAppDefaultIconUrl(

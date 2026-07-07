@@ -40,6 +40,9 @@ export function normalizeAgentGUIProviderIdentity(
       return "claude-code";
     case "codex":
       return "codex";
+    case "tutti-agent":
+    case "tutti agent":
+      return "tutti-agent";
     case "cursor":
     case "cursor-agent":
     case "cursor agent":

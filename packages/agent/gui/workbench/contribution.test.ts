@@ -540,7 +540,7 @@ describe("agent GUI workbench contribution copy", () => {
     expect(readDockEntryIconImageSrcs(dockEntry?.icon)).toEqual([
       agentGuiDockIconUrls.codex,
       agentGuiDockIconUrls["claude-code"],
-      agentGuiDockIconUrls.nexight,
+      agentGuiDockIconUrls["tutti-agent"],
       agentGuiDockIconUrls.hermes
     ]);
   });
@@ -561,7 +561,7 @@ describe("agent GUI workbench contribution copy", () => {
     expect(readDockEntryIconImageSrcs(dockEntry?.icon)).toEqual([
       "app://icons/codex.png",
       agentGuiDockIconUrls["claude-code"],
-      agentGuiDockIconUrls.nexight,
+      agentGuiDockIconUrls["tutti-agent"],
       agentGuiDockIconUrls.hermes
     ]);
   });

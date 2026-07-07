@@ -481,6 +481,75 @@ test("agent provider dock state source hides Hermes and Gemini from dock", () =>
   assert.equal(geminiState?.visibility, "never");
 });
 
+test("agent provider dock state source hides Tutti Agent disabled targets", () => {
+  const service = createAgentProviderStatusService({
+    statuses: [
+      createStatus({
+        actions: [],
+        availability: "ready",
+        provider: "tutti-agent"
+      })
+    ]
+  });
+  const source = createWorkspaceAgentProviderDockStateSource({
+    agentProviderStatusService: service,
+    i18n: createI18n(),
+    providerTargets: [
+      {
+        agentTargetId: "local:tutti-agent",
+        disabled: true,
+        label: "Tutti Agent",
+        provider: "tutti-agent",
+        ref: {
+          kind: "local",
+          provider: "tutti-agent"
+        },
+        targetId: "local:tutti-agent"
+      }
+    ]
+  });
+
+  assert.equal(
+    source.getEntryState(workspaceAgentGuiDockEntryId("tutti-agent"))
+      ?.visibility,
+    "never"
+  );
+});
+
+test("agent provider dock state source keeps Tutti Agent enabled targets", () => {
+  const service = createAgentProviderStatusService({
+    statuses: [
+      createStatus({
+        actions: [],
+        availability: "ready",
+        provider: "tutti-agent"
+      })
+    ]
+  });
+  const source = createWorkspaceAgentProviderDockStateSource({
+    agentProviderStatusService: service,
+    i18n: createI18n(),
+    providerTargets: [
+      {
+        agentTargetId: "local:tutti-agent",
+        label: "Tutti Agent",
+        provider: "tutti-agent",
+        ref: {
+          kind: "local",
+          provider: "tutti-agent"
+        },
+        targetId: "local:tutti-agent"
+      }
+    ]
+  });
+
+  assert.equal(
+    source.getEntryState(workspaceAgentGuiDockEntryId("tutti-agent"))
+      ?.visibility,
+    "always"
+  );
+});
+
 test("agent provider dock state source hides non-default providers until ready", () => {
   const service = createAgentProviderStatusService({
     statuses: [
@@ -511,40 +580,6 @@ test("agent provider dock state source hides non-default providers until ready",
 
   assert.equal(
     source.getEntryState(workspaceAgentGuiDockEntryId("openclaw"))?.visibility,
-    "always"
-  );
-});
-
-test("agent provider dock state source hides Nexight until ready", () => {
-  const service = createAgentProviderStatusService({
-    statuses: [
-      createStatus({
-        actions: [],
-        availability: "auth_required",
-        provider: "nexight"
-      })
-    ]
-  });
-  const source = createWorkspaceAgentProviderDockStateSource({
-    agentProviderStatusService: service,
-    i18n: createI18n()
-  });
-
-  assert.equal(
-    source.getEntryState(workspaceAgentGuiDockEntryId("nexight"))?.visibility,
-    "never"
-  );
-
-  service.setStatuses([
-    createStatus({
-      actions: [],
-      availability: "ready",
-      provider: "nexight"
-    })
-  ]);
-
-  assert.equal(
-    source.getEntryState(workspaceAgentGuiDockEntryId("nexight"))?.visibility,
     "always"
   );
 });

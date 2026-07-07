@@ -357,7 +357,6 @@ describe("AgentQueuedPromptRuntime", () => {
   });
 });
 
-
 describe("queue suspension (user stop)", () => {
   it("suspends and resumes a queue with prompts", () => {
     const runtime = createAgentQueuedPromptRuntime();

@@ -14,6 +14,7 @@ const (
 	InstallerKindGitHubReleaseBinary      InstallerKind = "github_release_binary"
 	InstallerKindExternalAgentRegistryNPM InstallerKind = "external_agent_registry_npm"
 	InstallerKindCodexCLILatest           InstallerKind = "codex_cli_latest"
+	InstallerKindManagedNPMPackage        InstallerKind = "managed_npm_package"
 )
 
 // InstallerPostStep names an optional, idempotent step run after a successful
@@ -36,6 +37,7 @@ type InstallerSpec struct {
 	ReleaseBinary  *ReleaseBinaryInstallerSpec
 	RegistryNPM    *ExternalAgentRegistryNPMInstallerSpec
 	CodexCLI       *CodexCLILatestInstallerSpec
+	ManagedNPM     *ManagedNPMPackageInstallerSpec
 	PostInstall    InstallerPostStep
 }
 
@@ -66,6 +68,14 @@ type CodexCLILatestInstallerSpec struct {
 	InstallDir string
 }
 
+type ManagedNPMPackageInstallerSpec struct {
+	PackageName     string
+	PackageVersion  string
+	BinaryName      string
+	IncludeOptional bool
+	InstallDir      string
+}
+
 func (s InstallerSpec) displayCommand() string {
 	switch s.Kind {
 	case InstallerKindShellCommand:
@@ -84,6 +94,16 @@ func (s InstallerSpec) displayCommand() string {
 		return strings.TrimSpace(s.DisplayCommand)
 	case InstallerKindCodexCLILatest:
 		return firstNonBlank(s.DisplayCommand, "npm install -g @openai/codex --include=optional")
+	case InstallerKindManagedNPMPackage:
+		if s.ManagedNPM != nil {
+			packageSpec := managedNPMPackageSpec(*s.ManagedNPM)
+			args := []string{"npm install -g", packageSpec}
+			if s.ManagedNPM.IncludeOptional {
+				args = append(args, "--include=optional")
+			}
+			return firstNonBlank(s.DisplayCommand, strings.Join(args, " "))
+		}
+		return strings.TrimSpace(s.DisplayCommand)
 	default:
 		return ""
 	}
@@ -143,6 +163,16 @@ func validateInstallerSpec(spec InstallerSpec) error {
 	case InstallerKindCodexCLILatest:
 		if spec.CodexCLI == nil {
 			return fmt.Errorf("codex CLI latest installer config is required")
+		}
+	case InstallerKindManagedNPMPackage:
+		if spec.ManagedNPM == nil {
+			return fmt.Errorf("managed npm package installer config is required")
+		}
+		if strings.TrimSpace(spec.ManagedNPM.PackageName) == "" {
+			return fmt.Errorf("managed npm package installer package name is required")
+		}
+		if strings.TrimSpace(spec.ManagedNPM.BinaryName) == "" {
+			return fmt.Errorf("managed npm package installer binary name is required")
 		}
 	default:
 		return fmt.Errorf("unsupported installer kind %q", spec.Kind)

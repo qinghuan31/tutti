@@ -3,6 +3,7 @@ import type { AgentGUIProviderTargetRef } from "../types";
 export type AgentGuiWorkbenchProvider =
   | "claude-code"
   | "codex"
+  | "tutti-agent"
   | "cursor"
   | "nexight"
   | "gemini"

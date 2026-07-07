@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"testing"
+	"time"
 )
 
 // cursorModelRuntimeContext mirrors the configOptions a live cursor-agent
@@ -98,6 +99,146 @@ func TestGetComposerOptionsMergesLiveCursorModels(t *testing.T) {
 	}
 	if options.ModelConfig.CurrentValue != "composer-2.5[fast=true]" {
 		t.Fatalf("model current value = %q", options.ModelConfig.CurrentValue)
+	}
+}
+
+// After a daemon restart the runtime session and the in-memory cache are both
+// gone; the model list a past cursor conversation persisted in its runtime
+// context must restore the picker instead of collapsing it to the single
+// selected model (Cursor has no probe session to re-discover with).
+func TestGetComposerOptionsRestoresCursorModelsFromPersistedSessions(t *testing.T) {
+	t.Parallel()
+	service := NewService(newFakeRuntime())
+	service.SessionReader = fakeSessionReader{
+		sessions: map[string]PersistedSession{
+			"ws-1:cursor-old": {
+				ID:              "cursor-old",
+				WorkspaceID:     "ws-1",
+				Provider:        "cursor",
+				RuntimeContext:  cursorModelRuntimeContext(),
+				UpdatedAtUnixMS: 1000,
+			},
+		},
+	}
+
+	options, err := service.GetComposerOptions(context.Background(), ComposerOptionsInput{
+		Provider:    "cursor",
+		WorkspaceID: "ws-1",
+		Cwd:         "/repo",
+		Settings: ComposerSettings{
+			Model:            "composer-2.5[fast=true]",
+			PermissionModeID: "agent",
+		},
+	})
+	if err != nil {
+		t.Fatalf("GetComposerOptions returned error: %v", err)
+	}
+	if len(options.ModelConfig.Options) != 3 {
+		t.Fatalf("model options = %#v, want the 3 persisted models", options.ModelConfig.Options)
+	}
+	if options.ModelConfig.CurrentValue != "composer-2.5[fast=true]" {
+		t.Fatalf("model current value = %q", options.ModelConfig.CurrentValue)
+	}
+	if options.RuntimeContext["modelCatalogSource"] != "acp-live-discovery" {
+		t.Fatalf("modelCatalogSource = %#v, want acp-live-discovery", options.RuntimeContext["modelCatalogSource"])
+	}
+	// The restored list must seed the cache so later fetches skip the scan.
+	if cached, ok := service.getLiveComposerModelOptions("cursor", "ws-1", "/repo", time.Now().UTC()); !ok || len(cached) != 3 {
+		t.Fatalf("cache after persisted fallback = %#v ok = %v, want 3 entries", cached, ok)
+	}
+}
+
+// countingSessionReader wraps fakeSessionReader to count ListSessions calls:
+// the persisted-session scan reads every session row in the workspace, so a
+// workspace with nothing to restore must not rescan on every fetch.
+type countingSessionReader struct {
+	fakeSessionReader
+	listCalls int
+}
+
+func (r *countingSessionReader) ListSessions(workspaceID string) ([]PersistedSession, bool) {
+	r.listCalls++
+	return r.fakeSessionReader.ListSessions(workspaceID)
+}
+
+func TestPersistedLiveModelFallbackMemoizesScanMisses(t *testing.T) {
+	t.Parallel()
+	service := NewService(newFakeRuntime())
+	reader := &countingSessionReader{}
+	service.SessionReader = reader
+
+	now := time.Now().UTC()
+	if _, ok := service.persistedLiveModelFallback("ws-1", "/repo", "cursor", now); ok {
+		t.Fatal("fallback with no persisted sessions returned options")
+	}
+	if _, ok := service.persistedLiveModelFallback("ws-1", "/repo", "cursor", now.Add(time.Minute)); ok {
+		t.Fatal("fallback with no persisted sessions returned options")
+	}
+	if reader.listCalls != 1 {
+		t.Fatalf("ListSessions calls = %d, want the second miss served from the memo", reader.listCalls)
+	}
+
+	// The memo expires: a later fetch rescans and restores newly persisted
+	// sessions.
+	reader.sessions = map[string]PersistedSession{
+		"ws-1:cursor-new": {
+			ID: "cursor-new", WorkspaceID: "ws-1", Provider: "cursor",
+			RuntimeContext: cursorModelRuntimeContext(), UpdatedAtUnixMS: 900,
+		},
+	}
+	options, ok := service.persistedLiveModelFallback("ws-1", "/repo", "cursor", now.Add(persistedLiveModelScanMissTTL+time.Minute))
+	if !ok || len(options) != 3 {
+		t.Fatalf("fallback after memo expiry = %#v ok = %v, want the 3 persisted models", options, ok)
+	}
+	if reader.listCalls != 2 {
+		t.Fatalf("ListSessions calls = %d, want exactly one rescan after memo expiry", reader.listCalls)
+	}
+}
+
+func TestLiveModelOptionsFromPersistedSessionsPicksNewestAndSkipsStale(t *testing.T) {
+	t.Parallel()
+	service := NewService(newFakeRuntime())
+	oldContext := map[string]any{
+		"configOptions": []any{
+			map[string]any{
+				"id": "model",
+				"options": []any{
+					map[string]any{"value": "composer-2[fast=true]", "name": "composer-2"},
+				},
+			},
+		},
+	}
+	service.SessionReader = fakeSessionReader{
+		sessions: map[string]PersistedSession{
+			"ws-1:older": {
+				ID: "older", WorkspaceID: "ws-1", Provider: "cursor",
+				RuntimeContext: oldContext, UpdatedAtUnixMS: 500,
+			},
+			"ws-1:newer": {
+				ID: "newer", WorkspaceID: "ws-1", Provider: "cursor",
+				RuntimeContext: cursorModelRuntimeContext(), UpdatedAtUnixMS: 900,
+			},
+			"ws-1:hidden": {
+				ID: "hidden", WorkspaceID: "ws-1", Provider: "cursor",
+				RuntimeContext:  map[string]any{"hiddenLiveModelDiscovery": true},
+				UpdatedAtUnixMS: 2000,
+			},
+			"ws-1:other-provider": {
+				ID: "other-provider", WorkspaceID: "ws-1", Provider: "claude-code",
+				RuntimeContext: oldContext, UpdatedAtUnixMS: 3000,
+			},
+		},
+	}
+
+	options := service.liveModelOptionsFromPersistedSessions("ws-1", "cursor")
+	if len(options) != 3 {
+		t.Fatalf("options = %#v, want the newer session's 3 models", options)
+	}
+
+	// Sessions persisted before an auth/config invalidation are stale.
+	service.InvalidateLiveComposerModels("cursor")
+	if got := service.liveModelOptionsFromPersistedSessions("ws-1", "cursor"); got != nil {
+		t.Fatalf("options after invalidation = %#v, want nil", got)
 	}
 }
 

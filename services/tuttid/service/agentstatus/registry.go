@@ -110,6 +110,19 @@ func DefaultRegistry() Registry {
 			Install:            codexCLIInstallerSpec(),
 			LoginArgs:          []string{"login", "-c", codexServiceTierOverride},
 		},
+		agentprovider.TuttiAgent: {
+			Provider:    agentprovider.TuttiAgent,
+			BinaryNames: []string{"tutti-agent"},
+			// Tutti Agent is a Codex CLI fork and exposes the same built-in
+			// app-server; probe that command directly because bare `tutti-agent`
+			// is an interactive TUI and fails headless.
+			AdapterBinaryNames: []string{"tutti-agent"},
+			AdapterCommand:     []string{"tutti-agent", "app-server"},
+			AuthStatusCommand:  []string{"login", "status"},
+			AuthMarkerPaths:    []string{"~/.tutti-agent/auth.json"},
+			Install:            tuttiAgentInstallerSpec(),
+			LoginArgs:          []string{"login"},
+		},
 		agentprovider.Cursor: {
 			Provider: agentprovider.Cursor,
 			// Cursor's official installer has shipped the CLI as `cursor-agent`
@@ -192,5 +205,17 @@ func codexCLIInstallerSpec() InstallerSpec {
 		Kind:           InstallerKindCodexCLILatest,
 		DisplayCommand: "npm install -g @openai/codex --include=optional",
 		CodexCLI:       &CodexCLILatestInstallerSpec{},
+	}
+}
+
+func tuttiAgentInstallerSpec() InstallerSpec {
+	return InstallerSpec{
+		Kind:           InstallerKindManagedNPMPackage,
+		DisplayCommand: "npm install -g @tutti-os/tutti-agent --include=optional",
+		ManagedNPM: &ManagedNPMPackageInstallerSpec{
+			PackageName:     "@tutti-os/tutti-agent",
+			BinaryName:      "tutti-agent",
+			IncludeOptional: true,
+		},
 	}
 }

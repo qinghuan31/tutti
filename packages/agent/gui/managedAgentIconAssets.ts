@@ -18,6 +18,7 @@ export const manageAgentCursorUrl = cursorRoundedAssetUrl;
 export const manageAgentGeminiUrl = geminiRoundedAssetUrl;
 export const manageAgentHermesUrl = hermesRoundedAssetUrl;
 export const manageAgentTuttiUrl = manageAgentTuttiAssetUrl;
+export const manageAgentTuttiAgentUrl = manageAgentTuttiAssetUrl;
 export const manageAgentOpenclawUrl = openclawRoundedAssetUrl;
 export const agentColorfulUrl = agentColorfulAssetUrl;
 export const claudeRoundedUrl = claudeRoundedAssetUrl;
@@ -27,6 +28,7 @@ export const cursorRoundedUrl = cursorRoundedAssetUrl;
 export const geminiRoundedUrl = geminiRoundedAssetUrl;
 export const hermesRoundedUrl = hermesRoundedAssetUrl;
 export const tuttiDocRoundedUrl = manageAgentTuttiAssetUrl;
+export const tuttiAgentRoundedUrl = manageAgentTuttiAssetUrl;
 export const openclawRoundedUrl = openclawRoundedAssetUrl;
 export const providerRailClaudeCodeColorfulUrl =
   providerRailClaudeCodeColorfulAssetUrl;

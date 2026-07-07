@@ -13,6 +13,11 @@ const tuttiAssetRoutes = {
     sourceRelativePath:
       "src/renderer/src/assets/workspace-canvas/dock/default/codex.png"
   },
+  "agent/tutti.png": {
+    builtFilePrefixes: ["tutti-"],
+    sourceRelativePath:
+      "src/renderer/src/assets/workspace-canvas/dock/default/tutti.png"
+  },
   "file/default.png": {
     builtFilePrefixes: ["document-"],
     sourceRelativePath:

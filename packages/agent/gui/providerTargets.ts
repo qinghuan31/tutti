@@ -11,20 +11,20 @@ const agentGUIProviderTargetStaticLabels: Record<AgentGUIProvider, string> = {
   gemini: "Gemini",
   hermes: "Hermes",
   nexight: "Tutti Agent",
-  openclaw: "OpenClaw"
+  openclaw: "OpenClaw",
+  "tutti-agent": "Tutti Agent"
 };
 
 export const agentGUIDefaultTargetProviders = [
   "codex",
   "claude-code",
+  "tutti-agent",
   "cursor",
-  "nexight",
   "hermes",
   "openclaw"
 ] as const satisfies readonly AgentGUIProvider[];
 
 const agentGUIDisabledPlaceholderProviders = [
-  "nexight",
   "hermes",
   "openclaw"
 ] as const satisfies readonly AgentGUIProvider[];
@@ -130,6 +130,8 @@ export function localAgentGUIAgentTargetId(
       return "local:codex";
     case "claude-code":
       return "local:claude-code";
+    case "tutti-agent":
+      return "local:tutti-agent";
     case "cursor":
       return "local:cursor";
     case "hermes":

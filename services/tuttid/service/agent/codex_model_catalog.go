@@ -26,8 +26,10 @@ const (
 type CodexCLIModelLister struct {
 	Command          string
 	Args             []string
+	ClientName       string
 	Timeout          time.Duration
 	Environ          func() []string
+	PrepareEnv       func([]string) ([]string, error)
 	HomeDir          func() (string, error)
 	IsExecutableFile func(string) bool
 	LookPath         func(string) (string, error)
@@ -74,6 +76,13 @@ func (l CodexCLIModelLister) ListModels(ctx context.Context) (AgentModelListResu
 		LookPath:         l.LookPath,
 	}
 	env := resolver.Env(nil)
+	if l.PrepareEnv != nil {
+		var err error
+		env, err = l.PrepareEnv(env)
+		if err != nil {
+			return AgentModelListResult{}, err
+		}
+	}
 	command = resolver.Resolve(command, env)
 	args := append([]string{}, l.Args...)
 	if len(args) == 0 {
@@ -113,7 +122,7 @@ func (l CodexCLIModelLister) ListModels(ctx context.Context) (AgentModelListResu
 		stderrWG.Wait()
 	}()
 
-	if err := writeCodexModelListRequests(stdin); err != nil {
+	if err := writeCodexModelListRequests(stdin, l.clientName()); err != nil {
 		return AgentModelListResult{}, err
 	}
 	models, err := readCodexModelListResponse(stdout)
@@ -129,14 +138,21 @@ func (l CodexCLIModelLister) ListModels(ctx context.Context) (AgentModelListResu
 	return AgentModelListResult{}, err
 }
 
-func writeCodexModelListRequests(stdin io.Writer) error {
+func (l CodexCLIModelLister) clientName() string {
+	if name := strings.TrimSpace(l.ClientName); name != "" {
+		return name
+	}
+	return "tuttid"
+}
+
+func writeCodexModelListRequests(stdin io.Writer, clientName string) error {
 	encoder := json.NewEncoder(stdin)
 	if err := encoder.Encode(map[string]any{
 		"id":     "1",
 		"method": "initialize",
 		"params": map[string]any{
 			"clientInfo": map[string]string{
-				"name":    "tuttid",
+				"name":    clientName,
 				"version": "0.1.0",
 			},
 		},

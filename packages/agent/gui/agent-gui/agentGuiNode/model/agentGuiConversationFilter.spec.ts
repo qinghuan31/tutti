@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { WorkspaceAgentActivitySession } from "../../../shared/workspaceAgentActivityTypes.ts";
 import type { AgentGUIConversationSummary } from "./agentGuiConversationModel.ts";
+import type { AgentGUIResolvedProvider } from "../../../shared/agentConversationTitleProjection.ts";
 import {
   createAgentGUIConversationFilterState,
   filterAgentGUIConversationSummaries,
@@ -25,13 +26,26 @@ describe("agentGuiConversationFilter", () => {
     expect(
       filterAgentGUIConversationSummaries(
         [
-          conversation("codex-local", "local:codex"),
-          conversation("codex-shared", "shared:codex"),
-          conversation("targetless", null)
+          conversation("codex-local", "local:codex", "codex"),
+          conversation("codex-shared", "shared:codex", "codex"),
+          conversation("targetless", null, "codex")
         ],
         { kind: "agentTarget", agentTargetId: "local:codex" }
       ).map((item) => item.id)
-    ).toEqual(["codex-local"]);
+    ).toEqual(["codex-local", "targetless"]);
+  });
+
+  it("matches legacy provider-only sessions to local system agent targets", () => {
+    expect(
+      filterAgentGUIConversationSummaries(
+        [
+          conversation("cursor-legacy", null, "cursor"),
+          conversation("codex-legacy", null, "codex"),
+          conversation("cursor-tagged", "local:cursor", "cursor")
+        ],
+        { kind: "agentTarget", agentTargetId: "local:cursor" }
+      ).map((item) => item.id)
+    ).toEqual(["cursor-legacy", "cursor-tagged"]);
   });
 
   it("keeps the filter model independent from composer state", () => {
@@ -78,13 +92,14 @@ function session(
 
 function conversation(
   id: string,
-  agentTargetId: string | null
+  agentTargetId: string | null,
+  provider: AgentGUIResolvedProvider = "codex"
 ): AgentGUIConversationSummary {
   return {
     id,
     agentTargetId,
     cwd: "/repo",
-    provider: "codex",
+    provider,
     status: "completed",
     title: id,
     updatedAtUnixMs: 1

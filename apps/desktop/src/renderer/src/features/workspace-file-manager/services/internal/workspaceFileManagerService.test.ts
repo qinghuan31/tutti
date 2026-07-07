@@ -788,6 +788,8 @@ function createDependenciesStub(): {
       startAccountLogin: fail,
       getAccountLoginStatus: fail,
       getAccountUserInfo: fail,
+      getAccountProductSummary: fail,
+      dismissAccountRegistrationCreditsReward: fail,
       logoutAccount: fail,
       applyWorkspaceGitPatch: fail,
       listCliCapabilities: fail,

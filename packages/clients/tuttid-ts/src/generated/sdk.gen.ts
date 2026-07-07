@@ -112,6 +112,9 @@ import type {
   DeleteWorkspaceIssueTopicErrors,
   DeleteWorkspaceIssueTopicResponses,
   DeleteWorkspaceResponses,
+  DismissAccountRegistrationCreditsRewardData,
+  DismissAccountRegistrationCreditsRewardErrors,
+  DismissAccountRegistrationCreditsRewardResponses,
   ExportWorkspaceAppData,
   ExportWorkspaceAppErrors,
   ExportWorkspaceAppResponses,
@@ -121,6 +124,9 @@ import type {
   GetAccountLoginStatusData,
   GetAccountLoginStatusErrors,
   GetAccountLoginStatusResponses,
+  GetAccountProductSummaryData,
+  GetAccountProductSummaryErrors,
+  GetAccountProductSummaryResponses,
   GetAccountUserInfoData,
   GetAccountUserInfoErrors,
   GetAccountUserInfoResponses,
@@ -510,6 +516,48 @@ export const getAccountUserInfo = <ThrowOnError extends boolean = false>(
     security: [{ scheme: "bearer", type: "http" }],
     url: "/v1/account/user_info",
     ...options
+  });
+
+/**
+ * Get current account membership and credits summary
+ *
+ * Returns desktop-safe account product state. tuttid reads the local account session and calls supported Tutti web APIs with the session cookie; session credentials are never returned to the renderer.
+ */
+export const getAccountProductSummary = <ThrowOnError extends boolean = false>(
+  options?: Options<GetAccountProductSummaryData, ThrowOnError>
+) =>
+  (options?.client ?? client).get<
+    GetAccountProductSummaryResponses,
+    GetAccountProductSummaryErrors,
+    ThrowOnError
+  >({
+    security: [{ scheme: "bearer", type: "http" }],
+    url: "/v1/account/product_summary",
+    ...options
+  });
+
+/**
+ * Mark the current registration credits reward toast as shown
+ *
+ * Marks a desktop-safe registration credits reward event as shown after the renderer has displayed or dismissed the toast. tuttid keeps session credentials local and never returns them to the renderer.
+ */
+export const dismissAccountRegistrationCreditsReward = <
+  ThrowOnError extends boolean = false
+>(
+  options: Options<DismissAccountRegistrationCreditsRewardData, ThrowOnError>
+) =>
+  (options.client ?? client).post<
+    DismissAccountRegistrationCreditsRewardResponses,
+    DismissAccountRegistrationCreditsRewardErrors,
+    ThrowOnError
+  >({
+    security: [{ scheme: "bearer", type: "http" }],
+    url: "/v1/account/registration_credits_reward/dismiss",
+    ...options,
+    headers: {
+      "Content-Type": "application/json",
+      ...options.headers
+    }
   });
 
 /**

@@ -33,6 +33,7 @@ func (s *SQLiteStore) newAgentStore() *agentstore.Store {
 		TargetIDBackfillByProvider: map[string]string{
 			"codex":       agenttargetbiz.IDLocalCodex,
 			"claude-code": agenttargetbiz.IDLocalClaudeCode,
+			"cursor":      agenttargetbiz.IDLocalCursor,
 		},
 	})
 }

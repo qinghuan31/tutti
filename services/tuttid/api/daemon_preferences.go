@@ -57,7 +57,7 @@ func (api DaemonAPI) PutDesktopPreferences(ctx context.Context, request tuttigen
 	}
 
 	defaultAgentProvider := agentproviderbiz.Normalize(string(request.Body.Preferences.DefaultAgentProvider))
-	if defaultAgentProvider == "" {
+	if defaultAgentProvider == "" || !preferencesbiz.IsDesktopDefaultAgentProvider(defaultAgentProvider) {
 		return tuttigenerated.PutDesktopPreferences400JSONResponse{
 			InvalidRequestErrorJSONResponse: invalidRequestError(
 				apierrors.InvalidRequest(
@@ -457,10 +457,10 @@ func agentGUIConversationRailCollapsedByProviderFromGenerated(
 	result := map[string]bool{}
 	setAgentGUIConversationRailCollapsedFromGenerated(result, "claude-code", value.ClaudeCode)
 	setAgentGUIConversationRailCollapsedFromGenerated(result, "codex", value.Codex)
+	setAgentGUIConversationRailCollapsedFromGenerated(result, "tutti-agent", value.TuttiAgent)
 	setAgentGUIConversationRailCollapsedFromGenerated(result, "cursor", value.Cursor)
 	setAgentGUIConversationRailCollapsedFromGenerated(result, "gemini", value.Gemini)
 	setAgentGUIConversationRailCollapsedFromGenerated(result, "hermes", value.Hermes)
-	setAgentGUIConversationRailCollapsedFromGenerated(result, "nexight", value.Nexight)
 	setAgentGUIConversationRailCollapsedFromGenerated(result, "openclaw", value.Openclaw)
 	return result
 }
@@ -482,10 +482,10 @@ func agentComposerDefaultsByProviderFromGenerated(
 	result := map[string]preferencesbiz.AgentComposerDefaults{}
 	setAgentComposerDefaultsFromGenerated(result, "claude-code", value.ClaudeCode)
 	setAgentComposerDefaultsFromGenerated(result, "codex", value.Codex)
+	setAgentComposerDefaultsFromGenerated(result, "tutti-agent", value.TuttiAgent)
 	setAgentComposerDefaultsFromGenerated(result, "cursor", value.Cursor)
 	setAgentComposerDefaultsFromGenerated(result, "gemini", value.Gemini)
 	setAgentComposerDefaultsFromGenerated(result, "hermes", value.Hermes)
-	setAgentComposerDefaultsFromGenerated(result, "nexight", value.Nexight)
 	setAgentComposerDefaultsFromGenerated(result, "openclaw", value.Openclaw)
 	return result
 }

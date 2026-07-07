@@ -55,7 +55,8 @@ const providerLabelKeys: Record<AgentGuiBatchRunnerProvider, string> = {
   codex: "agentHost.agentGui.batchRunnerProviderCodex",
   hermes: "agentHost.agentGui.batchRunnerProviderHermes",
   nexight: "agentHost.agentGui.batchRunnerProviderNexight",
-  openclaw: "agentHost.agentGui.batchRunnerProviderOpenClaw"
+  openclaw: "agentHost.agentGui.batchRunnerProviderOpenClaw",
+  "tutti-agent": "agentHost.agentGui.batchRunnerProviderTuttiAgent"
 };
 
 const statusToneClassNames: Record<BatchCaseStatus, string> = {

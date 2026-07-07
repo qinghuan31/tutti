@@ -18,6 +18,9 @@ import type {
 } from "./host/agentHostApi";
 import { installReactRenderLoopConsoleTrap } from "./test/reactRenderLoopConsoleTrap";
 
+// Vitest 4 runs with NODE_ENV=development; agent test harnesses gate on "test".
+process.env.NODE_ENV = "test";
+
 const originalConsoleInfo = console.info.bind(console);
 console.info = (...args: unknown[]) => {
   if (isSuppressedAgentGuiDiagnostic(args)) {

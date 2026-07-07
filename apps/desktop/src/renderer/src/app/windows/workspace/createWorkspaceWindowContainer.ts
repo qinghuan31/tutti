@@ -25,6 +25,7 @@ import {
   createWorkspaceAgentOutcomeNotificationController,
   registerWorkspaceWorkbenchServices
 } from "@renderer/features/workspace-workbench";
+import { readTuttiAgentSwitchEnabled } from "@renderer/features/workspace-workbench/services/tuttiAgentSwitchPreference.ts";
 import {
   managedAgentRoundedIconUrl,
   userAvatarPlaceholderUrl,
@@ -216,7 +217,8 @@ export function createWorkspaceWindowContainer(): WorkspaceWindowContainerResult
       const snapshot =
         workspaceAgentServices.agentProviderStatusService.getSnapshot();
       return snapshot.capturedAt === null ? undefined : snapshot.statuses;
-    }
+    },
+    isTuttiAgentSwitchEnabled: () => readTuttiAgentSwitchEnabled()
   });
   registerWorkspaceWorkbenchServices(registry, {
     browserApi: desktopApi.browser,
@@ -251,6 +253,8 @@ function resolveWorkspaceRichTextAgentIconUrl(provider: string | undefined) {
       return tuttiAgentAssetUrls.claudeCode;
     case "codex":
       return tuttiAgentAssetUrls.codex;
+    case "tutti-agent":
+      return tuttiAgentAssetUrls.tuttiAgent;
     default:
       return managedAgentRoundedIconUrl(provider);
   }

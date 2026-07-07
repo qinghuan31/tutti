@@ -104,6 +104,11 @@ func (s *Service) InvalidateLiveComposerModels(provider string) {
 			deletedAttemptMarkers++
 		}
 	}
+	for key := range s.liveModelPersistedScanMissAtUnixMS {
+		if strings.HasPrefix(key, prefix) {
+			delete(s.liveModelPersistedScanMissAtUnixMS, key)
+		}
+	}
 	logClaudeModelCatalogInvalidationDebug("live_composer_models_invalidated", map[string]any{
 		"provider":              normalized,
 		"deletedCacheEntries":   deletedCacheEntries,
@@ -116,10 +121,15 @@ func (s *Service) liveModelCacheTTL(provider string) time.Duration {
 	if s.LiveModelCacheTTL != 0 {
 		return s.LiveModelCacheTTL
 	}
-	// Claude Code advertises a stable, account-level model list that only a real
-	// session (or daemon restart) refreshes; keep the last-known-good entry for
-	// the daemon's lifetime instead of decaying to the static fallback.
-	if agentprovider.Normalize(provider) == agentprovider.ClaudeCode {
+	// Live-discovery providers (Claude Code, Cursor) advertise a stable,
+	// account-level model list that only a real session refreshes; keep the
+	// last-known-good entry for the daemon's lifetime instead of decaying to
+	// the single-entry fallback. Expiry is pure loss here: Cursor has no probe
+	// session at all and Claude's hidden discovery runs at most once per key,
+	// so an expired entry cannot be re-discovered without a running
+	// conversation. A running session's fresher list still overrides a stale
+	// entry (see mergeLiveComposerModelsForComposerOptions ordering).
+	if composerProfileFor(provider).LiveModelDiscovery {
 		return 0
 	}
 	return defaultLiveModelCacheTTL

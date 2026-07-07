@@ -95,6 +95,7 @@ Migrated agent runtime state should derive from the same root:
       <agent-session-id>/
         sidecar-manifest.json
         codex-home/
+        tutti-agent-home/
     attachments/
       <agent-session-id>/
         <attachment-id>.<ext>
@@ -134,7 +135,9 @@ Migrated agent runtime state should derive from the same root:
 that do not receive an explicit cwd. `agent/runs` stores per-session provider
 sidecar state that can be recreated or cleaned up when the owning agent session
 is deleted. Provider-specific homes, generated skills, and cleanup manifests
-live under the matching run directory. `agent/attachments` stores persisted
+live under the matching run directory. Codex sessions use `codex-home` and
+receive it through `CODEX_HOME`; Tutti Agent sessions use `tutti-agent-home`
+and receive it through `TUTTI_AGENT_HOME`. `agent/attachments` stores persisted
 prompt attachments by agent session.
 
 Filesystem paths under `<state-dir>` must not expose `workspaceId` as a

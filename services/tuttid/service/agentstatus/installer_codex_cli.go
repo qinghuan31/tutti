@@ -11,6 +11,7 @@ import (
 	"strings"
 
 	"github.com/tutti-os/tutti/packages/agent/daemon/runtimecmd"
+	"github.com/tutti-os/tutti/services/tuttid/biz/agentprovider"
 	managedruntime "github.com/tutti-os/tutti/services/tuttid/service/managedruntime"
 )
 
@@ -36,8 +37,29 @@ func (s Service) runCodexCLILatestInstaller(
 	if spec.CodexCLI == nil {
 		return InstallCommandResult{ExitCode: 1, Stderr: "codex CLI latest installer config is required"}, nil
 	}
+	return s.runManagedNPMPackageInstaller(ctx, agentprovider.Codex, ManagedNPMPackageInstallerSpec{
+		PackageName:     "@openai/codex",
+		BinaryName:      "codex",
+		IncludeOptional: true,
+	}, existingCLIPath)
+}
+
+func (s Service) runManagedNPMPackageInstaller(
+	ctx context.Context,
+	provider string,
+	spec ManagedNPMPackageInstallerSpec,
+	existingCLIPath string,
+) (InstallCommandResult, error) {
+	packageName := strings.TrimSpace(spec.PackageName)
+	binaryName := strings.TrimSpace(spec.BinaryName)
+	if packageName == "" {
+		return InstallCommandResult{ExitCode: 1, Stderr: "managed npm package name is required"}, nil
+	}
+	if binaryName == "" {
+		return InstallCommandResult{ExitCode: 1, Stderr: "managed npm package binary name is required"}, nil
+	}
 	resolver := s.commandResolver()
-	npmPath, nodeTarget, baseEnv, err := s.resolveCodexInstallerNodeRuntime(ctx, resolver)
+	npmPath, nodeTarget, baseEnv, err := s.resolveManagedNPMInstallerNodeRuntime(ctx, resolver)
 	if err != nil {
 		return InstallCommandResult{ExitCode: 1, Stderr: err.Error()}, nil
 	}
@@ -49,9 +71,12 @@ func (s Service) runCodexCLILatestInstaller(
 	// Pin the global prefix to the same stable, always-searched dir the
 	// release-binary installer uses (selectInstallDir -> ~/.local/bin) so the
 	// launcher stays discoverable regardless of which npm executes the install.
-	installBinDir, err := s.selectInstallDir()
-	if err != nil {
-		return InstallCommandResult{ExitCode: 1, Stderr: err.Error()}, nil
+	installBinDir := strings.TrimSpace(spec.InstallDir)
+	if installBinDir == "" {
+		installBinDir, err = s.selectInstallDir()
+		if err != nil {
+			return InstallCommandResult{ExitCode: 1, Stderr: err.Error()}, nil
+		}
 	}
 	installPrefix := filepath.Dir(installBinDir)
 	step := "install"
@@ -64,25 +89,32 @@ func (s Service) runCodexCLILatestInstaller(
 	// reinstall there with --include=optional so the missing platform binary is
 	// restored in place. Falls back to the ~/.local install above when no existing
 	// install can be located.
-	if repairPrefix, ok := codexRepairInstallPrefix(existingCLIPath); ok {
+	if repairPrefix, ok := managedNPMRepairInstallPrefix(existingCLIPath, packageName); ok {
 		installPrefix = repairPrefix
 		step = "repair"
 		slog.Info(
-			"agent provider codex npm install repairing in place",
+			"agent provider managed npm install repairing in place",
+			"provider", provider,
+			"package", packageName,
+			"binary", binaryName,
 			"existingCLIPath", existingCLIPath,
 			"prefix", installPrefix,
 		)
 	}
-	command := joinShellCommand([]string{npmPath, "install", "-g", "--prefix", installPrefix, "@openai/codex", "--include=optional"})
+	commandArgs := []string{npmPath, "install", "-g", "--prefix", installPrefix, managedNPMPackageSpec(spec)}
+	if spec.IncludeOptional {
+		commandArgs = append(commandArgs, "--include=optional")
+	}
+	command := joinShellCommand(commandArgs)
 	// Pin a dedicated, tutti-owned npm cache instead of the user's global ~/.npm,
 	// which on some machines holds root-owned files that make every user-mode npm
 	// install fail with EACCES before any registry is hit.
 	baseEnv = withAgentNPMCache(baseEnv, filepath.Join(installPrefix, agentNPMCacheDirName))
-	registries := s.rankedAgentNPMRegistries(ctx, "@openai/codex")
+	registries := s.rankedAgentNPMRegistries(ctx, packageName)
 	var result InstallCommandResult
 	for i, registry := range registries {
 		registryDisplay := displayNPMRegistry(registry)
-		setActiveAction(ctx, "codex", ActiveAction{
+		setActiveAction(ctx, provider, ActiveAction{
 			ID:         ActionInstall,
 			Status:     "running",
 			Step:       step,
@@ -94,12 +126,12 @@ func (s Service) runCodexCLILatestInstaller(
 			Command: command,
 			Env:     withAgentNPMRegistry(slices.Clone(baseEnv), registry),
 			OnStdout: func(output string) {
-				appendActiveActionStdout(ctx, "codex", output)
+				appendActiveActionStdout(ctx, provider, output)
 			},
 		})
 		cancel()
 		if err == nil && result.ExitCode == 0 {
-			setActiveAction(ctx, "codex", ActiveAction{
+			setActiveAction(ctx, provider, ActiveAction{
 				ID:         ActionInstall,
 				Status:     "running",
 				Step:       "verify",
@@ -111,7 +143,9 @@ func (s Service) runCodexCLILatestInstaller(
 		}
 		if i < len(registries)-1 {
 			slog.Warn(
-				"agent provider codex npm install failed on registry, trying next",
+				"agent provider managed npm install failed on registry, trying next",
+				"provider", provider,
+				"package", packageName,
 				"registry", registryDisplay,
 				"exitCode", result.ExitCode,
 				"error", err,
@@ -121,7 +155,7 @@ func (s Service) runCodexCLILatestInstaller(
 	return result, err
 }
 
-func (s Service) resolveCodexInstallerNodeRuntime(
+func (s Service) resolveManagedNPMInstallerNodeRuntime(
 	ctx context.Context,
 	resolver runtimecmd.Resolver,
 ) (string, string, []string, error) {
@@ -142,6 +176,31 @@ func (s Service) resolveCodexInstallerNodeRuntime(
 		return "", "", nil, fmt.Errorf("tutti managed Node runtime did not provide npm and npm was not found on PATH")
 	}
 	return npmPath, firstNonBlank(appRuntime.Node, nodeBinaryName()), managedruntime.ProcessEnv(appRuntime.EnvOverrides...), nil
+}
+
+func managedNPMPackageSpec(spec ManagedNPMPackageInstallerSpec) string {
+	packageName := strings.TrimSpace(spec.PackageName)
+	version := strings.TrimSpace(spec.PackageVersion)
+	if version == "" {
+		return packageName
+	}
+	return packageName + "@" + version
+}
+
+func managedNPMRepairInstallPrefix(existingCLIPath, packageName string) (string, bool) {
+	existingCLIPath = strings.TrimSpace(existingCLIPath)
+	if existingCLIPath == "" {
+		return "", false
+	}
+	packageJSONPath := findAdapterPackageJSON(existingCLIPath, packageName)
+	if packageJSONPath == "" {
+		return "", false
+	}
+	prefix := npmGlobalPrefixFromPackageDir(filepath.Dir(packageJSONPath))
+	if prefix == "" {
+		return "", false
+	}
+	return prefix, true
 }
 
 func (s Service) resolveCodexManagedNodeRuntime(ctx context.Context) (managedruntime.ResolvedRuntime, error) {

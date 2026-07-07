@@ -66,6 +66,24 @@ export const preferencesDesktopPreferencesSchema = {
             }
           }
         },
+        "tutti-agent": {
+          type: "object",
+          additionalProperties: false,
+          properties: {
+            model: {
+              type: "string"
+            },
+            permissionModeId: {
+              type: "string"
+            },
+            reasoningEffort: {
+              type: "string"
+            },
+            speed: {
+              type: "string"
+            }
+          }
+        },
         cursor: {
           type: "object",
           additionalProperties: false,
@@ -189,6 +207,9 @@ export const preferencesDesktopPreferencesSchema = {
         codex: {
           type: "boolean"
         },
+        "tutti-agent": {
+          type: "boolean"
+        },
         cursor: {
           type: "boolean"
         },
@@ -224,15 +245,7 @@ export const preferencesDesktopPreferencesSchema = {
     },
     defaultAgentProvider: {
       type: "string",
-      enum: [
-        "claude-code",
-        "codex",
-        "cursor",
-        "nexight",
-        "gemini",
-        "hermes",
-        "openclaw"
-      ]
+      enum: ["claude-code", "codex"]
     },
     dockIconStyle: {
       type: "string",
@@ -1151,6 +1164,24 @@ export const preferencesDesktopUpdateRequestedPayloadSchema = {
                 }
               }
             },
+            "tutti-agent": {
+              type: "object",
+              additionalProperties: false,
+              properties: {
+                model: {
+                  type: "string"
+                },
+                permissionModeId: {
+                  type: "string"
+                },
+                reasoningEffort: {
+                  type: "string"
+                },
+                speed: {
+                  type: "string"
+                }
+              }
+            },
             cursor: {
               type: "object",
               additionalProperties: false,
@@ -1274,6 +1305,9 @@ export const preferencesDesktopUpdateRequestedPayloadSchema = {
             codex: {
               type: "boolean"
             },
+            "tutti-agent": {
+              type: "boolean"
+            },
             cursor: {
               type: "boolean"
             },
@@ -1309,15 +1343,7 @@ export const preferencesDesktopUpdateRequestedPayloadSchema = {
         },
         defaultAgentProvider: {
           type: "string",
-          enum: [
-            "claude-code",
-            "codex",
-            "cursor",
-            "nexight",
-            "gemini",
-            "hermes",
-            "openclaw"
-          ]
+          enum: ["claude-code", "codex"]
         },
         dockIconStyle: {
           type: "string",
@@ -1477,6 +1503,24 @@ export const preferencesDesktopUpdatedPayloadSchema = {
                 }
               }
             },
+            "tutti-agent": {
+              type: "object",
+              additionalProperties: false,
+              properties: {
+                model: {
+                  type: "string"
+                },
+                permissionModeId: {
+                  type: "string"
+                },
+                reasoningEffort: {
+                  type: "string"
+                },
+                speed: {
+                  type: "string"
+                }
+              }
+            },
             cursor: {
               type: "object",
               additionalProperties: false,
@@ -1600,6 +1644,9 @@ export const preferencesDesktopUpdatedPayloadSchema = {
             codex: {
               type: "boolean"
             },
+            "tutti-agent": {
+              type: "boolean"
+            },
             cursor: {
               type: "boolean"
             },
@@ -1635,15 +1682,7 @@ export const preferencesDesktopUpdatedPayloadSchema = {
         },
         defaultAgentProvider: {
           type: "string",
-          enum: [
-            "claude-code",
-            "codex",
-            "cursor",
-            "nexight",
-            "gemini",
-            "hermes",
-            "openclaw"
-          ]
+          enum: ["claude-code", "codex"]
         },
         dockIconStyle: {
           type: "string",

@@ -111,6 +111,10 @@ func newCursorAdapterWithHostMetadata(
 			// full-access auto-approves permission requests live; all tiers
 			// switch without a respawn.
 			autoApprovePermissionDecision: cursorAutoApprovePermissionDecision,
+			// cursor-agent ends the turn "successfully" after streaming
+			// transient upstream failures (RetriableError/ConnectError) as
+			// plain text; auto-continue instead of stalling the conversation.
+			autoContinueRetriableTurnError: true,
 		},
 		transport: transport,
 		host:      host,

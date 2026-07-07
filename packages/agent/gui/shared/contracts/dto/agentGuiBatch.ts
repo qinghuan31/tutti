@@ -5,7 +5,7 @@ import type {
 
 export type AgentGuiBatchRunnerProvider = Extract<
   AgentHostAgentSessionProvider,
-  "claude-code" | "codex" | "hermes" | "nexight" | "openclaw"
+  "claude-code" | "codex" | "tutti-agent" | "hermes" | "nexight" | "openclaw"
 >;
 
 export interface AgentGuiBatchPromptCase {

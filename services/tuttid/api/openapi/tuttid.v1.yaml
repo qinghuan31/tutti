@@ -132,6 +132,50 @@ paths:
           $ref: "#/components/responses/MethodNotAllowedError"
         "503":
           $ref: "#/components/responses/ServiceUnavailableError"
+  /v1/account/product_summary:
+    get:
+      operationId: getAccountProductSummary
+      tags:
+        - account
+      summary: Get current account membership and credits summary
+      description: Returns desktop-safe account product state. tuttid reads the local account session and calls supported Tutti web APIs with the session cookie; session credentials are never returned to the renderer.
+      responses:
+        "200":
+          description: Current account product summary, if signed in
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AccountProductSummaryResponse"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "405":
+          $ref: "#/components/responses/MethodNotAllowedError"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailableError"
+  /v1/account/registration_credits_reward/dismiss:
+    post:
+      operationId: dismissAccountRegistrationCreditsReward
+      tags:
+        - account
+      summary: Mark the current registration credits reward toast as shown
+      description: Marks a desktop-safe registration credits reward event as shown after the renderer has displayed or dismissed the toast. tuttid keeps session credentials local and never returns them to the renderer.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/DismissAccountRegistrationCreditsRewardRequest"
+      responses:
+        "204":
+          description: Registration credits reward marked as shown
+        "400":
+          $ref: "#/components/responses/InvalidRequestError"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "405":
+          $ref: "#/components/responses/MethodNotAllowedError"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailableError"
   /v1/account/logout:
     post:
       operationId: logoutAccount
@@ -3638,6 +3682,153 @@ components:
           allOf:
             - $ref: "#/components/schemas/AccountUserInfo"
           nullable: true
+    AccountMembershipSummary:
+      type: object
+      additionalProperties: false
+      required:
+        - tier_key
+        - display_name
+      properties:
+        tier_key:
+          type: string
+          minLength: 1
+        display_name:
+          type: string
+          minLength: 1
+        billing_period:
+          type: string
+          nullable: true
+        status:
+          type: string
+          nullable: true
+        access_status:
+          type: string
+          nullable: true
+        current_period_end:
+          type: string
+          nullable: true
+        cancel_at_period_end:
+          type: boolean
+          nullable: true
+    AccountCreditsSummary:
+      type: object
+      additionalProperties: false
+      required:
+        - available_credits
+      properties:
+        available_credits:
+          type: integer
+          format: int64
+          nullable: true
+        expiring_credits_within_24h:
+          type: integer
+          format: int64
+          nullable: true
+        next_expire_at:
+          type: string
+          nullable: true
+        refreshed_at:
+          type: string
+          nullable: true
+    AccountProductSummaryLinks:
+      type: object
+      additionalProperties: false
+      required:
+        - plan_url
+        - usage_url
+        - settings_url
+      properties:
+        plan_url:
+          type: string
+          minLength: 1
+        usage_url:
+          type: string
+          minLength: 1
+        settings_url:
+          type: string
+          minLength: 1
+    AccountProductSummaryPartialError:
+      type: object
+      additionalProperties: false
+      required:
+        - scope
+        - code
+      properties:
+        scope:
+          type: string
+          enum:
+            - membership
+            - credits
+            - links
+            - unknown
+        code:
+          type: string
+          minLength: 1
+        message:
+          type: string
+          nullable: true
+    AccountRegistrationCreditsReward:
+      type: object
+      additionalProperties: false
+      required:
+        - id
+        - grant_no
+        - credits
+        - created_at
+      properties:
+        id:
+          type: string
+          minLength: 1
+        grant_no:
+          type: string
+          minLength: 1
+        credits:
+          type: integer
+          format: int64
+          minimum: 1
+        created_at:
+          type: string
+          minLength: 1
+    AccountProductSummaryResponse:
+      type: object
+      additionalProperties: false
+      required:
+        - user
+        - membership
+        - credits
+        - links
+      properties:
+        user:
+          allOf:
+            - $ref: "#/components/schemas/AccountUserInfo"
+          nullable: true
+        membership:
+          allOf:
+            - $ref: "#/components/schemas/AccountMembershipSummary"
+          nullable: true
+        credits:
+          allOf:
+            - $ref: "#/components/schemas/AccountCreditsSummary"
+          nullable: true
+        partial_error:
+          allOf:
+            - $ref: "#/components/schemas/AccountProductSummaryPartialError"
+          nullable: true
+        registration_credits_reward:
+          allOf:
+            - $ref: "#/components/schemas/AccountRegistrationCreditsReward"
+          nullable: true
+        links:
+          $ref: "#/components/schemas/AccountProductSummaryLinks"
+    DismissAccountRegistrationCreditsRewardRequest:
+      type: object
+      additionalProperties: false
+      required:
+        - reward_id
+      properties:
+        reward_id:
+          type: string
+          minLength: 1
     AccountLoginStartResponse:
       type: object
       additionalProperties: false
@@ -4149,7 +4340,7 @@ components:
         browserUseConnectionMode:
           $ref: "#/components/schemas/DesktopBrowserUseConnectionMode"
         defaultAgentProvider:
-          $ref: "#/components/schemas/WorkspaceAgentProvider"
+          $ref: "#/components/schemas/DesktopDefaultAgentProvider"
         dockIconStyle:
           $ref: "#/components/schemas/DesktopDockIconStyle"
         dockPlacement:
@@ -4207,6 +4398,11 @@ components:
       enum:
         - coding
         - general
+    DesktopDefaultAgentProvider:
+      type: string
+      enum:
+        - claude-code
+        - codex
     DesktopAgentDockLayout:
       type: string
       enum:
@@ -4219,6 +4415,8 @@ components:
         claude-code:
           $ref: "#/components/schemas/DesktopAgentComposerDefaults"
         codex:
+          $ref: "#/components/schemas/DesktopAgentComposerDefaults"
+        tutti-agent:
           $ref: "#/components/schemas/DesktopAgentComposerDefaults"
         cursor:
           $ref: "#/components/schemas/DesktopAgentComposerDefaults"
@@ -4241,6 +4439,8 @@ components:
         claude-code:
           type: boolean
         codex:
+          type: boolean
+        tutti-agent:
           type: boolean
         cursor:
           type: boolean
@@ -4293,6 +4493,7 @@ components:
       enum:
         - codex
         - claude-code
+        - tutti-agent
         - cursor
     AgentTargetSource:
       type: string
@@ -5570,6 +5771,7 @@ components:
       enum:
         - claude-code
         - codex
+        - tutti-agent
         - cursor
         - nexight
         - gemini

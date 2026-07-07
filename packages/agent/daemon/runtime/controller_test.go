@@ -4287,6 +4287,44 @@ func TestControllerFinishParentTurnDoesNotOverwriteSyntheticLifecycle(t *testing
 	}
 }
 
+func TestControllerFinishTurnReconcilesCreatedStatusToReady(t *testing.T) {
+	t.Parallel()
+
+	controller := NewController(nil, nil)
+	turnID := "turn-1"
+	session := Session{
+		RoomID:         "room-1",
+		AgentSessionID: "agent-session-1",
+		Provider:       ProviderTuttiAgent,
+		Status:         "created",
+		TurnLifecycle: &TurnLifecycle{
+			ActiveTurnID: &turnID,
+			Phase:        "running",
+		},
+		SubmitAvailability: blockedSubmitAvailability("active_turn"),
+	}
+	controller.store(session)
+	controller.mu.Lock()
+	controller.turns[sessionKey(session.RoomID, session.AgentSessionID)] = activeTurn{turnID: turnID}
+	controller.mu.Unlock()
+
+	outcome := "completed"
+	session.TurnLifecycle = &TurnLifecycle{Phase: "settled", Outcome: &outcome}
+	session.SubmitAvailability = availableSubmitAvailability()
+	controller.finishTurn(session, turnID)
+
+	stored, ok := controller.get(session.RoomID, session.AgentSessionID)
+	if !ok {
+		t.Fatal("stored session missing")
+	}
+	if stored.Status != SessionStatusReady {
+		t.Fatalf("session status = %q, want ready", stored.Status)
+	}
+	if stored.SubmitAvailability == nil || stored.SubmitAvailability.State != "available" {
+		t.Fatalf("submit availability = %#v, want available", stored.SubmitAvailability)
+	}
+}
+
 func TestControllerFinishTurnKeepsLiveBackgroundAgentsWorking(t *testing.T) {
 	t.Parallel()
 

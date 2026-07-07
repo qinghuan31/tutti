@@ -286,7 +286,6 @@ describe("AgentGUINodeView layout persistence", () => {
       container.querySelector(".agent-gui-node__provider-rail-panel")
     ).toContainElement(footer);
     expect(providerTileScrollArea).not.toContainElement(footer);
-    expect(providerTileScrollArea.nextElementSibling).toBe(footer);
     expect(
       container.querySelector(".agent-gui-node__rail")
     ).not.toContainElement(footer);
@@ -306,6 +305,170 @@ describe("AgentGUINodeView layout persistence", () => {
     );
 
     expect(onConversationRailWidthChanged).not.toHaveBeenCalled();
+  });
+
+  it("renders the account menu and refreshes it on open", async () => {
+    const onOpenChange = vi.fn();
+    const onSettings = vi.fn();
+    const openedUrls: string[] = [];
+
+    renderAgentGUINodeView({
+      accountMenuState: {
+        user: {
+          userId: "user-1",
+          name: "Jane",
+          email: "jane@example.com",
+          avatar: null
+        },
+        membershipLabel: "Pro",
+        creditsLabel: "2,450",
+        loading: false,
+        error: null,
+        links: {
+          planUrl: "https://tutti.sh/profile/plan",
+          usageUrl: "https://tutti.sh/profile/usage",
+          settingsUrl: "https://tutti.sh/profile/settings"
+        },
+        onOpenChange,
+        onLogin: vi.fn(),
+        onLogout: vi.fn(),
+        onSettings,
+        onOpenExternal(url) {
+          openedUrls.push(url);
+        }
+      }
+    });
+
+    const trigger = screen.getByRole("button", { name: "Jane" });
+    expect(trigger).toHaveTextContent("Jane");
+    expect(trigger).toHaveTextContent("Pro");
+    expect(trigger).not.toHaveTextContent("jane@example.com");
+    expect(
+      trigger.querySelector("[data-account-membership-badge='true']")
+    ).not.toBeNull();
+    fireEvent.click(trigger);
+
+    expect(onOpenChange).toHaveBeenCalledWith(true);
+    const menu = await screen.findByTestId("agent-gui-account-menu");
+    expect(menu).toHaveTextContent("Jane");
+    expect(menu).toHaveTextContent("Pro");
+    expect(
+      menu.querySelector("[data-account-membership-badge='true']")
+    ).not.toBeNull();
+    expect(menu).toHaveTextContent("Upgrade");
+    expect(menu).toHaveTextContent("2,450");
+    expect(menu).toHaveTextContent("Settings");
+
+    fireEvent.click(within(menu).getByText("Member"));
+    expect(openedUrls).toEqual(["https://tutti.sh/profile/plan"]);
+    fireEvent.click(within(menu).getByText("Settings"));
+    expect(onSettings).toHaveBeenCalledTimes(1);
+  });
+
+  it("renders a dismissible registration credits toast above the account row", () => {
+    const onDismiss = vi.fn();
+    renderAgentGUINodeView({
+      accountMenuState: {
+        user: {
+          userId: "user-1",
+          name: "Jane",
+          email: "jane@example.com",
+          avatar: null
+        },
+        membershipLabel: "Free",
+        creditsLabel: "500",
+        loading: false,
+        error: null,
+        registrationCreditsToast: {
+          id: "registrationCreditsToastShown:user-1:grant-1",
+          creditsLabel: "500",
+          visible: true,
+          autoDismissMs: 120_000,
+          onDismiss
+        },
+        links: {
+          planUrl: "https://tutti.sh/profile/plan",
+          usageUrl: "https://tutti.sh/profile/usage",
+          settingsUrl: "https://tutti.sh/profile/settings"
+        },
+        onOpenChange: vi.fn(),
+        onLogin: vi.fn(),
+        onLogout: vi.fn(),
+        onOpenExternal: vi.fn()
+      }
+    });
+
+    const toast = screen.getByTestId("agent-gui-account-reward-toast");
+    expect(toast).toHaveTextContent("New user credits");
+    expect(toast).toHaveTextContent("+500 credits");
+    expect(toast).toHaveTextContent("Added to account balance");
+    expect(screen.queryByText("Account center")).toBeNull();
+
+    fireEvent.click(
+      within(toast).getByRole("button", {
+        name: "Close credits reward notification"
+      })
+    );
+    expect(onDismiss).toHaveBeenCalledTimes(1);
+  });
+
+  it("hides the account rail menu when no signed-in user is available", () => {
+    const { container } = renderAgentGUINodeView({
+      accountMenuState: {
+        user: null,
+        membershipLabel: "",
+        creditsLabel: null,
+        loading: false,
+        error: null,
+        links: {
+          planUrl: "https://tutti.sh/profile/plan",
+          usageUrl: "https://tutti.sh/profile/usage",
+          settingsUrl: "https://tutti.sh/profile/settings"
+        },
+        onOpenChange: vi.fn(),
+        onLogin: vi.fn(),
+        onLogout: vi.fn(),
+        onOpenExternal: vi.fn()
+      }
+    });
+
+    expect(
+      container.querySelector("[data-account-menu-trigger='true']")
+    ).toBeNull();
+    expect(screen.queryByText("Tutti Agent")).toBeNull();
+    expect(screen.queryByText("Free")).toBeNull();
+  });
+
+  it("shows a localized account data warning for partial summary failures", async () => {
+    renderAgentGUINodeView({
+      accountMenuState: {
+        user: {
+          userId: "user-1",
+          name: "Jane",
+          email: "jane@example.com",
+          avatar: null
+        },
+        membershipLabel: "",
+        creditsLabel: null,
+        loading: false,
+        error: null,
+        partialError: true,
+        links: {
+          planUrl: "https://tutti.sh/profile/plan",
+          usageUrl: "https://tutti.sh/profile/usage",
+          settingsUrl: "https://tutti.sh/profile/settings"
+        },
+        onOpenChange: vi.fn(),
+        onLogin: vi.fn(),
+        onLogout: vi.fn(),
+        onOpenExternal: vi.fn()
+      }
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "Jane" }));
+
+    const menu = await screen.findByTestId("agent-gui-account-menu");
+    expect(menu).toHaveTextContent("Some account data is unavailable");
   });
 
   it("sets the controlled rail width on the grid layout", () => {
@@ -605,6 +768,26 @@ describe("AgentGUINodeView layout persistence", () => {
     });
     expect(actions.updateConversationFilter).not.toHaveBeenCalled();
     expect(actions.selectHomeComposerAgentTarget).not.toHaveBeenCalled();
+  });
+
+  it("hides the legacy disabled Tutti rail target when Tutti Agent is available", () => {
+    renderAgentGUINodeView({
+      viewModel: {
+        ...createViewModel(),
+        providerTargets: [
+          createLocalAgentGUIProviderTarget("tutti-agent"),
+          {
+            ...createLocalAgentGUIProviderTarget("nexight"),
+            disabled: true
+          }
+        ]
+      }
+    });
+
+    expect(screen.getAllByRole("tab", { name: "Tutti Agent" })).toHaveLength(1);
+    expect(
+      screen.queryByRole("tab", { name: "Tutti" })
+    ).not.toBeInTheDocument();
   });
 
   it("orders provider rail tiles as Codex, Claude Code, Cursor, Tutti, Hermes, OpenClaw without visible provider labels", () => {
@@ -1054,23 +1237,13 @@ describe("AgentGUINodeView layout persistence", () => {
       screen.getByRole("tab", { name: "Claude Code" })
     ).toBeInTheDocument();
     expect(screen.getByRole("tab", { name: "Cursor" })).toBeInTheDocument();
-    expect(screen.getByRole("tab", { name: "Tutti" })).toBeInTheDocument();
     expect(screen.getByRole("tab", { name: "Hermes" })).toBeInTheDocument();
     expect(screen.getByRole("tab", { name: "OpenClaw" })).toBeInTheDocument();
-    expect(screen.getByRole("tab", { name: "Tutti" })).not.toBeDisabled();
     expect(screen.getByRole("tab", { name: "Hermes" })).not.toBeDisabled();
     expect(screen.getByRole("tab", { name: "OpenClaw" })).not.toBeDisabled();
     expect(
       screen.getAllByRole("tab").map((tab) => tab.getAttribute("aria-label"))
-    ).toEqual([
-      "All",
-      "Codex",
-      "Claude Code",
-      "Cursor",
-      "Tutti",
-      "Hermes",
-      "OpenClaw"
-    ]);
+    ).toEqual(["All", "Codex", "Claude Code", "Cursor", "Hermes", "OpenClaw"]);
   });
 
   it("renders exactly the provided targets in exact rail mode", () => {
@@ -1185,8 +1358,8 @@ describe("AgentGUINodeView layout persistence", () => {
       "All",
       "Codex",
       "Claude Code",
+      "Tutti Agent",
       "Cursor",
-      "Tutti",
       "Hermes",
       "OpenClaw"
     ]);
@@ -4117,6 +4290,7 @@ interface RenderAgentGUINodeViewOptions {
   onLinkAction?: AgentGUINodeViewProps["onLinkAction"];
   viewModel?: AgentGUINodeViewModel;
   actions?: AgentGUINodeViewProps["actions"];
+  accountMenuState?: AgentGUINodeViewProps["accountMenuState"];
   labels?: AgentGUIViewLabels;
   onOpenConversationWindow?: AgentGUINodeViewProps["onOpenConversationWindow"];
   renderSidebarFooter?: AgentGUINodeViewProps["renderSidebarFooter"];
@@ -4134,6 +4308,7 @@ function buildAgentGUINodeViewElement({
   onLinkAction,
   viewModel = createViewModel(),
   actions = createActions(),
+  accountMenuState = null,
   labels = createLabels(),
   onOpenConversationWindow,
   renderSidebarFooter,
@@ -4150,6 +4325,7 @@ function buildAgentGUINodeViewElement({
         isActive={isActive}
         isAgentProviderReady={isAgentProviderReady}
         slashStatusLimits={slashStatusLimits}
+        accountMenuState={accountMenuState}
         actions={actions}
         workspaceUserProjectI18n={workspaceUserProjectI18n}
         conversationRailCollapsed={conversationRailCollapsed}
@@ -4685,6 +4861,22 @@ function createLabels(): AgentGUIViewLabels {
     empty: "empty",
     conversations: "conversations",
     newConversation: "newConversation",
+    accountMenuTitle: "Tutti Agent",
+    accountMenuMember: "Member",
+    accountMenuUpgrade: "Upgrade",
+    accountMenuCreditsBalance: "Credits",
+    accountMenuAccountCenter: "Account center",
+    accountMenuSettings: "Settings",
+    accountMenuFree: "Free",
+    accountMenuSignIn: "Sign in",
+    accountMenuSignOut: "Sign out",
+    accountMenuLoading: "Loading",
+    accountMenuUnavailable: "--",
+    accountMenuDataUnavailable: "Some account data is unavailable",
+    accountRewardToastTitle: "New user credits",
+    accountRewardToastCreditsUnit: "credits",
+    accountRewardToastDescription: "Added to account balance",
+    accountRewardToastClose: "Close credits reward notification",
     agentConfig: "agentConfig",
     agentSettingsMenu: "agentSettingsMenu",
     agentEnvSetup: "agentEnvSetup",

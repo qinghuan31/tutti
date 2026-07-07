@@ -1020,6 +1020,33 @@ func TestDefaultPreparerClaudePlanModeDoesNotOverrideConfigDir(t *testing.T) {
 	}
 }
 
+func TestTuttiAgentConfigWithLLMProviderPinsExistingRootProvider(t *testing.T) {
+	input := strings.Join([]string{
+		`model_provider = "custom"`,
+		`model = "custom-model"`,
+		``,
+		`[model_providers.custom]`,
+		`name = "Custom"`,
+		`base_url = "https://example.invalid/v1"`,
+	}, "\n")
+
+	next, changed := tuttiAgentConfigWithLLMProvider(input)
+	if !changed {
+		t.Fatalf("changed = false, want true")
+	}
+	if strings.Contains(next, `model_provider = "custom"`) {
+		t.Fatalf("next retained custom provider: %s", next)
+	}
+	if !strings.Contains(next, `model_provider = "tutti-llm"`) ||
+		!strings.Contains(next, `model = "gpt-5.4"`) ||
+		!strings.Contains(next, `[model_providers.tutti-llm]`) {
+		t.Fatalf("next did not pin Tutti LLM provider: %s", next)
+	}
+	if !strings.Contains(next, `[model_providers.custom]`) {
+		t.Fatalf("next removed user provider block: %s", next)
+	}
+}
+
 func TestDefaultPreparerCleanupRemovesClaudeSystemPromptRuntimeRoot(t *testing.T) {
 	stateDir := t.TempDir()
 	cwd := t.TempDir()

@@ -14,6 +14,7 @@ export const DEFAULT_AGENT_SETTINGS: AgentSettings = {
   customModelEnabledByProvider: {
     "claude-code": false,
     codex: false,
+    "tutti-agent": false,
     cursor: false,
     nexight: false,
     opencode: false,
@@ -24,6 +25,7 @@ export const DEFAULT_AGENT_SETTINGS: AgentSettings = {
   customModelByProvider: {
     "claude-code": "",
     codex: "",
+    "tutti-agent": "",
     cursor: "",
     nexight: "",
     opencode: "",
@@ -34,6 +36,7 @@ export const DEFAULT_AGENT_SETTINGS: AgentSettings = {
   customModelOptionsByProvider: {
     "claude-code": [],
     codex: [],
+    "tutti-agent": [],
     cursor: [],
     nexight: [],
     opencode: [],

@@ -68,6 +68,7 @@ export type AgentGUIProvider = Extract<
   AgentProvider,
   | "claude-code"
   | "codex"
+  | "tutti-agent"
   | "cursor"
   | "nexight"
   | "gemini"
@@ -223,6 +224,7 @@ export interface RoomIssueNodeData {
   selectedProvider:
     | "codex"
     | "claude-code"
+    | "tutti-agent"
     | "cursor"
     | "nexight"
     | "gemini"

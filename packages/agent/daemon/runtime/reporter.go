@@ -910,7 +910,7 @@ func applyExplicitTurnLifecycleToPatch(patch *agentsessionstore.WorkspaceAgentSt
 
 func providerUsesExplicitTurnLifecyclePatch(provider string) bool {
 	switch strings.TrimSpace(provider) {
-	case ProviderClaudeCode, ProviderCodex:
+	case ProviderClaudeCode, ProviderCodex, ProviderTuttiAgent:
 		return true
 	default:
 		return false

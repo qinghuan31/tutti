@@ -1,7 +1,7 @@
 import { proxy } from "valtio";
 import type { WorkspaceSettingsStoreState } from "../workspaceSettingsTypes";
 import { readDeveloperPanelVisible } from "./developerPanelVisibility.ts";
-import { readTuttiAgentSwitchEnabled } from "./tuttiAgentSwitchPreference.ts";
+import { readTuttiAgentSwitchEnabled } from "../tuttiAgentSwitchPreference.ts";
 
 export function createWorkspaceSettingsStore(): WorkspaceSettingsStoreState {
   return proxy({

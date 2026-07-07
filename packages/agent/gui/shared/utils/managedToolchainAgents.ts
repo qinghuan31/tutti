@@ -105,7 +105,7 @@ export const AGENT_HOST_MANAGED_TOOLCHAIN_AGENTS: readonly AgentHostManagedToolc
  */
 export const WORKSPACE_DESKTOP_MANAGED_AGENT_DOCK_PROVIDER_ORDER: readonly AgentProvider[] =
   AGENT_HOST_MANAGED_TOOLCHAIN_AGENTS.map((agent) =>
-    agent.id === "tutti" ? "nexight" : (agent.id as AgentProvider)
+    agent.id === "tutti" ? "tutti-agent" : (agent.id as AgentProvider)
   );
 
 function normalizeKey(value: string | null | undefined): string {

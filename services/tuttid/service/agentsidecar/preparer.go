@@ -28,6 +28,7 @@ func NewDefaultPreparer(stateDir string) *DefaultPreparer {
 		providers: make(map[string]ProviderPreparer),
 	}
 	preparer.RegisterProvider(CodexPreparer{})
+	preparer.RegisterProvider(TuttiAgentPreparer{})
 	preparer.RegisterProvider(ClaudeCodePreparer{})
 	preparer.RegisterProvider(GeminiPreparer{})
 	preparer.RegisterProvider(InstructionFilePreparer{ProviderID: "cursor", FileName: "AGENTS.md"})

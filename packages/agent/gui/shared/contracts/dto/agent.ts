@@ -1,6 +1,7 @@
 export type AgentProviderId =
   | "claude-code"
   | "codex"
+  | "tutti-agent"
   | "cursor"
   | "nexight"
   | "opencode"
@@ -10,6 +11,7 @@ export type AgentProviderId =
 
 export type AgentModelCatalogSource =
   | "codex-cli"
+  | "tutti-agent-cli"
   | "nexight-cli"
   | "opencode-cli"
   | "gemini-cli"

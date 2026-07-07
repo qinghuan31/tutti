@@ -68,11 +68,15 @@ func (t *codexAppServerStartupTrace) Log(event string, fields map[string]any) {
 	if t == nil || t.path == "" {
 		return
 	}
+	provider := strings.TrimSpace(t.session.Provider)
+	if provider == "" {
+		provider = ProviderCodex
+	}
 	record := map[string]any{
 		"ts":                  time.Now().Format(time.RFC3339Nano),
 		"event":               event,
 		"elapsed_ms":          time.Since(t.startedAt).Milliseconds(),
-		"provider":            ProviderCodex,
+		"provider":            provider,
 		"room_id":             t.session.RoomID,
 		"agent_session_id":    t.session.AgentSessionID,
 		"provider_session_id": t.session.ProviderSessionID,

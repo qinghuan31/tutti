@@ -62,7 +62,7 @@ export const agentGuiWorkbenchProviderRailWidthPx = 52;
 const agentGuiWorkbenchUnifiedDockTileProviders = [
   "codex",
   "claude-code",
-  "nexight",
+  "tutti-agent",
   "hermes"
 ] as const satisfies readonly AgentGuiWorkbenchProvider[];
 

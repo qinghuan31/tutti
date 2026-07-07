@@ -625,10 +625,12 @@ func composerSelectedModelOptions(model string) []map[string]string {
 }
 
 func reasoningConfigOptionID(provider string) string {
-	if provider == "codex" {
+	switch agentprovider.Normalize(provider) {
+	case agentprovider.Codex, agentprovider.TuttiAgent:
 		return "reasoning_effort"
+	default:
+		return "effort"
 	}
-	return "effort"
 }
 
 const (
@@ -652,10 +654,12 @@ func speedProviderSupportsSpeed(provider string) bool {
 // the tier onto the app-server `service_tier` config; Claude Code sets a `fast`
 // ACP config option when the agent advertises it.
 func speedConfigOptionID(provider string) string {
-	if agentprovider.Normalize(provider) == agentprovider.Codex {
+	switch agentprovider.Normalize(provider) {
+	case agentprovider.Codex, agentprovider.TuttiAgent:
 		return "service_tier"
+	default:
+		return "fast"
 	}
-	return "fast"
 }
 
 func speedTierValuesForProvider(provider string) []string {

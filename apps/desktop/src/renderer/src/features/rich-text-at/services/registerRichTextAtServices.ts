@@ -18,6 +18,7 @@ export interface RichTextAtServiceRegistrationInput {
     status: string
   ) => DesktopAgentSessionStatusView | null;
   agentProviderStatuses?: () => readonly AgentProviderStatus[] | undefined;
+  isTuttiAgentSwitchEnabled?: () => boolean;
 }
 
 export function registerRichTextAtServices(
@@ -31,7 +32,8 @@ export function registerRichTextAtServices(
     resolveAgentIconUrl: input.resolveAgentIconUrl,
     userAvatarPlaceholderUrl: input.userAvatarPlaceholderUrl,
     resolveSessionStatusView: input.resolveSessionStatusView,
-    agentProviderStatuses: input.agentProviderStatuses
+    agentProviderStatuses: input.agentProviderStatuses,
+    isTuttiAgentSwitchEnabled: input.isTuttiAgentSwitchEnabled
   });
   registry.registerInstance(IDesktopRichTextAtService, service);
   return service;

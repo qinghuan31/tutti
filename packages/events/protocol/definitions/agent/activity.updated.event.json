@@ -8,22 +8,12 @@
   "payloadSchema": {
     "type": "object",
     "additionalProperties": false,
-    "required": [
-      "workspaceId",
-      "agentSessionId",
-      "eventType",
-      "data"
-    ],
+    "required": ["workspaceId", "agentSessionId", "eventType", "data"],
     "oneOf": [
       {
         "type": "object",
         "additionalProperties": false,
-        "required": [
-          "workspaceId",
-          "agentSessionId",
-          "eventType",
-          "data"
-        ],
+        "required": ["workspaceId", "agentSessionId", "eventType", "data"],
         "properties": {
           "workspaceId": {
             "type": "string",
@@ -70,12 +60,7 @@
       {
         "type": "object",
         "additionalProperties": false,
-        "required": [
-          "workspaceId",
-          "agentSessionId",
-          "eventType",
-          "data"
-        ],
+        "required": ["workspaceId", "agentSessionId", "eventType", "data"],
         "properties": {
           "workspaceId": {
             "type": "string",
@@ -119,12 +104,7 @@
       {
         "type": "object",
         "additionalProperties": false,
-        "required": [
-          "workspaceId",
-          "agentSessionId",
-          "eventType",
-          "data"
-        ],
+        "required": ["workspaceId", "agentSessionId", "eventType", "data"],
         "properties": {
           "workspaceId": {
             "type": "string",
@@ -247,12 +227,7 @@
       {
         "type": "object",
         "additionalProperties": false,
-        "required": [
-          "workspaceId",
-          "agentSessionId",
-          "eventType",
-          "data"
-        ],
+        "required": ["workspaceId", "agentSessionId", "eventType", "data"],
         "properties": {
           "workspaceId": {
             "type": "string",
@@ -333,9 +308,7 @@
               },
               "submitAvailability": {
                 "type": "object",
-                "required": [
-                  "state"
-                ],
+                "required": ["state"],
                 "properties": {
                   "state": {
                     "type": "string",
@@ -348,9 +321,7 @@
               },
               "turn": {
                 "type": "object",
-                "required": [
-                  "turnId"
-                ],
+                "required": ["turnId"],
                 "properties": {
                   "turnId": {
                     "type": "string",
@@ -373,9 +344,7 @@
                   },
                   "submitAvailability": {
                     "type": "object",
-                    "required": [
-                      "state"
-                    ],
+                    "required": ["state"],
                     "properties": {
                       "state": {
                         "type": "string",

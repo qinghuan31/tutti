@@ -1241,6 +1241,10 @@ func TestCodexAppServerAdapterExecStreamsTurn(t *testing.T) {
 	if len(input) != 1 || asString(payloadObject(input[0])["text"]) != "inspect the repo" {
 		t.Fatalf("turn/start input = %#v", turnStart["input"])
 	}
+	metadata := payloadObject(turnStart["responsesapiClientMetadata"])
+	if asString(metadata["user_prompt_preview"]) != "inspect the repo" {
+		t.Fatalf("turn/start responsesapiClientMetadata = %#v", turnStart["responsesapiClientMetadata"])
+	}
 
 	messages := eventsOfType(events, activityshared.EventMessageAppended)
 	var assistantText, thinkingText string
@@ -1314,6 +1318,23 @@ func TestCodexAppServerAdapterExecStreamsTurn(t *testing.T) {
 	}
 	if total, _ := acpInt64Value(contextWindow["totalTokens"]); total != 272000 {
 		t.Fatalf("usage totalTokens = %#v", usage)
+	}
+}
+
+func TestCodexAppServerUserPromptPreviewUsesFullVisibleText(t *testing.T) {
+	t.Parallel()
+
+	longVisibleText := strings.Repeat("a", 500)
+	got := appServerUserPromptPreview([]PromptContentBlock{
+		{Type: "text", Text: "provider text"},
+		{Type: "text", Text: "injected routing text"},
+	}, longVisibleText)
+	if got != longVisibleText {
+		t.Fatalf("preview = %q, want full visible text", got)
+	}
+
+	if got := appServerUserPromptPreview([]PromptContentBlock{{Type: "image"}}, ""); got != "[Image]" {
+		t.Fatalf("image-only preview = %q, want [Image]", got)
 	}
 }
 

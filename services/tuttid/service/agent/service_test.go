@@ -2597,6 +2597,56 @@ func TestServiceGetsComposerOptionsFromCodexModelCatalog(t *testing.T) {
 	}
 }
 
+func TestServiceGetsComposerOptionsFromTuttiAgentModelCatalog(t *testing.T) {
+	runtime := newFakeRuntime()
+	service := NewService(runtime)
+	service.ModelCatalog = fakeModelCatalog{
+		result: AgentModelCatalogResult{
+			Provider: "tutti-agent",
+			Source:   "tutti-agent-cli",
+			Models: []AgentModelOption{
+				{ID: "gpt-5.4", DisplayName: "GPT-5.4", IsDefault: true},
+				{ID: "nova-micro", DisplayName: "Nova Micro"},
+			},
+		},
+	}
+
+	options, err := service.GetComposerOptions(context.Background(), ComposerOptionsInput{
+		Provider: "tutti-agent",
+	})
+	if err != nil {
+		t.Fatalf("GetComposerOptions returned error: %v", err)
+	}
+	if options.EffectiveSettings.Model != "gpt-5.4" {
+		t.Fatalf("effectiveSettings.model = %q, want gpt-5.4", options.EffectiveSettings.Model)
+	}
+	if options.EffectiveSettings.ReasoningEffort != "high" {
+		t.Fatalf("effectiveSettings.reasoningEffort = %q, want high", options.EffectiveSettings.ReasoningEffort)
+	}
+	if options.ModelConfig.CurrentValue != "gpt-5.4" || len(options.ModelConfig.Options) != 2 {
+		t.Fatalf("modelConfig = %#v, want catalog-backed tutti-agent models", options.ModelConfig)
+	}
+	configOptions, ok := options.RuntimeContext["configOptions"].([]map[string]any)
+	if !ok || len(configOptions) < 3 {
+		t.Fatalf("configOptions = %#v", options.RuntimeContext["configOptions"])
+	}
+	if configOptions[0]["id"] != "model" || configOptions[0]["currentValue"] != "gpt-5.4" {
+		t.Fatalf("model option = %#v", configOptions[0])
+	}
+	if configOptions[1]["id"] != "reasoning_effort" {
+		t.Fatalf("reasoning option = %#v, want reasoning_effort id", configOptions[1])
+	}
+	if configOptions[2]["id"] != "service_tier" {
+		t.Fatalf("speed option = %#v, want service_tier id", configOptions[2])
+	}
+	if options.RuntimeContext["modelCatalogSource"] != "tutti-agent-cli" {
+		t.Fatalf("modelCatalogSource = %#v, want tutti-agent-cli", options.RuntimeContext["modelCatalogSource"])
+	}
+	if len(runtime.sessions) != 0 {
+		t.Fatalf("runtime sessions = %d, want no started sessions", len(runtime.sessions))
+	}
+}
+
 func TestServiceGetsComposerOptionsWithResolvedCodexDefaultModel(t *testing.T) {
 	runtime := newFakeRuntime()
 	service := NewService(runtime)

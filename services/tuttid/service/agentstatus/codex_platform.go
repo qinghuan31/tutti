@@ -128,6 +128,10 @@ func codexPackageDirForBinary(binaryPath string) string {
 // Returns "" when pkgDir does not match that layout (e.g. a pnpm content store
 // or a standalone binary), in which case the caller falls back to ~/.local.
 func codexNPMPrefixFromPackageDir(pkgDir string) string {
+	return npmGlobalPrefixFromPackageDir(pkgDir)
+}
+
+func npmGlobalPrefixFromPackageDir(pkgDir string) string {
 	pkgDir = strings.TrimSpace(pkgDir)
 	if pkgDir == "" {
 		return ""

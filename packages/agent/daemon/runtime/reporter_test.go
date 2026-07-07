@@ -391,6 +391,26 @@ func TestReportActivityInputProjectsRuntimeMessagesToMessageUpdates(t *testing.T
 	}
 }
 
+func TestReportActivityInputProjectsTuttiAgentRuntimeMessages(t *testing.T) {
+	t.Parallel()
+
+	session := reportTestSession()
+	session.Provider = ProviderTuttiAgent
+	userEvent := newTurnActivityEventWithID(session, "user-event-1", EventMessage, "turn-1", messageStreamStateCompleted, RoleUser, "inspect repo", nil)
+	assistantEvent := newTurnActivityEventWithID(session, "assistant-event-1", EventMessage, "turn-1", messageStreamStateCompleted, RoleAssistant, "found README", nil)
+
+	report := reportActivityInput(session, []activityshared.Event{userEvent, assistantEvent})
+	if len(report.MessageUpdates) != 2 {
+		t.Fatalf("message updates = %#v, want user and assistant updates", report.MessageUpdates)
+	}
+	if got := report.MessageUpdates[0].AgentSessionID; got != session.AgentSessionID {
+		t.Fatalf("message agent session id = %q, want %q", got, session.AgentSessionID)
+	}
+	if got := report.MessageUpdates[1].Payload["text"]; got != "found README" {
+		t.Fatalf("assistant text payload = %#v, want final text", got)
+	}
+}
+
 func TestReportActivityInputProjectsDisplayPromptAndRichContent(t *testing.T) {
 	t.Parallel()
 

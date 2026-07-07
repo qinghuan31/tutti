@@ -6,6 +6,7 @@ type Provider string
 
 const (
 	ProviderCodex      Provider = "codex"
+	ProviderTuttiAgent Provider = "tutti-agent"
 	ProviderCursor     Provider = "cursor"
 	ProviderNexight    Provider = "nexight"
 	ProviderClaudeCode Provider = "claude-code"
@@ -156,6 +157,8 @@ func NormalizeProvider(value string) (Provider, bool) {
 	switch strings.ToLower(strings.TrimSpace(value)) {
 	case string(ProviderCodex):
 		return ProviderCodex, true
+	case string(ProviderTuttiAgent), "tutti_agent":
+		return ProviderTuttiAgent, true
 	case string(ProviderCursor), "cursor-agent", "cursor_agent":
 		return ProviderCursor, true
 	case string(ProviderNexight):

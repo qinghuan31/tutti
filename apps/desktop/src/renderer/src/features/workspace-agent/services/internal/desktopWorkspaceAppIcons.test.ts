@@ -40,6 +40,11 @@ test("desktop workspace app icon entries use App Center icon fields", () => {
       appId: "agent-claude-code",
       iconUrl: tuttiAgentAssetUrls.claudeCode,
       workspaceId: "workspace-1"
+    },
+    {
+      appId: "agent-tutti-agent",
+      iconUrl: tuttiAgentAssetUrls.tuttiAgent,
+      workspaceId: "workspace-1"
     }
   ]);
 });
@@ -59,6 +64,11 @@ test("desktop workspace app icon entries seed built-in agent app icons", () => {
     {
       appId: "agent-claude-code",
       iconUrl: tuttiAgentAssetUrls.claudeCode,
+      workspaceId: "workspace-1"
+    },
+    {
+      appId: "agent-tutti-agent",
+      iconUrl: tuttiAgentAssetUrls.tuttiAgent,
       workspaceId: "workspace-1"
     }
   ]);
@@ -85,6 +95,11 @@ test("desktop workspace app icon entries keep App Center agent icons", () => {
     {
       appId: "agent-claude-code",
       iconUrl: tuttiAgentAssetUrls.claudeCode,
+      workspaceId: "workspace-1"
+    },
+    {
+      appId: "agent-tutti-agent",
+      iconUrl: tuttiAgentAssetUrls.tuttiAgent,
       workspaceId: "workspace-1"
     }
   ]);

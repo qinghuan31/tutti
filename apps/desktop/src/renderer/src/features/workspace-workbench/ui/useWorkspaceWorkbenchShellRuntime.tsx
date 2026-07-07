@@ -60,6 +60,7 @@ import { renderWorkspaceFilesNodeBody } from "./WorkspaceFilesNodeBody";
 import { useWorkspaceSettingsService } from "./useWorkspaceSettingsService";
 import { useWorkspaceWorkbenchHostService } from "./useWorkspaceWorkbenchHostService";
 import { workspaceOnboardingAppId } from "../services/workspaceOnboarding.ts";
+import { filterWorkspaceAgentGuiProviderTargets } from "./workspaceAgentGuiProviderTargetFilter.ts";
 
 export interface WorkspaceWorkbenchShellRuntime {
   appI18n: I18nRuntime<string>;
@@ -127,7 +128,8 @@ export function useWorkspaceWorkbenchShellRuntime({
   const { service: appCenterService, state: appCenterState } =
     useWorkspaceAppCenterService();
   const { state: desktopPreferencesState } = useDesktopPreferencesService();
-  const { service: workspaceSettingsService } = useWorkspaceSettingsService();
+  const { service: workspaceSettingsService, state: workspaceSettingsState } =
+    useWorkspaceSettingsService();
   const workspaceFileManagerService = useWorkspaceFileManagerService();
   const workbenchHostService = useWorkspaceWorkbenchHostService();
   const [agentGuiProviderTargets, setAgentGuiProviderTargets] = useState<
@@ -137,11 +139,20 @@ export function useWorkspaceWorkbenchShellRuntime({
   // An empty daemon /agents target list means "no service-backed targets are
   // available yet", not "hide the Codex/Claude AgentGUI rail tiles".
   const resolvedAgentGuiProviderTargets = useMemo(
-    () =>
-      agentGuiProviderTargets && agentGuiProviderTargets.length > 0
-        ? agentGuiProviderTargets
-        : undefined,
-    [agentGuiProviderTargets]
+    () => {
+      const targets =
+        agentGuiProviderTargets && agentGuiProviderTargets.length > 0
+          ? agentGuiProviderTargets
+          : undefined;
+      if (!targets) {
+        return undefined;
+      }
+      return filterWorkspaceAgentGuiProviderTargets(targets, {
+        tuttiAgentSwitchEnabled:
+          workspaceSettingsState.tuttiAgentSwitchEnabled === true
+      });
+    },
+    [agentGuiProviderTargets, workspaceSettingsState.tuttiAgentSwitchEnabled]
   );
   const comingSoonAgentProviders = useMemo<readonly AgentGUIProvider[]>(
     () => (desktopPreferencesState.enableCursorAgent ? [] : ["cursor"]),

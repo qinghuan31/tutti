@@ -21,9 +21,13 @@ func TestComposerProviderCapabilitiesDefaults(t *testing.T) {
 	if !slices.Contains(codex, "compact") || !slices.Contains(codex, "skills") {
 		t.Fatalf("codex defaults = %v", codex)
 	}
+	tuttiAgent := composerProviderCapabilities("tutti-agent")
+	if !slices.Contains(tuttiAgent, "planMode") || !slices.Contains(tuttiAgent, "compact") || !slices.Contains(tuttiAgent, "skills") {
+		t.Fatalf("tutti-agent defaults = %v", tuttiAgent)
+	}
 	// Browser use is delivered as a default MCP server to every provider, so it
 	// is advertised by default alongside the per-provider capabilities.
-	for _, provider := range []string{"claude-code", "codex", "gemini", "openclaw"} {
+	for _, provider := range []string{"claude-code", "codex", "tutti-agent", "gemini", "openclaw"} {
 		if got := composerProviderCapabilities(provider); !slices.Contains(got, "browserUse") {
 			t.Fatalf("%s defaults = %v, missing browserUse", provider, got)
 		}
@@ -43,7 +47,7 @@ func TestComposerProviderCapabilitiesOmitUnavailableComputerUse(t *testing.T) {
 	t.Setenv("TUTTI_COMPUTER_USE", "")
 	t.Setenv("TUTTI_COMPUTER_MCP_COMMAND", filepath.Join(t.TempDir(), "missing-cua-driver"))
 
-	for _, provider := range []string{"claude-code", "codex", "gemini", "openclaw"} {
+	for _, provider := range []string{"claude-code", "codex", "tutti-agent", "gemini", "openclaw"} {
 		if got := composerProviderCapabilities(provider); slices.Contains(got, "computerUse") {
 			t.Fatalf("%s defaults = %v, want no computerUse when cua-driver is unavailable", provider, got)
 		}
@@ -89,7 +93,7 @@ func TestNormalizeComposerSettingsClampsByProviderSupport(t *testing.T) {
 		}
 	}
 	// planMode: only providers whose static capabilities include planMode keep it.
-	for _, provider := range []string{"claude-code", "codex"} {
+	for _, provider := range []string{"claude-code", "codex", "tutti-agent"} {
 		got := normalizeComposerSettingsForProvider(provider, ComposerSettings{PlanMode: true})
 		if !got.PlanMode {
 			t.Fatalf("%s planMode clamped, want preserved", provider)
@@ -108,6 +112,13 @@ func TestNormalizeComposerSettingsClampsByProviderSupport(t *testing.T) {
 	})
 	if codex.Model != "gpt-5.3-codex" || codex.ReasoningEffort != "high" {
 		t.Fatalf("codex settings clamped unexpectedly: %+v", codex)
+	}
+	tuttiAgent := normalizeComposerSettingsForProvider("tutti-agent", ComposerSettings{
+		Model:           "gpt-5.4",
+		ReasoningEffort: "high",
+	})
+	if tuttiAgent.Model != "gpt-5.4" || tuttiAgent.ReasoningEffort != "high" {
+		t.Fatalf("tutti-agent settings clamped unexpectedly: %+v", tuttiAgent)
 	}
 	claude := normalizeComposerSettingsForProvider("claude-code", ComposerSettings{
 		Model: "opus",
@@ -158,6 +169,7 @@ func TestComposerConfigConfigurableTruthTable(t *testing.T) {
 	}{
 		{"claude-code", false, true, true},
 		{"codex", true, true, true},
+		{"tutti-agent", true, true, true},
 		{"cursor", true, false, true},
 		{"gemini", true, true, false},
 		{"hermes", false, false, false},

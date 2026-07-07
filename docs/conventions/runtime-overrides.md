@@ -22,6 +22,8 @@ Use the owner documents linked below for detailed behavior. This file exists to 
 | `TUTTID_RUN_DIR`            | [Local State Storage](./local-state-storage.md)                                                            | Overrides the daemon runtime directory for files such as listener info and pid files. |
 | `TUTTID_PID_PATH`           | [Local State Storage](./local-state-storage.md)                                                            | Overrides the daemon pid file path.                                                   |
 | `TUTTID_LISTENER_INFO_PATH` | [Local State Storage](./local-state-storage.md), [Desktop Transport](../architecture/desktop-transport.md) | Overrides the listener-info file path used by managed desktop-to-daemon transport.    |
+| `CODEX_HOME`                | [Local State Storage](./local-state-storage.md)                                                            | Injected per Codex agent run by tuttid; points at the run-scoped `codex-home`.        |
+| `TUTTI_AGENT_HOME`          | [Local State Storage](./local-state-storage.md)                                                            | Injected per Tutti Agent run by tuttid; points at the run-scoped `tutti-agent-home`.  |
 
 ## Workspace App Catalog
 
@@ -48,6 +50,15 @@ Use the owner documents linked below for detailed behavior. This file exists to 
 | `TUTTID_ACCESS_TOKEN`       | [Desktop Transport](../architecture/desktop-transport.md)                                                  | Supplies the desktop-issued bearer token required by tuttid. |
 | `TUTTID_ADDR`               | [Desktop Transport](../architecture/desktop-transport.md)                                                  | Overrides the TCP listener or client address.                |
 | `TUTTID_LISTENER_INFO_PATH` | [Desktop Transport](../architecture/desktop-transport.md), [Local State Storage](./local-state-storage.md) | Overrides the daemon listener-info file path.                |
+
+## Account Remote Services
+
+| Variable                  | Owner document                                                                 | Purpose                                                                                           |
+| ------------------------- | ------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------- |
+| `TUTTI_ACCOUNT_BASE_URL`  | [AgentGUI Tutti Account Menu](../architecture/agent-gui-tutti-account-menu.md) | Overrides the daemon account auth/user-info API base URL.                                         |
+| `TUTTI_AUTH_LOGIN_URL`    | [AgentGUI Tutti Account Menu](../architecture/agent-gui-tutti-account-menu.md) | Overrides the desktop account login URL used by the auth bridge.                                  |
+| `TUTTI_COMMERCE_BASE_URL` | [AgentGUI Tutti Account Menu](../architecture/agent-gui-tutti-account-menu.md) | Overrides the Tutti commerce gateway base URL for session-cookie membership and credits fetches.  |
+| `TUTTI_WEB_BASE_URL`      | [AgentGUI Tutti Account Menu](../architecture/agent-gui-tutti-account-menu.md) | Overrides the Tutti web origin used by tuttid when returning account profile links to desktop UI. |
 
 ## Analytics
 

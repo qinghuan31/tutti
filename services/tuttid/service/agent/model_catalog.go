@@ -2,10 +2,14 @@ package agent
 
 import (
 	"context"
+	"path/filepath"
+	"strings"
 	"sync"
 	"time"
 
 	"github.com/tutti-os/tutti/services/tuttid/biz/agentprovider"
+	agentsidecarservice "github.com/tutti-os/tutti/services/tuttid/service/agentsidecar"
+	tuttitypes "github.com/tutti-os/tutti/services/tuttid/types"
 )
 
 const (
@@ -81,6 +85,18 @@ var agentModelCatalogSpecs = map[string]agentModelCatalogSpec{
 		configuredDefaultModel:    readCodexConfiguredDefaultModel,
 		missingDefaultDescription: "Codex configured custom model",
 	},
+	agentprovider.TuttiAgent: {
+		source: "tutti-agent-cli",
+		ttl:    codexModelCacheTTL,
+		errTTL: codexModelErrorCacheTTL,
+		lister: func(c *CachedAgentModelCatalog) AgentModelLister {
+			if c.TuttiAgent != nil {
+				return c.TuttiAgent
+			}
+			return defaultTuttiAgentModelLister()
+		},
+		configuredDefaultModel: func() string { return "" },
+	},
 	agentprovider.Gemini: {
 		source:      "gemini-cli",
 		ttl:         geminiModelCacheTTL,
@@ -98,9 +114,10 @@ var agentModelCatalogSpecs = map[string]agentModelCatalogSpec{
 }
 
 type CachedAgentModelCatalog struct {
-	Codex  AgentModelLister
-	Gemini AgentModelLister
-	Now    func() time.Time
+	Codex      AgentModelLister
+	TuttiAgent AgentModelLister
+	Gemini     AgentModelLister
+	Now        func() time.Time
 
 	mu    sync.Mutex
 	cache map[string]*agentModelCatalogCacheEntry
@@ -139,6 +156,47 @@ func (c *CachedAgentModelCatalog) ListModels(ctx context.Context, provider strin
 	}
 	c.writeCache(provider, spec, now, result, listResult.IsFallback, err)
 	return cloneAgentModelCatalogResult(result), err
+}
+
+func defaultTuttiAgentModelLister() CodexCLIModelLister {
+	return CodexCLIModelLister{
+		Command:    "tutti-agent",
+		ClientName: "tutti_agent",
+		PrepareEnv: prepareTuttiAgentModelListEnv,
+	}
+}
+
+func prepareTuttiAgentModelListEnv(env []string) ([]string, error) {
+	env = append([]string(nil), env...)
+	env = withoutEnvKeys(env, "TUTTI_AGENT_HOME", "CODEX_HOME")
+	tuttiAgentHome := filepath.Join(tuttitypes.DefaultStateDir(), "agent-model-catalog", "tutti-agent-home")
+	if err := agentsidecarservice.PrepareTuttiAgentHome(tuttiAgentHome, agentsidecarservice.PrepareInput{}); err != nil {
+		return nil, err
+	}
+	env = append(env, "TUTTI_AGENT_HOME="+tuttiAgentHome)
+	// Prevent Tutti Agent's legacy CODEX_HOME fallback from reading Codex's
+	// model cache when tuttid itself runs inside a Codex-hosted environment.
+	env = append(env, "CODEX_HOME=")
+	return env, nil
+}
+
+func withoutEnvKeys(env []string, keys ...string) []string {
+	if len(env) == 0 || len(keys) == 0 {
+		return env
+	}
+	drop := make(map[string]struct{}, len(keys))
+	for _, key := range keys {
+		drop[key] = struct{}{}
+	}
+	filtered := env[:0]
+	for _, entry := range env {
+		key, _, _ := strings.Cut(entry, "=")
+		if _, ok := drop[key]; ok {
+			continue
+		}
+		filtered = append(filtered, entry)
+	}
+	return filtered
 }
 
 // Invalidate drops the cached model list for the given providers so the next

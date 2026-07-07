@@ -35,6 +35,7 @@ import {
   type DesktopAgentComposerDefaultsByProvider,
   type DesktopAgentGuiConversationRailCollapsedByProvider,
   type DesktopAgentProvider,
+  type DesktopDefaultAgentProvider,
   type DesktopAgentConversationDetailMode,
   type DesktopAppCatalogChannel,
   type DesktopBrowserUseConnectionMode,
@@ -107,8 +108,8 @@ export class DesktopPreferencesService implements IDesktopPreferencesService {
   }
 
   async setDefaultAgentProvider(
-    provider: DesktopAgentProvider
-  ): Promise<DesktopAgentProvider> {
+    provider: DesktopDefaultAgentProvider
+  ): Promise<DesktopDefaultAgentProvider> {
     if (this.store.changingDefaultAgentProvider === provider) {
       return provider;
     }
@@ -693,7 +694,7 @@ export class DesktopPreferencesService implements IDesktopPreferencesService {
     agentConversationDetailMode?: DesktopAgentConversationDetailMode;
     appCatalogChannel: DesktopAppCatalogChannel;
     browserUseConnectionMode?: DesktopBrowserUseConnectionMode;
-    defaultAgentProvider: DesktopAgentProvider;
+    defaultAgentProvider: DesktopDefaultAgentProvider;
     dockIconStyle: DesktopDockIconStyle;
     dockPlacement: DesktopDockPlacement;
     fileDefaultOpenersByExtension?: DesktopFileDefaultOpenersByExtension;
@@ -761,7 +762,7 @@ export class DesktopPreferencesService implements IDesktopPreferencesService {
       agentConversationDetailMode: DesktopAgentConversationDetailMode;
       appCatalogChannel: DesktopAppCatalogChannel;
       browserUseConnectionMode: DesktopBrowserUseConnectionMode;
-      defaultAgentProvider: DesktopAgentProvider;
+      defaultAgentProvider: DesktopDefaultAgentProvider;
       dockIconStyle: DesktopDockIconStyle;
       dockPlacement: DesktopDockPlacement;
       fileDefaultOpenersByExtension: DesktopFileDefaultOpenersByExtension;
@@ -783,7 +784,7 @@ export class DesktopPreferencesService implements IDesktopPreferencesService {
     agentDockLayout: "unified";
     appCatalogChannel: DesktopAppCatalogChannel;
     browserUseConnectionMode: DesktopBrowserUseConnectionMode;
-    defaultAgentProvider: DesktopAgentProvider;
+    defaultAgentProvider: DesktopDefaultAgentProvider;
     dockIconStyle: DesktopDockIconStyle;
     dockPlacement: DesktopDockPlacement;
     fileDefaultOpenersByExtension: DesktopFileDefaultOpenersByExtension;

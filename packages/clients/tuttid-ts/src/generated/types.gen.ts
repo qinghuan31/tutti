@@ -32,6 +32,55 @@ export type AccountUserInfoResponse = {
   user: AccountUserInfo | null;
 };
 
+export type AccountMembershipSummary = {
+  tier_key: string;
+  display_name: string;
+  billing_period?: string | null;
+  status?: string | null;
+  access_status?: string | null;
+  current_period_end?: string | null;
+  cancel_at_period_end?: boolean | null;
+};
+
+export type AccountCreditsSummary = {
+  available_credits: number | null;
+  expiring_credits_within_24h?: number | null;
+  next_expire_at?: string | null;
+  refreshed_at?: string | null;
+};
+
+export type AccountProductSummaryLinks = {
+  plan_url: string;
+  usage_url: string;
+  settings_url: string;
+};
+
+export type AccountProductSummaryPartialError = {
+  scope: "membership" | "credits" | "links" | "unknown";
+  code: string;
+  message?: string | null;
+};
+
+export type AccountRegistrationCreditsReward = {
+  id: string;
+  grant_no: string;
+  credits: number;
+  created_at: string;
+};
+
+export type AccountProductSummaryResponse = {
+  user: AccountUserInfo | null;
+  membership: AccountMembershipSummary | null;
+  credits: AccountCreditsSummary | null;
+  partial_error?: AccountProductSummaryPartialError | null;
+  registration_credits_reward?: AccountRegistrationCreditsReward | null;
+  links: AccountProductSummaryLinks;
+};
+
+export type DismissAccountRegistrationCreditsRewardRequest = {
+  reward_id: string;
+};
+
 export type AccountLoginStartResponse = {
   attempt_id: string;
   login_url: string;
@@ -278,7 +327,7 @@ export type DesktopPreferences = {
   agentDockLayout: DesktopAgentDockLayout;
   appCatalogChannel: DesktopAppCatalogChannel;
   browserUseConnectionMode?: DesktopBrowserUseConnectionMode;
-  defaultAgentProvider: WorkspaceAgentProvider;
+  defaultAgentProvider: DesktopDefaultAgentProvider;
   dockIconStyle: DesktopDockIconStyle;
   dockPlacement: DesktopDockPlacement;
   enableCursorAgent: boolean;
@@ -311,11 +360,14 @@ export type DesktopAgentComposerDefaults = {
 
 export type DesktopAgentConversationDetailMode = "coding" | "general";
 
+export type DesktopDefaultAgentProvider = "claude-code" | "codex";
+
 export type DesktopAgentDockLayout = "legacySplit" | "unified";
 
 export type DesktopAgentComposerDefaultsByProvider = {
   "claude-code"?: DesktopAgentComposerDefaults;
   codex?: DesktopAgentComposerDefaults;
+  "tutti-agent"?: DesktopAgentComposerDefaults;
   cursor?: DesktopAgentComposerDefaults;
   nexight?: DesktopAgentComposerDefaults;
   gemini?: DesktopAgentComposerDefaults;
@@ -330,6 +382,7 @@ export type DesktopAgentComposerDefaultsByAgentTarget = {
 export type DesktopAgentGuiConversationRailCollapsedByProvider = {
   "claude-code"?: boolean;
   codex?: boolean;
+  "tutti-agent"?: boolean;
   cursor?: boolean;
   nexight?: boolean;
   gemini?: boolean;
@@ -358,7 +411,11 @@ export type PutDesktopPreferencesRequest = {
   preferences: DesktopPreferences;
 };
 
-export type AgentTargetProvider = "codex" | "claude-code" | "cursor";
+export type AgentTargetProvider =
+  | "codex"
+  | "claude-code"
+  | "tutti-agent"
+  | "cursor";
 
 export type AgentTargetSource = "system" | "user";
 
@@ -856,6 +913,7 @@ export type WorkspaceTerminalCloseGuardResponse = {
 export type WorkspaceAgentProvider =
   | "claude-code"
   | "codex"
+  | "tutti-agent"
   | "cursor"
   | "nexight"
   | "gemini"
@@ -2380,6 +2438,80 @@ export type GetAccountUserInfoResponses = {
 
 export type GetAccountUserInfoResponse =
   GetAccountUserInfoResponses[keyof GetAccountUserInfoResponses];
+
+export type GetAccountProductSummaryData = {
+  body?: never;
+  path?: never;
+  query?: never;
+  url: "/v1/account/product_summary";
+};
+
+export type GetAccountProductSummaryErrors = {
+  /**
+   * Bearer token is missing or invalid
+   */
+  401: ApiErrorResponse;
+  /**
+   * HTTP method is not supported on this route
+   */
+  405: ApiErrorResponse;
+  /**
+   * Required daemon service dependency is unavailable
+   */
+  503: ApiErrorResponse;
+};
+
+export type GetAccountProductSummaryError =
+  GetAccountProductSummaryErrors[keyof GetAccountProductSummaryErrors];
+
+export type GetAccountProductSummaryResponses = {
+  /**
+   * Current account product summary, if signed in
+   */
+  200: AccountProductSummaryResponse;
+};
+
+export type GetAccountProductSummaryResponse =
+  GetAccountProductSummaryResponses[keyof GetAccountProductSummaryResponses];
+
+export type DismissAccountRegistrationCreditsRewardData = {
+  body: DismissAccountRegistrationCreditsRewardRequest;
+  path?: never;
+  query?: never;
+  url: "/v1/account/registration_credits_reward/dismiss";
+};
+
+export type DismissAccountRegistrationCreditsRewardErrors = {
+  /**
+   * Request payload or parameters are invalid
+   */
+  400: ApiErrorResponse;
+  /**
+   * Bearer token is missing or invalid
+   */
+  401: ApiErrorResponse;
+  /**
+   * HTTP method is not supported on this route
+   */
+  405: ApiErrorResponse;
+  /**
+   * Required daemon service dependency is unavailable
+   */
+  503: ApiErrorResponse;
+};
+
+export type DismissAccountRegistrationCreditsRewardError =
+  DismissAccountRegistrationCreditsRewardErrors[keyof DismissAccountRegistrationCreditsRewardErrors];
+
+export type DismissAccountRegistrationCreditsRewardResponses = {
+  /**
+   * Registration credits reward marked as shown
+   */
+  204: void;
+};
+
+export type DismissAccountRegistrationCreditsRewardResponse =
+  DismissAccountRegistrationCreditsRewardResponses[keyof DismissAccountRegistrationCreditsRewardResponses];
 
 export type LogoutAccountData = {
   body?: never;

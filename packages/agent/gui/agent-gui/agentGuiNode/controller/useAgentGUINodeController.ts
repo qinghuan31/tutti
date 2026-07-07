@@ -82,6 +82,7 @@ import {
 import {
   createAgentGUIConversationFilterState,
   filterAgentGUIConversationSummaries,
+  matchesAgentGUIConversationSummaryFilter,
   normalizeAgentGUIConversationFilter,
   type AgentGUIConversationFilter
 } from "../model/agentGuiConversationFilter";
@@ -7145,6 +7146,7 @@ export function useAgentGUINodeController({
       dataRef.current.lastActiveAgentSessionId
     );
   }, [
+    conversationFilter,
     currentUserId,
     data.provider,
     previewMode,
@@ -11403,12 +11405,22 @@ export function useAgentGUINodeController({
         ? { kind: "agentTarget" as const, agentTargetId }
         : { kind: "all" as const };
       setConversationFilter(nextFilter);
-      // Keep the home composer chip in sync with the selected tab. Active
-      // conversations keep owning their target until the target-filtered list
-      // has initialized and proven empty.
-      if (activeConversationIdRef.current === null) {
-        selectHomeComposerAgentTarget(input);
+      const activeId = activeConversationIdRef.current;
+      if (activeId) {
+        const activeSummary = resolveConversationSummaryById(
+          conversationsRef.current,
+          activeId,
+          transientConversationRef.current
+        );
+        if (
+          activeSummary &&
+          !matchesAgentGUIConversationSummaryFilter(activeSummary, nextFilter)
+        ) {
+          selectHomeComposerAgentTarget(input);
+        }
+        return;
       }
+      selectHomeComposerAgentTarget(input);
     },
     [
       agentActivityRuntime,

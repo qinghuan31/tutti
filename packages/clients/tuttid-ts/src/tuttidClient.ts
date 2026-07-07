@@ -28,7 +28,9 @@ import {
   deleteWorkspaceFileEntry,
   getDesktopPreferences,
   getAccountLoginStatus,
+  getAccountProductSummary,
   getAccountUserInfo,
+  dismissAccountRegistrationCreditsReward,
   getHealth,
   getStartupWorkspace,
   listAgentTargets,
@@ -145,6 +147,20 @@ export function createTuttidClient(
     async getAccountUserInfo() {
       const response = await getAccountUserInfo({ client });
       return unwrapData(response, "Account user info request failed.").user;
+    },
+    async getAccountProductSummary() {
+      const response = await getAccountProductSummary({ client });
+      return unwrapData(response, "Account product summary request failed.");
+    },
+    async dismissAccountRegistrationCreditsReward(rewardID) {
+      const response = await dismissAccountRegistrationCreditsReward({
+        client,
+        body: { reward_id: rewardID }
+      });
+      unwrapAccepted(
+        response,
+        "Dismiss account registration credits reward request failed."
+      );
     },
     async logoutAccount() {
       const response = await logoutAccount({ client });

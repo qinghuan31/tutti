@@ -5,7 +5,7 @@ import type {
 } from "@shared/contracts/ipc";
 import type { DesktopLocale } from "@shared/i18n";
 import type {
-  DesktopAgentProvider,
+  DesktopDefaultAgentProvider,
   DesktopAgentConversationDetailMode,
   DesktopAppCatalogChannel,
   DesktopBrowserUseConnectionMode,
@@ -55,7 +55,7 @@ import type { DesktopWorkspaceSettingsClient } from "./adapters/desktopWorkspace
 import { formatWorkspaceSettingsBytes } from "../workspaceSettingsFormat.ts";
 import { createWorkspaceSettingsStore } from "./workspaceSettingsStore.ts";
 import { writeDeveloperPanelVisible } from "./developerPanelVisibility.ts";
-import { writeTuttiAgentSwitchEnabled } from "./tuttiAgentSwitchPreference.ts";
+import { writeTuttiAgentSwitchEnabled } from "../tuttiAgentSwitchPreference.ts";
 import type {
   WorkspaceManagedModel,
   WorkspaceManagedModelProviderConfig,
@@ -269,7 +269,7 @@ export class WorkspaceSettingsService implements IWorkspaceSettingsService {
   }
 
   async changeDefaultAgentProvider(
-    provider: DesktopAgentProvider
+    provider: DesktopDefaultAgentProvider
   ): Promise<void> {
     if (
       this.desktopPreferences.store.defaultAgentProvider === provider ||

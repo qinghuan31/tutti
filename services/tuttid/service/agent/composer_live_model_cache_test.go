@@ -30,21 +30,24 @@ func TestGetLiveComposerModelOptionsClaudeNeverExpires(t *testing.T) {
 	}
 }
 
-// Non-Claude providers (Cursor) keep the bounded TTL: a stale entry must be
-// evicted so the picker does not pin a list the running session no longer
-// advertises.
-func TestGetLiveComposerModelOptionsCursorExpiresAfterTTL(t *testing.T) {
+// Cursor keeps its live model cache for the daemon's lifetime too: it has no
+// probe session at all, so an expired entry could only be re-discovered by a
+// running conversation — until then the picker would collapse to the single
+// selected model. Running sessions still override a stale entry.
+func TestGetLiveComposerModelOptionsCursorNeverExpires(t *testing.T) {
 	service := &Service{}
 	cachedAt := time.Now().UTC()
 	service.setLiveComposerModelOptions("cursor", "ws-1", "/repo", cachedAt, []ComposerConfigOptionValue{
-		{Value: "gpt-5", Label: "GPT-5"},
+		{Value: "composer-2.5[fast=true]", Label: "composer-2.5"},
+		{Value: "gpt-5.2[reasoning=medium,fast=false]", Label: "gpt-5.2"},
 	})
 
-	if _, ok := service.getLiveComposerModelOptions("cursor", "ws-1", "/repo", cachedAt.Add(defaultLiveModelCacheTTL/2)); !ok {
-		t.Fatal("cursor cache expired inside TTL, want hit")
+	got, ok := service.getLiveComposerModelOptions("cursor", "ws-1", "/repo", cachedAt.Add(24*time.Hour))
+	if !ok {
+		t.Fatal("cursor live model cache expired, want last-known-good retained")
 	}
-	if _, ok := service.getLiveComposerModelOptions("cursor", "ws-1", "/repo", cachedAt.Add(defaultLiveModelCacheTTL+time.Minute)); ok {
-		t.Fatal("cursor cache survived past TTL, want eviction")
+	if len(got) != 2 {
+		t.Fatalf("cached options = %d, want 2", len(got))
 	}
 }
 

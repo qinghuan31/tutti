@@ -273,8 +273,8 @@ func TestTuttidBlackBoxEventStreamPreferenceIntentPublishesUpdatedEvent(t *testi
 	if after.Preferences.Locale != tuttigenerated.ZhCN {
 		t.Fatalf("stored locale = %q, want %q", after.Preferences.Locale, tuttigenerated.ZhCN)
 	}
-	if after.Preferences.DefaultAgentProvider != tuttigenerated.WorkspaceAgentProviderCodex {
-		t.Fatalf("stored defaultAgentProvider = %q, want %q", after.Preferences.DefaultAgentProvider, tuttigenerated.WorkspaceAgentProviderCodex)
+	if after.Preferences.DefaultAgentProvider != tuttigenerated.DesktopDefaultAgentProviderCodex {
+		t.Fatalf("stored defaultAgentProvider = %q, want %q", after.Preferences.DefaultAgentProvider, tuttigenerated.DesktopDefaultAgentProviderCodex)
 	}
 	if after.Preferences.AgentConversationDetailMode != tuttigenerated.General {
 		t.Fatalf("stored agentConversationDetailMode = %q, want %q", after.Preferences.AgentConversationDetailMode, tuttigenerated.General)

@@ -592,7 +592,7 @@ describe("useAgentGUINodeController", () => {
     expect(result.current.viewModel.providerReadinessGate).toBeNull();
   });
 
-  it("keeps the active conversation target stable while an empty rail target transition starts", async () => {
+  it("opens the selected target home composer when the active conversation is outside the new rail filter", async () => {
     const unactivate = vi.fn();
     installAgentHostApi({
       list: vi.fn(async () => ({
@@ -669,10 +669,11 @@ describe("useAgentGUINodeController", () => {
         agentTargetId: "local:claude-code"
       });
     });
-    expect(result.current.viewModel.activeConversationId).toBe("codex-session");
-    expect(result.current.viewModel.data.provider).toBe("codex");
+    await waitFor(() => {
+      expect(result.current.viewModel.activeConversationId).toBeNull();
+    });
     expect(result.current.viewModel.selectedProviderTarget.provider).toBe(
-      "codex"
+      "claude-code"
     );
     await waitFor(() => {
       expect(unactivate).toHaveBeenCalledWith({
@@ -3833,9 +3834,18 @@ describe("useAgentGUINodeController", () => {
       list: vi.fn(async () => ({
         presences: [],
         sessions: [
-          workspaceAgentSession("session-1", { title: "2132" }),
-          workspaceAgentSession("session-2", { title: "hi" }),
-          workspaceAgentSession("session-3", { title: "这是什么?" })
+          workspaceAgentSession("session-1", {
+            title: "2132",
+            updatedAtUnixMs: 3_000
+          }),
+          workspaceAgentSession("session-2", {
+            title: "hi",
+            updatedAtUnixMs: 2_000
+          }),
+          workspaceAgentSession("session-3", {
+            title: "这是什么?",
+            updatedAtUnixMs: 1_000
+          })
         ]
       })),
       listSessionTimeline: vi.fn(async () => ({ timelineItems: [] })),

@@ -10,7 +10,7 @@ import type {
 } from "@shared/contracts/ipc";
 import type { DesktopLocale } from "@shared/i18n";
 import type {
-  DesktopAgentProvider,
+  DesktopDefaultAgentProvider,
   DesktopAgentConversationDetailMode,
   DesktopAppCatalogChannel,
   DesktopBrowserUseConnectionMode,
@@ -85,7 +85,9 @@ export interface IWorkspaceSettingsService {
     providerID: WorkspaceManagedModelProviderID,
     enabled: boolean
   ): Promise<void>;
-  changeDefaultAgentProvider(provider: DesktopAgentProvider): Promise<void>;
+  changeDefaultAgentProvider(
+    provider: DesktopDefaultAgentProvider
+  ): Promise<void>;
   changeAgentConversationDetailMode(
     mode: DesktopAgentConversationDetailMode
   ): Promise<void>;

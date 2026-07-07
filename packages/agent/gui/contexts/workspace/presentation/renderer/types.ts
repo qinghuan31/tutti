@@ -59,6 +59,7 @@ export type AgentGUIProvider = Extract<
   AgentProvider,
   | "claude-code"
   | "codex"
+  | "tutti-agent"
   | "cursor"
   | "nexight"
   | "gemini"

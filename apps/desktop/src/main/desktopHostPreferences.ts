@@ -14,6 +14,7 @@ import {
   normalizeDesktopAgentConversationDetailMode,
   normalizeDesktopAgentComposerDefaultsByProvider,
   normalizeDesktopAgentGuiConversationRailCollapsedByProvider,
+  isDesktopDefaultAgentProvider,
   type DesktopAgentComposerDefaultsByProvider,
   type DesktopAgentGuiConversationRailCollapsedByProvider,
   defaultDesktopAgentProvider,
@@ -30,7 +31,7 @@ import {
   isDesktopMinimizeAnimation,
   normalizeDesktopWorkbenchWindowSnapping,
   desktopWorkbenchWindowSnappingEqual,
-  type DesktopAgentProvider,
+  type DesktopDefaultAgentProvider,
   type DesktopAgentConversationDetailMode,
   type DesktopAppCatalogChannel,
   type DesktopBrowserUseConnectionMode,
@@ -60,7 +61,7 @@ export interface DesktopHostPreferencesState {
   getAgentConversationDetailMode(): DesktopAgentConversationDetailMode;
   getAppCatalogChannel(): DesktopAppCatalogChannel;
   getBrowserUseConnectionMode(): DesktopBrowserUseConnectionMode;
-  getDefaultAgentProvider(): DesktopAgentProvider;
+  getDefaultAgentProvider(): DesktopDefaultAgentProvider;
   getDockIconStyle(): DesktopDockIconStyle;
   getDockPlacement(): DesktopDockPlacement;
   getFileDefaultOpenersByExtension(): DesktopFileDefaultOpenersByExtension;
@@ -78,7 +79,7 @@ export interface DesktopHostPreferencesState {
     agentConversationDetailMode?: DesktopAgentConversationDetailMode;
     appCatalogChannel?: DesktopAppCatalogChannel;
     browserUseConnectionMode?: DesktopBrowserUseConnectionMode;
-    defaultAgentProvider?: DesktopAgentProvider;
+    defaultAgentProvider?: DesktopDefaultAgentProvider;
     dockIconStyle?: DesktopDockIconStyle;
     dockPlacement?: DesktopDockPlacement;
     fileDefaultOpenersByExtension?: DesktopFileDefaultOpenersByExtension;
@@ -125,7 +126,9 @@ export async function createDesktopHostPreferencesState(
   )
     ? initialPreferences.browserUseConnectionMode
     : defaultDesktopBrowserUseConnectionMode;
-  let defaultAgentProvider = initialPreferences.defaultAgentProvider;
+  let defaultAgentProvider = normalizeDesktopDefaultAgentProvider(
+    initialPreferences.defaultAgentProvider
+  );
   let dockIconStyle = initialPreferences.dockIconStyle;
   let dockPlacement = initialPreferences.dockPlacement;
   let fileDefaultOpenersByExtension =
@@ -262,7 +265,10 @@ export async function createDesktopHostPreferencesState(
       if (input.appCatalogChannel) {
         appCatalogChannel = input.appCatalogChannel;
       }
-      if (input.defaultAgentProvider) {
+      if (
+        input.defaultAgentProvider &&
+        isDesktopDefaultAgentProvider(input.defaultAgentProvider)
+      ) {
         defaultAgentProvider = input.defaultAgentProvider;
       }
       if (input.dockIconStyle) {
@@ -345,6 +351,14 @@ export async function createDesktopHostPreferencesState(
       }
     }
   };
+}
+
+function normalizeDesktopDefaultAgentProvider(
+  value: unknown
+): DesktopDefaultAgentProvider {
+  return isDesktopDefaultAgentProvider(value)
+    ? value
+    : defaultDesktopAgentProvider;
 }
 
 async function resolveInitialDesktopPreferences(

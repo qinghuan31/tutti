@@ -2,7 +2,8 @@ export const tuttiAssetProtocolScheme = "tutti-asset";
 
 export const tuttiAgentAssetUrls = {
   claudeCode: `${tuttiAssetProtocolScheme}://agent/claudecode.png`,
-  codex: `${tuttiAssetProtocolScheme}://agent/codex.png`
+  codex: `${tuttiAssetProtocolScheme}://agent/codex.png`,
+  tuttiAgent: `${tuttiAssetProtocolScheme}://agent/tutti.png`
 } as const;
 
 export const tuttiIssueAssetUrls = {

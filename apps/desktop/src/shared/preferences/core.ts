@@ -164,6 +164,7 @@ export function normalizeDesktopAgentConversationDetailMode(
 export const desktopAgentProviders = [
   "claude-code",
   "codex",
+  "tutti-agent",
   "cursor",
   "nexight",
   "gemini",
@@ -173,7 +174,12 @@ export const desktopAgentProviders = [
 
 export type DesktopAgentProvider = (typeof desktopAgentProviders)[number];
 
-export const defaultDesktopAgentProvider: DesktopAgentProvider = "codex";
+export const desktopDefaultAgentProviders = ["claude-code", "codex"] as const;
+
+export type DesktopDefaultAgentProvider =
+  (typeof desktopDefaultAgentProviders)[number];
+
+export const defaultDesktopAgentProvider: DesktopDefaultAgentProvider = "codex";
 
 export interface DesktopAgentComposerDefaults {
   model?: string;
@@ -291,6 +297,15 @@ export function isDesktopAgentProvider(
   return (
     typeof value === "string" &&
     desktopAgentProviders.includes(value as DesktopAgentProvider)
+  );
+}
+
+export function isDesktopDefaultAgentProvider(
+  value: unknown
+): value is DesktopDefaultAgentProvider {
+  return (
+    typeof value === "string" &&
+    desktopDefaultAgentProviders.includes(value as DesktopDefaultAgentProvider)
   );
 }
 
