@@ -4527,8 +4527,17 @@ type standardACPConnection struct {
 	lastLoadSessionParams         map[string]any
 	lastCloseSessionParams        map[string]any
 	lastPromptParamsSnapshot      map[string]any
-	setConfigOptionSnapshots      []map[string]any
-	configOptions                 []map[string]any
+	promptParamsSnapshots         []map[string]any
+	promptCallCount               int
+	// retriableErrorPrompts makes the first N session/prompt calls emulate
+	// cursor-agent's transient-failure shape: an "Error: RetriableError: ..."
+	// text chunk followed by a normal end_turn result.
+	retriableErrorPrompts int
+	// omitAssistantTextInPromptResults drops the agent_message_chunk from
+	// normal prompt results, emulating a tool-calls-only turn.
+	omitAssistantTextInPromptResults bool
+	setConfigOptionSnapshots         []map[string]any
+	configOptions                    []map[string]any
 }
 
 func (c *standardACPConnection) Send(data []byte) error {
@@ -4740,8 +4749,33 @@ func (c *standardACPConnection) Send(data []byte) error {
 			c.mu.Lock()
 			if request.Params != nil {
 				c.lastPromptParamsSnapshot = maps.Clone(request.Params)
+				c.promptParamsSnapshots = append(c.promptParamsSnapshots, maps.Clone(request.Params))
 			}
+			c.promptCallCount++
+			promptCall := c.promptCallCount
 			c.mu.Unlock()
+			if promptCall <= c.retriableErrorPrompts {
+				c.sendJSON(map[string]any{
+					"jsonrpc": "2.0",
+					"method":  acpMethodUpdate,
+					"params": map[string]any{
+						"sessionId": c.sessionID,
+						"update": map[string]any{
+							"sessionUpdate": "agent_message_chunk",
+							"content": map[string]any{
+								"type": "text",
+								"text": "\n\nError: RetriableError: [canceled] http/2 stream closed with error code CANCEL (0x8)",
+							},
+						},
+					},
+				})
+				c.sendJSON(map[string]any{
+					"jsonrpc": "2.0",
+					"id":      message.ID,
+					"result":  map[string]any{"stopReason": "end_turn"},
+				})
+				return nil
+			}
 			if c.promptPermission || c.promptKind != "" {
 				c.mu.Lock()
 				c.pendingPermissionCallID = append(json.RawMessage(nil), message.ID...)
@@ -4830,20 +4864,22 @@ func (c *standardACPConnection) streamPromptResult(promptID json.RawMessage) {
 			},
 		},
 	})
-	c.sendJSON(map[string]any{
-		"jsonrpc": "2.0",
-		"method":  acpMethodUpdate,
-		"params": map[string]any{
-			"sessionId": c.sessionID,
-			"update": map[string]any{
-				"sessionUpdate": "agent_message_chunk",
-				"content": map[string]any{
-					"type": "text",
-					"text": "Inspecting files.",
+	if !c.omitAssistantTextInPromptResults {
+		c.sendJSON(map[string]any{
+			"jsonrpc": "2.0",
+			"method":  acpMethodUpdate,
+			"params": map[string]any{
+				"sessionId": c.sessionID,
+				"update": map[string]any{
+					"sessionUpdate": "agent_message_chunk",
+					"content": map[string]any{
+						"type": "text",
+						"text": "Inspecting files.",
+					},
 				},
 			},
-		},
-	})
+		})
+	}
 	if c.pauseBeforeToolCallCompletion != nil {
 		<-c.pauseBeforeToolCallCompletion
 	}

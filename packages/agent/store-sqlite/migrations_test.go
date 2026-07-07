@@ -243,6 +243,61 @@ WHERE workspace_id = 'ws-legacy' AND agent_session_id = 'session-untargeted'
 	}
 }
 
+// A database that already recorded (claimed) the one-time v5 backfill — which
+// ran before the cursor provider existed — must still backfill legacy cursor
+// sessions: v7 replays the target-id backfill for providers added to
+// TargetIDBackfillByProvider after v5, and only for those.
+func TestStoreMigrateBackfillsCursorTargetsOnClaimedLegacyDatabase(t *testing.T) {
+	t.Parallel()
+
+	db := openTestDB(t)
+	createLegacyTuttidDatabase(t, db)
+	if _, err := db.Exec(`
+INSERT INTO workspace_agent_sessions (
+  workspace_id, agent_session_id, origin, agent_target_id, provider, title, status,
+  created_at_unix_ms, updated_at_unix_ms
+) VALUES ('ws-legacy', 'session-cursor-legacy', 'runtime', '', 'cursor', 'Legacy Cursor', 'completed', 1, 1);
+`); err != nil {
+		t.Fatalf("insert legacy cursor session: %v", err)
+	}
+	options := testOptions(&staticProjectPaths{})
+	options.TargetIDBackfillByProvider["cursor"] = "local:cursor"
+	store := New(db, options)
+	ctx := context.Background()
+
+	if err := store.Migrate(ctx); err != nil {
+		t.Fatalf("Migrate() error = %v", err)
+	}
+
+	var cursorTarget sql.NullString
+	if err := db.QueryRowContext(ctx, `
+SELECT agent_target_id FROM workspace_agent_sessions
+WHERE workspace_id = 'ws-legacy' AND agent_session_id = 'session-cursor-legacy'
+`).Scan(&cursorTarget); err != nil {
+		t.Fatalf("read legacy cursor session: %v", err)
+	}
+	if cursorTarget.String != "local:cursor" {
+		t.Fatalf("legacy cursor agent_target_id = %q, want local:cursor (v7 backfill)", cursorTarget.String)
+	}
+
+	// v7 is scoped to providers added after v5: the untargeted codex session
+	// keeps the claimed-v5 outcome.
+	var codexTarget sql.NullString
+	if err := db.QueryRowContext(ctx, `
+SELECT agent_target_id FROM workspace_agent_sessions
+WHERE workspace_id = 'ws-legacy' AND agent_session_id = 'session-untargeted'
+`).Scan(&codexTarget); err != nil {
+		t.Fatalf("read untargeted codex session: %v", err)
+	}
+	if codexTarget.String != "" {
+		t.Fatalf("untargeted codex agent_target_id = %q, want empty (v7 must not replay the full v5 backfill)", codexTarget.String)
+	}
+
+	if applied, err := store.hasMigration(ctx, schemaMigrationWorkspaceAgentActivityV7); err != nil || !applied {
+		t.Fatalf("v7 marker recorded = %v error = %v, want recorded", applied, err)
+	}
+}
+
 func TestStoreMigrateUpgradesPartiallyMigratedLegacyDatabase(t *testing.T) {
 	t.Parallel()
 

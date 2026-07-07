@@ -42,6 +42,7 @@ export function filterAgentGUIConversationSummaries(
   return conversations.filter((conversation) =>
     matchesAgentGUIConversationFilterAgentTarget(
       conversation.agentTargetId,
+      conversation.provider,
       normalizedFilter
     )
   );
@@ -55,17 +56,54 @@ export function filterWorkspaceAgentActivitySessionsForConversations(
   return sessions.filter((session) =>
     matchesAgentGUIConversationFilterAgentTarget(
       session.agentTargetId,
+      session.provider,
       normalizedFilter
     )
   );
 }
 
+export function matchesAgentGUIConversationSummaryFilter(
+  conversation: {
+    agentTargetId?: string | null;
+    provider?: string | null;
+  },
+  filter: AgentGUIConversationFilter
+): boolean {
+  return matchesAgentGUIConversationFilterAgentTarget(
+    conversation.agentTargetId,
+    conversation.provider,
+    normalizeAgentGUIConversationFilter(filter)
+  );
+}
+
+function providerForLocalAgentTargetFilter(
+  agentTargetId: string
+): string | null {
+  const normalized = agentTargetId.trim();
+  if (!normalized.startsWith("local:")) {
+    return null;
+  }
+  const provider = normalized.slice("local:".length).trim();
+  return provider.length > 0 ? provider : null;
+}
+
 function matchesAgentGUIConversationFilterAgentTarget(
   agentTargetId: string | null | undefined,
+  provider: string | null | undefined,
   filter: AgentGUIConversationFilter
 ): boolean {
   if (filter.kind === "all") {
     return true;
   }
-  return (agentTargetId?.trim() ?? "") === filter.agentTargetId;
+  const sessionTargetId = agentTargetId?.trim() ?? "";
+  if (sessionTargetId.length > 0) {
+    return sessionTargetId === filter.agentTargetId;
+  }
+  const filterProvider = providerForLocalAgentTargetFilter(
+    filter.agentTargetId
+  );
+  if (!filterProvider) {
+    return false;
+  }
+  return (provider?.trim() ?? "") === filterProvider;
 }

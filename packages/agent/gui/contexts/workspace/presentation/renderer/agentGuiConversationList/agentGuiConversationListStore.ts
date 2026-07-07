@@ -13,6 +13,7 @@ import {
   type AgentGUIConversationSummary
 } from "../../../../../agent-gui/agentGuiNode/model/agentGuiConversationModel";
 import {
+  matchesAgentGUIConversationSummaryFilter,
   normalizeAgentGUIConversationFilter,
   type AgentGUIConversationFilter
 } from "../../../../../agent-gui/agentGuiNode/model/agentGuiConversationFilter";
@@ -169,9 +170,8 @@ function conversationFilterKey(
 
 /**
  * A conversation may only be retained (pinned/carried over) in a query state
- * whose agent-target filter it does not contradict. Conversations without a
- * known summary or without an agentTargetId are kept: we can only prove a
- * mismatch when both sides are known.
+ * whose agent-target filter it matches. Legacy sessions without agentTargetId
+ * may still match a local system target through provider identity.
  */
 function conversationRetainableForQueryFilter(
   conversation: AgentGUIConversationSummary | undefined,
@@ -180,8 +180,7 @@ function conversationRetainableForQueryFilter(
   if (!conversation || !filter || filter.kind !== "agentTarget") {
     return true;
   }
-  const agentTargetId = conversation.agentTargetId?.trim() ?? "";
-  return agentTargetId.length === 0 || agentTargetId === filter.agentTargetId;
+  return matchesAgentGUIConversationSummaryFilter(conversation, filter);
 }
 
 export function createAgentGUIConversationListQueryKey(
@@ -1358,6 +1357,15 @@ async function refreshAgentGUIConversationListQuery(
           : [];
       })
     );
+    const snapshotSessionProviderById = new Map(
+      workspaceAgentSnapshot.sessions.flatMap((session) => {
+        const agentSessionId = session.agentSessionId.trim();
+        const provider = session.provider?.trim() ?? "";
+        return agentSessionId && provider
+          ? [[agentSessionId, provider] as const]
+          : [];
+      })
+    );
     const retainableForQueryFilter = (agentSessionId: string): boolean => {
       const filter = state.query.conversationFilter;
       if (!filter || filter.kind !== "agentTarget") {
@@ -1367,8 +1375,15 @@ async function refreshAgentGUIConversationListQuery(
       // stale current summary.
       const snapshotAgentTargetId =
         snapshotSessionAgentTargetIdById.get(agentSessionId);
-      if (snapshotAgentTargetId) {
-        return snapshotAgentTargetId === filter.agentTargetId;
+      const snapshotProvider = snapshotSessionProviderById.get(agentSessionId);
+      if (snapshotAgentTargetId || snapshotProvider) {
+        return matchesAgentGUIConversationSummaryFilter(
+          {
+            agentTargetId: snapshotAgentTargetId ?? null,
+            provider: snapshotProvider ?? null
+          },
+          filter
+        );
       }
       return conversationRetainableForQueryFilter(
         currentConversationsById.get(agentSessionId),

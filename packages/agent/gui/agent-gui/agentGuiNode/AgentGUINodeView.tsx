@@ -156,6 +156,7 @@ import {
   type ConversationSection
 } from "./agentGuiNodeViewConversation";
 import { buildAgentGUIConversationSummaries } from "./model/agentGuiConversationModel";
+import { filterAgentGUIConversationSummaries } from "./model/agentGuiConversationFilter";
 import styles from "./AgentGUINode.styles";
 import type { AgentContextMentionProvider } from "./agentContextMentionProvider";
 import type {
@@ -5465,12 +5466,21 @@ function useAgentGUIConversationRail({
     if (!runtimeSectionsEnabled) {
       return;
     }
+    const filteredConversations = filterAgentGUIConversationSummaries(
+      conversations,
+      conversationFilter
+    );
     setRuntimeRailSections((current) =>
-      updateConversationSectionsFromSummaries(current, conversations, {
+      updateConversationSectionsFromSummaries(current, filteredConversations, {
         sectionConversationsLabel: labels.sectionConversations
       })
     );
-  }, [conversations, labels.sectionConversations, runtimeSectionsEnabled]);
+  }, [
+    conversationFilter,
+    conversations,
+    labels.sectionConversations,
+    runtimeSectionsEnabled
+  ]);
 
   const loadMoreSectionConversations = useCallback(
     (section: ConversationSection) => {

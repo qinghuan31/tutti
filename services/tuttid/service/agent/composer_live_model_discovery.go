@@ -577,6 +577,9 @@ func (s *Service) mergeLiveComposerModelsForComposerOptions(
 					"modelOptionValues": composerConfigOptionValuesDebugValues(cached),
 					"checkedAtUnixMs":   now.UnixMilli(),
 				})
+			} else if persisted, ok := s.persistedLiveModelFallback(input.WorkspaceID, input.Cwd, provider, now); ok {
+				liveModels = persisted
+				modelSource = "acp-live-discovery"
 			}
 		default:
 			// No running session: prefer the cache, else one hidden discovery,
@@ -599,6 +602,13 @@ func (s *Service) mergeLiveComposerModelsForComposerOptions(
 				}
 				if err == nil && len(discovered) > 0 {
 					liveModels = discovered
+					modelSource = "acp-live-discovery"
+				} else if persisted, ok := s.persistedLiveModelFallback(input.WorkspaceID, input.Cwd, provider, now); ok {
+					// No live session, no cache, and discovery could not run
+					// (Cursor never probes; Claude probes once per key). Restore
+					// the last list a past session persisted so the picker does
+					// not collapse to the single selected model.
+					liveModels = persisted
 					modelSource = "acp-live-discovery"
 				}
 			}

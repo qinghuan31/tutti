@@ -836,6 +836,43 @@ delimited by ---`, and the composer skill picker may show partial or
   [desktopRichTextAtService.ts](../../apps/desktop/src/renderer/src/features/rich-text-at/services/internal/desktopRichTextAtService.ts)
   [desktopAgentProviderStatusService.ts](../../apps/desktop/src/renderer/src/features/workspace-agent/services/internal/desktopAgentProviderStatusService.ts)
 
+### Agent GUI provider tab shows fused or stale conversations
+
+- Symptom:
+  Switching the Agent GUI aggregation rail between All, Cursor, Codex, or Claude
+  leaves the middle list and right detail panel out of sync. A provider tab can
+  still show other providers' sessions, or the right panel keeps the previous
+  agent after the middle list already changed.
+- Quick checks:
+  Inspect `workspace_agent_sessions.agent_target_id` for legacy Cursor rows. Old
+  Cursor imports may be missing `agent_target_id` while still carrying
+  `provider=cursor`. Confirm the active `conversationFilter` in the controller
+  and the per-query `agentGuiConversationListStore` projection for the selected
+  `local:<provider>` target.
+- Root cause:
+  Conversation retention in `agentGuiConversationListStore` previously kept
+  every targetless session under any agent-target tab. The rail also merged
+  unfiltered store conversations into runtime sections, and filter switches did
+  not always re-project the shared list or clear an active conversation outside
+  the new filter.
+- Fix:
+  Match agent-target tabs with `matchesAgentGUIConversationSummaryFilter`, using
+  `session.provider` as a fallback for legacy `local:<provider>` targets.
+  Backfill Cursor `agent_target_id` in daemon storage, re-project the list store
+  when `conversationFilter` changes, filter rail merges in `AgentGUINodeView`,
+  and open the selected target home composer when the active conversation no
+  longer matches the tab.
+- Validation:
+  Run
+  `pnpm --dir packages/agent/gui exec vitest run --environment jsdom agent-gui/agentGuiNode/model/agentGuiConversationFilter.spec.ts contexts/workspace/presentation/renderer/agentGuiConversationList/agentGuiConversationListStore.spec.ts agent-gui/agentGuiNode/controller/useAgentGUINodeController.spec.tsx -t "opens the selected target home composer when the active conversation is outside the new rail filter"`,
+  then `cd services/tuttid && go test ./data/workspace/...`.
+- References:
+  [agentGuiConversationFilter.ts](../../packages/agent/gui/agent-gui/agentGuiNode/model/agentGuiConversationFilter.ts)
+  [agentGuiConversationListStore.ts](../../packages/agent/gui/contexts/workspace/presentation/renderer/agentGuiConversationList/agentGuiConversationListStore.ts)
+  [useAgentGUINodeController.ts](../../packages/agent/gui/agent-gui/agentGuiNode/controller/useAgentGUINodeController.ts)
+  [AgentGUINodeView.tsx](../../packages/agent/gui/agent-gui/agentGuiNode/AgentGUINodeView.tsx)
+  [agent_store.go](../../services/tuttid/data/workspace/agent_store.go)
+
 ### Agent GUI no-project sessions appear under a user project
 
 - Symptom:

@@ -38,6 +38,10 @@ type Service struct {
 	liveModelDiscoveryMu          sync.Mutex
 	liveModelDiscoveryAttempted   map[string]struct{}
 	liveModelInvalidatedAtUnixMS  map[string]int64
+	// liveModelPersistedScanMissAtUnixMS memoizes, per live-model cache key,
+	// when the persisted-session fallback scan last found nothing, so the
+	// full session scan is not repeated on every composer-options fetch.
+	liveModelPersistedScanMissAtUnixMS map[string]int64
 }
 
 type StaleTurnResumeReconciler interface {

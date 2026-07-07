@@ -54,6 +54,10 @@ type standardACPConfig struct {
 	// token ("approved" / "denied") to apply automatically, or "" to prompt
 	// the user as usual. Nil (the default) always prompts.
 	autoApprovePermissionDecision func(permissionModeID string) string
+	// autoContinueRetriableTurnError resumes turns the agent ends "normally"
+	// right after streaming a transient network error as plain text (Cursor's
+	// "Error: RetriableError: ..." tail). See acp_auto_continue.go.
+	autoContinueRetriableTurnError bool
 }
 
 type standardACPAdapter struct {
@@ -843,103 +847,157 @@ func (a *standardACPAdapter) Exec(
 		)
 	}
 
-	result, err := acpSession.client.Call(ctx, acpMethodPrompt, map[string]any{
-		"sessionId": acpSession.providerSessionID,
-		"prompt":    acpPromptContent,
-	}, func(ctx context.Context, message acpMessage) error {
-		slog.Info("agent session ACP exec received message",
-			"event", "agent_session.acp.exec.message",
-			"provider", a.config.provider,
-			"adapter", a.config.adapterName,
-			"room_id", session.RoomID,
-			"agent_session_id", session.AgentSessionID,
-			"provider_session_id", session.ProviderSessionID,
-			"turn_id", turnID,
-			"message_method", message.Method,
-			"message_id", rawMessageLogValue(message.ID),
-		)
-		next, err := a.handleACPMessage(ctx, acpSession.client, session, turnID, message, normalizer, emitEvents, emitCommands)
-		slog.Info("agent session ACP exec handled message",
-			"event", "agent_session.acp.exec.message_handled",
-			"provider", a.config.provider,
-			"adapter", a.config.adapterName,
-			"room_id", session.RoomID,
-			"agent_session_id", session.AgentSessionID,
-			"provider_session_id", session.ProviderSessionID,
-			"turn_id", turnID,
-			"message_method", message.Method,
-			"event_count", len(next),
-			"event_type_counts", activityEventTypeCounts(next),
-			"error", errString(err),
-		)
-		emitEvents(next)
+	promptParams := acpPromptContent
+	autoContinueAttempts := 0
+execLoop:
+	for {
+		result, err := acpSession.client.Call(ctx, acpMethodPrompt, map[string]any{
+			"sessionId": acpSession.providerSessionID,
+			"prompt":    promptParams,
+		}, func(ctx context.Context, message acpMessage) error {
+			slog.Info("agent session ACP exec received message",
+				"event", "agent_session.acp.exec.message",
+				"provider", a.config.provider,
+				"adapter", a.config.adapterName,
+				"room_id", session.RoomID,
+				"agent_session_id", session.AgentSessionID,
+				"provider_session_id", session.ProviderSessionID,
+				"turn_id", turnID,
+				"message_method", message.Method,
+				"message_id", rawMessageLogValue(message.ID),
+			)
+			next, err := a.handleACPMessage(ctx, acpSession.client, session, turnID, message, normalizer, emitEvents, emitCommands)
+			slog.Info("agent session ACP exec handled message",
+				"event", "agent_session.acp.exec.message_handled",
+				"provider", a.config.provider,
+				"adapter", a.config.adapterName,
+				"room_id", session.RoomID,
+				"agent_session_id", session.AgentSessionID,
+				"provider_session_id", session.ProviderSessionID,
+				"turn_id", turnID,
+				"message_method", message.Method,
+				"event_count", len(next),
+				"event_type_counts", activityEventTypeCounts(next),
+				"error", errString(err),
+			)
+			emitEvents(next)
+			if err != nil {
+				return err
+			}
+			return nil
+		})
 		if err != nil {
-			return err
+			slog.Warn("agent session ACP exec call failed",
+				"event", "agent_session.acp.exec.call_failed",
+				"provider", a.config.provider,
+				"adapter", a.config.adapterName,
+				"room_id", session.RoomID,
+				"agent_session_id", session.AgentSessionID,
+				"provider_session_id", session.ProviderSessionID,
+				"turn_id", turnID,
+				"emitted_event_count", len(events),
+				"emitted_event_type_counts", activityEventTypeCounts(events),
+				"error", err.Error(),
+			)
+			if errors.Is(err, context.Canceled) || errors.Is(err, errPermissionRequestCanceled) {
+				terminalEvents := normalizer.FinishInterrupted(session, turnID, "interrupted")
+				terminalEvents = append(terminalEvents, newTurnActivityEvent(session, EventTurnCanceled, turnID, SessionStatusCanceled, "", "", map[string]any{
+					"error": err.Error(),
+				}))
+				emitEvents(terminalEvents)
+			} else {
+				terminalEvents := normalizer.FinishFailed(session, turnID)
+				terminalEvents = append(terminalEvents, newTurnActivityEvent(session, EventTurnFailed, turnID, SessionStatusFailed, "", "", map[string]any{
+					"error": err.Error(),
+				}))
+				emitEvents(terminalEvents)
+			}
+			return events, nil
 		}
-		return nil
-	})
-	if err != nil {
-		slog.Warn("agent session ACP exec call failed",
-			"event", "agent_session.acp.exec.call_failed",
+
+		stopReason := acpStopReason(result)
+		normalizer.ApplyAssistantFinalText(acpPromptResultAssistantText(result))
+		slog.Info("agent session ACP exec call completed",
+			"event", "agent_session.acp.exec.call_completed",
 			"provider", a.config.provider,
 			"adapter", a.config.adapterName,
 			"room_id", session.RoomID,
 			"agent_session_id", session.AgentSessionID,
 			"provider_session_id", session.ProviderSessionID,
 			"turn_id", turnID,
+			"stop_reason", firstNonEmpty(stopReason, "end_turn"),
+			"auto_continue_attempts", autoContinueAttempts,
 			"emitted_event_count", len(events),
 			"emitted_event_type_counts", activityEventTypeCounts(events),
-			"error", err.Error(),
 		)
-		if errors.Is(err, context.Canceled) || errors.Is(err, errPermissionRequestCanceled) {
-			terminalEvents := normalizer.FinishInterrupted(session, turnID, "interrupted")
+		if a.config.autoContinueRetriableTurnError && acpStopReasonEndsTurnNormally(stopReason) {
+			if errLine, ok := acpRetriableTurnTailError(normalizer.CurrentAssistantText()); ok {
+				if autoContinueAttempts < acpAutoContinueMaxAttempts {
+					autoContinueAttempts++
+					// Close out the error-text segment so the continuation
+					// streams into a fresh message instead of appending to it.
+					emitEvents(normalizer.Finish(session, turnID, messageStreamStateCompleted))
+					if notice, ok := acpAutoContinueNoticeEvent(session, turnID, errLine, autoContinueAttempts); ok {
+						emitEvents([]activityshared.Event{notice})
+					}
+					slog.Warn("agent session ACP auto-continue after retriable turn error",
+						"event", "agent_session.acp.exec.auto_continue",
+						"provider", a.config.provider,
+						"adapter", a.config.adapterName,
+						"room_id", session.RoomID,
+						"agent_session_id", session.AgentSessionID,
+						"provider_session_id", session.ProviderSessionID,
+						"turn_id", turnID,
+						"attempt", autoContinueAttempts,
+						"max_attempts", acpAutoContinueMaxAttempts,
+						"error_line", errLine,
+					)
+					promptParams = acpAutoContinuePromptContent()
+					continue execLoop
+				}
+				// The retries were cut short too: surface the turn as failed
+				// instead of a silent "completed" that strands the conversation.
+				terminalEvents := normalizer.FinishFailed(session, turnID)
+				terminalEvents = append(terminalEvents, newTurnActivityEvent(session, EventTurnFailed, turnID, SessionStatusFailed, "", "", map[string]any{
+					"error":      errLine,
+					"stopReason": firstNonEmpty(stopReason, "end_turn"),
+				}))
+				emitEvents(terminalEvents)
+				slog.Warn("agent session ACP auto-continue attempts exhausted",
+					"event", "agent_session.acp.exec.auto_continue_exhausted",
+					"provider", a.config.provider,
+					"adapter", a.config.adapterName,
+					"room_id", session.RoomID,
+					"agent_session_id", session.AgentSessionID,
+					"provider_session_id", session.ProviderSessionID,
+					"turn_id", turnID,
+					"attempts", autoContinueAttempts,
+					"error_line", errLine,
+				)
+				break execLoop
+			}
+		}
+		switch stopReason {
+		case "canceled":
+			terminalEvents := normalizer.FinishInterrupted(session, turnID, stopReason)
 			terminalEvents = append(terminalEvents, newTurnActivityEvent(session, EventTurnCanceled, turnID, SessionStatusCanceled, "", "", map[string]any{
-				"error": err.Error(),
+				"stopReason": stopReason,
 			}))
 			emitEvents(terminalEvents)
-		} else {
+		case "refusal", "max_tokens", "max_turn_requests":
 			terminalEvents := normalizer.FinishFailed(session, turnID)
 			terminalEvents = append(terminalEvents, newTurnActivityEvent(session, EventTurnFailed, turnID, SessionStatusFailed, "", "", map[string]any{
-				"error": err.Error(),
+				"stopReason": stopReason,
+			}))
+			emitEvents(terminalEvents)
+		default:
+			terminalEvents := normalizer.FinishCompleted(session, turnID)
+			terminalEvents = append(terminalEvents, newTurnActivityEvent(session, EventTurnCompleted, turnID, SessionStatusReady, "", "", map[string]any{
+				"stopReason": firstNonEmpty(stopReason, "end_turn"),
 			}))
 			emitEvents(terminalEvents)
 		}
-		return events, nil
-	}
-
-	stopReason := acpStopReason(result)
-	normalizer.ApplyAssistantFinalText(acpPromptResultAssistantText(result))
-	slog.Info("agent session ACP exec call completed",
-		"event", "agent_session.acp.exec.call_completed",
-		"provider", a.config.provider,
-		"adapter", a.config.adapterName,
-		"room_id", session.RoomID,
-		"agent_session_id", session.AgentSessionID,
-		"provider_session_id", session.ProviderSessionID,
-		"turn_id", turnID,
-		"stop_reason", firstNonEmpty(stopReason, "end_turn"),
-		"emitted_event_count", len(events),
-		"emitted_event_type_counts", activityEventTypeCounts(events),
-	)
-	switch stopReason {
-	case "canceled":
-		terminalEvents := normalizer.FinishInterrupted(session, turnID, stopReason)
-		terminalEvents = append(terminalEvents, newTurnActivityEvent(session, EventTurnCanceled, turnID, SessionStatusCanceled, "", "", map[string]any{
-			"stopReason": stopReason,
-		}))
-		emitEvents(terminalEvents)
-	case "refusal", "max_tokens", "max_turn_requests":
-		terminalEvents := normalizer.FinishFailed(session, turnID)
-		terminalEvents = append(terminalEvents, newTurnActivityEvent(session, EventTurnFailed, turnID, SessionStatusFailed, "", "", map[string]any{
-			"stopReason": stopReason,
-		}))
-		emitEvents(terminalEvents)
-	default:
-		terminalEvents := normalizer.FinishCompleted(session, turnID)
-		terminalEvents = append(terminalEvents, newTurnActivityEvent(session, EventTurnCompleted, turnID, SessionStatusReady, "", "", map[string]any{
-			"stopReason": firstNonEmpty(stopReason, "end_turn"),
-		}))
-		emitEvents(terminalEvents)
+		break execLoop
 	}
 	slog.Info("agent session ACP exec finished",
 		"event", "agent_session.acp.exec.finished",
