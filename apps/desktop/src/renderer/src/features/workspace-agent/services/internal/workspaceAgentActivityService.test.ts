@@ -321,7 +321,6 @@ test("WorkspaceAgentActivityService.importExternalSessions refreshes sessions an
 });
 
 test("WorkspaceAgentActivityService fetches combined reconcile state after messages", async () => {
-  const diagnostics: unknown[] = [];
   const calls: string[] = [];
   let messagesResolved = false;
   const staleSession = workspaceAgentSession({
@@ -366,9 +365,7 @@ test("WorkspaceAgentActivityService fetches combined reconcile state after messa
       }
     } as unknown as TuttidClient,
     runtimeApi: {
-      logTerminalDiagnostic: async (payload) => {
-        diagnostics.push(payload);
-      }
+      logTerminalDiagnostic: async () => {}
     }
   });
 
@@ -392,30 +389,6 @@ test("WorkspaceAgentActivityService fetches combined reconcile state after messa
   assert.equal(session?.status, "ready");
   assert.equal(session?.turnLifecycle?.phase, "settled");
   assert.equal(session?.submitAvailability?.state, "available");
-  assert.deepEqual(
-    diagnostics
-      .filter(
-        (entry): entry is { details: { traceEvent?: string }; event: string } =>
-          typeof entry === "object" &&
-          entry !== null &&
-          (entry as { event?: unknown }).event ===
-            "agent.activity.reconcile.trace"
-      )
-      .map((entry) => entry.details.traceEvent)
-      .filter(
-        (traceEvent) =>
-          typeof traceEvent === "string" &&
-          traceEvent.startsWith("reconcile.combined")
-      ),
-    [
-      "reconcile.combined.messages_requested",
-      "reconcile.combined.messages_resolved",
-      "reconcile.combined.state_fetch.requested",
-      "reconcile.combined.state_fetch.resolved",
-      "reconcile.combined.state_upsert",
-      "reconcile.combined.state_upsert.applied"
-    ]
-  );
 });
 
 test("WorkspaceAgentActivityService.listAgentGeneratedFiles delegates to tuttid workspace aggregate", async () => {

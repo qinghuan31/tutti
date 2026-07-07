@@ -10,7 +10,6 @@ import {
   type AgentActivityMessage,
   type AgentActivityMessagePage,
   type AgentActivitySession,
-  type AgentActivityStatePatch,
   type AgentActivitySnapshot
 } from "@tutti-os/agent-activity-core";
 import type { AgentActivityRuntime } from "@tutti-os/agent-gui";
@@ -162,29 +161,7 @@ export class WorkspaceAgentActivityService implements IWorkspaceAgentActivitySer
     signal?: AbortSignal
   ): Promise<AgentActivitySnapshot> {
     const normalizedWorkspaceId = normalizeWorkspaceId(workspaceId);
-    const entry = this.controllerEntry(normalizedWorkspaceId);
-    this.reportReconcileTrace({
-      agentSessionId: null,
-      traceEvent: "load.requested",
-      workspaceId: normalizedWorkspaceId,
-      fields: {
-        cachedSessionCount: entry.controller.getSnapshot().sessions.length
-      }
-    });
-    return entry.controller.load(signal).then((snapshot) => {
-      this.reportReconcileTrace({
-        agentSessionId: null,
-        traceEvent: "load.resolved",
-        workspaceId: normalizedWorkspaceId,
-        fields: {
-          newestSession: agentActivitySessionReconcileDiagnosticDetails(
-            snapshot.sessions[0] ?? null
-          ),
-          sessionCount: snapshot.sessions.length
-        }
-      });
-      return snapshot;
-    });
+    return this.controllerEntry(normalizedWorkspaceId).controller.load(signal);
   }
 
   listSessionMessages(
@@ -352,7 +329,7 @@ export class WorkspaceAgentActivityService implements IWorkspaceAgentActivitySer
       workspaceId,
       session
     );
-    this.upsertAuthoritativeSession(activitySession, "pin_result");
+    this.upsertAuthoritativeSession(activitySession);
     return activitySession;
   }
 
@@ -434,7 +411,7 @@ export class WorkspaceAgentActivityService implements IWorkspaceAgentActivitySer
       workspaceId: input.workspaceId,
       fields: { sessionStatus: session.status }
     });
-    this.upsertAuthoritativeSession(session, "create_session_result");
+    this.upsertAuthoritativeSession(session);
     reportAgentSubmitTraceDiagnostic(this.dependencies.runtimeApi, {
       agentSessionId: session.agentSessionId,
       event: "activity_service.create.resolved",
@@ -629,7 +606,7 @@ export class WorkspaceAgentActivityService implements IWorkspaceAgentActivitySer
             optimisticUpdatedAtUnixMs
           )
         : result.session;
-      this.upsertAuthoritativeSession(nextSession, "send_input_result");
+      this.upsertAuthoritativeSession(nextSession);
       return {
         ...result,
         session: nextSession
@@ -642,7 +619,6 @@ export class WorkspaceAgentActivityService implements IWorkspaceAgentActivitySer
         this.upsertControllerSession({
           agentSessionId,
           session: previousSession,
-          source: "send_input_rollback",
           workspaceId
         });
       }
@@ -668,7 +644,7 @@ export class WorkspaceAgentActivityService implements IWorkspaceAgentActivitySer
   ): Promise<AgentActivityCancelSessionResult> {
     const entry = this.controllerEntry(input.workspaceId);
     const result = await entry.adapter.cancelSession(input);
-    this.upsertAuthoritativeSession(result.session, "cancel_result");
+    this.upsertAuthoritativeSession(result.session);
     return result;
   }
 
@@ -677,7 +653,7 @@ export class WorkspaceAgentActivityService implements IWorkspaceAgentActivitySer
   ): Promise<AgentActivityGoalControlResult> {
     const entry = this.controllerEntry(input.workspaceId);
     const result = await entry.adapter.goalControl(input);
-    this.upsertAuthoritativeSession(result.session, "goal_control_result");
+    this.upsertAuthoritativeSession(result.session);
     return result;
   }
 
@@ -752,10 +728,9 @@ export class WorkspaceAgentActivityService implements IWorkspaceAgentActivitySer
   ): Promise<AgentActivitySession> {
     const activitySession = await this.fetchActivitySession(
       workspaceId,
-      agentSessionId,
-      "get_session"
+      agentSessionId
     );
-    this.upsertAuthoritativeSession(activitySession, "get_session_result");
+    this.upsertAuthoritativeSession(activitySession);
     return activitySession;
   }
 
@@ -881,46 +856,26 @@ export class WorkspaceAgentActivityService implements IWorkspaceAgentActivitySer
 
   private async fetchActivitySession(
     workspaceId: string,
-    agentSessionId: string,
-    source: string
+    agentSessionId: string
   ): Promise<AgentActivitySession> {
     const normalizedWorkspaceId = normalizeWorkspaceId(workspaceId);
-    this.reportReconcileTrace({
-      agentSessionId,
-      traceEvent: `${source}.requested`,
-      workspaceId: normalizedWorkspaceId
-    });
     const session =
       await this.dependencies.tuttidClient.getWorkspaceAgentSession(
         normalizedWorkspaceId,
         agentSessionId
       );
-    const activitySession = agentActivitySessionFromTuttidSession(
+    return agentActivitySessionFromTuttidSession(
       normalizedWorkspaceId,
       session
     );
-    this.reportReconcileTrace({
-      agentSessionId,
-      traceEvent: `${source}.resolved`,
-      workspaceId: normalizedWorkspaceId,
-      fields: {
-        incomingSession:
-          agentActivitySessionReconcileDiagnosticDetails(activitySession)
-      }
-    });
-    return activitySession;
   }
 
-  private upsertAuthoritativeSession(
-    session: AgentActivitySession,
-    source: string
-  ): void {
+  private upsertAuthoritativeSession(session: AgentActivitySession): void {
     const workspaceId = normalizeWorkspaceId(session.workspaceId);
     this.clearSessionTombstone(workspaceId, session.agentSessionId);
     this.upsertControllerSession({
       agentSessionId: session.agentSessionId,
       session,
-      source,
       workspaceId
     });
   }
@@ -928,68 +883,11 @@ export class WorkspaceAgentActivityService implements IWorkspaceAgentActivitySer
   private upsertControllerSession(input: {
     agentSessionId: string;
     session: AgentActivitySession;
-    source: string;
     workspaceId: string;
   }): void {
-    const entry = this.controllerEntry(input.workspaceId);
-    const beforeSession =
-      entry.controller
-        .getSnapshot()
-        .sessions.find(
-          (session) => session.agentSessionId === input.agentSessionId
-        ) ?? null;
-    this.reportReconcileTrace({
-      agentSessionId: input.agentSessionId,
-      traceEvent: input.source,
-      workspaceId: input.workspaceId,
-      fields: {
-        beforeSession:
-          agentActivitySessionReconcileDiagnosticDetails(beforeSession),
-        incomingSession: agentActivitySessionReconcileDiagnosticDetails(
-          input.session
-        )
-      }
-    });
-    entry.controller.upsertSession(input.session);
-    const afterSession =
-      entry.controller
-        .getSnapshot()
-        .sessions.find(
-          (session) => session.agentSessionId === input.agentSessionId
-        ) ?? null;
-    this.reportReconcileTrace({
-      agentSessionId: input.agentSessionId,
-      traceEvent: `${input.source}.applied`,
-      workspaceId: input.workspaceId,
-      fields: {
-        afterSession:
-          agentActivitySessionReconcileDiagnosticDetails(afterSession)
-      }
-    });
-  }
-
-  private reportReconcileTrace(input: {
-    agentSessionId: string | null;
-    traceEvent: string;
-    workspaceId: string;
-    fields?: Record<string, unknown>;
-  }): void {
-    try {
-      void this.dependencies.runtimeApi
-        .logTerminalDiagnostic({
-          details: {
-            agentSessionId: input.agentSessionId,
-            traceEvent: input.traceEvent,
-            ...(input.fields ?? {})
-          },
-          event: "agent.activity.reconcile.trace",
-          level: "info",
-          workspaceId: input.workspaceId
-        })
-        .catch(() => {});
-    } catch {
-      // Diagnostic logging must not affect agent activity reconciliation.
-    }
+    this.controllerEntry(input.workspaceId).controller.upsertSession(
+      input.session
+    );
   }
 
   private markSessionDeleted(input: {
@@ -1372,12 +1270,6 @@ export class WorkspaceAgentActivityService implements IWorkspaceAgentActivitySer
     const messages =
       entry.controller.getSnapshot().sessionMessagesById[agentSessionId];
     const afterVersion = reconcileAfterVersion(messages ?? []);
-    this.reportReconcileTrace({
-      agentSessionId,
-      traceEvent: "reconcile.combined.messages_requested",
-      workspaceId,
-      fields: { afterVersion }
-    });
     const page = await entry.controller.listSessionMessages({
       agentSessionId,
       afterVersion
@@ -1386,23 +1278,12 @@ export class WorkspaceAgentActivityService implements IWorkspaceAgentActivitySer
       entry.controller.removeSession(agentSessionId);
       return;
     }
-    this.reportReconcileTrace({
-      agentSessionId,
-      traceEvent: "reconcile.combined.messages_resolved",
-      workspaceId,
-      fields: {
-        afterVersion,
-        latestVersion: page.latestVersion,
-        messageCount: page.messages.length
-      }
-    });
     for (const message of page.messages) {
       this.emitSessionEvent(workspaceId, hostMessageEventFromCore(message));
     }
     const session = await this.fetchActivitySession(
       workspaceId,
-      agentSessionId,
-      "reconcile.combined.state_fetch"
+      agentSessionId
     );
     if (this.isSessionTombstoned(workspaceId, agentSessionId)) {
       entry.controller.removeSession(agentSessionId);
@@ -1411,7 +1292,6 @@ export class WorkspaceAgentActivityService implements IWorkspaceAgentActivitySer
     this.upsertControllerSession({
       agentSessionId,
       session,
-      source: "reconcile.combined.state_upsert",
       workspaceId
     });
     const reconciledMessages =
@@ -1434,12 +1314,6 @@ export class WorkspaceAgentActivityService implements IWorkspaceAgentActivitySer
     const messages =
       entry.controller.getSnapshot().sessionMessagesById[agentSessionId];
     const afterVersion = reconcileAfterVersion(messages ?? []);
-    this.reportReconcileTrace({
-      agentSessionId,
-      traceEvent: "reconcile.messages.requested",
-      workspaceId,
-      fields: { afterVersion }
-    });
     const page = await entry.controller.listSessionMessages({
       agentSessionId,
       afterVersion
@@ -1448,16 +1322,6 @@ export class WorkspaceAgentActivityService implements IWorkspaceAgentActivitySer
       entry.controller.removeSession(agentSessionId);
       return;
     }
-    this.reportReconcileTrace({
-      agentSessionId,
-      traceEvent: "reconcile.messages.resolved",
-      workspaceId,
-      fields: {
-        afterVersion,
-        latestVersion: page.latestVersion,
-        messageCount: page.messages.length
-      }
-    });
     for (const message of page.messages) {
       this.emitSessionEvent(workspaceId, hostMessageEventFromCore(message));
     }
@@ -1472,8 +1336,7 @@ export class WorkspaceAgentActivityService implements IWorkspaceAgentActivitySer
     }
     const session = await this.fetchActivitySession(
       workspaceId,
-      agentSessionId,
-      "reconcile.state_fetch"
+      agentSessionId
     );
     if (this.isSessionTombstoned(workspaceId, agentSessionId)) {
       this.controllerEntry(workspaceId).controller.removeSession(
@@ -1484,7 +1347,6 @@ export class WorkspaceAgentActivityService implements IWorkspaceAgentActivitySer
     this.upsertControllerSession({
       agentSessionId,
       session,
-      source: "reconcile.state_upsert",
       workspaceId
     });
     const messages =
@@ -1513,28 +1375,8 @@ export class WorkspaceAgentActivityService implements IWorkspaceAgentActivitySer
       workspaceId: input.workspaceId
     });
     if (!result.applied) {
-      this.reportReconcileTrace({
-        agentSessionId: input.agentSessionId,
-        traceEvent: "inline.not_applied",
-        workspaceId: input.workspaceId,
-        fields: { eventType: input.eventType }
-      });
       return false;
     }
-    this.reportReconcileTrace({
-      agentSessionId: input.agentSessionId,
-      traceEvent: "inline.applied",
-      workspaceId: input.workspaceId,
-      fields: {
-        eventType: input.eventType,
-        incomingSession: agentActivitySessionReconcileDiagnosticDetails(
-          result.session
-        ),
-        statePatch: agentActivityStatePatchReconcileDiagnosticDetails(
-          result.statePatch
-        )
-      }
-    });
     for (const message of result.messages) {
       this.emitSessionEvent(
         input.workspaceId,
@@ -1593,58 +1435,6 @@ function reportAgentSubmitTraceDiagnostic(
   } catch {
     // Diagnostic logging must not affect agent submission.
   }
-}
-
-function agentActivitySessionReconcileDiagnosticDetails(
-  session: AgentActivitySession | null
-): Record<string, unknown> | null {
-  if (!session) {
-    return null;
-  }
-  return {
-    activeTurnId: session.turnLifecycle?.activeTurnId ?? null,
-    agentSessionId: session.agentSessionId,
-    currentPhase: session.currentPhase ?? null,
-    lastEventUnixMs: session.lastEventUnixMs ?? null,
-    messageVersion: session.messageVersion ?? null,
-    outcome: session.turnLifecycle?.outcome ?? null,
-    provider: session.provider,
-    status: session.status ?? null,
-    submitAvailabilityReason: session.submitAvailability?.reason ?? null,
-    submitAvailabilityState: session.submitAvailability?.state ?? null,
-    turnPhase: session.turnLifecycle?.phase ?? null,
-    updatedAtUnixMs: session.updatedAtUnixMs ?? null
-  };
-}
-
-function agentActivityStatePatchReconcileDiagnosticDetails(
-  patch: AgentActivityStatePatch | null
-): Record<string, unknown> | null {
-  if (!patch) {
-    return null;
-  }
-  return {
-    activeTurnId: patch.turn?.activeTurnId ?? null,
-    agentSessionId: patch.agentSessionId,
-    currentPhase: patch.currentPhase ?? null,
-    lastEventUnixMs: patch.lastEventUnixMs ?? patch.occurredAtUnixMs ?? null,
-    outcome: patch.turn?.outcome ?? null,
-    provider: patch.provider ?? null,
-    status: patch.lifecycleStatus ?? null,
-    submitAvailabilityReason:
-      patch.submitAvailability?.reason ??
-      patch.turn?.submitAvailability?.reason ??
-      null,
-    submitAvailabilityState:
-      patch.submitAvailability?.state ??
-      patch.turn?.submitAvailability?.state ??
-      null,
-    topLevelSubmitAvailabilityState: patch.submitAvailability?.state ?? null,
-    turnId: patch.turn?.turnId ?? null,
-    turnPhase: patch.turn?.phase ?? null,
-    turnSubmitAvailabilityState: patch.turn?.submitAvailability?.state ?? null,
-    updatedAtUnixMs: patch.occurredAtUnixMs ?? null
-  };
 }
 
 function stringMetadata(
