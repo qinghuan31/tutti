@@ -243,6 +243,13 @@ whose runtime command is more authoritative than its lightweight status check
 (for example Cursor), the desktop status service may run a provider-specific
 runtime probe and fold a ready result back into the provider status snapshot
 before projecting the empty-home readiness gate.
+Startup provider detection should be progressive: desktop may publish the first
+ready managed provider as soon as it is confirmed, then continue detecting the
+remaining providers in the background. When the empty-home rail is still on
+`All`, no user-selected composer target exists, and the current default target
+is still gated, AgentGUI may move the home composer to that first ready target
+so the user can start typing without waiting for every provider to finish
+detection.
 Auth-required local providers should remain selectable; product surfaces may
 label the setup affordance as `Connect`, but the host action should still
 dispatch the provider's `login` operation when that is the daemon-reported

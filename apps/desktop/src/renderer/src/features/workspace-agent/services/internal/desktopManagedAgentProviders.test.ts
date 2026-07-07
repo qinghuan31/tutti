@@ -12,17 +12,100 @@ import {
   projectDesktopManagedAgentsStateForAgentGUI
 } from "./desktopManagedAgentProviders.ts";
 
-test("ensureDesktopManagedAgentProviderStatuses delegates managed provider loading to the status service", async () => {
+test("ensureDesktopManagedAgentProviderStatuses stops waiting after the first ready provider", async () => {
   const calls: WorkspaceAgentProvider[][] = [];
+  let snapshot = createProviderStatusSnapshot([]);
+  const service = {
+    ensureLoaded: async (input) => {
+      calls.push([...(input?.providers ?? [])]);
+      const provider = input?.providers?.[0];
+      if (provider === "codex") {
+        snapshot = createProviderStatusSnapshot([
+          ...snapshot.statuses,
+          createProviderStatus({
+            adapterInstalled: true,
+            availability: "ready",
+            cliInstalled: true,
+            provider: "codex"
+          })
+        ]);
+      }
+      return null;
+    },
+    getSnapshot: () => snapshot
+  } as Partial<IAgentProviderStatusService> as IAgentProviderStatusService;
+
+  await ensureDesktopManagedAgentProviderStatuses(service);
+  await Promise.resolve();
+
+  assert.deepEqual(calls, [["codex"], [...desktopManagedAgentProviders]]);
+});
+
+test("ensureDesktopManagedAgentProviderStatuses keeps probing priority providers until one is ready", async () => {
+  const calls: WorkspaceAgentProvider[][] = [];
+  let snapshot = createProviderStatusSnapshot([]);
+  const service = {
+    ensureLoaded: async (input) => {
+      calls.push([...(input?.providers ?? [])]);
+      const provider = input?.providers?.[0];
+      if (provider === "codex") {
+        snapshot = createProviderStatusSnapshot([
+          createProviderStatus({
+            adapterInstalled: true,
+            availability: "auth_required",
+            cliInstalled: true,
+            provider: "codex"
+          })
+        ]);
+      }
+      if (provider === "claude-code") {
+        snapshot = createProviderStatusSnapshot([
+          ...snapshot.statuses,
+          createProviderStatus({
+            adapterInstalled: true,
+            availability: "ready",
+            cliInstalled: true,
+            provider: "claude-code"
+          })
+        ]);
+      }
+      return null;
+    },
+    getSnapshot: () => snapshot
+  } as Partial<IAgentProviderStatusService> as IAgentProviderStatusService;
+
+  await ensureDesktopManagedAgentProviderStatuses(service);
+  await Promise.resolve();
+
+  assert.deepEqual(calls, [
+    ["codex"],
+    ["claude-code"],
+    [...desktopManagedAgentProviders]
+  ]);
+});
+
+test("ensureDesktopManagedAgentProviderStatuses returns immediately when a ready provider is already known", async () => {
+  const calls: WorkspaceAgentProvider[][] = [];
+  const snapshot = createProviderStatusSnapshot([
+    createProviderStatus({
+      adapterInstalled: true,
+      availability: "ready",
+      cliInstalled: true,
+      provider: "claude-code"
+    })
+  ]);
   const service = {
     ensureLoaded: async (input) => {
       calls.push([...(input?.providers ?? [])]);
       return null;
-    }
+    },
+    getSnapshot: () => snapshot
   } as Partial<IAgentProviderStatusService> as IAgentProviderStatusService;
 
-  await ensureDesktopManagedAgentProviderStatuses(service);
+  const response = await ensureDesktopManagedAgentProviderStatuses(service);
+  await Promise.resolve();
 
+  assert.equal(response?.providers[0]?.provider, "claude-code");
   assert.deepEqual(calls, [[...desktopManagedAgentProviders]]);
 });
 
@@ -135,5 +218,18 @@ function createProviderStatus(input: {
       installed: input.cliInstalled
     },
     provider: input.provider
+  };
+}
+
+function createProviderStatusSnapshot(
+  statuses: readonly AgentProviderStatus[]
+) {
+  return {
+    capturedAt: statuses.length > 0 ? "2026-06-02T08:00:00.000Z" : null,
+    defaultProvider: statuses[0]?.provider ?? null,
+    error: null,
+    isLoading: false,
+    pendingActions: [],
+    statuses
   };
 }

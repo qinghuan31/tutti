@@ -20,12 +20,77 @@ export const desktopManagedAgentProviders = [
   "openclaw"
 ] as const satisfies readonly WorkspaceAgentProvider[];
 
+const desktopManagedAgentStartupProviderPriority = [
+  "codex",
+  "claude-code",
+  "cursor",
+  "tutti-agent",
+  "opencode",
+  "gemini",
+  "hermes",
+  "openclaw"
+] as const satisfies readonly WorkspaceAgentProvider[];
+
 export function ensureDesktopManagedAgentProviderStatuses(
+  service: IAgentProviderStatusService
+): Promise<AgentProviderStatusListResponse | null> {
+  const snapshot = service.getSnapshot();
+  const readyProvider = firstReadyDesktopManagedAgentProvider(
+    snapshot.statuses
+  );
+  if (readyProvider) {
+    void ensureAllDesktopManagedAgentProviderStatuses(service);
+    return Promise.resolve({
+      capturedAt: snapshot.capturedAt ?? "",
+      defaultProvider: snapshot.defaultProvider ?? readyProvider,
+      providers: [...snapshot.statuses]
+    });
+  }
+
+  return ensureFirstReadyDesktopManagedAgentProviderStatus(service);
+}
+
+async function ensureFirstReadyDesktopManagedAgentProviderStatus(
+  service: IAgentProviderStatusService
+): Promise<AgentProviderStatusListResponse | null> {
+  let lastResponse: AgentProviderStatusListResponse | null = null;
+  for (const provider of desktopManagedAgentStartupProviderPriority) {
+    lastResponse = await service.ensureLoaded({ providers: [provider] });
+    if (
+      firstReadyDesktopManagedAgentProvider(
+        service.getSnapshot().statuses,
+        provider
+      )
+    ) {
+      void ensureAllDesktopManagedAgentProviderStatuses(service);
+      return lastResponse;
+    }
+  }
+  return ensureAllDesktopManagedAgentProviderStatuses(service);
+}
+
+function ensureAllDesktopManagedAgentProviderStatuses(
   service: IAgentProviderStatusService
 ): Promise<AgentProviderStatusListResponse | null> {
   return service.ensureLoaded({
     providers: [...desktopManagedAgentProviders]
   });
+}
+
+function firstReadyDesktopManagedAgentProvider(
+  statuses: readonly AgentProviderStatus[],
+  provider?: WorkspaceAgentProvider
+): WorkspaceAgentProvider | null {
+  const statusByProvider = new Map(
+    statuses.map((status) => [status.provider, status])
+  );
+  const providers = provider ? [provider] : desktopManagedAgentProviders;
+  return (
+    providers.find(
+      (candidate) =>
+        statusByProvider.get(candidate)?.availability.status === "ready"
+    ) ?? null
+  );
 }
 
 export function projectDesktopManagedAgentsStateForAgentGUI(
