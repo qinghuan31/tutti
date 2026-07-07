@@ -461,7 +461,3 @@ func optionalStringPointer(value string) *string {
 	}
 	return &value
 }
-
-func boolPointer(value bool) *bool {
-	return &value
-}
