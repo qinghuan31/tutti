@@ -118,9 +118,12 @@ func (p *ActivityProjection) ReportSessionState(
 	input.SessionOrigin = sessionOrigin
 	input.Source = source
 	result, err := p.repo.ReportSessionState(ctx, agentactivitybiz.SessionStateReport{
-		WorkspaceID:       strings.TrimSpace(input.WorkspaceID),
-		AgentSessionID:    strings.TrimSpace(input.AgentSessionID),
-		Origin:            strings.TrimSpace(input.SessionOrigin),
+		WorkspaceID:    strings.TrimSpace(input.WorkspaceID),
+		AgentSessionID: strings.TrimSpace(input.AgentSessionID),
+		Origin:         strings.TrimSpace(input.SessionOrigin),
+		// Tutti local workspaces intentionally leave Source.UserID empty. Cloud
+		// collaboration hosts may provide real account user ids on this wire.
+		UserID:            strings.TrimSpace(input.Source.UserID),
 		AgentTargetID:     strings.TrimSpace(firstNonEmptyString(input.State.AgentTargetID, input.Source.AgentTargetID)),
 		Provider:          strings.TrimSpace(firstNonEmptyString(input.State.Provider, input.Source.Provider)),
 		ProviderSessionID: strings.TrimSpace(firstNonEmptyString(input.State.ProviderSessionID, input.Source.ProviderSessionID)),
@@ -196,75 +199,6 @@ func (p *ActivityProjection) reportFailedRuntimeNodeResult(ctx context.Context, 
 		Provider:       firstNonEmptyString(input.State.Provider, input.Source.Provider),
 		Status:         "failure",
 	}))
-}
-
-func activityStatePatchEventPayload(
-	input agentsessionstore.ReportSessionStateInput,
-	lastEventUnixMS int64,
-) map[string]any {
-	state := input.State
-	payload := map[string]any{
-		"agentSessionId":   strings.TrimSpace(input.AgentSessionID),
-		"eventType":        "state_patch",
-		"lastEventUnixMs":  lastEventUnixMS,
-		"occurredAtUnixMs": firstNonZeroInt64(state.OccurredAtUnixMS, lastEventUnixMS),
-		"workspaceId":      strings.TrimSpace(input.WorkspaceID),
-	}
-	if provider := strings.TrimSpace(firstNonEmptyString(state.Provider, input.Source.Provider)); provider != "" {
-		payload["provider"] = provider
-	}
-	if agentTargetID := strings.TrimSpace(firstNonEmptyString(state.AgentTargetID, input.Source.AgentTargetID)); agentTargetID != "" {
-		payload["agentTargetId"] = agentTargetID
-	}
-	if providerSessionID := strings.TrimSpace(firstNonEmptyString(state.ProviderSessionID, input.Source.ProviderSessionID)); providerSessionID != "" {
-		payload["providerSessionId"] = providerSessionID
-	}
-	if model := strings.TrimSpace(state.Model); model != "" {
-		payload["model"] = model
-	}
-	if cwd := strings.TrimSpace(state.CWD); cwd != "" {
-		payload["cwd"] = cwd
-	}
-	if title := strings.TrimSpace(sessionStateTitle(state)); title != "" {
-		payload["title"] = title
-	}
-	if lifecycleStatus := strings.TrimSpace(state.LifecycleStatus); lifecycleStatus != "" {
-		payload["lifecycleStatus"] = lifecycleStatus
-	}
-	if currentPhase := strings.TrimSpace(state.CurrentPhase); currentPhase != "" {
-		payload["currentPhase"] = currentPhase
-	}
-	if lastError := strings.TrimSpace(state.LastError); lastError != "" {
-		payload["lastError"] = lastError
-	}
-	if state.StartedAtUnixMS > 0 {
-		payload["startedAtUnixMs"] = state.StartedAtUnixMS
-	}
-	if state.EndedAtUnixMS > 0 {
-		payload["endedAtUnixMs"] = state.EndedAtUnixMS
-	}
-	if state.Turn != nil {
-		turn := map[string]any{
-			"turnId": strings.TrimSpace(state.Turn.TurnID),
-		}
-		if phase := strings.TrimSpace(state.Turn.Phase); phase != "" {
-			turn["phase"] = phase
-		}
-		if outcome := strings.TrimSpace(state.Turn.Outcome); outcome != "" {
-			turn["outcome"] = outcome
-		}
-		if state.Turn.FileChanges != nil {
-			turn["fileChanges"] = clonePayload(state.Turn.FileChanges)
-		}
-		if state.Turn.StartedAtUnixMS > 0 {
-			turn["startedAtUnixMs"] = state.Turn.StartedAtUnixMS
-		}
-		if state.Turn.CompletedAtUnixMS > 0 {
-			turn["completedAtUnixMs"] = state.Turn.CompletedAtUnixMS
-		}
-		payload["turn"] = turn
-	}
-	return payload
 }
 
 func sessionStateTitle(state agentsessionstore.WorkspaceAgentSessionStateUpdate) string {

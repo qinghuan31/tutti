@@ -2080,6 +2080,7 @@ func TestServiceSendInputPassesDisplayPromptToRuntime(t *testing.T) {
 	_, err := service.SendInput(context.Background(), "ws-1", "session-1", SendInput{
 		Content:       TextPromptContent("real repair prompt"),
 		DisplayPrompt: "Fix the app",
+		Guidance:      true,
 		Metadata: map[string]any{
 			"clientSubmitId":             "submit-1",
 			"clientSubmittedAtUnixMs":    int64(1234),
@@ -2099,6 +2100,9 @@ func TestServiceSendInputPassesDisplayPromptToRuntime(t *testing.T) {
 	}
 	if call.DisplayPrompt != "Fix the app" {
 		t.Fatalf("runtime display prompt = %q", call.DisplayPrompt)
+	}
+	if !call.Guidance {
+		t.Fatal("runtime guidance = false, want true")
 	}
 	if call.Metadata["clientSubmitId"] != "submit-1" ||
 		call.Metadata["clientSubmittedAtUnixMs"] != int64(1234) ||
@@ -3031,6 +3035,69 @@ func TestGetComposerOptionsClaudeCodeSkipsDiscoveryBesideRunningSession(t *testi
 	}
 	if options.RuntimeContext["modelCatalogSource"] != "claude-static" {
 		t.Fatalf("modelCatalogSource = %#v, want claude-static", options.RuntimeContext["modelCatalogSource"])
+	}
+}
+
+func TestGetComposerOptionsClaudeCodeSkipsStaleRunningSessionModelsAfterInvalidation(t *testing.T) {
+	t.Setenv("CLAUDE_CONFIG_DIR", t.TempDir())
+	runtime := newFakeRuntime()
+	runtime.sessions["ws-1:session-1"] = RuntimeSession{
+		ID:              "session-1",
+		WorkspaceID:     "ws-1",
+		Provider:        "claude-code",
+		Status:          "ready",
+		CreatedAtUnixMS: 100,
+		UpdatedAtUnixMS: 100,
+		RuntimeContext: map[string]any{
+			"configOptions": []any{
+				map[string]any{
+					"id":           "model",
+					"currentValue": "sonnet",
+					"options": []any{
+						map[string]any{"name": "Sonnet", "value": "sonnet"},
+						map[string]any{"name": "Opus", "value": "opus"},
+					},
+				},
+			},
+		},
+	}
+	runtime.startHook = func(input RuntimeStartInput, session RuntimeSession) RuntimeSession {
+		if input.Provider != "claude-code" {
+			t.Fatalf("start provider = %q, want claude-code", input.Provider)
+		}
+		session.RuntimeContext = map[string]any{
+			"configOptions": []any{
+				map[string]any{
+					"id":           "model",
+					"currentValue": "MiniMax-M2.7",
+					"options": []any{
+						map[string]any{"name": "MiniMax M2.7", "value": "MiniMax-M2.7"},
+					},
+				},
+			},
+		}
+		return session
+	}
+	service := NewService(runtime)
+	service.LiveModelDiscoveryDeleteDelay = time.Hour
+
+	service.InvalidateLiveComposerModels("claude-code")
+	options, err := service.GetComposerOptions(context.Background(), ComposerOptionsInput{
+		Provider:    "claude-code",
+		WorkspaceID: "ws-1",
+		Cwd:         "/repo",
+	})
+	if err != nil {
+		t.Fatalf("GetComposerOptions returned error: %v", err)
+	}
+	if len(runtime.startCalls) != 1 {
+		t.Fatalf("start calls = %d, want hidden discovery after invalidation", len(runtime.startCalls))
+	}
+	if got := options.ModelConfig.CurrentValue; got != "MiniMax-M2.7" {
+		t.Fatalf("current model = %q, want MiniMax-M2.7", got)
+	}
+	if len(options.ModelConfig.Options) != 1 || options.ModelConfig.Options[0].Value != "MiniMax-M2.7" {
+		t.Fatalf("model options = %#v, want freshly discovered MiniMax model", options.ModelConfig.Options)
 	}
 }
 
@@ -4093,6 +4160,7 @@ func TestServiceListsActivePeersFromCanonicalSessionStatus(t *testing.T) {
 			"ws-1:session-1": {
 				ID:              "session-1",
 				WorkspaceID:     "ws-1",
+				UserID:          "user-1",
 				Provider:        "codex",
 				Status:          "working",
 				Title:           "Active work",
@@ -4102,6 +4170,7 @@ func TestServiceListsActivePeersFromCanonicalSessionStatus(t *testing.T) {
 			"ws-1:session-2": {
 				ID:              "session-2",
 				WorkspaceID:     "ws-1",
+				UserID:          "user-2",
 				Provider:        "claude",
 				Status:          "completed",
 				Title:           "Done",
@@ -4115,11 +4184,11 @@ func TestServiceListsActivePeersFromCanonicalSessionStatus(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ListActivePeers returned error: %v", err)
 	}
-	if len(peers.Agents) != 1 || peers.Agents[0].Session.ID != "session-1" {
+	if len(peers.Agents) != 1 {
 		t.Fatalf("peers = %#v", peers)
 	}
-	if peers.Agents[0].SelfRelation != "unknown" {
-		t.Fatalf("self relation = %q", peers.Agents[0].SelfRelation)
+	if peers.Agents[0].Session.ID != "session-1" || peers.Agents[0].SelfRelation != "unknown" {
+		t.Fatalf("peers = %#v", peers)
 	}
 	if peers.SelfKnown || !peers.MayIncludeSelf || peers.Warning != "SELF_IDENTITY_UNAVAILABLE" {
 		t.Fatalf("peer identity metadata = %#v", peers)

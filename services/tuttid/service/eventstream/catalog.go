@@ -7,15 +7,14 @@ import (
 	"sort"
 	"strings"
 
-	eventprotocol "github.com/tutti-os/tutti/services/tuttid/api/events/generated"
 	agentproviderbiz "github.com/tutti-os/tutti/services/tuttid/biz/agentprovider"
 	preferencesbiz "github.com/tutti-os/tutti/services/tuttid/biz/preferences"
-	workspacebiz "github.com/tutti-os/tutti/services/tuttid/biz/workspace"
 )
 
 const (
 	TopicAnalyticsDebugReported                = "analytics.debug.reported"
 	TopicAgentActivityUpdated                  = "agent.activity.updated"
+	TopicAgentModelCatalogInvalidated          = "agent.model.catalog.invalidated"
 	TopicPreferencesDesktopUpdateRequested     = "preferences.desktop.update.requested"
 	TopicPreferencesDesktopUpdated             = "preferences.desktop.updated"
 	TopicWorkspaceIssueUpdated                 = "workspace.issue.updated"
@@ -101,6 +100,16 @@ func DefaultCatalog() StaticCatalog {
 			directions:         []Direction{DirectionServerToClient},
 			validators: map[Direction]PayloadValidator{
 				DirectionServerToClient: validateAgentActivityUpdatedPayload,
+			},
+		},
+		{
+			Name:               TopicAgentModelCatalogInvalidated,
+			ClientCanPublish:   false,
+			ClientCanSubscribe: true,
+			Version:            1,
+			directions:         []Direction{DirectionServerToClient},
+			validators: map[Direction]PayloadValidator{
+				DirectionServerToClient: validateAgentModelCatalogInvalidatedPayload,
 			},
 		},
 		{
@@ -256,6 +265,11 @@ type agentActivityUpdatedPayload struct {
 	Data           json.RawMessage `json:"data"`
 }
 
+type agentModelCatalogInvalidatedPayload struct {
+	Providers        []string `json:"providers"`
+	OccurredAtUnixMS int64    `json:"occurredAtUnixMs"`
+}
+
 type agentActivityUpdatedDataHeader struct {
 	WorkspaceID    string `json:"workspaceId"`
 	AgentSessionID string `json:"agentSessionId"`
@@ -299,29 +313,37 @@ type agentActivityMessageData struct {
 
 type agentActivityStatePatchData struct {
 	agentActivityUpdatedDataHeader
-	LastEventUnixMS  *int64                      `json:"lastEventUnixMs"`
-	OccurredAtUnixMS *int64                      `json:"occurredAtUnixMs,omitempty"`
-	Provider         string                      `json:"provider,omitempty"`
-	AgentTargetID    string                      `json:"agentTargetId,omitempty"`
-	ProviderSession  string                      `json:"providerSessionId,omitempty"`
-	Model            string                      `json:"model,omitempty"`
-	CWD              string                      `json:"cwd,omitempty"`
-	Title            string                      `json:"title,omitempty"`
-	LifecycleStatus  string                      `json:"lifecycleStatus,omitempty"`
-	CurrentPhase     string                      `json:"currentPhase,omitempty"`
-	LastError        string                      `json:"lastError,omitempty"`
-	StartedAtUnixMS  *int64                      `json:"startedAtUnixMs,omitempty"`
-	EndedAtUnixMS    *int64                      `json:"endedAtUnixMs,omitempty"`
-	Turn             *agentActivityStateTurnData `json:"turn,omitempty"`
+	LastEventUnixMS    *int64                               `json:"lastEventUnixMs"`
+	OccurredAtUnixMS   *int64                               `json:"occurredAtUnixMs,omitempty"`
+	Provider           string                               `json:"provider,omitempty"`
+	AgentTargetID      string                               `json:"agentTargetId,omitempty"`
+	ProviderSession    string                               `json:"providerSessionId,omitempty"`
+	Model              string                               `json:"model,omitempty"`
+	CWD                string                               `json:"cwd,omitempty"`
+	Title              string                               `json:"title,omitempty"`
+	LifecycleStatus    string                               `json:"lifecycleStatus,omitempty"`
+	CurrentPhase       string                               `json:"currentPhase,omitempty"`
+	LastError          string                               `json:"lastError,omitempty"`
+	StartedAtUnixMS    *int64                               `json:"startedAtUnixMs,omitempty"`
+	EndedAtUnixMS      *int64                               `json:"endedAtUnixMs,omitempty"`
+	RuntimeContext     map[string]any                       `json:"runtimeContext,omitempty"`
+	SubmitAvailability *agentActivitySubmitAvailabilityData `json:"submitAvailability,omitempty"`
+	Turn               *agentActivityStateTurnData          `json:"turn,omitempty"`
 }
 
 type agentActivityStateTurnData struct {
-	TurnID            string `json:"turnId"`
-	Phase             string `json:"phase,omitempty"`
-	Outcome           string `json:"outcome,omitempty"`
-	FileChanges       any    `json:"fileChanges,omitempty"`
-	StartedAtUnixMS   *int64 `json:"startedAtUnixMs,omitempty"`
-	CompletedAtUnixMS *int64 `json:"completedAtUnixMs,omitempty"`
+	TurnID             string                               `json:"turnId"`
+	Phase              string                               `json:"phase,omitempty"`
+	Outcome            string                               `json:"outcome,omitempty"`
+	FileChanges        any                                  `json:"fileChanges,omitempty"`
+	StartedAtUnixMS    *int64                               `json:"startedAtUnixMs,omitempty"`
+	CompletedAtUnixMS  *int64                               `json:"completedAtUnixMs,omitempty"`
+	SubmitAvailability *agentActivitySubmitAvailabilityData `json:"submitAvailability,omitempty"`
+}
+
+type agentActivitySubmitAvailabilityData struct {
+	State  string `json:"state"`
+	Reason string `json:"reason,omitempty"`
 }
 
 type workbenchNodeLaunchRequestedPayload struct {
@@ -567,6 +589,28 @@ func validateAgentActivityUpdatedPayload(payload []byte) error {
 	return validateAgentActivityUpdatedData(decoded)
 }
 
+func validateAgentModelCatalogInvalidatedPayload(payload []byte) error {
+	var decoded agentModelCatalogInvalidatedPayload
+	if err := decodeJSONStrict(payload, &decoded); err != nil {
+		return fmt.Errorf("decode payload: %w", err)
+	}
+	if len(decoded.Providers) == 0 {
+		return fmt.Errorf("providers is required")
+	}
+	for _, provider := range decoded.Providers {
+		if strings.TrimSpace(provider) == "" {
+			return fmt.Errorf("providers must not contain empty entries")
+		}
+		if !agentproviderbiz.IsSupported(provider) {
+			return fmt.Errorf("providers contains unsupported provider %q", provider)
+		}
+	}
+	if decoded.OccurredAtUnixMS <= 0 {
+		return fmt.Errorf("occurredAtUnixMs is required")
+	}
+	return nil
+}
+
 func decodeJSONStrict(payload []byte, target any) error {
 	decoder := json.NewDecoder(bytes.NewReader(payload))
 	decoder.DisallowUnknownFields()
@@ -590,10 +634,17 @@ func validateAgentActivityUpdatedData(decoded agentActivityUpdatedPayload) error
 	if strings.TrimSpace(header.EventType) != eventType {
 		return fmt.Errorf("data.eventType must match eventType")
 	}
+	// Data payloads are decoded tolerantly (unknown fields ignored): the
+	// agent activity data objects evolve additively, and a strict decoder
+	// here turns a producer-side field addition into a dropped event — the
+	// GUI then silently misses state (a dropped settle patch reads as "the
+	// turn never finished"). Producer/schema agreement is pinned by the
+	// payload->ValidatePublish contract tests instead. The envelope and all
+	// other topics stay strict.
 	switch eventType {
 	case "session_update":
 		var data agentActivitySessionUpdateData
-		if err := decodeJSONStrict(decoded.Data, &data); err != nil {
+		if err := json.Unmarshal(decoded.Data, &data); err != nil {
 			return fmt.Errorf("decode session_update data: %w", err)
 		}
 		if data.LastEventUnixMS == nil {
@@ -601,7 +652,7 @@ func validateAgentActivityUpdatedData(decoded agentActivityUpdatedPayload) error
 		}
 	case "session_deleted":
 		var data agentActivitySessionDeletedData
-		if err := decodeJSONStrict(decoded.Data, &data); err != nil {
+		if err := json.Unmarshal(decoded.Data, &data); err != nil {
 			return fmt.Errorf("decode session_deleted data: %w", err)
 		}
 		if data.DeletedAtUnixMS == nil {
@@ -609,7 +660,7 @@ func validateAgentActivityUpdatedData(decoded agentActivityUpdatedPayload) error
 		}
 	case "message_update":
 		var data agentActivityMessageUpdateData
-		if err := decodeJSONStrict(decoded.Data, &data); err != nil {
+		if err := json.Unmarshal(decoded.Data, &data); err != nil {
 			return fmt.Errorf("decode message_update data: %w", err)
 		}
 		if data.LatestVersion == nil {
@@ -655,7 +706,7 @@ func validateAgentActivityUpdatedData(decoded agentActivityUpdatedPayload) error
 		}
 	case "state_patch":
 		var data agentActivityStatePatchData
-		if err := decodeJSONStrict(decoded.Data, &data); err != nil {
+		if err := json.Unmarshal(decoded.Data, &data); err != nil {
 			return fmt.Errorf("decode state_patch data: %w", err)
 		}
 		if data.LastEventUnixMS == nil {
@@ -663,6 +714,13 @@ func validateAgentActivityUpdatedData(decoded agentActivityUpdatedPayload) error
 		}
 		if data.Turn != nil && strings.TrimSpace(data.Turn.TurnID) == "" {
 			return fmt.Errorf("data.turn.turnId is required")
+		}
+		if data.SubmitAvailability != nil && strings.TrimSpace(data.SubmitAvailability.State) == "" {
+			return fmt.Errorf("data.submitAvailability.state is required")
+		}
+		if data.Turn != nil && data.Turn.SubmitAvailability != nil &&
+			strings.TrimSpace(data.Turn.SubmitAvailability.State) == "" {
+			return fmt.Errorf("data.turn.submitAvailability.state is required")
 		}
 	}
 	return nil
@@ -726,81 +784,4 @@ func validateWorkspaceIssueUpdatedPayload(payload []byte) error {
 		return fmt.Errorf("changeKind is unsupported")
 	}
 	return nil
-}
-
-func validateWorkspaceAppUpdatedPayload(payload []byte) error {
-	var raw struct {
-		App map[string]json.RawMessage `json:"app"`
-	}
-	if err := json.Unmarshal(payload, &raw); err != nil {
-		return fmt.Errorf("decode payload: %w", err)
-	}
-	referencesRaw, ok := raw.App["references"]
-	if !ok {
-		return fmt.Errorf("app.references is required")
-	}
-	var references struct {
-		ListSupported *bool `json:"listSupported"`
-	}
-	if err := json.Unmarshal(referencesRaw, &references); err != nil {
-		return fmt.Errorf("decode app.references: %w", err)
-	}
-	if references.ListSupported == nil {
-		return fmt.Errorf("app.references.listSupported is required")
-	}
-
-	var decoded eventprotocol.WorkspaceAppUpdatedPayload
-	if err := json.Unmarshal(payload, &decoded); err != nil {
-		return fmt.Errorf("decode payload: %w", err)
-	}
-	app := decoded.App
-	if strings.TrimSpace(app.AppId) == "" {
-		return fmt.Errorf("app.appId is required")
-	}
-	if strings.TrimSpace(app.DisplayName) == "" {
-		return fmt.Errorf("app.displayName is required")
-	}
-	if strings.TrimSpace(app.Version) == "" {
-		return fmt.Errorf("app.version is required")
-	}
-	if app.StateRevision < 0 {
-		return fmt.Errorf("app.stateRevision must not be negative")
-	}
-	switch app.Status {
-	case "idle", "preparing", "starting", "running", "installed_pending_restart", "failed", "stopping":
-	default:
-		return fmt.Errorf("app.status is unsupported")
-	}
-	switch app.MinimizeBehavior {
-	case "hibernate", "keep-mounted":
-	default:
-		return fmt.Errorf("app.minimizeBehavior is unsupported")
-	}
-	if app.WindowMinWidth != nil && (*app.WindowMinWidth < workspacebiz.MinAppWindowWidth || *app.WindowMinWidth > workspacebiz.MaxAppWindowWidth) {
-		return fmt.Errorf("app.windowMinWidth is unsupported")
-	}
-	if app.WindowMinHeight != nil && (*app.WindowMinHeight < workspacebiz.MinAppWindowHeight || *app.WindowMinHeight > workspacebiz.MaxAppWindowHeight) {
-		return fmt.Errorf("app.windowMinHeight is unsupported")
-	}
-	return nil
-}
-
-func validateWorkspaceAppFactoryJobUpdatedPayload(payload []byte) error {
-	var decoded eventprotocol.WorkspaceAppfactoryJobUpdatedPayload
-	if err := json.Unmarshal(payload, &decoded); err != nil {
-		return fmt.Errorf("decode payload: %w", err)
-	}
-	job := decoded.Job
-	if strings.TrimSpace(job.JobId) == "" {
-		return fmt.Errorf("job.jobId is required")
-	}
-	if strings.TrimSpace(job.WorkspaceId) == "" {
-		return fmt.Errorf("job.workspaceId is required")
-	}
-	switch job.Status {
-	case "queued", "generating", "preparing", "validating", "ready", "published", "failed", "canceled":
-		return nil
-	default:
-		return fmt.Errorf("job.status is unsupported")
-	}
 }

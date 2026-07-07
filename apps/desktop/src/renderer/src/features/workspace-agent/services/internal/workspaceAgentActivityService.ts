@@ -1,8 +1,10 @@
 import {
   createAgentActivityController,
   normalizeAgentActivityDisplayStatus,
+  setAgentActivityStoreDiagnosticSink,
   type AgentActivityAdapter,
   type AgentActivityCancelSessionResult,
+  type AgentActivityCreateSessionInput,
   type AgentActivityGoalControlResult,
   type AgentActivityController,
   type AgentActivityMessage,
@@ -39,7 +41,8 @@ import type {
   IWorkspaceAgentActivityService,
   WorkspaceAgentActivityListMessagesInput,
   WorkspaceAgentActivityEnsureSessionSynchronizedInput,
-  WorkspaceAgentActivityRetainSessionInput
+  WorkspaceAgentActivityRetainSessionInput,
+  WorkspaceAgentModelCatalogInvalidatedEvent
 } from "../workspaceAgentActivityService.interface.ts";
 import type { IAgentProviderStatusService } from "../agentProviderStatusService.interface.ts";
 import { planDecisionOps } from "@tutti-os/agent-gui/plan-decision-ops";
@@ -105,11 +108,42 @@ export class WorkspaceAgentActivityService implements IWorkspaceAgentActivitySer
     string,
     DeletedSessionTombstone
   >();
+  private readonly modelCatalogInvalidatedListeners = new Set<
+    (event: WorkspaceAgentModelCatalogInvalidatedEvent) => void
+  >();
   private eventStreamConnectedOnce = false;
   private eventStreamStarted = false;
   private eventStreamWasDisconnected = false;
 
   constructor(dependencies: WorkspaceAgentActivityServiceDependencies) {
+    // Temporary instrumentation: surface activity-store anomalies (version
+    // regressions on unguarded write paths, stale-patch drops) in the desktop
+    // log so field exports show which channel overwrote what. The sink slot
+    // is process-global, so register once and take the workspace id from the
+    // event details (the store stamps it at the emit site) — a per-workspace
+    // closure would be overwritten by the next workspace and misattribute
+    // diagnostics.
+    setAgentActivityStoreDiagnosticSink((event, details) => {
+      const flatDetails: Record<string, string | number | boolean | null> = {};
+      for (const [key, value] of Object.entries(details)) {
+        flatDetails[key] =
+          value === null ||
+          typeof value === "string" ||
+          typeof value === "number" ||
+          typeof value === "boolean"
+            ? value
+            : JSON.stringify(value);
+      }
+      void dependencies.runtimeApi
+        .logTerminalDiagnostic({
+          details: flatDetails,
+          event: `agent.activity.store.${event}`,
+          level: "warn",
+          workspaceId:
+            typeof details.workspaceId === "string" ? details.workspaceId : null
+        })
+        .catch(() => {});
+    });
     this.dependencies = dependencies;
   }
 
@@ -385,9 +419,13 @@ export class WorkspaceAgentActivityService implements IWorkspaceAgentActivitySer
       workspaceId: input.workspaceId,
       fields: { agentTargetId: input.agentTargetId ?? null }
     });
-    const adapterInput = input.agentTargetId
-      ? { ...input, providerTargetRef: null }
-      : input;
+    const sessionInput = withNoProjectRuntimeContext(
+      input,
+      this.dependencies.workspaceUserProjectService
+    );
+    const adapterInput = sessionInput.agentTargetId
+      ? { ...sessionInput, providerTargetRef: null }
+      : sessionInput;
     const session = await entry.adapter.createSession(adapterInput);
     reportAgentSubmitTraceDiagnostic(this.dependencies.runtimeApi, {
       agentSessionId: session.agentSessionId,
@@ -482,6 +520,9 @@ export class WorkspaceAgentActivityService implements IWorkspaceAgentActivitySer
           ? {}
           : { providerTargetRef: input.providerTargetRef ?? null }),
         reasoningEffort: input.settings?.reasoningEffort ?? null,
+        ...(resolvedCwd?.noProject
+          ? { runtimeContext: { noProject: true } }
+          : {}),
         speed: input.settings?.speed ?? null,
         title: input.title ?? null,
         visible: input.visible ?? true
@@ -818,7 +859,7 @@ export class WorkspaceAgentActivityService implements IWorkspaceAgentActivitySer
     agentSessionId: string;
     cwd: string | null | undefined;
     workspaceId: string;
-  }): Promise<{ cwd: string | null }> {
+  }): Promise<{ cwd: string | null; noProject: boolean }> {
     const trimmed = input.cwd?.trim() ?? "";
     if (!trimmed) {
       const directory =
@@ -831,17 +872,17 @@ export class WorkspaceAgentActivityService implements IWorkspaceAgentActivitySer
       this.dependencies.workspaceUserProjectService?.rememberNoProjectPath(
         directory?.path
       );
-      return { cwd: directory?.path ?? null };
+      return { cwd: directory?.path ?? null, noProject: true };
     }
     if (trimmed !== "/") {
-      return { cwd: trimmed };
+      return { cwd: trimmed, noProject: false };
     }
     const response =
       await this.dependencies.tuttidClient.listWorkspaceFileDirectory(
         input.workspaceId,
         {}
       );
-    return { cwd: response.root };
+    return { cwd: response.root, noProject: false };
   }
 
   private async fetchActivitySession(
@@ -1008,6 +1049,33 @@ export class WorkspaceAgentActivityService implements IWorkspaceAgentActivitySer
     }
   }
 
+  onModelCatalogInvalidated(
+    listener: (event: WorkspaceAgentModelCatalogInvalidatedEvent) => void
+  ): () => void {
+    this.modelCatalogInvalidatedListeners.add(listener);
+    return () => {
+      this.modelCatalogInvalidatedListeners.delete(listener);
+    };
+  }
+
+  private handleModelCatalogInvalidated(
+    event: WorkspaceAgentModelCatalogInvalidatedEvent
+  ): void {
+    // Drop cached composer options in every workspace controller first so a
+    // listener-triggered (or later non-forced) load refetches from the daemon.
+    for (const entry of this.controllerEntries.values()) {
+      entry.controller.invalidateComposerOptions({
+        providers: event.providers
+      });
+    }
+    for (const listener of this.modelCatalogInvalidatedListeners) {
+      listener({
+        providers: [...event.providers],
+        occurredAtUnixMs: event.occurredAtUnixMs
+      });
+    }
+  }
+
   private subscribeWorkspaceEventStream(workspaceId: string): void {
     const eventStreamClient = this.dependencies.eventStreamClient;
     if (!eventStreamClient) {
@@ -1037,6 +1105,14 @@ export class WorkspaceAgentActivityService implements IWorkspaceAgentActivitySer
       return;
     }
     this.eventStreamStarted = true;
+    // Global (scope-less) topic: the daemon invalidates its model catalog when
+    // provider auth/config files change on disk (for example via cc-switch).
+    eventStreamClient.subscribe("agent.model.catalog.invalidated", (event) => {
+      this.handleModelCatalogInvalidated({
+        providers: [...event.payload.providers],
+        occurredAtUnixMs: event.payload.occurredAtUnixMs
+      });
+    });
     eventStreamClient.subscribeConnectionState((state) => {
       if (state === "disconnected") {
         if (this.eventStreamConnectedOnce) {
@@ -1801,6 +1877,27 @@ function hostMessageEventFromCore(message: AgentActivityMessage): unknown {
       workspaceId: message.workspaceId
     },
     eventType: "message_update"
+  };
+}
+
+function withNoProjectRuntimeContext<T extends AgentActivityCreateSessionInput>(
+  input: T,
+  workspaceUserProjectService:
+    | Pick<IWorkspaceUserProjectService, "isNoProjectPath">
+    | undefined
+): T {
+  const cwd = input.cwd?.trim() ?? "";
+  const noProject =
+    !cwd || workspaceUserProjectService?.isNoProjectPath(cwd) === true;
+  if (!noProject) {
+    return input;
+  }
+  return {
+    ...input,
+    runtimeContext: {
+      ...(input.runtimeContext ?? {}),
+      noProject: true
+    }
   };
 }
 

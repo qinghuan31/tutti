@@ -20,6 +20,7 @@ import {
 } from "../../../agentQueuedPromptRuntime";
 import { useAgentHostApi } from "../../../agentActivityHost";
 import {
+  resolveSubmitAvailability,
   resolveAgentActivityCapability,
   resolveAgentActivityUsage,
   selectSessionDisplayStatuses
@@ -207,6 +208,9 @@ const ACTIVITY_STREAM_STATE_RELOAD_DEBOUNCE_MS = 150;
 const AGENT_GUI_DETAIL_MESSAGES_PAGE_SIZE = 100;
 const AGENT_GUI_DETAIL_MISSING_USER_BACKFILL_PAGE_LIMIT = 3;
 const AGENT_GUI_SUBMIT_RETARGET_EARLY_MESSAGE_TOLERANCE_MS = 5_000;
+// The literal goal-clear command every adapter parses (see the daemon's
+// claudeGoalSlashPromptUpdate / ExecGoalControl); sent as a visible prompt.
+const GOAL_CLEAR_PROMPT = "/goal clear";
 
 function mergeAgentModelCatalogInvalidationEvents(
   events: AgentModelCatalogInvalidatedEvent[]
@@ -4425,7 +4429,8 @@ export function useAgentGUINodeController({
     (
       agentSessionId: string,
       content: AgentPromptContentBlock[],
-      displayPrompt?: string
+      displayPrompt?: string,
+      options?: { guidance?: boolean }
     ) => void
   >(() => {});
   const reloadSelectedConversationRef = useRef<
@@ -8141,7 +8146,8 @@ export function useAgentGUINodeController({
     (
       agentSessionId: string,
       content: AgentPromptContentBlock[],
-      displayPrompt?: string
+      displayPrompt?: string,
+      options?: { guidance?: boolean }
     ) => {
       const normalizedContent = normalizeAgentPromptContentBlocks(content);
       if (!agentSessionId || normalizedContent.length === 0) {
@@ -8271,6 +8277,7 @@ export function useAgentGUINodeController({
             content: normalizedContent,
             displayPrompt:
               displayPrompt && displayPrompt.trim() ? displayPrompt : null,
+            ...(options?.guidance === true ? { guidance: true } : {}),
             metadata: agentSubmitTraceMetadata(submitTrace)
           });
         })
@@ -8515,7 +8522,7 @@ export function useAgentGUINodeController({
       agentSessionId: string,
       normalizedContent: AgentPromptContentBlock[],
       displayPromptText?: string,
-      options?: { bypassLocalQueue?: boolean }
+      options?: { bypassLocalQueue?: boolean; guidance?: boolean }
     ) => {
       if (isSessionMarkedNonResumable(agentSessionId)) {
         setDetailError(
@@ -8538,8 +8545,21 @@ export function useAgentGUINodeController({
         );
         return;
       }
+      // Read the queue before resuming: resumeQueue wakes the drain
+      // coordinator, which immediately races to send the queued head. A
+      // direct send issued alongside that drain loses the daemon's
+      // single-active-turn slot and the prompt is dropped, so when prompts
+      // are already queued the explicit send must join the queue behind them
+      // instead of racing the drain.
+      const hasQueuedPrompts =
+        agentQueuedPromptRuntime.getSessionSnapshot({
+          workspaceId,
+          agentSessionId
+        }).prompts.length > 0;
+      // Any explicit user send lifts a user-stop hold on the queue.
+      agentQueuedPromptRuntime.resumeQueue({ workspaceId, agentSessionId });
       if (
-        shouldQueuePromptLocally(agentSessionId) &&
+        (hasQueuedPrompts || shouldQueuePromptLocally(agentSessionId)) &&
         options?.bypassLocalQueue !== true
       ) {
         queuePromptLocally(
@@ -8549,23 +8569,31 @@ export function useAgentGUINodeController({
         );
         return;
       }
-      executePrompt(agentSessionId, normalizedContent, displayPromptText);
+      executePrompt(agentSessionId, normalizedContent, displayPromptText, {
+        guidance: options?.guidance === true
+      });
     },
     [
       activation,
+      agentQueuedPromptRuntime,
       executePrompt,
       isSessionMarkedNonResumable,
       queuePromptLocally,
-      shouldQueuePromptLocally
+      shouldQueuePromptLocally,
+      workspaceId
     ]
   );
 
   // Goal control commands (/goal clear|paused|active) act on the running
   // thread immediately; the local prompt queue would defer them until the
   // turn ends, defeating their purpose (e.g. stopping a runaway goal).
-  // Goal banner controls act directly on the session's goal (like the stop
-  // button acts on the turn): a dedicated control API, no prompt, no queue,
-  // no transcript entry — matching the codex desktop goal bar.
+  // Clearing sends a visible "/goal clear" prompt so the transcript shows
+  // what was sent: executePrompt skips the local queue (and its resume
+  // side effect), and mid-turn the daemon steers the command as a
+  // thread-level exec instead of opening a competing turn. The remaining
+  // controls (set/pause/resume) stay on the dedicated control API — no
+  // prompt, no queue, no transcript entry — matching the codex desktop
+  // goal bar.
   const goalControl = useCallback(
     (action: AgentActivityGoalControlAction, objective?: string) => {
       if (previewMode) {
@@ -8576,6 +8604,14 @@ export function useAgentGUINodeController({
         return;
       }
       setDetailError(null);
+      if (action === "clear") {
+        executePrompt(
+          agentSessionId,
+          textPromptContent(GOAL_CLEAR_PROMPT),
+          GOAL_CLEAR_PROMPT
+        );
+        return;
+      }
       void agentActivityRuntime
         .goalControl({
           workspaceId,
@@ -8592,6 +8628,7 @@ export function useAgentGUINodeController({
     },
     [
       agentActivityRuntime,
+      executePrompt,
       isCurrentConversation,
       previewMode,
       setDetailError,
@@ -8705,7 +8742,7 @@ export function useAgentGUINodeController({
         agentSessionId,
         normalizedContent,
         displayPromptText,
-        { bypassLocalQueue: true }
+        { bypassLocalQueue: true, guidance: true }
       );
     },
     [
@@ -8844,6 +8881,15 @@ export function useAgentGUINodeController({
         ...current,
         [agentSessionId]: true
       }));
+      // A user stop means "stop everything": hold the queued prompts instead
+      // of letting the drainer fire the next one the moment the session
+      // becomes available. An explicit user send (submit or send-now on a
+      // queued item) lifts the hold.
+      agentQueuedPromptRuntime.suspendQueue({
+        workspaceId,
+        agentSessionId,
+        reason: "user_stop"
+      });
       setDetailError(null);
       void Promise.resolve()
         .then(() => {
@@ -8933,6 +8979,7 @@ export function useAgentGUINodeController({
         });
     },
     [
+      agentQueuedPromptRuntime,
       interruptingSessionIds,
       isCurrentConversation,
       syncConversationListProjection,
@@ -10782,8 +10829,11 @@ export function useAgentGUINodeController({
   const activeHasPendingSubmittedTurn = activeConversationId
     ? Boolean(pendingTurnIdBySessionIdRef.current[activeConversationId])
     : false;
-  const activeSubmitBlocked =
-    activeSessionState?.submitAvailability?.state === "blocked";
+  // Derive from the turn lifecycle when present (ADR 0008); trust the wire
+  // submitAvailability only for lifecycle-less control states.
+  const activeSubmitBlocked = activeSessionState
+    ? resolveSubmitAvailability(activeSessionState).state === "blocked"
+    : false;
   const activeConversationBusy =
     agentActivityDisplayStatusBusy(activeActivityDisplayStatus) ||
     activeHasPendingSubmittedTurn ||

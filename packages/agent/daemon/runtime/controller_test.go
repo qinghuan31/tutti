@@ -1016,6 +1016,114 @@ func TestControllerExecRejectsPromptDuringActiveTurn(t *testing.T) {
 	waitForSessionStatus(t, controller, "room-1", started.Session.AgentSessionID, SessionStatusReady)
 }
 
+func TestControllerExecGuidanceDuringActiveTurn(t *testing.T) {
+	t.Parallel()
+
+	adapter := &guidanceBlockingAdapter{blockingExecAdapter: newBlockingExecAdapter()}
+	controller := NewController([]Adapter{adapter}, nil)
+	ctx := context.Background()
+
+	started, err := controller.Start(ctx, StartInput{
+		RoomID:         "room-1",
+		AgentSessionID: "agent-session-1",
+		Provider:       ProviderCodex,
+		CWD:            "/workspace",
+		Title:          "Codex",
+	})
+	if err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+	if _, err := controller.Exec(ctx, ExecInput{
+		RoomID:         started.Session.RoomID,
+		AgentSessionID: started.Session.AgentSessionID,
+		Content:        textPrompt("first prompt"),
+	}); err != nil {
+		t.Fatalf("first Exec: %v", err)
+	}
+	adapter.waitForPrompt(t, "first prompt")
+
+	result, err := controller.Exec(ctx, ExecInput{
+		RoomID:         started.Session.RoomID,
+		AgentSessionID: started.Session.AgentSessionID,
+		Content:        textPrompt("guide current turn"),
+		Guidance:       true,
+	})
+	if err != nil {
+		t.Fatalf("guidance Exec: %v", err)
+	}
+	if !result.Accepted || result.TurnID == "" {
+		t.Fatalf("guidance result = %#v, want accepted turn id", result)
+	}
+	if got := adapter.guidanceCalls.Load(); got != 1 {
+		t.Fatalf("guidance calls = %d, want 1", got)
+	}
+	if prompts := adapter.prompts(); len(prompts) != 1 || prompts[0] != "first prompt" {
+		t.Fatalf("adapter prompts after guidance = %#v, want only first prompt running", prompts)
+	}
+
+	adapter.releaseNext()
+	waitForSessionStatus(t, controller, "room-1", started.Session.AgentSessionID, SessionStatusReady)
+}
+
+func TestControllerExecGuidanceRequiresActiveTurn(t *testing.T) {
+	t.Parallel()
+
+	adapter := &guidanceBlockingAdapter{blockingExecAdapter: newBlockingExecAdapter()}
+	controller := NewController([]Adapter{adapter}, nil)
+	started, err := controller.Start(context.Background(), StartInput{
+		RoomID:         "room-1",
+		AgentSessionID: "agent-session-1",
+		Provider:       ProviderCodex,
+		Title:          "Codex",
+	})
+	if err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+	if _, err := controller.Exec(context.Background(), ExecInput{
+		RoomID:         started.Session.RoomID,
+		AgentSessionID: started.Session.AgentSessionID,
+		Content:        textPrompt("guide without active turn"),
+		Guidance:       true,
+	}); !errors.Is(err, ErrSessionNoActiveTurn) {
+		t.Fatalf("guidance without active turn error = %v, want %v", err, ErrSessionNoActiveTurn)
+	}
+}
+
+func TestControllerExecGuidanceRequiresProviderSupport(t *testing.T) {
+	t.Parallel()
+
+	adapter := newBlockingExecAdapter()
+	controller := NewController([]Adapter{adapter}, nil)
+	ctx := context.Background()
+	started, err := controller.Start(ctx, StartInput{
+		RoomID:         "room-1",
+		AgentSessionID: "agent-session-1",
+		Provider:       ProviderCodex,
+		Title:          "Codex",
+	})
+	if err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+	if _, err := controller.Exec(ctx, ExecInput{
+		RoomID:         started.Session.RoomID,
+		AgentSessionID: started.Session.AgentSessionID,
+		Content:        textPrompt("first prompt"),
+	}); err != nil {
+		t.Fatalf("first Exec: %v", err)
+	}
+	adapter.waitForPrompt(t, "first prompt")
+	if _, err := controller.Exec(ctx, ExecInput{
+		RoomID:         started.Session.RoomID,
+		AgentSessionID: started.Session.AgentSessionID,
+		Content:        textPrompt("guide unsupported provider"),
+		Guidance:       true,
+	}); !errors.Is(err, ErrActiveTurnGuidanceUnsupported) {
+		t.Fatalf("unsupported guidance error = %v, want %v", err, ErrActiveTurnGuidanceUnsupported)
+	}
+	adapter.releaseNext()
+	waitForSessionStatus(t, controller, "room-1", started.Session.AgentSessionID, SessionStatusReady)
+}
+
 func TestControllerCancelCancelsActiveTurnContextWhenAdapterReturnsNoEvents(t *testing.T) {
 	t.Parallel()
 
@@ -2603,6 +2711,25 @@ type blockingExecAdapter struct {
 	interactiveOptionID string
 }
 
+type guidanceBlockingAdapter struct {
+	*blockingExecAdapter
+	guidanceCalls atomic.Int64
+}
+
+func (a *guidanceBlockingAdapter) GuideActiveTurn(_ context.Context, session Session, content []PromptContentBlock, _ string, turnID string, emit EventSink, _ CommandSnapshotSink) ([]activityshared.Event, error) {
+	a.guidanceCalls.Add(1)
+	events := []activityshared.Event{
+		newTurnActivityEvent(session, EventMessage, turnID, "", RoleUser, promptDisplayText(content), userPromptActivityPayload(content, "", map[string]any{
+			"guidance": true,
+			"steered":  true,
+		})),
+	}
+	if emit != nil {
+		emit(events)
+	}
+	return events, nil
+}
+
 func newBlockingExecAdapter() *blockingExecAdapter {
 	return &blockingExecAdapter{
 		contexts: make(chan context.Context, 8),
@@ -2745,6 +2872,76 @@ func (a *deferredRemoteCancelAdapter) Cancel(context.Context, Session, string) (
 		close(a.cancelRequested)
 	})
 	return nil, nil
+}
+
+type noActiveTurnCancelAdapter struct {
+	cancelCalls atomic.Int32
+}
+
+func (*noActiveTurnCancelAdapter) Provider() string { return ProviderCodex }
+
+func (*noActiveTurnCancelAdapter) Start(_ context.Context, session Session) ([]activityshared.Event, error) {
+	return []activityshared.Event{newSessionActivityEvent(session, EventSessionStarted, SessionStatusReady, nil)}, nil
+}
+
+func (*noActiveTurnCancelAdapter) Resume(context.Context, Session) error { return nil }
+
+func (*noActiveTurnCancelAdapter) Close(context.Context, Session) error { return nil }
+
+func (*noActiveTurnCancelAdapter) Exec(context.Context, Session, []PromptContentBlock, string, string, EventSink, CommandSnapshotSink) ([]activityshared.Event, error) {
+	return nil, nil
+}
+
+func (a *noActiveTurnCancelAdapter) Cancel(context.Context, Session, string) ([]activityshared.Event, error) {
+	a.cancelCalls.Add(1)
+	return nil, ErrSessionNoActiveTurn
+}
+
+func TestControllerCancelTreatsNoActiveTurnAfterSettleAsIdempotent(t *testing.T) {
+	t.Parallel()
+
+	adapter := &noActiveTurnCancelAdapter{}
+	controller := NewController([]Adapter{adapter}, nil)
+	started, err := controller.Start(context.Background(), StartInput{
+		RoomID:         "room-1",
+		AgentSessionID: "agent-session-1",
+		Provider:       ProviderCodex,
+		Title:          "Codex",
+	})
+	if err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+
+	turnID := "turn-1"
+	_, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	if _, err := controller.beginTurn(started.Session, turnID, cancel); err != nil {
+		t.Fatalf("beginTurn: %v", err)
+	}
+	outcome := string(activityshared.TurnOutcomeInterrupted)
+	settled := started.Session
+	settled.Status = SessionStatusCanceled
+	settled.TurnLifecycle = &TurnLifecycle{Phase: "settled", Outcome: &outcome}
+	settled.SubmitAvailability = availableSubmitAvailability()
+	controller.store(settled)
+
+	result, err := controller.Cancel(context.Background(), CancelInput{
+		RoomID:         "room-1",
+		AgentSessionID: started.Session.AgentSessionID,
+		Reason:         "user_interrupt",
+	})
+	if err != nil {
+		t.Fatalf("Cancel: %v", err)
+	}
+	if !result.Canceled {
+		t.Fatalf("Cancel result = %#v, want idempotent canceled result", result)
+	}
+	if adapter.cancelCalls.Load() != 1 {
+		t.Fatalf("adapter cancel calls = %d, want 1", adapter.cancelCalls.Load())
+	}
+	if _, ok := controller.activeTurn("room-1", started.Session.AgentSessionID); ok {
+		t.Fatal("active turn record survived idempotent no-active-turn cancel")
+	}
 }
 
 func TestControllerExecPublishesTerminalEventAfterPartialEmitError(t *testing.T) {

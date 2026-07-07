@@ -1471,6 +1471,12 @@ export type CreateWorkspaceAgentSessionRequest = {
   permissionModeId?: string | null;
   model?: string | null;
   reasoningEffort?: string | null;
+  /**
+   * Optional durable runtime context hints for session classification and provider startup.
+   */
+  runtimeContext?: {
+    [key: string]: unknown;
+  } | null;
   speed?: string | null;
   planMode?: boolean | null;
   browserUse?: boolean | null;
@@ -1483,6 +1489,10 @@ export type SendWorkspaceAgentSessionInputRequest = {
    * Optional display-only text shown in the conversation (e.g. a folder bundle rendered as one chip while content carries the expanded files).
    */
   displayPrompt?: string | null;
+  /**
+   * When true, send this input as guidance to the currently active turn instead of starting a new turn.
+   */
+  guidance?: boolean;
   /**
    * Optional client-provided diagnostic metadata, such as submit trace ids. This metadata is not provider prompt content.
    */

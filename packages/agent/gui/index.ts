@@ -20,6 +20,7 @@ export {
   agentGUIDefaultTargetProviders,
   createLocalAgentGUIProviderTarget,
   createLocalAgentGUIProviderTargets,
+  createSharedAgentGUIProviderTarget,
   localAgentGUIAgentTargetId,
   localAgentGUIProviderTargetId,
   normalizeAgentGUIProviderTargets,
@@ -44,6 +45,10 @@ export {
   resolveAgentGUIExpandedWindowFrame,
   shouldAutoCollapseAgentGUIConversationRail
 } from "./agent-gui/agentGuiNode/model/agentGuiRailLayout";
+export type {
+  AgentGUISidebarFooterContext,
+  AgentGUISidebarFooterRenderer
+} from "./agent-gui/agentGuiNode/AgentGUINodeView";
 export {
   AGENT_CONTEXT_MENTION_PROVIDER_IDS,
   type AgentContextMentionProviderId,

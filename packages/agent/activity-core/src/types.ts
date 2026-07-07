@@ -284,6 +284,7 @@ export interface AgentActivityCreateSessionInput {
    */
   providerTargetRef?: AgentActivityProviderTargetRef | null;
   reasoningEffort?: string | null;
+  runtimeContext?: Record<string, unknown> | null;
   speed?: string | null;
   title?: string | null;
   visible?: boolean | null;
@@ -296,6 +297,7 @@ export interface AgentActivitySendInput {
   content: AgentPromptContentBlock[];
   /** 仅展示用文本(bundle 折叠成一个 chip);content 仍带展开后的文件。 */
   displayPrompt?: string | null;
+  guidance?: boolean;
   metadata?: Record<string, unknown>;
   signal?: AbortSignal;
 }

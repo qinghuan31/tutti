@@ -621,6 +621,9 @@ func (c *Controller) Exec(ctx context.Context, input ExecInput) (ExecResult, err
 			return ExecResult{}, err
 		}
 	}
+	if input.Guidance {
+		return c.guideActiveTurn(ctx, session, adapter, content, displayPrompt, metadata)
+	}
 	turnID := newID()
 	runCtx, cancel := context.WithCancel(context.Background())
 	if len(metadata) > 0 {
@@ -660,6 +663,56 @@ func (c *Controller) Exec(ctx context.Context, input ExecInput) (ExecResult, err
 		TurnLifecycle:      *session.TurnLifecycle,
 		SubmitAvailability: *session.SubmitAvailability,
 	}, nil
+}
+
+func (c *Controller) guideActiveTurn(
+	ctx context.Context,
+	session Session,
+	adapter Adapter,
+	content []PromptContentBlock,
+	displayPrompt string,
+	metadata map[string]any,
+) (ExecResult, error) {
+	guidanceAdapter, ok := adapter.(ActiveTurnGuidanceAdapter)
+	if !ok {
+		return ExecResult{}, ErrActiveTurnGuidanceUnsupported
+	}
+	if !c.HasActiveTurn(session.RoomID, session.AgentSessionID) {
+		return ExecResult{}, ErrSessionNoActiveTurn
+	}
+	turnID := newID()
+	runCtx := ctx
+	if len(metadata) > 0 {
+		runCtx = context.WithValue(ctx, execMetadataContextKey{}, metadata)
+	}
+	events, err := guidanceAdapter.GuideActiveTurn(runCtx, session, content, displayPrompt, turnID, nil, nil)
+	if err != nil {
+		logAgentSubmitTrace("runtime.exec.guidance_failed", session, turnID, metadata, map[string]any{
+			"error": err.Error(),
+		})
+		return ExecResult{}, err
+	}
+	c.applySessionEventsByAgentSessionID(session.AgentSessionID, events)
+	logAgentSubmitTrace("runtime.exec.guidance", session, turnID, metadata, map[string]any{
+		"activity_event_count": len(events),
+	})
+	if refreshed, ok := c.get(session.RoomID, session.AgentSessionID); ok {
+		session = refreshed
+	}
+	result := ExecResult{
+		AgentSessionID: session.AgentSessionID,
+		Status:         ExecStatusStarted,
+		TurnID:         turnID,
+		Accepted:       true,
+		SessionStatus:  session.Status,
+	}
+	if session.TurnLifecycle != nil {
+		result.TurnLifecycle = *session.TurnLifecycle
+	}
+	if session.SubmitAvailability != nil {
+		result.SubmitAvailability = *session.SubmitAvailability
+	}
+	return result, nil
 }
 
 type GoalControlInput struct {
@@ -2024,6 +2077,26 @@ func (c *Controller) Cancel(ctx context.Context, input CancelInput) (CancelResul
 	}
 	events, err := adapter.Cancel(ctx, session, reason)
 	if err != nil {
+		if errors.Is(err, ErrSessionNoActiveTurn) {
+			c.clearActiveTurnIfMatches(session.RoomID, session.AgentSessionID, active.turnID)
+			current, ok := c.get(session.RoomID, session.AgentSessionID)
+			if !ok {
+				current = session
+			}
+			reconciled := c.reconcileStuckTurnView(ctx, current, reason)
+			canceled := sessionCancelAlreadySettledCanceled(current)
+			slog.Info("agent session cancel raced with settled turn",
+				"event", "agent_session.cancel.settle_race",
+				"room_id", session.RoomID,
+				"agent_session_id", session.AgentSessionID,
+				"provider", session.Provider,
+				"turn_id", active.turnID,
+				"reason", reason,
+				"reconciled", reconciled,
+				"canceled", canceled,
+			)
+			return CancelResult{AgentSessionID: session.AgentSessionID, Canceled: canceled}, nil
+		}
 		slog.Warn("agent session cancel adapter failed",
 			"event", "agent_session.cancel.adapter_failed",
 			"room_id", session.RoomID,
@@ -2053,6 +2126,17 @@ func (c *Controller) Cancel(ctx context.Context, input CancelInput) (CancelResul
 	return CancelResult{AgentSessionID: session.AgentSessionID, Canceled: true}, nil
 }
 
+func sessionCancelAlreadySettledCanceled(session Session) bool {
+	if strings.TrimSpace(session.Status) == SessionStatusCanceled {
+		return true
+	}
+	if session.TurnLifecycle != nil && session.TurnLifecycle.Outcome != nil {
+		outcome := strings.ToLower(strings.TrimSpace(*session.TurnLifecycle.Outcome))
+		return outcome == "canceled" || outcome == "cancelled" || outcome == string(activityshared.TurnOutcomeInterrupted)
+	}
+	return false
+}
+
 func (c *Controller) cancelActiveTurn(roomID, agentSessionID string) {
 	if c == nil {
 		return
@@ -2063,6 +2147,19 @@ func (c *Controller) cancelActiveTurn(roomID, agentSessionID string) {
 	c.mu.Unlock()
 	if ok && active.cancel != nil {
 		active.cancel()
+	}
+}
+
+func (c *Controller) clearActiveTurnIfMatches(roomID, agentSessionID, turnID string) {
+	if c == nil {
+		return
+	}
+	key := sessionKey(strings.TrimSpace(roomID), strings.TrimSpace(agentSessionID))
+	turnID = strings.TrimSpace(turnID)
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if active, ok := c.turns[key]; ok && strings.TrimSpace(active.turnID) == turnID {
+		delete(c.turns, key)
 	}
 }
 

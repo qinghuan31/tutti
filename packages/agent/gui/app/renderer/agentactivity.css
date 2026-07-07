@@ -6951,7 +6951,7 @@ button.agent-gui-node__conversation-section-toggle:hover
   height: var(--agent-gui-composer-input-height, 56px);
   min-height: 56px;
   max-height: var(--agent-gui-composer-input-max-height, 110px);
-  align-items: center;
+  align-items: end;
   overflow: hidden;
   padding: 0 12px;
   border: 1px solid var(--line-2);
@@ -6977,7 +6977,7 @@ button.agent-gui-node__conversation-section-toggle:hover
   grid-template-rows:
     minmax(0, var(--agent-gui-composer-attachment-height, 0px))
     minmax(40px, 1fr);
-  align-items: stretch;
+  align-items: end;
   padding: 12px;
 }
 
@@ -7015,7 +7015,7 @@ button.agent-gui-node__conversation-section-toggle:hover
   min-height: 40px;
   height: calc(var(--agent-gui-composer-text-height, 56px) - 2px);
   max-height: 118px;
-  padding: 4px 0 11px;
+  padding: 4px 0 0;
 }
 
 .agent-gui-node__composer[data-layout="dock"]
@@ -8360,6 +8360,28 @@ html[data-theme="light"] [data-message-center-item-id].agent-gui-edge-glow {
   padding: 0 0 12px;
   overflow-x: hidden;
   overflow-y: auto;
+  mask-image: linear-gradient(
+    to bottom,
+    #000 0,
+    #000 calc(100% - 24px),
+    transparent 100%
+  );
+  -webkit-mask-image: linear-gradient(
+    to bottom,
+    #000 0,
+    #000 calc(100% - 24px),
+    transparent 100%
+  );
+  -webkit-app-region: no-drag;
+}
+
+.agent-gui-node__provider-rail-footer {
+  display: flex;
+  width: 52px;
+  min-width: 0;
+  flex: 0 0 auto;
+  justify-content: center;
+  padding: 0 0 12px;
   -webkit-app-region: no-drag;
 }
 

@@ -1,12 +1,12 @@
 import { type JSX, type ReactNode } from "react";
-import { Button } from "@tutti-os/ui-system";
-import { CastIcon } from "../../app/renderer/components/icons/CastIcon";
 import {
+  Button,
   Tooltip,
   TooltipContent,
   TooltipProvider,
   TooltipTrigger
-} from "../../app/renderer/components/ui/tooltip";
+} from "@tutti-os/ui-system";
+import { CastIcon } from "../../app/renderer/components/icons/CastIcon";
 import { cn } from "../../app/renderer/lib/utils";
 import { approvalOptionDisplayLabel } from "../../shared/agentConversation/approvalOptionPresentation";
 import type { AgentGUISessionChrome } from "./model/agentGuiNodeTypes";

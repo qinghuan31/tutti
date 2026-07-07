@@ -1,4 +1,4 @@
-import { memo, useCallback, useEffect, useMemo } from "react";
+import { memo, type ReactNode, useCallback, useEffect, useMemo } from "react";
 import { createWorkspaceUserProjectI18nRuntime } from "@tutti-os/workspace-user-project/i18n";
 import { createWorkspaceFileManagerI18nRuntime } from "@tutti-os/workspace-file-manager";
 import type { WorkspaceFileEntry } from "@tutti-os/workspace-file-manager/services";
@@ -46,6 +46,7 @@ import type {
 import {
   AgentGUINodeView,
   type AgentGUIViewLabels,
+  type AgentGUISidebarFooterContext,
   type AgentMentionReferenceTargetResolver,
   type AgentWorkspaceReferenceInitialTargetResolver
 } from "./AgentGUINodeView";
@@ -193,6 +194,7 @@ export interface AgentGUINodeProps {
   accountMenuState?: AgentGUIAccountMenuState | null;
   providerTargets?: readonly AgentGUIProviderTarget[];
   providerTargetsLoading?: boolean;
+  renderSidebarFooter?: (ctx: AgentGUISidebarFooterContext) => ReactNode;
   comingSoonProviders?: readonly AgentGUIProvider[];
   providerReadinessGates?: Partial<
     Record<AgentGUIProvider, AgentGUIProviderReadinessGate | null>
@@ -573,6 +575,7 @@ function areAgentGUINodePropsEqual(
     previous.accountMenuState === next.accountMenuState &&
     previous.providerTargets === next.providerTargets &&
     previous.providerTargetsLoading === next.providerTargetsLoading &&
+    previous.renderSidebarFooter === next.renderSidebarFooter &&
     previous.comingSoonProviders === next.comingSoonProviders &&
     previous.providerReadinessGates === next.providerReadinessGates &&
     previous.defaultProviderTargetId === next.defaultProviderTargetId &&
@@ -632,6 +635,7 @@ export const AgentGUINode = memo(function AgentGUINode({
   accountMenuState = null,
   providerTargets,
   providerTargetsLoading = false,
+  renderSidebarFooter,
   comingSoonProviders,
   providerReadinessGates = null,
   defaultProviderTargetId = null,
@@ -1115,6 +1119,7 @@ export const AgentGUINode = memo(function AgentGUINode({
       ),
       accountRewardToastClose: t("agentHost.agentGui.accountRewardToastClose"),
       agentConfig: t("agentHost.agentGui.agentConfig"),
+      agentSettingsMenu: t("agentHost.agentGui.agentSettingsMenu"),
       agentEnvSetup: t("agentHost.agentGui.agentEnvSetup"),
       noConversations: t("agentHost.agentGui.noConversations"),
       emptyProjectConversations: t(
@@ -1706,6 +1711,7 @@ export const AgentGUINode = memo(function AgentGUINode({
         return (
           <AgentGUINodeView
             viewModel={viewModel}
+            renderSidebarFooter={renderSidebarFooter}
             actions={viewActions}
             isActive={isActive}
             composerFocusRequestSequence={composerFocusRequestSequence}

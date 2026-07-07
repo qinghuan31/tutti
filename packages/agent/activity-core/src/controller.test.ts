@@ -1268,6 +1268,70 @@ test("controller caches composer options by provider and clones snapshots", asyn
   );
 });
 
+test("controller invalidateComposerOptions makes the next non-forced load refetch", async () => {
+  let loadCount = 0;
+  const controller = createAgentActivityController({
+    adapter: fakeAdapter({
+      loadComposerOptions: async (input) => {
+        loadCount += 1;
+        return createComposerOptions({
+          provider: input.provider,
+          models: [{ value: `model-${loadCount}`, label: `Model ${loadCount}` }]
+        });
+      }
+    }),
+    workspaceId: "workspace-1"
+  });
+
+  await controller.loadComposerOptions({ provider: "codex" });
+  await controller.loadComposerOptions({ provider: "codex" });
+  assert.equal(loadCount, 1);
+
+  controller.invalidateComposerOptions({ providers: ["codex"] });
+  // The stale snapshot stays available for rendering until the refetch lands.
+  assert.equal(
+    controller.getSnapshot().composerOptionsByProvider?.codex?.models[0]?.value,
+    "model-1"
+  );
+  const reloaded = await controller.loadComposerOptions({ provider: "codex" });
+  assert.equal(loadCount, 2);
+  assert.equal(reloaded.models[0]?.value, "model-2");
+});
+
+test("controller invalidateComposerOptions only touches matching providers and their targets", async () => {
+  let loadCount = 0;
+  const controller = createAgentActivityController({
+    adapter: fakeAdapter({
+      loadComposerOptions: async (input) => {
+        loadCount += 1;
+        return createComposerOptions({
+          provider: input.provider,
+          models: [{ value: `model-${loadCount}`, label: `Model ${loadCount}` }]
+        });
+      }
+    }),
+    workspaceId: "workspace-1"
+  });
+
+  await controller.loadComposerOptions({ provider: "codex" });
+  await controller.loadComposerOptions({ provider: "claude-code" });
+  await controller.loadComposerOptions({
+    provider: "codex",
+    agentTargetId: "codex-target"
+  });
+  assert.equal(loadCount, 3);
+
+  controller.invalidateComposerOptions({ providers: ["codex"] });
+  await controller.loadComposerOptions({ provider: "claude-code" });
+  assert.equal(loadCount, 3);
+  await controller.loadComposerOptions({ provider: "codex" });
+  await controller.loadComposerOptions({
+    provider: "codex",
+    agentTargetId: "codex-target"
+  });
+  assert.equal(loadCount, 5);
+});
+
 test("controller caches composer options by agent target without mutating provider cache", async () => {
   const adapterCalls: Array<{
     agentTargetId: string | null | undefined;
@@ -1608,3 +1672,77 @@ async function waitFor(assertion: () => void): Promise<void> {
     throw lastError;
   }
 }
+
+test("stale session upsert does not regress a fresher pushed state", async () => {
+  const controller = createAgentActivityController({
+    adapter: fakeAdapter({
+      listSessions: () =>
+        Promise.resolve({
+          sessions: [
+            createSession({
+              turnLifecycle: { phase: "running", activeTurnId: "turn-1" },
+              updatedAtUnixMs: 1000
+            })
+          ]
+        } satisfies AgentActivitySessionList)
+    }),
+    workspaceId: "workspace-1"
+  });
+  await controller.load();
+
+  // Fresher settled state lands (e.g. from a pushed state patch).
+  controller.upsertSession(
+    createSession({
+      turnLifecycle: { phase: "settled", activeTurnId: null },
+      updatedAtUnixMs: 2000
+    })
+  );
+  // A reconcile fetch that resolved late carries a stale running view; it
+  // must not overwrite the settled state (the session would freeze busy).
+  controller.upsertSession(
+    createSession({
+      turnLifecycle: { phase: "running", activeTurnId: "turn-1" },
+      updatedAtUnixMs: 1500
+    })
+  );
+
+  const session = controller
+    .getSnapshot()
+    .sessions.find((item) => item.agentSessionId === "session-1");
+  assert.equal(session?.turnLifecycle?.phase, "settled");
+  assert.equal(session?.updatedAtUnixMs, 2000);
+});
+
+test("load keeps sessions that are fresher than the list response", async () => {
+  let listCalls = 0;
+  const controller = createAgentActivityController({
+    adapter: fakeAdapter({
+      listSessions: () => {
+        listCalls += 1;
+        return Promise.resolve({
+          sessions: [
+            createSession({
+              turnLifecycle:
+                listCalls === 1
+                  ? { phase: "settled", activeTurnId: null }
+                  : { phase: "running", activeTurnId: "turn-1" },
+              updatedAtUnixMs: listCalls === 1 ? 2000 : 1500
+            })
+          ]
+        } satisfies AgentActivitySessionList);
+      }
+    }),
+    workspaceId: "workspace-1"
+  });
+
+  await controller.load();
+  // Second load returns a stale point-in-time snapshot (e.g. an in-flight
+  // request that resolved after a fresher push already landed).
+  await controller.load();
+
+  const session = controller
+    .getSnapshot()
+    .sessions.find((item) => item.agentSessionId === "session-1");
+  assert.equal(session?.turnLifecycle?.phase, "settled");
+  assert.equal(session?.updatedAtUnixMs, 2000);
+});

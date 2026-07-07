@@ -61,6 +61,8 @@ import { WorkspaceSettingsPanel } from "./WorkspaceSettingsPanel";
 import { useWorkspaceChromeState } from "./useWorkspaceChromeState";
 import { useWorkspaceWorkbenchHostService } from "./useWorkspaceWorkbenchHostService";
 import { useWorkspaceSettingsService } from "./useWorkspaceSettingsService";
+import type { WorkspaceSettingsSectionID } from "../services/workspaceSettingsService.interface";
+import { useWorkspaceSettingsPanelRequest } from "@tutti-os/agent-gui/workspace-settings-panel";
 import {
   buildWorkspaceAgentDecisionNotification,
   type WorkspaceAgentDecisionSubmitInput
@@ -1070,6 +1072,32 @@ function WorkspaceSettingsTrigger({
   const { t } = useTranslation();
   const { service: settingsService, state: settingsState } =
     useWorkspaceSettingsService();
+
+  // Deep-link bridge: the agent-gui rail's "Usage & Settings" popover publishes
+  // an open request (with a target section) into a shared store. React to new
+  // requests by opening the global settings panel navigated to that section.
+  const settingsPanelRequest = useWorkspaceSettingsPanelRequest();
+  const lastHandledSettingsRequestRef = useRef(
+    settingsPanelRequest.requestSequence
+  );
+  useEffect(() => {
+    if (
+      settingsPanelRequest.requestSequence ===
+      lastHandledSettingsRequestRef.current
+    ) {
+      return;
+    }
+    lastHandledSettingsRequestRef.current =
+      settingsPanelRequest.requestSequence;
+    settingsService.openPanel(
+      { id: workspace.id },
+      settingsPanelRequest.section
+        ? {
+            section: settingsPanelRequest.section as WorkspaceSettingsSectionID
+          }
+        : undefined
+    );
+  }, [settingsPanelRequest, settingsService, workspace.id]);
 
   return (
     <>

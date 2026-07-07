@@ -1,4 +1,5 @@
 import type { AgentActivityRuntime } from "@tutti-os/agent-gui";
+import { resolveSubmitAvailability } from "@tutti-os/agent-activity-core";
 import type {
   AgentActivityMessage,
   AgentActivityMessagePage,
@@ -645,7 +646,9 @@ function agentActivitySessionDiagnosticDetails(
 function agentActivitySessionIsBusy(session: AgentActivitySession): boolean {
   const status = session.status;
   const phase = session.turnLifecycle?.phase;
-  const submitState = session.submitAvailability?.state;
+  // Derive from the turn lifecycle when present (ADR 0008); the wire
+  // submitAvailability is only trusted for lifecycle-less records.
+  const submitState = resolveSubmitAvailability(session).state;
   return (
     status === "queued" ||
     status === "working" ||

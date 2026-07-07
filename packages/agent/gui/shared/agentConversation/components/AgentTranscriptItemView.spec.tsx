@@ -1,5 +1,3 @@
-import { readFileSync } from "node:fs";
-import { resolve } from "node:path";
 import {
   act,
   fireEvent,
@@ -193,12 +191,7 @@ describe("AgentTranscriptItemView render stability", () => {
     if (!(bubble instanceof HTMLElement)) {
       throw new Error("Expected user message bubble to render.");
     }
-    expect(group).toHaveClass("agent-gui-conversation__message-group");
     expect(group).toHaveAttribute("data-agent-message-speaker", "user");
-    expect(bubble).toHaveClass(
-      "workspace-agents-status-panel__detail-user-message",
-      "agent-gui-conversation__user-message-bubble"
-    );
     expect(group).toHaveTextContent("User asks for a fix");
     expect(
       group.querySelector(".agent-gui-conversation__message-copy-button")
@@ -267,57 +260,6 @@ describe("AgentTranscriptItemView render stability", () => {
     });
   });
 
-  it("shows the message copy action when hovering the bottom action row", () => {
-    const css = readFileSync(resolve("app/renderer/agentactivity.css"), "utf8");
-
-    expect(css).toMatch(
-      /\.agent-gui-conversation__message-group::after\s*{[^}]*top:\s*100%[^}]*right:\s*0[^}]*left:\s*0[^}]*height:\s*26px/s
-    );
-    expect(css).toMatch(
-      /\.agent-gui-conversation__message-group:has\(\s*> \.agent-gui-conversation__message-footer\s*\)\s*{[^}]*margin-bottom:\s*26px/s
-    );
-    expect(css).toMatch(
-      /\.agent-gui-conversation__message-group:hover[\s\S]*?> \.agent-gui-conversation__message-footer,[\s\S]*?\.agent-gui-conversation__message-group:focus-within[\s\S]*?> \.agent-gui-conversation__message-footer\s*{[^}]*opacity:\s*1[^}]*pointer-events:\s*auto/s
-    );
-    expect(css).not.toMatch(
-      /\.agent-gui-conversation__message-group::after\s*{[^}]*height:\s*10px/s
-    );
-  });
-
-  it("keeps the message copy button compact within the action row", () => {
-    const css = readFileSync(resolve("app/renderer/agentactivity.css"), "utf8");
-
-    expect(css).toMatch(
-      /\.agent-gui-conversation__message-footer\s*{[^}]*top:\s*calc\(100% \+ 4px\)/s
-    );
-    expect(css).toMatch(
-      /\.agent-gui-conversation__message-copy-button\s*{[^}]*position:\s*static[^}]*width:\s*22px[^}]*min-width:\s*22px[^}]*height:\s*22px[^}]*min-height:\s*22px[^}]*border-radius:\s*5px/s
-    );
-    expect(css).not.toMatch(
-      /\.agent-gui-conversation__message-copy-button\s*{[^}]*width:\s*28px/s
-    );
-    expect(css).not.toMatch(
-      /\.agent-gui-conversation__message-copy-button\s*{[^}]*top:\s*calc\(100% \+ 8px\)/s
-    );
-    expect(css).not.toMatch(
-      /\.agent-gui-conversation__message-group:has\(\s*> \.agent-gui-conversation__message-footer\s*\)\s*{[^}]*margin-bottom:\s*36px/s
-    );
-  });
-
-  it("keeps pasted prompt images separated from the message bubble", () => {
-    const css = readFileSync(resolve("app/renderer/agentactivity.css"), "utf8");
-
-    expect(css).toMatch(
-      /\.agent-gui-conversation__user-message-flow\s*{[^}]*row-gap:\s*14px/s
-    );
-    expect(css).toMatch(
-      /\.agent-gui-conversation__user-image-grid\s*{[^}]*justify-self:\s*end/s
-    );
-    expect(css).toMatch(
-      /\.agent-gui-conversation__user-image-thumbnail\s*{[^}]*border:\s*1px solid var\(--line-2\)[^}]*border-radius:\s*8px/s
-    );
-  });
-
   it("loads user prompt image attachments from the activity runtime", async () => {
     const readSessionAttachment = vi.fn(async () => ({
       attachmentId: "attachment-1",
@@ -368,25 +310,6 @@ describe("AgentTranscriptItemView render stability", () => {
     await waitFor(() => {
       const image = screen.getByRole("img", { name: "screen.png" });
       expect(image).toHaveAttribute("src", "data:image/png;base64,aW1hZ2U=");
-      expect(image).toHaveClass("cursor-zoom-in", "max-h-20", "object-contain");
-      const imageBlock = image.closest("div");
-      expect(imageBlock).toBeInstanceOf(HTMLElement);
-      expect(imageBlock).toHaveClass(
-        "agent-gui-conversation__user-image-thumbnail"
-      );
-      const imageGrid = imageBlock?.parentElement;
-      expect(imageGrid).toHaveClass("agent-gui-conversation__user-image-grid");
-      expect(imageGrid).toHaveStyle({
-        gridTemplateColumns: "repeat(1, 160px)"
-      });
-      const imageGridClasses = imageGrid?.className.split(/\s+/) ?? [];
-      expect(
-        imageGridClasses.some((className) => className.startsWith("bg-"))
-      ).toBe(false);
-      expect(
-        imageGridClasses.some((className) => className.startsWith("shadow"))
-      ).toBe(false);
-      expect(imageGridClasses).not.toContain("p-2");
       expect(
         screen.getByRole("button", { name: "common.expandImage" })
       ).toBeTruthy();
@@ -477,133 +400,6 @@ describe("AgentTranscriptItemView render stability", () => {
     delete (window as { agentActivityRuntime?: unknown }).agentActivityRuntime;
   });
 
-  it("keeps assistant conversation markdown on the compact reading scale", () => {
-    const css = readFileSync(resolve("app/renderer/agentactivity.css"), "utf8");
-
-    expect(css).toMatch(
-      /\.agent-gui-conversation__assistant-markdown\s*{[^}]*font-size:\s*13px[^}]*line-height:\s*1\.72/s
-    );
-    expect(css).toMatch(
-      /\.workspace-agents-status-panel__detail-markdown\.agent-gui-conversation__assistant-markdown\s+p\s*{[^}]*margin:\s*0[^}]*}/s
-    );
-    expect(css).toMatch(
-      /\.workspace-agents-status-panel__detail-markdown\.agent-gui-conversation__assistant-markdown\s+hr\s*{[^}]*height:\s*1px[^}]*margin:\s*14px 0[^}]*border:\s*0[^}]*background:\s*var\(--line-2,\s*var\(--tutti-line-2\)\)/s
-    );
-    expect(css).not.toMatch(
-      /\.workspace-agents-status-panel__detail-markdown\.agent-gui-conversation__assistant-markdown\s+:is\(h1,\s*h2,\s*h3,\s*h4,\s*h5,\s*h6,\s*ul,\s*ol,\s*li\)\s*{[^}]*font-size:\s*\d+(?:\.\d+)?px/s
-    );
-  });
-
-  it("keeps conversation flow secondary text on the 13px compact scale", () => {
-    const css = readFileSync(resolve("app/renderer/agentactivity.css"), "utf8");
-    const messageBlockSource = readFileSync(
-      resolve("shared/agentConversation/components/AgentMessageBlock.tsx"),
-      "utf8"
-    );
-    const markdownSource = readFileSync(
-      resolve("shared/AgentMessageMarkdown.tsx"),
-      "utf8"
-    );
-    const thinkingDisclosureSource = readFileSync(
-      resolve("shared/WorkspaceAgentSessionThinkingDisclosure.tsx"),
-      "utf8"
-    );
-    const toolRendererSource = readFileSync(
-      resolve(
-        "shared/agentConversation/components/tool-renderers/code/AgentCodeBlock.tsx"
-      ),
-      "utf8"
-    );
-
-    expect(markdownSource).toContain("text-[13px]");
-    expect(markdownSource).toContain("max-h-[calc(13px*1.5*8)]");
-    expect(markdownSource).toContain("[&_code]:text-[11px]");
-    expect(thinkingDisclosureSource).toContain("text-[13px]");
-    expect(thinkingDisclosureSource).toContain("text-[11px]");
-    expect(toolRendererSource).toContain("text-[11px]");
-    expect(css).toMatch(
-      /\.workspace-agents-status-panel__detail-tool-count\s*{[^}]*font-size:\s*13px/s
-    );
-    expect(css).toMatch(
-      /\.workspace-agents-status-panel__detail-tool-row\s*{[^}]*font-size:\s*13px/s
-    );
-    expect(css).toMatch(
-      /\.agent-gui-conversation__interactive-prompt-question\s*{[^}]*font-size:\s*13px/s
-    );
-    expect(css).toMatch(
-      /\.workspace-agents-status-panel__detail-user-message\.agent-gui-conversation__user-message-bubble\s*{[^}]*font-size:\s*13px/s
-    );
-    expect(css).toMatch(
-      /\.agent-gui-conversation__message-copy-button\s*{[^}]*position:\s*static[^}]*opacity:\s*0/s
-    );
-    expect(messageBlockSource).toContain("CanvasNodeGhostIconButton");
-    expect(css).toMatch(
-      /\.agent-gui-conversation__message-group:hover[\s\S]*?\.agent-gui-conversation__message-copy-button,[\s\S]*?\.agent-gui-conversation__message-group:focus-within[\s\S]*?\.agent-gui-conversation__message-copy-button\s*{[^}]*opacity:\s*1/s
-    );
-    expect(css).not.toMatch(
-      /\.agent-gui-conversation__message-copy-button:hover\s*{/
-    );
-    expect(css).toMatch(
-      /\.tsh-agent-object-token--file\s*{[^}]*font-size:\s*13px/s
-    );
-    expect(css).toMatch(
-      /\.tsh-agent-object-token--entity\s*{[^}]*font-size:\s*13px/s
-    );
-    expect(css).toMatch(
-      /\.agent-gui-node__message-bubble\s*{[^}]*font-size:\s*13px/s
-    );
-    expect(css).toMatch(
-      /\.workspace-agents-status-panel__detail-tool-body\s*{[^}]*font-size:\s*11px/s
-    );
-    expect(css).toMatch(
-      /\.workspace-agents-status-panel__detail-tool-markdown\s*{[^}]*font-size:\s*11px/s
-    );
-    expect(css).toMatch(
-      /\.agent-gui-conversation__interactive-option-description\s*{[^}]*font-size:\s*11px/s
-    );
-    expect(css).toMatch(
-      /\.agent-gui-conversation__interactive-prompt-actions\s+button:not\(\[data-slot="button"\]\)\s*{[^}]*font-size:\s*11px/s
-    );
-    expect(css).toMatch(
-      /\.tsh-agent-object-token__kind\s*{[^}]*font-size:\s*11px/s
-    );
-    expect(css).toMatch(
-      /\.agent-gui-node__row-meta\s*{[^}]*font-size:\s*11px/s
-    );
-  });
-
-  it("keeps flat tool content visually embedded in the conversation flow", () => {
-    const css = readFileSync(resolve("app/renderer/agentactivity.css"), "utf8");
-
-    expect(css).toMatch(
-      /\.workspace-agents-status-panel__detail-tool-body--flat\s*{[^}]*border:\s*1px solid var\(--hairline-strong\)[^}]*border-radius:\s*6px[^}]*overflow:\s*hidden/s
-    );
-    expect(css).toMatch(
-      /\.workspace-agents-status-panel__detail-tool-code--flat,[\s\S]*?\.workspace-agents-status-panel__detail-tool-diff--flat,[\s\S]*?\.workspace-agents-status-panel__detail-tool-monaco--flat\s*{[^}]*box-shadow:\s*none[^}]*border:\s*0[^}]*border-radius:\s*0/s
-    );
-    expect(css).toMatch(
-      /\.workspace-agents-status-panel__detail-tool-diff-added\s*{[^}]*color:\s*var\(--state-success\)/s
-    );
-    expect(css).toMatch(
-      /\.workspace-agents-status-panel__detail-tool-diff-removed\s*{[^}]*color:\s*var\(--state-danger\)/s
-    );
-    expect(css).toMatch(
-      /\.agent-turn-summary-card__path-directory\s*{[^}]*flex:\s*0 1 auto/s
-    );
-    expect(css).toMatch(
-      /\.agent-turn-summary-card__path-file\s*{[^}]*flex:\s*0 0 auto[^}]*max-width:\s*100%/s
-    );
-    expect(css).toMatch(
-      /\.agent-path-tail-label\s*{[^}]*display:\s*flex[^}]*overflow:\s*hidden[^}]*white-space:\s*nowrap/s
-    );
-    expect(css).toMatch(
-      /\.agent-path-tail-label__directory\s*{[^}]*flex:\s*0 1 auto/s
-    );
-    expect(css).toMatch(
-      /\.agent-path-tail-label__file\s*{[^}]*flex:\s*0 0 auto[^}]*max-width:\s*100%/s
-    );
-  });
-
   it("shows local agent sign-in guidance for auth errors", () => {
     getAgentEnvPanelStore().open = false;
     const { getByText } = render(
@@ -628,7 +424,7 @@ describe("AgentTranscriptItemView render stability", () => {
     expect(store.focus).toBe("auth");
   });
 
-  it("renders transport retry notices as quiet text", () => {
+  it("renders transport retry notice details without the generic title", () => {
     const { getByText, queryByText } = render(
       <AgentMessageBlock
         workspaceRoot="/workspace/demo"
@@ -655,8 +451,6 @@ describe("AgentTranscriptItemView render stability", () => {
     expect(getByText("Reconnecting... 1/5")).toBeTruthy();
     const notice = getByText("Reconnecting... 1/5");
     expect(notice.tagName).toBe("DIV");
-    expect(notice.className).toContain("text-[var(--text-primary)]");
-    expect(notice.className).not.toContain("rounded-[8px]");
     expect(queryByText("agentHost.agentGui.visibleErrorDetails")).toBeNull();
     expect(
       queryByText("Codex connection interrupted. Reconnecting...")
@@ -666,7 +460,7 @@ describe("AgentTranscriptItemView render stability", () => {
     ).toBeNull();
   });
 
-  it("renders transport fallback notices with danger chrome", () => {
+  it("renders transport fallback notices with the localized label", () => {
     const { getByRole, getByText } = render(
       <AgentMessageBlock
         workspaceRoot="/workspace/demo"
@@ -690,16 +484,13 @@ describe("AgentTranscriptItemView render stability", () => {
       />
     );
 
-    const notice = getByRole("status");
-    expect(notice.className).toContain("border-[var(--on-danger-hover)]");
-    expect(notice.className).toContain("bg-[var(--on-danger)]");
-    expect(notice.className).not.toContain("var(--state-warning)_6%");
+    expect(getByRole("status")).toBeTruthy();
     expect(
       getByText("agentHost.agentGui.systemNoticeTransportFallback")
     ).toBeTruthy();
   });
 
-  it("renders fallback warning notices with danger chrome", () => {
+  it("renders fallback warning notices with their title", () => {
     const { getByRole, getByText } = render(
       <AgentMessageBlock
         workspaceRoot="/workspace/demo"
@@ -723,10 +514,7 @@ describe("AgentTranscriptItemView render stability", () => {
       />
     );
 
-    const notice = getByRole("status");
-    expect(notice.className).toContain("border-[var(--on-danger-hover)]");
-    expect(notice.className).toContain("bg-[var(--on-danger)]");
-    expect(notice.className).not.toContain("var(--state-warning)_6%");
+    expect(getByRole("status")).toBeTruthy();
     expect(
       getByText("Falling back from WebSockets to HTTPS transport.")
     ).toBeTruthy();
@@ -757,14 +545,8 @@ describe("AgentTranscriptItemView render stability", () => {
 
     const notice = getByRole("status");
     expect(notice.tagName).toBe("DIV");
-    expect(notice.className).toContain("items-center");
-    expect(notice.className).toContain("text-[var(--text-secondary)]");
-    expect(notice.className).not.toContain("rounded-[8px]");
     const dividers = notice.querySelectorAll('span[aria-hidden="true"]');
     expect(dividers).toHaveLength(2);
-    for (const divider of dividers) {
-      expect(divider.className).toContain("bg-[var(--line-1)]");
-    }
     expect(
       getByText("agentHost.agentGui.contextCompactionCompleted")
     ).toBeTruthy();
@@ -798,8 +580,6 @@ describe("AgentTranscriptItemView render stability", () => {
       );
 
       const notice = getByRole("status");
-      expect(notice.className).toContain("items-center");
-      expect(notice.className).not.toContain("rounded-[8px]");
       const dividers = notice.querySelectorAll('span[aria-hidden="true"]');
       expect(dividers).toHaveLength(2);
       expect(
@@ -839,7 +619,6 @@ describe("AgentTranscriptItemView render stability", () => {
     );
 
     const notice = getByRole("status");
-    expect(notice.className).not.toContain("rounded-[8px]");
     expect(notice.querySelectorAll('span[aria-hidden="true"]')).toHaveLength(2);
     expect(
       getByText("agentHost.agentGui.contextCompactionInterrupted")

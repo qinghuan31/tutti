@@ -16265,7 +16265,70 @@ describe("useAgentGUINodeController", () => {
       expect(exec).toHaveBeenCalledWith({
         workspaceId: "room-1",
         agentSessionId: "session-1",
+        guidance: true,
         ...promptContent("steer the current turn")
+      });
+    });
+    expect(result.current.viewModel.queuedPrompts).toEqual([]);
+  });
+
+  it("clears the goal with a visible /goal clear prompt that bypasses the queue", async () => {
+    const exec = vi.fn(async () => ({
+      agentSessionId: "session-1",
+      turnId: "turn-2",
+      accepted: true,
+      sessionStatus: "working" as const,
+      events: []
+    }));
+    installAgentHostApi({
+      list: vi.fn(async () => ({
+        presences: [],
+        sessions: [
+          workspaceAgentSession("session-1", {
+            effectiveStatus: "working",
+            turnPhase: "running"
+          })
+        ]
+      })),
+      listSessionTimeline: vi.fn(async () => ({ timelineItems: [] })),
+      subscribeEvents: vi.fn(() => vi.fn()),
+      getState: vi.fn(async () =>
+        agentSessionState("session-1", {
+          status: "working",
+          turnLifecycle: { activeTurnId: "turn-1", phase: "running" },
+          submitAvailability: { state: "blocked", reason: "active_turn" }
+        })
+      ),
+      exec
+    });
+
+    const { result } = renderHook(() =>
+      useAgentGUINodeController({
+        workspaceId: "room-1",
+        currentUserId: "user-1",
+        workspacePath: "/workspace",
+        avoidGroupingEdits: false,
+        data: agentGuiData("session-1"),
+        onDataChange: vi.fn()
+      })
+    );
+
+    await waitFor(() => {
+      expect(result.current.viewModel.activeConversationId).toBe("session-1");
+    });
+    await waitFor(() => {
+      expect(result.current.viewModel.canQueueWhileBusy).toBe(true);
+    });
+
+    act(() => {
+      result.current.actions.goalControl("clear");
+    });
+
+    await waitFor(() => {
+      expect(exec).toHaveBeenCalledWith({
+        workspaceId: "room-1",
+        agentSessionId: "session-1",
+        ...promptContent("/goal clear")
       });
     });
     expect(result.current.viewModel.queuedPrompts).toEqual([]);
@@ -18033,7 +18096,8 @@ function installAgentActivityRuntimeForHostMocks({
       const result = await exec({
         workspaceId: input.workspaceId,
         agentSessionId: input.agentSessionId,
-        content: input.content
+        content: input.content,
+        ...(input.guidance === true ? { guidance: true } : {})
       });
       const status =
         typeof result?.sessionStatus === "string"

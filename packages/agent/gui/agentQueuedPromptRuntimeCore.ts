@@ -16,6 +16,8 @@ export interface AgentQueuedPromptClaim {
   workspaceId: string;
 }
 
+export type AgentQueuedPromptSuspendReason = "user_stop";
+
 export interface AgentQueuedPromptQueueSnapshot {
   agentSessionId: string;
   claim: AgentQueuedPromptClaim | null;
@@ -23,6 +25,13 @@ export interface AgentQueuedPromptQueueSnapshot {
   prompts: readonly AgentGUIQueuedPromptVM[];
   retryBlock: AgentQueuedPromptRetryBlock | null;
   sendNextPromptId: string | null;
+  /**
+   * User intent gate: while set, the drainer must not auto-dispatch this
+   * queue even when the session is available. Set when the user stops the
+   * session; cleared by an explicit user send (composer submit resumes, and
+   * promotePrompt clears it as part of "send now").
+   */
+  suspendReason: AgentQueuedPromptSuspendReason | null;
   workspaceId: string;
 }
 
@@ -88,6 +97,14 @@ export interface AgentQueuedPromptRuntime {
     retryBlock: AgentQueuedPromptRetryBlock | null;
     workspaceId: string;
   }): void;
+  /** Hold the queue after a user stop; a no-op when the queue is empty. */
+  suspendQueue(input: {
+    agentSessionId: string;
+    reason: AgentQueuedPromptSuspendReason;
+    workspaceId: string;
+  }): void;
+  /** Lift a user-stop hold (explicit user send). */
+  resumeQueue(input: { agentSessionId: string; workspaceId: string }): void;
   subscribe(listener: () => void): () => void;
 }
 
@@ -386,7 +403,8 @@ export function createAgentQueuedPromptRuntime(): AgentQueuedPromptRuntime {
             queue.retryBlock?.queuedPromptId === promptId
               ? null
               : queue.retryBlock,
-          sendNextPromptId: promptId
+          sendNextPromptId: promptId,
+          suspendReason: null
         };
       });
     },
@@ -476,6 +494,26 @@ export function createAgentQueuedPromptRuntime(): AgentQueuedPromptRuntime {
         retryBlock: input.retryBlock
       });
     },
+    suspendQueue(input) {
+      updateQueue(input.workspaceId, input.agentSessionId, (queue) => ({
+        ...queue,
+        suspendReason: input.reason
+      }));
+      logAgentQueuedPromptRuntime("suspend", {
+        workspaceId: input.workspaceId,
+        agentSessionId: input.agentSessionId,
+        reason: input.reason
+      });
+    },
+    resumeQueue(input) {
+      updateQueue(input.workspaceId, input.agentSessionId, (queue) =>
+        queue.suspendReason === null ? queue : { ...queue, suspendReason: null }
+      );
+      logAgentQueuedPromptRuntime("resume", {
+        workspaceId: input.workspaceId,
+        agentSessionId: input.agentSessionId
+      });
+    },
     subscribe(listener) {
       listeners.add(listener);
       return () => {
@@ -500,7 +538,8 @@ function emptyQueueSnapshot(input: {
     failedPromptId: null,
     prompts: Object.freeze([]),
     retryBlock: null,
-    sendNextPromptId: null
+    sendNextPromptId: null,
+    suspendReason: null
   });
 }
 

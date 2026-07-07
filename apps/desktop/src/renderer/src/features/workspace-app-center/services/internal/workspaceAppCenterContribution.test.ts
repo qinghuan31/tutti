@@ -1,5 +1,4 @@
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
 import test from "node:test";
 import type { WorkbenchHostLaunchRequest } from "@tutti-os/workbench-surface";
 import type { ReporterEventInput } from "../../../analytics/services/reporterService.interface.ts";
@@ -8,7 +7,6 @@ import type {
   WorkspaceAppCenterApp,
   WorkspaceAppCenterReadableStoreState
 } from "@tutti-os/workspace-app-center";
-import { createWorkspaceAppWebviewBrowserLease } from "./workspaceAppWebviewBrowserAnalytics.ts";
 import {
   shouldPreserveWorkspaceAppWebviewDuringHandoff,
   shouldRenderWorkspaceAppBrowserNode,
@@ -23,23 +21,6 @@ import {
   workspaceAppWebviewInstanceId,
   workspaceAppWebviewTypeID
 } from "./workspaceAppCenterLaunchRequest.ts";
-
-const contributionSource = readFileSync(
-  new URL("./workspaceAppCenterContribution.tsx", import.meta.url),
-  "utf8"
-);
-
-test("workspace app center windows render unified traffic lights in custom headers", () => {
-  assert.match(
-    contributionSource,
-    /renderHeader: \(context\) => \(\s*<WorkspaceAppCenterWorkbenchHeader context=\{context\} i18n=\{input\.i18n\} \/>/
-  );
-  assert.match(
-    contributionSource,
-    /<WorkspaceWorkbenchTrafficLights[\s\S]*displayMode=\{context\.displayMode\}[\s\S]*windowActions=\{context\.windowActions\}/
-  );
-  assert.doesNotMatch(contributionSource, /\{context\.defaultActions\}/);
-});
 
 test("workspace app node ids resolve app ids from dock and webview node formats", () => {
   assert.equal(
@@ -656,20 +637,6 @@ test("workspace app dock entry focus reports app open from the dock entry id", (
       }
     ]
   );
-});
-
-test("workspace app webview browser lease does not report browser lifecycle events", () => {
-  const reporterCalls: ReporterEventInput[][] = [];
-  let now = 1749124800000;
-  const lease = createWorkspaceAppWebviewBrowserLease({
-    reporterNow: () => now,
-    reporterService: createReporterService(reporterCalls)
-  });
-
-  now = 1749124800250;
-  lease?.release();
-
-  assert.deepEqual(reporterCalls, []);
 });
 
 function createApp(

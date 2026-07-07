@@ -4,6 +4,7 @@ import {
   type CSSProperties,
   type KeyboardEvent,
   type PointerEvent,
+  type ReactNode,
   useCallback,
   useEffect,
   useLayoutEffect,
@@ -28,14 +29,10 @@ import {
   Wrench,
   X
 } from "lucide-react";
-import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger
-} from "../../app/renderer/components/ui/popover";
 import { AgentUsageMeter } from "./AgentUsageMeter";
 import { AccountMembershipBadge } from "./AccountMembershipBadge";
 import { openAgentEnvPanel } from "../../shared/agentEnv/agentEnvPanelStore";
+import { openWorkspaceSettingsPanel } from "../../shared/workspaceSettingsPanel/workspaceSettingsPanelStore";
 import {
   createDisabledPlaceholderAgentGUIProviderTarget,
   createLocalAgentGUIProviderTarget
@@ -64,6 +61,14 @@ import {
   SelectTrigger,
   NewWorkspaceLinedIcon,
   ConfirmationDialog,
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+  StatusDot,
   toastVariants,
   cn
 } from "@tutti-os/ui-system";
@@ -79,20 +84,10 @@ import {
   FolderOpenLinedIcon,
   MoreHorizontalIcon
 } from "@tutti-os/ui-system/icons";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger
-} from "../../app/renderer/components/ui/dropdown-menu";
 import { PinFilledIcon } from "../../app/renderer/components/icons/PinFilledIcon";
 import { PinLinedIcon } from "../../app/renderer/components/icons/PinLinedIcon";
 import { UnavailableChatIcon } from "../../app/renderer/components/icons/UnavailableChatIcon";
-import { EnvironmentLinedIcon } from "../../app/renderer/components/icons/EnvironmentLinedIcon";
-import {
-  StatusDot,
-  type StatusDotTone
-} from "../../app/renderer/components/StatusDot";
+import { SettingsLinedIcon } from "../../app/renderer/components/icons/SettingsLinedIcon";
 import { AgentConversationFlow } from "../../shared/agentConversation/components/AgentConversationFlow";
 import type { AgentConversationVM } from "../../shared/agentConversation/contracts/agentConversationVM";
 import type { AgentPromptContentBlock } from "../../shared/contracts/dto";
@@ -171,6 +166,8 @@ import { formatAgentMentionMarkdown } from "./agentRichText/agentFileMentionExte
 import { createRichTextMentionHref } from "@tutti-os/ui-rich-text/core";
 import { resolveAgentGuiSessionProviderIconUrl } from "../../agentGuiSessionProviderIconUrls";
 import { agentColorfulUrl } from "../../managedAgentIconAssets";
+
+type StatusDotTone = "neutral" | "green" | "blue" | "amber" | "red";
 
 /**
  * 把 @ 面板里的任务/应用 mention 解析为引用 picker 的定位目标(sourceId + 语义 params)。
@@ -388,6 +385,7 @@ export interface AgentGUIViewLabels {
   accountRewardToastDescription: string;
   accountRewardToastClose: string;
   agentConfig: string;
+  agentSettingsMenu: string;
   agentEnvSetup: string;
   noConversations: string;
   emptyProjectConversations: string;
@@ -573,6 +571,7 @@ export interface AgentGUIViewLabels {
 
 interface AgentGUINodeViewProps {
   viewModel: AgentGUINodeViewModel;
+  renderSidebarFooter?: AgentGUISidebarFooterRenderer;
   onLinkAction?: (action: WorkspaceLinkAction) => void;
   onHandoffConversation?: (input: {
     agentTargetId?: string | null;
@@ -1015,8 +1014,18 @@ function handoffProjectPathForConversation(
   );
 }
 
+export interface AgentGUISidebarFooterContext {
+  currentUserId?: string | null;
+  activeConversation: AgentGUINodeViewModel["activeConversation"];
+}
+
+export type AgentGUISidebarFooterRenderer = (
+  ctx: AgentGUISidebarFooterContext
+) => ReactNode;
+
 export function AgentGUINodeView({
   viewModel,
+  renderSidebarFooter,
   onLinkAction,
   onHandoffConversation,
   capabilityMenuState,
@@ -1256,6 +1265,9 @@ export function AgentGUINodeView({
     localComposerFocusRequestSequence === 0
       ? composerFocusRequestSequence
       : (composerFocusRequestSequence ?? 0) + localComposerFocusRequestSequence;
+  const requestComposerFocus = useCallback(() => {
+    setLocalComposerFocusRequestSequence((current) => current + 1);
+  }, []);
   const requestCreateConversation = useCallback(
     (options?: { projectPath?: string | null; source?: string }) => {
       if (previewMode) {
@@ -1272,11 +1284,12 @@ export function AgentGUINodeView({
       } else {
         createConversationAction({ source: source ?? "rail_toolbar" });
       }
-      setLocalComposerFocusRequestSequence((current) => current + 1);
+      requestComposerFocus();
     },
     [
       createConversationAction,
       previewMode,
+      requestComposerFocus,
       viewModel.composerSettings.selectedProjectPath
     ]
   );
@@ -1472,11 +1485,13 @@ export function AgentGUINodeView({
         null
       : null;
   const openAgentEnvSetup = useCallback(() => {
-    if (!effectiveRailConfigProvider) {
-      return;
-    }
+    // In the "All" filter there is no single rail provider; pass it through as
+    // null so the env panel host falls back to the default provider.
     openAgentEnvPanel({ provider: effectiveRailConfigProvider, focus: null });
   }, [effectiveRailConfigProvider]);
+  const openAgentSettings = useCallback(() => {
+    openWorkspaceSettingsPanel({ section: "agent" });
+  }, []);
   const conversationRailStoreState =
     useMemo<AgentGUIConversationRailStoreSnapshot>(
       () => ({
@@ -1506,6 +1521,7 @@ export function AgentGUINodeView({
         onSelectConversationFilterTarget:
           actions.selectConversationFilterTarget,
         onOpenAgentEnvSetup: openAgentEnvSetup,
+        onOpenAgentSettings: openAgentSettings,
         onAgentConfigMenuOpen,
         onRetryOpenclawGateway: retryOpenclawGateway,
         onSelectConversation: selectConversation,
@@ -1530,6 +1546,7 @@ export function AgentGUINodeView({
         labels,
         onAgentConfigMenuOpen,
         openAgentEnvSetup,
+        openAgentSettings,
         openConversationWindow,
         openProjectFiles,
         openclawGateway,
@@ -1620,7 +1637,19 @@ export function AgentGUINodeView({
                 actions.selectConversationFilterTarget
               }
               onUpdateConversationFilter={actions.updateConversationFilter}
+              onRequestComposerFocus={requestComposerFocus}
             />
+            {renderSidebarFooter ? (
+              <div
+                className={`${styles.providerRailFooter} nodrag tsh-desktop-no-drag`}
+                data-testid="agent-gui-sidebar-footer-slot"
+              >
+                {renderSidebarFooter({
+                  currentUserId: viewModel.currentUserId,
+                  activeConversation: viewModel.activeConversation
+                })}
+              </div>
+            ) : null}
           </aside>
         ) : null}
         <aside
@@ -3923,7 +3952,6 @@ const AgentGUIBottomDockPane = memo(function AgentGUIBottomDockPane({
           tokensUsed={goalTokensUsed ?? undefined}
           timeUsedSeconds={goalTimeUsedSeconds ?? undefined}
           labels={goalBannerLabels}
-          onEditObjective={(objective) => onGoalControl("set", objective)}
           onPauseGoal={
             goalPauseSupported ? () => onGoalControl("pause") : undefined
           }
@@ -3989,6 +4017,7 @@ interface AgentGUIConversationRailPaneProps {
     source?: string;
   }) => void;
   onOpenAgentEnvSetup: () => void;
+  onOpenAgentSettings: () => void;
   onAgentConfigMenuOpen?: () => void;
   onRetryOpenclawGateway: () => void;
   onSelectConversation: (agentSessionId: string) => void;
@@ -4089,6 +4118,7 @@ function agentGUIConversationRailStoreSnapshotsEqual(
       next.onSelectConversationFilterTarget &&
     current.onCreateConversation === next.onCreateConversation &&
     current.onOpenAgentEnvSetup === next.onOpenAgentEnvSetup &&
+    current.onOpenAgentSettings === next.onOpenAgentSettings &&
     current.onAgentConfigMenuOpen === next.onAgentConfigMenuOpen &&
     current.onRetryOpenclawGateway === next.onRetryOpenclawGateway &&
     current.onSelectConversation === next.onSelectConversation &&
@@ -4303,29 +4333,41 @@ export function updateConversationSectionsFromSummaries(
   let changed = false;
   const nextSections = previous.map((section) => {
     let sectionChanged = false;
-    const items = section.items.map((item) => {
-      seenIds.add(item.id);
-      const summary = summariesById.get(item.id);
-      if (!summary) {
-        return item;
-      }
-      const nextItem = {
-        ...summary,
-        project: item.project
-      };
-      if (conversationSummariesRenderEqual(item, nextItem)) {
-        return item;
-      }
-      sectionChanged = true;
-      return nextItem;
-    });
+    const summaryItems = summarySectionItemsById.get(section.id) ?? [];
+    const summaryIdsForSection = new Set(summaryItems.map((item) => item.id));
+    const items = section.items
+      .map((item) => {
+        seenIds.add(item.id);
+        const summary = summariesById.get(item.id);
+        if (!summary) {
+          return item;
+        }
+        const nextItem = section.project
+          ? {
+              ...summary,
+              project: section.project
+            }
+          : summary;
+        if (conversationSummariesRenderEqual(item, nextItem)) {
+          return item;
+        }
+        sectionChanged = true;
+        return nextItem;
+      })
+      .filter((item) => {
+        const summary = summariesById.get(item.id);
+        if (!summary || summaryIdsForSection.has(item.id)) {
+          return true;
+        }
+        sectionChanged = true;
+        return false;
+      });
     const nextSection = sectionChanged
       ? {
           ...section,
           items
         }
       : section;
-    const summaryItems = summarySectionItemsById.get(section.id) ?? [];
     if (section.kind === "pinned" || summaryItems.length === 0) {
       if (sectionChanged) {
         changed = true;
@@ -4334,14 +4376,16 @@ export function updateConversationSectionsFromSummaries(
     }
     const summaryIds = new Set(summaryItems.map((item) => item.id));
     const mergedItems = [
-      ...summaryItems.map((item) => ({
-        ...item,
-        project: section.project
-      })),
+      ...summaryItems.map((item) =>
+        section.project ? { ...item, project: section.project } : item
+      ),
       ...items.filter((item) => !summaryIds.has(item.id))
     ];
-    const stableItems = stabilizeConversationSectionItems(items, mergedItems);
-    if (stableItems === items) {
+    const stableItems = stabilizeConversationSectionItems(
+      section.items,
+      mergedItems
+    );
+    if (stableItems === section.items) {
       if (sectionChanged) {
         changed = true;
       }
@@ -4665,6 +4709,7 @@ interface AgentGUIProviderRailProps {
   providerTargets: AgentGUINodeViewModel["providerTargets"];
   providerTargetsLoading: AgentGUINodeViewModel["providerTargetsLoading"];
   comingSoonProviders: AgentGUINodeViewModel["comingSoonProviders"];
+  onRequestComposerFocus: () => void;
   onSelectConversationFilterTarget: AgentGUINodeViewProps["actions"]["selectConversationFilterTarget"];
   onUpdateConversationFilter: (
     filter: AgentGUINodeViewModel["conversationFilter"]
@@ -4679,6 +4724,7 @@ const AgentGUIProviderRail = memo(function AgentGUIProviderRail({
   providerTargets,
   providerTargetsLoading,
   comingSoonProviders,
+  onRequestComposerFocus,
   onSelectConversationFilterTarget,
   onUpdateConversationFilter
 }: AgentGUIProviderRailProps): React.JSX.Element {
@@ -4741,8 +4787,10 @@ const AgentGUIProviderRail = memo(function AgentGUIProviderRail({
         });
       }
     }
+    onRequestComposerFocus();
   }, [
     onSelectConversationFilterTarget,
+    onRequestComposerFocus,
     onUpdateConversationFilter,
     railProviderTargets,
     selectedProviderTargetIsPlaceholder
@@ -4753,8 +4801,9 @@ const AgentGUIProviderRail = memo(function AgentGUIProviderRail({
         provider: target.provider,
         providerTargetId: target.targetId
       });
+      onRequestComposerFocus();
     },
-    [onSelectConversationFilterTarget]
+    [onRequestComposerFocus, onSelectConversationFilterTarget]
   );
 
   return (
@@ -5485,12 +5534,13 @@ const AgentGUIConversationRailPane = memo(
     createConversationDisabled,
     openclawGateway,
     isCollapsed,
-    railConfigProvider,
     slashStatusLimits,
+    selectedProviderTarget,
     conversationFilter,
     sectionAgentTargetFallbackId,
     onCreateConversation,
     onOpenAgentEnvSetup,
+    onOpenAgentSettings,
     onAgentConfigMenuOpen,
     onRetryOpenclawGateway,
     onSelectConversation,
@@ -5823,65 +5873,84 @@ const AgentGUIConversationRailPane = memo(
             })
           )}
         </ScrollArea>
-        {railConfigProvider ? (
+        {selectedProviderTarget?.disabled === true ||
+        conversationFilter.kind === "all" ? null : (
           <div className="shrink-0 px-2 py-1.5">
-            {slashStatusLimits.length > 0 ? (
-              <Popover
-                onOpenChange={(open) => {
-                  // Refresh the underlying probe on open, the same way the
-                  // window-title info tooltip does (see AgentGUINode's
-                  // handleAgentProbeInfoOpen) — otherwise a stale/empty fetch
-                  // from before a provider finished installing sits here until
-                  // something unrelated happens to refresh it.
-                  if (open) {
-                    onAgentConfigMenuOpen?.();
-                  }
-                }}
-              >
-                <PopoverTrigger asChild>
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    className="flex w-full items-center justify-start gap-2 text-[13px] text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
-                    title={labels.agentConfig}
-                    disabled={previewMode}
-                  >
-                    <EnvironmentLinedIcon
-                      aria-hidden="true"
-                      width={16}
-                      height={16}
-                    />
-                    <span>{labels.agentConfig}</span>
-                  </Button>
-                </PopoverTrigger>
-                <PopoverContent
-                  side="top"
-                  align="start"
-                  className="w-[300px] max-w-[calc(100vw-32px)] gap-3 p-1 text-xs"
-                  data-testid="agent-gui-config-menu"
+            <Popover
+              onOpenChange={(open) => {
+                // Refresh the underlying probe on open, the same way the
+                // window-title info tooltip does (see AgentGUINode's
+                // handleAgentProbeInfoOpen) — otherwise a stale/empty fetch
+                // from before a provider finished installing sits here until
+                // something unrelated happens to refresh it.
+                if (open) {
+                  onAgentConfigMenuOpen?.();
+                }
+              }}
+            >
+              <PopoverTrigger asChild>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  className="flex w-full items-center justify-start gap-2 text-[13px] text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
+                  title={labels.agentConfig}
+                  disabled={previewMode}
                 >
-                  <div className="flex min-w-0 flex-col gap-3">
-                    <div className="flex min-w-0 flex-col gap-2 p-2">
-                      <span className="text-[13px] font-semibold leading-4">
-                        {labels.slashStatusLimits}
-                      </span>
-                      {slashStatusLimits.map((limit) => (
-                        <AgentUsageMeter
-                          key={limit.id}
-                          label={limit.label}
-                          value={`${limit.value}${limit.reset ? ` (${limit.reset})` : ""}`}
-                          percent={
-                            typeof limit.percentRemaining === "number" &&
-                            Number.isFinite(limit.percentRemaining)
-                              ? limit.percentRemaining
-                              : null
-                          }
-                        />
-                      ))}
-                    </div>
-                    <div className="px-2">
-                      <span className="block h-px bg-[var(--border-1)]" />
-                    </div>
+                  <SettingsLinedIcon
+                    aria-hidden="true"
+                    width={16}
+                    height={16}
+                  />
+                  <span>{labels.agentConfig}</span>
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent
+                side="top"
+                align="start"
+                className="w-[300px] max-w-[calc(100vw-32px)] gap-3 p-1 text-xs"
+                data-testid="agent-gui-config-menu"
+              >
+                <div className="flex min-w-0 flex-col gap-3">
+                  {slashStatusLimits.length > 0 ? (
+                    <>
+                      <div className="flex min-w-0 flex-col gap-2 p-2">
+                        <span className="text-[13px] font-semibold leading-4">
+                          {labels.slashStatusLimits}
+                        </span>
+                        {slashStatusLimits.map((limit) => (
+                          <AgentUsageMeter
+                            key={limit.id}
+                            label={limit.label}
+                            value={`${limit.value}${limit.reset ? ` (${limit.reset})` : ""}`}
+                            percent={
+                              typeof limit.percentRemaining === "number" &&
+                              Number.isFinite(limit.percentRemaining)
+                                ? limit.percentRemaining
+                                : null
+                            }
+                          />
+                        ))}
+                      </div>
+                      <div className="px-2">
+                        <span className="block h-px bg-[var(--border-1)]" />
+                      </div>
+                    </>
+                  ) : null}
+                  <div className="flex min-w-0 flex-col gap-1">
+                    <button
+                      type="button"
+                      data-testid="agent-gui-config-settings"
+                      className="nodrag flex h-7 w-full items-center gap-2 rounded-[6px] px-2 text-[13px] text-[var(--text-primary)] transition-colors hover:bg-[var(--transparency-hover)] hover:text-[var(--text-primary)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--border-focus)] disabled:text-[var(--text-tertiary)] [-webkit-app-region:no-drag]"
+                      disabled={previewMode}
+                      onClick={() => onOpenAgentSettings()}
+                    >
+                      <SettingsLinedIcon
+                        aria-hidden="true"
+                        width={16}
+                        height={16}
+                      />
+                      <span>{labels.agentSettingsMenu}</span>
+                    </button>
                     <button
                       type="button"
                       data-testid="agent-gui-config-env-setup"
@@ -5893,27 +5962,11 @@ const AgentGUIConversationRailPane = memo(
                       <span>{labels.agentEnvSetup}</span>
                     </button>
                   </div>
-                </PopoverContent>
-              </Popover>
-            ) : (
-              <Button
-                type="button"
-                variant="ghost"
-                className="flex w-full items-center justify-start gap-2 text-[13px] text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
-                title={labels.agentEnvSetup}
-                disabled={previewMode}
-                onClick={() => onOpenAgentEnvSetup()}
-              >
-                <EnvironmentLinedIcon
-                  aria-hidden="true"
-                  width={16}
-                  height={16}
-                />
-                <span>{labels.agentEnvSetup}</span>
-              </Button>
-            )}
+                </div>
+              </PopoverContent>
+            </Popover>
           </div>
-        ) : null}
+        )}
         {footer ? <div className="shrink-0 pb-2">{footer}</div> : null}
         <ConfirmationDialog
           cancelLabel={labels.cancel}

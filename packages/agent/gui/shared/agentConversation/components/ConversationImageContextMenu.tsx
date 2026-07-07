@@ -11,7 +11,7 @@ import {
   ContextMenuContent,
   ContextMenuItem,
   ContextMenuTrigger
-} from "../../../app/renderer/components/ui/context-menu";
+} from "@tutti-os/ui-system";
 import { useOptionalAgentHostApi } from "../../../agentActivityHost";
 import { copyImageToClipboard } from "../lib/copyImageToClipboard";
 import { translate } from "../../../i18n/index";

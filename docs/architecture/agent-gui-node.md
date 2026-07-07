@@ -209,6 +209,16 @@ Provider-scoped rail footer affordances, such as usage limits and environment
 setup, follow the rail's active provider filter target in multi-provider scope;
 when the rail filter is `All`, they should stay hidden because there is no
 single provider target to inspect.
+AgentGuiNode may also receive a neutral `renderSidebarFooter` slot for host or
+product affordances that belong at the bottom of the far-left provider/sidebar
+rail, not below the conversation-list configuration footer. This slot must stay
+outside the provider tile scroll area so the footer keeps a fixed bottom
+placeholder while overflowing provider tiles scroll above it with a bottom
+fade. It must also stay outside the controller view model and conversation rail
+valtio store: pass it as a direct function prop and give it only existing
+neutral context such as `currentUserId` and `activeConversation`. Product
+concepts such as sharing, ownership, availability, quota, or authorization live
+entirely inside the React node supplied by the host.
 Unified empty-home provider readiness is a host-projected, provider-scoped gate,
 not a durable session rule. Desktop may subscribe to its
 `agentProviderStatusService` and pass a narrow readiness map plus install,
@@ -629,10 +639,11 @@ When an existing conversation is busy, normal composer submits may be captured
 as local queued prompts so the next turn can run after the current one settles.
 Composer guidance is different: `Cmd+Enter` on macOS, or `Ctrl+Enter` on other
 platforms, sends the draft as active-turn guidance and bypasses the local queue.
-For Codex app-server sessions this reaches `RuntimeController.Exec` while an
-active provider turn is registered, so the adapter sends `turn/steer` and emits
-a user message with `steered: true`. `Shift+Enter` remains the multiline
-composer shortcut and must not submit either a normal prompt or guidance.
+The submit request sets the daemon `guidance` flag so runtime handling can
+dispatch to provider-specific active-turn guidance without opening a normal next
+turn. Codex app-server maps this to `turn/steer`; Claude SDK maps it through the
+sidecar live prompt queue. `Shift+Enter` remains the multiline composer shortcut
+and must not submit either a normal prompt or guidance.
 
 The submit target is not just a render detail. A detail-page composer must not
 fall back to `startConversation` because a UI-local active conversation ref is
@@ -748,6 +759,18 @@ Daemon terminal turn reports must settle the tuple atomically: clear
 Message Center and AgentGUI should keep AgentActivityRuntime as the source of
 truth instead of guessing that a completed turn with stale active-turn fields is
 safe to treat as finished.
+
+`submitAvailability` on the wire is a daemon-derived value, not independent
+state. Consumers that make decisions (queued-prompt drain, composer busy)
+must derive it locally with `deriveSubmitAvailability` from
+`@tutti-os/agent-activity-core` (turn lifecycle + `runtimeContext.
+backgroundAgents`, mirroring `submitAvailabilityForAuthoritySession` in
+`packages/agent/daemon/runtime/controller.go`), so a stale wire copy can never
+contradict the lifecycle. The wire value remains for display and for records
+without a lifecycle (non-migrated providers keep their status-token
+fallbacks). The Go/TS derivations are pinned to each other by the parity
+tables in `packages/agent/daemon/runtime/submit_availability_parity_test.go`
+and `packages/agent/activity-core/src/selectors.test.ts`.
 When a runtime snapshot regresses after a terminal turn, first inspect
 `agent.activity.reconcile.trace` for the exact source that upserted the older
 session state. Reconcile fixes should target that owner and ordering path; do
@@ -1048,6 +1071,15 @@ with a newer settled/available activity update, and blocking that newer version
 would strand the queued prompt until another unrelated activity event. The
 retry block still prevents immediately re-claiming against the exact same
 pre-send ready state.
+
+A user stop is an intent, not just a turn cancel: `interruptCurrentTurn`
+suspends the session's prompt queue (`suspendReason: "user_stop"`) before
+issuing the cancel, so the drainer must not fire the next queued prompt the
+moment the session becomes available. Only an explicit user send lifts the
+hold — composer submit calls `resumeQueue`, and `promotePrompt` ("send now"
+on a queued item) clears the suspension in the queue core. The drainer's own
+send-next interrupt path never suspends: intent is captured at its source,
+never inferred from the cancel outcome.
 
 Preview-mode AgentGUI surfaces are read-only for this runtime: they may render an
 existing queue if injected into the same context, but they must not enqueue,

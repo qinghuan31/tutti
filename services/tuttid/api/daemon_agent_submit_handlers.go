@@ -53,6 +53,7 @@ func (api DaemonAPI) CreateWorkspaceAgentSession(ctx context.Context, request tu
 		BrowserUse:             request.Body.BrowserUse,
 		Provider:               provider,
 		ReasoningEffort:        request.Body.ReasoningEffort,
+		RuntimeContext:         mapValue(request.Body.RuntimeContext),
 		Speed:                  request.Body.Speed,
 		Title:                  request.Body.Title,
 		Visible:                request.Body.Visible,
@@ -91,6 +92,7 @@ func (api DaemonAPI) SendWorkspaceAgentSessionInput(ctx context.Context, request
 	result, err := api.AgentSessionService.SendInput(ctx, string(request.WorkspaceID), string(request.AgentSessionID), agentservice.SendInput{
 		Content:       agentPromptContentFromGenerated(request.Body.Content),
 		DisplayPrompt: stringPtrValue(request.Body.DisplayPrompt),
+		Guidance:      request.Body.Guidance != nil && *request.Body.Guidance,
 		Metadata:      metadata,
 	})
 	if err != nil {

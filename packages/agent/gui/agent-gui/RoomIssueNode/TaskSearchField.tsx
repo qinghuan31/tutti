@@ -1,7 +1,7 @@
 import { useComposedInputValue } from "@tutti-os/ui-react-hooks";
+import { Input } from "@tutti-os/ui-system";
 import { type KeyboardEvent as ReactKeyboardEvent } from "react";
 import { CloseLinedIcon } from "../../app/renderer/components/icons/CloseLinedIcon";
-import { Input } from "../../app/renderer/components/ui/input";
 import { useTranslation } from "../../i18n/index";
 
 import styles from "./RoomIssueNode.styles";

@@ -57,11 +57,11 @@ describe("managed agent icon assets", () => {
     expect(agentGuiDockIconUrls.openclaw).toBe(openclawRoundedUrl);
   });
 
-  it("uses Cursor colorful artwork only for the provider rail", () => {
+  it("uses Cursor colorful artwork for rail and shared rounded avatars", () => {
     expect(MANAGED_AGENT_PROVIDER_RAIL_ICON_URLS.cursor).toBe(
       cursorColorfulUrl
     );
     expect(MANAGED_AGENT_ICON_URLS.cursor).not.toBe(cursorColorfulUrl);
-    expect(MANAGED_AGENT_ICON_ROUNDED_URLS.cursor).not.toBe(cursorColorfulUrl);
+    expect(MANAGED_AGENT_ICON_ROUNDED_URLS.cursor).toBe(cursorColorfulUrl);
   });
 });

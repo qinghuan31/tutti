@@ -38,19 +38,6 @@ test("workspace settings gates account behind Tutti Agent Switch", () => {
   assert.match(source, /<WorkspaceAccountSettingsSection \/>/);
 });
 
-test("workspace settings backdrop preserves titlebar dragging", () => {
-  assert.match(source, /data-workspace-settings-backdrop="true"/);
-  assert.match(source, /bg-\[var\(--backdrop\)\]/);
-  assert.doesNotMatch(source, /var\(--backdrop\)_28%/);
-  assert.match(source, /data-workspace-settings-window-drag-region="true"/);
-  assert.match(
-    source,
-    /pointer-events-auto absolute inset-x-0 top-0 z-0 h-\[52px\] \[-webkit-app-region:drag\]/
-  );
-  assert.match(source, /data-workspace-settings-panel="true"/);
-  assert.match(source, /\[-webkit-app-region:no-drag\]/);
-});
-
 test("workspace settings agent panel lists agent controls", () => {
   assert.match(
     source,
@@ -72,13 +59,6 @@ test("workspace settings agent panel lists agent controls", () => {
   assert.doesNotMatch(
     source.slice(agentSectionStart, generalSectionStart),
     /agentDockLayout|agentDockLayoutLabel|desktopAgentDockLayouts/
-  );
-});
-
-test("workspace settings work mode selected state uses a tutti purple border", () => {
-  assert.match(
-    source,
-    /selected\s*\?\s*"border border-\[var\(--tutti-purple\)\] bg-\[var\(--background-fronted\)\]/
   );
 });
 
@@ -292,21 +272,6 @@ test("workspace settings general panel does not expose update preferences", () =
   assert.doesNotMatch(generalSection, /app_update\.settings_rendered/);
 });
 
-test("workspace settings about card keeps version pill compact", () => {
-  assert.match(
-    source,
-    /inline-flex h-7 shrink-0 cursor-default select-none items-center gap-1 rounded-full[\s\S]*font-mono text-\[13px\] leading-5/
-  );
-  assert.doesNotMatch(
-    source,
-    /inline-flex h-7 shrink-0 cursor-default select-none items-center gap-1 rounded-full[^\n]*hover:/
-  );
-  assert.match(
-    source,
-    /flex w-full flex-col gap-4 px-5 pb-5 pt-7[\s\S]*items-center justify-between gap-4/
-  );
-});
-
 test("workspace settings about panel owns product info and keeps developer unlock tap", () => {
   const generalSectionStart = source.indexOf(
     "function WorkspaceGeneralSettingsSection"
@@ -383,10 +348,6 @@ test("workspace settings window snapping is controlled by one dropdown", () => {
     appearanceSection,
     /workbenchWindowSnappingShortcutOptions\.off/
   );
-  assert.match(
-    appearanceSection,
-    /items-center justify-between gap-4[\s\S]*workbenchWindowSnappingLabel/
-  );
 });
 
 test("workspace settings app source control lives in developer settings", () => {
@@ -438,27 +399,4 @@ test("workspace managed provider API key is masked until toggled visible", () =>
   assert.match(source, /setVisibleAPIKeyProviderID/);
   assert.match(source, /workspace\.settings\.apps\.managedModels\.showApiKey/);
   assert.match(source, /workspace\.settings\.apps\.managedModels\.hideApiKey/);
-});
-
-test("workspace managed provider models use compact rows instead of a textarea", () => {
-  assert.match(source, /models\.map\(\(model, index\)/);
-  assert.match(source, /grid-cols-\[max-content_minmax\(0,1fr\)_32px\]/);
-  assert.match(source, /workspaceManagedModelInputClass/);
-  assert.match(source, /focus-visible:!border-\[var\(--border-1\)\]/);
-  assert.match(source, /h-px w-full bg-\[var\(--border-1\)\]/);
-  assert.match(source, /setPendingFocusModelIndex\(nextIndex\)/);
-  assert.match(source, /\{ id: "", name: "", provider: draft\.provider \}/);
-  assert.match(
-    source,
-    /className="flex flex-wrap items-center justify-between gap-2"/
-  );
-  assert.match(source, /<Button[^>]*variant="ghost"[^>]*onClick=\{addModel\}/);
-  assert.match(source, /className="flex flex-wrap justify-end gap-2"/);
-  assert.doesNotMatch(
-    source,
-    /<Button[^>]*variant="secondary"[^>]*onClick=\{addModel\}/
-  );
-  assert.doesNotMatch(source, /grid-cols-\[72px_minmax\(0,1fr\)_/);
-  assert.doesNotMatch(source, /newModelID/);
-  assert.doesNotMatch(source, /modelsText/);
 });

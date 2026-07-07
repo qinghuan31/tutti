@@ -37,6 +37,7 @@ type Service struct {
 	claudeStartupLock             *claudeStartupSerializer
 	liveModelDiscoveryMu          sync.Mutex
 	liveModelDiscoveryAttempted   map[string]struct{}
+	liveModelInvalidatedAtUnixMS  map[string]int64
 }
 
 type StaleTurnResumeReconciler interface {
@@ -74,6 +75,7 @@ type ComposerCapabilityLister interface {
 
 type Session struct {
 	ID                 string
+	UserID             string
 	AgentTargetID      string
 	Provider           string
 	ProviderSessionID  string
@@ -149,6 +151,7 @@ type PersistedSession struct {
 	ID                string
 	WorkspaceID       string
 	Origin            string
+	UserID            string
 	AgentTargetID     string
 	Provider          string
 	ProviderSessionID string
@@ -219,6 +222,7 @@ type SessionPinUpdater interface {
 type RuntimeSession struct {
 	ID                 string
 	WorkspaceID        string
+	UserID             string
 	AgentTargetID      string
 	Provider           string
 	ProviderSessionID  string
@@ -297,6 +301,7 @@ type RuntimeExecInput struct {
 	Content        []PromptContentBlock
 	DisplayPrompt  string
 	Metadata       map[string]any
+	Guidance       bool
 }
 
 type RuntimeExecResult struct {
@@ -407,6 +412,7 @@ type CreateSessionInput struct {
 	ComputerUse            *bool
 	ProviderTargetRef      map[string]any
 	ReasoningEffort        *string
+	RuntimeContext         map[string]any
 	Speed                  *string
 	ConversationDetailMode string
 	Visible                *bool
@@ -428,6 +434,7 @@ type SendInput struct {
 	Content       []PromptContentBlock
 	DisplayPrompt string
 	Metadata      map[string]any
+	Guidance      bool
 }
 
 type SendInputResult struct {

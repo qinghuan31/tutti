@@ -1,17 +1,22 @@
 import { describe, expect, it } from "vitest";
 import {
+  cursorColorfulUrl,
   cursorFlatFilledIconUrl,
   resolveAgentGuiSessionProviderIconUrl
 } from "./agentGuiSessionProviderIconUrls.ts";
 
 describe("resolveAgentGuiSessionProviderIconUrl", () => {
-  it("returns the flat filled cursor icon for cursor sessions", () => {
+  it("returns the colorful cursor icon for cursor sessions", () => {
     expect(resolveAgentGuiSessionProviderIconUrl("cursor")).toBe(
-      cursorFlatFilledIconUrl
+      cursorColorfulUrl
     );
   });
 
-  it("returns null for providers without a flat filled session icon", () => {
+  it("keeps the legacy flat filled cursor icon available for older callers", () => {
+    expect(cursorFlatFilledIconUrl).toEqual(expect.any(String));
+  });
+
+  it("returns null for providers without a session icon override", () => {
     expect(resolveAgentGuiSessionProviderIconUrl("hermes")).toBeNull();
   });
 });
