@@ -144,6 +144,66 @@ test("DesktopPreferencesService keeps in-memory defaults when preferences are no
   service.dispose();
 });
 
+test("DesktopPreferencesService ignores persisted legacy provider defaults when publishing new writes", async () => {
+  const client = createDesktopPreferencesClient({
+    getDesktopPreferences: async () => ({
+      initialized: true,
+      preferences: {
+        agentComposerDefaultsByProvider: {
+          codex: {
+            model: "gpt-5"
+          }
+        },
+        agentComposerDefaultsByAgentTarget: {},
+        agentGuiConversationRailCollapsedByProvider: {},
+        agentConversationDetailMode: "coding",
+        agentDockLayout: "unified",
+        appCatalogChannel: "production",
+        browserUseConnectionMode: "isolated",
+        defaultAgentProvider: "codex",
+        dockIconStyle: "default",
+        dockPlacement: "bottom",
+        fileDefaultOpenersByExtension: { html: "defaultBrowser" },
+        locale: "en",
+        minimizeAnimation: "scale",
+        sleepPreventionMode: "never",
+        showAppDeveloperSources: false,
+        enableCursorAgent: false,
+        enableOpenCodeAgent: false,
+        themeSource: "system",
+        updateChannel: "stable",
+        updatePolicy: "prompt"
+      }
+    })
+  });
+
+  const service = new DesktopPreferencesService({
+    applyLocale() {},
+    applyTheme() {},
+    client,
+    initialLocale: "en",
+    initialTheme: {
+      appearance: "light",
+      source: "system"
+    },
+    resolveTheme
+  });
+
+  await settle();
+
+  assert.deepEqual(service.store.agentComposerDefaultsByProvider, {});
+
+  const savedLocalePromise = service.setLocale("zh-CN");
+  assert.deepEqual(
+    client.updatedRequests.at(-1)?.agentComposerDefaultsByProvider,
+    {}
+  );
+  client.emitDesktopPreferencesUpdated(client.updatedRequests.at(-1)!);
+
+  await savedLocalePromise;
+  service.dispose();
+});
+
 test("DesktopPreferencesService publishes locale writes and converges on the authoritative event", async () => {
   const appliedLocales: DesktopLocale[] = [];
   const client = createDesktopPreferencesClient({});

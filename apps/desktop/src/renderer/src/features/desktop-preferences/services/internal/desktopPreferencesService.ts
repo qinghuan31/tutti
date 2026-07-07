@@ -24,7 +24,6 @@ import {
   mergeDesktopAgentComposerDefaultsByAgentTarget,
   mergeDesktopAgentGuiConversationRailCollapsedByProvider,
   normalizeDesktopAgentComposerDefaultsByAgentTarget,
-  normalizeDesktopAgentComposerDefaultsByProvider,
   normalizeDesktopAgentConversationDetailMode,
   normalizeDesktopFileDefaultOpenersByExtension,
   normalizeDesktopAgentGuiConversationRailCollapsedByProvider,
@@ -716,7 +715,6 @@ export class DesktopPreferencesService implements IDesktopPreferencesService {
   }
 
   private applyPreferences(preferences: {
-    agentComposerDefaultsByProvider?: DesktopAgentComposerDefaultsByProvider;
     agentComposerDefaultsByAgentTarget?: DesktopAgentComposerDefaultsByAgentTarget;
     agentGuiConversationRailCollapsedByProvider?: DesktopAgentGuiConversationRailCollapsedByProvider;
     agentConversationDetailMode?: DesktopAgentConversationDetailMode;
@@ -737,10 +735,6 @@ export class DesktopPreferencesService implements IDesktopPreferencesService {
     updatePolicy: DesktopUpdatePolicy;
     workbenchWindowSnapping?: DesktopWorkbenchWindowSnapping;
   }): void {
-    this.store.agentComposerDefaultsByProvider =
-      normalizeDesktopAgentComposerDefaultsByProvider(
-        preferences.agentComposerDefaultsByProvider
-      );
     this.store.agentComposerDefaultsByAgentTarget =
       normalizeDesktopAgentComposerDefaultsByAgentTarget(
         preferences.agentComposerDefaultsByAgentTarget
@@ -787,7 +781,6 @@ export class DesktopPreferencesService implements IDesktopPreferencesService {
 
   private currentPreferences(
     overrides: Partial<{
-      agentComposerDefaultsByProvider: DesktopAgentComposerDefaultsByProvider;
       agentComposerDefaultsByAgentTarget: DesktopAgentComposerDefaultsByAgentTarget;
       agentGuiConversationRailCollapsedByProvider: DesktopAgentGuiConversationRailCollapsedByProvider;
       agentConversationDetailMode: DesktopAgentConversationDetailMode;
@@ -837,11 +830,9 @@ export class DesktopPreferencesService implements IDesktopPreferencesService {
       overrides.workbenchWindowSnapping ?? this.store.workbenchWindowSnapping
     );
     return {
-      agentComposerDefaultsByProvider:
-        normalizeDesktopAgentComposerDefaultsByProvider(
-          overrides.agentComposerDefaultsByProvider ??
-            this.store.agentComposerDefaultsByProvider
-        ),
+      // Keep the required wire-contract field, but stop round-tripping the
+      // frozen legacy provider-keyed defaults through renderer state.
+      agentComposerDefaultsByProvider: {},
       agentComposerDefaultsByAgentTarget:
         normalizeDesktopAgentComposerDefaultsByAgentTarget(
           overrides.agentComposerDefaultsByAgentTarget ??
