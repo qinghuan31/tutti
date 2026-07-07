@@ -4751,6 +4751,7 @@ aside.workspace-agents-status-panel
 }
 
 .agent-gui-node__detail-panel {
+  position: relative;
   display: flex;
   height: 100%;
   min-width: 0;
@@ -4765,6 +4766,37 @@ aside.workspace-agents-status-panel
   min-height: 0;
   border-radius: inherit;
   overflow: hidden;
+}
+
+.agent-gui-node__composer-file-drop-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 40;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  border-radius: inherit;
+  border: 2px dashed color-mix(in srgb, var(--tutti-purple) 70%, transparent);
+  background: color-mix(
+    in srgb,
+    var(--tutti-purple) 12%,
+    var(--agent-gui-session-flow-background)
+  );
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 150ms ease-out;
+}
+
+.agent-gui-node__composer-file-drop-overlay--active {
+  opacity: 1;
+}
+
+.agent-gui-node__composer-file-drop-overlay-card {
+  color: var(--text-primary);
+  font-size: 15px;
+  font-weight: 500;
+  line-height: 1.4;
+  text-align: center;
 }
 
 .agent-gui-node__rail {

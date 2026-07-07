@@ -1498,6 +1498,7 @@ export const AgentGUINode = memo(function AgentGUINode({
       fileMentionEmpty: t("agentHost.agentGui.fileMentionEmpty"),
       fileMentionError: t("agentHost.agentGui.fileMentionError"),
       fileMentionTabHint: t("agentHost.agentGui.fileMentionTabHint"),
+      fileDropHint: t("agentHost.agentGui.fileDropHint"),
       mentionPalette: t("agentHost.agentGui.mentionPalette"),
       removeMention: t("common.remove"),
       addReference: t("agentHost.agentGui.addReference"),

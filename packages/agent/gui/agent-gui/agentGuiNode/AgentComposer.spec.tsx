@@ -5063,6 +5063,7 @@ function createLabels(): Parameters<typeof AgentComposer>[0]["labels"] {
     fileMentionEmpty: "空",
     fileMentionError: "错误",
     fileMentionTabHint: "Tab 提示",
+    fileDropHint: "拖放文件以添加到对话",
     mentionPalette: "提及上下文",
     removeMention: "移除引用",
     addReference: "添加引用",

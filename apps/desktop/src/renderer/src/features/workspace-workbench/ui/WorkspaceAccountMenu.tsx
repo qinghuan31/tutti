@@ -256,7 +256,7 @@ const WorkspaceAccountMenuView = memo(function WorkspaceAccountMenuView({
           size="sm"
           aria-label={labels.signIn}
           onClick={accountMenuState.onLogin}
-          className="rounded-[4px] px-2.5 text-[12px] font-semibold text-[var(--workbench-chrome-foreground)] [-webkit-app-region:no-drag]"
+          className="rounded-[4px] px-2.5 text-[13px] font-semibold text-[var(--workbench-chrome-foreground)] [-webkit-app-region:no-drag]"
           data-account-signin-trigger="true"
         >
           {labels.signIn}

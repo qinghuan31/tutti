@@ -877,6 +877,7 @@ export const zhCN = {
       fileMentionEmpty: "根据你输入的内容搜索工作区文件",
       fileMentionError: "无法搜索工作区文件。",
       fileMentionTabHint: "Tab 切换分类 ｜ ←→ 进入/返回文件夹 ｜ ↑↓ 切换选中",
+      fileDropHint: "拖放文件以添加到会话",
       mentionPalette: "提及上下文",
       addReference: "添加引用",
       addContent: "添加文件等内容",

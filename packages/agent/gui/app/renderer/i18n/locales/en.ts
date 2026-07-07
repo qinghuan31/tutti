@@ -947,6 +947,7 @@ export const en = {
       fileMentionError: "Unable to search Files.",
       fileMentionTabHint:
         "Tab switch category | ←→ enter/leave folder | ↑↓ switch selection",
+      fileDropHint: "Drop files to add them to the session",
       mentionPalette: "Mention context",
       addReference: "Add reference",
       addContent: "Add files and more",

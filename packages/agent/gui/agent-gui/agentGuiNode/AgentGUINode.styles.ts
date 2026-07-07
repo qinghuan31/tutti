@@ -11,6 +11,11 @@ const styles = {
   composerFooterRight: "agent-gui-node__composer-footer-right",
   composerHero: "agent-gui-node__composer-hero",
   composerFloatingPrompt: "agent-gui-node__composer-floating-prompt",
+  composerFileDropOverlay: "agent-gui-node__composer-file-drop-overlay",
+  composerFileDropOverlayActive:
+    "agent-gui-node__composer-file-drop-overlay--active",
+  composerFileDropOverlayCard:
+    "agent-gui-node__composer-file-drop-overlay-card",
   composerHandoffIcon: "agent-gui-node__composer-handoff-icon",
   composerHandoffAnimatedIcon: "agent-gui-node__composer-handoff-icon-animated",
   composerHandoffMenuContent: "agent-gui-node__composer-handoff-menu-content",

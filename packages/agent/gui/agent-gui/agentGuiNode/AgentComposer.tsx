@@ -401,6 +401,7 @@ export interface AgentComposerProps {
     fileMentionEmpty: string;
     fileMentionError: string;
     fileMentionTabHint: string;
+    fileDropHint: string;
     mentionPalette: string;
     removeMention: string;
     addReference: string;
@@ -863,6 +864,23 @@ function hasInlineOverflow(element: HTMLElement | null): boolean {
   }
 
   return element.scrollWidth > element.clientWidth + 1;
+}
+
+function isPointInsideElement(
+  element: HTMLElement | null,
+  clientX: number,
+  clientY: number
+): boolean {
+  if (!element) {
+    return false;
+  }
+  const bounds = element.getBoundingClientRect();
+  return (
+    clientX >= bounds.left &&
+    clientX <= bounds.right &&
+    clientY >= bounds.top &&
+    clientY <= bounds.bottom
+  );
 }
 
 function AgentComposerMaskIcon({
@@ -2691,6 +2709,9 @@ export function AgentComposer({
     },
     [addDraftImages, scheduleComposerFocus]
   );
+  const [fileDropOverlayHost, setFileDropOverlayHost] =
+    useState<HTMLElement | null>(null);
+  const [fileDropOverlayActive, setFileDropOverlayActive] = useState(false);
   useEffect(() => {
     const composer = composerRef.current;
     const dropTarget = composer?.closest("#agent-gui-detail") ?? composer;
@@ -2698,9 +2719,16 @@ export function AgentComposer({
       return undefined;
     }
     let isDisposed = false;
+    setFileDropOverlayHost(dropTarget as HTMLElement);
 
     const isDragEvent = (event: Event): event is DragEvent =>
       "dataTransfer" in event;
+
+    const clearDropOverlay = (): void => {
+      if (!isDisposed) {
+        setFileDropOverlayActive(false);
+      }
+    };
 
     const containsEventTarget = (event: DragEvent): boolean => {
       const target = event.target;
@@ -2764,10 +2792,14 @@ export function AgentComposer({
         drag.hasImageFiles &&
         !promptImagesSupported
       ) {
+        clearDropOverlay();
         return;
       }
       if (event.dataTransfer) {
         event.dataTransfer.dropEffect = "copy";
+      }
+      if (!isDisposed) {
+        setFileDropOverlayActive(true);
       }
     };
 
@@ -2781,6 +2813,7 @@ export function AgentComposer({
       }
       event.preventDefault();
       event.stopPropagation();
+      clearDropOverlay();
       if (drop.regularFiles.length > 0) {
         editorHandleRef.current?.focusAtEnd();
         void applyDroppedFileReferences(drop.regularFiles).then(() => {
@@ -2805,12 +2838,63 @@ export function AgentComposer({
       });
     };
 
+    // `dragleave` is unreliable across nested children, so mirror the file
+    // manager and clear the overlay from a capture-phase document listener
+    // whenever the pointer leaves the drop target's bounds.
+    const handleDocumentDragOver: EventListener = (event): void => {
+      if (!isDragEvent(event)) {
+        return;
+      }
+      if (
+        isPointInsideElement(
+          dropTarget as HTMLElement,
+          event.clientX,
+          event.clientY
+        )
+      ) {
+        return;
+      }
+      clearDropOverlay();
+    };
+
+    // Once the drag leaves the window entirely, `dragover` stops firing (so the
+    // handler above can never fire) and external file drags never dispatch a
+    // renderer-side `dragend` — leaving the overlay stuck. A `dragleave` whose
+    // pointer sits at/outside the viewport edge (or has no relatedTarget) means
+    // the cursor left the window, so clear the overlay then.
+    const handleDocumentDragLeave: EventListener = (event): void => {
+      if (!isDragEvent(event)) {
+        return;
+      }
+      const leftWindow =
+        event.relatedTarget === null ||
+        event.clientX <= 0 ||
+        event.clientY <= 0 ||
+        event.clientX >= window.innerWidth ||
+        event.clientY >= window.innerHeight;
+      if (leftWindow) {
+        clearDropOverlay();
+      }
+    };
+
     dropTarget.addEventListener("dragover", handleDragOver);
     dropTarget.addEventListener("drop", handleDrop);
+    document.addEventListener("dragover", handleDocumentDragOver, true);
+    document.addEventListener("dragleave", handleDocumentDragLeave, true);
+    window.addEventListener("dragend", clearDropOverlay);
+    window.addEventListener("drop", clearDropOverlay);
+    window.addEventListener("blur", clearDropOverlay);
     return () => {
       isDisposed = true;
+      setFileDropOverlayHost(null);
+      setFileDropOverlayActive(false);
       dropTarget.removeEventListener("dragover", handleDragOver);
       dropTarget.removeEventListener("drop", handleDrop);
+      document.removeEventListener("dragover", handleDocumentDragOver, true);
+      document.removeEventListener("dragleave", handleDocumentDragLeave, true);
+      window.removeEventListener("dragend", clearDropOverlay);
+      window.removeEventListener("drop", clearDropOverlay);
+      window.removeEventListener("blur", clearDropOverlay);
     };
   }, [
     addDraftImages,
@@ -3220,6 +3304,26 @@ export function AgentComposer({
     </span>
   ) : null;
 
+  const fileDropOverlay =
+    fileDropOverlayHost !== null
+      ? createPortal(
+          <div
+            aria-hidden="true"
+            data-testid="agent-gui-composer-file-drop-overlay"
+            data-active={fileDropOverlayActive ? "true" : "false"}
+            className={cn(
+              styles.composerFileDropOverlay,
+              fileDropOverlayActive && styles.composerFileDropOverlayActive
+            )}
+          >
+            <span className={styles.composerFileDropOverlayCard}>
+              {labels.fileDropHint}
+            </span>
+          </div>,
+          fileDropOverlayHost
+        )
+      : null;
+
   return (
     <form
       ref={composerRef}
@@ -3227,6 +3331,7 @@ export function AgentComposer({
       data-layout={layoutMode}
       onSubmit={submit}
     >
+      {fileDropOverlay}
       {visibleActivePrompt ? (
         <div
           className={styles.composerFloatingPrompt}
