@@ -1362,3 +1362,10 @@ func writeSidecarTestFile(t *testing.T, path string, content string) {
 		t.Fatal(err)
 	}
 }
+
+func TestDefaultPreparerHasAntigravity(t *testing.T) {
+	p := NewDefaultPreparer(t.TempDir())
+	if _, ok := p.providers["antigravity"]; !ok {
+		t.Fatal("antigravity preparer not registered")
+	}
+}
