@@ -98,7 +98,7 @@ func (s *Service) Wait(ctx context.Context, input WaitInput) (WaitResult, error)
 				if err != nil {
 					return WaitResult{}, err
 				}
-				currentSession, done, nextProgressed, err := s.evaluateWaitSession(
+				currentSession, done, _, err := s.evaluateWaitSession(
 					waitCtx,
 					workspaceID,
 					agentSessionID,
@@ -111,7 +111,6 @@ func (s *Service) Wait(ctx context.Context, input WaitInput) (WaitResult, error)
 				if err != nil {
 					return WaitResult{}, err
 				}
-				progressedPastStaleStop = nextProgressed
 				if done {
 					reason, _ := waitReasonForSession(currentSession)
 					return s.waitResult(waitCtx, workspaceID, agentSessionID, currentSession, reason, false, effectiveAfter, messageLimit)
