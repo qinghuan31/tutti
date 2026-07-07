@@ -64,6 +64,7 @@ export type AgentGUIProvider = Extract<
   | "gemini"
   | "hermes"
   | "openclaw"
+  | "antigravity"
 >;
 
 export interface WebsiteNodeData {

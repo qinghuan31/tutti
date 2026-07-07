@@ -8,7 +8,8 @@ export const AGENT_PROVIDER_LABEL: Record<AgentProvider, string> = {
   opencode: "OpenCode",
   gemini: "Gemini CLI",
   openclaw: "OpenClaw",
-  hermes: "Hermes Agent"
+  hermes: "Hermes Agent",
+  antigravity: "Antigravity"
 };
 
 export interface AgentProviderCapabilities {
@@ -49,6 +50,10 @@ export const AGENT_PROVIDER_CAPABILITIES: Record<
     experimental: false
   },
   hermes: {
+    runtimeObservation: "jsonl",
+    experimental: false
+  },
+  antigravity: {
     runtimeObservation: "jsonl",
     experimental: false
   }

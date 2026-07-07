@@ -19,7 +19,8 @@ export const DEFAULT_AGENT_SETTINGS: AgentSettings = {
     opencode: false,
     gemini: false,
     openclaw: false,
-    hermes: false
+    hermes: false,
+    antigravity: false
   },
   customModelByProvider: {
     "claude-code": "",
@@ -29,7 +30,8 @@ export const DEFAULT_AGENT_SETTINGS: AgentSettings = {
     opencode: "",
     gemini: "",
     openclaw: "",
-    hermes: ""
+    hermes: "",
+    antigravity: ""
   },
   customModelOptionsByProvider: {
     "claude-code": [],
@@ -39,7 +41,8 @@ export const DEFAULT_AGENT_SETTINGS: AgentSettings = {
     opencode: [],
     gemini: [],
     openclaw: [],
-    hermes: []
+    hermes: [],
+    antigravity: []
   },
   quickCommands: [],
   quickPhrases: [],

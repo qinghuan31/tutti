@@ -1,4 +1,5 @@
 import {
+  antigravityRoundedUrl,
   codexRoundedUrl,
   cursorRoundedUrl,
   geminiRoundedUrl,
@@ -12,6 +13,7 @@ export const agentGuiDockIconUrl = codexRoundedUrl;
 
 export const agentGuiDockIconUrls = {
   "claude-code": manageAgentClaudeCodeUrl,
+  antigravity: antigravityRoundedUrl,
   codex: codexRoundedUrl,
   cursor: cursorRoundedUrl,
   gemini: geminiRoundedUrl,

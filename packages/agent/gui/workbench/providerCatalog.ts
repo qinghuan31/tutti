@@ -7,7 +7,8 @@ export const agentGuiWorkbenchProviders = [
   "nexight",
   "hermes",
   "gemini",
-  "openclaw"
+  "openclaw",
+  "antigravity"
 ] as const satisfies readonly AgentGuiWorkbenchProvider[];
 
 export const agentGuiWorkbenchDefaultDockProviders = [
@@ -45,7 +46,8 @@ export const agentGuiWorkbenchProviderLabels: Record<
   gemini: "Gemini CLI",
   hermes: "Hermes Agent",
   nexight: "Nexight",
-  openclaw: "OpenClaw"
+  openclaw: "OpenClaw",
+  antigravity: "Antigravity"
 };
 
 export function resolveAgentGuiWorkbenchProviderLabel(

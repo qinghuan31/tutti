@@ -6,7 +6,8 @@ export type AgentProviderId =
   | "opencode"
   | "gemini"
   | "openclaw"
-  | "hermes";
+  | "hermes"
+  | "antigravity";
 
 export type AgentModelCatalogSource =
   | "codex-cli"

@@ -1,3 +1,4 @@
+import antigravityRoundedAssetUrl from "./app/renderer/assets/icons/agents/antigravity-rounded.png";
 import claudeRoundedAssetUrl from "./app/renderer/assets/icons/agents/claude-rounded.png";
 import codexRoundedAssetUrl from "./app/renderer/assets/icons/agents/codex-rounded.png";
 import cursorColorfulAssetUrl from "./app/renderer/assets/icons/agents/cursor-colorful.png";
@@ -12,6 +13,7 @@ import providerRailCodexColorfulAssetUrl from "./app/renderer/assets/icons/agent
 import providerRailHermesColorfulAssetUrl from "./app/renderer/assets/icons/agents/provider-rail-hermes-colorful.png";
 import providerRailTuttiAssetUrl from "./app/renderer/assets/icons/agents/provider-rail-tutti.png";
 
+export const manageAgentAntigravityUrl = antigravityRoundedAssetUrl;
 export const manageAgentClaudeCodeUrl = claudeRoundedAssetUrl;
 export const manageAgentCodexUrl = codexRoundedAssetUrl;
 export const manageAgentCursorUrl = cursorRoundedAssetUrl;
@@ -20,6 +22,7 @@ export const manageAgentHermesUrl = hermesRoundedAssetUrl;
 export const manageAgentTuttiUrl = manageAgentTuttiAssetUrl;
 export const manageAgentOpenclawUrl = openclawRoundedAssetUrl;
 export const agentColorfulUrl = agentColorfulAssetUrl;
+export const antigravityRoundedUrl = antigravityRoundedAssetUrl;
 export const claudeRoundedUrl = claudeRoundedAssetUrl;
 export const codexRoundedUrl = codexRoundedAssetUrl;
 export const cursorColorfulUrl = cursorColorfulAssetUrl;
