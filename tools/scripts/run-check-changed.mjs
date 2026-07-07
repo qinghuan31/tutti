@@ -6,7 +6,7 @@ import {
   readFileSync,
   writeFileSync
 } from "node:fs";
-import { dirname, join, relative } from "node:path";
+import { dirname, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
   buildGoLintLane,
@@ -30,56 +30,59 @@ const tmpRoot = join(workspaceRoot, ".tmp", "check-runs");
 const latestSummaryPath = join(tmpRoot, "latest.json");
 
 const packageInfos = loadPackageInfos();
-const lanes = failedOnly ? readFailedLanes() : buildChangedLanes();
 
-if (lanes.length === 0) {
-  console.log(
-    failedOnly
-      ? "check:changed found no failed lanes in the latest run"
-      : "check:changed found no changed files to validate"
+export async function main() {
+  const lanes = failedOnly ? readFailedLanes() : buildChangedLanes();
+
+  if (lanes.length === 0) {
+    console.log(
+      failedOnly
+        ? "check:changed found no failed lanes in the latest run"
+        : "check:changed found no changed files to validate"
+    );
+    return;
+  }
+
+  if (dryRun) {
+    printPlan(lanes);
+    return;
+  }
+
+  const runId = new Date().toISOString().replace(/[:.]/g, "-");
+  const runDirectory = join(tmpRoot, runId);
+  mkdirSync(runDirectory, { recursive: true });
+
+  if (verbose) {
+    console.log(`check:changed running ${lanes.length} lane(s)`);
+    console.log(`logs: ${relative(workspaceRoot, runDirectory)}`);
+  }
+
+  const startedAt = Date.now();
+  const results = await runLanes(lanes, runDirectory);
+  const durationMs = Date.now() - startedAt;
+  const summary = {
+    baseRef,
+    durationMs,
+    failedOnly,
+    pushReady,
+    runDirectory,
+    startedAt: new Date(startedAt).toISOString(),
+    tailLines,
+    results
+  };
+  writeFileSync(
+    join(runDirectory, "summary.json"),
+    `${JSON.stringify(summary, null, 2)}\n`
   );
-  process.exit(0);
-}
+  mkdirSync(tmpRoot, { recursive: true });
+  writeFileSync(latestSummaryPath, `${JSON.stringify(summary, null, 2)}\n`);
 
-if (dryRun) {
-  printPlan(lanes);
-  process.exit(0);
-}
+  const failures = results.filter((result) => result.exitCode !== 0);
+  printSummary(results, failures, durationMs);
 
-const runId = new Date().toISOString().replace(/[:.]/g, "-");
-const runDirectory = join(tmpRoot, runId);
-mkdirSync(runDirectory, { recursive: true });
-
-if (verbose) {
-  console.log(`check:changed running ${lanes.length} lane(s)`);
-  console.log(`logs: ${relative(workspaceRoot, runDirectory)}`);
-}
-
-const startedAt = Date.now();
-const results = await runLanes(lanes, runDirectory);
-const durationMs = Date.now() - startedAt;
-const summary = {
-  baseRef,
-  durationMs,
-  failedOnly,
-  pushReady,
-  runDirectory,
-  startedAt: new Date(startedAt).toISOString(),
-  tailLines,
-  results
-};
-writeFileSync(
-  join(runDirectory, "summary.json"),
-  `${JSON.stringify(summary, null, 2)}\n`
-);
-mkdirSync(tmpRoot, { recursive: true });
-writeFileSync(latestSummaryPath, `${JSON.stringify(summary, null, 2)}\n`);
-
-const failures = results.filter((result) => result.exitCode !== 0);
-printSummary(results, failures, durationMs);
-
-if (failures.length > 0) {
-  process.exitCode = 1;
+  if (failures.length > 0) {
+    process.exitCode = 1;
+  }
 }
 
 function buildChangedLanes() {
@@ -105,7 +108,7 @@ function buildChangedLanes() {
     ]
   });
 
-  const lintFiles = changedFiles.filter(isLintableCodeFile);
+  const lintFiles = selectExistingLintFiles(changedFiles);
   if (lintFiles.length > 0) {
     addLane({
       key: "lint:changed",
@@ -449,6 +452,15 @@ function isLintableCodeFile(file) {
   return /\.(?:cjs|cts|js|jsx|mjs|mts|ts|tsx)$/u.test(file);
 }
 
+export function selectExistingLintFiles(
+  changedFiles,
+  fileExists = fileExistsWithinWorkspace
+) {
+  return changedFiles.filter(
+    (file) => isLintableCodeFile(file) && fileExists(file)
+  );
+}
+
 function isTestFile(file) {
   return /\.(?:test|spec)\.(?:ts|tsx|mts|cts|js|jsx|mjs|cjs)$/u.test(file);
 }
@@ -497,6 +509,10 @@ function isUiBoundaryRelevant(file) {
       file.startsWith("tools/")) &&
     /\.(?:css|json|js|jsx|mjs|ts|tsx)$/u.test(file)
   );
+}
+
+function fileExistsWithinWorkspace(file) {
+  return existsSync(join(workspaceRoot, file));
 }
 
 function formatCommand(command) {
@@ -568,4 +584,14 @@ function stripPnpmFailureBoilerplate(lines) {
       !line.startsWith("Exit status ") &&
       !/^\/.*:$/.test(line)
   );
+}
+
+const currentPath = fileURLToPath(import.meta.url);
+if (process.argv[1] && resolve(process.argv[1]) === currentPath) {
+  main().catch((error) => {
+    console.error(
+      error instanceof Error ? (error.stack ?? error.message) : error
+    );
+    process.exitCode = 1;
+  });
 }
