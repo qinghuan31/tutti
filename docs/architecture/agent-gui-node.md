@@ -185,6 +185,9 @@ it must update the rail conversation filter to the matching agent target so the
 left rail selection follows the active empty composer target. When the rail is
 in `All`, provider selection changes only the empty composer target and keeps
 the aggregate rail selection intact.
+Provider selection from either the empty-home title control or the composer
+footer should also request focus for the composer input, matching provider rail
+target clicks so users can continue typing immediately after switching agents.
 The empty composer chrome and settings defaults must follow the selected
 provider target immediately, including the empty-state artwork, model options,
 and permission modes. Generic home composer overrides are single-target draft
@@ -193,7 +196,10 @@ or target-scoped defaults may still provide the next settings.
 Host feature switches that disable a provider for new conversations should keep
 the provider target present with `disabled: true` when another surface still
 needs to show the provider in a disabled state. Filter the target out only for
-surfaces that should completely hide it.
+surfaces that should completely hide it. All empty-home new-conversation
+affordances, including rail toolbar and section actions, must read the selected
+provider target's disabled state so coming-soon targets remain inspectable but
+cannot start sessions.
 When an empty composer has an `agentTargetId`, model, permission, reasoning,
 and speed options are target-scoped. Do not fall back to provider-level options
 for that target; a missing target-scoped option snapshot should remain a
@@ -235,6 +241,18 @@ current provider target list second, and from legacy node/session `provider`
 only when no target can be resolved. A non-ready provider replaces only the
 empty-home composer with a friendly gate; active/history conversations and
 existing-session composer behavior remain outside this gate.
+When the desktop status list returns an ambiguous startup result for a provider
+whose runtime command is more authoritative than its lightweight status check
+(for example Cursor), the desktop status service may run a provider-specific
+runtime probe and fold a ready result back into the provider status snapshot
+before projecting the empty-home readiness gate.
+Startup provider detection should be progressive: desktop may publish the first
+ready managed provider as soon as it is confirmed, then continue detecting the
+remaining providers in the background. When the empty-home rail is still on
+`All`, no user-selected composer target exists, and the current default target
+is still gated, AgentGUI may move the home composer to that first ready target
+so the user can start typing without waiting for every provider to finish
+detection.
 Auth-required local providers should remain selectable; product surfaces may
 label the setup affordance as `Connect`, but the host action should still
 dispatch the provider's `login` operation when that is the daemon-reported
@@ -1325,6 +1343,9 @@ may select their empty composer state, but launch/send controls stay disabled
 until their real `/agents` targets are supported. The historical `nexight`
 "Tutti" placeholder must not be synthesized into the default AgentGUI rail; use
 the first-party `tutti-agent` provider path for Tutti Agent entry points.
+OpenCode is not a future placeholder: it is a real local provider target backed
+by `local:opencode`, but desktop hides it behind the `enableOpenCodeAgent`
+developer preference until the preview is enabled.
 Static catalog targets do not change the legacy activation contract: AgentGUI
 does not persist or send their `providerTargetRef`. Synthesized local targets
 may expose stable `local:<provider>` values as `agentTargetId` for supported
@@ -1548,6 +1569,14 @@ provider capability/options
 Avoid fixing a menu label or disabled state without checking whether the same
 setting is also used by prompt creation, session continuation, and runtime
 tracking.
+Active-session settings are first-class session state, not composer defaults.
+The controller should submit the runtime settings patch and let the provider
+adapter decide whether the change can be applied live or requires a new
+session. Provider capability differences belong in the daemon runtime adapter:
+for example, OpenCode model and reasoning-effort changes are live ACP
+`session/set_config_option` updates, while spawn-time-only provider settings may
+return the `agent.settings_require_new_session` reason. The UI should surface
+that reason as guidance, not as an unhandled runtime error.
 
 ### Mention Or File Reference
 

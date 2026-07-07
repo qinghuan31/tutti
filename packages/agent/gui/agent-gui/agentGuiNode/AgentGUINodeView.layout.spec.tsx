@@ -1296,6 +1296,42 @@ describe("AgentGUINodeView layout persistence", () => {
     expect(actions.selectHomeComposerAgentTarget).not.toHaveBeenCalled();
   });
 
+  it("requests composer focus after switching the empty hero provider select", async () => {
+    const actions = createActions();
+    const codexTarget = createLocalAgentGUIProviderTarget("codex");
+    const claudeTarget = createLocalAgentGUIProviderTarget("claude-code");
+    renderAgentGUINodeView({
+      actions,
+      viewModel: {
+        ...createViewModel(),
+        selectedProviderTarget: codexTarget,
+        providerTargets: [codexTarget, claudeTarget]
+      },
+      labels: {
+        ...createLabels(),
+        empty: "What can Codex help you with?",
+        emptyProvider: "Codex",
+        providerSwitchLabel: "Switch provider"
+      }
+    });
+
+    expect(composerMock.calls.at(-1)?.composerFocusRequestSequence).toBeNull();
+
+    fireEvent.keyDown(
+      screen.getByRole("combobox", { name: "Switch provider" }),
+      { key: "ArrowDown" }
+    );
+    fireEvent.click(await screen.findByRole("option", { name: "Claude Code" }));
+
+    expect(actions.selectHomeComposerAgentTarget).toHaveBeenCalledWith({
+      provider: "claude-code",
+      providerTargetId: claudeTarget.targetId
+    });
+    await waitFor(() => {
+      expect(composerMock.calls.at(-1)?.composerFocusRequestSequence).toBe(1);
+    });
+  });
+
   it("selects the All tile for daemon local Codex targets", () => {
     const daemonCodexTarget = {
       ...createLocalAgentGUIProviderTarget("codex"),
@@ -1482,6 +1518,7 @@ describe("AgentGUINodeView layout persistence", () => {
       "Claude Code",
       "Cursor",
       "Tutti Agent",
+      "OpenCode",
       "Hermes",
       "OpenClaw"
     ]);
@@ -1880,6 +1917,35 @@ describe("AgentGUINodeView layout persistence", () => {
     });
     expect(composerMock.calls.at(-1)?.composerFocusRequestSequence).toBe(1);
   });
+
+  it("disables the toolbar new conversation action for unavailable provider targets", () => {
+    const actions = createActions();
+    const unavailableTarget = {
+      ...createLocalAgentGUIProviderTarget("nexight"),
+      disabled: true
+    };
+    const { container } = renderAgentGUINodeView({
+      actions,
+      viewModel: {
+        ...createViewModel(),
+        selectedProviderTarget: unavailableTarget,
+        providerTargets: [unavailableTarget]
+      }
+    });
+
+    const newConversationButton = container.querySelector<HTMLButtonElement>(
+      ".agent-gui-node__new-conversation-icon-button"
+    );
+    if (!newConversationButton) {
+      throw new Error("Expected toolbar new conversation button to render.");
+    }
+
+    expect(newConversationButton).toBeDisabled();
+    fireEvent.click(newConversationButton);
+
+    expect(actions.createConversation).not.toHaveBeenCalled();
+  });
+
   it("defers rendering conversation items for collapsed project sections", () => {
     renderAgentGUINodeView({
       viewModel: {
@@ -4330,13 +4396,16 @@ describe("AgentGUINodeView provider readiness gate", () => {
       })
     });
 
+    // The pending label is shown on the action button only, not duplicated
+    // as a separate standalone status line.
     expect(
-      screen.getByTestId("agent-gui-provider-readiness-gate-pending")
-    ).toHaveTextContent("providerGatePendingInstall");
+      screen.queryByTestId("agent-gui-provider-readiness-gate-pending")
+    ).toBeNull();
 
     const action = screen.getByTestId(
       "agent-gui-provider-readiness-gate-action"
     );
+    expect(action).toHaveTextContent("providerGatePendingInstall");
     expect(action).toBeDisabled();
     fireEvent.click(action);
     expect(onAction).not.toHaveBeenCalled();

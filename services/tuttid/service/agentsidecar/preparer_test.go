@@ -88,7 +88,7 @@ func TestDefaultPreparerCodexWritesInstructionsSkillManifestAndEnv(t *testing.T)
 	if err != nil {
 		t.Fatalf("codex AGENTS.md missing: %v", err)
 	}
-	const maxCodexAgentsChars = 5000
+	const maxCodexAgentsChars = 6500
 	if count := utf8.RuneCountInString(string(codexAgents)); count > maxCodexAgentsChars {
 		t.Fatalf("codex AGENTS.md chars = %d, want <= %d", count, maxCodexAgentsChars)
 	}
@@ -876,6 +876,7 @@ func TestDefaultPreparerClaudeCodeUsesSessionScopedSystemPrompt(t *testing.T) {
 		!strings.Contains(string(systemPrompt), "issue get --issue-id <issue-id> --json") ||
 		!strings.Contains(string(systemPrompt), "Claude Code `Monitor` tool is disabled") ||
 		!strings.Contains(string(systemPrompt), "bounded shell/script") ||
+		!strings.Contains(string(systemPrompt), "agent wait --session-id <session-id> --json") ||
 		!strings.Contains(string(systemPrompt), "agent session-summary --session-id <session-id> --json") ||
 		!strings.Contains(string(systemPrompt), "this is not launch-only") {
 		t.Fatalf("claude system prompt content = %q, want mention handoff fallback guidance", string(systemPrompt))
@@ -897,6 +898,7 @@ func TestDefaultPreparerClaudeCodeUsesSessionScopedSystemPrompt(t *testing.T) {
 		!strings.Contains(string(systemPrompt), "Skill missing/fails -> read matching materialized `SKILL.md`") ||
 		!strings.Contains(string(systemPrompt), "`mention://...` = internal data. Not URL/path.") ||
 		!strings.Contains(string(systemPrompt), "`mention://agent-target/<targetId>?workspaceId=...`") ||
+		!strings.Contains(string(systemPrompt), "returns only recent execution messages") ||
 		!strings.Contains(string(systemPrompt), "agent session-summary --session-id <session-id> --json") ||
 		!strings.Contains(string(systemPrompt), "issue get --issue-id <issue-id> --json") {
 		t.Fatalf("claude system prompt content = %q, want strict Tutti mention routing", string(systemPrompt))

@@ -1133,6 +1133,63 @@ describe("useAgentGUINodeController", () => {
     );
   });
 
+  it("moves the empty home composer to the first ready provider while startup detection continues", async () => {
+    installAgentHostApi({
+      list: vi.fn(async () => ({ presences: [], sessions: [] })),
+      listSessionTimeline: vi.fn(async () => ({ timelineItems: [] })),
+      subscribeEvents: vi.fn(() => vi.fn())
+    });
+    const onDataChange = vi.fn();
+    const initialData = agentGuiData(null, "codex");
+
+    const { result } = renderHook(() =>
+      useAgentGUINodeController({
+        workspaceId: "room-1",
+        currentUserId: "user-1",
+        workspacePath: "/workspace",
+        avoidGroupingEdits: false,
+        data: initialData,
+        providerTargets: [
+          {
+            targetId: "local:codex",
+            agentTargetId: "local:codex",
+            provider: "codex",
+            ref: { kind: "local", provider: "codex" },
+            label: "Codex"
+          },
+          {
+            targetId: "local:claude-code",
+            agentTargetId: "local:claude-code",
+            provider: "claude-code",
+            ref: { kind: "local", provider: "claude-code" },
+            label: "Claude Code"
+          }
+        ],
+        providerReadinessGates: {
+          codex: { status: "checking" },
+          "claude-code": null
+        },
+        onDataChange
+      })
+    );
+
+    await waitFor(() => {
+      expect(result.current.viewModel.selectedProviderTarget.provider).toBe(
+        "claude-code"
+      );
+    });
+    const nextData = onDataChange.mock.calls.reduce(
+      (current, [updater]) => updater(current),
+      initialData
+    );
+    expect(nextData).toMatchObject({
+      agentTargetId: "local:claude-code",
+      provider: "claude-code"
+    });
+    expect(nextData.providerTargetId ?? null).toBeNull();
+    expect(result.current.viewModel.providerReadinessGate).toBeNull();
+  });
+
   it("selects provider-only rail targets for the empty composer", async () => {
     installAgentHostApi({
       list: vi.fn(async () => ({ presences: [], sessions: [] })),
@@ -11853,7 +11910,18 @@ describe("useAgentGUINodeController", () => {
 
   it("shows a warning tip when an active session settings update requires a new session", async () => {
     const updateSettings = vi.fn(async () => {
-      throw createAppError("agent.settings_require_new_session");
+      throw Object.assign(
+        new Error(
+          "agent session settings update requires a new session to preserve context"
+        ),
+        {
+          code: "invalid_request",
+          name: "TuttidProtocolError",
+          reason: "agent.settings_require_new_session",
+          retryable: false,
+          statusCode: 400
+        }
+      );
     });
     const onShowMessage = vi.fn();
     installAgentHostApi({
@@ -11928,7 +11996,7 @@ describe("useAgentGUINodeController", () => {
         "warning"
       );
     });
-    expect(result.current.viewModel.detailError).toBe(
+    expect(result.current.viewModel.detailError).not.toBe(
       "This model can only be used in a new session to preserve context."
     );
     expect(

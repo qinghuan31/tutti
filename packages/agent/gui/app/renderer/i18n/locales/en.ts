@@ -363,18 +363,17 @@ export const en = {
       initialPlaceholder:
         "Type @ to reference sessions, files, tasks, and apps",
       followupPlaceholder: "Request follow-up changes from {{provider}}",
-      installRequiredPlaceholder:
-        "Finish setting up {{provider}} to send messages",
-      installRequiredAction: "Set up",
+      installRequiredPlaceholder: "Connect {{provider}} to send messages",
+      installRequiredAction: "Connect",
       providerGateCheckingTitle: "Checking your agent",
       providerGateCheckingDescription:
         "One moment while we check whether {{provider}} is ready.",
       providerGateCheckingAgentsDescription:
         "One moment while we check whether agents are ready.",
-      providerGateInstallTitle: "Install {{provider}} first",
+      providerGateInstallTitle: "Connect {{provider}} first",
       providerGateInstallDescription:
-        "{{provider}} needs to be installed before you can start a new chat here.",
-      providerGateInstallAction: "Install",
+        "{{provider}} needs to be connected before you can start a new chat here.",
+      providerGateInstallAction: "Connect",
       providerGateLoginTitle: "Log in to {{provider}}",
       providerGateLoginDescription:
         "Log in with your account to start chatting with {{provider}}.",
@@ -387,7 +386,7 @@ export const en = {
       providerGateUnavailableDescription:
         "We could not confirm that {{provider}} is ready. Try checking again.",
       providerGateRetryAction: "Check again",
-      providerGatePendingInstall: "Installing…",
+      providerGatePendingInstall: "Connecting…",
       providerGatePendingLogin: "Opening sign in…",
       providerGatePendingRefresh: "Checking…",
       collaboratorSessionReadOnlyPlaceholder:
@@ -862,7 +861,7 @@ export const en = {
         "{{provider}}'s response was interrupted before it completed. Try again in a moment.",
       visibleErrorConcurrencyLimit:
         "{{provider}} is handling too many requests right now. Try again after another task finishes.",
-      visibleErrorActionInstall: "Set up",
+      visibleErrorActionInstall: "Connect",
       visibleErrorActionUpgrade: "Upgrade",
       visibleErrorActionRelogin: "Sign in",
       visibleErrorActionCheckNetwork: "Check network",

@@ -4313,10 +4313,17 @@ aside.workspace-agents-status-panel
 }
 
 .workbench-window:has([data-agent-gui-workbench-header="true"])
-  .agent-gui-node__rail-toolbar,
-.workbench-window:has([data-agent-gui-workbench-header="true"])
   .agent-gui-node__provider-rail-panel {
   padding-top: var(--agent-gui-workbench-header-height);
+}
+
+/* The provider rail nests the workbench-header offset on the panel and the 2px
+   breathing room on the inner rail, so the "All" tile sits at header + 2px. The
+   toolbar has no such wrapper, so fold the same 2px into its offset to keep the
+   search field top aligned with the provider tiles. */
+.workbench-window:has([data-agent-gui-workbench-header="true"])
+  .agent-gui-node__rail-toolbar {
+  padding-top: calc(var(--agent-gui-workbench-header-height) + 2px);
 }
 
 .workbench-window:has([data-agent-gui-workbench-header="true"])
@@ -4419,7 +4426,7 @@ aside.workspace-agents-status-panel
   user-select: none;
 }
 
-.agent-gui-workbench-header::after {
+.agent-gui-workbench-header[data-agent-gui-workbench-header-has-session="true"]::after {
   position: absolute;
   right: 0;
   bottom: 0;
@@ -4603,6 +4610,21 @@ aside.workspace-agents-status-panel
   height: 20px;
   flex: 0 0 auto;
   border-radius: 5px;
+}
+
+.agent-gui-workbench-header__session-icon--pending {
+  background: var(--transparency-block);
+  animation: agent-gui-workbench-header-icon-pending 1.2s ease-in-out infinite;
+}
+
+@keyframes agent-gui-workbench-header-icon-pending {
+  0%,
+  100% {
+    opacity: 0.6;
+  }
+  50% {
+    opacity: 1;
+  }
 }
 
 .agent-gui-workbench-header__detail-title {
@@ -4861,7 +4883,7 @@ aside.workspace-agents-status-panel
   align-items: center;
   gap: 10px;
   min-width: 0;
-  padding: 0 16px 16px;
+  padding: 2px 16px 16px;
 }
 
 .agent-gui-node__project-rail-header {
@@ -8409,7 +8431,7 @@ html[data-theme="light"] [data-message-center-item-id].agent-gui-edge-glow {
   flex: 1 1 auto;
   flex-direction: column;
   align-items: center;
-  padding: 0 0 12px;
+  padding: 2px 0 12px;
   overflow-x: hidden;
   overflow-y: auto;
   mask-image: linear-gradient(
@@ -8595,7 +8617,7 @@ html[data-theme="light"] [data-message-center-item-id].agent-gui-edge-glow {
 
 .agent-gui-node__provider-rail-tile:not([data-selected="true"])
   .agent-gui-node__provider-rail-avatar {
-  opacity: 0.5;
+  opacity: 0.38;
 }
 
 .agent-gui-node__provider-rail-tile:hover:not(:disabled)
@@ -8611,7 +8633,8 @@ html[data-theme="light"] [data-message-center-item-id].agent-gui-edge-glow {
 .agent-gui-node__provider-rail-tile[data-selected="true"]
   .agent-gui-node__provider-rail-avatar {
   border-color: var(--brand-primary, var(--tutti-purple));
-  background: transparent;
+  background: color-mix(in srgb, var(--background-fronted) 80%, white);
+  box-shadow: 0 0 0 1px color-mix(in srgb, white 45%, transparent);
   color: var(--brand-primary, var(--tutti-purple));
 }
 
@@ -8751,6 +8774,13 @@ html[data-theme="light"] [data-message-center-item-id].agent-gui-edge-glow {
   justify-items: center;
 }
 
+.agent-gui-node__empty-hero-icon-slot {
+  display: grid;
+  width: 54px;
+  height: 54px;
+  place-items: center;
+}
+
 .agent-gui-node__empty-hero-icon-effect {
   display: block;
   width: 48px;
@@ -8836,7 +8866,7 @@ html[data-theme="light"] [data-message-center-item-id].agent-gui-edge-glow {
 
 .agent-gui-node__empty-provider-gate {
   max-width: 520px;
-  gap: 14px;
+  gap: 8px;
 }
 
 .agent-gui-node__empty-provider-gate > .agent-gui-node__empty-hero-icon-effect {

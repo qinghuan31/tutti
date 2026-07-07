@@ -196,6 +196,29 @@ func TestParseCursorAuthStatusOutput(t *testing.T) {
 	}
 }
 
+func TestParseOpenCodeAuthStatusOutput(t *testing.T) {
+	for _, tt := range []struct {
+		output string
+		status AuthStatus
+		ok     bool
+	}{
+		{output: "Logged in as user@example.com", status: AuthAuthenticated, ok: true},
+		{output: "Status: authenticated", status: AuthAuthenticated, ok: true},
+		{output: "Not authenticated. Run opencode auth login.", status: AuthRequired, ok: true},
+		{output: "No providers are authenticated", status: AuthRequired, ok: true},
+		{output: "", ok: false},
+		{output: "unexpected opencode error", ok: false},
+	} {
+		auth, ok := parseOpenCodeAuthStatusOutput([]byte(tt.output))
+		if ok != tt.ok {
+			t.Fatalf("parseOpenCodeAuthStatusOutput(%q) ok = %v, want %v", tt.output, ok, tt.ok)
+		}
+		if ok && auth.Status != tt.status {
+			t.Fatalf("parseOpenCodeAuthStatusOutput(%q) status = %q, want %q", tt.output, auth.Status, tt.status)
+		}
+	}
+}
+
 func TestResolveProviderCommandSwapsInstalledCursorBinary(t *testing.T) {
 	service := testService(func(name string) (string, error) {
 		if name == "agent" {
@@ -942,7 +965,7 @@ func TestServiceListExternalAdapterCommandUsesRankedRegistry(t *testing.T) {
 	if err != nil {
 		t.Fatalf("read captured npm registry: %v", err)
 	}
-	if got := string(registryBytes); got != "https://registry.npmmirror.com" {
+	if got := string(registryBytes); got != "https://repo.huaweicloud.com/repository/npm/" {
 		t.Fatalf("npm_config_registry = %q, want ranked mirror registry", got)
 	}
 }

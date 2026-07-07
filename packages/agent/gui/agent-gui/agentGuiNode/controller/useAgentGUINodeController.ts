@@ -1191,8 +1191,28 @@ function limitDiagnosticText(value: string): string {
 function getAgentGUIErrorCode(error: unknown): AppErrorCode | null {
   return (
     getAppErrorCode(error) ??
+    inferAgentGUIErrorCodeFromReason(getAgentGUIErrorReason(error)) ??
     inferAgentGUIErrorCodeFromMessage(getAgentGUIRawErrorMessage(error))
   );
+}
+
+function getAgentGUIErrorReason(error: unknown): string | null {
+  if (!error || typeof error !== "object") {
+    return null;
+  }
+  const reason = (error as { reason?: unknown }).reason;
+  return typeof reason === "string" && reason.trim() ? reason.trim() : null;
+}
+
+function inferAgentGUIErrorCodeFromReason(
+  reason: string | null
+): AppErrorCode | null {
+  switch (reason) {
+    case AGENT_SETTINGS_REQUIRE_NEW_SESSION_ERROR:
+      return AGENT_SETTINGS_REQUIRE_NEW_SESSION_ERROR as AppErrorCode;
+    default:
+      return null;
+  }
 }
 
 function inferAgentGUIErrorCodeFromMessage(
@@ -2815,6 +2835,7 @@ function areComposerSettingsVMsEqual(
     (left.selectedProjectPath ?? null) ===
       (right.selectedProjectPath ?? null) &&
     Boolean(left.projectLocked) === Boolean(right.projectLocked) &&
+    Boolean(left.projectPathIsRemote) === Boolean(right.projectPathIsRemote) &&
     Boolean(left.modelListCollapsedToLatest) ===
       Boolean(right.modelListCollapsedToLatest) &&
     areComposerSettingOptionListsEqual(
@@ -3843,6 +3864,18 @@ export function useAgentGUINodeController({
   const effectiveSelectedProviderTargetIsExplicit = homeComposerTargetOverride
     ? homeComposerTargetOverrideIsExplicit
     : selectedProviderTargetIsExplicit;
+  const firstReadyHomeComposerProviderTarget = useMemo(() => {
+    if (!providerReadinessGates) {
+      return null;
+    }
+    return (
+      normalizedProviderTargets.find(
+        (target) =>
+          target.disabled !== true &&
+          providerReadinessGates[target.provider] === null
+      ) ?? null
+    );
+  }, [normalizedProviderTargets, providerReadinessGates]);
   const nodeComposerTargetResolvedByProviderTarget =
     agentGUINodeDataHasComposerTarget(data) &&
     ((normalizeOptionalText(data.agentTargetId) !== null &&
@@ -9233,10 +9266,12 @@ export function useAgentGUINodeController({
             force: true
           });
           const message = getAgentGUIErrorMessage(error);
-          if (
-            isSettingsRequireNewSessionErrorCode(getAgentGUIErrorCode(error))
-          ) {
+          const requiresNewSession = isSettingsRequireNewSessionErrorCode(
+            getAgentGUIErrorCode(error)
+          );
+          if (requiresNewSession) {
             onShowMessageRef.current?.(message, "warning");
+            return;
           }
           if (isCurrentConversation(agentSessionId)) {
             reportAgentGUIRuntimeError({
@@ -11249,6 +11284,9 @@ export function useAgentGUINodeController({
           ? (activeConversation?.cwd ?? null)
           : selectedProjectPath,
       projectLocked: activeConversationId !== null,
+      // Remote runtimes (shared/cloud sandbox) run their cwd off the local
+      // filesystem, so the local existence check is skipped downstream.
+      projectPathIsRemote: agentActivityRuntime.projectPathIsRemote,
       // Cursor's live list spans many vendors with several versions each;
       // collapse it to the latest release per model family.
       modelListCollapsedToLatest: composerTargetData.provider === "cursor",
@@ -11281,6 +11319,7 @@ export function useAgentGUINodeController({
     activeSessionReasoningSelection,
     activeSessionSpeedSelection,
     activeSessionRuntimeContext,
+    agentActivityRuntime.projectPathIsRemote,
     composerTargetData.provider,
     draftSettings.permissionModeId,
     draftSettings.planMode,
@@ -11512,6 +11551,59 @@ export function useAgentGUINodeController({
       shouldUseStaticProviderTargets
     ]
   );
+  useEffect(() => {
+    if (
+      previewMode ||
+      activeConversationId !== null ||
+      conversationFilter.kind !== "all" ||
+      homeComposerTargetOverride !== null ||
+      agentGUINodeDataHasComposerTarget(data) ||
+      !providerReadinessGates ||
+      !firstReadyHomeComposerProviderTarget
+    ) {
+      return;
+    }
+    if (
+      firstReadyHomeComposerProviderTarget.provider ===
+        effectiveSelectedProviderTarget.provider &&
+      firstReadyHomeComposerProviderTarget.targetId ===
+        effectiveSelectedProviderTarget.targetId &&
+      agentGUIProviderTargetRefsEqual(
+        firstReadyHomeComposerProviderTarget.ref,
+        effectiveSelectedProviderTarget.ref
+      )
+    ) {
+      return;
+    }
+    if (
+      !Object.prototype.hasOwnProperty.call(
+        providerReadinessGates,
+        effectiveSelectedProviderTarget.provider
+      )
+    ) {
+      return;
+    }
+    const selectedGate =
+      providerReadinessGates[effectiveSelectedProviderTarget.provider];
+    if (!selectedGate) {
+      return;
+    }
+
+    selectHomeComposerAgentTarget({
+      provider: firstReadyHomeComposerProviderTarget.provider,
+      providerTargetId: firstReadyHomeComposerProviderTarget.targetId
+    });
+  }, [
+    activeConversationId,
+    conversationFilter.kind,
+    data,
+    effectiveSelectedProviderTarget,
+    firstReadyHomeComposerProviderTarget,
+    homeComposerTargetOverride,
+    previewMode,
+    providerReadinessGates,
+    selectHomeComposerAgentTarget
+  ]);
   const selectConversationFilterTarget = useCallback(
     (input: {
       provider: AgentGUIProvider;

@@ -336,17 +336,17 @@ export const zhCN = {
     agentGui: {
       initialPlaceholder: "输入 @ 引用会话、文件、任务和应用",
       followupPlaceholder: "要求 {{provider}} 继续后续变更",
-      installRequiredPlaceholder: "请先完成 {{provider}} 配置，然后再发送消息",
-      installRequiredAction: "设置",
+      installRequiredPlaceholder: "请先连接 {{provider}}，然后再发送消息",
+      installRequiredAction: "连接",
       providerGateCheckingTitle: "正在检查 Agent",
       providerGateCheckingDescription:
         "稍等一下，我们正在确认 {{provider}} 是否已经可用。",
       providerGateCheckingAgentsDescription:
         "稍等一下，我们正在确认 agents 是否已经可用。",
-      providerGateInstallTitle: "先安装 {{provider}}",
+      providerGateInstallTitle: "先连接 {{provider}}",
       providerGateInstallDescription:
-        "需要先安装 {{provider}}，才能在这里开始新的对话。",
-      providerGateInstallAction: "安装",
+        "需要先连接 {{provider}}，才能在这里开始新的对话。",
+      providerGateInstallAction: "连接",
       providerGateLoginTitle: "登录 {{provider}}",
       providerGateLoginDescription:
         "使用账号登录后即可开始使用 {{provider}} 对话。",
@@ -359,7 +359,7 @@ export const zhCN = {
       providerGateUnavailableDescription:
         "我们还不能确认 {{provider}} 已准备好，可以再检测一次。",
       providerGateRetryAction: "重新检测",
-      providerGatePendingInstall: "正在安装…",
+      providerGatePendingInstall: "正在连接…",
       providerGatePendingLogin: "正在打开登录…",
       providerGatePendingRefresh: "正在检测…",
       collaboratorSessionReadOnlyPlaceholder: "非当前用户会话，不可直接对话",
@@ -798,7 +798,7 @@ export const zhCN = {
         "{{provider}} 的响应在完成前被中断。请稍后重试。",
       visibleErrorConcurrencyLimit:
         "{{provider}} 当前处理的请求过多。请在其他任务完成后再试。",
-      visibleErrorActionInstall: "去安装",
+      visibleErrorActionInstall: "去连接",
       visibleErrorActionUpgrade: "去升级",
       visibleErrorActionRelogin: "登录",
       visibleErrorActionCheckNetwork: "检测网络",
