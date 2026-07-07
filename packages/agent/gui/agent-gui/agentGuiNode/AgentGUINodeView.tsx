@@ -1538,9 +1538,12 @@ export function AgentGUINodeView({
       : railConfigProvider;
   const effectiveRailSlashStatusLimits =
     railSlashStatusLimits ?? slashStatusLimits;
-  const shouldShowProviderRailConfigMenu =
-    viewModel.conversationFilter.kind !== "all" &&
+  const shouldShowProviderRailConfigButton =
+    viewModel.conversationFilter.kind === "all" ||
     viewModel.selectedProviderTarget?.disabled !== true;
+  const shouldShowProviderRailConfigMenu =
+    shouldShowProviderRailConfigButton &&
+    viewModel.conversationFilter.kind !== "all";
   const enabledProviderTargets = viewModel.providerTargets.filter(
     (target) =>
       target.disabled !== true &&
@@ -1698,26 +1701,43 @@ export function AgentGUINodeView({
               onUpdateConversationFilter={actions.updateConversationFilter}
               onRequestComposerFocus={requestComposerFocus}
             />
-            {shouldShowProviderRailConfigMenu ? (
+            {shouldShowProviderRailConfigButton ? (
               <div
                 className={`${styles.providerRailFooter} nodrag tsh-desktop-no-drag`}
                 data-testid="agent-gui-config-footer"
               >
-                <AgentGUIConfigMenu
-                  labels={labels}
-                  previewMode={previewMode}
-                  slashStatusLimits={effectiveRailSlashStatusLimits}
-                  slashStatusLimitsLoading={slashStatusLimitsLoading}
-                  slashStatusUsageCapturedAtUnixMs={
-                    slashStatusUsageCapturedAtUnixMs
-                  }
-                  slashStatusUsageDidFail={slashStatusUsageDidFail}
-                  slashStatusUsageAttempted={slashStatusUsageAttempted}
-                  onAgentConfigMenuOpen={onAgentConfigMenuOpen}
-                  onAgentUsageRefresh={onAgentUsageRefresh}
-                  onOpenAgentEnvSetup={openAgentEnvSetup}
-                  onOpenAgentSettings={openAgentSettings}
-                />
+                {shouldShowProviderRailConfigMenu ? (
+                  <AgentGUIConfigMenu
+                    labels={labels}
+                    previewMode={previewMode}
+                    slashStatusLimits={effectiveRailSlashStatusLimits}
+                    slashStatusLimitsLoading={slashStatusLimitsLoading}
+                    slashStatusUsageCapturedAtUnixMs={
+                      slashStatusUsageCapturedAtUnixMs
+                    }
+                    slashStatusUsageDidFail={slashStatusUsageDidFail}
+                    slashStatusUsageAttempted={slashStatusUsageAttempted}
+                    onAgentConfigMenuOpen={onAgentConfigMenuOpen}
+                    onAgentUsageRefresh={onAgentUsageRefresh}
+                    onOpenAgentEnvSetup={openAgentEnvSetup}
+                    onOpenAgentSettings={openAgentSettings}
+                  />
+                ) : (
+                  <button
+                    type="button"
+                    aria-label={labels.agentSettingsMenu}
+                    className={`${styles.providerRailConfigButton} nodrag tsh-desktop-no-drag`}
+                    title={labels.agentSettingsMenu}
+                    disabled={previewMode}
+                    onClick={openAgentSettings}
+                  >
+                    <SettingsLinedIcon
+                      aria-hidden="true"
+                      width={18}
+                      height={18}
+                    />
+                  </button>
+                )}
               </div>
             ) : null}
             {renderSidebarFooter ? (
