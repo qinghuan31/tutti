@@ -85,7 +85,7 @@ func TestTuttiCLIPolicyUsesPreparedCLICommandForAgentLauncherFallback(t *testing
 		"tutti-dev agent session-summary",
 		"tutti-dev agent turn-resources",
 		"`mention://agent-target/<targetId>?workspaceId=...`",
-		"not launch-only",
+		"hand off, do not do it yourself",
 		"--image <localPath>",
 		"tutti-dev app open --app-id <appId> --json",
 		"Ask for task prompt, not model.",
@@ -194,7 +194,7 @@ func TestDefaultPreparerRenderSkillBundleUsesDynamicGuide(t *testing.T) {
 		bundle.CLICommand != "tutti-dev" {
 		t.Fatalf("bundle metadata = %#v", bundle)
 	}
-	if got := skillBundleSlugs(bundle.Skills); strings.Join(got, ",") != "tutti-cli,issue-manager,workspace-app,reference" {
+	if got := skillBundleSlugs(bundle.Skills); strings.Join(got, ",") != "tutti-cli,tutti-handoff,issue-manager,workspace-app,reference" {
 		t.Fatalf("skill slugs = %#v", got)
 	}
 	if bundle.RecommendedSystemPrompt == nil ||
@@ -289,7 +289,7 @@ func TestRenderProviderSkillBundleGatesOptionalSkills(t *testing.T) {
 		CLICommand:     "tutti-dev",
 		Provider:       "codex",
 	})
-	if got := strings.Join(skillBundleSlugs(withoutOptional.Skills), ","); got != "tutti-cli,issue-manager,workspace-app,reference" {
+	if got := strings.Join(skillBundleSlugs(withoutOptional.Skills), ","); got != "tutti-cli,tutti-handoff,issue-manager,workspace-app,reference" {
 		t.Fatalf("skill slugs without optional = %q", got)
 	}
 
@@ -300,7 +300,7 @@ func TestRenderProviderSkillBundleGatesOptionalSkills(t *testing.T) {
 		ComputerUse:    true,
 		Provider:       "codex",
 	})
-	wantSlugs := "tutti-cli,issue-manager,workspace-app,reference,browser-use"
+	wantSlugs := "tutti-cli,tutti-handoff,issue-manager,workspace-app,reference,browser-use"
 	if computerAvailable {
 		wantSlugs += ",computer-use"
 	}
@@ -388,7 +388,7 @@ func TestRenderProviderSkillBundleIncludesClaudeRoutingForAlias(t *testing.T) {
 	if bundle.RecommendedSystemPrompt == nil ||
 		!strings.Contains(bundle.RecommendedSystemPrompt.Content, "Claude Code mention routing") ||
 		!strings.Contains(bundle.RecommendedSystemPrompt.Content, "mention://agent-target/<targetId>?workspaceId=...") ||
-		!strings.Contains(bundle.RecommendedSystemPrompt.Content, "this is not launch-only") ||
+		!strings.Contains(bundle.RecommendedSystemPrompt.Content, "handed off, not absorbed") ||
 		!strings.Contains(bundle.RecommendedSystemPrompt.Content, `Skill(skill="tutti-cli:workspace-app")`) ||
 		!strings.Contains(bundle.RecommendedSystemPrompt.Content, "Do not call a plain skill name that is not visible") ||
 		!strings.Contains(bundle.RecommendedSystemPrompt.Content, "Do not pass arguments to Skill") ||

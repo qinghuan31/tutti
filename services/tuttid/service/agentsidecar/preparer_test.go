@@ -206,7 +206,7 @@ func TestDefaultPreparerCodexWritesInstructionsSkillManifestAndEnv(t *testing.T)
 	if !strings.Contains(string(skill), "`tutti <scope> --help`") ||
 		!strings.Contains(string(skill), "this skill's `command-guide.md`") ||
 		!strings.Contains(string(skill), "mention://agent-target") ||
-		!strings.Contains(string(skill), "not launch-only") {
+		!strings.Contains(string(skill), "handed off, not absorbed") {
 		t.Fatalf("skill content = %q", string(skill))
 	}
 	commandGuideReference, err := os.ReadFile(filepath.Join(codexHome, "skills", "tutti-cli", commandGuideReferencePath))
@@ -877,7 +877,7 @@ func TestDefaultPreparerClaudeCodeUsesSessionScopedSystemPrompt(t *testing.T) {
 		!strings.Contains(string(systemPrompt), "Claude Code `Monitor` tool is disabled") ||
 		!strings.Contains(string(systemPrompt), "bounded shell/script") ||
 		!strings.Contains(string(systemPrompt), "agent session-summary --session-id <session-id> --json") ||
-		!strings.Contains(string(systemPrompt), "this is not launch-only") {
+		!strings.Contains(string(systemPrompt), "hand off, do not do it yourself") {
 		t.Fatalf("claude system prompt content = %q, want mention handoff fallback guidance", string(systemPrompt))
 	}
 	if !strings.Contains(string(systemPrompt), "# Host App Context") ||
@@ -937,7 +937,7 @@ func TestDefaultPreparerClaudeCodeUsesSessionScopedSystemPrompt(t *testing.T) {
 		!strings.Contains(string(pluginSkill), "this skill's `command-guide.md`") ||
 		!strings.Contains(string(pluginSkill), "mention://agent-session") ||
 		!strings.Contains(string(pluginSkill), "mention://agent-target") ||
-		!strings.Contains(string(pluginSkill), "not launch-only") ||
+		!strings.Contains(string(pluginSkill), "handed off, not absorbed") ||
 		!strings.Contains(string(pluginSkill), "## Route First") ||
 		!strings.Contains(string(pluginSkill), "## Call Protocol") ||
 		!strings.Contains(string(pluginSkill), "invoke `$issue-manager`") ||
