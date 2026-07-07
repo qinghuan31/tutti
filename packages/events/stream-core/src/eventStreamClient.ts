@@ -103,12 +103,6 @@ export interface CreateEventStreamClientInput<TClientEvent, TScope> {
   webSocketFactory?: EventStreamSocketFactory;
   heartbeat?: Partial<EventStreamHeartbeatConfig>;
   reconnect?: false | Partial<EventStreamReconnectConfig>;
-  /**
-   * Invoked when a server frame fails parsing or schema validation. After the
-   * ready handshake such frames are dropped without disconnecting; without
-   * this hook the drop is invisible, which hides producer/schema drift.
-   */
-  onInvalidFrame?: (error: Error, context: { ready: boolean }) => void;
 }
 
 export interface EventStreamClient<TServerEvent, TScope> {
@@ -183,7 +177,6 @@ export function createEventStreamClient<
   input: CreateEventStreamClientInput<TClientEvent, TScope>
 ): EventStreamClient<TServerEvent, TScope> {
   const { protocol } = input;
-  const onInvalidFrame = input.onInvalidFrame;
   const webSocketFactory =
     input.webSocketFactory ?? defaultEventStreamSocketFactory;
   const heartbeat = {
@@ -336,11 +329,6 @@ export function createEventStreamClient<
         const messageListener = (event: MessageEvent) => {
           const parsedFrame = parseServerFrame(event.data);
           if (!parsedFrame.ok) {
-            try {
-              onInvalidFrame?.(parsedFrame.error, { ready });
-            } catch {
-              // Diagnostics must never affect the transport.
-            }
             if (!ready) {
               fail(parsedFrame.error);
             }

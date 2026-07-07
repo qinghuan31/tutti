@@ -9,7 +9,6 @@ export {
   cloneAgentActivitySnapshot,
   createAgentActivityController,
   createEmptyAgentActivitySnapshot,
-  setAgentActivityStoreDiagnosticSink,
   type AgentActivityController,
   type AgentActivitySnapshotListener,
   type CreateAgentActivityControllerInput

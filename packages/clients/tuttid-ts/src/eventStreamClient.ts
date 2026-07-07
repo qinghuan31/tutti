@@ -32,7 +32,6 @@ export interface CreateTuttidEventStreamClientInput {
   webSocketFactory?: EventStreamSocketFactory;
   heartbeat?: Partial<EventStreamHeartbeatConfig>;
   reconnect?: false | Partial<EventStreamReconnectConfig>;
-  onInvalidFrame?: (error: Error, context: { ready: boolean }) => void;
 }
 
 type ClientEventByTopic = {
@@ -122,7 +121,6 @@ export function createTuttidEventStreamClient(
   >({
     defaultScope: input.defaultScope,
     heartbeat: input.heartbeat,
-    onInvalidFrame: input.onInvalidFrame,
     protocol: tuttiEventStreamProtocol,
     reconnect: input.reconnect,
     resolveUrl: input.resolveUrl,

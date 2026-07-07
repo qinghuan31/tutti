@@ -137,7 +137,6 @@ export function createAgentActivityController({
             if (!existing) {
               return nextSession;
             }
-            reportSessionVersionRegression("load", existing, nextSession);
             // A load response is a point-in-time snapshot; if a fresher pushed
             // state already landed for this session, keep it (same guard as
             // upsertSnapshotSession).
@@ -341,9 +340,7 @@ export function createAgentActivityController({
       if (session.workspaceId && session.workspaceId !== snapshot.workspaceId) {
         return;
       }
-      updateSnapshot((current) =>
-        upsertSnapshotSession(current, session, "upsert_session")
-      );
+      updateSnapshot((current) => upsertSnapshotSession(current, session));
     },
     applyActivityUpdatedEvent(event) {
       const result = applyActivityUpdatedEvent(snapshot, event);
@@ -838,20 +835,6 @@ function applyActivityUpdatedStatePatch(
     return emptyActivityUpdatedApplyResult(snapshot);
   }
   if (isStaleStatePatch(existingSession, canonicalStatePatch)) {
-    reportAgentActivityStoreDiagnostic("state_patch_dropped_stale", {
-      agentSessionId: canonicalPatchSessionId,
-      workspaceId: input.workspaceId,
-      patchKey:
-        canonicalStatePatch.lastEventUnixMs ??
-        canonicalStatePatch.occurredAtUnixMs ??
-        null,
-      sessionKey:
-        existingSession.lastEventUnixMs ??
-        existingSession.updatedAtUnixMs ??
-        null,
-      patchTurnPhase: canonicalStatePatch.turn?.phase ?? null,
-      patchSubmitAvailability: canonicalStatePatch.submitAvailability ?? null
-    });
     return emptyActivityUpdatedApplyResult(snapshot);
   }
   const session = agentActivitySessionFromInlineStatePatch({
@@ -863,7 +846,7 @@ function applyActivityUpdatedStatePatch(
     applied: true,
     messages: [],
     session,
-    snapshot: upsertSnapshotSession(snapshot, session, "inline_state_patch"),
+    snapshot: upsertSnapshotSession(snapshot, session),
     statePatch: canonicalStatePatch
   };
 }
@@ -898,9 +881,7 @@ function applySessionEvent(
 
   if (event.eventType === "session_update") {
     const session = sessionFromEvent(snapshot.workspaceId, event, data);
-    return session
-      ? upsertSnapshotSession(snapshot, session, "session_update_event")
-      : snapshot;
+    return session ? upsertSnapshotSession(snapshot, session) : snapshot;
   }
 
   return snapshot;
@@ -974,34 +955,6 @@ function mergeSnapshotMessages(
   };
 }
 
-// Diagnostic sink (temporary instrumentation): surfaces store anomalies —
-// version regressions on unguarded write paths and stale-patch drops — to the
-// host's logging so field exports show WHICH channel overwrote WHAT.
-type AgentActivityStoreDiagnosticSink = (
-  event: string,
-  details: Record<string, unknown>
-) => void;
-
-let agentActivityStoreDiagnosticSink: AgentActivityStoreDiagnosticSink | null =
-  null;
-
-export function setAgentActivityStoreDiagnosticSink(
-  sink: AgentActivityStoreDiagnosticSink | null
-): void {
-  agentActivityStoreDiagnosticSink = sink;
-}
-
-function reportAgentActivityStoreDiagnostic(
-  event: string,
-  details: Record<string, unknown>
-): void {
-  try {
-    agentActivityStoreDiagnosticSink?.(event, details);
-  } catch {
-    // Diagnostics must never affect the store.
-  }
-}
-
 function sessionVersionKey(session: AgentActivitySession): number | null {
   return session.lastEventUnixMs ?? session.updatedAtUnixMs ?? null;
 }
@@ -1015,33 +968,9 @@ function sessionVersionRegressed(
   return previousKey !== null && nextKey !== null && nextKey < previousKey;
 }
 
-function reportSessionVersionRegression(
-  source: string,
-  existing: AgentActivitySession,
-  incoming: AgentActivitySession
-): void {
-  const previousKey = sessionVersionKey(existing);
-  const nextKey = sessionVersionKey(incoming);
-  if (previousKey === null || nextKey === null || nextKey >= previousKey) {
-    return;
-  }
-  reportAgentActivityStoreDiagnostic("session_version_regression", {
-    agentSessionId: incoming.agentSessionId,
-    workspaceId: incoming.workspaceId,
-    source,
-    previousKey,
-    nextKey,
-    previousTurnPhase: existing.turnLifecycle?.phase ?? null,
-    nextTurnPhase: incoming.turnLifecycle?.phase ?? null,
-    previousSubmitAvailability: existing.submitAvailability ?? null,
-    nextSubmitAvailability: incoming.submitAvailability ?? null
-  });
-}
-
 function upsertSnapshotSession(
   snapshot: AgentActivitySnapshot,
-  session: AgentActivitySession,
-  source = "unknown"
+  session: AgentActivitySession
 ): AgentActivitySnapshot {
   const index = snapshot.sessions.findIndex(
     (item) => item.agentSessionId === session.agentSessionId
@@ -1054,7 +983,6 @@ function upsertSnapshotSession(
   }
   const existingSession = snapshot.sessions[index];
   if (existingSession) {
-    reportSessionVersionRegression(source, existingSession, session);
     // A slow fetch can resolve after a fresher pushed state landed (e.g. a
     // reconcile snapshot requested mid-turn arriving after the settle patch).
     // Overwriting would freeze the session on a stale running/blocked view
