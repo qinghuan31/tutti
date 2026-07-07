@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import { AgentProcessingRow } from "./AgentProcessingRow";
 
 describe("AgentProcessingRow", () => {
-  it("renders the processing label inside the shimmer text span", () => {
+  it("renders the processing label inside a stable text span", () => {
     render(
       <AgentProcessingRow
         row={{
@@ -18,10 +18,12 @@ describe("AgentProcessingRow", () => {
     );
 
     const label = screen.getByText("正在规划下一步");
-    expect(label.className).toContain("tsh-inline-scanlight-line");
-    expect(label.className).toContain("font-semibold");
+    expect(label.className).not.toContain("tsh-inline-scanlight-line");
+    expect(label.parentElement?.className).toContain("font-semibold");
     expect(
-      label.querySelector(".tsh-inline-loading-ellipsis--entry-timing")
+      label.parentElement?.querySelector(
+        ".tsh-inline-loading-ellipsis--entry-timing"
+      )
     ).toBeTruthy();
   });
 

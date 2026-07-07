@@ -13,10 +13,10 @@ export function AgentProcessingRow({
   return (
     <div
       data-row-id={row.id}
-      className="workspace-agents-status-panel__detail-processing tsh-inline-scanlight-group inline-flex items-center gap-1.5"
+      className="workspace-agents-status-panel__detail-processing inline-flex items-center gap-1.5"
     >
-      <span className="tsh-inline-scanlight-line font-semibold">
-        {processingLabel(row, label)}
+      <span className="inline-flex min-w-0 items-center gap-inherit font-semibold">
+        <span>{processingLabel(row, label)}</span>
         <LoadingEllipsis />
       </span>
     </div>
