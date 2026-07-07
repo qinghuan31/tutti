@@ -7,11 +7,11 @@ import {
   type JSX
 } from "react";
 import { MessageSquareMoreIcon } from "../../../app/renderer/components/icons/MessageSquareMoreIcon";
-import { Spinner } from "../../../app/renderer/components/ui/spinner";
 import { translate } from "../../../i18n/index";
 import {
   Button,
   ShortcutBadge,
+  Spinner,
   Tooltip,
   TooltipContent,
   TooltipProvider,

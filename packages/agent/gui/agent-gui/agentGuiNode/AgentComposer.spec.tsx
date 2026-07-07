@@ -98,7 +98,8 @@ async function openUsagePopoverByHover(usageChip: HTMLElement): Promise<void> {
   });
 }
 
-vi.mock("../../app/renderer/components/ui/popover", async () => {
+vi.mock("@tutti-os/ui-system", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@tutti-os/ui-system")>();
   const React = await import("react");
   interface MockPopoverContextValue {
     onOpenChange?: (open: boolean) => void;
@@ -122,6 +123,7 @@ vi.mock("../../app/renderer/components/ui/popover", async () => {
     side?: string;
   };
   return {
+    ...actual,
     Popover: ({
       children,
       onOpenChange,

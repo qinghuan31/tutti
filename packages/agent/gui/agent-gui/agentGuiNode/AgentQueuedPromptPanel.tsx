@@ -8,6 +8,12 @@ import {
 } from "react";
 import { ChevronRight } from "lucide-react";
 import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger
+} from "@tutti-os/ui-system";
+import {
   AgentMessageMarkdown,
   type AgentMessageMarkdownWorkspaceAppIcon
 } from "../../shared/AgentMessageMarkdown";
@@ -17,12 +23,6 @@ import {
   agentPromptContentDisplayText,
   agentPromptContentImageBlocks
 } from "./model/agentComposerDraft";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger
-} from "../../app/renderer/components/ui/dropdown-menu";
 import { ZoomableImage } from "../../app/renderer/components/ZoomableImage";
 import { CanvasNodeGhostIconButton } from "../shared/CanvasNodeGhostIconButton";
 import {

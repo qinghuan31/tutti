@@ -147,18 +147,22 @@ vi.mock(
   })
 );
 
-vi.mock("../../app/renderer/components/StatusDot", () => ({
-  StatusDot: (props: {
-    ariaLabel?: string;
-    pulse?: boolean;
-    size?: string;
-    title?: string;
-    tone?: string;
-  }) => {
-    statusDotMock.calls.push(props);
-    return <div data-testid="status-dot" />;
-  }
-}));
+vi.mock("@tutti-os/ui-system", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@tutti-os/ui-system")>();
+  return {
+    ...actual,
+    StatusDot: (props: {
+      ariaLabel?: string;
+      pulse?: boolean;
+      size?: string;
+      title?: string;
+      tone?: string;
+    }) => {
+      statusDotMock.calls.push(props);
+      return <div data-testid="status-dot" />;
+    }
+  };
+});
 
 vi.mock("./agentGuiNodeViewConversation", async (importOriginal) => {
   const actual =
