@@ -1808,6 +1808,7 @@ export function AgentGUINodeView({
             resolveDroppedFileReferences={resolveDroppedFileReferences}
             selectProjectDirectory={selectProjectDirectory}
             onRequestGitBranches={onRequestGitBranches}
+            onRequestComposerFocus={requestComposerFocus}
             contextMentionProviders={contextMentionProviders}
             workspaceAppIcons={effectiveWorkspaceAppIcons}
             workspaceUserProjectI18n={workspaceUserProjectI18n}
@@ -1878,6 +1879,7 @@ interface AgentGUIDetailPaneProps {
   resolveDroppedFileReferences?: AgentComposerProps["resolveDroppedFileReferences"];
   selectProjectDirectory?: () => Promise<{ path: string } | null>;
   onRequestGitBranches?: AgentComposerGitBranchLoader | null;
+  onRequestComposerFocus: () => void;
   contextMentionProviders?: readonly AgentContextMentionProvider[];
   workspaceAppIcons?: readonly AgentMessageMarkdownWorkspaceAppIcon[];
 }
@@ -1971,6 +1973,7 @@ const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
   resolveDroppedFileReferences = null,
   selectProjectDirectory,
   onRequestGitBranches,
+  onRequestComposerFocus,
   contextMentionProviders,
   workspaceAppIcons = EMPTY_WORKSPACE_APP_ICONS
 }: AgentGUIDetailPaneProps): React.JSX.Element {
@@ -2553,6 +2556,16 @@ const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
   const updateComposerSettings = useStableEventCallback(
     actions.updateComposerSettings
   );
+  const selectHomeComposerAgentTarget = useStableEventCallback(
+    actions.selectHomeComposerAgentTarget
+  );
+  const selectHomeComposerAgentTargetAndFocus = useCallback(
+    (input: Parameters<typeof selectHomeComposerAgentTarget>[0]) => {
+      selectHomeComposerAgentTarget(input);
+      onRequestComposerFocus();
+    },
+    [onRequestComposerFocus, selectHomeComposerAgentTarget]
+  );
   const submitPrompt = useStableEventCallback(actions.submitPrompt);
   const goalControl = useStableEventCallback(actions.goalControl);
   const submitGuidancePrompt = useStableEventCallback(
@@ -2664,7 +2677,7 @@ const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
         !canSwitchComposerProvider || viewModel.activeConversationId !== null,
       onProviderSelect:
         canSwitchComposerProvider && viewModel.activeConversationId === null
-          ? actions.selectHomeComposerAgentTarget
+          ? selectHomeComposerAgentTargetAndFocus
           : undefined,
       disabled: composerDisabled,
       disabledReason: composerDisabledReason,
@@ -2741,7 +2754,6 @@ const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
     [
       canQueueWhileBusy,
       backgroundAgentStatusText,
-      actions.selectHomeComposerAgentTarget,
       capabilityMenuState,
       canSwitchComposerProvider,
       composerDisabled,
@@ -2806,7 +2818,8 @@ const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
       viewModel.workspaceId,
       viewModel.workspacePath,
       workspaceUserProjectI18n,
-      workspaceAppIcons
+      workspaceAppIcons,
+      selectHomeComposerAgentTargetAndFocus
     ]
   );
   const emptyHeroComposerProps = useMemo<AgentComposerProps>(
@@ -3216,7 +3229,7 @@ const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
               onProviderSelect={
                 canSwitchComposerProvider &&
                 viewModel.activeConversationId === null
-                  ? actions.selectHomeComposerAgentTarget
+                  ? selectHomeComposerAgentTargetAndFocus
                   : undefined
               }
               providerTargets={composerProviderTargets}

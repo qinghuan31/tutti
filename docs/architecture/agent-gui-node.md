@@ -185,6 +185,9 @@ it must update the rail conversation filter to the matching agent target so the
 left rail selection follows the active empty composer target. When the rail is
 in `All`, provider selection changes only the empty composer target and keeps
 the aggregate rail selection intact.
+Provider selection from either the empty-home title control or the composer
+footer should also request focus for the composer input, matching provider rail
+target clicks so users can continue typing immediately after switching agents.
 The empty composer chrome and settings defaults must follow the selected
 provider target immediately, including the empty-state artwork, model options,
 and permission modes. Generic home composer overrides are single-target draft

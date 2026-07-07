@@ -1296,6 +1296,42 @@ describe("AgentGUINodeView layout persistence", () => {
     expect(actions.selectHomeComposerAgentTarget).not.toHaveBeenCalled();
   });
 
+  it("requests composer focus after switching the empty hero provider select", async () => {
+    const actions = createActions();
+    const codexTarget = createLocalAgentGUIProviderTarget("codex");
+    const claudeTarget = createLocalAgentGUIProviderTarget("claude-code");
+    renderAgentGUINodeView({
+      actions,
+      viewModel: {
+        ...createViewModel(),
+        selectedProviderTarget: codexTarget,
+        providerTargets: [codexTarget, claudeTarget]
+      },
+      labels: {
+        ...createLabels(),
+        empty: "What can Codex help you with?",
+        emptyProvider: "Codex",
+        providerSwitchLabel: "Switch provider"
+      }
+    });
+
+    expect(composerMock.calls.at(-1)?.composerFocusRequestSequence).toBeNull();
+
+    fireEvent.keyDown(
+      screen.getByRole("combobox", { name: "Switch provider" }),
+      { key: "ArrowDown" }
+    );
+    fireEvent.click(await screen.findByRole("option", { name: "Claude Code" }));
+
+    expect(actions.selectHomeComposerAgentTarget).toHaveBeenCalledWith({
+      provider: "claude-code",
+      providerTargetId: claudeTarget.targetId
+    });
+    await waitFor(() => {
+      expect(composerMock.calls.at(-1)?.composerFocusRequestSequence).toBe(1);
+    });
+  });
+
   it("selects the All tile for daemon local Codex targets", () => {
     const daemonCodexTarget = {
       ...createLocalAgentGUIProviderTarget("codex"),
