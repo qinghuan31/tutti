@@ -33,8 +33,7 @@ import {
 } from "./desktopAgentHostProjection.ts";
 import {
   desktopAgentHostWorkspaceState,
-  rememberAgentSessionStateDefaults,
-  rememberAgentSessionVisibility
+  rememberAgentSessionStateDefaults
 } from "./desktopAgentHostWorkspaceState.ts";
 import { loadWorkspaceAgentSessionControlState } from "./workspaceAgentSessionControlState.ts";
 import type {
@@ -540,11 +539,6 @@ export class WorkspaceAgentActivityService implements IWorkspaceAgentActivitySer
       workspaceState,
       session.agentSessionId,
       input.settings
-    );
-    rememberAgentSessionVisibility(
-      workspaceState,
-      session.agentSessionId,
-      input.visible
     );
     const hostSession = toAgentHostAgentSessionFromCore(workspaceId, session, {
       cwd: resolvedCwd?.cwd ?? input.cwd ?? session.cwd,
