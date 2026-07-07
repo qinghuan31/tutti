@@ -6,13 +6,14 @@ import (
 )
 
 const (
-	ProviderClaudeCode = "claude-code"
-	ProviderCodex      = "codex"
-	ProviderCursor     = "cursor"
-	ProviderNexight    = "nexight"
-	ProviderGemini     = "gemini"
-	ProviderHermes     = "hermes"
-	ProviderOpenClaw   = "openclaw"
+	ProviderClaudeCode  = "claude-code"
+	ProviderCodex       = "codex"
+	ProviderCursor      = "cursor"
+	ProviderNexight     = "nexight"
+	ProviderGemini      = "gemini"
+	ProviderHermes      = "hermes"
+	ProviderOpenClaw    = "openclaw"
+	ProviderAntigravity = "antigravity"
 
 	SessionStatusReady     = "ready"
 	SessionStatusWorking   = "working"
