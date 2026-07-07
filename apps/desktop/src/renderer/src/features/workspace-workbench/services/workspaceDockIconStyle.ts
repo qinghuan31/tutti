@@ -55,6 +55,10 @@ const defaultOpenclawIconUrl = new URL(
   "../../../assets/workspace-canvas/dock/default/openclaw.png",
   import.meta.url
 ).href;
+const defaultAntigravityIconUrl = new URL(
+  "../../../assets/workspace-canvas/dock/default/antigravity.png",
+  import.meta.url
+).href;
 const defaultTuttiIconUrl = new URL(
   "../../../assets/workspace-canvas/dock/default/tutti.png",
   import.meta.url
@@ -78,7 +82,7 @@ export function resolveWorkspaceDockIconSet(_input: {
 }): WorkspaceDockIconSet {
   const agents: Record<AgentGuiWorkbenchProvider, string> = {
     "claude-code": defaultClaudeCodeIconUrl,
-    antigravity: defaultOpenclawIconUrl,
+    antigravity: defaultAntigravityIconUrl,
     codex: defaultCodexIconUrl,
     cursor: defaultCursorIconUrl,
     gemini: defaultGeminiIconUrl,
