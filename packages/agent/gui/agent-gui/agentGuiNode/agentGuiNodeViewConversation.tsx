@@ -1,5 +1,5 @@
+import { Spinner } from "@tutti-os/ui-system";
 import { AskLinedIcon } from "@tutti-os/ui-system/icons";
-import { Spinner } from "../../app/renderer/components/ui/spinner";
 import { resolveAgentGUIConversationSortTimeUnixMs } from "./model/agentGuiConversationModel";
 import type { AgentGUINodeViewModel } from "./model/agentGuiNodeTypes";
 import type { AgentGUIViewLabels } from "./AgentGUINodeView";

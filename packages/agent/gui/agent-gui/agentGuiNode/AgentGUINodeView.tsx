@@ -22,11 +22,6 @@ import {
   Info,
   Wrench
 } from "lucide-react";
-import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger
-} from "../../app/renderer/components/ui/popover";
 import { AgentUsageMeter } from "./AgentUsageMeter";
 import { openAgentEnvPanel } from "../../shared/agentEnv/agentEnvPanelStore";
 import { openWorkspaceSettingsPanel } from "../../shared/workspaceSettingsPanel/workspaceSettingsPanelStore";
@@ -58,6 +53,14 @@ import {
   SelectTrigger,
   NewWorkspaceLinedIcon,
   ConfirmationDialog,
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+  StatusDot,
   toastVariants,
   cn
 } from "@tutti-os/ui-system";
@@ -73,20 +76,10 @@ import {
   FolderOpenLinedIcon,
   MoreHorizontalIcon
 } from "@tutti-os/ui-system/icons";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger
-} from "../../app/renderer/components/ui/dropdown-menu";
 import { PinFilledIcon } from "../../app/renderer/components/icons/PinFilledIcon";
 import { PinLinedIcon } from "../../app/renderer/components/icons/PinLinedIcon";
 import { UnavailableChatIcon } from "../../app/renderer/components/icons/UnavailableChatIcon";
 import { SettingsLinedIcon } from "../../app/renderer/components/icons/SettingsLinedIcon";
-import {
-  StatusDot,
-  type StatusDotTone
-} from "../../app/renderer/components/StatusDot";
 import { AgentConversationFlow } from "../../shared/agentConversation/components/AgentConversationFlow";
 import type { AgentConversationVM } from "../../shared/agentConversation/contracts/agentConversationVM";
 import type { AgentPromptContentBlock } from "../../shared/contracts/dto";
@@ -164,6 +157,8 @@ import { formatAgentMentionMarkdown } from "./agentRichText/agentFileMentionExte
 import { createRichTextMentionHref } from "@tutti-os/ui-rich-text/core";
 import { resolveAgentGuiSessionProviderIconUrl } from "../../agentGuiSessionProviderIconUrls";
 import { agentColorfulUrl } from "../../managedAgentIconAssets";
+
+type StatusDotTone = "neutral" | "green" | "blue" | "amber" | "red";
 
 /**
  * 把 @ 面板里的任务/应用 mention 解析为引用 picker 的定位目标(sourceId + 语义 params)。

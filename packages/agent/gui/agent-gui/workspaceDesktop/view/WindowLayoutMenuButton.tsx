@@ -8,7 +8,7 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuTrigger
-} from "../../../app/renderer/components/ui/dropdown-menu";
+} from "@tutti-os/ui-system";
 import { Button } from "../../../app/renderer/components/ui/button";
 import { useTranslation } from "../../../i18n/index";
 import { CanvasNodeGhostIconButton } from "../../shared/CanvasNodeGhostIconButton";

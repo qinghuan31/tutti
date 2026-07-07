@@ -15,7 +15,7 @@ import {
   type MentionRowStatusTone
 } from "@tutti-os/ui-rich-text/at-panel";
 import { resolveIssueManagerStatusPresentation } from "@tutti-os/workspace-issue-manager/ui";
-import { Spinner } from "../../app/renderer/components/ui/spinner";
+import { Spinner } from "@tutti-os/ui-system";
 import { userAvatarPlaceholderUrl } from "../../shared/userAvatarPlaceholder";
 import { translate } from "../../i18n/index";
 import { managedAgentRoundedIconUrl } from "../../shared/managedAgentIcons";
