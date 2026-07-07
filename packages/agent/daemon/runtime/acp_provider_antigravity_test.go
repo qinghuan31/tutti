@@ -58,3 +58,14 @@ func TestAntigravityCommandResolverInjectsAgyBin(t *testing.T) {
 		t.Fatalf("AGY_BIN not injected with resolved agy path; Env = %v", cmd.Env)
 	}
 }
+
+func TestAntigravityPermissionModeSwitches(t *testing.T) {
+	if got := defaultPermissionModeIDForProvider(ProviderAntigravity); got != "" {
+		t.Fatalf("default permission mode = %q, want empty", got)
+	}
+	for _, mode := range []string{"", "yolo", "auto", "full-access", "default"} {
+		if permissionModeIDAllowedForProvider(ProviderAntigravity, mode) {
+			t.Fatalf("mode %q must not be allowed for antigravity", mode)
+		}
+	}
+}

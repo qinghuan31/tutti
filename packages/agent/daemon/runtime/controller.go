@@ -159,6 +159,7 @@ func NewDefaultControllerWithOptions(
 		NewGeminiAdapterWithHostMetadata(transport, host),
 		NewHermesAdapterWithHostMetadata(transport, host),
 		NewOpenClawAdapterWithHostMetadata(transport, host),
+		NewAntigravityAdapterWithHostMetadata(transport, host),
 	}
 	setProviderLaunchPreparer(adapters, options.ProviderLaunchPreparer)
 	return NewController(adapters, reporter)
