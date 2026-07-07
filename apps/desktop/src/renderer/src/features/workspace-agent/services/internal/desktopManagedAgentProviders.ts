@@ -16,7 +16,8 @@ export const desktopManagedAgentProviders = [
   "nexight",
   "gemini",
   "hermes",
-  "openclaw"
+  "openclaw",
+  "antigravity"
 ] as const satisfies readonly WorkspaceAgentProvider[];
 
 export function ensureDesktopManagedAgentProviderStatuses(
