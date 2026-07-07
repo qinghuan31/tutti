@@ -4230,6 +4230,8 @@ components:
           $ref: "#/components/schemas/DesktopAgentComposerDefaults"
         openclaw:
           $ref: "#/components/schemas/DesktopAgentComposerDefaults"
+        antigravity:
+          $ref: "#/components/schemas/DesktopAgentComposerDefaults"
     DesktopAgentComposerDefaultsByAgentTarget:
       type: object
       additionalProperties:
@@ -4251,6 +4253,8 @@ components:
         hermes:
           type: boolean
         openclaw:
+          type: boolean
+        antigravity:
           type: boolean
     DesktopFileDefaultOpener:
       type: string
@@ -4294,6 +4298,7 @@ components:
         - codex
         - claude-code
         - cursor
+        - antigravity
     AgentTargetSource:
       type: string
       enum:
@@ -5575,6 +5580,7 @@ components:
         - gemini
         - hermes
         - openclaw
+        - antigravity
     WorkspaceAgentSessionStatus:
       type: string
       enum:

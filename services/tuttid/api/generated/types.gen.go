@@ -393,14 +393,17 @@ func (e AgentTargetLaunchRefType) Valid() bool {
 
 // Defines values for AgentTargetProvider.
 const (
-	AgentTargetProviderClaudeCode AgentTargetProvider = "claude-code"
-	AgentTargetProviderCodex      AgentTargetProvider = "codex"
-	AgentTargetProviderCursor     AgentTargetProvider = "cursor"
+	AgentTargetProviderAntigravity AgentTargetProvider = "antigravity"
+	AgentTargetProviderClaudeCode  AgentTargetProvider = "claude-code"
+	AgentTargetProviderCodex       AgentTargetProvider = "codex"
+	AgentTargetProviderCursor      AgentTargetProvider = "cursor"
 )
 
 // Valid indicates whether the value is a known member of the AgentTargetProvider enum.
 func (e AgentTargetProvider) Valid() bool {
 	switch e {
+	case AgentTargetProviderAntigravity:
+		return true
 	case AgentTargetProviderClaudeCode:
 		return true
 	case AgentTargetProviderCodex:
@@ -1083,18 +1086,21 @@ func (e WorkbenchSnapshotNodeDisplayMode) Valid() bool {
 
 // Defines values for WorkspaceAgentProvider.
 const (
-	WorkspaceAgentProviderClaudeCode WorkspaceAgentProvider = "claude-code"
-	WorkspaceAgentProviderCodex      WorkspaceAgentProvider = "codex"
-	WorkspaceAgentProviderCursor     WorkspaceAgentProvider = "cursor"
-	WorkspaceAgentProviderGemini     WorkspaceAgentProvider = "gemini"
-	WorkspaceAgentProviderHermes     WorkspaceAgentProvider = "hermes"
-	WorkspaceAgentProviderNexight    WorkspaceAgentProvider = "nexight"
-	WorkspaceAgentProviderOpenclaw   WorkspaceAgentProvider = "openclaw"
+	WorkspaceAgentProviderAntigravity WorkspaceAgentProvider = "antigravity"
+	WorkspaceAgentProviderClaudeCode  WorkspaceAgentProvider = "claude-code"
+	WorkspaceAgentProviderCodex       WorkspaceAgentProvider = "codex"
+	WorkspaceAgentProviderCursor      WorkspaceAgentProvider = "cursor"
+	WorkspaceAgentProviderGemini      WorkspaceAgentProvider = "gemini"
+	WorkspaceAgentProviderHermes      WorkspaceAgentProvider = "hermes"
+	WorkspaceAgentProviderNexight     WorkspaceAgentProvider = "nexight"
+	WorkspaceAgentProviderOpenclaw    WorkspaceAgentProvider = "openclaw"
 )
 
 // Valid indicates whether the value is a known member of the WorkspaceAgentProvider enum.
 func (e WorkspaceAgentProvider) Valid() bool {
 	switch e {
+	case WorkspaceAgentProviderAntigravity:
+		return true
 	case WorkspaceAgentProviderClaudeCode:
 		return true
 	case WorkspaceAgentProviderCodex:
@@ -2544,13 +2550,14 @@ type DesktopAgentComposerDefaultsByAgentTarget map[string]DesktopAgentComposerDe
 
 // DesktopAgentComposerDefaultsByProvider defines model for DesktopAgentComposerDefaultsByProvider.
 type DesktopAgentComposerDefaultsByProvider struct {
-	ClaudeCode *DesktopAgentComposerDefaults `json:"claude-code,omitempty"`
-	Codex      *DesktopAgentComposerDefaults `json:"codex,omitempty"`
-	Cursor     *DesktopAgentComposerDefaults `json:"cursor,omitempty"`
-	Gemini     *DesktopAgentComposerDefaults `json:"gemini,omitempty"`
-	Hermes     *DesktopAgentComposerDefaults `json:"hermes,omitempty"`
-	Nexight    *DesktopAgentComposerDefaults `json:"nexight,omitempty"`
-	Openclaw   *DesktopAgentComposerDefaults `json:"openclaw,omitempty"`
+	Antigravity *DesktopAgentComposerDefaults `json:"antigravity,omitempty"`
+	ClaudeCode  *DesktopAgentComposerDefaults `json:"claude-code,omitempty"`
+	Codex       *DesktopAgentComposerDefaults `json:"codex,omitempty"`
+	Cursor      *DesktopAgentComposerDefaults `json:"cursor,omitempty"`
+	Gemini      *DesktopAgentComposerDefaults `json:"gemini,omitempty"`
+	Hermes      *DesktopAgentComposerDefaults `json:"hermes,omitempty"`
+	Nexight     *DesktopAgentComposerDefaults `json:"nexight,omitempty"`
+	Openclaw    *DesktopAgentComposerDefaults `json:"openclaw,omitempty"`
 }
 
 // DesktopAgentConversationDetailMode defines model for DesktopAgentConversationDetailMode.
@@ -2561,13 +2568,14 @@ type DesktopAgentDockLayout string
 
 // DesktopAgentGuiConversationRailCollapsedByProvider defines model for DesktopAgentGuiConversationRailCollapsedByProvider.
 type DesktopAgentGuiConversationRailCollapsedByProvider struct {
-	ClaudeCode *bool `json:"claude-code,omitempty"`
-	Codex      *bool `json:"codex,omitempty"`
-	Cursor     *bool `json:"cursor,omitempty"`
-	Gemini     *bool `json:"gemini,omitempty"`
-	Hermes     *bool `json:"hermes,omitempty"`
-	Nexight    *bool `json:"nexight,omitempty"`
-	Openclaw   *bool `json:"openclaw,omitempty"`
+	Antigravity *bool `json:"antigravity,omitempty"`
+	ClaudeCode  *bool `json:"claude-code,omitempty"`
+	Codex       *bool `json:"codex,omitempty"`
+	Cursor      *bool `json:"cursor,omitempty"`
+	Gemini      *bool `json:"gemini,omitempty"`
+	Hermes      *bool `json:"hermes,omitempty"`
+	Nexight     *bool `json:"nexight,omitempty"`
+	Openclaw    *bool `json:"openclaw,omitempty"`
 }
 
 // DesktopAppCatalogChannel defines model for DesktopAppCatalogChannel.

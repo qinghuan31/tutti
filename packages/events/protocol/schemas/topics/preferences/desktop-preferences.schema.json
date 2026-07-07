@@ -34,7 +34,8 @@
         "nexight": { "$ref": "#/$defs/agentComposerDefaults" },
         "gemini": { "$ref": "#/$defs/agentComposerDefaults" },
         "hermes": { "$ref": "#/$defs/agentComposerDefaults" },
-        "openclaw": { "$ref": "#/$defs/agentComposerDefaults" }
+        "openclaw": { "$ref": "#/$defs/agentComposerDefaults" },
+        "antigravity": { "$ref": "#/$defs/agentComposerDefaults" }
       }
     },
     "agentComposerDefaultsByAgentTarget": {
@@ -51,7 +52,8 @@
         "nexight": { "type": "boolean" },
         "gemini": { "type": "boolean" },
         "hermes": { "type": "boolean" },
-        "openclaw": { "type": "boolean" }
+        "openclaw": { "type": "boolean" },
+        "antigravity": { "type": "boolean" }
       }
     },
     "agentConversationDetailMode": {
@@ -79,7 +81,8 @@
         "nexight",
         "gemini",
         "hermes",
-        "openclaw"
+        "openclaw",
+        "antigravity"
       ]
     },
     "dockIconStyle": {

@@ -155,6 +155,24 @@ export const preferencesDesktopPreferencesSchema = {
               type: "string"
             }
           }
+        },
+        antigravity: {
+          type: "object",
+          additionalProperties: false,
+          properties: {
+            model: {
+              type: "string"
+            },
+            permissionModeId: {
+              type: "string"
+            },
+            reasoningEffort: {
+              type: "string"
+            },
+            speed: {
+              type: "string"
+            }
+          }
         }
       }
     },
@@ -203,6 +221,9 @@ export const preferencesDesktopPreferencesSchema = {
         },
         openclaw: {
           type: "boolean"
+        },
+        antigravity: {
+          type: "boolean"
         }
       }
     },
@@ -231,7 +252,8 @@ export const preferencesDesktopPreferencesSchema = {
         "nexight",
         "gemini",
         "hermes",
-        "openclaw"
+        "openclaw",
+        "antigravity"
       ]
     },
     dockIconStyle: {
@@ -1240,6 +1262,24 @@ export const preferencesDesktopUpdateRequestedPayloadSchema = {
                   type: "string"
                 }
               }
+            },
+            antigravity: {
+              type: "object",
+              additionalProperties: false,
+              properties: {
+                model: {
+                  type: "string"
+                },
+                permissionModeId: {
+                  type: "string"
+                },
+                reasoningEffort: {
+                  type: "string"
+                },
+                speed: {
+                  type: "string"
+                }
+              }
             }
           }
         },
@@ -1288,6 +1328,9 @@ export const preferencesDesktopUpdateRequestedPayloadSchema = {
             },
             openclaw: {
               type: "boolean"
+            },
+            antigravity: {
+              type: "boolean"
             }
           }
         },
@@ -1316,7 +1359,8 @@ export const preferencesDesktopUpdateRequestedPayloadSchema = {
             "nexight",
             "gemini",
             "hermes",
-            "openclaw"
+            "openclaw",
+            "antigravity"
           ]
         },
         dockIconStyle: {
@@ -1566,6 +1610,24 @@ export const preferencesDesktopUpdatedPayloadSchema = {
                   type: "string"
                 }
               }
+            },
+            antigravity: {
+              type: "object",
+              additionalProperties: false,
+              properties: {
+                model: {
+                  type: "string"
+                },
+                permissionModeId: {
+                  type: "string"
+                },
+                reasoningEffort: {
+                  type: "string"
+                },
+                speed: {
+                  type: "string"
+                }
+              }
             }
           }
         },
@@ -1614,6 +1676,9 @@ export const preferencesDesktopUpdatedPayloadSchema = {
             },
             openclaw: {
               type: "boolean"
+            },
+            antigravity: {
+              type: "boolean"
             }
           }
         },
@@ -1642,7 +1707,8 @@ export const preferencesDesktopUpdatedPayloadSchema = {
             "nexight",
             "gemini",
             "hermes",
-            "openclaw"
+            "openclaw",
+            "antigravity"
           ]
         },
         dockIconStyle: {

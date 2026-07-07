@@ -84,6 +84,12 @@ export interface PreferencesDesktopPreferencesV1 {
       reasoningEffort?: string;
       speed?: string;
     };
+    antigravity?: {
+      model?: string;
+      permissionModeId?: string;
+      reasoningEffort?: string;
+      speed?: string;
+    };
   };
   agentComposerDefaultsByAgentTarget?: Record<
     string,
@@ -102,6 +108,7 @@ export interface PreferencesDesktopPreferencesV1 {
     gemini?: boolean;
     hermes?: boolean;
     openclaw?: boolean;
+    antigravity?: boolean;
   };
   agentConversationDetailMode: "coding" | "general";
   agentDockLayout: "legacySplit" | "unified";
@@ -114,7 +121,8 @@ export interface PreferencesDesktopPreferencesV1 {
     | "nexight"
     | "gemini"
     | "hermes"
-    | "openclaw";
+    | "openclaw"
+    | "antigravity";
   dockIconStyle: "default" | "flat";
   dockPlacement: "bottom" | "left";
   fileDefaultOpenersByExtension: Record<

@@ -6,7 +6,7 @@ import "encoding/json"
 
 const (
 	BusinessEventProtocolVersion = 1
-	BusinessEventCatalogRevision = "sha256:6eb58925aa2f14d7"
+	BusinessEventCatalogRevision = "sha256:4dd6c10c4d0fc347"
 )
 
 type Topic string
@@ -103,6 +103,12 @@ type PreferencesDesktopPreferences struct {
 			ReasoningEffort  *string `json:"reasoningEffort,omitempty"`
 			Speed            *string `json:"speed,omitempty"`
 		} `json:"openclaw,omitempty"`
+		Antigravity *struct {
+			Model            *string `json:"model,omitempty"`
+			PermissionModeId *string `json:"permissionModeId,omitempty"`
+			ReasoningEffort  *string `json:"reasoningEffort,omitempty"`
+			Speed            *string `json:"speed,omitempty"`
+		} `json:"antigravity,omitempty"`
 	} `json:"agentComposerDefaultsByProvider"`
 	AgentComposerDefaultsByAgentTarget *map[string]struct {
 		Model            *string `json:"model,omitempty"`
@@ -111,13 +117,14 @@ type PreferencesDesktopPreferences struct {
 		Speed            *string `json:"speed,omitempty"`
 	} `json:"agentComposerDefaultsByAgentTarget,omitempty"`
 	AgentGuiConversationRailCollapsedByProvider struct {
-		ClaudeCode *bool `json:"claude-code,omitempty"`
-		Codex      *bool `json:"codex,omitempty"`
-		Cursor     *bool `json:"cursor,omitempty"`
-		Nexight    *bool `json:"nexight,omitempty"`
-		Gemini     *bool `json:"gemini,omitempty"`
-		Hermes     *bool `json:"hermes,omitempty"`
-		Openclaw   *bool `json:"openclaw,omitempty"`
+		ClaudeCode  *bool `json:"claude-code,omitempty"`
+		Codex       *bool `json:"codex,omitempty"`
+		Cursor      *bool `json:"cursor,omitempty"`
+		Nexight     *bool `json:"nexight,omitempty"`
+		Gemini      *bool `json:"gemini,omitempty"`
+		Hermes      *bool `json:"hermes,omitempty"`
+		Openclaw    *bool `json:"openclaw,omitempty"`
+		Antigravity *bool `json:"antigravity,omitempty"`
 	} `json:"agentGuiConversationRailCollapsedByProvider"`
 	AgentConversationDetailMode   string            `json:"agentConversationDetailMode"`
 	AgentDockLayout               string            `json:"agentDockLayout"`

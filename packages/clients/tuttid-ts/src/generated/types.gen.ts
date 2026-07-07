@@ -321,6 +321,7 @@ export type DesktopAgentComposerDefaultsByProvider = {
   gemini?: DesktopAgentComposerDefaults;
   hermes?: DesktopAgentComposerDefaults;
   openclaw?: DesktopAgentComposerDefaults;
+  antigravity?: DesktopAgentComposerDefaults;
 };
 
 export type DesktopAgentComposerDefaultsByAgentTarget = {
@@ -335,6 +336,7 @@ export type DesktopAgentGuiConversationRailCollapsedByProvider = {
   gemini?: boolean;
   hermes?: boolean;
   openclaw?: boolean;
+  antigravity?: boolean;
 };
 
 export type DesktopFileDefaultOpener =
@@ -358,7 +360,11 @@ export type PutDesktopPreferencesRequest = {
   preferences: DesktopPreferences;
 };
 
-export type AgentTargetProvider = "codex" | "claude-code" | "cursor";
+export type AgentTargetProvider =
+  | "codex"
+  | "claude-code"
+  | "cursor"
+  | "antigravity";
 
 export type AgentTargetSource = "system" | "user";
 
@@ -860,7 +866,8 @@ export type WorkspaceAgentProvider =
   | "nexight"
   | "gemini"
   | "hermes"
-  | "openclaw";
+  | "openclaw"
+  | "antigravity";
 
 export type WorkspaceAgentSessionStatus =
   | "created"
