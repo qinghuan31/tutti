@@ -139,6 +139,10 @@ describe("agent gui provider targets", () => {
         sharedAgentId: " agent-1 ",
         agentTargetId: " cp-target-1 ",
         label: "Alice's Codex",
+        badge: {
+          iconUrl: " app://alice-avatar.png ",
+          label: " Alice avatar "
+        },
         ownerLabel: " Alice ",
         iconUrl: " app://alice.png ",
         unavailableReason: " owner_offline ",
@@ -158,6 +162,10 @@ describe("agent gui provider targets", () => {
         ownerUserId: "user-1"
       },
       label: "Alice's Codex",
+      badge: {
+        iconUrl: "app://alice-avatar.png",
+        label: "Alice avatar"
+      },
       ownerLabel: "Alice",
       iconUrl: "app://alice.png",
       unavailableReason: "owner_offline",
@@ -177,6 +185,10 @@ describe("agent gui provider targets", () => {
             sharedAgentId: "agent-1"
           },
           label: " Alice's Codex ",
+          badge: {
+            iconUrl: " ",
+            label: " "
+          },
           description: " ",
           ownerLabel: " ",
           iconUrl: " ",

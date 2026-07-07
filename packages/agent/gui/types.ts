@@ -83,6 +83,11 @@ export interface AgentGUIProviderTargetRef {
   [key: string]: unknown;
 }
 
+export interface AgentGUIProviderTargetBadge {
+  iconUrl: string;
+  label?: string;
+}
+
 export interface AgentGUIProviderTarget {
   targetId: string;
   agentTargetId?: string | null;
@@ -91,6 +96,7 @@ export interface AgentGUIProviderTarget {
   label: string;
   description?: string;
   iconUrl?: string | null;
+  badge?: AgentGUIProviderTargetBadge | null;
   ownerLabel?: string;
   disabled?: boolean;
   unavailableReason?: string;

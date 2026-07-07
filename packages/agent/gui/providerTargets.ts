@@ -1,6 +1,7 @@
 import type {
   AgentGUIProvider,
   AgentGUIProviderTarget,
+  AgentGUIProviderTargetBadge,
   AgentGUIProviderTargetRef
 } from "./types.ts";
 
@@ -62,6 +63,7 @@ export function createSharedAgentGUIProviderTarget(input: {
   sharedAgentId: string;
   label: string;
   agentTargetId?: string | null;
+  badge?: AgentGUIProviderTargetBadge | null;
   ownerLabel?: string | null;
   iconUrl?: string | null;
   unavailableReason?: string | null;
@@ -70,6 +72,7 @@ export function createSharedAgentGUIProviderTarget(input: {
 }): AgentGUIProviderTarget {
   const sharedAgentId = input.sharedAgentId.trim();
   const targetId = `shared-agent:${sharedAgentId}`;
+  const badge = normalizeAgentGUIProviderTargetBadge(input.badge);
   return {
     targetId,
     ...(input.agentTargetId?.trim()
@@ -83,6 +86,7 @@ export function createSharedAgentGUIProviderTarget(input: {
       sharedAgentId
     },
     label: input.label,
+    ...(badge ? { badge } : {}),
     ...(input.ownerLabel?.trim()
       ? { ownerLabel: input.ownerLabel.trim() }
       : {}),
@@ -255,6 +259,7 @@ function normalizeAgentGUIProviderTarget(
     provider: _provider,
     ref: _ref,
     label: _label,
+    badge,
     description,
     iconUrl,
     ownerLabel,
@@ -269,6 +274,7 @@ function normalizeAgentGUIProviderTarget(
   if (!targetId || !label || !kind || target.ref.provider !== target.provider) {
     return null;
   }
+  const normalizedBadge = normalizeAgentGUIProviderTargetBadge(badge);
   return {
     ...rest,
     targetId,
@@ -280,12 +286,27 @@ function normalizeAgentGUIProviderTarget(
       provider: target.provider
     },
     label,
+    ...(normalizedBadge ? { badge: normalizedBadge } : {}),
     ...(description?.trim() ? { description: description.trim() } : {}),
     ...(iconUrl?.trim() ? { iconUrl: iconUrl.trim() } : {}),
     ...(ownerLabel?.trim() ? { ownerLabel: ownerLabel.trim() } : {}),
     ...(unavailableReason?.trim()
       ? { unavailableReason: unavailableReason.trim() }
       : {})
+  };
+}
+
+function normalizeAgentGUIProviderTargetBadge(
+  badge: AgentGUIProviderTargetBadge | null | undefined
+): AgentGUIProviderTargetBadge | null {
+  const iconUrl = badge?.iconUrl?.trim() ?? "";
+  if (!iconUrl) {
+    return null;
+  }
+  const label = badge?.label?.trim() ?? "";
+  return {
+    iconUrl,
+    ...(label ? { label } : {})
   };
 }
 

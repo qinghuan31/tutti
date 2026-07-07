@@ -4835,6 +4835,17 @@ function agentGUIProviderRailLabel(
   return targetLabel;
 }
 
+function agentGUIProviderRailAriaLabel(
+  label: string,
+  badgeLabel: string | null | undefined
+): string {
+  const normalizedBadgeLabel = badgeLabel?.trim() ?? "";
+  if (!normalizedBadgeLabel || normalizedBadgeLabel === label) {
+    return label;
+  }
+  return `${label}, ${normalizedBadgeLabel}`;
+}
+
 function agentGUIProviderTargetMatchesConversationFilter(
   target: AgentGUINodeViewModel["providerTargets"][number],
   filter: AgentGUINodeViewModel["conversationFilter"]
@@ -5361,12 +5372,16 @@ const AgentGUIProviderRail = memo(function AgentGUIProviderRail({
             target.label,
             labels
           );
+          const ariaLabel = agentGUIProviderRailAriaLabel(
+            label,
+            target.badge?.label
+          );
           const tile = (
             <button
               key={`${target.provider}:${target.targetId}`}
               type="button"
               role="tab"
-              aria-label={label}
+              aria-label={ariaLabel}
               aria-selected={providerSelected}
               className={styles.providerRailTile}
               data-disabled={target.disabled === true ? "true" : undefined}
@@ -5401,6 +5416,16 @@ const AgentGUIProviderRail = memo(function AgentGUIProviderRail({
                     target.iconUrl
                   )}
                 />
+                {target.badge?.iconUrl ? (
+                  <span aria-hidden="true" className={styles.providerRailBadge}>
+                    <img
+                      alt=""
+                      className={styles.providerRailBadgeImage}
+                      draggable={false}
+                      src={target.badge.iconUrl}
+                    />
+                  </span>
+                ) : null}
               </span>
             </button>
           );

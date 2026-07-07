@@ -140,6 +140,8 @@ const styles = {
   providerRailAvatar: "agent-gui-node__provider-rail-avatar",
   providerRailAvatarIcon: "agent-gui-node__provider-rail-avatar-icon",
   providerRailAvatarImage: "agent-gui-node__provider-rail-avatar-image",
+  providerRailBadge: "agent-gui-node__provider-rail-badge",
+  providerRailBadgeImage: "agent-gui-node__provider-rail-badge-image",
   providerRailLaunchpadIcon: "agent-gui-node__provider-rail-launchpad-icon",
   emptyHeroIconSlot: "agent-gui-node__empty-hero-icon-slot",
   emptyHeroLaunchpadIcon: "agent-gui-node__empty-hero-launchpad-icon",
