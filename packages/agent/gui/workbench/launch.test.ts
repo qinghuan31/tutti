@@ -169,6 +169,21 @@ describe("agent gui workbench launch contract", () => {
     expect(descriptor.provider).toBe("claude-code");
   });
 
+  it("keeps unified aggregate target-only launches unscoped until provider is explicit", () => {
+    const descriptor = createAgentGuiWorkbenchLaunchDescriptor({
+      dockEntryId: agentGuiWorkbenchUnifiedDockEntryId(),
+      payload: {
+        agentTargetId: "shared-agent:missing"
+      },
+      typeId: "agent-gui"
+    });
+
+    expect(descriptor.dockEntryId).toBe("agent-gui:unified");
+    expect(descriptor.instanceId).toContain("agent-gui:codex:panel:");
+    expect(descriptor.instanceId).not.toContain(":target:");
+    expect(descriptor.provider).toBe("codex");
+  });
+
   it("creates draft prompt launch requests for provider dock entries", () => {
     expect(
       createAgentGuiWorkbenchDraftLaunchRequest({

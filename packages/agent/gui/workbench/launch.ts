@@ -210,6 +210,7 @@ export function createAgentGuiWorkbenchLaunchDescriptor(
     provider,
     requestedDockEntryId: request.dockEntryId
   });
+  const scopedAgentTargetId = scopedAgentTargetIdFromLaunchRequest(request);
   const prefillPrompt = prefillPromptFromLaunchPayload(request.payload);
   if (prefillPrompt) {
     const openInNewWindow = openInNewWindowFromLaunchPayload(request.payload);
@@ -220,9 +221,7 @@ export function createAgentGuiWorkbenchLaunchDescriptor(
       },
       dockEntryId,
       instanceId: createAgentGuiWorkbenchInstanceId({
-        agentTargetId: openInNewWindow
-          ? null
-          : agentTargetIdFromLaunchPayload(request.payload),
+        agentTargetId: openInNewWindow ? null : scopedAgentTargetId,
         provider
       }),
       openInNewWindow,
@@ -240,9 +239,7 @@ export function createAgentGuiWorkbenchLaunchDescriptor(
   const openInNewWindow = openInNewWindowFromLaunchPayload(request.payload);
   const instanceId = createAgentGuiWorkbenchInstanceId({
     agentSessionId: null,
-    agentTargetId: openInNewWindow
-      ? null
-      : agentTargetIdFromLaunchPayload(request.payload),
+    agentTargetId: openInNewWindow ? null : scopedAgentTargetId,
     provider
   });
 
@@ -328,6 +325,22 @@ function prefillPromptFromLaunchPayload(
   };
 }
 
+function scopedAgentTargetIdFromLaunchRequest(
+  request: AgentGuiWorkbenchLaunchRequestInput
+): string | null {
+  const agentTargetId = agentTargetIdFromLaunchPayload(request.payload);
+  if (!agentTargetId) {
+    return null;
+  }
+  if (explicitProviderFromLaunchPayload(request.payload)) {
+    return agentTargetId;
+  }
+  return agentGuiWorkbenchDockIdentityFromIdentifier(request.dockEntryId)
+    ?.kind === "legacyProvider"
+    ? agentTargetId
+    : null;
+}
+
 function normalizeAgentGuiWorkbenchUserProjectPath(
   value: string | null | undefined
 ): string | null {
@@ -354,6 +367,16 @@ function agentTargetIdFromLaunchPayload(payload: unknown): string | null {
   return typeof agentTargetId === "string" && agentTargetId.trim()
     ? agentTargetId.trim()
     : null;
+}
+
+function explicitProviderFromLaunchPayload(
+  payload: unknown
+): AgentGuiWorkbenchProvider | null {
+  if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
+    return null;
+  }
+  const provider = (payload as { provider?: unknown }).provider;
+  return isAgentGuiWorkbenchProvider(provider) ? provider : null;
 }
 
 function openInNewWindowFromLaunchPayload(payload: unknown): boolean {

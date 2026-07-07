@@ -415,8 +415,15 @@ export function createAgentGuiWorkbenchContribution(
       const launchPayload = resolveAgentGuiWorkbenchLaunchPayload(request, {
         resolveDockLaunchPayload: input.resolveDockLaunchPayload
       });
-      const descriptorPayload = withResolvedProviderInLaunchPayload(
+      const scopedLaunchPayload = withoutUnresolvedTargetLaunchPayload(
         launchPayload,
+        {
+          targets: input.providerTargets,
+          providerTargetsLoading: input.providerTargetsLoading
+        }
+      );
+      const descriptorPayload = withResolvedProviderInLaunchPayload(
+        scopedLaunchPayload,
         {
           targets: input.providerTargets,
           providerTargetsLoading: input.providerTargetsLoading
@@ -444,7 +451,7 @@ export function createAgentGuiWorkbenchContribution(
       const instanceId = existingInstanceId ?? descriptorInstanceId;
       const title = copy.nodeTitle;
       const providerTarget = providerTargetLaunchPayloadFromRequest(
-        launchPayload
+        scopedLaunchPayload
       );
       const launchAgentTargetId =
         providerTarget.agentTargetId ?? providerTarget.providerTargetId;
@@ -1034,6 +1041,39 @@ function withResolvedProviderInLaunchPayload(
     input
   );
   return provider ? { ...typedPayload, provider } : payload;
+}
+
+function withoutUnresolvedTargetLaunchPayload(
+  payload: unknown,
+  input: Pick<
+    BuildAgentGuiDockEntriesInput,
+    "providerTargetsLoading" | "targets"
+  >
+): unknown {
+  if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
+    return payload;
+  }
+  if (input.providerTargetsLoading === true || input.targets == null) {
+    return payload;
+  }
+  const target = providerTargetLaunchPayloadFromRequest(payload);
+  if (!target.agentTargetId && !target.providerTargetId) {
+    return payload;
+  }
+  if (
+    resolveWorkbenchLaunchProviderFromTargetPayload(payload, {
+      providerTargetsLoading: false,
+      targets: input.targets
+    })
+  ) {
+    return payload;
+  }
+  const {
+    agentTargetId: _agentTargetId,
+    providerTargetId: _providerTargetId,
+    ...rest
+  } = payload as Record<string, unknown>;
+  return rest;
 }
 
 function createAgentGuiWorkbenchPreviewContent(input: {

@@ -513,6 +513,84 @@ describe("agent GUI workbench contribution copy", () => {
     ).toBeNull();
   });
 
+  it("drops unresolved dock target payloads back to an unscoped launch", () => {
+    const contribution = createTestAgentGuiWorkbenchContribution({
+      providerTargets: [createLocalAgentGUIProviderTarget("codex")],
+      renderBody: () => null,
+      resolveDockLaunchPayload: () => ({
+        agentTargetId: "shared-agent:missing"
+      }),
+      workspaceId: "workspace-1"
+    });
+    const [dockEntry] = contribution.dockEntries ?? [];
+
+    const launchResult = contribution.onLaunchRequest?.({
+      dockEntryId: dockEntry?.id,
+      layoutConstraints: testLaunchLayout.layoutConstraints,
+      payload: dockEntry?.launchPayload,
+      reason: "dock",
+      surfaceSize: testLaunchLayout.surfaceSize,
+      typeId: agentGuiWorkbenchTypeId,
+      workspaceId: "workspace-1"
+    }) as
+      | {
+          instanceId: string;
+        }
+      | null
+      | undefined;
+
+    expect(launchResult?.instanceId).toContain("agent-gui:codex:panel:");
+    expect(launchResult?.instanceId).not.toContain(":target:");
+    expect(
+      contribution.externalStateSource?.getSnapshotNodeState?.({
+        instanceId: launchResult?.instanceId ?? "",
+        typeId: agentGuiWorkbenchTypeId
+      } as never)
+    ).toBeNull();
+  });
+
+  it("keeps target-only dock payloads while provider targets are still loading", () => {
+    const contribution = createTestAgentGuiWorkbenchContribution({
+      providerTargets: [],
+      providerTargetsLoading: true,
+      renderBody: () => null,
+      resolveDockLaunchPayload: () => ({
+        agentTargetId: "shared-agent:pending"
+      }),
+      workspaceId: "workspace-1"
+    });
+    const [dockEntry] = contribution.dockEntries ?? [];
+
+    const launchResult = contribution.onLaunchRequest?.({
+      dockEntryId: dockEntry?.id,
+      layoutConstraints: testLaunchLayout.layoutConstraints,
+      payload: dockEntry?.launchPayload,
+      reason: "dock",
+      surfaceSize: testLaunchLayout.surfaceSize,
+      typeId: agentGuiWorkbenchTypeId,
+      workspaceId: "workspace-1"
+    }) as
+      | {
+          instanceId: string;
+        }
+      | null
+      | undefined;
+
+    expect(launchResult?.instanceId).toContain("agent-gui:codex:panel:");
+    expect(launchResult?.instanceId).not.toContain(":target:");
+    expect(
+      contribution.externalStateSource?.getSnapshotNodeState?.({
+        instanceId: launchResult?.instanceId ?? "",
+        typeId: agentGuiWorkbenchTypeId
+      } as never)
+    ).toEqual({
+      agentTargetId: "shared-agent:pending",
+      conversationRailCollapsed: false,
+      conversationRailWidthPx: null,
+      lastActiveAgentSessionId: null
+    });
+  });
+
   it("uses package defaults when the host does not provide copy", () => {
     expect(resolveAgentGuiWorkbenchContributionCopy()).toEqual(
       agentGuiWorkbenchDefaultCopy
