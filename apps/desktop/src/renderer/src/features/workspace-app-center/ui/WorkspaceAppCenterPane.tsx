@@ -19,10 +19,7 @@ import type {
   AppCenterHostActions
 } from "@tutti-os/workspace-app-center/ui";
 import { AppCenterPanel } from "@tutti-os/workspace-app-center/ui";
-import {
-  agentGuiDockIconUrls,
-  localAgentGUIAgentTargetId
-} from "@tutti-os/agent-gui";
+import { agentGuiDockIconUrls } from "@tutti-os/agent-gui";
 import type { AgentProviderStatus } from "@tutti-os/client-tuttid-ts";
 import { useService } from "@tutti-os/infra/di";
 import {
@@ -552,28 +549,6 @@ function resolveAppCenterReadyAgentProviderOptions(
       .filter((status) => status.availability.status === "ready")
       .map((status) => status.provider)
   );
-
-  if (agentTargets.length === 0) {
-    return workspaceAgentGuiProviders.flatMap((provider) => {
-      const agentTargetId = localAgentGUIAgentTargetId(provider);
-      if (
-        !agentTargetId ||
-        !readyProviders.has(provider) ||
-        hiddenProviders?.has(provider) === true ||
-        isWorkspaceAgentGuiComingSoonProvider(provider)
-      ) {
-        return [];
-      }
-      return [
-        {
-          agentTargetId,
-          iconUrl: agentGuiDockIconUrls[provider],
-          label: resolveWorkspaceAgentGuiLabel(provider),
-          provider
-        }
-      ];
-    });
-  }
 
   return agentTargets
     .filter(

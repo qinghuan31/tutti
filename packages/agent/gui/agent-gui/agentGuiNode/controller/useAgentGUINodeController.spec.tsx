@@ -1190,7 +1190,7 @@ describe("useAgentGUINodeController", () => {
     expect(result.current.viewModel.providerReadinessGate).toBeNull();
   });
 
-  it("selects provider-only rail targets for the empty composer", async () => {
+  it("selects target-backed rail targets for the empty composer", async () => {
     installAgentHostApi({
       list: vi.fn(async () => ({ presences: [], sessions: [] })),
       listSessionTimeline: vi.fn(async () => ({ timelineItems: [] })),
@@ -1537,8 +1537,7 @@ describe("useAgentGUINodeController", () => {
       expect(activate).toHaveBeenCalledWith(
         expect.objectContaining({
           mode: "new",
-          agentTargetId: "local:codex",
-          provider: "codex"
+          agentTargetId: "local:codex"
         })
       );
     });
@@ -2891,9 +2890,7 @@ describe("useAgentGUINodeController", () => {
       expect(activate).toHaveBeenCalledWith(
         expect.objectContaining({
           mode: "new",
-          agentTargetId: "agent-target-1",
-          provider: "codex",
-          providerTargetRef: null
+          agentTargetId: "agent-target-1"
         })
       );
     });
@@ -3006,7 +3003,7 @@ describe("useAgentGUINodeController", () => {
     });
   });
 
-  it("falls back to local provider targets for new conversation submit when provider targets are explicitly empty", async () => {
+  it("blocks new conversation submit when provider targets fall back to the static catalog", async () => {
     const activate = vi.fn(
       async (input: AgentHostActivateAgentSessionInput) => ({
         session: agentSession(input.agentSessionId, {
@@ -3034,20 +3031,14 @@ describe("useAgentGUINodeController", () => {
       })
     );
 
-    expect(result.current.viewModel.canSubmit).toBe(true);
-
     act(() => {
       result.current.actions.submitPrompt(promptBlocks("start without target"));
     });
 
     await waitFor(() => {
-      expect(activate).toHaveBeenCalledWith(
-        expect.objectContaining({
-          agentTargetId: "local:codex",
-          mode: "new",
-          provider: "codex",
-          providerTargetRef: null
-        })
+      expect(activate).not.toHaveBeenCalled();
+      expect(result.current.viewModel.detailError).toBe(
+        "Select an available agent target before starting a session."
       );
     });
   });
@@ -3202,9 +3193,7 @@ describe("useAgentGUINodeController", () => {
       expect(activate).toHaveBeenCalledWith(
         expect.objectContaining({
           mode: "new",
-          agentTargetId: "local:codex",
-          provider: "codex",
-          providerTargetRef: null
+          agentTargetId: "local:codex"
         })
       );
     });
@@ -7001,7 +6990,6 @@ describe("useAgentGUINodeController", () => {
 
     expect(activate).toHaveBeenCalledWith(
       expect.objectContaining({
-        provider: "codex",
         title: "hello from hero"
       })
     );
@@ -11362,7 +11350,6 @@ describe("useAgentGUINodeController", () => {
         expect.objectContaining({
           mode: "new",
           workspaceId: "room-1",
-          provider: "codex",
           ...initialPromptContent("first prompt"),
           settings: {
             model: "gpt-5",
@@ -18296,9 +18283,7 @@ function installAgentActivityRuntimeForHostMocks({
         agentSessionId: input.agentSessionId,
         ...(input.mode === "new"
           ? {
-              provider: input.provider,
               agentTargetId: input.agentTargetId,
-              providerTargetRef: input.providerTargetRef,
               cwd: input.cwd,
               initialContent: input.initialContent,
               title: input.title,
@@ -18355,7 +18340,8 @@ function installAgentActivityRuntimeForHostMocks({
         mode: "new",
         workspaceId: input.workspaceId,
         agentSessionId: input.agentSessionId ?? createTestAgentSessionId(),
-        provider: input.provider,
+        provider:
+          input.agentTargetId === "local:claude-code" ? "claude-code" : "codex",
         agentTargetId: input.agentTargetId,
         cwd: input.cwd ?? undefined,
         title: input.title ?? undefined,
@@ -18671,7 +18657,10 @@ function installNoopAgentActivityRuntimeForTests(): void {
           input.workspaceId,
           {
             agentSessionId: input.agentSessionId ?? createTestAgentSessionId(),
-            provider: input.provider,
+            provider:
+              input.agentTargetId === "local:claude-code"
+                ? "claude-code"
+                : "codex",
             status: "ready"
           }
         ),

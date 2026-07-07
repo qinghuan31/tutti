@@ -31,7 +31,6 @@ import type {
   AgentHostUnactivateAgentSessionResult,
   AgentHostAgentSessionState
 } from "./shared/contracts/dto";
-import type { AgentGUIProviderTargetRef } from "./types";
 import { WORKSPACE_AGENT_ACTIVITY_RUNTIME_SESSION_ORIGIN } from "./shared/workspaceAgentActivityTypes";
 
 export interface AgentActivityRuntimeListSessionMessagesInput {
@@ -179,27 +178,29 @@ export interface AgentActivityRuntimeDiagnosticInput {
   workspaceId?: string | null;
 }
 
-export interface AgentActivityRuntimeActivateSessionInput {
+interface AgentActivityRuntimeActivateSessionInputBase {
   agentSessionId: string;
-  agentTargetId?: string | null;
   cwd?: string;
   initialContent?: AgentActivitySendInput["content"];
   /** 仅展示用首轮文本(bundle 折叠成一个 chip);initialContent 仍带展开后的文件。 */
   initialDisplayPrompt?: string | null;
   metadata?: Record<string, unknown>;
-  mode: "existing" | "new";
   openclawGatewayReady?: boolean;
-  provider?: string;
-  /**
-   * Opaque host-owned target reference. AgentGUI passes this through only; hosts
-   * must not treat it as authority and must re-authenticate before launch.
-   */
-  providerTargetRef?: AgentGUIProviderTargetRef | null;
   settings?: AgentHostAgentSessionComposerSettings;
   title?: string;
   visible?: boolean;
   workspaceId: string;
 }
+
+export type AgentActivityRuntimeActivateSessionInput =
+  | (AgentActivityRuntimeActivateSessionInputBase & {
+      agentTargetId: string;
+      mode: "new";
+    })
+  | (AgentActivityRuntimeActivateSessionInputBase & {
+      agentTargetId?: string | null;
+      mode: "existing";
+    });
 
 export interface AgentActivityRuntimeUnactivateSessionInput {
   agentSessionId: string;

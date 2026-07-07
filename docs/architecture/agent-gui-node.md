@@ -1295,7 +1295,7 @@ activity data source:
 ### Provider Targets
 
 AgentGUI distinguishes launch authority, real provider identity, and legacy
-provider-target compatibility. `agentTargetId` is the authority for new
+provider-target state recovery. `agentTargetId` is required authority for new
 session launches, workbench target selection, and AgentGUI node state. The
 daemon resolves that id against `agent_targets` and derives the execution
 provider and runtime `providerTargetRef` from the trusted target `launchRef`.
@@ -1320,8 +1320,13 @@ AgentGUI owns only target display and passthrough:
 - read legacy `providerTargetId` / `providerTargetRef` from old workbench node
   state to recover the selected target
 - pass `agentTargetId` through `AgentActivityRuntime.activateSession`
-- pass `providerTargetRef` only as a legacy opaque compatibility hint for
-  provider-only launches
+- pass `providerTargetRef` only as legacy opaque state for selection recovery;
+  it must not authorize or replace `agentTargetId` for new launches
+
+New-session surfaces, including the composer, batch runner, App Center, and
+issue-manager launchers, must fail or disable launch when no `agentTargetId` is
+available. They must not synthesize `local:<provider>` from a provider-only
+selection as a compatibility fallback.
 
 `providerTargetId` and `providerTargetRef` are transition fields, not daemon
 authority. AgentGUI must not interpret `ref.kind`, mint invocation-control

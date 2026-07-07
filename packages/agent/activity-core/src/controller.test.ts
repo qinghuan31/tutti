@@ -1613,7 +1613,7 @@ function fakeAdapter(
     createSession: async (input) => ({
       workspaceId: input.workspaceId,
       agentSessionId: "session-1",
-      provider: input.provider,
+      provider: "codex",
       cwd: input.cwd ?? "",
       title: input.title ?? "",
       status: "working"

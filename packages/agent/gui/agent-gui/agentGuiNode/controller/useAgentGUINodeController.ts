@@ -3879,9 +3879,6 @@ export function useAgentGUINodeController({
   );
   const effectiveSelectedProviderTarget =
     homeComposerTargetOverride ?? selectedProviderTarget;
-  const effectiveSelectedProviderTargetIsExplicit = homeComposerTargetOverride
-    ? homeComposerTargetOverrideIsExplicit
-    : selectedProviderTargetIsExplicit;
   const firstReadyHomeComposerProviderTarget = useMemo(() => {
     if (!providerReadinessGates) {
       return null;
@@ -4437,10 +4434,15 @@ export function useAgentGUINodeController({
   const selectedProviderTargetRef = useRef(effectiveSelectedProviderTarget);
   selectedProviderTargetRef.current = effectiveSelectedProviderTarget;
   const selectedProviderTargetIsExplicitRef = useRef(
-    effectiveSelectedProviderTargetIsExplicit
+    homeComposerTargetOverride
+      ? homeComposerTargetOverrideIsExplicit
+      : selectedProviderTargetIsExplicit
   );
-  selectedProviderTargetIsExplicitRef.current =
-    effectiveSelectedProviderTargetIsExplicit;
+  selectedProviderTargetIsExplicitRef.current = homeComposerTargetOverride
+    ? homeComposerTargetOverrideIsExplicit
+    : selectedProviderTargetIsExplicit;
+  const providerTargetsProvidedRef = useRef(providerTargets !== undefined);
+  providerTargetsProvidedRef.current = providerTargets !== undefined;
   const selectedComposerTargetDataRef = useRef(selectedComposerTargetData);
   selectedComposerTargetDataRef.current = selectedComposerTargetData;
   const draftSettingsBySessionIdRef = useRef(draftSettingsBySessionId);
@@ -7356,7 +7358,11 @@ export function useAgentGUINodeController({
         return;
       }
       const agentTargetId = targetData.agentTargetId ?? "";
-      if (!agentTargetId && selectedProviderTargetIsExplicitRef.current) {
+      if (
+        !agentTargetId ||
+        (providerTargetsProvidedRef.current &&
+          !selectedProviderTargetIsExplicitRef.current)
+      ) {
         setDetailError(translate("agentHost.agentGui.agentTargetRequired"));
         return;
       }
@@ -7589,8 +7595,6 @@ export function useAgentGUINodeController({
           mode: "new",
           agentSessionId,
           agentTargetId: agentTargetId || null,
-          provider,
-          providerTargetRef: targetData.providerTargetRef,
           cwd: selectedProjectPath ?? "",
           initialContent: normalizedInitialContent,
           initialDisplayPrompt,
