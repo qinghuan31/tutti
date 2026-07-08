@@ -4377,6 +4377,51 @@ func TestOpenCodeCommandUpdatePreservesAdapterOwnedCompactCommand(t *testing.T) 
 	}
 }
 
+func TestOpenCodeSlashCompactEmitsCompactionNotice(t *testing.T) {
+	t.Parallel()
+
+	transport := newStandardACPTransport("OpenCode", "opencode-session-compact")
+	adapter := NewOpenCodeAdapter(transport)
+	session := standardTestSession(ProviderOpenCode)
+	if _, err := adapter.Start(context.Background(), session); err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+	session.ProviderSessionID = "opencode-session-compact"
+
+	events, err := adapter.Exec(context.Background(), session, []PromptContentBlock{{
+		Type: "text",
+		Text: "/compact",
+	}}, "", "turn-opencode-compact", nil, nil)
+	if err != nil {
+		t.Fatalf("Exec: %v", err)
+	}
+
+	var progressCount, completedCount int
+	var progressMessageID, completedMessageID string
+	for _, event := range events {
+		if event.Payload.Content == "Inspecting files." {
+			t.Fatalf("compact assistant summary leaked into transcript: %#v", events)
+		}
+		switch event.Payload.Content {
+		case "Compacting context.":
+			progressCount++
+			progressMessageID = asString(event.Payload.Metadata["messageId"])
+		case "Context compacted.":
+			completedCount++
+			completedMessageID = asString(event.Payload.Metadata["messageId"])
+		}
+	}
+	if progressCount != 1 {
+		t.Fatalf("progress banners = %d, want exactly 1; events = %#v", progressCount, events)
+	}
+	if completedCount != 1 {
+		t.Fatalf("completed banners = %d, want exactly 1; events = %#v", completedCount, events)
+	}
+	if progressMessageID == "" || progressMessageID != completedMessageID {
+		t.Fatalf("messageId mismatch: progress %q, completed %q", progressMessageID, completedMessageID)
+	}
+}
+
 func TestControllerPublishesIdleStandardACPCommandUpdatesAfterStart(t *testing.T) {
 	t.Parallel()
 

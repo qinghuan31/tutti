@@ -848,6 +848,9 @@ func (a *standardACPAdapter) Exec(
 	if event, ok := a.mirrorClaudeGoalSlashPrompt(session, visibleText); ok {
 		startEvents = append(startEvents, event)
 	}
+	if event, ok := a.standardACPCompactStartedEvent(session, turnID, visibleText, normalizer); ok {
+		startEvents = append(startEvents, event)
+	}
 	emitEvents(startEvents)
 	slog.Info("agent session ACP exec started",
 		"event", "agent_session.acp.exec.start",
@@ -1060,6 +1063,25 @@ func (a *standardACPAdapter) mirrorClaudeGoalSlashPrompt(session Session, prompt
 	}
 	a.mu.Unlock()
 	return acpGoalUpdatedEvent(session, updateType)
+}
+
+func (a *standardACPAdapter) standardACPCompactStartedEvent(
+	session Session,
+	turnID string,
+	prompt string,
+	normalizer *acpTurnNormalizer,
+) (activityshared.Event, bool) {
+	if a == nil || a.config.provider != ProviderOpenCode || normalizer == nil {
+		return activityshared.Event{}, false
+	}
+	command, args := splitSlashCommand(prompt)
+	if command != "/compact" || args != "" {
+		return activityshared.Event{}, false
+	}
+	messageID := "compaction:" + strings.TrimSpace(turnID)
+	normalizer.SuppressAssistantOutput()
+	normalizer.TrackCompactionNotice(messageID, false)
+	return appServerCompactionNoticeEvent(session, turnID, messageID, false), true
 }
 
 func claudeGoalSlashPromptUpdate(prompt string) (map[string]any, string, bool) {

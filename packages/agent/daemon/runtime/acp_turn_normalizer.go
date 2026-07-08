@@ -24,6 +24,7 @@ type acpTurnNormalizer struct {
 	toolCallsSeen              map[string]bool
 	pendingToolCalls           map[string]pendingToolCallSnapshot
 	pendingCompactionMessageID string
+	suppressAssistantOutput    bool
 }
 
 // TrackCompactionNotice remembers the in-flight compaction banner so a turn
@@ -71,6 +72,13 @@ func (n *acpTurnNormalizer) SetThinkingPresentation(messageKind string) {
 	n.thinkingMessageKind = strings.TrimSpace(messageKind)
 }
 
+func (n *acpTurnNormalizer) SuppressAssistantOutput() {
+	if n == nil {
+		return
+	}
+	n.suppressAssistantOutput = true
+}
+
 func newACPTurnNormalizer() *acpTurnNormalizer {
 	return &acpTurnNormalizer{
 		toolItemIDs:      make(map[string]string),
@@ -81,6 +89,9 @@ func newACPTurnNormalizer() *acpTurnNormalizer {
 
 func (n *acpTurnNormalizer) AppendAssistantChunk(session Session, turnID string, chunk string) []activityshared.Event {
 	if n == nil || chunk == "" {
+		return nil
+	}
+	if n.suppressAssistantOutput {
 		return nil
 	}
 	if n.assistantMessageID == "" || n.assistantSegmentCompleted {
@@ -128,6 +139,9 @@ func (n *acpTurnNormalizer) ApplyAssistantFinalText(finalText string) {
 	if n == nil {
 		return
 	}
+	if n.suppressAssistantOutput {
+		return
+	}
 	finalText = strings.TrimSpace(finalText)
 	if finalText == "" {
 		return
@@ -147,6 +161,9 @@ func (n *acpTurnNormalizer) AppendAssistantSnapshot(
 	messageID string,
 ) []activityshared.Event {
 	if n == nil {
+		return nil
+	}
+	if n.suppressAssistantOutput {
 		return nil
 	}
 	text = strings.TrimSpace(text)
