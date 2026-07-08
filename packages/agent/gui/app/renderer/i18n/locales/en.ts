@@ -909,6 +909,7 @@ export const en = {
       showLessConversations: "Show less",
       deleteSession: "Delete session",
       pinSession: "Pin session",
+      copySessionLink: "Copy session link",
       renameSession: "Rename session",
       renameSessionTitle: "Rename conversation",
       renameSessionDescription: "Keep it short and easy to recognize.",

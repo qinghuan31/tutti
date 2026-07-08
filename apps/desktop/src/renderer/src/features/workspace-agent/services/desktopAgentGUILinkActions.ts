@@ -1,19 +1,19 @@
 import { parseRichTextMentionHref } from "@tutti-os/ui-rich-text/core";
 import type { WorkspaceLinkAction } from "@contexts/workspace/presentation/renderer/actions/workspaceLinkActions";
+import type { DesktopAgentGUIProvider } from "../desktopAgentGUINodeState.ts";
 
 // Value mirror of AGENT_PASTED_TEXT_MENTION_KIND from @tutti-os/agent-gui.
 // Kept as a local literal so this module (loaded by the node --test runner)
 // does not pull the whole agent-gui barrel, whose extensionless internal
 // imports the test runner cannot resolve.
 const AGENT_PASTED_TEXT_MENTION_KIND = "pasted-text";
-import { normalizeDesktopAgentGUIProvider } from "../desktopAgentGUINodeState.ts";
-import type { DesktopAgentGUIProvider } from "../desktopAgentGUINodeState.ts";
 
 export interface DesktopAgentGUILinkActionDependencies {
   homeDirectory?: string | null;
   launchAgentGui(input: {
     agentSessionId: string;
-    provider: DesktopAgentGUIProvider;
+    agentTargetId?: string | null;
+    provider?: DesktopAgentGUIProvider | null;
     workspaceId: string;
   }): Promise<boolean> | boolean;
   launchWorkspaceIssueManager(input: {
@@ -89,7 +89,9 @@ export async function runDesktopAgentGUILinkAction(
       }
       return dependencies.launchAgentGui({
         agentSessionId: action.agentSessionId,
-        provider: normalizeDesktopAgentGUIProvider(action.provider),
+        ...(action.agentTargetId
+          ? { agentTargetId: action.agentTargetId }
+          : {}),
         workspaceId: dependencies.workspaceId
       });
     case "open-workspace-issue": {

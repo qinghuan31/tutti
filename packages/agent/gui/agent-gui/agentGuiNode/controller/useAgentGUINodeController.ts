@@ -182,10 +182,10 @@ import { createOptimisticPromptMessage } from "./agentGuiController.promptHelper
 import { useAgentGUIActivation } from "./useAgentGUIActivation";
 import { pendingInterruptActionForDisplayStatus } from "./pendingInterrupt";
 import {
+  createAgentSessionMentionHref,
   formatAgentMentionMarkdown,
   normalizeAgentSessionMentionTitle
 } from "../agentRichText/agentFileMentionExtension";
-import { createRichTextMentionHref } from "@tutti-os/ui-rich-text/core";
 import { resolveAgentGUIExplicitConversationTitle } from "../model/agentGuiProviderIdentity";
 import { composerSettingsSupportFromOptions } from "../model/composerSettingsSupport";
 import {
@@ -1416,6 +1416,7 @@ function buildContinueInNewConversationPrompt(input: {
   currentUserId?: string | null;
   userProfilesByUserId: Record<string, { name?: string | null }>;
   provider: string;
+  agentTargetId?: string | null;
   conversationTitle: string;
   existingDraftPrompt: string;
 }): string {
@@ -1440,17 +1441,18 @@ function buildContinueInNewConversationPrompt(input: {
   const mentionLabel = `${initiatorName} & ${providerLabel}${
     normalizedTitle ? ` ${normalizedTitle}` : ""
   }`.trim();
-  const href = createRichTextMentionHref({
-    providerId: "agent-session",
-    entityId: input.agentSessionId,
+  const href = createAgentSessionMentionHref({
+    agentTargetId: input.agentTargetId,
+    agentSessionId: input.agentSessionId,
     label: mentionLabel,
-    scope: { workspaceId: input.workspaceId }
+    workspaceId: input.workspaceId
   });
   const mention = formatAgentMentionMarkdown({
     kind: "session",
     href,
     workspaceId: input.workspaceId,
     targetId: input.agentSessionId,
+    agentTargetId: input.agentTargetId?.trim() || undefined,
     name: mentionLabel,
     title: normalizedTitle || providerLabel,
     scope: "my_sessions",
@@ -8403,6 +8405,7 @@ export function useAgentGUINodeController({
       currentUserId,
       userProfilesByUserId: accountProfilesByUserId,
       provider: activeConversation.provider,
+      agentTargetId: activeConversation.agentTargetId,
       conversationTitle: activeConversation.title,
       existingDraftPrompt: draftBySessionId[currentConversationId]?.prompt ?? ""
     });
