@@ -14362,8 +14362,7 @@ describe("useAgentGUINodeController", () => {
           models: [
             {
               value: "gpt-5",
-              label: "GPT-5",
-              supportsImageInput: true
+              label: "GPT-5"
             }
           ],
           runtimeContext:
@@ -14426,6 +14425,43 @@ describe("useAgentGUINodeController", () => {
         workspacePath: "/workspace",
         avoidGroupingEdits: false,
         data: agentGuiData(null, "opencode"),
+        onDataChange: vi.fn()
+      })
+    );
+
+    await waitFor(() => {
+      expect(result.current.viewModel.promptImagesSupported).toBe(false);
+    });
+    unmount();
+  });
+
+  it("disables prompt images for model-gated providers when model support is unknown", async () => {
+    installAgentHostApi({
+      list: vi.fn(async () => ({ presences: [], sessions: [] })),
+      listSessionTimeline: vi.fn(async () => ({ timelineItems: [] })),
+      subscribeEvents: vi.fn(() => vi.fn()),
+      getComposerOptions: vi.fn(async () => ({
+        provider: "cursor",
+        models: [
+          {
+            value: "unknown-model",
+            label: "Unknown model"
+          }
+        ],
+        runtimeContext: {
+          capabilities: ["imageInput"],
+          model: "unknown-model"
+        }
+      }))
+    });
+
+    const { result, unmount } = renderHook(() =>
+      useAgentGUINodeController({
+        workspaceId: "room-1",
+        currentUserId: "user-1",
+        workspacePath: "/workspace",
+        avoidGroupingEdits: false,
+        data: agentGuiData(null, "cursor"),
         onDataChange: vi.fn()
       })
     );

@@ -88,6 +88,9 @@ func (s *ModelCapabilitiesService) ResolveModelCapabilities(ctx context.Context,
 	provider := agentprovider.Normalize(input.Provider)
 	modelID := strings.TrimSpace(input.ModelID)
 	label := strings.TrimSpace(input.Label)
+	if !providerUsesModelImageCapabilities(provider) {
+		return ModelCapabilityResult{}
+	}
 	if modelID == "" && label == "" {
 		return ModelCapabilityResult{}
 	}
@@ -286,8 +289,17 @@ func providerRuleModelImageCapability(provider string, modelID string, label str
 	}
 }
 
+func providerUsesModelImageCapabilities(provider string) bool {
+	switch agentprovider.Normalize(provider) {
+	case agentprovider.OpenCode, agentprovider.Cursor:
+		return true
+	default:
+		return false
+	}
+}
+
 func enrichAgentModelOptions(ctx context.Context, provider string, models []AgentModelOption, resolver ModelCapabilitiesResolver) []AgentModelOption {
-	if len(models) == 0 || resolver == nil {
+	if len(models) == 0 || resolver == nil || !providerUsesModelImageCapabilities(provider) {
 		return cloneAgentModelOptions(models)
 	}
 	result := cloneAgentModelOptions(models)
@@ -308,7 +320,7 @@ func enrichAgentModelOptions(ctx context.Context, provider string, models []Agen
 }
 
 func (s *Service) enrichModelCapabilityOptions(ctx context.Context, provider string, options []ComposerConfigOptionValue) []ComposerConfigOptionValue {
-	if len(options) == 0 || s == nil || s.ModelCapabilities == nil {
+	if len(options) == 0 || s == nil || s.ModelCapabilities == nil || !providerUsesModelImageCapabilities(provider) {
 		return cloneComposerConfigOptionValues(options)
 	}
 	result := cloneComposerConfigOptionValues(options)
@@ -418,6 +430,16 @@ func inferModelsDevProviderCandidates(modelID string) []string {
 		return []string{"openai/" + modelID}
 	case strings.HasPrefix(lower, "claude-"):
 		return []string{"anthropic/" + modelID}
+	case strings.HasPrefix(lower, "gemini-"):
+		return []string{"google/" + modelID}
+	case strings.HasPrefix(lower, "grok-"):
+		return []string{"xai/" + modelID}
+	case strings.HasPrefix(lower, "kimi-"):
+		return []string{"moonshotai/" + modelID}
+	case strings.HasPrefix(lower, "glm-"):
+		return []string{"zai/" + modelID}
+	case strings.HasPrefix(lower, "deepseek-"):
+		return []string{"deepseek/" + modelID}
 	default:
 		return nil
 	}

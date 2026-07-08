@@ -194,7 +194,7 @@ func standardACPPromptImageSupported(raw json.RawMessage) bool {
 
 func standardACPProviderPromptImageSupported(provider string, raw json.RawMessage) bool {
 	switch strings.TrimSpace(provider) {
-	case ProviderClaudeCode, ProviderOpenCode:
+	case ProviderClaudeCode, ProviderOpenCode, ProviderCursor:
 		// Some ACP providers support image prompt content, but current
 		// initialize responses can omit or misreport promptCapabilities.image.
 		return true
@@ -1552,8 +1552,13 @@ func (a *standardACPAdapter) effectiveModeID(session Session) string {
 	if a == nil || a.config.permissionModeID == nil {
 		return ""
 	}
-	if a.config.provider == ProviderClaudeCode && session.SettingsValue().PlanMode {
-		return "plan"
+	if session.SettingsValue().PlanMode {
+		if a.config.provider == ProviderClaudeCode {
+			return "plan"
+		}
+		if modeID := a.config.permissionModeID("plan"); modeID != "" {
+			return modeID
+		}
 	}
 	return a.config.permissionModeID(session.PermissionModeID)
 }

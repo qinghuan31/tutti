@@ -762,12 +762,15 @@ adapters that advertise `imageInput` must forward the structured prompt content
 blocks to their runtime boundary; SDK sidecars may keep a text `prompt` fallback
 for short-term IPC compatibility, but image execution must use the structured
 `content` blocks instead of reconstructing input from display text. AgentGUI
-enables prompt image drafts only when both the provider/session capability
-advertises `imageInput` and the selected model option carries
+enables prompt image drafts only when the provider/session capability advertises
+`imageInput`. Providers that opt in to model-level image gating, currently
+OpenCode and Cursor, must also have the selected model option carry
 `supportsImageInput: true`; unknown model image capability is treated as
 unsupported until the daemon resolves it from Models.dev or provider-specific
-rules. Desktop prompt images must remain structured image blocks and are not
-file mentions. Pasted images may start as base64 UI draft data, but the
+rules. Providers that have not opted in, such as Claude Code, must not be
+blocked by a missing model-level field. Desktop prompt images must remain
+structured image blocks and are not file mentions. Pasted images may start as
+base64 UI draft data, but the
 desktop runtime archives them through the host file capability before daemon
 submission, then sends the managed desktop-local `path` as the image source.
 Conversation previews for these path-backed images must use
@@ -1037,6 +1040,10 @@ User-visible rules:
 - Model, permission, plan mode, reasoning, speed, project, branch, prompt image,
   file mention, and skill/capability controls must read from composer settings
   and provider options. They should not be reconstructed from transcript rows.
+- Shift+Tab plan mode is a provider capability, not a frontend allowlist. The
+  daemon's pre-session composer options and the live runtime
+  `runtimeContext.capabilities` must both advertise `planMode` before AgentGUI
+  enables the toggle for a provider.
 - Browser/computer capability controls come from daemon composer options and
   live runtime capabilities. `computerUse` must not be advertised or injected
   unless the daemon can reach the local `cua-driver` and its read-only

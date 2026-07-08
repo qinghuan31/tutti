@@ -16,8 +16,14 @@ func TestOpenCodeAdapterUsesOfficialACPCommand(t *testing.T) {
 	if len(adapter.config.command) != 2 || adapter.config.command[0] != "opencode" || adapter.config.command[1] != "acp" {
 		t.Fatalf("command = %#v, want opencode acp", adapter.config.command)
 	}
+	if got := adapter.config.permissionModeID("plan"); got != "plan" {
+		t.Fatalf("plan mode id = %q, want plan", got)
+	}
+	if got := adapter.config.permissionModeID(""); got != "build" {
+		t.Fatalf("default mode id = %q, want build", got)
+	}
 	if got := adapter.config.permissionModeID("anything"); got != "" {
-		t.Fatalf("permissionModeID = %q, want empty", got)
+		t.Fatalf("unknown mode id = %q, want empty", got)
 	}
 }
 
@@ -52,6 +58,59 @@ func TestOpenCodeDoesNotRequireNewSessionForModelSettings(t *testing.T) {
 	}
 	if adapter.RequiresNewSessionForSettings(Session{}, SessionSettingsPatch{}) {
 		t.Fatal("empty patch required a new session")
+	}
+}
+
+func TestOpenCodeAdapterStartAppliesPlanMode(t *testing.T) {
+	t.Parallel()
+
+	transport := newStandardACPTransport("OpenCode", "opencode-session-plan")
+	adapter := NewOpenCodeAdapter(transport)
+	session := standardTestSession(ProviderOpenCode)
+	session.Settings = &SessionSettings{PlanMode: true}
+
+	if _, err := adapter.Start(context.Background(), session); err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+	if transport.conn.lastModeID() != "plan" {
+		t.Fatalf("mode id = %q, want plan", transport.conn.lastModeID())
+	}
+}
+
+func TestOpenCodeAdapterApplySessionSettingsTogglesPlanMode(t *testing.T) {
+	t.Parallel()
+
+	transport := newStandardACPTransport("OpenCode", "opencode-session-plan-toggle")
+	adapter := NewOpenCodeAdapter(transport)
+	session := standardTestSession(ProviderOpenCode)
+	if _, err := adapter.Start(context.Background(), session); err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+	if transport.conn.lastModeID() != "build" {
+		t.Fatalf("initial mode id = %q, want build", transport.conn.lastModeID())
+	}
+
+	planMode := true
+	session.ProviderSessionID = "opencode-session-plan-toggle"
+	session.Settings = &SessionSettings{PlanMode: planMode}
+	if err := adapter.ApplySessionSettings(context.Background(), session, SessionSettingsPatch{
+		PlanMode: &planMode,
+	}); err != nil {
+		t.Fatalf("ApplySessionSettings plan on: %v", err)
+	}
+	if transport.conn.lastModeID() != "plan" {
+		t.Fatalf("mode id = %q, want plan", transport.conn.lastModeID())
+	}
+
+	planMode = false
+	session.Settings.PlanMode = planMode
+	if err := adapter.ApplySessionSettings(context.Background(), session, SessionSettingsPatch{
+		PlanMode: &planMode,
+	}); err != nil {
+		t.Fatalf("ApplySessionSettings plan off: %v", err)
+	}
+	if transport.conn.lastModeID() != "build" {
+		t.Fatalf("mode id = %q, want build", transport.conn.lastModeID())
 	}
 }
 

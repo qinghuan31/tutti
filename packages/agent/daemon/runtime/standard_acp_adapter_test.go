@@ -1068,6 +1068,35 @@ func TestOpenCodeAdapterAllowsImagePromptWithoutInitializeCapability(t *testing.
 	}
 }
 
+func TestCursorAdapterAllowsImagePromptWithoutInitializeCapability(t *testing.T) {
+	t.Parallel()
+
+	transport := newStandardACPTransport("Cursor", "cursor-session-1")
+	adapter := NewCursorAdapter(transport)
+	session := standardTestSession(ProviderCursor)
+	if _, err := adapter.Start(context.Background(), session); err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+	session.ProviderSessionID = "cursor-session-1"
+
+	content := []PromptContentBlock{{
+		Type: "text",
+		Text: "what is in this screenshot?",
+	}, {
+		Type:     "image",
+		MimeType: "image/png",
+		Data:     "aW1hZ2U=",
+	}}
+	if err := adapter.ValidatePromptContent(session, content); err != nil {
+		t.Fatalf("ValidatePromptContent error = %v, want nil", err)
+	}
+	snapshot := adapter.SessionState(session)
+	capabilities, _ := snapshot.RuntimeContext["capabilities"].([]string)
+	if !containsString(capabilities, CapabilityImageInput) {
+		t.Fatalf("runtime capabilities = %#v, want imageInput", snapshot.RuntimeContext["capabilities"])
+	}
+}
+
 func TestStandardACPAdapterRejectsImagePromptWithoutCapability(t *testing.T) {
 	t.Parallel()
 
