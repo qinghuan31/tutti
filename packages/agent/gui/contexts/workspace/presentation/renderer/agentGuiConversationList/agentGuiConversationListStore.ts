@@ -58,7 +58,7 @@ export interface AgentGUIConversationListQuery {
 }
 
 type NormalizedAgentGUIConversationListQuery = {
-  conversationFilter: AgentGUIConversationFilter | null;
+  conversationFilter: AgentGUIConversationFilter;
   provider: AgentGUIProvider;
   sessionOrigin: string;
   userId: string;
@@ -157,20 +157,14 @@ function normalizeQuery(
 
 function normalizeAgentGUIConversationListFilter(
   input: AgentGUIConversationListQuery
-): AgentGUIConversationFilter | null {
+): AgentGUIConversationFilter {
   if (input.conversationFilter) {
     return normalizeAgentGUIConversationFilter(input.conversationFilter);
   }
-  return null;
+  return { kind: "all" };
 }
 
-function conversationFilterKey(
-  filter: AgentGUIConversationFilter | null,
-  provider: AgentGUIProvider
-): string {
-  if (!filter) {
-    return `legacy-provider:${provider}`;
-  }
+function conversationFilterKey(filter: AgentGUIConversationFilter): string {
   const normalized = normalizeAgentGUIConversationFilter(filter);
   if (normalized.kind === "all") {
     return "all";
@@ -185,9 +179,9 @@ function conversationFilterKey(
  */
 function conversationRetainableForQueryFilter(
   conversation: AgentGUIConversationSummary | undefined,
-  filter: AgentGUIConversationFilter | null
+  filter: AgentGUIConversationFilter
 ): boolean {
-  if (!conversation || !filter || filter.kind !== "agentTarget") {
+  if (!conversation || filter.kind !== "agentTarget") {
     return true;
   }
   return matchesAgentGUIConversationSummaryFilter(conversation, filter);
@@ -200,14 +194,11 @@ export function createAgentGUIConversationListQueryKey(
   if (!normalized) {
     return null;
   }
-  const providerScope = normalized.conversationFilter
-    ? "conversation-filter"
-    : normalized.provider;
   const queryKey = [
     normalized.workspaceId,
     normalized.userId,
-    providerScope,
-    conversationFilterKey(normalized.conversationFilter, normalized.provider),
+    "conversation-filter",
+    conversationFilterKey(normalized.conversationFilter),
     normalized.sessionOrigin
   ].join("::");
   return queryKey;
@@ -1341,13 +1332,12 @@ async function refreshAgentGUIConversationListQuery(
     };
     const currentWorkspaceAgentSnapshot =
       getWorkspaceAgentSnapshotForConversations(workspaceAgentsInput);
-    const canProjectExplicitFilterFromCurrentSnapshot =
+    const canProjectFilterFromCurrentSnapshot =
       reason === "projection-sync" &&
-      state.query.conversationFilter !== null &&
       currentWorkspaceAgentSnapshot.sessions.length > 0;
     const workspaceAgentSnapshot =
       shouldUseCurrentWorkspaceAgentSnapshotForRefresh(reason) ||
-      canProjectExplicitFilterFromCurrentSnapshot
+      canProjectFilterFromCurrentSnapshot
         ? currentWorkspaceAgentSnapshot
         : await loadWorkspaceAgentSnapshotForConversations(
             workspaceAgentsInput
@@ -1417,9 +1407,7 @@ async function refreshAgentGUIConversationListQuery(
         })
       : workspaceAgentSnapshot.sessions;
     const baseConversations = buildAgentGUIConversationSummaries({
-      ...(state.query.conversationFilter
-        ? { conversationFilter: state.query.conversationFilter }
-        : {}),
+      conversationFilter: state.query.conversationFilter,
       snapshot: canApplyDirtySessionProjection
         ? {
             ...workspaceAgentSnapshot,
@@ -1461,7 +1449,7 @@ async function refreshAgentGUIConversationListQuery(
     );
     const retainableForQueryFilter = (agentSessionId: string): boolean => {
       const filter = state.query.conversationFilter;
-      if (!filter || filter.kind !== "agentTarget") {
+      if (filter.kind !== "agentTarget") {
         return true;
       }
       // The fresh snapshot session's target is authoritative over a possibly
