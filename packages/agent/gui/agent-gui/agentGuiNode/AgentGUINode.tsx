@@ -81,6 +81,8 @@ import {
   resolveAgentGUIConversationRailMaxWidthPx,
   shouldAutoCollapseAgentGUIConversationRail
 } from "./model/agentGuiRailLayout";
+import { createRichTextMentionHref } from "@tutti-os/ui-rich-text/core";
+import type { AgentHomeSuggestionCategory } from "./model/agentGuiNodeTypes";
 import type { AgentContextMentionProvider } from "./agentContextMentionProvider";
 import type { AgentMessageMarkdownWorkspaceAppIcon } from "../../shared/AgentMessageMarkdown";
 import type {
@@ -89,6 +91,75 @@ import type {
   AgentComposerGitBranchLoader,
   AgentComposerSlashStatusLimit
 } from "./AgentComposer";
+
+// The Task Center is the workspace issue/task app; mentioning it seeds the
+// composer with a real app-mention chip the agent can resolve.
+const TASK_CENTER_WORKSPACE_APP_ID = "issue-manager";
+
+function buildAgentHomeSuggestions(
+  t: TranslateFn,
+  workspaceId: string,
+  workspaceAppIcons: readonly AgentMessageMarkdownWorkspaceAppIcon[]
+): AgentHomeSuggestionCategory[] {
+  const key = (suffix: string): string =>
+    `agentHost.agentGui.homeSuggestions.${suffix}`;
+  const taskCenterLabel = t(key("breakdown.taskCenterLabel"));
+  // Resolve the Task Center app icon so the seeded mention renders as a proper
+  // workspace-app chip (same as a picker-inserted one), not a bare fallback.
+  const taskCenterIconUrl =
+    workspaceAppIcons
+      .find((entry) => entry.appId === TASK_CENTER_WORKSPACE_APP_ID)
+      ?.iconUrl?.trim() || undefined;
+  // A workspace-app mention only rehydrates into a chip when it carries a
+  // workspaceId; without one (e.g. preview), fall back to plain "@label" text.
+  const taskCenterMention = workspaceId
+    ? `[@${taskCenterLabel}](${createRichTextMentionHref({
+        providerId: "workspace-app",
+        entityId: TASK_CENTER_WORKSPACE_APP_ID,
+        label: taskCenterLabel,
+        scope: {
+          workspaceId,
+          ...(taskCenterIconUrl ? { icon: taskCenterIconUrl } : {})
+        }
+      })})`
+    : `@${taskCenterLabel}`;
+  return [
+    {
+      id: "about-tutti",
+      icon: "about",
+      label: t(key("about.title")),
+      prompt: t(key("about.prompt"))
+    },
+    {
+      id: "task-breakdown",
+      icon: "breakdown",
+      label: t(key("breakdown.title")),
+      prompt: t(key("breakdown.prompt"), { taskCenterMention })
+    },
+    {
+      id: "quality-review",
+      icon: "review",
+      // Fills the composer with the review prompt; the user types "@" where they
+      // want to pick the session whose output to review.
+      label: t(key("review.title")),
+      prompt: t(key("review.prompt"))
+    },
+    {
+      id: "agent-interaction",
+      icon: "interaction",
+      // Fills the composer with the interaction prompt; the user types "@" where
+      // they want to pick the agents to have interact.
+      label: t(key("interaction.title")),
+      prompt: t(key("interaction.prompt"))
+    },
+    {
+      id: "import-session",
+      icon: "import",
+      label: t(key("import.title")),
+      action: "import-session"
+    }
+  ];
+}
 
 const workspaceFileReferenceLocaleKeyByPickerKey: Record<string, string> = {
   "actions.cancel": "common.cancel",
@@ -1120,6 +1191,12 @@ export const AgentGUINode = memo(function AgentGUINode({
       planImplementationSkip: t("agentHost.agentGui.planImplementationSkip"),
       noRunningResponse: t("agentHost.agentGui.noRunningResponse"),
       empty: t("agentHost.agentGui.empty", { provider: displayProviderLabel }),
+      homeSuggestions: buildAgentHomeSuggestions(
+        t,
+        workspaceId,
+        workspaceAppIcons ?? []
+      ),
+      homeSuggestionsClose: t("agentHost.agentGui.homeSuggestionsClose"),
       emptyForProvider: (provider: string) =>
         t("agentHost.agentGui.empty", {
           provider: resolveAgentGUIProviderDisplayLabel(
@@ -1320,6 +1397,7 @@ export const AgentGUINode = memo(function AgentGUINode({
       ),
       renameSessionSave: t("agentHost.agentGui.renameSessionSave"),
       unpinSession: t("agentHost.agentGui.unpinSession"),
+      markSessionUnread: t("agentHost.agentGui.markSessionUnread"),
       deleteSessionTitle: t("agentHost.agentGui.deleteSessionTitle"),
       deleteSessionBody: t("agentHost.agentGui.deleteSessionBody"),
       deleteSessionConfirm: t("agentHost.agentGui.deleteSessionConfirm"),
@@ -1524,7 +1602,13 @@ export const AgentGUINode = memo(function AgentGUINode({
       ),
       handoffConversationMenu: t("agentHost.agentGui.handoffConversationMenu")
     }),
-    [displayProviderLabel, fallbackAgentTitle, t]
+    [
+      displayProviderLabel,
+      fallbackAgentTitle,
+      t,
+      workspaceId,
+      workspaceAppIcons
+    ]
   );
   const workspaceFileReferenceCopy = useMemo<WorkspaceFileReferenceCopy>(
     () => ({

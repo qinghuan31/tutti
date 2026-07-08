@@ -20,6 +20,7 @@ import type {
 import {
   AGENT_GUI_WORKBENCH_CONVERSATION_RAIL_TOGGLE_EVENT,
   AGENT_GUI_WORKBENCH_NEW_CONVERSATION_EVENT,
+  AGENT_GUI_WORKBENCH_OPEN_EXTERNAL_IMPORT_EVENT,
   agentGuiWorkbenchProviderRailWidthPx,
   type AgentGuiWorkbenchConversationRailToggleDetail,
   type AgentGuiWorkbenchNewConversationDetail
@@ -507,6 +508,21 @@ function StandaloneAgentWindowPanelHosts({
     },
     []
   );
+  useEffect(() => {
+    const openImportWizard = (): void => {
+      openExternalAgentImport();
+    };
+    window.addEventListener(
+      AGENT_GUI_WORKBENCH_OPEN_EXTERNAL_IMPORT_EVENT,
+      openImportWizard
+    );
+    return () => {
+      window.removeEventListener(
+        AGENT_GUI_WORKBENCH_OPEN_EXTERNAL_IMPORT_EVENT,
+        openImportWizard
+      );
+    };
+  }, [openExternalAgentImport]);
   const selectWallpaper = useCallback(
     (wallpaperId: WorkspaceWallpaperId) => {
       workbenchHostService.writeWallpaperId(workspace.id, wallpaperId);

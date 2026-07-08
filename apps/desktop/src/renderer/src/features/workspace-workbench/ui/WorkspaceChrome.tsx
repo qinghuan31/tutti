@@ -64,6 +64,7 @@ import { useWorkspaceWorkbenchHostService } from "./useWorkspaceWorkbenchHostSer
 import { useWorkspaceSettingsService } from "./useWorkspaceSettingsService";
 import type { WorkspaceSettingsSectionID } from "../services/workspaceSettingsService.interface";
 import { useWorkspaceSettingsPanelRequest } from "@tutti-os/agent-gui/workspace-settings-panel";
+import { AGENT_GUI_WORKBENCH_OPEN_EXTERNAL_IMPORT_EVENT } from "@tutti-os/agent-gui/workbench/contribution";
 import {
   buildWorkspaceAgentDecisionNotification,
   type WorkspaceAgentDecisionSubmitInput
@@ -187,6 +188,21 @@ export function WorkspaceChrome({
     },
     []
   );
+  useEffect(() => {
+    const openImportWizard = (): void => {
+      openExternalAgentImport();
+    };
+    window.addEventListener(
+      AGENT_GUI_WORKBENCH_OPEN_EXTERNAL_IMPORT_EVENT,
+      openImportWizard
+    );
+    return () => {
+      window.removeEventListener(
+        AGENT_GUI_WORKBENCH_OPEN_EXTERNAL_IMPORT_EVENT,
+        openImportWizard
+      );
+    };
+  }, [openExternalAgentImport]);
 
   return (
     <>

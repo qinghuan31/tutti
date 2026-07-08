@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest";
+import type { Editor, Range } from "@tiptap/core";
+import { Schema } from "@tiptap/pm/model";
 import {
   attrsToMentionItem,
+  expandRangeOverMentionPlaceholder,
   formatAgentMentionMarkdown,
   mentionItemToAttrs,
   parseAgentMentionMarkdown,
@@ -11,6 +14,35 @@ import {
   resetAgentCustomMentionKindsForTests
 } from "../../../shared/agentCustomMentionKinds";
 import { createRichTextMentionHref } from "@tutti-os/ui-rich-text/core";
+
+const placeholderSchema = new Schema({
+  nodes: {
+    doc: { content: "block+" },
+    paragraph: {
+      group: "block",
+      content: "inline*",
+      toDOM: () => ["p", 0],
+      parseDOM: [{ tag: "p" }]
+    },
+    // Leaf inline node standing in for an already-inserted mention chip.
+    chip: { group: "inline", inline: true, atom: true },
+    text: { group: "inline" }
+  }
+});
+
+/**
+ * Build a fake editor whose paragraph is `text`, then locate the `@` and return
+ * an empty-query suggestion range over it — mirroring what the Suggestion plugin
+ * hands {@link expandRangeOverMentionPlaceholder} when a user types `@`.
+ */
+function editorForPlaceholder(text: string): { editor: Editor; range: Range } {
+  const doc = placeholderSchema.node("doc", null, [
+    placeholderSchema.node("paragraph", null, [placeholderSchema.text(text)])
+  ]);
+  const editor = { state: { doc } } as unknown as Editor;
+  const atPos = text.indexOf("@") + 1; // +1 for the paragraph open token
+  return { editor, range: { from: atPos, to: atPos + 1 } };
+}
 
 describe("parseAgentMentionMarkdown", () => {
   it("accepts plain workspace file markdown links without an @ prefix", () => {
@@ -430,5 +462,54 @@ describe("formatAgentMentionMarkdown — workspace reference", () => {
       iconUrl: "https://icons/app-1.png",
       fileCount: 5
     });
+  });
+});
+
+describe("expandRangeOverMentionPlaceholder", () => {
+  it("swallows a surrounding `{ … }` mention placeholder plus one trailing space", () => {
+    // "让 { @ } 审查": paragraph offsets 1=让 2=' ' 3={ 4=' ' 5=@ 6=' ' 7=} 8=' ' 9=审 10=查
+    const { editor, range } = editorForPlaceholder("让 { @ } 审查");
+    expect(expandRangeOverMentionPlaceholder(editor, range)).toEqual({
+      from: 3,
+      to: 9
+    });
+  });
+
+  it("swallows a placeholder that still carries its seeded label text", () => {
+    // The seeded `@agent` label survives when the user types a fresh `@` inside.
+    const { editor, range } = editorForPlaceholder("让 { @agent } 审查");
+    const expanded = expandRangeOverMentionPlaceholder(editor, range);
+    const doc = editor.state.doc;
+    expect(doc.textBetween(expanded.from, expanded.to)).toBe("{ @agent } ");
+  });
+
+  it("leaves an ordinary `@` mention (no enclosing braces) untouched", () => {
+    const { editor, range } = editorForPlaceholder("ping @");
+    expect(expandRangeOverMentionPlaceholder(editor, range)).toEqual(range);
+  });
+
+  it("does not cross a closing brace when scanning left", () => {
+    const { editor, range } = editorForPlaceholder("a } @ } b");
+    expect(expandRangeOverMentionPlaceholder(editor, range)).toEqual(range);
+  });
+
+  it("leaves large, user-authored braces intact", () => {
+    const { editor, range } = editorForPlaceholder(
+      '{ "role": "assistant", "mentionedAt": @, "count": 1 }'
+    );
+    expect(expandRangeOverMentionPlaceholder(editor, range)).toEqual(range);
+  });
+
+  it("does not swallow a group that already contains a mention chip", () => {
+    const doc = placeholderSchema.node("doc", null, [
+      placeholderSchema.node("paragraph", null, [
+        placeholderSchema.text("{ @ "),
+        placeholderSchema.node("chip"),
+        placeholderSchema.text(" }")
+      ])
+    ]);
+    const editor = { state: { doc } } as unknown as Editor;
+    const range = { from: 3, to: 4 }; // over the `@`
+    expect(expandRangeOverMentionPlaceholder(editor, range)).toEqual(range);
   });
 });

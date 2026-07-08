@@ -41,6 +41,12 @@ func TestComposerProviderCapabilitiesDefaults(t *testing.T) {
 	if got := composerProviderCapabilities("opencode"); !slices.Contains(got, "imageInput") || !slices.Contains(got, "interrupt") {
 		t.Fatalf("opencode defaults = %v, missing imageInput or interrupt", got)
 	}
+	if got := composerProviderCapabilities("opencode"); !slices.Contains(got, "planMode") {
+		t.Fatalf("opencode defaults = %v, missing planMode", got)
+	}
+	if got := composerProviderCapabilities("cursor"); !slices.Contains(got, "imageInput") || !slices.Contains(got, "interrupt") {
+		t.Fatalf("cursor defaults = %v, missing imageInput or interrupt", got)
+	}
 	if got := composerProviderCapabilities("unknown"); got != nil {
 		t.Fatalf("unknown provider defaults = %v, want nil", got)
 	}
@@ -96,11 +102,15 @@ func TestNormalizeComposerSettingsClampsByProviderSupport(t *testing.T) {
 		}
 	}
 	// planMode: only providers whose static capabilities include planMode keep it.
-	for _, provider := range []string{"claude-code", "codex", "tutti-agent"} {
+	for _, provider := range []string{"claude-code", "codex", "tutti-agent", "opencode"} {
 		got := normalizeComposerSettingsForProvider(provider, ComposerSettings{PlanMode: true})
 		if !got.PlanMode {
 			t.Fatalf("%s planMode clamped, want preserved", provider)
 		}
+	}
+	cursor := normalizeComposerSettingsForProvider("cursor", ComposerSettings{PlanMode: true})
+	if !cursor.PlanMode {
+		t.Fatal("cursor planMode clamped, want preserved")
 	}
 	for _, provider := range []string{"gemini", "hermes", "nexight", "openclaw"} {
 		got := normalizeComposerSettingsForProvider(provider, ComposerSettings{PlanMode: true})

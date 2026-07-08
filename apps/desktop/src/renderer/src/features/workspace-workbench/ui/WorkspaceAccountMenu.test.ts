@@ -17,8 +17,9 @@ test("workspace account menu is gated by Tutti Agent Switch", () => {
   );
 });
 
-test("workspace account menu does not expose the credits entry", () => {
+test("workspace account menu keeps credits inside the dropdown", () => {
   assert.doesNotMatch(source, /data-account-credits-chip/);
-  assert.doesNotMatch(source, /CreditsIcon/);
-  assert.doesNotMatch(source, /links\.usageUrl/);
+  assert.match(source, /CreditsIcon/);
+  assert.match(source, /creditsBalance/);
+  assert.match(source, /accountMenuState\.links\.usageUrl/);
 });

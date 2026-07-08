@@ -4,6 +4,7 @@ import {
   BillingIcon,
   Button,
   CloseIcon,
+  CreditsIcon,
   OpenLinkLinedIcon,
   Popover,
   PopoverContent,
@@ -189,10 +190,13 @@ function useWorkspaceAccountMenuState(): WorkspaceAccountMenuState {
 interface WorkspaceAccountMenuLabels {
   title: string;
   member: string;
+  creditsBalance: string;
   accountCenter: string;
   free: string;
   signIn: string;
   signOut: string;
+  loading: string;
+  unavailable: string;
   dataUnavailable: string;
   rewardToastTitle: string;
   rewardToastDescription: string;
@@ -205,10 +209,13 @@ function useWorkspaceAccountMenuLabels(): WorkspaceAccountMenuLabels {
   return {
     title: t("workspace.accountMenu.title"),
     member: t("workspace.accountMenu.member"),
+    creditsBalance: t("workspace.accountMenu.creditsBalance"),
     accountCenter: t("workspace.accountMenu.accountCenter"),
     free: t("workspace.accountMenu.free"),
     signIn: t("workspace.accountMenu.signIn"),
     signOut: t("workspace.accountMenu.signOut"),
+    loading: t("workspace.accountMenu.loading"),
+    unavailable: t("workspace.accountMenu.unavailable"),
     dataUnavailable: t("workspace.accountMenu.dataUnavailable"),
     rewardToastTitle: t("workspace.accountMenu.rewardToastTitle"),
     rewardToastDescription: t("workspace.accountMenu.rewardToastDescription"),
@@ -233,6 +240,10 @@ const WorkspaceAccountMenuView = memo(function WorkspaceAccountMenuView({
     accountMenuState.membershipTierKey,
     membershipLabel
   );
+  const creditsLabel =
+    accountMenuState.loading && !accountMenuState.creditsLabel
+      ? labels.loading
+      : (accountMenuState.creditsLabel ?? labels.unavailable);
   const errorLabel =
     accountMenuState.error ||
     (accountMenuState.partialError ? labels.dataUnavailable : null);
@@ -349,6 +360,23 @@ const WorkspaceAccountMenuView = memo(function WorkspaceAccountMenuView({
             />
             {accountMenuState.user ? (
               <>
+                <button
+                  type="button"
+                  className="flex h-8 items-center gap-2 rounded-[6px] px-2 text-[13px] text-[var(--text-primary)] hover:bg-[var(--transparency-hover)] [-webkit-app-region:no-drag]"
+                  onClick={() => openExternal(accountMenuState.links.usageUrl)}
+                >
+                  <CreditsIcon
+                    aria-hidden="true"
+                    className="shrink-0"
+                    size={15}
+                  />
+                  <span className="min-w-0 flex-1 truncate text-left">
+                    {labels.creditsBalance}
+                  </span>
+                  <span className="truncate text-[var(--text-secondary)]">
+                    {creditsLabel}
+                  </span>
+                </button>
                 <button
                   type="button"
                   className="flex h-8 items-center gap-2 rounded-[6px] px-2 text-[13px] text-[var(--text-primary)] hover:bg-[var(--transparency-hover)] [-webkit-app-region:no-drag]"

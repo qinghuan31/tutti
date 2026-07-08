@@ -121,6 +121,19 @@ const styles = {
   emptyHeroProvider: "agent-gui-node__empty-hero-provider",
   emptyHeroProviderSelect: "agent-gui-node__empty-hero-provider-select",
   emptyHeroTitle: "agent-gui-node__empty-hero-title",
+  emptyHeroSuggestions: "agent-gui-node__empty-hero-suggestions",
+  emptyHeroSuggestionsChips: "agent-gui-node__empty-hero-suggestions-chips",
+  emptyHeroSuggestionsChip: "agent-gui-node__empty-hero-suggestions-chip",
+  emptyHeroSuggestionsChipIcon:
+    "agent-gui-node__empty-hero-suggestions-chip-icon",
+  emptyHeroSuggestionsCard: "agent-gui-node__empty-hero-suggestions-card",
+  emptyHeroSuggestionsCardHeader:
+    "agent-gui-node__empty-hero-suggestions-card-header",
+  emptyHeroSuggestionsCardTitle:
+    "agent-gui-node__empty-hero-suggestions-card-title",
+  emptyHeroSuggestionsCardClose:
+    "agent-gui-node__empty-hero-suggestions-card-close",
+  emptyHeroSuggestionsItem: "agent-gui-node__empty-hero-suggestions-item",
   emptyProviderGate: "agent-gui-node__empty-provider-gate",
   emptyProviderGateAction: "agent-gui-node__empty-provider-gate-action",
   emptyProviderGateDescription:

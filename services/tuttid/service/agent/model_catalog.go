@@ -190,6 +190,7 @@ func prepareTuttiAgentModelListEnv(env []string) ([]string, error) {
 	env = append([]string(nil), env...)
 	env = withoutEnvKeys(env, "TUTTI_AGENT_HOME", "CODEX_HOME")
 	tuttiAgentHome := filepath.Join(tuttitypes.DefaultStateDir(), "agent-model-catalog", "tutti-agent-home")
+	agentsidecarservice.BootstrapTuttiAgentUserAuth(context.Background())
 	if err := agentsidecarservice.PrepareTuttiAgentHome(tuttiAgentHome, agentsidecarservice.PrepareInput{}); err != nil {
 		return nil, err
 	}

@@ -73,6 +73,14 @@ export const AGENT_GUI_WORKBENCH_CONVERSATION_RAIL_TOGGLE_EVENT =
 export const AGENT_GUI_WORKBENCH_NEW_CONVERSATION_EVENT =
   "tutti:agent-gui-workbench-new-conversation";
 
+/**
+ * Fired when the empty-hero "Import session" suggestion is chosen. The host
+ * chrome (which owns the external-agent import wizard state) listens for this
+ * and opens the wizard.
+ */
+export const AGENT_GUI_WORKBENCH_OPEN_EXTERNAL_IMPORT_EVENT =
+  "tutti:agent-gui-workbench-open-external-import";
+
 export interface AgentGuiWorkbenchConversationRailToggleDetail {
   conversationRailCollapsed: boolean;
   instanceId: string;

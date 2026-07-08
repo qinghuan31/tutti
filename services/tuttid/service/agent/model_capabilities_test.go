@@ -49,6 +49,29 @@ func TestModelCapabilitiesUsesCursorRuleWhenModelsDevDoesNotMatch(t *testing.T) 
 	}
 }
 
+func TestModelCapabilitiesIgnoresProvidersWithoutModelImageSupport(t *testing.T) {
+	t.Parallel()
+	var calls atomic.Int32
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		calls.Add(1)
+		_, _ = w.Write([]byte(`{"anthropic":{"models":{"claude-sonnet-4-5":{"modalities":{"input":["text","image"]}}}}}`))
+	}))
+	defer server.Close()
+	service := &ModelCapabilitiesService{APIURL: server.URL}
+
+	result := service.ResolveModelCapabilities(context.Background(), ModelCapabilityLookupInput{
+		Provider: agentprovider.ClaudeCode,
+		ModelID:  "anthropic/claude-sonnet-4-5",
+		Label:    "Claude Sonnet 4.5",
+	})
+	if result.SupportsImageInput != nil {
+		t.Fatalf("supportsImageInput = %#v, want unknown for claude-code", result.SupportsImageInput)
+	}
+	if calls.Load() != 0 {
+		t.Fatalf("models.dev calls = %d, want 0", calls.Load())
+	}
+}
+
 func TestModelCapabilitiesModelsDevSupportsImage(t *testing.T) {
 	t.Parallel()
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
@@ -70,21 +93,44 @@ func TestModelCapabilitiesModelsDevSupportsImage(t *testing.T) {
 func TestModelCapabilitiesInfersModelsDevProviderForBarePublicModel(t *testing.T) {
 	t.Parallel()
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		_, _ = w.Write([]byte(`{"openai":{"models":{"gpt-5.2":{"modalities":{"input":["text","image"]}}}}}`))
+		_, _ = w.Write([]byte(`{
+			"openai":{"models":{"gpt-5.2":{"modalities":{"input":["text","image"]}}}},
+			"google":{"models":{"gemini-3.5-flash":{"modalities":{"input":["text","image"]}}}},
+			"xai":{"models":{"grok-4.3":{"modalities":{"input":["text","image"]}}}},
+			"moonshotai":{"models":{"kimi-k2.7-code":{"modalities":{"input":["text","image"]}}}},
+			"zai":{"models":{"glm-5.2":{"modalities":{"input":["text"]}}}},
+			"deepseek":{"models":{"deepseek-v4":{"modalities":{"input":["text"]}}}}
+		}`))
 	}))
 	defer server.Close()
 	service := &ModelCapabilitiesService{APIURL: server.URL}
 
-	result := service.ResolveModelCapabilities(context.Background(), ModelCapabilityLookupInput{
-		Provider: "cursor",
-		ModelID:  "gpt-5.2[reasoning=medium,fast=false]",
-		Label:    "gpt-5.2",
-	})
-	if result.SupportsImageInput == nil || !*result.SupportsImageInput {
-		t.Fatalf("supportsImageInput = %#v, want inferred openai model support", result.SupportsImageInput)
-	}
-	if result.Source != modelCapabilitiesSourceModelsDev {
-		t.Fatalf("source = %q, want models.dev", result.Source)
+	for _, test := range []struct {
+		name  string
+		id    string
+		label string
+		want  bool
+	}{
+		{name: "openai", id: "gpt-5.2[reasoning=medium,fast=false]", label: "gpt-5.2", want: true},
+		{name: "google", id: "gemini-3.5-flash[]", label: "gemini-3.5-flash", want: true},
+		{name: "xai", id: "grok-4.3[context=200k]", label: "grok-4.3", want: true},
+		{name: "moonshot", id: "kimi-k2.7-code[]", label: "kimi-k2.7-code", want: true},
+		{name: "zai", id: "glm-5.2[reasoning=high]", label: "glm-5.2", want: false},
+		{name: "deepseek", id: "deepseek-v4[]", label: "deepseek-v4", want: false},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			result := service.ResolveModelCapabilities(context.Background(), ModelCapabilityLookupInput{
+				Provider: "cursor",
+				ModelID:  test.id,
+				Label:    test.label,
+			})
+			if result.SupportsImageInput == nil || *result.SupportsImageInput != test.want {
+				t.Fatalf("supportsImageInput = %#v, want %v", result.SupportsImageInput, test.want)
+			}
+			if result.Source != modelCapabilitiesSourceModelsDev {
+				t.Fatalf("source = %q, want models.dev", result.Source)
+			}
+		})
 	}
 }
 
@@ -220,6 +266,7 @@ func TestServiceEnrichesComposerModelOptions(t *testing.T) {
 	service := &Service{ModelCapabilities: fakeModelCapabilitiesResolver{
 		"opencode:openai/gpt-5.2-pro":    true,
 		"cursor:composer-2.5[fast=true]": true,
+		"claude-code:claude-sonnet-4-5":  true,
 	}}
 
 	options := service.enrichModelCapabilityOptions(context.Background(), "opencode", []ComposerConfigOptionValue{{
@@ -238,6 +285,39 @@ func TestServiceEnrichesComposerModelOptions(t *testing.T) {
 	}})
 	if len(liveOptions) != 1 || liveOptions[0].SupportsImageInput == nil || !*liveOptions[0].SupportsImageInput {
 		t.Fatalf("cursor options = %#v, want supportsImageInput true", liveOptions)
+	}
+
+	claudeOptions := service.enrichModelCapabilityOptions(context.Background(), "claude-code", []ComposerConfigOptionValue{{
+		ID:    "claude-sonnet-4-5",
+		Label: "Claude Sonnet 4.5",
+		Value: "claude-sonnet-4-5",
+	}})
+	if len(claudeOptions) != 1 || claudeOptions[0].SupportsImageInput != nil {
+		t.Fatalf("claude options = %#v, want no model-level image capability", claudeOptions)
+	}
+}
+
+func TestEnrichAgentModelOptionsOnlyUsesModelImageSupportForAllowedProviders(t *testing.T) {
+	t.Parallel()
+	resolver := fakeModelCapabilitiesResolver{
+		"opencode:openai/gpt-5.2-pro": true,
+		"codex:gpt-5":                 true,
+	}
+
+	opencodeModels := enrichAgentModelOptions(context.Background(), "opencode", []AgentModelOption{{
+		ID:          "openai/gpt-5.2-pro",
+		DisplayName: "GPT-5.2 Pro",
+	}}, resolver)
+	if len(opencodeModels) != 1 || opencodeModels[0].SupportsImageInput == nil || !*opencodeModels[0].SupportsImageInput {
+		t.Fatalf("opencode models = %#v, want supportsImageInput true", opencodeModels)
+	}
+
+	codexModels := enrichAgentModelOptions(context.Background(), "codex", []AgentModelOption{{
+		ID:          "gpt-5",
+		DisplayName: "GPT-5",
+	}}, resolver)
+	if len(codexModels) != 1 || codexModels[0].SupportsImageInput != nil {
+		t.Fatalf("codex models = %#v, want no model-level image capability", codexModels)
 	}
 }
 

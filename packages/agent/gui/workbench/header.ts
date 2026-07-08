@@ -189,7 +189,7 @@ export function AgentGuiWorkbenchHeader({
             )
           )
         : null,
-      onOpenDetachedWindow
+      onOpenDetachedWindow && !hasBodyRenderError
         ? createDetachedWindowButton({
             label: copy.openDetachedWindow ?? "Open in detached window",
             onOpenDetachedWindow

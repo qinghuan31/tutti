@@ -65,6 +65,19 @@ func cursorACPModeID(mode string) string {
 	}
 }
 
+// cursorPlanModeFromACPModeID maps Cursor ACP execution modes back to Tutti's
+// orthogonal planMode flag. Permission tiers stay unchanged.
+func cursorPlanModeFromACPModeID(modeID string) (planMode bool, ok bool) {
+	switch strings.TrimSpace(modeID) {
+	case "plan":
+		return true, true
+	case "agent", "ask":
+		return false, true
+	default:
+		return false, false
+	}
+}
+
 // cursorAutoApprovePermissionDecision auto-approves permission requests in the
 // full-access tier and prompts (returns "") in every other tier.
 func cursorAutoApprovePermissionDecision(permissionModeID string) string {

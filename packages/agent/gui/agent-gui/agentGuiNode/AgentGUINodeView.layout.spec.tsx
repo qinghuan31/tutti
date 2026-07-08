@@ -2458,6 +2458,44 @@ describe("AgentGUINodeView layout persistence", () => {
     expect(actions.selectConversation).not.toHaveBeenCalled();
   });
 
+  it("opens a conversation from the rail context menu without selecting", async () => {
+    const actions = createActions();
+    const onOpenConversationWindow = vi.fn();
+
+    renderAgentGUINodeView({
+      actions,
+      onOpenConversationWindow,
+      viewModel: {
+        ...createViewModel(),
+        activeConversationId: "session-1",
+        conversations: [
+          createConversationSummary("session-1"),
+          createConversationSummary("session-2")
+        ]
+      }
+    });
+
+    fireEvent.contextMenu(
+      screen.getByTestId("agent-gui-conversation-item-session-2")
+    );
+    const openWindowMenuItem = await screen.findByRole("menuitem", {
+      name: "openConversationWindow"
+    });
+    fireEvent.pointerUp(openWindowMenuItem, { button: 0 });
+
+    await waitFor(() =>
+      expect(
+        screen.queryByRole("menuitem", { name: "openConversationWindow" })
+      ).not.toBeInTheDocument()
+    );
+
+    await waitFor(() =>
+      expect(onOpenConversationWindow).toHaveBeenCalledTimes(1)
+    );
+    expect(onOpenConversationWindow).toHaveBeenCalledWith("session-2");
+    expect(actions.selectConversation).not.toHaveBeenCalled();
+  });
+
   it("pages each conversation rail section five sessions at a time", () => {
     renderAgentGUINodeView({
       labels: {
@@ -4833,6 +4871,7 @@ function createActions(): AgentGUINodeViewProps["actions"] {
     continueInNewConversation: vi.fn(),
     retryOpenclawGateway: vi.fn(),
     toggleConversationPinned: vi.fn(),
+    markConversationUnread: vi.fn(),
     removeProject: vi.fn(),
     confirmDeleteProjectConversations: vi.fn(),
     confirmDeleteConversations: vi.fn(),
@@ -5230,6 +5269,7 @@ function createLabels(): AgentGUIViewLabels {
     renameSessionSave: "renameSessionSave",
     pinSession: "pinSession",
     unpinSession: "unpinSession",
+    markSessionUnread: "markSessionUnread",
     deleteSessionTitle: "deleteSessionTitle",
     deleteSessionBody: "deleteSessionBody",
     deleteSessionConfirm: "deleteSessionConfirm",
@@ -5338,3 +5378,99 @@ function createLabels(): AgentGUIViewLabels {
     syncFailed: "syncFailed"
   };
 }
+
+function createLabelsWithHomeSuggestions(): AgentGUIViewLabels {
+  return {
+    ...createLabels(),
+    homeSuggestionsClose: "Close suggestions",
+    homeSuggestions: [
+      {
+        id: "write",
+        icon: "write",
+        label: "Write",
+        items: [{ id: "write-1", label: "Draft an announcement" }]
+      },
+      {
+        id: "tutti-handoff",
+        icon: "handoff",
+        label: "Hand off to another agent",
+        items: [
+          {
+            id: "handoff-1",
+            label: "Prepare a handoff summary",
+            prompt: "Write a concise handoff summary."
+          }
+        ]
+      }
+    ]
+  };
+}
+
+describe("AgentGUINodeView home suggestions", () => {
+  afterEach(() => {
+    composerMock.calls = [];
+  });
+
+  it("keeps a category collapsed until its chip is chosen", () => {
+    renderAgentGUINodeView({ labels: createLabelsWithHomeSuggestions() });
+
+    expect(screen.queryByText("Draft an announcement")).toBeNull();
+
+    fireEvent.click(screen.getByRole("button", { name: "Write" }));
+
+    expect(screen.getByText("Draft an announcement")).toBeInTheDocument();
+  });
+
+  it("prefills the composer draft with a chosen suggestion, preserving draft images", () => {
+    const updateDraftContent = vi.fn();
+    const image = {
+      id: "img-1",
+      name: "shot.png",
+      mimeType: "image/png" as const,
+      previewUrl: "blob:preview"
+    };
+
+    renderAgentGUINodeView({
+      actions: { ...createActions(), updateDraftContent },
+      labels: createLabelsWithHomeSuggestions(),
+      viewModel: createViewModel({
+        draftContent: { prompt: "", images: [image] }
+      })
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "Write" }));
+    fireEvent.click(screen.getByText("Draft an announcement"));
+
+    expect(updateDraftContent).toHaveBeenCalledWith({
+      prompt: "Draft an announcement",
+      images: [image]
+    });
+  });
+
+  it("inserts the handoff prompt text rather than its display label", () => {
+    const updateDraftContent = vi.fn();
+
+    renderAgentGUINodeView({
+      actions: { ...createActions(), updateDraftContent },
+      labels: createLabelsWithHomeSuggestions()
+    });
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "Hand off to another agent" })
+    );
+    fireEvent.click(screen.getByText("Prepare a handoff summary"));
+
+    expect(updateDraftContent).toHaveBeenCalledWith({
+      prompt: "Write a concise handoff summary.",
+      images: []
+    });
+  });
+
+  it("does not render the suggestions section when none are provided", () => {
+    const { container } = renderAgentGUINodeView({ labels: createLabels() });
+
+    expect(
+      container.querySelector(".agent-gui-node__empty-hero-suggestions")
+    ).toBeNull();
+  });
+});

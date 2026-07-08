@@ -552,7 +552,11 @@ export const zhCN = {
       planImplementationSkip: "留在计划模式",
       noRunningResponse: "当前没有正在运行的回复。",
       composerTextMenu: "输入框文本操作",
-      pastedTextPromptAttachment: "粘贴的文本附件：{{name}}",
+      pastedTextFilesHeader: "引用的粘贴文本文件：",
+      pastedTextFileLine:
+        '- 粘贴的文本文件 "{{preview}}"：{{path}}，继续前请先阅读此文件。',
+      pastedTextAttachmentTitle: "粘贴的文本",
+      pastedTextRestoreToComposer: "在文本框中显示",
       copyMessage: "复制消息",
       copyImage: "复制图片",
       messageCopied: "已复制",
@@ -602,6 +606,30 @@ export const zhCN = {
         }
       },
       empty: "需要 {{provider}} 帮你做些什么？",
+      homeSuggestionsClose: "收起建议",
+      homeSuggestions: {
+        about: {
+          title: "认识 Tutti",
+          prompt: "介绍一下 Tutti 能帮我做些什么"
+        },
+        breakdown: {
+          title: "任务拆解",
+          taskCenterLabel: "任务管理",
+          prompt: "使用 {{taskCenterMention}} 帮我拆解任务，任务主题 { 请输入 }"
+        },
+        review: {
+          title: "质量审查",
+          prompt: "让 { @agent } 审查 { @agent 会话 } 的产物质量"
+        },
+        interaction: {
+          title: "Agent 互动",
+          prompt:
+            "让 { @agent } 和 { @agent } 一起 { 做些什么 }，主题 { 请输入 }"
+        },
+        import: {
+          title: "导入会话"
+        }
+      },
       conversations: "会话",
       newConversation: "新建会话",
       accountMenuTitle: "Tutti Agent",
@@ -820,6 +848,7 @@ export const zhCN = {
       renameSessionPlaceholder: "对话标题",
       renameSessionSave: "保存",
       unpinSession: "取消置顶",
+      markSessionUnread: "标记为未读",
       deleteSessionTitle: "删除会话？",
       deleteSessionBody:
         "删除后无法恢复。该会话将不再出现在会话列表、会话时间线、房间时间线或房间状态中。",

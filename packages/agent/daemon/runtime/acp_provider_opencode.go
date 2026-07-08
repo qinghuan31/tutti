@@ -22,15 +22,24 @@ func NewOpenCodeAdapterWithHostMetadata(transport ProcessTransport, host HostMet
 			defaultTitle:        "OpenCode",
 			defaultTitleAliases: []string{"OpenCode", ProviderOpenCode, "opencode"},
 			authRequiredMessage: "OpenCode ACP requires authentication; run `opencode auth login` on the host, then retry this session.",
-			permissionModeID: func(string) string {
-				return ""
-			},
-			initializeParams: func() map[string]any { return defaultACPInitializeParams(host) },
-			env:              func(session Session) []string { return opencodeACPEnv(session, host) },
+			permissionModeID:    opencodeACPModeID,
+			initializeParams:    func() map[string]any { return defaultACPInitializeParams(host) },
+			env:                 func(session Session) []string { return opencodeACPEnv(session, host) },
 		},
 		transport: transport,
 		host:      host,
 		sessions:  make(map[string]*standardACPSession),
+	}
+}
+
+func opencodeACPModeID(mode string) string {
+	switch strings.TrimSpace(mode) {
+	case "plan":
+		return "plan"
+	case "", "build":
+		return "build"
+	default:
+		return ""
 	}
 }
 

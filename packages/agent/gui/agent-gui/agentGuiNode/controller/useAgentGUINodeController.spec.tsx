@@ -9576,6 +9576,29 @@ describe("useAgentGUINodeController", () => {
       ])
     );
 
+    act(() => {
+      emitRuntimeSessionEventForTests?.({
+        eventType: "state_patch",
+        data: {
+          workspaceId: "room-1",
+          agentSessionId: "session-2",
+          currentPhase: "idle",
+          occurredAtUnixMs: 30
+        }
+      });
+    });
+
+    expect(result.current.viewModel.conversations).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: "session-2",
+          status: "ready",
+          hasUnreadCompletion: true,
+          unreadCompletionKey: "turn:session-2:turn-2:completed"
+        })
+      ])
+    );
+
     await act(async () => {
       await vi.advanceTimersByTimeAsync(15_000);
     });
@@ -14339,8 +14362,7 @@ describe("useAgentGUINodeController", () => {
           models: [
             {
               value: "gpt-5",
-              label: "GPT-5",
-              supportsImageInput: true
+              label: "GPT-5"
             }
           ],
           runtimeContext:
@@ -14403,6 +14425,43 @@ describe("useAgentGUINodeController", () => {
         workspacePath: "/workspace",
         avoidGroupingEdits: false,
         data: agentGuiData(null, "opencode"),
+        onDataChange: vi.fn()
+      })
+    );
+
+    await waitFor(() => {
+      expect(result.current.viewModel.promptImagesSupported).toBe(false);
+    });
+    unmount();
+  });
+
+  it("disables prompt images for model-gated providers when model support is unknown", async () => {
+    installAgentHostApi({
+      list: vi.fn(async () => ({ presences: [], sessions: [] })),
+      listSessionTimeline: vi.fn(async () => ({ timelineItems: [] })),
+      subscribeEvents: vi.fn(() => vi.fn()),
+      getComposerOptions: vi.fn(async () => ({
+        provider: "cursor",
+        models: [
+          {
+            value: "unknown-model",
+            label: "Unknown model"
+          }
+        ],
+        runtimeContext: {
+          capabilities: ["imageInput"],
+          model: "unknown-model"
+        }
+      }))
+    });
+
+    const { result, unmount } = renderHook(() =>
+      useAgentGUINodeController({
+        workspaceId: "room-1",
+        currentUserId: "user-1",
+        workspacePath: "/workspace",
+        avoidGroupingEdits: false,
+        data: agentGuiData(null, "cursor"),
         onDataChange: vi.fn()
       })
     );

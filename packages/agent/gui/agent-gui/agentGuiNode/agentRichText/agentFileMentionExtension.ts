@@ -189,6 +189,89 @@ export function exitAgentFileMentionSuggestion(editor: Editor): void {
   exitSuggestion(editor.view, agentFileMentionPluginKey);
 }
 
+/** Non-text/leaf nodes surface as this sentinel in {@link expandRangeOverMentionPlaceholder}. */
+const MENTION_PLACEHOLDER_LEAF_SENTINEL = "￼";
+/** Upper bound (in chars) for a `{ … }` group we treat as a mention placeholder. */
+const MENTION_PLACEHOLDER_MAX_LENGTH = 40;
+
+/**
+ * Grow a suggestion range so that inserting a mention replaces a surrounding
+ * `{ … }` placeholder rather than leaving its braces behind. Starter prompts
+ * prefill mention slots as literal placeholders (e.g. `{ @agent }`); when the
+ * user opens the @ palette inside one and picks a target, we want the braces
+ * gone. Returns the original range unchanged when the trigger is not inside a
+ * short, single-line, brace-only group (so ordinary `@` mentions and legitimate
+ * user braces such as inline JSON are never touched).
+ */
+export function expandRangeOverMentionPlaceholder(
+  editor: Editor,
+  range: Range
+): Range {
+  const { doc } = editor.state;
+  const $from = doc.resolve(range.from);
+  const blockStart = $from.start();
+  const blockEnd = $from.end();
+  const blockText = doc.textBetween(
+    blockStart,
+    blockEnd,
+    "\n",
+    MENTION_PLACEHOLDER_LEAF_SENTINEL
+  );
+  const fromOffset = range.from - blockStart;
+  const toOffset = Math.min(range.to, blockEnd) - blockStart;
+
+  // Nearest "{" to the left, staying within a single group (bail on "}").
+  let open = -1;
+  for (let index = fromOffset - 1; index >= 0; index -= 1) {
+    const char = blockText[index];
+    if (char === "}") {
+      return range;
+    }
+    if (char === "{") {
+      open = index;
+      break;
+    }
+  }
+  if (open < 0) {
+    return range;
+  }
+
+  // Nearest "}" to the right, staying within a single group (bail on "{").
+  let close = -1;
+  for (let index = toOffset; index < blockText.length; index += 1) {
+    const char = blockText[index];
+    if (char === "{") {
+      return range;
+    }
+    if (char === "}") {
+      close = index;
+      break;
+    }
+  }
+  if (close < 0) {
+    return range;
+  }
+
+  // Only swallow short, single-line groups without embedded chips — real mention
+  // placeholders are tiny, and this keeps larger user-authored braces intact.
+  const group = blockText.slice(open, close + 1);
+  if (
+    close - open > MENTION_PLACEHOLDER_MAX_LENGTH ||
+    group.includes("\n") ||
+    group.includes(MENTION_PLACEHOLDER_LEAF_SENTINEL)
+  ) {
+    return range;
+  }
+
+  // The inserted mention re-adds its own trailing space; consume one adjacent
+  // whitespace so a mid-sentence placeholder does not leave a double space.
+  let end = close + 1;
+  if (blockText[end] === " " || blockText[end] === "\t") {
+    end += 1;
+  }
+  return { from: blockStart + open, to: blockStart + end };
+}
+
 export function createAgentFileMentionExtension(
   options: AgentFileMentionExtensionOptions = {}
 ): Node {
@@ -430,18 +513,26 @@ export function createAgentFileMentionExtension(
             return isRichTextTriggerPrefixBoundary(previous, "whitespace");
           },
           command: ({ editor, range, props }) => {
+            // Starter prompts seed mention slots as literal `{ … }` placeholders
+            // (e.g. `{ @agent }`). When the palette is triggered inside one, grow
+            // the replaced range over the whole placeholder so inserting a chip
+            // cleanly removes its braces instead of leaving them behind.
+            const insertRange = expandRangeOverMentionPlaceholder(
+              editor,
+              range
+            );
             const prefixCaretAnchor =
-              range.from <= 1 ||
+              insertRange.from <= 1 ||
               editor.state.doc.textBetween(
-                Math.max(1, range.from - 1),
-                range.from,
+                Math.max(1, insertRange.from - 1),
+                insertRange.from,
                 "\n",
                 "\n"
               ) === "\n";
             editor
               .chain()
               .focus()
-              .insertContentAt(range, [
+              .insertContentAt(insertRange, [
                 ...(prefixCaretAnchor
                   ? ([
                       {
@@ -705,7 +796,8 @@ export function parseMentionItemFromHref(input: {
       workspaceId,
       targetId,
       appId: targetId,
-      name
+      name,
+      iconUrl: mention.scope?.icon?.trim() || undefined
     };
   }
   if (resource === "agent-target") {

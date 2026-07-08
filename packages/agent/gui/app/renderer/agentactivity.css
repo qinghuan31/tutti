@@ -4547,6 +4547,18 @@ aside.workspace-agents-status-panel
   background: transparent;
 }
 
+/*
+ * In the collapsed empty state there is no session title to anchor the control
+ * cluster, so the detached-window button's margin-left:auto would strand the
+ * icons (in the middle of the 720px content cap, or at the far window edge).
+ * Drop the auto push so the controls sit as a compact group right after the
+ * traffic lights instead.
+ */
+.agent-gui-workbench-header[data-agent-gui-workbench-header-collapsed="true"][data-agent-gui-workbench-header-has-session="false"]
+  .agent-gui-workbench-header__detached-window {
+  margin-left: 0;
+}
+
 .agent-gui-workbench-header__traffic-lights {
   display: inline-flex;
   flex: 0 0 auto;
@@ -9145,6 +9157,148 @@ html[data-theme="light"] [data-message-center-item-id].agent-gui-edge-glow {
     180ms both;
 }
 
+.agent-gui-node__empty-hero-suggestions {
+  position: relative;
+  display: grid;
+  width: min(760px, 100%);
+  margin: 0 auto;
+  gap: 12px;
+  justify-items: stretch;
+  animation: agent-gui-empty-hero-enter 300ms cubic-bezier(0.16, 1, 0.3, 1)
+    240ms both;
+}
+
+.agent-gui-node__empty-hero-suggestions-chips {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 8px;
+}
+
+.agent-gui-node__empty-hero-suggestions-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border: 1px solid var(--line-2, var(--nexight-line-2));
+  border-radius: 999px;
+  background: transparent;
+  padding: 6px 14px;
+  color: var(--text-secondary);
+  font: inherit;
+  font-size: 13px;
+  line-height: 1.2;
+  cursor: pointer;
+  transition:
+    background 120ms ease,
+    border-color 120ms ease,
+    color 120ms ease;
+}
+
+.agent-gui-node__empty-hero-suggestions-chip:hover {
+  border-color: var(--line-1, var(--nexight-line-1));
+  background: var(--background-fronted);
+  color: var(--text-primary);
+}
+
+.agent-gui-node__empty-hero-suggestions-chip[aria-pressed="true"] {
+  border-color: var(--line-1, var(--nexight-line-1));
+  background: color-mix(in srgb, var(--text-tertiary) 12%, transparent);
+  color: var(--text-primary);
+}
+
+.agent-gui-node__empty-hero-suggestions-chip-icon {
+  width: 15px;
+  height: 15px;
+  flex: 0 0 auto;
+  opacity: 0.8;
+}
+
+.agent-gui-node__empty-hero-suggestions-card {
+  position: absolute;
+  top: 0;
+  right: 0;
+  left: 0;
+  z-index: 5;
+  display: grid;
+  gap: 2px;
+  border: 1px solid var(--line-2, var(--nexight-line-2));
+  border-radius: 16px;
+  background: var(--background-fronted);
+  padding: 8px;
+  box-shadow: 0 12px 32px -12px rgba(0, 0, 0, 0.28);
+  animation: agent-gui-empty-hero-enter 220ms cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+.agent-gui-node__empty-hero-suggestions-card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 8px 10px 4px;
+}
+
+.agent-gui-node__empty-hero-suggestions-card-title {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--text-tertiary);
+  font-size: 13px;
+  line-height: 1.2;
+}
+
+.agent-gui-node__empty-hero-suggestions-card-close {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  flex: 0 0 auto;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  padding: 0;
+  color: var(--text-tertiary);
+  cursor: pointer;
+  transition:
+    background 120ms ease,
+    color 120ms ease;
+}
+
+.agent-gui-node__empty-hero-suggestions-card-close:hover {
+  background: color-mix(in srgb, var(--text-tertiary) 10%, transparent);
+  color: var(--text-primary);
+}
+
+.agent-gui-node__empty-hero-suggestions-card-close > svg {
+  width: 16px;
+  height: 16px;
+}
+
+.agent-gui-node__empty-hero-suggestions-item {
+  display: flex;
+  align-items: center;
+  width: 100%;
+  height: 32px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  padding: 0 14px;
+  color: var(--text-secondary);
+  font: inherit;
+  font-size: 13px;
+  line-height: 1.2;
+  text-align: left;
+  cursor: pointer;
+  transition:
+    background 120ms ease,
+    color 120ms ease;
+}
+
+.agent-gui-node__empty-hero-suggestions-item:hover {
+  background: color-mix(in srgb, var(--text-tertiary) 8%, transparent);
+  color: var(--text-primary);
+}
+
 @container agent-gui-node (max-width: 900px) {
   .agent-gui-node__empty-hero {
     padding-right: 32px;
@@ -9152,7 +9306,8 @@ html[data-theme="light"] [data-message-center-item-id].agent-gui-edge-glow {
   }
 
   .agent-gui-node__empty-hero-body,
-  .agent-gui-node__empty-hero-body > .agent-gui-node__composer-hero {
+  .agent-gui-node__empty-hero-body > .agent-gui-node__composer-hero,
+  .agent-gui-node__empty-hero-body > .agent-gui-node__empty-hero-suggestions {
     width: 100%;
   }
 }
