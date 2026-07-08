@@ -110,6 +110,11 @@ const CURSOR_FALLBACK_COMMANDS: readonly AgentSessionCommand[] = [
   { name: "compact" },
   { name: "goal" }
 ];
+const OPENCODE_FALLBACK_COMMANDS: readonly AgentSessionCommand[] = [
+  { name: "compact" },
+  { name: "goal" },
+  { name: REVIEW_COMMAND }
+];
 const CLAUDE_CODE_SLASH_PALETTE_COMMANDS = new Set([
   "compact",
   "context",
@@ -134,7 +139,7 @@ const COMPUTER_USE_CAPABILITY_COMMAND: AgentSlashCommandCapability = {
 const PLAN_MODE_COMMAND: AgentSessionCommand = { name: "plan" };
 
 const PROVIDER_SLASH_POLICY: Record<
-  "codex" | "claude-code" | "cursor",
+  "codex" | "claude-code" | "cursor" | "opencode",
   ProviderSlashPolicy
 > = {
   codex: {
@@ -151,6 +156,11 @@ const PROVIDER_SLASH_POLICY: Record<
     immediateCommands: new Set(),
     reviewPickerCommands: new Set(),
     fallbackCommands: CURSOR_FALLBACK_COMMANDS
+  },
+  opencode: {
+    immediateCommands: new Set(),
+    reviewPickerCommands: new Set([REVIEW_COMMAND]),
+    fallbackCommands: OPENCODE_FALLBACK_COMMANDS
   }
 };
 
@@ -159,14 +169,18 @@ function providerSlashPolicy(
 ): ProviderSlashPolicy | undefined {
   return provider === "codex" ||
     provider === "claude-code" ||
-    provider === "cursor"
+    provider === "cursor" ||
+    provider === "opencode"
     ? PROVIDER_SLASH_POLICY[provider]
     : undefined;
 }
 
 function isACPProvider(provider: AgentSlashCommandProvider): boolean {
   return (
-    provider === "codex" || provider === "claude-code" || provider === "cursor"
+    provider === "codex" ||
+    provider === "claude-code" ||
+    provider === "cursor" ||
+    provider === "opencode"
   );
 }
 

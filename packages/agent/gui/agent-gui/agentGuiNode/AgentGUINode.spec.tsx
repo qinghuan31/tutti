@@ -4267,6 +4267,69 @@ describe("AgentGUINode", () => {
     expect(mockUpdateDraftContent).toHaveBeenCalledWith(createDraft(""));
   });
 
+  it("shows OpenCode review from the adapter-owned fallback command", () => {
+    const opencodeTarget = createLocalAgentGUIProviderTarget("opencode");
+    mockViewModel = createViewModel({
+      activeConversationId: "session-1",
+      data: {
+        provider: "opencode",
+        lastActiveAgentSessionId: null,
+        conversationRailWidthPx: null
+      },
+      selectedProviderTarget: opencodeTarget,
+      providerTargets: [opencodeTarget],
+      draftPrompt: "/rev",
+      availableCommands: []
+    });
+    renderAgentGUINode();
+
+    expect(screen.getByText("review")).toBeTruthy();
+  });
+
+  it("shows OpenCode review when the provider advertises it", () => {
+    const opencodeTarget = createLocalAgentGUIProviderTarget("opencode");
+    mockViewModel = createViewModel({
+      activeConversationId: "session-1",
+      data: {
+        provider: "opencode",
+        lastActiveAgentSessionId: null,
+        conversationRailWidthPx: null
+      },
+      selectedProviderTarget: opencodeTarget,
+      providerTargets: [opencodeTarget],
+      draftPrompt: "/rev",
+      availableCommands: [{ name: "review", description: "Review changes" }]
+    });
+    renderAgentGUINode();
+
+    expect(screen.getByText("review")).toBeTruthy();
+  });
+
+  it("opens the OpenCode review picker from slash command selection", () => {
+    const opencodeTarget = createLocalAgentGUIProviderTarget("opencode");
+    mockViewModel = createViewModel({
+      activeConversationId: "session-1",
+      data: {
+        provider: "opencode",
+        lastActiveAgentSessionId: null,
+        conversationRailWidthPx: null
+      },
+      selectedProviderTarget: opencodeTarget,
+      providerTargets: [opencodeTarget],
+      draftPrompt: "/rev",
+      availableCommands: [{ name: "review", description: "Review changes" }]
+    });
+    renderAgentGUINode();
+
+    fireEvent.keyDown(getComposerEditor(), { key: "Enter" });
+
+    expect(
+      screen.getByTestId("agent-gui-review-picker-panel")
+    ).toBeTruthy();
+    expect(mockUpdateDraftContent).not.toHaveBeenCalledWith(createDraft("/review "));
+    expect(mockSubmitPrompt).not.toHaveBeenCalled();
+  });
+
   it("hides compact in an empty conversation", () => {
     mockViewModel = createViewModel({
       activeConversationId: "session-1",
