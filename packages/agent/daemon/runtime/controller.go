@@ -412,6 +412,24 @@ func (c *Controller) SetVisible(ctx context.Context, roomID, agentSessionID stri
 	return session, nil
 }
 
+func (c *Controller) SetTitle(ctx context.Context, roomID, agentSessionID string, title string) (Session, error) {
+	session, ok := c.get(strings.TrimSpace(roomID), strings.TrimSpace(agentSessionID))
+	if !ok {
+		return Session{}, ErrSessionNotFound
+	}
+	title = strings.TrimSpace(title)
+	if session.Title == title {
+		return session, nil
+	}
+	session.Title = title
+	session.UpdatedAtUnixMS = unixMS(now())
+	c.store(session)
+	events := []activityshared.Event{newSessionTitleActivityEvent(session, title)}
+	c.publish(session, events)
+	c.enqueueSessionReport(ctx, session, events)
+	return session, nil
+}
+
 func sessionVisible(visible *bool) bool {
 	return visible == nil || *visible
 }
@@ -2516,16 +2534,26 @@ func (c *Controller) applySessionPlanModeOnly(current Session, planMode bool) {
 	if c == nil {
 		return
 	}
-	currentSettings := normalizeSessionSettings(current.Settings, current.Provider, current.PermissionModeID)
-	if currentSettings.PlanMode == planMode {
+	c.mu.Lock()
+	key := sessionKey(current.RoomID, current.AgentSessionID)
+	latest, found := c.sessions[key]
+	if !found {
+		c.mu.Unlock()
 		return
 	}
-	nextSession := current
-	settings := normalizeSessionSettings(nextSession.Settings, nextSession.Provider, nextSession.PermissionModeID)
+	current = latest
+	currentSettings := normalizeSessionSettings(current.Settings, current.Provider, current.PermissionModeID)
+	if currentSettings.PlanMode == planMode {
+		c.mu.Unlock()
+		return
+	}
+	settings := normalizeSessionSettings(current.Settings, current.Provider, current.PermissionModeID)
 	settings.PlanMode = planMode
+	nextSession := current
 	nextSession.Settings = cloneSessionSettings(settings)
 	nextSession.UpdatedAtUnixMS = unixMS(now())
-	c.store(nextSession)
+	c.sessions[key] = nextSession
+	c.mu.Unlock()
 	patch := permissionModeStatePatch(nextSession)
 	c.publishSessionStatePatch(nextSession, patch)
 	c.enqueueSessionStatePatchReport(context.Background(), nextSession, patch)

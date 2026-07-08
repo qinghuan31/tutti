@@ -726,10 +726,11 @@ func normalizeLiveComposerModelOptions(options []ComposerConfigOptionValue) []Co
 			id = value
 		}
 		normalized = append(normalized, ComposerConfigOptionValue{
-			ID:          id,
-			Label:       label,
-			Value:       value,
-			Description: strings.TrimSpace(option.Description),
+			ID:                 id,
+			Label:              label,
+			Value:              value,
+			Description:        strings.TrimSpace(option.Description),
+			SupportsImageInput: option.SupportsImageInput,
 		})
 	}
 	return normalized

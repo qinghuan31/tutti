@@ -41,6 +41,13 @@ func standardACPCapabilities(provider string, promptImage bool, state acpLiveSta
 		}
 		return capabilities
 	}
+	if provider == ProviderOpenCode {
+		capabilities := []string{CapabilityPlanMode, CapabilityInterrupt}
+		if promptImage {
+			capabilities = append([]string{CapabilityImageInput}, capabilities...)
+		}
+		return capabilities
+	}
 	capabilities := []string{CapabilityInterrupt}
 	if promptImage {
 		capabilities = append(capabilities, CapabilityImageInput)
