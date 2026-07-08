@@ -108,6 +108,8 @@ import {
   agentPromptContentHasImage,
   agentPromptContentToComposerDraft,
   emptyAgentComposerDraft,
+  isPastedTextPromptBlock,
+  materializePastedTextInstructions,
   normalizeAgentPromptContentBlocks,
   textPromptContent
 } from "../model/agentComposerDraft";
@@ -1029,6 +1031,24 @@ function cancelResultSessionStatusIsNonBusy(
   );
 }
 
+/**
+ * Rewrites content for handoff to the runtime: pasted-text file blocks become a
+ * codex-style "read this file" instruction (path embedded). Applied at every
+ * runtime send boundary (new-session createSession + existing-session sendInput)
+ * so no `file` block reaches the desktop tuttid pipeline, while the draft/queue
+ * keep the structured block for the chip and edit-restore. The translated copy
+ * is resolved here (controller layer), never in the model.
+ */
+function toRuntimeSendContent(
+  content: readonly AgentPromptContentBlock[]
+): AgentPromptContentBlock[] {
+  return materializePastedTextInstructions(content, {
+    header: () => translate("agentHost.agentGui.pastedTextFilesHeader"),
+    line: (preview, path) =>
+      translate("agentHost.agentGui.pastedTextFileLine", { preview, path })
+  });
+}
+
 function shouldClearSubmittedDraft(input: {
   currentDraft: AgentComposerDraft | undefined;
   submittedContent: readonly AgentPromptContentBlock[];
@@ -1075,12 +1095,12 @@ function shouldClearSubmittedDraft(input: {
   const currentFiles = currentDraft.files ?? [];
   const submittedFiles = input.submittedContent.filter(
     (block): block is AgentPromptContentBlock & { type: "file" } =>
-      block.type === "file"
+      block.type === "file" && !isPastedTextPromptBlock(block)
   );
   if (currentFiles.length !== submittedFiles.length) {
     return false;
   }
-  return currentFiles.every((file, index) => {
+  const filesMatch = currentFiles.every((file, index) => {
     const submittedFile = submittedFiles[index];
     if (!submittedFile) {
       return false;
@@ -1104,6 +1124,24 @@ function shouldClearSubmittedDraft(input: {
       file.sizeBytes === submittedFile.sizeBytes
     );
   });
+  if (!filesMatch) {
+    return false;
+  }
+  // Pasted-text attachments compare by landed file path only — never by the
+  // text body or any translated instruction copy.
+  const currentLargeTextPaths = (currentDraft.largeTexts ?? [])
+    .map((item) => item.path?.trim() ?? "")
+    .filter(Boolean);
+  const submittedLargeTextPaths = input.submittedContent
+    .filter(isPastedTextPromptBlock)
+    .map((block) => block.path?.trim() ?? "")
+    .filter(Boolean);
+  if (currentLargeTextPaths.length !== submittedLargeTextPaths.length) {
+    return false;
+  }
+  return currentLargeTextPaths.every(
+    (path, index) => path === submittedLargeTextPaths[index]
+  );
 }
 
 function cancelBusySource(input: {
@@ -3278,10 +3316,14 @@ function areAgentComposerDraftsEqual(
       if (!other) {
         return false;
       }
+      // Stable identity + landing state only. The text body and any display
+      // label are excluded from the equality key; upload lifecycle fields are
+      // kept so the chip re-renders as it moves uploading → landed / errored.
       return (
         item.id === other.id &&
-        item.name === other.name &&
-        item.text === other.text &&
+        item.path === other.path &&
+        item.uploading === other.uploading &&
+        item.uploadError === other.uploadError &&
         item.sizeBytes === other.sizeBytes
       );
     })
@@ -7763,7 +7805,7 @@ export function useAgentGUINodeController({
           agentSessionId,
           agentTargetId: agentTargetId || null,
           cwd: selectedProjectPath ?? "",
-          initialContent: normalizedInitialContent,
+          initialContent: toRuntimeSendContent(normalizedInitialContent),
           initialDisplayPrompt,
           metadata: agentSubmitTraceMetadata(submitTrace),
           title: initialConversationTitle,
@@ -8609,7 +8651,11 @@ export function useAgentGUINodeController({
           return agentActivityRuntime.sendInput({
             workspaceId,
             agentSessionId,
-            content: normalizedContent,
+            // The codex-style "read this file" instruction for pasted-text
+            // attachments is materialized here (send time only) so translated
+            // copy never enters the persisted/queued draft, optimistic echo, or
+            // draft equality checks.
+            content: toRuntimeSendContent(normalizedContent),
             displayPrompt:
               displayPrompt && displayPrompt.trim() ? displayPrompt : null,
             ...(options?.guidance === true ? { guidance: true } : {}),
