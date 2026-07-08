@@ -106,6 +106,32 @@ Use this shape for new entries:
   [controller.go](../../packages/agent/daemon/runtime/controller.go)
   [controller_test.go](../../packages/agent/daemon/runtime/controller_test.go)
 
+### Renderer tile memory warnings from hidden autoplay animation
+
+- Symptom:
+  Electron or Chromium logs repeatedly print
+  `tile memory limits exceeded, some content may not draw`. DevTools
+  performance traces show continuous `FireAnimationFrame`, `Layerize`, and
+  `Commit` activity while the visible UI looks mostly idle.
+- Quick checks:
+  In the trace, group `FunctionCall` or `v8.callFunction` events by `url` and
+  `functionName`. Hidden animation players often still appear as repeated
+  `requestAnimationFrame` callbacks even when their DOM node has
+  `opacity: 0`.
+- Root cause:
+  CSS-hidden animation elements are still live renderers. An autoplay/looping
+  Lottie, canvas, or WebGL player can keep scheduling frames and force layer
+  updates across every mounted instance.
+- Fix:
+  Mount animation players only while the animation is actually visible, and
+  defer loading third-party animation runtimes until an active state needs
+  them. Do not rely on `opacity`, `visibility`, or off-screen placement to stop
+  playback.
+- Validation:
+  Re-record a short DevTools trace after the fix. Idle UI should no longer show
+  the hidden player's function as a high-frequency `requestAnimationFrame`
+  source, and Chromium tile memory warnings should stop during idle.
+
 ### Agent session stays loading after a completed turn
 
 - Symptom:
