@@ -1582,37 +1582,37 @@ describe("AgentGUINodeView layout persistence", () => {
 
   it("falls back to All for avatar rail targets without an agent target id", () => {
     const actions = createActions();
-    const localGeminiTarget = {
-      ...createLocalAgentGUIProviderTarget("gemini"),
-      label: "Local Gemini"
+    const localHermesTarget = {
+      ...createLocalAgentGUIProviderTarget("hermes"),
+      label: "Local Hermes"
     };
-    const sharedGeminiTarget = {
-      ...createLocalAgentGUIProviderTarget("gemini"),
-      targetId: "shared-agent:gemini-1",
-      label: "Shared Gemini"
+    const sharedHermesTarget = {
+      ...createLocalAgentGUIProviderTarget("hermes"),
+      targetId: "shared-agent:hermes-1",
+      label: "Shared Hermes"
     };
     renderAgentGUINodeView({
       actions,
       viewModel: {
         ...createViewModel(),
         conversationFilter: { kind: "all" },
-        selectedProviderTarget: sharedGeminiTarget,
+        selectedProviderTarget: sharedHermesTarget,
         providerTargets: [
           createLocalAgentGUIProviderTarget("codex"),
-          localGeminiTarget,
-          sharedGeminiTarget
+          localHermesTarget,
+          sharedHermesTarget
         ]
       }
     });
 
-    const sharedTile = screen.getByRole("tab", { name: "Shared Gemini" });
+    const sharedTile = screen.getByRole("tab", { name: "Shared Hermes" });
     expect(sharedTile).toHaveAttribute("aria-selected", "false");
 
     fireEvent.click(sharedTile);
 
     expect(actions.selectConversationFilterTarget).toHaveBeenCalledWith({
-      provider: "gemini",
-      providerTargetId: "shared-agent:gemini-1"
+      provider: "hermes",
+      providerTargetId: "shared-agent:hermes-1"
     });
     expect(actions.updateConversationFilter).not.toHaveBeenCalled();
     expect(actions.selectHomeComposerAgentTarget).not.toHaveBeenCalled();

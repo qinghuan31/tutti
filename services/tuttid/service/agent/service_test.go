@@ -1704,7 +1704,7 @@ func TestServiceCreateClampsPlanModeForProvidersWithoutCapability(t *testing.T) 
 		AgentSessionID: "22222222-2222-4222-8222-222222222222",
 		InitialContent: TextPromptContent("hello"),
 		PlanMode:       &planMode,
-		Provider:       "gemini",
+		Provider:       "hermes",
 	})
 	if !errors.Is(err, ErrInvalidArgument) || !strings.Contains(err.Error(), "agent target id is required") {
 		t.Fatalf("Create error = %v, want missing agent target ErrInvalidArgument", err)

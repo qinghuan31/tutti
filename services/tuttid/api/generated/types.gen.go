@@ -1134,7 +1134,6 @@ const (
 	ClaudeCode WorkspaceAgentProvider = "claude-code"
 	Codex      WorkspaceAgentProvider = "codex"
 	Cursor     WorkspaceAgentProvider = "cursor"
-	Gemini     WorkspaceAgentProvider = "gemini"
 	Hermes     WorkspaceAgentProvider = "hermes"
 	Nexight    WorkspaceAgentProvider = "nexight"
 	Openclaw   WorkspaceAgentProvider = "openclaw"
@@ -1150,8 +1149,6 @@ func (e WorkspaceAgentProvider) Valid() bool {
 	case Codex:
 		return true
 	case Cursor:
-		return true
-	case Gemini:
 		return true
 	case Hermes:
 		return true
@@ -2656,7 +2653,6 @@ type DesktopAgentComposerDefaultsByProvider struct {
 	ClaudeCode *DesktopAgentComposerDefaults `json:"claude-code,omitempty"`
 	Codex      *DesktopAgentComposerDefaults `json:"codex,omitempty"`
 	Cursor     *DesktopAgentComposerDefaults `json:"cursor,omitempty"`
-	Gemini     *DesktopAgentComposerDefaults `json:"gemini,omitempty"`
 	Hermes     *DesktopAgentComposerDefaults `json:"hermes,omitempty"`
 	Nexight    *DesktopAgentComposerDefaults `json:"nexight,omitempty"`
 	Openclaw   *DesktopAgentComposerDefaults `json:"openclaw,omitempty"`
@@ -2675,7 +2671,6 @@ type DesktopAgentGuiConversationRailCollapsedByProvider struct {
 	ClaudeCode *bool `json:"claude-code,omitempty"`
 	Codex      *bool `json:"codex,omitempty"`
 	Cursor     *bool `json:"cursor,omitempty"`
-	Gemini     *bool `json:"gemini,omitempty"`
 	Hermes     *bool `json:"hermes,omitempty"`
 	Nexight    *bool `json:"nexight,omitempty"`
 	Openclaw   *bool `json:"openclaw,omitempty"`

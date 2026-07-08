@@ -62,7 +62,6 @@ export type AgentGUIProvider = Extract<
   | "tutti-agent"
   | "cursor"
   | "nexight"
-  | "gemini"
   | "hermes"
   | "opencode"
   | "openclaw"
@@ -159,13 +158,7 @@ export interface RoomIssueNodeData {
   taskSearchQuery: string;
   taskListNextPageToken: string | null;
   issueListNextPageToken: string | null;
-  selectedProvider:
-    | "codex"
-    | "claude-code"
-    | "nexight"
-    | "gemini"
-    | "openclaw"
-    | "hermes";
+  selectedProvider: "codex" | "claude-code" | "nexight" | "openclaw" | "hermes";
   taskEditing: boolean;
   issueEditing: boolean;
   taskDraft: RoomTaskDraft;

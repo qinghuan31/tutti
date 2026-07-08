@@ -4535,8 +4535,6 @@ components:
           $ref: "#/components/schemas/DesktopAgentComposerDefaults"
         nexight:
           $ref: "#/components/schemas/DesktopAgentComposerDefaults"
-        gemini:
-          $ref: "#/components/schemas/DesktopAgentComposerDefaults"
         hermes:
           $ref: "#/components/schemas/DesktopAgentComposerDefaults"
         openclaw:
@@ -4560,8 +4558,6 @@ components:
         cursor:
           type: boolean
         nexight:
-          type: boolean
-        gemini:
           type: boolean
         hermes:
           type: boolean
@@ -5892,7 +5888,6 @@ components:
         - tutti-agent
         - cursor
         - nexight
-        - gemini
         - hermes
         - openclaw
         - opencode
