@@ -2425,6 +2425,134 @@ describe("AgentGUINodeView layout persistence", () => {
     ).not.toBeInTheDocument();
   });
 
+  it("renders pinned conversations from the runtime pinned page", async () => {
+    const listSessionSections = vi.fn<
+      NonNullable<AgentActivityRuntime["listSessionSections"]>
+    >(async (input) => ({
+      workspaceId: input.workspaceId,
+      pinned: {
+        hasMore: false,
+        sessions: [
+          {
+            ...createRuntimeSession(input.workspaceId, "old-pinned-session"),
+            pinnedAtUnixMs: 2000,
+            updatedAtUnixMs: 10
+          }
+        ]
+      },
+      sections: [
+        {
+          kind: "conversations",
+          sectionKey: "conversations",
+          sessions: [],
+          hasMore: false
+        }
+      ]
+    }));
+
+    renderAgentGUINodeView({
+      activityRuntime: {
+        ...createNoopAgentActivityRuntime(),
+        listSessionSections,
+        listSessionSectionPage: async (input) => ({
+          kind: "conversations",
+          sectionKey: input.sectionKey,
+          sessions: [],
+          hasMore: false
+        })
+      },
+      viewModel: {
+        ...createViewModel(),
+        conversations: []
+      }
+    });
+
+    await waitFor(() => {
+      expect(
+        screen.getByTestId("agent-gui-conversation-item-old-pinned-session")
+      ).toBeInTheDocument();
+    });
+  });
+
+  it("loads additional pinned conversations from the runtime pinned page endpoint", async () => {
+    const listPinnedSessionsPage = vi.fn<
+      NonNullable<AgentActivityRuntime["listPinnedSessionsPage"]>
+    >(async (input) => ({
+      hasMore: false,
+      sessions: [
+        {
+          ...createRuntimeSession(input.workspaceId, "older-pinned-session"),
+          pinnedAtUnixMs: 1000,
+          updatedAtUnixMs: 5
+        }
+      ]
+    }));
+    const listSessionSections = vi.fn<
+      NonNullable<AgentActivityRuntime["listSessionSections"]>
+    >(async (input) => ({
+      workspaceId: input.workspaceId,
+      pinned: {
+        hasMore: true,
+        nextCursor: "2000|newer-pinned-session",
+        sessions: [
+          {
+            ...createRuntimeSession(input.workspaceId, "newer-pinned-session"),
+            pinnedAtUnixMs: 2000,
+            updatedAtUnixMs: 10
+          }
+        ]
+      },
+      sections: [
+        {
+          kind: "conversations",
+          sectionKey: "conversations",
+          sessions: [],
+          hasMore: false
+        }
+      ]
+    }));
+
+    renderAgentGUINodeView({
+      activityRuntime: {
+        ...createNoopAgentActivityRuntime(),
+        listPinnedSessionsPage,
+        listSessionSections,
+        listSessionSectionPage: async (input) => ({
+          kind: "conversations",
+          sectionKey: input.sectionKey,
+          sessions: [],
+          hasMore: false
+        })
+      },
+      viewModel: {
+        ...createViewModel(),
+        conversations: []
+      }
+    });
+
+    await screen.findByTestId(
+      "agent-gui-conversation-item-newer-pinned-session"
+    );
+    fireEvent.click(
+      screen.getByRole("button", { name: createLabels().showMoreConversations })
+    );
+
+    await waitFor(() => {
+      expect(listPinnedSessionsPage).toHaveBeenCalledWith(
+        expect.objectContaining({
+          cursor: "2000|newer-pinned-session",
+          limit: 5,
+          workspaceId: "room-1"
+        })
+      );
+    });
+    expect(
+      await screen.findByTestId(
+        "agent-gui-conversation-item-older-pinned-session"
+      )
+    ).toBeInTheDocument();
+  });
+
   it("opens a conversation from the rail with the external-link action", () => {
     const actions = createActions();
     const onOpenConversationWindow = vi.fn();
