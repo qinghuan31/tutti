@@ -305,6 +305,7 @@ export interface AgentGUINodeViewModel {
   activeLiveState: "inactive" | "activating" | "active" | "failed";
   activationError: string | null;
   openclawGateway: OpenclawGatewayViewState | null;
+  activeConversationBusy: boolean;
   canSubmit: boolean;
   composerSettings: AgentGUIComposerSettingsVM;
   queuedPrompts: AgentGUIQueuedPromptVM[];

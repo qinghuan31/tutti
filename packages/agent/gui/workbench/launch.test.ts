@@ -238,7 +238,7 @@ describe("agent gui workbench launch contract", () => {
       dockEntryId: "agent-gui",
       openInNewWindow: true,
       provider: "codex",
-      reuseDockEntryNode: true,
+      reuseDockEntryNode: false,
       reuseExistingSessionNode: false,
       targetAgentSessionId: null
     });

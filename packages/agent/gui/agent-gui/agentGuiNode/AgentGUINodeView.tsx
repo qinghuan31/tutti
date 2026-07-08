@@ -2403,7 +2403,9 @@ const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
     conversation
   });
   const activeConversationTurnBusy =
-    viewModel.isSubmitting || derivedBusyStatus !== null;
+    viewModel.isSubmitting ||
+    viewModel.activeConversationBusy ||
+    derivedBusyStatus !== null;
   const isComposerSending =
     viewModel.isSubmitting ||
     activeConversationTurnBusy ||

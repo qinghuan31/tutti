@@ -2599,6 +2599,45 @@ func (a *asyncExecTestAdapter) calls() (bool, bool) {
 	return a.execCalled, a.asyncCalled
 }
 
+type lifecycleSnapshotAsyncExecAdapter struct {
+	execDone chan struct{}
+}
+
+func (*lifecycleSnapshotAsyncExecAdapter) Provider() string { return ProviderCodex }
+
+func (*lifecycleSnapshotAsyncExecAdapter) Start(context.Context, Session) ([]activityshared.Event, error) {
+	return nil, nil
+}
+
+func (*lifecycleSnapshotAsyncExecAdapter) Resume(context.Context, Session) error { return nil }
+
+func (*lifecycleSnapshotAsyncExecAdapter) Close(context.Context, Session) error { return nil }
+
+func (*lifecycleSnapshotAsyncExecAdapter) Exec(context.Context, Session, []PromptContentBlock, string, string, EventSink, CommandSnapshotSink) ([]activityshared.Event, error) {
+	return nil, nil
+}
+
+func (a *lifecycleSnapshotAsyncExecAdapter) ExecAsync(_ context.Context, session Session, _ []PromptContentBlock, _ string, turnID string, emit EventSink, _ CommandSnapshotSink) error {
+	if emit != nil {
+		event := newTurnActivityEventWithID(session, "turn-settled-snapshot-async", EventTurnUpdated, turnID, SessionStatusReady, "", "", map[string]any{
+			"phase": string(activityshared.TurnPhaseIdle),
+		})
+		activityshared.StampTurnLifecycleSnapshot(&event, activityshared.TurnLifecycleSnapshot{
+			Origin:  activityshared.TurnLifecycleOriginAdapter,
+			Seq:     1,
+			Phase:   string(activityshared.TurnPhaseSettled),
+			Outcome: string(activityshared.TurnOutcomeCompleted),
+		})
+		emit([]activityshared.Event{event})
+	}
+	a.execDone <- struct{}{}
+	return nil
+}
+
+func (*lifecycleSnapshotAsyncExecAdapter) Cancel(context.Context, Session, string) ([]activityshared.Event, error) {
+	return nil, nil
+}
+
 // steeringAsyncExecAdapter mirrors CodexAppServerAdapter.steerActiveTurn: the
 // prompt is steered into an already-running provider turn, so ExecAsync emits
 // only the steered user message for the new turn id and no terminal event ever
@@ -3200,6 +3239,44 @@ func TestControllerExecSteerSettlesTurnRecordWithoutTerminalEvent(t *testing.T) 
 		Content:        textPrompt("follow-up prompt"),
 	}); err != nil {
 		t.Fatalf("Exec after steer: %v", err)
+	}
+}
+
+func TestControllerExecSettledLifecycleSnapshotClearsAsyncTurnRecord(t *testing.T) {
+	t.Parallel()
+
+	adapter := &lifecycleSnapshotAsyncExecAdapter{execDone: make(chan struct{}, 1)}
+	controller := NewController([]Adapter{adapter}, nil)
+	started, err := controller.Start(context.Background(), StartInput{
+		RoomID:         "room-1",
+		AgentSessionID: "agent-session-1",
+		Provider:       ProviderCodex,
+		Title:          "Test",
+	})
+	if err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+	if _, err := controller.Exec(context.Background(), ExecInput{
+		RoomID:         "room-1",
+		AgentSessionID: started.Session.AgentSessionID,
+		Content:        textPrompt("run"),
+	}); err != nil {
+		t.Fatalf("Exec: %v", err)
+	}
+	select {
+	case <-adapter.execDone:
+	case <-time.After(2 * time.Second):
+		t.Fatal("timed out waiting for snapshot ExecAsync")
+	}
+	waitForCondition(t, func() bool {
+		return !controller.HasActiveTurn("room-1", started.Session.AgentSessionID)
+	})
+	if _, err := controller.Exec(context.Background(), ExecInput{
+		RoomID:         "room-1",
+		AgentSessionID: started.Session.AgentSessionID,
+		Content:        textPrompt("follow-up prompt"),
+	}); err != nil {
+		t.Fatalf("Exec after settled snapshot: %v", err)
 	}
 }
 

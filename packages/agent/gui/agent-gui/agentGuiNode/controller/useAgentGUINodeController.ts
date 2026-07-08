@@ -21,6 +21,7 @@ import {
 import { useAgentHostApi } from "../../../agentActivityHost";
 import {
   resolveSubmitAvailability,
+  isLiveTurnLifecyclePhase,
   resolveAgentActivityCapability,
   resolveAgentActivityUsage,
   selectSessionDisplayStatuses
@@ -3190,6 +3191,17 @@ function conversationBusyStatusFromAgentActivityDisplayStatus(
   return null;
 }
 
+function agentActivitySessionHasLiveTurn(
+  session: AgentActivitySession | null | undefined
+): boolean {
+  const lifecycle = session?.turnLifecycle;
+  if (!lifecycle || lifecycle.settling === true) {
+    return false;
+  }
+  const activeTurnId = lifecycle.activeTurnId?.trim() ?? "";
+  return activeTurnId !== "" || isLiveTurnLifecyclePhase(lifecycle.phase);
+}
+
 function reuseAgentActivityDisplayStatusesIfUnchanged(
   previous: ReadonlyMap<string, AgentActivityDisplayStatus> | null,
   next: Map<string, AgentActivityDisplayStatus>
@@ -3650,7 +3662,7 @@ function mergeSessionControlStatePatch(
       activeTurnId:
         patch.turn.activeTurnId !== undefined
           ? patch.turn.activeTurnId
-          : patch.turn.phase === "settled"
+          : patch.turn.phase === "settled" || patch.turn.phase === "idle"
             ? null
             : patch.turn.turnId,
       phase: patch.turn.phase,
@@ -4448,6 +4460,8 @@ export function useAgentGUINodeController({
       ),
     [agentActivitySnapshot.sessions]
   );
+  const activeRuntimeSession =
+    runtimeSessionsBySessionId.get(activeConversationId ?? "") ?? null;
   const stableRuntimeSyncStateBySessionId = useMemo(() => {
     const current = stableRuntimeSyncStateBySessionIdRef.current;
     let next = current;
@@ -8889,14 +8903,31 @@ export function useAgentGUINodeController({
       if (sessionState?.pendingInteractive) {
         return true;
       }
+      const runtimeSession =
+        runtimeSessionsBySessionId.get(normalizedAgentSessionId) ?? null;
+      if (
+        runtimeSession &&
+        resolveSubmitAvailability(runtimeSession).state === "blocked"
+      ) {
+        return true;
+      }
+      const conversationStatus =
+        conversations.find(
+          (conversation) => conversation.id === normalizedAgentSessionId
+        )?.status ?? null;
+      if (conversationBusyStatus(conversationStatus)) {
+        return true;
+      }
       return agentActivityDisplayStatusBusy(
         agentActivityDisplayStatuses.get(normalizedAgentSessionId)
       );
     },
     [
       agentActivityDisplayStatuses,
+      conversations,
       isRespondingApproval,
       isSubmitting,
+      runtimeSessionsBySessionId,
       sessionViewRef
     ]
   );
@@ -9116,7 +9147,9 @@ export function useAgentGUINodeController({
         return;
       }
       const activeTurnId =
-        activeSessionState?.turnLifecycle?.activeTurnId?.trim() ?? "";
+        activeRuntimeSession?.turnLifecycle?.activeTurnId?.trim() ||
+        activeSessionState?.turnLifecycle?.activeTurnId?.trim() ||
+        "";
       if (activeTurnId === "") {
         return;
       }
@@ -9129,7 +9162,13 @@ export function useAgentGUINodeController({
         { bypassLocalQueue: true, guidance: true }
       );
     },
-    [activeSessionState, promptImagesSupported, submitExistingPrompt, translate]
+    [
+      activeRuntimeSession,
+      activeSessionState,
+      promptImagesSupported,
+      submitExistingPrompt,
+      translate
+    ]
   );
 
   useEffect(() => {
@@ -10865,6 +10904,11 @@ export function useAgentGUINodeController({
   }, [conversationUserIds, ensureAccountProfiles]);
   const projectionConversationRef =
     useRef<AgentGUIConversationProjectionSource | null>(null);
+  const activeRuntimeSessionLiveTurn =
+    agentActivitySessionHasLiveTurn(activeRuntimeSession);
+  const activeRuntimeTurnLifecycle = activeRuntimeSessionLiveTurn
+    ? (activeRuntimeSession?.turnLifecycle ?? null)
+    : null;
   const projectionConversation =
     useMemo<AgentGUIConversationProjectionSource | null>(() => {
       if (!activeConversation) {
@@ -10873,9 +10917,10 @@ export function useAgentGUINodeController({
       }
       const previous = projectionConversationRef.current;
       const turnLifecycle =
-        activeSessionState?.agentSessionId === activeConversation.id
+        activeRuntimeTurnLifecycle ??
+        (activeSessionState?.agentSessionId === activeConversation.id
           ? (activeSessionState.turnLifecycle ?? null)
-          : null;
+          : null);
       if (
         previous &&
         previous.id === activeConversation.id &&
@@ -10920,6 +10965,9 @@ export function useAgentGUINodeController({
       activeConversation?.title,
       activeConversation?.titleFallback,
       activeConversation?.userId,
+      activeRuntimeTurnLifecycle?.activeTurnId,
+      activeRuntimeTurnLifecycle?.phase,
+      activeRuntimeTurnLifecycle?.settling,
       activeSessionState?.agentSessionId,
       activeSessionState?.turnLifecycle?.activeTurnId,
       activeSessionState?.turnLifecycle?.phase,
@@ -11032,7 +11080,10 @@ export function useAgentGUINodeController({
     conversation,
     workspaceId
   ]);
-  const activeLiveState = activeConversationLiveState;
+  const activeLiveState =
+    activeConversationLiveState === "inactive" && activeRuntimeSessionLiveTurn
+      ? "active"
+      : activeConversationLiveState;
   const activationError = activation.errorFor(activeConversationId);
   const activationErrorCode = activation.codeFor(activeConversationId);
   const hasProviderSessionNotFoundError =
@@ -11276,8 +11327,6 @@ export function useAgentGUINodeController({
       : null;
   const pendingInteractivePrompt =
     serverInteractivePrompt ?? planImplementationPromptVM;
-  const activeRuntimeSession =
-    runtimeSessionsBySessionId.get(activeConversationId ?? "") ?? null;
   useEffect(() => {
     const provider = normalizeOptionalText(
       activeRuntimeSession?.provider ?? activeConversation?.provider
@@ -11309,11 +11358,17 @@ export function useAgentGUINodeController({
     : false;
   // Derive from the turn lifecycle when present (ADR 0008); trust the wire
   // submitAvailability only for lifecycle-less control states.
-  const activeSubmitBlocked = activeSessionState
+  const activeSessionStateSubmitBlocked = activeSessionState
     ? resolveSubmitAvailability(activeSessionState).state === "blocked"
     : false;
+  const activeRuntimeSubmitBlocked = activeRuntimeSession
+    ? resolveSubmitAvailability(activeRuntimeSession).state === "blocked"
+    : false;
+  const activeSubmitBlocked =
+    activeSessionStateSubmitBlocked || activeRuntimeSubmitBlocked;
   const activeConversationBusy =
     agentActivityDisplayStatusBusy(activeActivityDisplayStatus) ||
+    conversationBusyStatus(activeConversation?.status ?? null) ||
     activeHasPendingSubmittedTurn ||
     activeSubmitBlocked;
   const activeSessionResumable =
@@ -11413,6 +11468,7 @@ export function useAgentGUINodeController({
     pendingApproval === null &&
     pendingInteractivePrompt === null &&
     sessionChrome.auth === null &&
+    !activeConversationBusy &&
     !isCreatingConversation &&
     !isSubmitting &&
     !isInterrupting;
@@ -12262,6 +12318,7 @@ export function useAgentGUINodeController({
         activeLiveState,
         activationError,
         openclawGateway,
+        activeConversationBusy,
         canSubmit,
         composerSettings: stableComposerSettings,
         queuedPrompts,

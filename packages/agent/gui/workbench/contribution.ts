@@ -483,6 +483,7 @@ export function createAgentGuiWorkbenchContribution(
           instanceId,
           state: {
             ...normalizeAgentGuiWorkbenchState(previousState),
+            lastActiveAgentSessionId: null,
             ...(providerTarget.agentTargetId
               ? { agentTargetId: providerTarget.agentTargetId }
               : {}),

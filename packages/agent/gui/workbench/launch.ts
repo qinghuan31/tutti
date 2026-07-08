@@ -227,10 +227,12 @@ export function createAgentGuiWorkbenchLaunchDescriptor(
       }),
       openInNewWindow,
       provider,
-      reuseDockEntryNode: shouldReuseAgentGuiWorkbenchDockEntryNode({
-        dockEntryId,
-        launchKind: "prefill"
-      }),
+      reuseDockEntryNode:
+        !openInNewWindow &&
+        shouldReuseAgentGuiWorkbenchDockEntryNode({
+          dockEntryId,
+          launchKind: "prefill"
+        }),
       reuseExistingSessionNode: !openInNewWindow,
       targetAgentSessionId: null
     };

@@ -3993,6 +3993,29 @@ describe("AgentGUINodeView layout persistence", () => {
     });
   });
 
+  it("keeps the composer busy from the controller active-turn state when rows are stale", () => {
+    const activeConversation = createConversationSummary("session-1");
+
+    renderAgentGUINodeView({
+      viewModel: {
+        ...createViewModel(),
+        activeConversation,
+        activeConversationId: activeConversation.id,
+        activeConversationBusy: true,
+        canSubmit: false,
+        canQueueWhileBusy: true,
+        conversation: null,
+        conversationDetail: null,
+        isSubmitting: false
+      }
+    });
+
+    expect(composerMock.calls.at(-1)).toMatchObject({
+      isSendingTurn: true,
+      showStopButton: true
+    });
+  });
+
   it("keeps the selected transient conversation ahead of the latest runtime rail page", () => {
     const project = { id: "ryan", label: "ryan", path: "/Users/ryan" };
     const existingSection = {
@@ -5132,6 +5155,7 @@ function createViewModel(
     activeLiveState: "inactive",
     activationError: null,
     openclawGateway: null,
+    activeConversationBusy: false,
     canSubmit: true,
     hasSentUserMessage: false,
     composerSettings: {

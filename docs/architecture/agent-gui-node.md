@@ -180,6 +180,11 @@ a Codex panel before the draft prefill effect runs. The prefilled handoff panel
 must also scope the conversation rail to the selected target instead of opening
 on `All`; the target-specific rail selection is part of the handoff activation
 state, not a later user filter choice.
+External draft-prefill launchers that start separate work, such as Issue
+Manager task execution and task breakdown, must request a new AgentGUI window
+and must not reuse an existing dock-entry node. Reusing the dock entry can focus
+or restore the previous active conversation before the new draft composer is
+visible.
 The handoff menu is a launch surface, so its options must come from the
 host-provided, enabled provider targets. It must not use the provider rail's
 static catalog fallback or coming-soon placeholders, which are display chrome
@@ -712,6 +717,15 @@ dispatch to provider-specific active-turn guidance without opening a normal next
 turn. Codex app-server maps this to `turn/steer`; Claude SDK maps it through the
 sidecar live prompt queue. `Shift+Enter` remains the multiline composer shortcut
 and must not submit either a normal prompt or guidance.
+Active composer state must prefer a live `AgentActivityRuntime` turn lifecycle
+over the selected session view/control state. `getState` and legacy state patch
+paths can temporarily report a settled or available control state while the
+runtime snapshot still has `turnLifecycle.activeTurnId` with a live phase. In
+that split state, AgentGuiNode must keep the transcript/loading projection busy,
+set normal `canSubmit` false, and let ordinary composer sends enter the local
+queue. Only explicit guidance actions bypass that queue and steer the active
+turn. Legacy `idle` turn patches clear `activeTurnId`; they must not leave a
+stale active-turn block behind.
 
 The submit target is not just a render detail. A detail-page composer must not
 fall back to `startConversation` because a UI-local active conversation ref is
