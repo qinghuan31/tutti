@@ -187,6 +187,11 @@ import {
   normalizeAgentSessionMentionTitle
 } from "../agentRichText/agentFileMentionExtension";
 import { resolveAgentGUIExplicitConversationTitle } from "../model/agentGuiProviderIdentity";
+import {
+  resolveComposerSubmitPolicy,
+  sessionIsOccupied,
+  shouldHoldPromptInLocalQueue
+} from "../model/composerSubmitPolicy";
 import { composerSettingsSupportFromOptions } from "../model/composerSettingsSupport";
 import {
   buildNodeDefaultComposerSettings,
@@ -8873,25 +8878,24 @@ export function useAgentGUINodeController({
 
   const shouldQueuePromptLocally = useCallback(
     (agentSessionId: string): boolean => {
-      if (isSubmitting || isRespondingApproval) {
-        return true;
-      }
+      const commandInFlight = isSubmitting || isRespondingApproval;
       const normalizedAgentSessionId = agentSessionId.trim();
       if (!normalizedAgentSessionId) {
-        return false;
-      }
-      if (pendingTurnIdBySessionIdRef.current[normalizedAgentSessionId]) {
-        return true;
+        return commandInFlight;
       }
       const sessionState =
         getAgentSessionView(sessionViewRef(normalizedAgentSessionId))
           ?.controlState ?? null;
-      if (sessionState?.pendingInteractive) {
-        return true;
-      }
-      return agentActivityDisplayStatusBusy(
-        agentActivityDisplayStatuses.get(normalizedAgentSessionId)
-      );
+      return shouldHoldPromptInLocalQueue({
+        commandInFlight,
+        hasPendingSubmittedTurn: Boolean(
+          pendingTurnIdBySessionIdRef.current[normalizedAgentSessionId]
+        ),
+        pendingInteractive: Boolean(sessionState?.pendingInteractive),
+        displayStatusBusy: agentActivityDisplayStatusBusy(
+          agentActivityDisplayStatuses.get(normalizedAgentSessionId)
+        )
+      });
     },
     [
       agentActivityDisplayStatuses,
@@ -11312,10 +11316,14 @@ export function useAgentGUINodeController({
   const activeSubmitBlocked = activeSessionState
     ? resolveSubmitAvailability(activeSessionState).state === "blocked"
     : false;
-  const activeConversationBusy =
-    agentActivityDisplayStatusBusy(activeActivityDisplayStatus) ||
-    activeHasPendingSubmittedTurn ||
-    activeSubmitBlocked;
+  const activeSessionOccupancy = {
+    displayStatusBusy: agentActivityDisplayStatusBusy(
+      activeActivityDisplayStatus
+    ),
+    hasPendingSubmittedTurn: activeHasPendingSubmittedTurn,
+    submitBlocked: activeSubmitBlocked
+  };
+  const activeConversationBusy = sessionIsOccupied(activeSessionOccupancy);
   const activeSessionResumable =
     activeRuntimeSession?.resumable ??
     activeConversation?.resumable ??
@@ -11401,27 +11409,27 @@ export function useAgentGUINodeController({
     hasProviderSessionNotFoundError,
     pendingApproval
   ]);
-  const canSubmit =
-    !providerTargetsLoading &&
-    activeLiveState !== "activating" &&
-    activeLiveState !== "failed" &&
-    !activeConversationResumeUnavailable &&
-    (activeConversationId !== null ||
-      effectiveSelectedProviderTarget.disabled !== true) &&
-    (composerTargetData.provider !== "openclaw" ||
-      openclawGateway?.status === "ready") &&
-    pendingApproval === null &&
-    pendingInteractivePrompt === null &&
-    sessionChrome.auth === null &&
-    !isCreatingConversation &&
-    !isSubmitting &&
-    !isInterrupting &&
-    !activeSubmitBlocked;
-  const canQueueWhileBusy =
-    Boolean(activeConversationId) &&
-    (activeConversationBusy ||
-      isSubmitting ||
-      Boolean(activeSessionState?.pendingInteractive));
+  const composerSubmitPolicy = resolveComposerSubmitPolicy({
+    hasActiveConversation: activeConversationId !== null,
+    liveState: activeLiveState,
+    isCreatingConversation,
+    resumeUnavailable: activeConversationResumeUnavailable,
+    occupancy: activeSessionOccupancy,
+    pendingInteractive: Boolean(activeSessionState?.pendingInteractive),
+    isSubmitting,
+    isInterrupting,
+    approvalPending: pendingApproval !== null,
+    interactivePromptPending: pendingInteractivePrompt !== null,
+    authRequired: sessionChrome.auth !== null,
+    providerTargetsLoading,
+    selectedProviderTargetDisabled:
+      effectiveSelectedProviderTarget.disabled === true,
+    gatewayNotReady:
+      composerTargetData.provider === "openclaw" &&
+      openclawGateway?.status !== "ready"
+  });
+  const canSubmit = composerSubmitPolicy.canSubmit;
+  const canQueueWhileBusy = composerSubmitPolicy.canQueueWhileBusy;
   useEffect(() => {
     const firstVersion = minFiniteMessageVersion(activeMessages);
     const lastVersion = maxFiniteMessageVersion(activeMessages);
