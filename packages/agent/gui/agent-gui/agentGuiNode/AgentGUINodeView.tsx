@@ -104,6 +104,7 @@ import {
 import type { UiLanguage } from "../../contexts/settings/domain/agentSettings";
 import type {
   AgentGUIProvider,
+  AgentGUIProviderRailAllPresentation,
   AgentGUIProviderReadinessGate,
   AgentGUIProviderTarget
 } from "../../types";
@@ -614,6 +615,7 @@ interface AgentGUINodeViewProps {
   renderSidebarFooter?: AgentGUISidebarFooterRenderer;
   /** Renders the provider rail empty state in "exact" mode. See the type doc. */
   renderProviderRailEmpty?: AgentGUIProviderRailEmptyRenderer;
+  providerRailAllPresentation?: AgentGUIProviderRailAllPresentation | null;
   onLinkAction?: (action: WorkspaceLinkAction) => void;
   onHandoffConversation?: (input: {
     agentTargetId?: string | null;
@@ -1090,6 +1092,7 @@ export function AgentGUINodeView({
   viewModel,
   renderSidebarFooter,
   renderProviderRailEmpty,
+  providerRailAllPresentation,
   onLinkAction,
   onHandoffConversation,
   capabilityMenuState,
@@ -1713,6 +1716,7 @@ export function AgentGUINodeView({
               providerTargetsLoading={viewModel.providerTargetsLoading}
               providerRailMode={viewModel.providerRailMode}
               renderProviderRailEmpty={renderProviderRailEmpty}
+              providerRailAllPresentation={providerRailAllPresentation}
               comingSoonProviders={viewModel.comingSoonProviders}
               onSelectConversationFilterTarget={
                 actions.selectConversationFilterTarget
@@ -3860,14 +3864,19 @@ function AgentGUIAllProviderGridIcon({
   );
 }
 
-function AgentGUIUnifiedProviderIcon(): React.JSX.Element {
+function AgentGUIUnifiedProviderIcon({
+  presentation
+}: {
+  presentation?: AgentGUIProviderRailAllPresentation | null;
+}): React.JSX.Element {
+  const iconUrl = presentation?.iconUrl?.trim() || agentColorfulUrl;
   return (
     <span aria-hidden="true" className={styles.providerRailAvatar}>
       <img
         alt=""
         className={styles.providerRailAvatarImage}
         draggable={false}
-        src={agentColorfulUrl}
+        src={iconUrl}
       />
     </span>
   );
@@ -4928,6 +4937,7 @@ interface AgentGUIProviderRailProps {
   providerTargetsLoading: AgentGUINodeViewModel["providerTargetsLoading"];
   providerRailMode: AgentGUINodeViewModel["providerRailMode"];
   renderProviderRailEmpty?: AgentGUIProviderRailEmptyRenderer;
+  providerRailAllPresentation?: AgentGUIProviderRailAllPresentation | null;
   comingSoonProviders: AgentGUINodeViewModel["comingSoonProviders"];
   onRequestComposerFocus: () => void;
   onSelectConversationFilterTarget: AgentGUINodeViewProps["actions"]["selectConversationFilterTarget"];
@@ -4954,6 +4964,7 @@ const AgentGUIProviderRail = memo(function AgentGUIProviderRail({
   providerTargetsLoading,
   providerRailMode,
   renderProviderRailEmpty,
+  providerRailAllPresentation,
   comingSoonProviders,
   onRequestComposerFocus,
   onSelectConversationFilterTarget,
@@ -5341,7 +5352,9 @@ const AgentGUIProviderRail = memo(function AgentGUIProviderRail({
           disabled={previewMode}
           onClick={selectAllProviders}
         >
-          <AgentGUIUnifiedProviderIcon />
+          <AgentGUIUnifiedProviderIcon
+            presentation={providerRailAllPresentation}
+          />
           <span className={styles.providerRailTileLabel}>
             {labels.conversationFilterAll}
           </span>
