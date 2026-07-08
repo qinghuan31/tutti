@@ -202,6 +202,7 @@ export interface AgentHostUserProject {
   id: string;
   path: string;
   label: string;
+  sectionKey?: string;
   createdAtUnixMs?: number;
   updatedAtUnixMs?: number;
   lastUsedAtUnixMs?: number;

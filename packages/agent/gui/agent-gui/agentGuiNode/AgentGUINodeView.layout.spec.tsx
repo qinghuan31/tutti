@@ -2528,7 +2528,8 @@ describe("AgentGUINodeView layout persistence", () => {
     const project = {
       id: "project-home",
       path: "/Users/ryan",
-      label: "ryan"
+      label: "ryan",
+      sectionKey: "project:/Users/ryan"
     };
     const listSessionSections = vi.fn<
       NonNullable<AgentActivityRuntime["listSessionSections"]>
@@ -2566,7 +2567,7 @@ describe("AgentGUINodeView layout persistence", () => {
       },
       viewModel: {
         ...createViewModel(),
-        activeConversationId: "session-5",
+        activeConversationId: "session-20",
         userProjects: [project],
         conversations: [5, 20, 19, 18, 17].map((index) =>
           createConversationSummary(`session-${index}`, {
@@ -2579,15 +2580,15 @@ describe("AgentGUINodeView layout persistence", () => {
 
     await waitFor(() => {
       expect(
-        screen.getByTestId("agent-gui-conversation-item-session-5")
+        screen.getByTestId("agent-gui-conversation-item-session-20")
       ).toBeInTheDocument();
     });
     expect(
-      screen.getByTestId("agent-gui-conversation-item-session-20")
-    ).toBeInTheDocument();
-    expect(
-      screen.queryByTestId("agent-gui-conversation-item-session-16")
+      screen.queryByTestId("agent-gui-conversation-item-session-5")
     ).not.toBeInTheDocument();
+    expect(
+      screen.getByTestId("agent-gui-conversation-item-session-16")
+    ).toBeInTheDocument();
   });
 
   it("renders pinned conversations from the runtime pinned page", async () => {
@@ -4181,8 +4182,13 @@ describe("AgentGUINodeView layout persistence", () => {
     });
   });
 
-  it("keeps the selected transient conversation ahead of the latest runtime rail page", () => {
-    const project = { id: "ryan", label: "ryan", path: "/Users/ryan" };
+  it("does not insert local project summaries ahead of the persisted runtime rail page", () => {
+    const project = {
+      id: "ryan",
+      label: "ryan",
+      path: "/Users/ryan",
+      sectionKey: "project:/Users/ryan"
+    };
     const existingSection = {
       id: "project:/Users/ryan",
       kind: "project" as const,
@@ -4209,10 +4215,6 @@ describe("AgentGUINodeView layout persistence", () => {
 
     expect(updated?.[0]?.items.map((item) => item.id)).toEqual([
       "session-5",
-      "session-20",
-      "session-19",
-      "session-18",
-      "session-17",
       "session-4",
       "session-3",
       "session-2",

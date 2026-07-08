@@ -581,9 +581,12 @@ sections come from current `userProjects` and use the stable
 `conversations`. The daemon pages sessions by `rail_section_key`, so AgentGUI
 must render returned section props and use backend `hasMore`/`nextCursor`
 rather than cwd grouping, root filters, excluded project paths, or local
-Show more heuristics. Removing a project removes that rail section from the
-section list; re-adding the same path reveals historical sessions with the same
-section key.
+Show more heuristics. Local conversation-summary reconciliation may patch rows
+already present in a returned section, but it must not synthesize project
+sections or move rows between project sections from `cwd` or resolved
+`userProjects`. Removing a project removes that rail section from the section
+list; re-adding the same path reveals historical sessions with the same section
+key.
 Section-level actions must use the same backend section contract when their
 scope is "everything in this section." For example, project batch delete cannot
 derive its target set solely from the currently rendered `section.items`, because

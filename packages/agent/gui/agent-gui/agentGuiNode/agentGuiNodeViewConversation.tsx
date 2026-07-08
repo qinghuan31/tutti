@@ -132,7 +132,7 @@ export function groupConversations(
     normalizeConversationProjectPathCached(path, normalizedProjectPathByPath);
   userProjects.forEach((project, projectOrder) => {
     const normalizedPath = normalizeProjectPath(project.path);
-    const sectionId = `project:${normalizedPath}`;
+    const sectionId = conversationProjectSectionId(project, normalizedPath);
     if (projectGroups.has(sectionId)) {
       return;
     }
@@ -183,7 +183,10 @@ export function groupConversations(
     }
 
     const normalizedPath = normalizeProjectPath(conversation.project.path);
-    const sectionId = `project:${normalizedPath}`;
+    const sectionId = conversationProjectSectionId(
+      conversation.project,
+      normalizedPath
+    );
     const existing = projectGroups.get(sectionId);
     if (existing) {
       existing.items.push(conversation);
@@ -276,6 +279,13 @@ function normalizeConversationProjectPathCached(
   const normalized = normalizeConversationProjectPath(path);
   normalizedPathByPath.set(path, normalized);
   return normalized;
+}
+
+function conversationProjectSectionId(
+  project: NonNullable<ConversationSection["project"]>,
+  normalizedPath: string
+): string {
+  return project.sectionKey?.trim() || `project:${normalizedPath}`;
 }
 
 function conversationMetaKind(
