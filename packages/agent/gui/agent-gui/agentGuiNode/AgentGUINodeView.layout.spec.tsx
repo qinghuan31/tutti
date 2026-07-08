@@ -307,6 +307,7 @@ describe("AgentGUINodeView layout persistence", () => {
     });
 
     const footer = screen.getByTestId("agent-gui-sidebar-footer-slot");
+    const configFooter = screen.getByTestId("agent-gui-config-footer");
     const providerTileScrollArea = screen.getByRole("tablist", {
       name: "Switch provider"
     });
@@ -318,6 +319,10 @@ describe("AgentGUINodeView layout persistence", () => {
     expect(
       container.querySelector(".agent-gui-node__rail")
     ).not.toContainElement(footer);
+    expect(
+      footer.compareDocumentPosition(configFooter) &
+        Node.DOCUMENT_POSITION_FOLLOWING
+    ).toBeTruthy();
     expect(renderSidebarFooter).toHaveBeenCalledWith({
       currentUserId: "user-1",
       activeConversation

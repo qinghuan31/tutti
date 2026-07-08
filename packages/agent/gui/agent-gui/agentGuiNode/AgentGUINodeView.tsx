@@ -1808,6 +1808,17 @@ export function AgentGUINodeView({
               onUpdateConversationFilter={actions.updateConversationFilter}
               onRequestComposerFocus={requestComposerFocus}
             />
+            {renderSidebarFooter ? (
+              <div
+                className={`${styles.providerRailFooter} nodrag tsh-desktop-no-drag`}
+                data-testid="agent-gui-sidebar-footer-slot"
+              >
+                {renderSidebarFooter({
+                  currentUserId: viewModel.currentUserId,
+                  activeConversation: viewModel.activeConversation
+                })}
+              </div>
+            ) : null}
             {shouldShowProviderRailConfigButton ? (
               <div
                 className={`${styles.providerRailFooter} nodrag tsh-desktop-no-drag`}
@@ -1846,17 +1857,6 @@ export function AgentGUINodeView({
                     />
                   </button>
                 )}
-              </div>
-            ) : null}
-            {renderSidebarFooter ? (
-              <div
-                className={`${styles.providerRailFooter} nodrag tsh-desktop-no-drag`}
-                data-testid="agent-gui-sidebar-footer-slot"
-              >
-                {renderSidebarFooter({
-                  currentUserId: viewModel.currentUserId,
-                  activeConversation: viewModel.activeConversation
-                })}
               </div>
             ) : null}
           </aside>
