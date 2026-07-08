@@ -275,6 +275,56 @@ Use this shape for new entries:
   [composer_live_model_discovery.go](../../services/tuttid/service/agent/composer_live_model_discovery.go)
   [composer_live_model_cache.go](../../services/tuttid/service/agent/composer_live_model_cache.go)
 
+### AgentGUI model switch changes defaults but not the active session
+
+- Symptom:
+  A user selects a different AgentGUI model, but the next provider call still
+  uses the previous model. Logs may show
+  `agent.gui.composer_defaults.remembered` for the new model while
+  `workspace_agent_sessions.settings_json`, `runtimeContext.model`, or
+  app-server `turn/start` still show the old model.
+- Quick checks:
+  Search desktop and daemon logs for the full settings chain:
+  `agent.gui.composer_settings.default_only`,
+  `agent.gui.composer_settings.update_requested`,
+  `workspace.agent_session.settings.update_requested`,
+  `agent_session.settings.update.requested`,
+  `agent_session.app_server.settings.applied`, and
+  `agent_session.app_server.turn_start.params`. If only the defaults event is
+  present, the UI changed the target default draft, not the active session. If
+  daemon settings update completed but `turn_start.params.model` is old or
+  empty, inspect the app-server adapter path.
+- Root cause:
+  AgentGUI has two distinct composer surfaces. The target home composer writes
+  remembered defaults and node drafts. An active conversation composer must
+  additionally call `updateSessionSettings`; Codex app-server providers then
+  apply model changes as per-turn overrides on the next `turn/start`, not to an
+  already-running turn. If the daemon applies the settings but the update
+  response still reports the old model, check the service merge path:
+  `serviceSessionWithPersistedFreshness` must not let a newer activity
+  projection snapshot overwrite live runtime settings after an explicit
+  settings update.
+- Fix:
+  Preserve the default-draft path, but make active-session model changes
+  observable at every layer. Do not conclude that a provider ignored the model
+  until the logs show the active session settings update reached the daemon and
+  the following `turn/start` carried the requested model.
+- Validation:
+  Reproduce by switching a model in a running session and sending a follow-up.
+  Confirm the logs include the update chain above and that
+  `workspace.agent_session.settings.update_completed` reports the requested
+  model and the next `turn/start` carries it. If the persisted
+  `workspace_agent_sessions.settings_json.model` is older while the runtime is
+  live, `Get` responses should still expose live runtime settings instead of
+  the stale projection value.
+- References:
+  [useAgentGUINodeController.ts](../../packages/agent/gui/agent-gui/agentGuiNode/controller/useAgentGUINodeController.ts)
+  [createDesktopAgentActivityRuntime.ts](../../apps/desktop/src/renderer/src/features/workspace-agent/services/createDesktopAgentActivityRuntime.ts)
+  [workspaceAgentActivityService.ts](../../apps/desktop/src/renderer/src/features/workspace-agent/services/internal/workspaceAgentActivityService.ts)
+  [service_session.go](../../services/tuttid/service/agent/service_session.go)
+  [controller.go](../../packages/agent/daemon/runtime/controller.go)
+  [codex_appserver_adapter.go](../../packages/agent/daemon/runtime/codex_appserver_adapter.go)
+
 ### Claude SDK context window shows 200k for 1M models
 
 - Symptom:

@@ -423,6 +423,7 @@ describe("agent GUI workbench contribution copy", () => {
 
     expect(launchResult).toMatchObject({
       dockEntryId: agentGuiWorkbenchUnifiedDockEntryId(),
+      reuseDockEntryNode: true,
       title: "Agent"
     });
     expect(launchResult?.instanceId).toBe(
@@ -468,6 +469,7 @@ describe("agent GUI workbench contribution copy", () => {
 
     expect(launchResult).toMatchObject({
       dockEntryId: agentGuiWorkbenchUnifiedDockEntryId(),
+      reuseDockEntryNode: true,
       title: "Agent"
     });
     expect(launchResult?.instanceId).toBe(
@@ -486,7 +488,7 @@ describe("agent GUI workbench contribution copy", () => {
     });
   });
 
-  it("opens a fresh cascading window for the dock 'New window' action", () => {
+  it("opens a fresh cascading window for the dock 'New window' payload", () => {
     const claudeTarget = createLocalAgentGUIProviderTarget("claude-code");
     const contribution = createTestAgentGuiWorkbenchContribution({
       defaultProviderTargetId: claudeTarget.targetId,
@@ -537,6 +539,38 @@ describe("agent GUI workbench contribution copy", () => {
       } as never)
     ).toMatchObject({
       agentTargetId: "local:claude-code"
+    });
+  });
+
+  it("opens a fresh unified Agent node from the dock popup new-window action", () => {
+    const contribution = createTestAgentGuiWorkbenchContribution({
+      renderBody: () => null,
+      workspaceId: "workspace-1"
+    });
+    const [dockEntry] = contribution.dockEntries ?? [];
+
+    const launchResult = contribution.onLaunchRequest?.({
+      dockEntryId: dockEntry?.id,
+      launchSource: "dock-popup-new-window",
+      layoutConstraints: testLaunchLayout.layoutConstraints,
+      payload: dockEntry?.launchPayload,
+      reason: "dock",
+      surfaceSize: testLaunchLayout.surfaceSize,
+      typeId: agentGuiWorkbenchTypeId,
+      workspaceId: "workspace-1"
+    }) as
+      | {
+          cascadeOffset?: { x: number; y: number };
+          dockEntryId?: string;
+          reuseDockEntryNode?: boolean;
+        }
+      | null
+      | undefined;
+
+    expect(launchResult).toMatchObject({
+      cascadeOffset: agentGuiWorkbenchNewWindowCascadeOffset,
+      dockEntryId: agentGuiWorkbenchUnifiedDockEntryId(),
+      reuseDockEntryNode: false
     });
   });
 

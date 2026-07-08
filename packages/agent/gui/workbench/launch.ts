@@ -14,7 +14,7 @@ export { agentGuiWorkbenchPrefillPromptActivationType } from "./types.ts";
 
 type AgentGuiWorkbenchLaunchRequestInput = Pick<
   WorkbenchHostLaunchRequest,
-  "payload" | "typeId"
+  "launchSource" | "payload" | "typeId"
 > & {
   dockEntryId?: string | null;
 };
@@ -23,6 +23,7 @@ export const agentGuiWorkbenchTypeId = "agent-gui";
 
 const agentGuiWorkbenchDockEntryPrefix = "agent-gui:";
 const agentGuiWorkbenchUnifiedDockEntryIdValue = "agent-gui:unified";
+const agentGuiWorkbenchDockPopupNewWindowLaunchSource = "dock-popup-new-window";
 let agentGuiWorkbenchInstanceSequence = 0;
 
 export type AgentGuiWorkbenchDockIdentity =
@@ -239,7 +240,7 @@ export function createAgentGuiWorkbenchLaunchDescriptor(
   }
 
   const targetAgentSessionId = agentSessionIdFromLaunchPayload(request.payload);
-  const openInNewWindow = openInNewWindowFromLaunchPayload(request.payload);
+  const openInNewWindow = openInNewWindowFromLaunchRequest(request);
   const instanceId = createAgentGuiWorkbenchInstanceId({
     agentSessionId: null,
     agentTargetId: openInNewWindow
@@ -261,10 +262,12 @@ export function createAgentGuiWorkbenchLaunchDescriptor(
     instanceId,
     openInNewWindow,
     provider,
-    reuseDockEntryNode: shouldReuseAgentGuiWorkbenchDockEntryNode({
-      dockEntryId,
-      launchKind: targetAgentSessionId ? "session" : "empty"
-    }),
+    reuseDockEntryNode:
+      !openInNewWindow &&
+      shouldReuseAgentGuiWorkbenchDockEntryNode({
+        dockEntryId,
+        launchKind: targetAgentSessionId ? "session" : "empty"
+      }),
     reuseExistingSessionNode: !openInNewWindow,
     targetAgentSessionId
   };
@@ -287,7 +290,10 @@ export function shouldReuseAgentGuiWorkbenchDockEntryNode(input: {
   dockEntryId: string;
   launchKind: "empty" | "prefill" | "session";
 }): boolean {
-  if (input.launchKind !== "prefill") {
+  if (input.launchKind === "empty") {
+    return true;
+  }
+  if (input.launchKind === "session") {
     return false;
   }
   return (
@@ -363,4 +369,13 @@ function openInNewWindowFromLaunchPayload(payload: unknown): boolean {
     return false;
   }
   return (payload as { openInNewWindow?: unknown }).openInNewWindow === true;
+}
+
+function openInNewWindowFromLaunchRequest(
+  request: AgentGuiWorkbenchLaunchRequestInput
+): boolean {
+  return (
+    openInNewWindowFromLaunchPayload(request.payload) ||
+    request.launchSource === agentGuiWorkbenchDockPopupNewWindowLaunchSource
+  );
 }
