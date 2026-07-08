@@ -2949,7 +2949,7 @@ func TestClaudeCodeAdapterExecAddsInternalMentionRoutingPromptForMarkdownMention
 	if texts[0] != prompt {
 		t.Fatalf("user prompt text = %q, want unmodified prompt %q", texts[0], prompt)
 	}
-	if texts[len(texts)-1] != tuttiMentionRoutingReminder {
+	if texts[len(texts)-1] != tuttiAgentMentionRoutingReminder {
 		t.Fatalf("routing prompt = %q, want internal Claude mention routing", texts[len(texts)-1])
 	}
 	userContent := firstUserMessageContent(t, events)
@@ -3010,7 +3010,7 @@ func TestClaudeCodeAdapterExecRoutesAgentTargetMention(t *testing.T) {
 	if texts[0] != prompt {
 		t.Fatalf("user prompt text = %q, want unmodified prompt %q", texts[0], prompt)
 	}
-	if texts[len(texts)-1] != tuttiMentionRoutingReminder {
+	if texts[len(texts)-1] != tuttiAgentMentionRoutingReminder {
 		t.Fatalf("routing prompt = %q, want agent target routing", texts[len(texts)-1])
 	}
 }
@@ -3088,7 +3088,7 @@ func TestStandardACPAdapterExecAddsInternalMentionRoutingPromptForGemini(t *test
 	if texts[0] != prompt {
 		t.Fatalf("user prompt text = %q, want unmodified prompt %q", texts[0], prompt)
 	}
-	if texts[len(texts)-1] != tuttiMentionRoutingReminder {
+	if texts[len(texts)-1] != tuttiAgentMentionRoutingReminder {
 		t.Fatalf("routing prompt = %q, want internal mention routing", texts[len(texts)-1])
 	}
 }
