@@ -6315,12 +6315,8 @@ button.agent-gui-node__conversation-section-toggle:hover
   left: 50%;
   width: 1px;
   height: 8px;
-  transform: translateX(-50%);
-  background: color-mix(
-    in srgb,
-    var(--line-2, var(--tutti-line-2)) 82%,
-    transparent
-  );
+  transform: translate(-50%, -50%);
+  background: var(--line-1, var(--nexight-line-1));
 }
 
 .agent-gui-message-locator__tick {

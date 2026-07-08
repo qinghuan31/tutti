@@ -140,6 +140,32 @@ type ListSessionSectionPageInput struct {
 	AgentTargetID string
 }
 
+type CountSessionSectionInput struct {
+	SectionKey    string
+	AgentTargetID string
+}
+
+type SessionSectionCount struct {
+	WorkspaceID   string
+	SectionKey    string
+	AgentTargetID string
+	Count         int
+}
+
+type DeleteSessionSectionInput struct {
+	SectionKey    string
+	AgentTargetID string
+}
+
+type DeleteSessionSectionResult struct {
+	WorkspaceID       string
+	SectionKey        string
+	AgentTargetID     string
+	RemovedMessages   int
+	RemovedSessions   int
+	RemovedSessionIDs []string
+}
+
 type ListPinnedSessionPageInput struct {
 	Cursor        string
 	Limit         int
@@ -222,6 +248,14 @@ type SessionStateReporter interface {
 
 type SessionSectionReader interface {
 	ListSessionSection(context.Context, agentactivitybiz.ListSessionSectionInput) (agentactivitybiz.SessionSectionPage, bool)
+}
+
+type SessionSectionCounter interface {
+	CountSessionSection(context.Context, agentactivitybiz.CountSessionSectionInput) (agentactivitybiz.SessionSectionCount, bool)
+}
+
+type SessionSectionDeleter interface {
+	DeleteSessionSection(context.Context, agentactivitybiz.DeleteSessionSectionInput) (agentactivitybiz.DeleteSessionSectionResult, bool)
 }
 
 type UserProjectReader interface {

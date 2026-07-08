@@ -2431,6 +2431,7 @@ func (c *Controller) UpdateSettings(ctx context.Context, input UpdateSettingsInp
 	if err != nil {
 		return UpdateSettingsResult{}, err
 	}
+	previousSettings := session.SettingsValue()
 	nextSession := session
 	settings := normalizeSessionSettings(nextSession.Settings, nextSession.Provider, nextSession.PermissionModeID)
 	if input.Settings.Model != nil {
@@ -2465,22 +2466,71 @@ func (c *Controller) UpdateSettings(ctx context.Context, input UpdateSettingsInp
 		nextSession.PermissionModeID = normalized
 	}
 	nextSession.Settings = cloneSessionSettings(settings)
+	slog.Info("agent session settings update requested",
+		"event", "agent_session.settings.update.requested",
+		"provider", session.Provider,
+		"room_id", input.RoomID,
+		"agent_session_id", input.AgentSessionID,
+		"previous_model", previousSettings.Model,
+		"next_model", settings.Model,
+		"patch_has_model", input.Settings.Model != nil,
+		"patch_has_reasoning_effort", input.Settings.ReasoningEffort != nil,
+		"patch_has_speed", input.Settings.Speed != nil,
+		"patch_has_plan_mode", input.Settings.PlanMode != nil,
+		"patch_has_permission_mode", input.Settings.PermissionModeID != nil,
+		"previous_permission_mode_id", previousSettings.PermissionModeID,
+		"next_permission_mode_id", settings.PermissionModeID,
+	)
 	if newSessionAdapter, ok := adapter.(NewSessionSettingsAdapter); ok && newSessionAdapter.RequiresNewSessionForSettings(session, input.Settings) {
+		slog.Warn("agent session settings update requires new session",
+			"event", "agent_session.settings.update.requires_new_session",
+			"provider", session.Provider,
+			"room_id", input.RoomID,
+			"agent_session_id", input.AgentSessionID,
+			"previous_model", previousSettings.Model,
+			"next_model", settings.Model,
+		)
 		return UpdateSettingsResult{}, ErrSessionSettingsRequireNewSession
 	}
 	if permissionChanged {
 		if permissionAdapter, ok := adapter.(PermissionModeAdapter); ok {
 			if err := permissionAdapter.ApplyPermissionMode(ctx, nextSession); err != nil {
+				slog.Warn("agent session permission mode apply failed",
+					"event", "agent_session.settings.update.permission_apply_failed",
+					"provider", session.Provider,
+					"room_id", input.RoomID,
+					"agent_session_id", input.AgentSessionID,
+					"permission_mode_id", nextSession.PermissionModeID,
+					"error", err.Error(),
+				)
 				return UpdateSettingsResult{}, err
 			}
 		}
 	}
 	if liveSettingsAdapter, ok := adapter.(LiveSettingsAdapter); ok {
 		if err := liveSettingsAdapter.ApplySessionSettings(ctx, nextSession, input.Settings); err != nil {
+			slog.Warn("agent session live settings apply failed",
+				"event", "agent_session.settings.update.live_apply_failed",
+				"provider", session.Provider,
+				"room_id", input.RoomID,
+				"agent_session_id", input.AgentSessionID,
+				"previous_model", previousSettings.Model,
+				"next_model", settings.Model,
+				"error", err.Error(),
+			)
 			return UpdateSettingsResult{}, err
 		}
 	}
 	c.store(nextSession)
+	slog.Info("agent session settings update completed",
+		"event", "agent_session.settings.update.completed",
+		"provider", session.Provider,
+		"room_id", input.RoomID,
+		"agent_session_id", input.AgentSessionID,
+		"previous_model", previousSettings.Model,
+		"next_model", settings.Model,
+		"permission_mode_id", nextSession.PermissionModeID,
+	)
 	return UpdateSettingsResult{
 		AgentSessionID: nextSession.AgentSessionID,
 		Settings:       settings,

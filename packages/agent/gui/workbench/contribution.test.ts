@@ -488,6 +488,60 @@ describe("agent GUI workbench contribution copy", () => {
     });
   });
 
+  it("opens a fresh cascading window for the dock 'New window' payload", () => {
+    const claudeTarget = createLocalAgentGUIProviderTarget("claude-code");
+    const contribution = createTestAgentGuiWorkbenchContribution({
+      defaultProviderTargetId: claudeTarget.targetId,
+      providerTargets: [
+        createLocalAgentGUIProviderTarget("codex"),
+        claudeTarget
+      ],
+      renderBody: () => null,
+      workspaceId: "workspace-1"
+    });
+    const [dockEntry] = contribution.dockEntries ?? [];
+
+    // The regular launch reuses the target-keyed instance...
+    expect(dockEntry?.launchPayload).not.toHaveProperty("openInNewWindow");
+    // ...while the "New window" payload forces a fresh window.
+    expect(dockEntry?.newWindowLaunchPayload).toMatchObject({
+      openInNewWindow: true
+    });
+
+    const launchResult = contribution.onLaunchRequest?.({
+      dockEntryId: dockEntry?.id,
+      layoutConstraints: testLaunchLayout.layoutConstraints,
+      payload: dockEntry?.newWindowLaunchPayload,
+      reason: "dock",
+      surfaceSize: testLaunchLayout.surfaceSize,
+      typeId: agentGuiWorkbenchTypeId,
+      workspaceId: "workspace-1"
+    }) as
+      | {
+          cascadeOffset?: { x: number; y: number };
+          instanceId: string;
+        }
+      | null
+      | undefined;
+
+    // A unique per-launch panel instance (not the shared target-keyed id) so
+    // the workbench opens a new node instead of re-focusing the existing one.
+    expect(launchResult?.instanceId).toMatch(/^agent-gui:claude-code:panel:/);
+    expect(launchResult?.instanceId).not.toBe(
+      "agent-gui:claude-code:target:local%3Aclaude-code"
+    );
+    expect(launchResult?.cascadeOffset).toBeDefined();
+    // The new window still commits to the resolved target/provider.
+    expect(
+      contribution.externalStateSource?.getSnapshotNodeState?.({
+        instanceId: launchResult?.instanceId ?? "",
+        typeId: agentGuiWorkbenchTypeId
+      } as never)
+    ).toMatchObject({
+      agentTargetId: "local:claude-code"
+    });
+  });
+
   it("opens a fresh unified Agent node from the dock popup new-window action", () => {
     const contribution = createTestAgentGuiWorkbenchContribution({
       renderBody: () => null,

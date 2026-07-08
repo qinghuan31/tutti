@@ -2122,6 +2122,129 @@ describe("AgentGUINodeView layout persistence", () => {
     });
   });
 
+  it("requests project batch delete through the controller count flow", async () => {
+    const actions = createActions();
+    renderAgentGUINodeView({
+      actions,
+      viewModel: {
+        ...createViewModel(),
+        conversations: [
+          {
+            ...createConversationSummary("session-1"),
+            cwd: "/workspace/app",
+            project: {
+              id: "project-app",
+              path: "/workspace/app",
+              label: "App"
+            }
+          }
+        ]
+      },
+      labels: {
+        ...createLabels(),
+        projectSectionMoreActions: "Project actions",
+        batchDeleteProjectSessions: "Delete project chats"
+      }
+    });
+
+    const projectActionsButton = screen.getByLabelText("Project actions");
+    fireEvent.pointerDown(projectActionsButton, { button: 0, ctrlKey: false });
+    fireEvent.click(projectActionsButton);
+    fireEvent.click(await screen.findByText("Delete project chats"));
+
+    expect(actions.requestDeleteProjectConversations).toHaveBeenCalledWith(
+      "/workspace/app"
+    );
+    expect(
+      screen.queryByText("batchDeleteProjectSessionsBody:1:App")
+    ).toBeNull();
+  });
+
+  it("requests conversations batch delete through the controller count flow", async () => {
+    const actions = createActions();
+    const conversation = createConversationSummary("session-1");
+    renderAgentGUINodeView({
+      actions,
+      viewModel: {
+        ...createViewModel(),
+        activeConversation: conversation,
+        activeConversationId: conversation.id,
+        conversations: [conversation]
+      },
+      labels: {
+        ...createLabels(),
+        conversationsSectionMoreActions: "Conversation actions",
+        batchDeleteConversations: "Delete chats"
+      }
+    });
+
+    const moreActionsButton = screen.getByLabelText("Conversation actions");
+    fireEvent.pointerDown(moreActionsButton, {
+      button: 0,
+      ctrlKey: false
+    });
+    fireEvent.click(moreActionsButton);
+    fireEvent.click(await screen.findByText("Delete chats"));
+
+    expect(actions.requestDeleteConversations).toHaveBeenCalledTimes(1);
+    expect(screen.queryByText("batchDeleteConversationsBody:1")).toBeNull();
+  });
+
+  it("shows loading feedback while conversations batch delete count is pending", () => {
+    renderAgentGUINodeView({
+      viewModel: {
+        ...createViewModel(),
+        pendingDeleteConversations: {
+          conversationCount: null
+        }
+      },
+      labels: {
+        ...createLabels(),
+        batchDeleteConversationsConfirm: "Delete chats",
+        batchDeleteConversationsTitle: "Delete chats?",
+        loadingConversations: "Counting chats"
+      }
+    });
+
+    expect(screen.getByText("Delete chats?")).toBeInTheDocument();
+    expect(screen.getByText("Counting chats")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Delete chats" })).toBeDisabled();
+  });
+
+  it("opens the conversations batch delete dialog after the rail store receives a pending target", () => {
+    const labels = {
+      ...createLabels(),
+      batchDeleteConversationsBody: (count: number) => `Delete ${count} chats`,
+      batchDeleteConversationsConfirm: "Delete chats",
+      batchDeleteConversationsTitle: "Delete chats?"
+    };
+    const actions = createActions();
+    const initialViewModel = createViewModel();
+    const rendered = renderAgentGUINodeView({
+      actions,
+      labels,
+      viewModel: initialViewModel
+    });
+
+    expect(screen.queryByText("Delete chats?")).toBeNull();
+
+    rendered.rerender(
+      buildAgentGUINodeViewElement({
+        actions,
+        labels,
+        viewModel: {
+          ...initialViewModel,
+          pendingDeleteConversations: {
+            conversationCount: 2
+          }
+        }
+      })
+    );
+
+    expect(screen.getByText("Delete chats?")).toBeInTheDocument();
+    expect(screen.getByText("Delete 2 chats")).toBeInTheDocument();
+  });
+
   it("shows tooltips for project section icon actions", () => {
     const { container } = renderAgentGUINodeView({
       viewModel: {
@@ -5178,7 +5301,11 @@ function createActions(): AgentGUINodeViewProps["actions"] {
     toggleConversationPinned: vi.fn(),
     markConversationUnread: vi.fn(),
     removeProject: vi.fn(),
+    requestDeleteProjectConversations: vi.fn(),
+    cancelDeleteProjectConversations: vi.fn(),
     confirmDeleteProjectConversations: vi.fn(),
+    requestDeleteConversations: vi.fn(),
+    cancelDeleteConversations: vi.fn(),
     confirmDeleteConversations: vi.fn(),
     requestDeleteConversation: vi.fn(),
     cancelDeleteConversation: vi.fn(),
@@ -5231,6 +5358,7 @@ function createViewModel(
     isDeletingProjectConversations: false,
     pendingDeleteConversation: null,
     pendingDeleteProjectConversations: null,
+    pendingDeleteConversations: null,
     pendingApproval: null,
     pendingInteractivePrompt: null,
     activeLiveState: "inactive",

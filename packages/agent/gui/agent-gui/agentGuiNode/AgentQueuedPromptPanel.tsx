@@ -41,6 +41,7 @@ const EMPTY_WORKSPACE_APP_ICONS: readonly AgentMessageMarkdownWorkspaceAppIcon[]
 type QueuedPromptImageBlock = AgentPromptContentBlock & {
   type: "image";
   mimeType: "image/png" | "image/jpeg" | "image/webp";
+  attachmentId?: string;
   data?: string;
   path?: string;
 };
@@ -89,6 +90,7 @@ function queuedPromptImageKey(
   return [
     queuedPrompt.id,
     index,
+    image.attachmentId?.trim() ?? "",
     image.path?.trim() ?? "",
     image.name?.trim() ?? "",
     image.mimeType
@@ -110,11 +112,12 @@ function useQueuedPromptImageSources(input: {
   const missingImages = useMemo(
     () =>
       input.images.filter(({ image, key }) => {
+        const attachmentId = image.attachmentId?.trim() ?? "";
         const path = image.path?.trim() ?? "";
         return (
           !queuedPromptImageDataUrl(image) &&
           !sources.has(key) &&
-          Boolean(path) &&
+          Boolean(attachmentId || path) &&
           Boolean(workspaceId)
         );
       }),
@@ -122,23 +125,33 @@ function useQueuedPromptImageSources(input: {
   );
 
   useEffect(() => {
-    if (!runtime?.readPromptAsset || missingImages.length === 0) {
+    if (
+      (!runtime?.readSessionAttachment && !runtime?.readPromptAsset) ||
+      missingImages.length === 0
+    ) {
       return;
     }
     let canceled = false;
     for (const { image, key } of missingImages) {
+      const attachmentId = image.attachmentId?.trim() ?? "";
       const path = image.path?.trim() ?? "";
-      if (!path) {
+      const readImage = attachmentId
+        ? runtime.readSessionAttachment?.({
+            workspaceId,
+            agentSessionId,
+            attachmentId
+          })
+        : runtime.readPromptAsset?.({
+            workspaceId,
+            agentSessionId,
+            mimeType: image.mimeType,
+            name: image.name,
+            path
+          });
+      if (!readImage) {
         continue;
       }
-      void runtime
-        .readPromptAsset({
-          workspaceId,
-          agentSessionId,
-          mimeType: image.mimeType,
-          name: image.name,
-          path
-        })
+      void readImage
         .then((asset) => {
           if (canceled) {
             return;

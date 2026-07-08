@@ -2660,6 +2660,66 @@ describe("AgentGUINode", () => {
     ).toHaveValue("Session 1");
   });
 
+  it("opens rename dialog from a runtime section row that is missing from the view model", async () => {
+    mockRenameConversation.mockResolvedValue(undefined);
+    mockViewModel = createViewModel({
+      conversations: [],
+      activeConversation: null,
+      activeConversationId: null
+    });
+    const agentActivityRuntime = {
+      ...createNoopAgentActivityRuntime(),
+      async listSessionSections(input) {
+        return {
+          workspaceId: input.workspaceId,
+          sections: [
+            {
+              kind: "conversations" as const,
+              sectionKey: "conversations",
+              sessions: [
+                {
+                  workspaceId: input.workspaceId,
+                  agentSessionId: "section-session-1",
+                  provider: "codex",
+                  cwd: "/workspace",
+                  title: "Section session",
+                  status: "completed",
+                  visible: true,
+                  updatedAtUnixMs: 1,
+                  lastEventUnixMs: 1
+                }
+              ],
+              hasMore: false
+            }
+          ]
+        };
+      },
+      async listSessionSectionPage(input) {
+        return {
+          kind: "conversations" as const,
+          sectionKey: input.sectionKey,
+          sessions: [],
+          hasMore: false
+        };
+      }
+    } satisfies AgentActivityRuntime;
+    renderAgentGUINode({ agentActivityRuntime });
+
+    fireEvent.contextMenu(
+      await screen.findByTestId("agent-gui-conversation-item-section-session-1")
+    );
+    const renameMenuItem = await screen.findByRole("menuitem", {
+      name: "agentHost.agentGui.renameSession"
+    });
+    fireEvent.pointerUp(renameMenuItem, { button: 0 });
+
+    expect(
+      await screen.findByRole("textbox", {
+        name: "agentHost.agentGui.renameSessionTitle"
+      })
+    ).toHaveValue("Section session");
+  });
+
   it("renders inline delete confirmation and dispatches confirm without a dialog", () => {
     mockViewModel = createViewModel({
       conversations: [
@@ -7635,6 +7695,7 @@ function createViewModel(
     isDeletingProjectConversations: false,
     pendingDeleteConversation: null,
     pendingDeleteProjectConversations: null,
+    pendingDeleteConversations: null,
     pendingApproval: null,
     pendingInteractivePrompt: null,
     activeLiveState: "active",

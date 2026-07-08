@@ -324,6 +324,18 @@ function createWorkspaceAgentActivityService(): IWorkspaceAgentActivityService {
       sessions: [],
       hasMore: false
     }),
+    countSessionSection: async (input) => ({
+      count: 0,
+      sectionKey: input.sectionKey,
+      workspaceId: input.workspaceId
+    }),
+    deleteSessionSection: async (input) => ({
+      removedMessages: 0,
+      removedSessionIds: [],
+      removedSessions: 0,
+      sectionKey: input.sectionKey,
+      workspaceId: input.workspaceId
+    }),
     listPinnedSessionsPage: async () => ({
       hasMore: false,
       sessions: []

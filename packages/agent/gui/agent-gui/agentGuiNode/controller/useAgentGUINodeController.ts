@@ -94,6 +94,7 @@ import type {
 } from "../../../host/agentHostApi";
 import type {
   AgentComposerDraft,
+  AgentGUIConversationSectionDeleteTarget,
   AgentGUIComposerSettingOption,
   AgentGUIComposerSettingsVM,
   AgentGUIProviderSkillOption,
@@ -3172,6 +3173,14 @@ function useStableStringArrayByValue(values: string[]): string[] {
   return currentValues ?? values;
 }
 
+function agentGUISectionActionAgentTargetId(
+  filter: AgentGUIConversationFilter
+): string | undefined {
+  return filter.kind === "agentTarget"
+    ? (normalizeOptionalText(filter.agentTargetId) ?? undefined)
+    : undefined;
+}
+
 function agentSessionStatusBusy(input: {
   lifecycleStatus?: string;
   effectiveStatus?: string;
@@ -4299,6 +4308,8 @@ export function useAgentGUINodeController({
     pendingDeleteProjectConversations,
     setPendingDeleteProjectConversations
   ] = useState<AgentGUIProjectConversationDeleteTarget | null>(null);
+  const [pendingDeleteConversations, setPendingDeleteConversations] =
+    useState<AgentGUIConversationSectionDeleteTarget | null>(null);
   const [listError, setListError] = useState<string | null>(null);
   const [detailError, setDetailError] = useState<string | null>(null);
   const [statePatchErrorBySessionId, setStatePatchErrorBySessionId] = useState<
@@ -9676,6 +9687,20 @@ export function useAgentGUINodeController({
           target: targetData,
           options: snapshotComposerOptions
         });
+        agentActivityRuntime.reportDiagnostic?.({
+          details: {
+            agentTargetId: targetData.agentTargetId ?? null,
+            changedFields: Object.keys(supportedNextSettings).sort().join(","),
+            nextModel: supportedNextSettings.model ?? null,
+            previousModel: previousSettings.model ?? null,
+            provider: targetData.provider,
+            reason: "no_active_conversation",
+            resolvedModel: targetSafeMerged.model ?? null
+          },
+          event: "agent.gui.composer_settings.default_only",
+          level: "info",
+          workspaceId
+        });
         draftSettingsBySessionIdRef.current = {
           ...draftSettingsBySessionIdRef.current,
           [defaultDraftKey]: targetSafeMerged
@@ -9813,10 +9838,70 @@ export function useAgentGUINodeController({
           );
         }
       }
+      const sessionSettingsPatchKeys = Object.keys(sessionSettingsPatch).sort();
       if (
-        Object.keys(sessionSettingsPatch).length > 0 &&
+        sessionSettingsPatchKeys.length === 0 &&
+        (nextModel !== undefined ||
+          nextReasoningEffort !== undefined ||
+          nextSpeed !== undefined ||
+          nextPlanMode !== undefined ||
+          nextPermission !== undefined ||
+          nextBrowserUse !== undefined ||
+          nextComputerUse !== undefined)
+      ) {
+        agentActivityRuntime.reportDiagnostic?.({
+          details: {
+            agentSessionId,
+            agentTargetId: normalizeOptionalText(dataRef.current.agentTargetId),
+            attemptedModel: nextModel ?? null,
+            currentModel,
+            provider: dataRef.current.provider,
+            reason: "settings_already_current"
+          },
+          event: "agent.gui.composer_settings.update_noop",
+          level: "info",
+          workspaceId
+        });
+      }
+      if (
+        sessionSettingsPatchKeys.length > 0 &&
+        activeSessionState === null &&
+        !isPreActivationSession
+      ) {
+        agentActivityRuntime.reportDiagnostic?.({
+          details: {
+            agentSessionId,
+            agentTargetId: normalizeOptionalText(dataRef.current.agentTargetId),
+            changedFields: sessionSettingsPatchKeys.join(","),
+            currentModel,
+            nextModel: sessionSettingsPatch.model ?? null,
+            provider: dataRef.current.provider,
+            reason: "missing_active_session_state"
+          },
+          event: "agent.gui.composer_settings.update_skipped",
+          level: "warn",
+          workspaceId
+        });
+      }
+      if (
+        sessionSettingsPatchKeys.length > 0 &&
         (activeSessionState !== null || isPreActivationSession)
       ) {
+        agentActivityRuntime.reportDiagnostic?.({
+          details: {
+            agentSessionId,
+            agentTargetId: normalizeOptionalText(dataRef.current.agentTargetId),
+            changedFields: sessionSettingsPatchKeys.join(","),
+            currentModel,
+            isPreActivationSession,
+            nextModel: sessionSettingsPatch.model ?? null,
+            provider: dataRef.current.provider,
+            turnPhase: activeSessionState?.turnLifecycle?.phase ?? null
+          },
+          event: "agent.gui.composer_settings.update_requested",
+          level: "info",
+          workspaceId
+        });
         updateAgentSessionViewControlState(
           sessionViewRef(agentSessionId),
           (existing) => {
@@ -10156,32 +10241,59 @@ export function useAgentGUINodeController({
       if (!normalizedPath || isDeletingProjectConversations) {
         return;
       }
-      const targetConversations = conversationsRef.current.filter(
-        (conversation) =>
-          normalizeProjectConversationPath(
-            resolveAgentGUIConversationProject(
-              conversation.cwd,
-              userProjectsRef.current,
-              { isNoProjectPath: isNoProjectPathRef.current }
-            )?.path
-          ) === normalizedPath
-      );
-      if (targetConversations.length === 0) {
+      const countSessionSection = agentActivityRuntime.countSessionSection;
+      if (!countSessionSection) {
         return;
       }
       const project = userProjectsRef.current.find(
         (candidate) =>
           normalizeProjectConversationPath(candidate.path) === normalizedPath
       );
+      setDetailError(null);
+      setListError(null);
       setPendingDeleteProjectConversations({
-        conversationCount: targetConversations.length,
+        conversationCount: null,
         label: project?.label?.trim() || path,
         path: normalizedPath
       });
-      setDetailError(null);
-      setListError(null);
+      void countSessionSection({
+        agentTargetId: agentGUISectionActionAgentTargetId(
+          conversationFilterRef.current
+        ),
+        sectionKey: projectConversationSectionKey(normalizedPath),
+        workspaceId
+      })
+        .then((count) => {
+          if (count.count <= 0) {
+            setPendingDeleteProjectConversations((current) =>
+              current?.path === normalizedPath ? null : current
+            );
+            return;
+          }
+          setPendingDeleteProjectConversations((current) =>
+            current?.path === normalizedPath
+              ? {
+                  ...current,
+                  conversationCount: count.count
+                }
+              : current
+          );
+        })
+        .catch((error) => {
+          const message = getAgentGUIErrorMessage(error);
+          setPendingDeleteProjectConversations((current) =>
+            current?.path === normalizedPath ? null : current
+          );
+          setListError(message);
+          showAgentGUIControllerErrorToast(agentHostApi.toast, message);
+        });
     },
-    [isDeletingProjectConversations]
+    [
+      agentActivityRuntime,
+      agentHostApi.toast,
+      isDeletingProjectConversations,
+      workspaceId
+    ]
   );
 
   const cancelDeleteProjectConversations = useCallback(() => {
@@ -10364,214 +10476,259 @@ export function useAgentGUINodeController({
     ]
   );
 
-  const confirmDeleteProjectConversations = useCallback(
-    (path?: string) => {
-      const normalizedPath = normalizeProjectConversationPath(path);
-      const target =
-        normalizedPath !== ""
-          ? {
-              conversationCount: conversationsRef.current.filter(
-                (conversation) =>
-                  normalizeProjectConversationPath(
-                    resolveAgentGUIConversationProject(
-                      conversation.cwd,
-                      userProjectsRef.current,
-                      { isNoProjectPath: isNoProjectPathRef.current }
-                    )?.path
-                  ) === normalizedPath
-              ).length,
-              label:
-                userProjectsRef.current.find(
-                  (project) =>
-                    normalizeProjectConversationPath(project.path) ===
-                    normalizedPath
-                )?.label ??
-                path ??
-                normalizedPath,
-              path: normalizedPath
-            }
-          : pendingDeleteProjectConversations;
-      if (!target || isDeletingProjectConversations) {
-        return;
-      }
-      const targetConversations = conversationsRef.current.filter(
-        (conversation) =>
-          normalizeProjectConversationPath(
-            resolveAgentGUIConversationProject(
+  const confirmDeleteProjectConversations = useCallback(() => {
+    const target = pendingDeleteProjectConversations;
+    if (!target || isDeletingProjectConversations) {
+      return;
+    }
+    if (target.conversationCount === null) {
+      return;
+    }
+    const targetConversations = conversationsRef.current.filter(
+      (conversation) =>
+        normalizeProjectConversationPath(
+          resolveAgentGUIConversationProject(
+            conversation.cwd,
+            userProjectsRef.current,
+            { isNoProjectPath: isNoProjectPathRef.current }
+          )?.path
+        ) === target.path
+    );
+    const seedTargetIds = new Set(
+      targetConversations.map((conversation) => conversation.id)
+    );
+    const deleteSessionSection = agentActivityRuntime.deleteSessionSection;
+    if (!deleteSessionSection) {
+      return;
+    }
+    setIsDeletingProjectConversations(true);
+    setDetailError(null);
+    setListError(null);
+    const activeDeletedConversationId = activeConversationIdRef.current;
+    if (
+      activeDeletedConversationId &&
+      seedTargetIds.has(activeDeletedConversationId)
+    ) {
+      clearSelectedConversationNotFoundRetry();
+      setIsLoadingMessages(true);
+      setAgentSessionViewMessagesLoading(
+        sessionViewRef(activeDeletedConversationId),
+        true
+      );
+    }
+    const targetSectionKey = projectConversationSectionKey(target.path);
+    void deleteSessionSection({
+      agentTargetId: agentGUISectionActionAgentTargetId(
+        conversationFilterRef.current
+      ),
+      sectionKey: targetSectionKey,
+      workspaceId
+    })
+      .then((result) => {
+        const targetIds = new Set(
+          result.removedSessionIds
+            .map((id) => id.trim())
+            .filter((id) => id !== "")
+        );
+        if (targetIds.size === 0) {
+          setPendingDeleteProjectConversations(null);
+          return;
+        }
+        finalizeConversationBatchDeletion(targetIds);
+        setPendingDeleteProjectConversations(null);
+      })
+      .catch((error) => {
+        const message = getAgentGUIErrorMessage(error);
+        reportAgentGUIRuntimeError({
+          error,
+          phase: "delete_conversation",
+          provider: dataRef.current.provider,
+          runtime: agentActivityRuntime,
+          workspaceId,
+          context: {
+            projectPath: target.path,
+            sectionKey: targetSectionKey,
+            conversationCount: target.conversationCount
+          }
+        });
+        setListError(message);
+        showAgentGUIControllerErrorToast(agentHostApi.toast, message);
+        if (
+          activeDeletedConversationId &&
+          activeConversationIdRef.current === activeDeletedConversationId
+        ) {
+          setIsLoadingMessages(false);
+          setAgentSessionViewMessagesLoading(
+            sessionViewRef(activeDeletedConversationId),
+            false
+          );
+        }
+      })
+      .finally(() => {
+        setIsDeletingProjectConversations(false);
+      });
+  }, [
+    agentActivityRuntime,
+    clearSelectedConversationNotFoundRetry,
+    finalizeConversationBatchDeletion,
+    isDeletingProjectConversations,
+    pendingDeleteProjectConversations,
+    sessionViewRef,
+    agentHostApi.toast,
+    workspaceId
+  ]);
+
+  const requestDeleteConversations = useCallback(() => {
+    if (isDeletingProjectConversations) {
+      return;
+    }
+    const countSessionSection = agentActivityRuntime.countSessionSection;
+    if (!countSessionSection) {
+      return;
+    }
+    setDetailError(null);
+    setListError(null);
+    setPendingDeleteConversations({
+      conversationCount: null
+    });
+    void countSessionSection({
+      agentTargetId: agentGUISectionActionAgentTargetId(
+        conversationFilterRef.current
+      ),
+      sectionKey: "conversations",
+      workspaceId
+    })
+      .then((count) => {
+        if (count.count <= 0) {
+          setPendingDeleteConversations(null);
+          return;
+        }
+        setPendingDeleteConversations((current) =>
+          current
+            ? {
+                conversationCount: count.count
+              }
+            : current
+        );
+      })
+      .catch((error) => {
+        const message = getAgentGUIErrorMessage(error);
+        setPendingDeleteConversations(null);
+        setListError(message);
+        showAgentGUIControllerErrorToast(agentHostApi.toast, message);
+      });
+  }, [
+    agentActivityRuntime,
+    agentHostApi.toast,
+    isDeletingProjectConversations,
+    workspaceId
+  ]);
+
+  const cancelDeleteConversations = useCallback(() => {
+    if (isDeletingProjectConversations) {
+      return;
+    }
+    setPendingDeleteConversations(null);
+  }, [isDeletingProjectConversations]);
+
+  const confirmDeleteConversations = useCallback(() => {
+    const target = pendingDeleteConversations;
+    if (!target || isDeletingProjectConversations) {
+      return;
+    }
+    if (target.conversationCount === null) {
+      return;
+    }
+    const deleteSessionSection = agentActivityRuntime.deleteSessionSection;
+    if (!deleteSessionSection) {
+      return;
+    }
+    const seedTargetIds = new Set(
+      conversationsRef.current
+        .filter(
+          (conversation) =>
+            !resolveAgentGUIConversationProject(
               conversation.cwd,
               userProjectsRef.current,
               { isNoProjectPath: isNoProjectPathRef.current }
-            )?.path
-          ) === target.path
+            )
+        )
+        .map((conversation) => conversation.id)
+    );
+    setIsDeletingProjectConversations(true);
+    setDetailError(null);
+    setListError(null);
+    const activeDeletedConversationId = activeConversationIdRef.current;
+    if (
+      activeDeletedConversationId &&
+      seedTargetIds.has(activeDeletedConversationId)
+    ) {
+      clearSelectedConversationNotFoundRetry();
+      setIsLoadingMessages(true);
+      setAgentSessionViewMessagesLoading(
+        sessionViewRef(activeDeletedConversationId),
+        true
       );
-      if (targetConversations.length === 0) {
-        setPendingDeleteProjectConversations(null);
-        return;
-      }
-      const targetIds = new Set(
-        targetConversations.map((conversation) => conversation.id)
-      );
-      setIsDeletingProjectConversations(true);
-      setDetailError(null);
-      setListError(null);
-      const activeDeletedConversationId = activeConversationIdRef.current;
-      if (
-        activeDeletedConversationId &&
-        targetIds.has(activeDeletedConversationId)
-      ) {
-        clearSelectedConversationNotFoundRetry();
-        setIsLoadingMessages(true);
-        setAgentSessionViewMessagesLoading(
-          sessionViewRef(activeDeletedConversationId),
-          true
-        );
-      }
-      void Promise.all(
-        targetConversations.map(async (conversation) => {
-          await activation.unactivate(conversation.id);
-          await agentActivityRuntime.deleteSession({
-            workspaceId,
-            agentSessionId: conversation.id
-          });
-        })
-      )
-        .then(() => {
-          finalizeConversationBatchDeletion(targetIds);
-          setPendingDeleteProjectConversations(null);
-        })
-        .catch((error) => {
-          const message = getAgentGUIErrorMessage(error);
-          reportAgentGUIRuntimeError({
-            error,
-            phase: "delete_conversation",
-            provider: dataRef.current.provider,
-            runtime: agentActivityRuntime,
-            workspaceId,
-            context: {
-              projectPath: target.path,
-              conversationCount: targetConversations.length
-            }
-          });
-          setListError(message);
-          showAgentGUIControllerErrorToast(agentHostApi.toast, message);
-          if (
-            activeDeletedConversationId &&
-            activeConversationIdRef.current === activeDeletedConversationId
-          ) {
-            setIsLoadingMessages(false);
-            setAgentSessionViewMessagesLoading(
-              sessionViewRef(activeDeletedConversationId),
-              false
-            );
-          }
-        })
-        .finally(() => {
-          setIsDeletingProjectConversations(false);
-        });
-    },
-    [
-      activation,
-      agentActivityRuntime,
-      conversationListQuery,
-      clearSelectedConversationNotFoundRetry,
-      finalizeConversationBatchDeletion,
-      isDeletingProjectConversations,
-      markSelectedConversationDetailPending,
-      pendingDeleteProjectConversations,
-      persistActiveConversation,
-      sessionViewRef,
-      setTransientConversation,
-      removeConversations,
-      agentHostApi.toast,
+    }
+    void deleteSessionSection({
+      agentTargetId: agentGUISectionActionAgentTargetId(
+        conversationFilterRef.current
+      ),
+      sectionKey: "conversations",
       workspaceId
-    ]
-  );
-
-  // Batch-delete every conversation in the ungrouped "conversations" section,
-  // mirroring the per-project batch delete. The view passes the section's
-  // conversation ids; we map them to live conversation records, delete each on
-  // the daemon, then reuse the shared local cleanup.
-  const confirmDeleteConversations = useCallback(
-    (agentSessionIds: string[]) => {
-      if (isDeletingProjectConversations) {
-        return;
-      }
-      const targetIds = new Set(
-        agentSessionIds.map((id) => id.trim()).filter((id) => id !== "")
-      );
-      const targetConversations = conversationsRef.current.filter(
-        (conversation) => targetIds.has(conversation.id)
-      );
-      if (targetConversations.length === 0) {
-        return;
-      }
-      setIsDeletingProjectConversations(true);
-      setDetailError(null);
-      setListError(null);
-      const activeDeletedConversationId = activeConversationIdRef.current;
-      if (
-        activeDeletedConversationId &&
-        targetIds.has(activeDeletedConversationId)
-      ) {
-        clearSelectedConversationNotFoundRetry();
-        setIsLoadingMessages(true);
-        setAgentSessionViewMessagesLoading(
-          sessionViewRef(activeDeletedConversationId),
-          true
+    })
+      .then((result) => {
+        const targetIds = new Set(
+          result.removedSessionIds
+            .map((id) => id.trim())
+            .filter((id) => id !== "")
         );
-      }
-      void Promise.all(
-        targetConversations.map(async (conversation) => {
-          await activation.unactivate(conversation.id);
-          await agentActivityRuntime.deleteSession({
-            workspaceId,
-            agentSessionId: conversation.id
-          });
-        })
-      )
-        .then(() => {
-          finalizeConversationBatchDeletion(targetIds);
-        })
-        .catch((error) => {
-          const message = getAgentGUIErrorMessage(error);
-          reportAgentGUIRuntimeError({
-            error,
-            phase: "delete_conversation",
-            provider: dataRef.current.provider,
-            runtime: agentActivityRuntime,
-            workspaceId,
-            context: {
-              conversationCount: targetConversations.length
-            }
-          });
-          setListError(message);
-          showAgentGUIControllerErrorToast(agentHostApi.toast, message);
-          if (
-            activeDeletedConversationId &&
-            activeConversationIdRef.current === activeDeletedConversationId
-          ) {
-            setIsLoadingMessages(false);
-            setAgentSessionViewMessagesLoading(
-              sessionViewRef(activeDeletedConversationId),
-              false
-            );
+        if (targetIds.size === 0) {
+          setPendingDeleteConversations(null);
+          return;
+        }
+        finalizeConversationBatchDeletion(targetIds);
+        setPendingDeleteConversations(null);
+      })
+      .catch((error) => {
+        const message = getAgentGUIErrorMessage(error);
+        reportAgentGUIRuntimeError({
+          error,
+          phase: "delete_conversation",
+          provider: dataRef.current.provider,
+          runtime: agentActivityRuntime,
+          workspaceId,
+          context: {
+            conversationCount: target.conversationCount,
+            sectionKey: "conversations"
           }
-        })
-        .finally(() => {
-          setIsDeletingProjectConversations(false);
         });
-    },
-    [
-      activation,
-      agentActivityRuntime,
-      clearSelectedConversationNotFoundRetry,
-      finalizeConversationBatchDeletion,
-      isDeletingProjectConversations,
-      sessionViewRef,
-      agentHostApi.toast,
-      workspaceId
-    ]
-  );
+        setListError(message);
+        showAgentGUIControllerErrorToast(agentHostApi.toast, message);
+        if (
+          activeDeletedConversationId &&
+          activeConversationIdRef.current === activeDeletedConversationId
+        ) {
+          setIsLoadingMessages(false);
+          setAgentSessionViewMessagesLoading(
+            sessionViewRef(activeDeletedConversationId),
+            false
+          );
+        }
+      })
+      .finally(() => {
+        setIsDeletingProjectConversations(false);
+      });
+  }, [
+    agentActivityRuntime,
+    clearSelectedConversationNotFoundRetry,
+    finalizeConversationBatchDeletion,
+    isDeletingProjectConversations,
+    pendingDeleteConversations,
+    sessionViewRef,
+    agentHostApi.toast,
+    workspaceId
+  ]);
 
   const toggleConversationPinned = useCallback(
     (agentSessionId: string, pinned: boolean) => {
@@ -12219,6 +12376,12 @@ export function useAgentGUINodeController({
     useStableControllerEventCallback(cancelDeleteProjectConversations);
   const stableConfirmDeleteProjectConversations =
     useStableControllerEventCallback(confirmDeleteProjectConversations);
+  const stableRequestDeleteConversations = useStableControllerEventCallback(
+    requestDeleteConversations
+  );
+  const stableCancelDeleteConversations = useStableControllerEventCallback(
+    cancelDeleteConversations
+  );
   const stableConfirmDeleteConversations = useStableControllerEventCallback(
     confirmDeleteConversations
   );
@@ -12287,6 +12450,8 @@ export function useAgentGUINodeController({
       cancelDeleteProjectConversations: stableCancelDeleteProjectConversations,
       confirmDeleteProjectConversations:
         stableConfirmDeleteProjectConversations,
+      requestDeleteConversations: stableRequestDeleteConversations,
+      cancelDeleteConversations: stableCancelDeleteConversations,
       confirmDeleteConversations: stableConfirmDeleteConversations,
       toggleConversationPinned: stableToggleConversationPinned,
       markConversationUnread: stableMarkConversationUnread,
@@ -12300,6 +12465,7 @@ export function useAgentGUINodeController({
     }),
     [
       stableCancelDeleteConversation,
+      stableCancelDeleteConversations,
       stableCancelDeleteProjectConversations,
       stableConfirmDeleteConversation,
       stableConfirmDeleteConversations,
@@ -12314,6 +12480,7 @@ export function useAgentGUINodeController({
       stableRemoveQueuedPrompt,
       stableRenameConversation,
       stableRequestDeleteConversation,
+      stableRequestDeleteConversations,
       stableRequestDeleteProjectConversations,
       stableRetryActivation,
       stableRetryOpenclawGateway,
@@ -12377,6 +12544,7 @@ export function useAgentGUINodeController({
         isDeletingProjectConversations,
         pendingDeleteConversation,
         pendingDeleteProjectConversations,
+        pendingDeleteConversations,
         pendingApproval,
         pendingInteractivePrompt,
         activeLiveState,
@@ -12452,6 +12620,7 @@ export function useAgentGUINodeController({
       hasSentUserMessage,
       pendingDeleteConversation,
       pendingDeleteProjectConversations,
+      pendingDeleteConversations,
       pendingApproval,
       pendingInteractivePrompt,
       effectiveSelectedProviderTarget.disabled,
@@ -12477,6 +12646,13 @@ function normalizeProjectConversationPath(
     return "";
   }
   return normalized.replace(/\/+$/, "") || "/";
+}
+
+function projectConversationSectionKey(
+  path: string | null | undefined
+): string {
+  const normalizedPath = normalizeProjectConversationPath(path);
+  return normalizedPath ? `project:${normalizedPath}` : "";
 }
 
 function omitConversationLocalState<T>(

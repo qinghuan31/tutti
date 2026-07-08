@@ -2142,6 +2142,22 @@ function createWorkspaceAgentActivityService(
         hasMore: false
       };
     },
+    async countSessionSection(input) {
+      return {
+        count: 0,
+        sectionKey: input.sectionKey,
+        workspaceId: input.workspaceId
+      };
+    },
+    async deleteSessionSection(input) {
+      return {
+        removedMessages: 0,
+        removedSessionIds: [],
+        removedSessions: 0,
+        sectionKey: input.sectionKey,
+        workspaceId: input.workspaceId
+      };
+    },
     async listPinnedSessionsPage() {
       return {
         hasMore: false,

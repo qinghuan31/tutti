@@ -319,6 +319,59 @@ describe("AgentQueuedPromptPanel", () => {
     });
   });
 
+  it("loads attachment-backed queued image prompt previews", async () => {
+    const readSessionAttachment = vi.fn(async () => ({
+      data: "YXR0YWNobWVudC1pbWFnZQ==",
+      mimeType: "image/png",
+      name: "attached.png"
+    }));
+    setAgentActivityRuntimeForTests({
+      readSessionAttachment
+    } as unknown as AgentActivityRuntime);
+
+    const { container } = render(
+      <AgentQueuedPromptPanel
+        workspaceId="workspace-1"
+        agentSessionId="session-1"
+        queuedPrompts={[
+          {
+            id: "queued-1",
+            content: [
+              {
+                type: "image",
+                mimeType: "image/png",
+                attachmentId: "attachment-1",
+                name: "attached.png"
+              }
+            ],
+            createdAtUnixMs: 1
+          }
+        ]}
+        drainingQueuedPromptId={null}
+        labels={labels}
+        onSendQueuedPromptNext={vi.fn()}
+        onRemoveQueuedPrompt={vi.fn()}
+        onEditQueuedPrompt={vi.fn()}
+      />
+    );
+
+    expect(container.innerHTML).not.toContain("base64,undefined");
+
+    await waitFor(() => {
+      expect(readSessionAttachment).toHaveBeenCalledWith({
+        workspaceId: "workspace-1",
+        agentSessionId: "session-1",
+        attachmentId: "attachment-1"
+      });
+      expect(
+        container.querySelector(".agent-gui-node__composer-queued-prompt-image")
+      ).toHaveAttribute(
+        "src",
+        "data:image/png;base64,YXR0YWNobWVudC1pbWFnZQ=="
+      );
+    });
+  });
+
   it("allows queued image prompt previews to zoom", () => {
     render(
       <AgentQueuedPromptPanel

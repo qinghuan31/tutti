@@ -80,6 +80,18 @@ export type WorkspaceAgentActivitySessionSectionResult = Awaited<
   ReturnType<NonNullable<AgentActivityRuntime["listSessionSectionPage"]>>
 >;
 
+export type WorkspaceAgentActivitySessionSectionScopeInput = Parameters<
+  NonNullable<AgentActivityRuntime["countSessionSection"]>
+>[0];
+
+export type WorkspaceAgentActivitySessionSectionCount = Awaited<
+  ReturnType<NonNullable<AgentActivityRuntime["countSessionSection"]>>
+>;
+
+export type WorkspaceAgentActivityDeleteSessionSectionResult = Awaited<
+  ReturnType<NonNullable<AgentActivityRuntime["deleteSessionSection"]>>
+>;
+
 export type WorkspaceAgentActivityListPinnedSessionsPageInput = Parameters<
   NonNullable<AgentActivityRuntime["listPinnedSessionsPage"]>
 >[0];
@@ -161,6 +173,12 @@ export interface IWorkspaceAgentActivityService {
   listSessionSectionPage(
     input: WorkspaceAgentActivityListSessionSectionPageInput
   ): Promise<WorkspaceAgentActivitySessionSectionResult>;
+  countSessionSection(
+    input: WorkspaceAgentActivitySessionSectionScopeInput
+  ): Promise<WorkspaceAgentActivitySessionSectionCount>;
+  deleteSessionSection(
+    input: WorkspaceAgentActivitySessionSectionScopeInput
+  ): Promise<WorkspaceAgentActivityDeleteSessionSectionResult>;
   listPinnedSessionsPage(
     input: WorkspaceAgentActivityListPinnedSessionsPageInput
   ): Promise<WorkspaceAgentActivityPinnedSessionsPageResult>;
