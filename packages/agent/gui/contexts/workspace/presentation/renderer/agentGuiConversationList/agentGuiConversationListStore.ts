@@ -91,6 +91,7 @@ type ConversationListUpdateReason =
   | "completion-observed"
   | "external-update"
   | "local-created"
+  | "manual-unread"
   | "pin-changed"
   | "submit-pending";
 
@@ -363,11 +364,26 @@ function normalizeCompletionKey(value: string | null | undefined): string {
   return value?.trim() ?? "";
 }
 
+function fallbackSessionCompletionKey(
+  conversation: Pick<AgentGUIConversationSummary, "id" | "status">
+): string {
+  return conversation.status === "completed" || conversation.status === "ready"
+    ? `session:${conversation.id}:completed`
+    : "";
+}
+
 function isCompletedRead(
   readState: WorkspaceAgentReadStateSnapshot,
   completionKey: string
 ): boolean {
   return readState.completed.readIds.includes(completionKey);
+}
+
+function isCompletedUnread(
+  readState: WorkspaceAgentReadStateSnapshot,
+  completionKey: string
+): boolean {
+  return readState.completed.unreadIds.includes(completionKey);
 }
 
 function updateCompletedReadState(
@@ -393,6 +409,38 @@ function updateCompletedReadState(
       )
     }
   };
+  readStateByQueryKey.set(queryState.queryKey, next);
+  void persistCompletedReadState(queryState, next.completed);
+}
+
+function updateCompletedUnreadState(
+  queryState: AgentGUIConversationListQueryState,
+  completionKey: string
+): void {
+  const normalizedCompletionKey = normalizeCompletionKey(completionKey);
+  if (!normalizedCompletionKey) {
+    return;
+  }
+  const current =
+    readStateByQueryKey.get(queryState.queryKey) ??
+    emptyWorkspaceAgentReadState();
+  const next: WorkspaceAgentReadStateSnapshot = {
+    ...current,
+    completed: {
+      readIds: current.completed.readIds.filter(
+        (id) => id !== normalizedCompletionKey
+      ),
+      unreadIds: current.completed.unreadIds.includes(normalizedCompletionKey)
+        ? current.completed.unreadIds
+        : [...current.completed.unreadIds, normalizedCompletionKey]
+    }
+  };
+  if (
+    next.completed.readIds === current.completed.readIds &&
+    next.completed.unreadIds === current.completed.unreadIds
+  ) {
+    return;
+  }
   readStateByQueryKey.set(queryState.queryKey, next);
   void persistCompletedReadState(queryState, next.completed);
 }
@@ -1193,11 +1241,15 @@ function decorateConversationForRefresh(input: {
     conversation: input.conversation,
     messages: input.mergedMessages
   });
+  const isExplicitUnread = completionKey
+    ? isCompletedUnread(input.readState, completionKey)
+    : false;
   const hasUnreadCompletion = Boolean(
     completionKey &&
     input.conversation.isImported !== true &&
-    !isCompletedRead(input.readState, completionKey) &&
-    !hasActiveConversationOwner(input.queryKey, input.conversation.id)
+    (isExplicitUnread ||
+      (!isCompletedRead(input.readState, completionKey) &&
+        !hasActiveConversationOwner(input.queryKey, input.conversation.id)))
   );
   const nextConversation: AgentGUIConversationSummary = {
     ...input.conversation,
@@ -1779,11 +1831,62 @@ export function setAgentGUIConversationListActiveConversation(input: {
   if (previousConversationId !== conversationId) {
     activeByOwner.set(ownerKey, conversationId);
     activeConversationIdsByQueryKey.set(queryState.queryKey, activeByOwner);
+    clearAgentGUIConversationUnreadCompletion({
+      query: input.query,
+      conversationId
+    });
   }
-  clearAgentGUIConversationUnreadCompletion({
-    query: input.query,
-    conversationId
-  });
+}
+
+export function markAgentGUIConversationUnreadCompletion(input: {
+  conversationId: string;
+  query: AgentGUIConversationListQuery;
+}): void {
+  const conversationId = input.conversationId.trim();
+  if (!conversationId) {
+    return;
+  }
+  const queryState = ensureQueryState(input.query);
+  if (!queryState) {
+    return;
+  }
+  updateAgentGUIConversationListConversations(
+    input.query,
+    (current) => {
+      let changed = false;
+      const next = current.map((conversation) => {
+        if (conversation.id !== conversationId) {
+          return conversation;
+        }
+        const completionKey =
+          normalizeCompletionKey(conversation.unreadCompletionKey) ||
+          fallbackSessionCompletionKey(conversation);
+        const canShowCompletion =
+          completionKey &&
+          conversation.isImported !== true &&
+          (conversation.status === "completed" ||
+            conversation.status === "ready");
+        if (!canShowCompletion) {
+          return conversation;
+        }
+        updateCompletedUnreadState(queryState, completionKey);
+        if (
+          conversation.hasUnreadCompletion === true &&
+          conversation.unreadCompletionKey === completionKey
+        ) {
+          return conversation;
+        }
+        changed = true;
+        return {
+          ...conversation,
+          hasUnreadCompletion: true,
+          unreadCompletionKey: completionKey
+        };
+      });
+      return changed ? next : current;
+    },
+    "manual-unread"
+  );
 }
 
 export function clearAgentGUIConversationUnreadCompletion(input: {

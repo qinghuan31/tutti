@@ -9576,6 +9576,29 @@ describe("useAgentGUINodeController", () => {
       ])
     );
 
+    act(() => {
+      emitRuntimeSessionEventForTests?.({
+        eventType: "state_patch",
+        data: {
+          workspaceId: "room-1",
+          agentSessionId: "session-2",
+          currentPhase: "idle",
+          occurredAtUnixMs: 30
+        }
+      });
+    });
+
+    expect(result.current.viewModel.conversations).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: "session-2",
+          status: "ready",
+          hasUnreadCompletion: true,
+          unreadCompletionKey: "turn:session-2:turn-2:completed"
+        })
+      ])
+    );
+
     await act(async () => {
       await vi.advanceTimersByTimeAsync(15_000);
     });

@@ -154,7 +154,7 @@ func NewDefaultControllerWithOptions(
 	host := options.HostMetadata
 	adapters := []Adapter{
 		newDefaultClaudeCodeAdapter(transport, host, options.ProviderCommandResolver),
-		NewCodexAppServerAdapterWithHostMetadata(transport, host),
+		NewCodexAppServerAdapterWithHostMetadataAndCommandResolver(transport, host, options.ProviderCommandResolver),
 		NewTuttiAgentAppServerAdapterWithHostMetadata(transport, host),
 		NewCursorAdapterWithHostMetadata(transport, host),
 		NewNexightAdapterWithHostMetadata(transport, host),

@@ -77,6 +77,7 @@ const {
 const mockSelectFiles = vi.fn();
 const mockSelectDirectory = vi.fn();
 const mockEnsureDirectory = vi.fn();
+const mockWriteClipboardText = vi.fn();
 const mockRegisterUploadSources = vi.fn();
 const mockInspectUploadSources = vi.fn();
 const mockPreflightUpload = vi.fn();
@@ -660,6 +661,7 @@ vi.mock("../../i18n/index", () => ({
         "agentHost.agentGui.slashCommandReviewLabel": "review",
         "agentHost.agentGui.slashCommandStatusLabel": "status",
         "agentHost.agentGui.slashCommandUsageLabel": "usage",
+        "agentHost.agentGui.markSessionUnread": "Mark as unread",
         "agentHost.agentGui.collaboratorSessionReadOnlyPlaceholder":
           "非当前用户会话，不可直接对话",
         "agentHost.agentGui.promptTipsPrefix": "Tips：",
@@ -712,6 +714,7 @@ vi.mock("./controller/useAgentGUINodeController", () => ({
       editQueuedPrompt: mockEditQueuedPrompt,
       removeProject: mockRemoveProject,
       confirmDeleteProjectConversations: mockConfirmDeleteProjectConversations,
+      markConversationUnread: vi.fn(),
       requestDeleteConversation: mockRequestDeleteConversation,
       retryActivation: mockRetryActivation,
       continueInNewConversation: mockContinueInNewConversation,
@@ -768,6 +771,7 @@ describe("AgentGUINode", () => {
     mockSelectFiles.mockReset();
     mockSelectDirectory.mockReset();
     mockEnsureDirectory.mockReset();
+    mockWriteClipboardText.mockReset();
     mockRegisterUploadSources.mockReset();
     mockInspectUploadSources.mockReset();
     mockPreflightUpload.mockReset();
@@ -806,6 +810,7 @@ describe("AgentGUINode", () => {
     });
     mockBatchGetUserInfo.mockResolvedValue({ users: [] });
     mockEnsureDirectory.mockResolvedValue(undefined);
+    mockWriteClipboardText.mockResolvedValue(undefined);
     mockInspectUploadSources.mockResolvedValue({
       hasGitignore: false,
       gitignoreSourceCount: 0
@@ -816,6 +821,9 @@ describe("AgentGUINode", () => {
       value: {
         account: {
           batchGetUserInfo: mockBatchGetUserInfo
+        },
+        clipboard: {
+          writeText: mockWriteClipboardText
         },
         workspace: {
           selectFiles: mockSelectFiles,
@@ -2157,6 +2165,7 @@ describe("AgentGUINode", () => {
       conversations: [
         {
           id: "session-1",
+          agentTargetId: "local:codex",
           provider: "codex",
           title: "Session 1",
           status: "ready",
@@ -2188,6 +2197,7 @@ describe("AgentGUINode", () => {
       conversations: [
         {
           id: "session-1",
+          agentTargetId: "local:codex",
           provider: "codex",
           title: "Project Session",
           status: "ready",
@@ -2576,6 +2586,39 @@ describe("AgentGUINode", () => {
         })
       ).toBeNull();
     });
+  });
+
+  it("copies a conversation mention link from the rail context menu without selecting", async () => {
+    mockViewModel = createViewModel({
+      conversations: [
+        {
+          id: "session-1",
+          agentTargetId: "local:codex",
+          provider: "codex",
+          title: "Session [1] \\ draft",
+          status: "ready",
+          cwd: "/workspace",
+          updatedAtUnixMs: 1
+        }
+      ],
+      activeConversationId: "session-1"
+    });
+    renderAgentGUINode();
+
+    fireEvent.contextMenu(
+      screen.getByTestId("agent-gui-conversation-item-session-1")
+    );
+    const copyLinkMenuItem = await screen.findByRole("menuitem", {
+      name: "agentHost.agentGui.copySessionLink"
+    });
+    fireEvent.pointerUp(copyLinkMenuItem, { button: 0 });
+
+    await waitFor(() =>
+      expect(mockWriteClipboardText).toHaveBeenCalledWith(
+        "[Session \\[1\\] \\\\ draft](mention://agent-session/session-1?agentTargetId=local%3Acodex&workspaceId=room-1)"
+      )
+    );
+    expect(mockSelectConversation).not.toHaveBeenCalled();
   });
 
   it("opens rename dialog from the rail context menu", async () => {
@@ -3827,12 +3870,11 @@ describe("AgentGUINode", () => {
       type: "open-agent-session",
       workspaceId: "room-1",
       agentSessionId: "session-queued",
-      provider: "codex",
       source: "agent-markdown"
     });
   });
 
-  it("forwards composer mention link actions with the mention session provider", async () => {
+  it("forwards composer mention link actions without provider fallback", async () => {
     const onLinkAction = vi.fn<(action: WorkspaceLinkAction) => void>();
     mockViewModel = createViewModel({
       activeConversationId: "session-1",
@@ -3858,7 +3900,6 @@ describe("AgentGUINode", () => {
       type: "open-agent-session",
       workspaceId: "room-1",
       agentSessionId: "session-draft",
-      provider: "codex",
       source: "agent-markdown"
     });
   });
@@ -6926,7 +6967,6 @@ describe("AgentGUINode", () => {
       type: "open-agent-session",
       workspaceId: "room-1",
       agentSessionId: "session-2",
-      provider: "codex",
       source: "agent-markdown"
     });
   });
@@ -7227,6 +7267,7 @@ function createAgentActivitySnapshotFromViewModel(
     sessions: mockViewModel.conversations.map((conversation) => ({
       workspaceId,
       agentSessionId: conversation.id,
+      agentTargetId: conversation.agentTargetId,
       provider: String(conversation.provider),
       userId: conversation.userId,
       cwd: conversation.cwd,

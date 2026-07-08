@@ -108,6 +108,8 @@ import {
   agentPromptContentHasImage,
   agentPromptContentToComposerDraft,
   emptyAgentComposerDraft,
+  isPastedTextPromptBlock,
+  materializePastedTextInstructions,
   normalizeAgentPromptContentBlocks,
   textPromptContent
 } from "../model/agentComposerDraft";
@@ -163,6 +165,7 @@ import {
   markAgentGUIConversationCompletionObserved,
   markAgentGUIConversationCreatePending,
   markAgentGUIConversationSubmitPending,
+  markAgentGUIConversationUnreadCompletion,
   markLocalDeletedAgentGUIConversation,
   patchAgentGUIConversationSummary,
   removeAgentGUIConversationSummaries,
@@ -179,10 +182,10 @@ import { createOptimisticPromptMessage } from "./agentGuiController.promptHelper
 import { useAgentGUIActivation } from "./useAgentGUIActivation";
 import { pendingInterruptActionForDisplayStatus } from "./pendingInterrupt";
 import {
+  createAgentSessionMentionHref,
   formatAgentMentionMarkdown,
   normalizeAgentSessionMentionTitle
 } from "../agentRichText/agentFileMentionExtension";
-import { createRichTextMentionHref } from "@tutti-os/ui-rich-text/core";
 import { resolveAgentGUIExplicitConversationTitle } from "../model/agentGuiProviderIdentity";
 import { composerSettingsSupportFromOptions } from "../model/composerSettingsSupport";
 import {
@@ -1028,6 +1031,24 @@ function cancelResultSessionStatusIsNonBusy(
   );
 }
 
+/**
+ * Rewrites content for handoff to the runtime: pasted-text file blocks become a
+ * codex-style "read this file" instruction (path embedded). Applied at every
+ * runtime send boundary (new-session createSession + existing-session sendInput)
+ * so no `file` block reaches the desktop tuttid pipeline, while the draft/queue
+ * keep the structured block for the chip and edit-restore. The translated copy
+ * is resolved here (controller layer), never in the model.
+ */
+function toRuntimeSendContent(
+  content: readonly AgentPromptContentBlock[]
+): AgentPromptContentBlock[] {
+  return materializePastedTextInstructions(content, {
+    header: () => translate("agentHost.agentGui.pastedTextFilesHeader"),
+    line: (preview, path) =>
+      translate("agentHost.agentGui.pastedTextFileLine", { preview, path })
+  });
+}
+
 function shouldClearSubmittedDraft(input: {
   currentDraft: AgentComposerDraft | undefined;
   submittedContent: readonly AgentPromptContentBlock[];
@@ -1074,12 +1095,12 @@ function shouldClearSubmittedDraft(input: {
   const currentFiles = currentDraft.files ?? [];
   const submittedFiles = input.submittedContent.filter(
     (block): block is AgentPromptContentBlock & { type: "file" } =>
-      block.type === "file"
+      block.type === "file" && !isPastedTextPromptBlock(block)
   );
   if (currentFiles.length !== submittedFiles.length) {
     return false;
   }
-  return currentFiles.every((file, index) => {
+  const filesMatch = currentFiles.every((file, index) => {
     const submittedFile = submittedFiles[index];
     if (!submittedFile) {
       return false;
@@ -1103,6 +1124,24 @@ function shouldClearSubmittedDraft(input: {
       file.sizeBytes === submittedFile.sizeBytes
     );
   });
+  if (!filesMatch) {
+    return false;
+  }
+  // Pasted-text attachments compare by landed file path only — never by the
+  // text body or any translated instruction copy.
+  const currentLargeTextPaths = (currentDraft.largeTexts ?? [])
+    .map((item) => item.path?.trim() ?? "")
+    .filter(Boolean);
+  const submittedLargeTextPaths = input.submittedContent
+    .filter(isPastedTextPromptBlock)
+    .map((block) => block.path?.trim() ?? "")
+    .filter(Boolean);
+  if (currentLargeTextPaths.length !== submittedLargeTextPaths.length) {
+    return false;
+  }
+  return currentLargeTextPaths.every(
+    (path, index) => path === submittedLargeTextPaths[index]
+  );
 }
 
 function cancelBusySource(input: {
@@ -1377,6 +1416,7 @@ function buildContinueInNewConversationPrompt(input: {
   currentUserId?: string | null;
   userProfilesByUserId: Record<string, { name?: string | null }>;
   provider: string;
+  agentTargetId?: string | null;
   conversationTitle: string;
   existingDraftPrompt: string;
 }): string {
@@ -1401,17 +1441,18 @@ function buildContinueInNewConversationPrompt(input: {
   const mentionLabel = `${initiatorName} & ${providerLabel}${
     normalizedTitle ? ` ${normalizedTitle}` : ""
   }`.trim();
-  const href = createRichTextMentionHref({
-    providerId: "agent-session",
-    entityId: input.agentSessionId,
+  const href = createAgentSessionMentionHref({
+    agentTargetId: input.agentTargetId,
+    agentSessionId: input.agentSessionId,
     label: mentionLabel,
-    scope: { workspaceId: input.workspaceId }
+    workspaceId: input.workspaceId
   });
   const mention = formatAgentMentionMarkdown({
     kind: "session",
     href,
     workspaceId: input.workspaceId,
     targetId: input.agentSessionId,
+    agentTargetId: input.agentTargetId?.trim() || undefined,
     name: mentionLabel,
     title: normalizedTitle || providerLabel,
     scope: "my_sessions",
@@ -3075,6 +3116,31 @@ function conversationBusyStatus(
   return status === "working" || status === "waiting";
 }
 
+function resolveUnreadCompletionAfterStatusPatch(input: {
+  status: AgentGUIConversationSummary["status"];
+  hasUnreadCompletion: boolean | undefined;
+}): boolean {
+  if (input.status === "completed" || input.status === "ready") {
+    return input.hasUnreadCompletion ?? false;
+  }
+  return false;
+}
+
+function resolveUnreadCompletionKeyAfterStatusPatch(input: {
+  status: AgentGUIConversationSummary["status"];
+  currentKey: string | null | undefined;
+  nextKey: string | null | undefined;
+  hasUnreadCompletion: boolean | undefined;
+}): string | null {
+  if (input.status === "completed" || input.nextKey) {
+    return input.currentKey ?? input.nextKey ?? null;
+  }
+  if (input.status === "ready" && input.hasUnreadCompletion === true) {
+    return input.currentKey ?? null;
+  }
+  return null;
+}
+
 function stringArraysEqual(
   first: string[] | null | undefined,
   second: string[] | null | undefined
@@ -3252,10 +3318,14 @@ function areAgentComposerDraftsEqual(
       if (!other) {
         return false;
       }
+      // Stable identity + landing state only. The text body and any display
+      // label are excluded from the equality key; upload lifecycle fields are
+      // kept so the chip re-renders as it moves uploading → landed / errored.
       return (
         item.id === other.id &&
-        item.name === other.name &&
-        item.text === other.text &&
+        item.path === other.path &&
+        item.uploading === other.uploading &&
+        item.uploadError === other.uploadError &&
         item.sizeBytes === other.sizeBytes
       );
     })
@@ -5851,14 +5921,16 @@ export function useAgentGUINodeController({
               : undefined,
             source: cause?.source
           }),
-          hasUnreadCompletion:
-            status === "completed"
-              ? (conversation.hasUnreadCompletion ?? false)
-              : false,
-          unreadCompletionKey:
-            status === "completed"
-              ? (conversation.unreadCompletionKey ?? completionKey)
-              : null
+          hasUnreadCompletion: resolveUnreadCompletionAfterStatusPatch({
+            status,
+            hasUnreadCompletion: conversation.hasUnreadCompletion
+          }),
+          unreadCompletionKey: resolveUnreadCompletionKeyAfterStatusPatch({
+            status,
+            currentKey: conversation.unreadCompletionKey,
+            nextKey: completionKey,
+            hasUnreadCompletion: conversation.hasUnreadCompletion
+          })
         };
       });
       if (completionKey && conversationListQuery) {
@@ -5907,12 +5979,20 @@ export function useAgentGUINodeController({
             source: cause?.source
           }),
           hasUnreadCompletion:
-            transientStatus === "completed" &&
-            activeConversationIdRef.current !== agentSessionId,
-          unreadCompletionKey:
-            transientStatus === "completed"
-              ? (transient.unreadCompletionKey ?? completionKey)
-              : null
+            activeConversationIdRef.current === agentSessionId
+              ? false
+              : completionKey
+                ? true
+                : resolveUnreadCompletionAfterStatusPatch({
+                    status: transientStatus,
+                    hasUnreadCompletion: transient.hasUnreadCompletion
+                  }),
+          unreadCompletionKey: resolveUnreadCompletionKeyAfterStatusPatch({
+            status: transientStatus,
+            currentKey: transient.unreadCompletionKey,
+            nextKey: completionKey,
+            hasUnreadCompletion: transient.hasUnreadCompletion
+          })
         });
       }
     },
@@ -6880,7 +6960,10 @@ export function useAgentGUINodeController({
         return {
           status,
           updatedAtUnixMs: nextUpdatedAtUnixMs,
-          hasUnreadCompletion: false
+          hasUnreadCompletion: resolveUnreadCompletionAfterStatusPatch({
+            status,
+            hasUnreadCompletion: conversation.hasUnreadCompletion
+          })
         };
       });
       const transient = transientConversationRef.current;
@@ -6889,7 +6972,10 @@ export function useAgentGUINodeController({
           ...transient,
           status: incomingStatus,
           updatedAtUnixMs: Math.max(transient.updatedAtUnixMs, updatedAtUnixMs),
-          hasUnreadCompletion: false
+          hasUnreadCompletion: resolveUnreadCompletionAfterStatusPatch({
+            status: incomingStatus,
+            hasUnreadCompletion: transient.hasUnreadCompletion
+          })
         });
       }
     },
@@ -7188,10 +7274,10 @@ export function useAgentGUINodeController({
               status: nextStatus ?? conversation.status,
               timelineItems
             });
-        const hasUnreadCompletion =
-          status === "completed"
-            ? (conversation.hasUnreadCompletion ?? false)
-            : false;
+        const hasUnreadCompletion = resolveUnreadCompletionAfterStatusPatch({
+          status,
+          hasUnreadCompletion: conversation.hasUnreadCompletion
+        });
         if (
           titleFields.title === conversation.title &&
           titleFields.titleFallback === conversation.titleFallback &&
@@ -7207,10 +7293,12 @@ export function useAgentGUINodeController({
           ...titleFields,
           status,
           hasUnreadCompletion,
-          unreadCompletionKey:
-            status === "completed" || completionKey
-              ? (conversation.unreadCompletionKey ?? completionKey)
-              : null
+          unreadCompletionKey: resolveUnreadCompletionKeyAfterStatusPatch({
+            status,
+            currentKey: conversation.unreadCompletionKey,
+            nextKey: completionKey,
+            hasUnreadCompletion
+          })
         };
       });
       if (completionKey && conversationListQuery) {
@@ -7241,12 +7329,20 @@ export function useAgentGUINodeController({
           ...transientTitleFields,
           status: transientStatus,
           hasUnreadCompletion:
-            Boolean(completionKey) &&
-            activeConversationIdRef.current !== agentSessionId,
-          unreadCompletionKey:
-            transientStatus === "completed" || completionKey
-              ? (transient.unreadCompletionKey ?? completionKey)
-              : null
+            activeConversationIdRef.current === agentSessionId
+              ? false
+              : completionKey
+                ? true
+                : resolveUnreadCompletionAfterStatusPatch({
+                    status: transientStatus,
+                    hasUnreadCompletion: transient.hasUnreadCompletion
+                  }),
+          unreadCompletionKey: resolveUnreadCompletionKeyAfterStatusPatch({
+            status: transientStatus,
+            currentKey: transient.unreadCompletionKey,
+            nextKey: completionKey,
+            hasUnreadCompletion: transient.hasUnreadCompletion
+          })
         });
       }
     },
@@ -7711,7 +7807,7 @@ export function useAgentGUINodeController({
           agentSessionId,
           agentTargetId: agentTargetId || null,
           cwd: selectedProjectPath ?? "",
-          initialContent: normalizedInitialContent,
+          initialContent: toRuntimeSendContent(normalizedInitialContent),
           initialDisplayPrompt,
           metadata: agentSubmitTraceMetadata(submitTrace),
           title: initialConversationTitle,
@@ -8309,6 +8405,7 @@ export function useAgentGUINodeController({
       currentUserId,
       userProfilesByUserId: accountProfilesByUserId,
       provider: activeConversation.provider,
+      agentTargetId: activeConversation.agentTargetId,
       conversationTitle: activeConversation.title,
       existingDraftPrompt: draftBySessionId[currentConversationId]?.prompt ?? ""
     });
@@ -8557,7 +8654,11 @@ export function useAgentGUINodeController({
           return agentActivityRuntime.sendInput({
             workspaceId,
             agentSessionId,
-            content: normalizedContent,
+            // The codex-style "read this file" instruction for pasted-text
+            // attachments is materialized here (send time only) so translated
+            // copy never enters the persisted/queued draft, optimistic echo, or
+            // draft equality checks.
+            content: toRuntimeSendContent(normalizedContent),
             displayPrompt:
               displayPrompt && displayPrompt.trim() ? displayPrompt : null,
             ...(options?.guidance === true ? { guidance: true } : {}),
@@ -10443,6 +10544,33 @@ export function useAgentGUINodeController({
     [agentActivityRuntime, agentHostApi.toast, patchConversation, workspaceId]
   );
 
+  const markConversationUnread = useCallback(
+    (agentSessionId: string) => {
+      const normalizedAgentSessionId = agentSessionId.trim();
+      if (!normalizedAgentSessionId || !conversationListQuery) {
+        return;
+      }
+      markAgentGUIConversationUnreadCompletion({
+        query: conversationListQuery,
+        conversationId: normalizedAgentSessionId
+      });
+      setTransientConversation((current) =>
+        current?.id === normalizedAgentSessionId
+          ? {
+              ...current,
+              hasUnreadCompletion: true,
+              unreadCompletionKey:
+                current.unreadCompletionKey ??
+                (current.status === "completed" || current.status === "ready"
+                  ? `session:${current.id}:completed`
+                  : null)
+            }
+          : current
+      );
+    },
+    [conversationListQuery, setTransientConversation]
+  );
+
   const renameConversation = useCallback(
     async (agentSessionId: string, title: string) => {
       const normalizedAgentSessionId = agentSessionId.trim();
@@ -11978,6 +12106,9 @@ export function useAgentGUINodeController({
   const stableToggleConversationPinned = useStableControllerEventCallback(
     toggleConversationPinned
   );
+  const stableMarkConversationUnread = useStableControllerEventCallback(
+    markConversationUnread
+  );
   const stableRenameConversation =
     useStableControllerEventCallback(renameConversation);
   const stableRequestDeleteConversation = useStableControllerEventCallback(
@@ -12039,6 +12170,7 @@ export function useAgentGUINodeController({
         stableConfirmDeleteProjectConversations,
       confirmDeleteConversations: stableConfirmDeleteConversations,
       toggleConversationPinned: stableToggleConversationPinned,
+      markConversationUnread: stableMarkConversationUnread,
       renameConversation: stableRenameConversation,
       requestDeleteConversation: stableRequestDeleteConversation,
       retryActivation: stableRetryActivation,
@@ -12058,6 +12190,7 @@ export function useAgentGUINodeController({
       stableEditQueuedPrompt,
       stableInterruptCurrentTurn,
       stableLoadOlderConversationMessages,
+      stableMarkConversationUnread,
       stableRemoveProject,
       stableRemoveQueuedPrompt,
       stableRenameConversation,
