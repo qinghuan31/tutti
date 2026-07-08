@@ -2703,6 +2703,7 @@ const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
   );
   const canSwitchComposerProvider = true;
   const composerProviderTargets = viewModel.providerTargets;
+  const composerHandoffProviderTargets = viewModel.handoffProviderTargets;
   const composerProvider =
     viewModel.activeConversationId === null
       ? (viewModel.selectedProviderTarget?.provider ?? viewModel.data.provider)
@@ -2736,6 +2737,7 @@ const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
       availableSkills: viewModel.availableSkills,
       selectedProviderTarget: composerSelectedProviderTarget,
       providerTargets: composerProviderTargets,
+      handoffProviderTargets: composerHandoffProviderTargets,
       providerSelectReadonly:
         !canSwitchComposerProvider || viewModel.activeConversationId !== null,
       onProviderSelect:
@@ -2822,6 +2824,7 @@ const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
       composerDisabled,
       composerDisabledReason,
       composerFocusRequestSequence,
+      composerHandoffProviderTargets,
       composerLabels,
       composerProviderTargets,
       composerSelectedProviderTarget,
