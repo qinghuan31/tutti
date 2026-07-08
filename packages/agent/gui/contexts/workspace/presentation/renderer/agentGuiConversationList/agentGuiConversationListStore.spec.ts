@@ -885,6 +885,21 @@ describe("agentGuiConversationListStore", () => {
         unreadCompletionKey: "session:session-1:completed"
       })
     );
+
+    setAgentGUIConversationListActiveConversation({
+      query,
+      ownerKey: "panel-1",
+      conversationId: "session-1"
+    });
+
+    expect(
+      getAgentGUIConversationListQuerySnapshot(query)?.conversations[0]
+    ).toEqual(
+      expect.objectContaining({
+        hasUnreadCompletion: true,
+        unreadCompletionKey: "session:session-1:completed"
+      })
+    );
   });
 
   it("allows manually marking a ready conversation unread without an existing key", () => {

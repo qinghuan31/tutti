@@ -579,6 +579,12 @@ imports that carry `runtimeContext.imported === true` should remain visible in
 the rail, but they must not seed unread completion lamps as though they just
 finished locally. Preserve the imported marker through conversation summaries
 and summary-stabilization equality before deriving unread completion state.
+Active-conversation ownership is a visibility/registration signal, not always a
+new read action. Mark unread completions as read when an owner changes to a
+different active conversation or when the user explicitly selects the
+conversation, but do not clear a manual unread override when the same owner
+re-registers the same active conversation during focus, query, or render
+catch-up.
 If the conversation-list query cannot be constructed because workspace,
 current-user, or provider identity is missing, clear the active conversation
 selection and persisted active hint. Do not treat that state as a runtime

@@ -1831,11 +1831,11 @@ export function setAgentGUIConversationListActiveConversation(input: {
   if (previousConversationId !== conversationId) {
     activeByOwner.set(ownerKey, conversationId);
     activeConversationIdsByQueryKey.set(queryState.queryKey, activeByOwner);
+    clearAgentGUIConversationUnreadCompletion({
+      query: input.query,
+      conversationId
+    });
   }
-  clearAgentGUIConversationUnreadCompletion({
-    query: input.query,
-    conversationId
-  });
 }
 
 export function markAgentGUIConversationUnreadCompletion(input: {
