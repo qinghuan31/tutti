@@ -11287,7 +11287,8 @@ export function useAgentGUINodeController({
     sessionChrome.auth === null &&
     !isCreatingConversation &&
     !isSubmitting &&
-    !isInterrupting;
+    !isInterrupting &&
+    !activeSubmitBlocked;
   const canQueueWhileBusy =
     Boolean(activeConversationId) &&
     (activeConversationBusy ||
