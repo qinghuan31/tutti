@@ -122,6 +122,14 @@ export interface AgentComposerDraftLargeText {
  */
 export const AGENT_PASTED_TEXT_BLOCK_KIND = "pasted-text";
 
+/**
+ * Provider id of the custom mention kind used to render a pasted-text chip in
+ * the conversation flow. The mention href (`mention://pasted-text/...`) carries
+ * the landed archive path + size so the host can render the chip and open a
+ * preview on click. Registered via registerAgentCustomMentionKind.
+ */
+export const AGENT_PASTED_TEXT_MENTION_KIND = "pasted-text";
+
 export interface AgentComposerDraft {
   prompt: string;
   images: AgentComposerDraftImage[];

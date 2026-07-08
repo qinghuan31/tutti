@@ -1,3 +1,4 @@
+import { createRichTextMentionMarkdown } from "@tutti-os/ui-rich-text/core";
 import type { AgentPromptContentBlock } from "../../../shared/contracts/dto";
 import type {
   AgentComposerDraft,
@@ -6,7 +7,60 @@ import type {
   AgentComposerDraftImage,
   AgentGUIProviderSkillOption
 } from "./agentGuiNodeTypes";
-import { AGENT_PASTED_TEXT_BLOCK_KIND } from "./agentGuiNodeTypes";
+import {
+  AGENT_PASTED_TEXT_BLOCK_KIND,
+  AGENT_PASTED_TEXT_MENTION_KIND
+} from "./agentGuiNodeTypes";
+
+const PASTED_TEXT_MENTION_PREVIEW_MAX_CHARS = 48;
+
+/**
+ * First non-empty line of the pasted body, trimmed and length-capped, used as
+ * the chip's primary label in the conversation flow. Falls back to the display
+ * file name when the body is unavailable (e.g. a queue-restored item).
+ */
+function pastedTextPreviewLabel(
+  item: AgentComposerDraftLargeText,
+  index: number
+): string {
+  const firstLine =
+    item.text
+      .split(/\r?\n/)
+      .map((line) => line.trim())
+      .find((line) => line !== "") ?? "";
+  const base = firstLine || pastedTextDraftDisplayName(index);
+  return base.length > PASTED_TEXT_MENTION_PREVIEW_MAX_CHARS
+    ? `${base.slice(0, PASTED_TEXT_MENTION_PREVIEW_MAX_CHARS)}…`
+    : base;
+}
+
+/**
+ * Encodes a landed pasted-text item as a canonical mention link for the
+ * conversation-flow display prompt. The href (a `mention://pasted-text/...`
+ * URL) losslessly carries the archive `path` and byte size so the host can
+ * render a chip and open a preview on click — the persisted, reload-safe
+ * "custom protocol" for pasted text. Returns "" when the item has not landed.
+ */
+export function pastedTextMentionMarkdown(
+  item: AgentComposerDraftLargeText,
+  index: number
+): string {
+  const path = item.path?.trim();
+  if (!path) {
+    return "";
+  }
+  return createRichTextMentionMarkdown({
+    providerId: AGENT_PASTED_TEXT_MENTION_KIND,
+    entityId: item.id,
+    label: pastedTextPreviewLabel(item, index),
+    scope: {
+      path,
+      ...(typeof item.sizeBytes === "number" && Number.isFinite(item.sizeBytes)
+        ? { size: String(item.sizeBytes) }
+        : {})
+    }
+  });
+}
 import {
   promptForProviderSkills,
   skillTriggerForPrefix
@@ -242,14 +296,9 @@ export function agentComposerDraftDisplayPrompt(
   }
   const parts = [draft.prompt.trim()].filter(Boolean);
   parts.push(
-    ...largeTexts.map((item, index) => {
-      const name = pastedTextDraftDisplayName(index);
-      const sizeLabel =
-        typeof item.sizeBytes === "number" && Number.isFinite(item.sizeBytes)
-          ? ` · ${formatAgentComposerDraftBytes(item.sizeBytes)}`
-          : "";
-      return `[${name}${sizeLabel}]`;
-    })
+    ...largeTexts
+      .map((item, index) => pastedTextMentionMarkdown(item, index))
+      .filter(Boolean)
   );
   return parts.join("\n");
 }
@@ -364,11 +413,15 @@ export function isPastedTextPromptBlock(
 }
 
 /**
- * Returns a copy of `content` with a codex-style instruction text block appended
- * for the pasted-text file blocks it contains (placed at the tail, after the
- * user's own content). The instruction copy is passed in already-translated so
- * the model layer stays free of any i18n dependency. When there are no
- * pasted-text blocks the input is returned unchanged.
+ * Rewrites `content` for send: the structured pasted-text `file` blocks
+ * (kept in the draft/queue so the composer can show a chip and restore it on
+ * edit) are replaced by a single codex-style instruction text block at the tail
+ * that references each landed file by path — mirroring the Codex desktop app,
+ * which references pasted text as a plain "read this file" line rather than a
+ * structured attachment. This also keeps the sent content free of `file` blocks,
+ * which the desktop tuttid pipeline rejects. The instruction copy is passed in
+ * already-translated so the model layer stays free of any i18n dependency. When
+ * there are no pasted-text blocks the input is returned unchanged.
  */
 export function materializePastedTextInstructions(
   content: readonly AgentPromptContentBlock[],
@@ -384,14 +437,17 @@ export function materializePastedTextInstructions(
   if (pastedPaths.length === 0) {
     return [...content];
   }
+  const withoutPastedText = content.filter(
+    (block) => !isPastedTextPromptBlock(block)
+  );
   const instruction = [
     format.header(),
     ...pastedPaths.map((path) => format.line(path))
   ].join("\n");
-  return [...content, { type: "text", text: instruction }];
+  return [...withoutPastedText, { type: "text", text: instruction }];
 }
 
-function formatAgentComposerDraftBytes(sizeBytes: number): string {
+export function formatAgentComposerDraftBytes(sizeBytes: number): string {
   if (sizeBytes < 1024) {
     return `${sizeBytes} B`;
   }

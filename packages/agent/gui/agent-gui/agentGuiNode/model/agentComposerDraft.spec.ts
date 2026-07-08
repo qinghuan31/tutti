@@ -49,8 +49,11 @@ describe("agentComposerDraft", () => {
     };
 
     expect(agentComposerDraftHasContent(draft)).toBe(true);
+    // The conversation-flow display prompt encodes the landed pasted text as a
+    // pasted-text mention link (path + size in the href) so the host can render
+    // a clickable chip; the raw text body never enters it.
     expect(agentComposerDraftDisplayPrompt(draft)).toBe(
-      "Summarize this\n[pasted-text-1.txt · 22 B]"
+      "Summarize this\n[@first line](mention://pasted-text/11111111-1111-4111-8111-111111111111?path=%2Farchive%2Faa%2Fdeadbeef.txt&size=22)"
     );
     expect(
       agentComposerDraftToPromptContent({
@@ -156,6 +159,8 @@ describe("agentComposerDraft", () => {
       }
     ];
 
+    // The pasted-text file block is stripped and replaced by the instruction
+    // text (path embedded); no file block survives into the sent content.
     expect(
       materializePastedTextInstructions(content, {
         header: () => "Referenced pasted text files:",
@@ -163,7 +168,7 @@ describe("agentComposerDraft", () => {
           `- pasted text file: ${path}. Read this file before continuing.`
       })
     ).toEqual([
-      ...content,
+      { type: "text", text: "Summarize this" },
       {
         type: "text",
         text: "Referenced pasted text files:\n- pasted text file: /archive/aa/deadbeef.txt. Read this file before continuing."

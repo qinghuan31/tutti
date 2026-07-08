@@ -554,6 +554,8 @@ export const zhCN = {
       composerTextMenu: "输入框文本操作",
       pastedTextFilesHeader: "引用的粘贴文本文件：",
       pastedTextFileLine: "- 粘贴的文本文件：{{path}}，继续前请先阅读此文件。",
+      pastedTextAttachmentTitle: "粘贴的文本",
+      pastedTextRestoreToComposer: "在文本框中显示",
       copyMessage: "复制消息",
       copyImage: "复制图片",
       messageCopied: "已复制",

@@ -1012,6 +1012,23 @@ function cancelResultSessionStatusIsNonBusy(
   );
 }
 
+/**
+ * Rewrites content for handoff to the runtime: pasted-text file blocks become a
+ * codex-style "read this file" instruction (path embedded). Applied at every
+ * runtime send boundary (new-session createSession + existing-session sendInput)
+ * so no `file` block reaches the desktop tuttid pipeline, while the draft/queue
+ * keep the structured block for the chip and edit-restore. The translated copy
+ * is resolved here (controller layer), never in the model.
+ */
+function toRuntimeSendContent(
+  content: readonly AgentPromptContentBlock[]
+): AgentPromptContentBlock[] {
+  return materializePastedTextInstructions(content, {
+    header: () => translate("agentHost.agentGui.pastedTextFilesHeader"),
+    line: (path) => translate("agentHost.agentGui.pastedTextFileLine", { path })
+  });
+}
+
 function shouldClearSubmittedDraft(input: {
   currentDraft: AgentComposerDraft | undefined;
   submittedContent: readonly AgentPromptContentBlock[];
@@ -7616,7 +7633,7 @@ export function useAgentGUINodeController({
           provider,
           providerTargetRef: targetData.providerTargetRef,
           cwd: selectedProjectPath ?? "",
-          initialContent: normalizedInitialContent,
+          initialContent: toRuntimeSendContent(normalizedInitialContent),
           initialDisplayPrompt,
           metadata: agentSubmitTraceMetadata(submitTrace),
           title: initialConversationTitle,
@@ -8466,12 +8483,7 @@ export function useAgentGUINodeController({
             // attachments is materialized here (send time only) so translated
             // copy never enters the persisted/queued draft, optimistic echo, or
             // draft equality checks.
-            content: materializePastedTextInstructions(normalizedContent, {
-              header: () =>
-                translate("agentHost.agentGui.pastedTextFilesHeader"),
-              line: (path) =>
-                translate("agentHost.agentGui.pastedTextFileLine", { path })
-            }),
+            content: toRuntimeSendContent(normalizedContent),
             displayPrompt:
               displayPrompt && displayPrompt.trim() ? displayPrompt : null,
             ...(options?.guidance === true ? { guidance: true } : {}),

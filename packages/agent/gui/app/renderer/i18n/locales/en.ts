@@ -600,6 +600,8 @@ export const en = {
       pastedTextFilesHeader: "Referenced pasted text files:",
       pastedTextFileLine:
         "- pasted text file: {{path}}. Read this file before continuing.",
+      pastedTextAttachmentTitle: "Pasted text",
+      pastedTextRestoreToComposer: "Show in text field",
       copyMessage: "Copy message",
       copyImage: "Copy image",
       messageCopied: "Copied",
