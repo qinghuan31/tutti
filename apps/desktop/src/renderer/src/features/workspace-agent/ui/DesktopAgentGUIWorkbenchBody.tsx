@@ -669,6 +669,10 @@ function DesktopAgentGUIWorkbenchBodyImpl({
     useState<DesktopAgentGUIPrefillPromptRequest | null>(null);
   const [newConversationRequestSequence, setNewConversationRequestSequence] =
     useState(0);
+  const [
+    newConversationFocusRequestSequence,
+    setNewConversationFocusRequestSequence
+  ] = useState<number | null>(null);
   const handledOpenSessionActivationSequenceRef = useRef<number | null>(null);
   const handledPrefillPromptActivationSequenceRef = useRef<number | null>(null);
   // onStateChange is recreated on every host render; pin it so the writer stays
@@ -1019,6 +1023,7 @@ function DesktopAgentGUIWorkbenchBodyImpl({
       }
 
       setNewConversationRequestSequence((current) => current + 1);
+      setNewConversationFocusRequestSequence((current) => (current ?? 0) + 1);
     };
 
     window.addEventListener(
@@ -1161,7 +1166,9 @@ function DesktopAgentGUIWorkbenchBodyImpl({
     context.activation?.type === workbenchFocusInputActivationType ||
     context.activation?.type === desktopAgentGUIPrefillPromptActivationType
       ? context.activation.sequence
-      : (prefillPromptRequest?.sequence ?? null);
+      : (newConversationFocusRequestSequence ??
+        prefillPromptRequest?.sequence ??
+        null);
   const capabilityMenuState = useMemo<AgentGUIProps["capabilityMenuState"]>(
     () => ({
       browserUse: {

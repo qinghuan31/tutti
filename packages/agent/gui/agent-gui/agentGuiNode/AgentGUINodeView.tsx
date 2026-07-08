@@ -4866,6 +4866,22 @@ interface ConversationRailSectionPageState {
   nextCursor: string | null;
 }
 
+function preserveAdvancedConversationRailPageState(
+  existing: ConversationRailSectionPageState | undefined,
+  nextCursor: string | null
+): ConversationRailSectionPageState | null {
+  if (!existing) {
+    return null;
+  }
+  if (existing.hasMore === false) {
+    return existing;
+  }
+  if (existing.nextCursor && existing.nextCursor !== nextCursor) {
+    return existing;
+  }
+  return null;
+}
+
 function conversationRailPageCursor(
   conversations: readonly AgentGUINodeViewModel["conversations"][number][]
 ): string | null {
@@ -6644,20 +6660,30 @@ function useAgentGUIConversationRail({
           )
         );
         setRuntimeRailSectionsPending(false);
-        setSectionPageStates(() => {
+        setSectionPageStates((current) => {
           const next = new Map<string, ConversationRailSectionPageState>();
           if (page.pinned) {
+            const nextCursor = page.pinned.nextCursor ?? null;
+            const preserved = preserveAdvancedConversationRailPageState(
+              current.get("pinned"),
+              nextCursor
+            );
             next.set("pinned", {
-              hasMore: page.pinned.hasMore,
+              hasMore: preserved?.hasMore ?? page.pinned.hasMore,
               isLoading: false,
-              nextCursor: page.pinned.nextCursor ?? null
+              nextCursor: preserved?.nextCursor ?? nextCursor
             });
           }
           for (const section of page.sections) {
+            const nextCursor = section.nextCursor ?? null;
+            const preserved = preserveAdvancedConversationRailPageState(
+              current.get(section.sectionKey),
+              nextCursor
+            );
             next.set(section.sectionKey, {
-              hasMore: section.hasMore,
+              hasMore: preserved?.hasMore ?? section.hasMore,
               isLoading: false,
-              nextCursor: section.nextCursor ?? null
+              nextCursor: preserved?.nextCursor ?? nextCursor
             });
           }
           return next;

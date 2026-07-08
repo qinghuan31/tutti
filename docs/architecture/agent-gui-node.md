@@ -1091,6 +1091,9 @@ User-visible rules:
 - Home composer submit with no active conversation starts activation. Detail
   composer submit with an active conversation sends input. First-message
   activation keeps the user on the home composer until activation succeeds.
+- New-conversation entry points that return the user to the home composer,
+  including workbench header or external workbench events, should also issue a
+  composer focus request so the empty input is ready for typing immediately.
 - Treat active-session refs as controller caches, not the source of truth for
   whether a submit is new or existing. React effect cleanup, projection reloads,
   and conversation-list refreshes may temporarily disturb UI-local refs; they
