@@ -57,7 +57,8 @@ func (s Service) providerUsesCustomConfig(provider string) bool {
 // via env vars or on-disk config. This is the signal that usage is billed to an
 // API account rather than a Console/subscription session, and it overrides
 // whatever `claude auth status` reports (which only reflects the stored OAuth
-// session, not env/settings credentials).
+// session, not env/settings credentials). Used for Claude Code and Codex today;
+// other providers return false until credential env/config detection is added.
 func (s Service) providerHasAPICredential(provider string) bool {
 	for _, key := range providerCredentialEnvVars(provider) {
 		if strings.TrimSpace(s.lookupEnv(key)) != "" {

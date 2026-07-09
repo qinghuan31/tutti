@@ -1427,6 +1427,31 @@ delimited by ---`, and the composer skill picker may show partial or
   Add or update `agentstatus` tests for the Codex status/login command shape,
   then run `cd services/tuttid && go test ./service/agentstatus`.
 
+### Codex provider shows login required when only an API key is configured
+
+- Symptom:
+  The environment wizard / dock marks Codex as needing login ("未登录") even
+  though `OPENAI_API_KEY` is set or `~/.codex/config.toml` declares `api_key`,
+  and Codex sessions can already run successfully.
+- Quick checks:
+  Run `codex login status` (often prints `Not logged in`). Confirm an API
+  credential exists via `echo $OPENAI_API_KEY` or
+  `grep -E 'api_key' ~/.codex/config.toml`.
+- Root cause:
+  `codex login status` only reflects a ChatGPT OAuth session. API-key billing
+  is invisible to that command, so tuttid used to treat the provider as
+  `auth_required` and block the wizard even though the runtime can authenticate
+  with the key.
+- Fix:
+  Provider status should call `providerHasAPICredential` for Codex the same way
+  it does for Claude Code. When an API key is present (env or config.toml),
+  report auth as authenticated with method `apiKey` / label
+  `API Usage Billing` instead of requiring login. A bare custom base URL
+  without a credential must not trigger this override.
+- Validation:
+  Add or update `agentstatus` tests for Codex API-key-without-login readiness,
+  then run `cd services/tuttid && go test ./service/agentstatus`.
+
 ### Codex app-server subagent output appears as the parent reply
 
 - Symptom:
