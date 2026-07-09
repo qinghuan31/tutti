@@ -2123,3 +2123,48 @@ invalid_grant`. Daemon logs may also show an extra `claude-code` process start
 - References:
   [composer_live_model_discovery.go](../../services/tuttid/service/agent/composer_live_model_discovery.go)
   [model_validation.go](../../services/tuttid/service/agent/model_validation.go)
+
+### Claude Code sessions fail with `effectiveSource: "none"` when CC-Switch or similar proxy tools are used
+
+- Symptom:
+  Tutti desktop sessions for the `claude-code` provider never connect. The UI
+  reports `agent session is not connected` even though the same Claude CLI
+  works fine when run from a terminal session that loaded CC-Switch (or a
+  similar `~/.claude/settings.json` proxy).
+- Quick checks:
+  In `tuttid.log` search for `CLAUDE_CODE_AUTH_REFRESH_DEBUG`. If
+  `credentials.effectiveSource` is `"none"` and both `keychain.found` and
+  `plaintext.found` are `false`, but `~/.claude/settings.json` contains an
+  `env` block with `ANTHROPIC_AUTH_TOKEN` and `ANTHROPIC_BASE_URL`, the
+  sidecar never propagated the file's `env` to the Claude SDK.
+- Root cause:
+  CC-Switch writes proxy credentials into `~/.claude/settings.json`'s
+  `env` field. The native Claude CLI picks them up because the user shell
+  exports them into `process.env`, but the Tutti
+  `claude-sdk-sidecar` is launched directly without going through a shell,
+  so those variables are missing. The sidecar previously only merged
+  `process.env` with the ACP payload `env` and never read the file.
+- Fix:
+  Read the Claude settings files in the sidecar and merge their `env`
+  blocks into the Claude SDK query options, between `process.env` (lower
+  priority) and the ACP payload `env` (higher priority). The merge covers
+  `${CLAUDE_CONFIG_DIR}/settings.json` (defaulting to `~/.claude`) plus
+  project-level `.claude/settings.json` / `.claude/settings.local.json`
+  walking from the filesystem root to the session `cwd`, matching the
+  native CLI's layering. See `claudeSettingsEnv` and `ensureQuery` in
+  [claude-sdk-sidecar main.ts](../../packages/agent/claude-sdk-sidecar/src/main.ts).
+  The agentstatus probe reads the same `$CLAUDE_CONFIG_DIR`-aware location
+  (`claudeSettingsDeclares` in
+  [provider_custom_config.go](../../services/tuttid/service/agentstatus/provider_custom_config.go))
+  so the environment wizard and the runtime agree on whether credentials
+  exist.
+- Validation:
+  Run `pnpm --filter @tutti-os/claude-sdk-sidecar test` and
+  `cd services/tuttid && go test ./service/agentstatus/`. Unit tests cover
+  reading, non-string value skipping, missing file, malformed JSON, missing
+  `env` field, user/project/local layering, and `CLAUDE_CONFIG_DIR`
+  resolution.
+- Note:
+  `credentials.effectiveSource` only tracks OAuth material (keychain or
+  `.credentials.json`). For API-key/proxy users it stays `"none"` even
+  after the fix; a connected session is the success signal, not that field.
