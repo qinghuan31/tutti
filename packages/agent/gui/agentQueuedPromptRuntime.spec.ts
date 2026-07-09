@@ -201,27 +201,30 @@ describe("AgentQueuedPromptRuntime", () => {
     ).toEqual([]);
   });
 
-  it("keeps deprecated owner-wide claim release for compatibility", () => {
+  it("releases only the exact claimed queue for a shared owner", () => {
     const runtime = createAgentQueuedPromptRuntime();
     enqueue(runtime, "workspace-1", "session-1", ["p1"]);
     enqueue(runtime, "workspace-1", "session-2", ["p2"]);
 
+    const first = runtime.claimNextToDrain({
+      workspaceId: "workspace-1",
+      agentSessionId: "session-1",
+      ownerId: "owner-1"
+    })!;
+    const second = runtime.claimNextToDrain({
+      workspaceId: "workspace-1",
+      agentSessionId: "session-2",
+      ownerId: "owner-1"
+    })!;
+
     expect(
-      runtime.claimNextToDrain({
+      runtime.releaseClaim({
         workspaceId: "workspace-1",
         agentSessionId: "session-1",
-        ownerId: "owner-1"
+        ownerId: "owner-1",
+        claimId: first.claim.claimId
       })
-    ).not.toBeNull();
-    expect(
-      runtime.claimNextToDrain({
-        workspaceId: "workspace-1",
-        agentSessionId: "session-2",
-        ownerId: "owner-1"
-      })
-    ).not.toBeNull();
-
-    runtime.releaseOwner("owner-1");
+    ).toBe(true);
 
     expect(
       runtime.getSessionSnapshot({
@@ -234,7 +237,7 @@ describe("AgentQueuedPromptRuntime", () => {
         workspaceId: "workspace-1",
         agentSessionId: "session-2"
       }).claim
-    ).toBeNull();
+    ).toEqual(second.claim);
   });
 
   it("does not remove or promote a prompt while it is claimed", () => {
