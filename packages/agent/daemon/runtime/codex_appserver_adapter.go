@@ -1310,7 +1310,7 @@ func (a *CodexAppServerAdapter) finalizeSettledTurn(agentSessionID string, appTu
 			appTurn.emitTerminal(terminalEvents)
 		}
 	} else {
-		appTurn.normalizer.ApplyAssistantFinalText(appServerTurnFinalAssistantText(terminal.turn))
+		appTurn.normalizer.ApplyAssistantTurnFinalText(appServerTurnFinalAssistantText(terminal.turn))
 		appTurn.emitTerminal(appServerTurnTerminalEvents(session, turnID, terminal.turn, appTurn.normalizer))
 	}
 	a.endActiveTurn(agentSessionID, appTurn)
@@ -1556,7 +1556,7 @@ func (a *CodexAppServerAdapter) execBlocking(
 		}
 		return snapshotEvents(), nil
 	}
-	normalizer.ApplyAssistantFinalText(appServerTurnFinalAssistantText(finalTurn))
+	normalizer.ApplyAssistantTurnFinalText(appServerTurnFinalAssistantText(finalTurn))
 	emitTerminal(appServerTurnTerminalEvents(session, turnID, finalTurn, normalizer))
 	return snapshotEvents(), nil
 }
@@ -1772,7 +1772,7 @@ func (a *CodexAppServerAdapter) execSlashCommand(
 				}
 				return true, nil
 			}
-			normalizer.ApplyAssistantFinalText(appServerTurnFinalAssistantText(finalTurn))
+			normalizer.ApplyAssistantTurnFinalText(appServerTurnFinalAssistantText(finalTurn))
 			emitTerminal(appServerTurnTerminalEvents(session, turnID, finalTurn, normalizer))
 			return true, nil
 		}
@@ -1828,7 +1828,7 @@ func (a *CodexAppServerAdapter) awaitGoalOperationCompletion(
 		if !a.shouldContinueActiveGoalAfterTurn(session.AgentSessionID, finalTurn) {
 			return finalTurn, nil
 		}
-		normalizer.ApplyAssistantFinalText(appServerTurnFinalAssistantText(finalTurn))
+		normalizer.ApplyAssistantTurnFinalText(appServerTurnFinalAssistantText(finalTurn))
 		emitEvents(normalizer.FinishCompleted(session, turnID))
 		nextTurn, continued, err := a.waitForAutomaticGoalContinuation(ctx, session.AgentSessionID, appTurn)
 		if err != nil {

@@ -69,6 +69,136 @@ func TestAppendAssistantChunkIgnoresDuplicateSnapshotChunk(t *testing.T) {
 	}
 }
 
+// TestApplyAssistantFinalTextIgnoresIdenticalReplayAfterCompletedSegment pins
+// the Codex app-server double-report contract: the final assistant text
+// arrives once via item/completed (agentMessage) and again inside the
+// turn/completed payload. Re-applying the identical text after the segment
+// completed must not open a second assistant message — a live minimax turn
+// (exported session 8eecfc8c) rendered the same reply twice because of this.
+func TestApplyAssistantFinalTextIgnoresIdenticalReplayAfterCompletedSegment(t *testing.T) {
+	t.Parallel()
+
+	session := testSession()
+	normalizer := newACPTurnNormalizer()
+	finalText := "你好！有什么我可以帮你的吗？"
+
+	// item/completed(agentMessage) path finalizes the answer segment.
+	normalizer.ApplyAssistantFinalText(finalText)
+	first := normalizer.Finish(session, "turn-1", messageStreamStateCompleted)
+	if got := len(activityMessagesWithRole(first, activityshared.MessageRoleAssistant)); got != 1 {
+		t.Fatalf("item/completed assistant messages = %d, want 1", got)
+	}
+
+	// turn/completed replays the identical final text.
+	normalizer.ApplyAssistantFinalText(finalText)
+	completed := normalizer.FinishCompleted(session, "turn-1")
+	if duplicates := activityMessagesWithRole(completed, activityshared.MessageRoleAssistant); len(duplicates) != 0 {
+		t.Fatalf("turn/completed assistant messages = %#v, want none (identical final text already projected)", duplicates)
+	}
+}
+
+// TestApplyAssistantFinalTextKeepsDistinctFollowUpSegment guards the other
+// side of the contract: a genuinely different agentMessage after a completed
+// segment (multi-answer turns) must still surface as its own message.
+func TestApplyAssistantFinalTextKeepsDistinctFollowUpSegment(t *testing.T) {
+	t.Parallel()
+
+	session := testSession()
+	normalizer := newACPTurnNormalizer()
+
+	normalizer.ApplyAssistantFinalText("First answer.")
+	if got := len(activityMessagesWithRole(normalizer.Finish(session, "turn-1", messageStreamStateCompleted), activityshared.MessageRoleAssistant)); got != 1 {
+		t.Fatalf("first segment assistant messages = %d, want 1", got)
+	}
+
+	normalizer.ApplyAssistantFinalText("Second answer.")
+	events := normalizer.FinishCompleted(session, "turn-1")
+	messages := activityMessagesWithRole(events, activityshared.MessageRoleAssistant)
+	if len(messages) != 1 || messages[0].Payload.Content != "Second answer." {
+		t.Fatalf("follow-up assistant messages = %#v, want exactly one %q", messages, "Second answer.")
+	}
+}
+
+// TestApplyAssistantFinalTextUpdatesPolishedReplayAfterEarlyFinish covers the
+// live minimax failure mode from debug session 082b3f: deltas stream an
+// answer, an early Finish closes that segment, then item/completed redelivers
+// the same answer with whitespace polish. That polish must update the same
+// message id — not open a second bubble.
+func TestApplyAssistantFinalTextUpdatesPolishedReplayAfterEarlyFinish(t *testing.T) {
+	t.Parallel()
+
+	session := testSession()
+	normalizer := newACPTurnNormalizer()
+	streamed := "哈囉！看起來你有點困惑😂需要幫忙什麼嗎？可以在這邊問我問題、討論程式碼，或請我幫忙。"
+	polished := "哈囉！看起來你有點困惑😂 \n\n需要幫忙什麼嗎？可以在這邊問我問題、討論程式碼，或請我幫忙。"
+
+	if events := normalizer.AppendAssistantChunk(session, "turn-1", streamed); len(events) != 1 {
+		t.Fatalf("stream events = %d, want 1", len(events))
+	}
+	first := normalizer.Finish(session, "turn-1", messageStreamStateCompleted)
+	firstMessages := activityMessagesWithRole(first, activityshared.MessageRoleAssistant)
+	if len(firstMessages) != 1 {
+		t.Fatalf("early Finish assistant messages = %d, want 1", len(firstMessages))
+	}
+	firstID := firstMessages[0].EventID
+
+	normalizer.ApplyAssistantFinalText(polished)
+	completed := normalizer.Finish(session, "turn-1", messageStreamStateCompleted)
+	messages := activityMessagesWithRole(completed, activityshared.MessageRoleAssistant)
+	if len(messages) != 1 {
+		t.Fatalf("polished item/completed assistant messages = %#v, want exactly one updated snapshot", messages)
+	}
+	if messages[0].EventID != firstID {
+		t.Fatalf("message id = %q, want reused %q (no duplicate bubble)", messages[0].EventID, firstID)
+	}
+	if got := messages[0].Payload.Content; got != polished {
+		t.Fatalf("content = %q, want polished snapshot", got)
+	}
+}
+
+// TestApplyAssistantTurnFinalTextIgnoresPolishedReplayAfterCompletedSegment
+// covers the live minimax failure mode: item/completed finalizes one answer,
+// then turn/completed replays a lightly polished variant (extra spaces). The
+// turn path must not open a second bubble for that polish.
+func TestApplyAssistantTurnFinalTextIgnoresPolishedReplayAfterCompletedSegment(t *testing.T) {
+	t.Parallel()
+
+	session := testSession()
+	normalizer := newACPTurnNormalizer()
+	itemText := "你好！我是 Codex助手，可以帮助你进行编程、文件操作、浏览器控制等任务。\n\n有什么我可以帮你的吗？"
+	turnText := "你好！我是 Codex 助手，可以帮助你进行编程、文件操作、浏览器控制等任务。\n\n有什么我可以帮你的吗？"
+
+	normalizer.ApplyAssistantFinalText(itemText)
+	first := normalizer.Finish(session, "turn-1", messageStreamStateCompleted)
+	if got := len(activityMessagesWithRole(first, activityshared.MessageRoleAssistant)); got != 1 {
+		t.Fatalf("item/completed assistant messages = %d, want 1", got)
+	}
+
+	normalizer.ApplyAssistantTurnFinalText(turnText)
+	completed := normalizer.FinishCompleted(session, "turn-1")
+	if duplicates := activityMessagesWithRole(completed, activityshared.MessageRoleAssistant); len(duplicates) != 0 {
+		t.Fatalf("turn/completed assistant messages = %#v, want none after item/completed already finalized the answer", duplicates)
+	}
+}
+
+// TestApplyAssistantTurnFinalTextFillsMissingAnswer keeps the fallback when
+// item/completed never produced an assistant segment (delta-only turns that
+// only finalize via turn/completed).
+func TestApplyAssistantTurnFinalTextFillsMissingAnswer(t *testing.T) {
+	t.Parallel()
+
+	session := testSession()
+	normalizer := newACPTurnNormalizer()
+	finalText := "I'll check the repo."
+
+	normalizer.ApplyAssistantTurnFinalText(finalText)
+	completed := normalizer.FinishCompleted(session, "turn-1")
+	messages := activityMessagesWithRole(completed, activityshared.MessageRoleAssistant)
+	if len(messages) != 1 || messages[0].Payload.Content != finalText {
+		t.Fatalf("assistant messages = %#v, want one %q", messages, finalText)
+	}
+}
+
 func TestApplyAssistantFinalTextReplacesEditedSnapshot(t *testing.T) {
 	t.Parallel()
 
