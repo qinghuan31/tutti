@@ -1075,19 +1075,23 @@ delimited by ---`, and the composer skill picker may show partial or
   1. Menu: tuttid always merged Codex `model/list` (official ids) with
      `applyConfiguredDefaultModel`, which only appends the configured custom
      id. Custom providers cannot serve those official ids.
-  2. Duplicate reply: app-server finalizes `agentMessage` on `item/completed`
-     and repeats the same text inside `turn/completed`. `ApplyAssistantFinalText`
-     opened a new segment whenever `assistantSegmentCompleted` was true, so the
-     identical replay became a second bubble.
+  2. Duplicate reply: streamed deltas can be closed early by `Finish` (for
+     example before a tool/reasoning boundary), then `item/completed` redelivers
+     the same answer with whitespace polish. Exact-text equality is not enough —
+     treating that polish as a new segment opened a second bubble. Separately,
+     `turn/completed` may also replay a polished variant after `item/completed`.
   3. Metadata warning: Codex itself emits the diagnostic for unknown custom
      model ids; Tutti forwarded it as a runtime system notice. Users cannot act
      on it from the transcript.
 - Fix:
   When `model_provider` is custom and `model` is set, the Codex model catalog
-  returns only that configured model. Ignore identical final-text replays after
-  a completed assistant segment (distinct follow-up text still opens a new
-  segment). Drop Codex model-metadata fallback warnings in the conversation
-  projection the same way skills-context-budget diagnostics are dropped.
+  returns only that configured model. After an assistant segment is already
+  completed, whitespace-equivalent `item/completed` polish updates the same
+  message id in place instead of opening a new bubble; the turn/completed path
+  still must not open another assistant message
+  (`ApplyAssistantTurnFinalText`). Drop Codex model-metadata fallback warnings
+  in the conversation projection the same way skills-context-budget diagnostics
+  are dropped.
 - Validation:
   Run
   `go test ./packages/agent/daemon/runtime -run 'TestApplyAssistantFinalText|TestCodexAppServerAdapterExecStreamsTurn'`,

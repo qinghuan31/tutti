@@ -118,14 +118,21 @@ func (n *acpTurnNormalizer) ApplyAssistantFinalText(finalText string) {
 	if finalText == "" {
 		return
 	}
-	// Codex app-server reports the same final assistant text twice: once via
-	// item/completed(agentMessage) and again inside the turn/completed payload.
-	// When the current segment is already completed with identical text, keep
-	// it closed so turn/completed does not open a duplicate assistant message.
-	if n.assistantSegmentCompleted &&
-		n.assistantMessageID != "" &&
-		strings.TrimSpace(n.assistantContent.String()) == finalText {
-		return
+	// Codex may finalize the streamed assistant segment early (tool/reasoning
+	// Finish) and then re-deliver a lightly polished agentMessage on
+	// item/completed. Identical or whitespace-equivalent replay must keep the
+	// same message id; opening a new segment produces duplicate bubbles.
+	if n.assistantSegmentCompleted && n.assistantMessageID != "" {
+		prevContent := strings.TrimSpace(n.assistantContent.String())
+		if prevContent == finalText {
+			return
+		}
+		if assistantTextEquivalent(prevContent, finalText) {
+			n.assistantContent.Reset()
+			_, _ = n.assistantContent.WriteString(finalText)
+			n.assistantSegmentCompleted = false
+			return
+		}
 	}
 	if n.assistantMessageID == "" || n.assistantSegmentCompleted {
 		n.assistantMessageID = newID()
@@ -133,6 +140,32 @@ func (n *acpTurnNormalizer) ApplyAssistantFinalText(finalText string) {
 	}
 	n.assistantContent.Reset()
 	_, _ = n.assistantContent.WriteString(finalText)
+}
+
+// assistantTextEquivalent treats provider-side spacing/newline polish as the
+// same answer so item/completed does not open a second bubble after an early
+// Finish closed the streamed segment.
+func assistantTextEquivalent(left, right string) bool {
+	return normalizeAssistantCompareText(left) == normalizeAssistantCompareText(right)
+}
+
+func normalizeAssistantCompareText(text string) string {
+	return strings.Join(strings.Fields(strings.TrimSpace(text)), "")
+}
+
+// ApplyAssistantTurnFinalText applies the turn/completed assistant text only
+// when no assistant segment has been finalized yet. item/completed(agentMessage)
+// is authoritative for answers already shown; the turn payload often replays
+// that text with small provider-side polish (spacing/punctuation), and treating
+// those edits as a new segment produces duplicate bubbles.
+func (n *acpTurnNormalizer) ApplyAssistantTurnFinalText(finalText string) {
+	if n == nil {
+		return
+	}
+	if n.assistantSegmentCompleted {
+		return
+	}
+	n.ApplyAssistantFinalText(finalText)
 }
 
 func (n *acpTurnNormalizer) AppendAssistantSnapshot(
