@@ -1168,6 +1168,7 @@ func (c *Controller) runExecTurn(ctx context.Context, session Session, adapter A
 		return
 	}
 	var emitted []activityshared.Event
+	var emittedSummary agentSubmitRuntimeEventSummary
 	metadata := execMetadataFromContext(ctx)
 	logAgentSubmitTrace("runtime.turn_goroutine_started", session, turnID, metadata, nil)
 	emit := func(events []activityshared.Event) {
@@ -1183,11 +1184,7 @@ func (c *Controller) runExecTurn(ctx context.Context, session Session, adapter A
 		emitted = append(emitted, events...)
 		c.publish(session, events)
 		c.enqueueSessionReport(ctx, session, events)
-		logAgentSubmitTrace("runtime.events_emitted", session, turnID, metadata, map[string]any{
-			"activity_event_count": len(events),
-			"session_status":       session.Status,
-			"turn_phase":           turnLifecyclePhaseFromEvents(events),
-		})
+		emittedSummary.observe(events, session)
 	}
 	emitCommands := func(snapshot AgentSessionCommandSnapshot) {
 		c.applyCommandSnapshot(session, snapshot)
@@ -1226,6 +1223,7 @@ func (c *Controller) runExecTurn(ctx context.Context, session Session, adapter A
 	if shouldAdvanceSessionUpdatedAtFromEvents(statusEvents) {
 		session.UpdatedAtUnixMS = unixMS(now())
 	}
+	emittedSummary.log("runtime.events_emitted.summary", session, turnID, metadata)
 	c.finishTurn(session, turnID)
 }
 
@@ -1234,11 +1232,13 @@ func (c *Controller) runAsyncExecTurn(ctx context.Context, session Session, adap
 	logAgentSubmitTrace("runtime.async_turn_started", session, turnID, metadata, nil)
 	var mu sync.Mutex
 	finished := false
+	var emittedSummary agentSubmitRuntimeEventSummary
 	finish := func(next Session) {
 		if finished {
 			return
 		}
 		finished = true
+		emittedSummary.log("runtime.async_events_emitted.summary", next, turnID, metadata)
 		c.finishTurn(next, turnID)
 	}
 	emit := func(events []activityshared.Event) {
@@ -1259,11 +1259,7 @@ func (c *Controller) runAsyncExecTurn(ctx context.Context, session Session, adap
 		c.store(session)
 		c.publish(session, events)
 		c.enqueueSessionReport(ctx, session, events)
-		logAgentSubmitTrace("runtime.async_events_emitted", session, turnID, metadata, map[string]any{
-			"activity_event_count": len(events),
-			"session_status":       session.Status,
-			"turn_phase":           turnLifecyclePhaseFromEvents(events),
-		})
+		emittedSummary.observe(events, session)
 		if turnHasTerminalEvent(events, turnID) ||
 			turnLifecycleSnapshotSettledTurn(events, turnID) ||
 			turnSteeredIntoActiveTurn(events, turnID) {
@@ -1371,6 +1367,47 @@ func asyncEventCompletesTurnSuccessfully(event activityshared.Event, turnID stri
 	}
 	return strings.TrimSpace(event.Payload.TurnID) == turnID ||
 		strings.TrimSpace(snapshot.ActiveTurnID) == turnID
+}
+
+type agentSubmitRuntimeEventSummary struct {
+	batchCount         int
+	activityEventCount int
+	eventTypeCounts    map[string]int
+	lastSessionStatus  string
+	lastTurnPhase      string
+}
+
+func (s *agentSubmitRuntimeEventSummary) observe(events []activityshared.Event, session Session) {
+	if len(events) == 0 {
+		return
+	}
+	s.batchCount++
+	s.activityEventCount += len(events)
+	if s.eventTypeCounts == nil {
+		s.eventTypeCounts = make(map[string]int)
+	}
+	for _, event := range events {
+		eventType := strings.TrimSpace(string(event.Type))
+		if eventType == "" {
+			eventType = "unknown"
+		}
+		s.eventTypeCounts[eventType]++
+	}
+	s.lastSessionStatus = strings.TrimSpace(string(session.Status))
+	s.lastTurnPhase = strings.TrimSpace(turnLifecyclePhaseFromEvents(events))
+}
+
+func (s agentSubmitRuntimeEventSummary) log(event string, session Session, turnID string, metadata map[string]any) {
+	if s.batchCount == 0 {
+		return
+	}
+	logAgentSubmitTrace(event, session, turnID, metadata, map[string]any{
+		"activity_event_count": s.activityEventCount,
+		"emit_batch_count":     s.batchCount,
+		"event_type_counts":    s.eventTypeCounts,
+		"session_status":       s.lastSessionStatus,
+		"turn_phase":           s.lastTurnPhase,
+	})
 }
 
 func turnHasTerminalEvent(events []activityshared.Event, turnID string) bool {

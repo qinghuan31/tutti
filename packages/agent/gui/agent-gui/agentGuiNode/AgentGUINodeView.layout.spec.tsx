@@ -61,6 +61,23 @@ const composerMock = vi.hoisted(() => ({
 
 const workspaceUserProjectI18n = createDefaultWorkspaceUserProjectI18nRuntime();
 
+function createRect(
+  input: {
+    bottom?: number;
+    height?: number;
+    left?: number;
+    right?: number;
+    top?: number;
+    width?: number;
+  } = {}
+): DOMRect {
+  const left = input.left ?? 0;
+  const top = input.top ?? 0;
+  const width = input.width ?? Math.max(0, (input.right ?? left) - left);
+  const height = input.height ?? Math.max(0, (input.bottom ?? top) - top);
+  return new DOMRect(left, top, width, height);
+}
+
 const statusDotMock = vi.hoisted(() => ({
   calls: [] as Array<{
     ariaLabel?: string;
@@ -4096,10 +4113,24 @@ describe("AgentGUINodeView layout persistence", () => {
     expect(signal?.aborted).toBe(true);
   });
 
-  it("scrolls the active conversation item into view", () => {
+  it("does not scroll the active conversation item when it is already visible", () => {
     const originalScrollIntoView = HTMLElement.prototype.scrollIntoView;
+    const originalGetBoundingClientRect =
+      HTMLElement.prototype.getBoundingClientRect;
     const scrollIntoView = vi.fn();
     HTMLElement.prototype.scrollIntoView = scrollIntoView;
+    HTMLElement.prototype.getBoundingClientRect = function () {
+      if (this.classList.contains("agent-gui-node__conversation-list")) {
+        return createRect({ bottom: 200, top: 0 });
+      }
+      if (
+        this.getAttribute("data-testid") ===
+        "agent-gui-conversation-item-session-2"
+      ) {
+        return createRect({ bottom: 80, top: 40 });
+      }
+      return createRect();
+    };
 
     try {
       const activeConversation = createConversationSummary("session-2");
@@ -4115,16 +4146,75 @@ describe("AgentGUINodeView layout persistence", () => {
         }
       });
 
-      expect(scrollIntoView).toHaveBeenCalledWith({ block: "nearest" });
+      expect(scrollIntoView).not.toHaveBeenCalled();
     } finally {
       HTMLElement.prototype.scrollIntoView = originalScrollIntoView;
+      HTMLElement.prototype.getBoundingClientRect =
+        originalGetBoundingClientRect;
+    }
+  });
+
+  it("scrolls the active conversation item into view when it is outside the viewport", async () => {
+    const originalScrollIntoView = HTMLElement.prototype.scrollIntoView;
+    const originalGetBoundingClientRect =
+      HTMLElement.prototype.getBoundingClientRect;
+    const scrollIntoView = vi.fn();
+    HTMLElement.prototype.scrollIntoView = scrollIntoView;
+    HTMLElement.prototype.getBoundingClientRect = function () {
+      if (this.classList.contains("agent-gui-node__conversation-list")) {
+        return createRect({ bottom: 200, top: 0 });
+      }
+      if (
+        this.getAttribute("data-testid") ===
+        "agent-gui-conversation-item-session-2"
+      ) {
+        return createRect({ bottom: 280, top: 240 });
+      }
+      return createRect();
+    };
+
+    try {
+      const activeConversation = createConversationSummary("session-2");
+      renderAgentGUINodeView({
+        viewModel: {
+          ...createViewModel(),
+          conversations: [
+            createConversationSummary("session-1"),
+            activeConversation
+          ],
+          activeConversation,
+          activeConversationId: "session-2"
+        }
+      });
+
+      await waitFor(() => {
+        expect(scrollIntoView).toHaveBeenCalledWith({ block: "nearest" });
+      });
+    } finally {
+      HTMLElement.prototype.scrollIntoView = originalScrollIntoView;
+      HTMLElement.prototype.getBoundingClientRect =
+        originalGetBoundingClientRect;
     }
   });
 
   it("does not scroll the active conversation again after loading more rail sessions", async () => {
     const originalScrollIntoView = HTMLElement.prototype.scrollIntoView;
+    const originalGetBoundingClientRect =
+      HTMLElement.prototype.getBoundingClientRect;
     const scrollIntoView = vi.fn();
     HTMLElement.prototype.scrollIntoView = scrollIntoView;
+    HTMLElement.prototype.getBoundingClientRect = function () {
+      if (this.classList.contains("agent-gui-node__conversation-list")) {
+        return createRect({ bottom: 200, top: 0 });
+      }
+      if (
+        this.getAttribute("data-testid") ===
+        "agent-gui-conversation-item-project-session-1"
+      ) {
+        return createRect({ bottom: 280, top: 240 });
+      }
+      return createRect();
+    };
     const project = {
       id: "project-app",
       path: "/workspace/app",
@@ -4222,6 +4312,8 @@ describe("AgentGUINodeView layout persistence", () => {
       expect(scrollIntoView).toHaveBeenCalledTimes(1);
     } finally {
       HTMLElement.prototype.scrollIntoView = originalScrollIntoView;
+      HTMLElement.prototype.getBoundingClientRect =
+        originalGetBoundingClientRect;
     }
   });
 

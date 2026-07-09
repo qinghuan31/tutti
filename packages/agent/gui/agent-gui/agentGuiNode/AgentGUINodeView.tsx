@@ -2,10 +2,13 @@ import {
   Fragment,
   memo,
   type CSSProperties,
+  type Dispatch,
   type DragEvent,
   type KeyboardEvent,
+  type MutableRefObject,
   type PointerEvent,
   type ReactNode,
+  type SetStateAction,
   useCallback,
   useEffect,
   useLayoutEffect,
@@ -227,6 +230,7 @@ const AGENT_GUI_TOP_HISTORY_PREFETCH_THRESHOLD_PX = 240;
 const AGENT_GUI_TOP_MASK_SCROLL_EPSILON_PX = 1;
 const AGENT_GUI_CONVERSATION_RAIL_SECTION_PAGE_SIZE = 5;
 const AGENT_GUI_CONVERSATION_RAIL_LOADING_SKELETON_DELAY_MS = 300;
+const AGENT_GUI_CONVERSATION_RAIL_VISIBILITY_EPSILON_PX = 1;
 const AGENT_GUI_CONVERSATION_RAIL_PROJECTION_PROVIDER: AgentGUIProvider =
   "codex";
 const AGENT_GUI_TIMELINE_SCROLL_AREA_CONTENT_STYLE: CSSProperties = {
@@ -243,6 +247,32 @@ const AGENT_GUI_CONFIRMATION_DIALOG_CLASS_NAME =
   "nodrag tsh-desktop-no-drag [-webkit-app-region:no-drag]";
 const AGENT_GUI_CONFIRMATION_DIALOG_OVERLAY_CLASS_NAME =
   "nodrag tsh-desktop-no-drag [-webkit-app-region:no-drag]";
+
+function isElementFullyVisibleWithin(
+  element: HTMLElement,
+  viewport: HTMLElement
+): boolean {
+  const elementRect = element.getBoundingClientRect();
+  const viewportRect = viewport.getBoundingClientRect();
+  return (
+    elementRect.top >=
+      viewportRect.top - AGENT_GUI_CONVERSATION_RAIL_VISIBILITY_EPSILON_PX &&
+    elementRect.bottom <=
+      viewportRect.bottom + AGENT_GUI_CONVERSATION_RAIL_VISIBILITY_EPSILON_PX
+  );
+}
+
+function setBooleanStateIfChanged(
+  stateRef: MutableRefObject<boolean>,
+  setState: Dispatch<SetStateAction<boolean>>,
+  nextState: boolean
+): void {
+  if (stateRef.current === nextState) {
+    return;
+  }
+  stateRef.current = nextState;
+  setState(nextState);
+}
 
 interface AgentGUIProviderIconPresentation {
   iconUrl: string;
@@ -2344,6 +2374,8 @@ const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
   const [isTimelineScrolledToTop, setIsTimelineScrolledToTop] = useState(true);
   const [isTimelineScrolledToBottom, setIsTimelineScrolledToBottom] =
     useState(true);
+  const isTimelineScrolledToTopRef = useRef(true);
+  const isTimelineScrolledToBottomRef = useRef(true);
   const [
     bottomDockDismissedPromptRequestId,
     setBottomDockDismissedPromptRequestId
@@ -3293,8 +3325,16 @@ const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
       timelineScrollAnchorRef.current = null;
       pendingPrependScrollAnchorRef.current = null;
       submittedPromptScrollConversationRef.current = null;
-      setIsTimelineScrolledToTop(true);
-      setIsTimelineScrolledToBottom(true);
+      setBooleanStateIfChanged(
+        isTimelineScrolledToTopRef,
+        setIsTimelineScrolledToTop,
+        true
+      );
+      setBooleanStateIfChanged(
+        isTimelineScrolledToBottomRef,
+        setIsTimelineScrolledToBottom,
+        true
+      );
       return;
     }
 
@@ -3393,10 +3433,14 @@ const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
       scrollTop: nextScrollTop,
       clientHeight: timeline.clientHeight
     };
-    setIsTimelineScrolledToTop(
+    setBooleanStateIfChanged(
+      isTimelineScrolledToTopRef,
+      setIsTimelineScrolledToTop,
       nextScrollTop <= AGENT_GUI_TOP_MASK_SCROLL_EPSILON_PX
     );
-    setIsTimelineScrolledToBottom(
+    setBooleanStateIfChanged(
+      isTimelineScrolledToBottomRef,
+      setIsTimelineScrolledToBottom,
       maxScrollTop - nextScrollTop <= AGENT_GUI_STICK_TO_BOTTOM_THRESHOLD_PX
     );
   }, [
@@ -3472,10 +3516,16 @@ const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
           scrollTop: maxScrollTop,
           clientHeight: timeline.clientHeight
         };
-        setIsTimelineScrolledToTop(
+        setBooleanStateIfChanged(
+          isTimelineScrolledToTopRef,
+          setIsTimelineScrolledToTop,
           maxScrollTop <= AGENT_GUI_TOP_MASK_SCROLL_EPSILON_PX
         );
-        setIsTimelineScrolledToBottom(true);
+        setBooleanStateIfChanged(
+          isTimelineScrolledToBottomRef,
+          setIsTimelineScrolledToBottom,
+          true
+        );
       });
     };
 
@@ -3530,10 +3580,16 @@ const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
       const atBottom =
         timeline.scrollHeight - scrollTop - timeline.clientHeight <=
         AGENT_GUI_STICK_TO_BOTTOM_THRESHOLD_PX;
-      setIsTimelineScrolledToTop(
+      setBooleanStateIfChanged(
+        isTimelineScrolledToTopRef,
+        setIsTimelineScrolledToTop,
         scrollTop <= AGENT_GUI_TOP_MASK_SCROLL_EPSILON_PX
       );
-      setIsTimelineScrolledToBottom(atBottom);
+      setBooleanStateIfChanged(
+        isTimelineScrolledToBottomRef,
+        setIsTimelineScrolledToBottom,
+        atBottom
+      );
       // Remember where the user left off so returning to this conversation can
       // restore the position. Skip while a deferred restore is pending so the
       // synchronous jump-to-bottom (during skeleton) doesn't clobber it.
@@ -3559,9 +3615,17 @@ const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
       }
     };
 
-    captureScrollAnchor();
+    let initialCaptureFrameId: number | null = window.requestAnimationFrame(
+      () => {
+        initialCaptureFrameId = null;
+        captureScrollAnchor();
+      }
+    );
     timeline.addEventListener("scroll", captureScrollAnchor, { passive: true });
     return () => {
+      if (initialCaptureFrameId !== null) {
+        window.cancelAnimationFrame(initialCaptureFrameId);
+      }
       timeline.removeEventListener("scroll", captureScrollAnchor);
     };
   }, [
@@ -3589,10 +3653,16 @@ const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
       scrollTop: maxScrollTop,
       clientHeight: timeline.clientHeight
     };
-    setIsTimelineScrolledToTop(
+    setBooleanStateIfChanged(
+      isTimelineScrolledToTopRef,
+      setIsTimelineScrolledToTop,
       maxScrollTop <= AGENT_GUI_TOP_MASK_SCROLL_EPSILON_PX
     );
-    setIsTimelineScrolledToBottom(true);
+    setBooleanStateIfChanged(
+      isTimelineScrolledToBottomRef,
+      setIsTimelineScrolledToBottom,
+      true
+    );
   }, [viewModel.activeConversationId]);
 
   return (
@@ -7082,6 +7152,7 @@ const AgentGUIConversationRailPane = memo(
       new Map<string, HTMLDivElement>()
     );
     const activeConversationScrollCompletedRef = useRef<string | null>(null);
+    const activeConversationScrollFrameRef = useRef<number | null>(null);
     const previousActiveConversationIdRef = useRef<string | null>(null);
     const groupedConversationsRef = useRef<ConversationSection[] | null>(null);
     const {
@@ -7232,6 +7303,10 @@ const AgentGUIConversationRailPane = memo(
       if (!activeId) {
         previousActiveConversationIdRef.current = null;
         activeConversationScrollCompletedRef.current = null;
+        if (activeConversationScrollFrameRef.current !== null) {
+          window.cancelAnimationFrame(activeConversationScrollFrameRef.current);
+          activeConversationScrollFrameRef.current = null;
+        }
         return;
       }
       if (previousActiveConversationIdRef.current !== activeId) {
@@ -7245,8 +7320,41 @@ const AgentGUIConversationRailPane = memo(
       if (!activeElement) {
         return;
       }
-      activeElement.scrollIntoView({ block: "nearest" });
-      activeConversationScrollCompletedRef.current = activeId;
+      const viewport = conversationListRef.current ?? railElementRef.current;
+      if (!viewport || isElementFullyVisibleWithin(activeElement, viewport)) {
+        activeConversationScrollCompletedRef.current = activeId;
+        return;
+      }
+
+      const animationFrameId = window.requestAnimationFrame(() => {
+        activeConversationScrollFrameRef.current = null;
+        if (previousActiveConversationIdRef.current !== activeId) {
+          return;
+        }
+        const nextActiveElement =
+          conversationItemElementsRef.current.get(activeId);
+        if (!nextActiveElement) {
+          return;
+        }
+        const nextViewport =
+          conversationListRef.current ?? railElementRef.current;
+        if (
+          nextViewport &&
+          isElementFullyVisibleWithin(nextActiveElement, nextViewport)
+        ) {
+          activeConversationScrollCompletedRef.current = activeId;
+          return;
+        }
+        nextActiveElement.scrollIntoView({ block: "nearest" });
+        activeConversationScrollCompletedRef.current = activeId;
+      });
+      activeConversationScrollFrameRef.current = animationFrameId;
+      return () => {
+        if (activeConversationScrollFrameRef.current === animationFrameId) {
+          window.cancelAnimationFrame(animationFrameId);
+          activeConversationScrollFrameRef.current = null;
+        }
+      };
     }, [activeConversationId, groupedConversationIdentityKey]);
 
     return (

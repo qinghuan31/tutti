@@ -11719,8 +11719,6 @@ export function useAgentGUINodeController({
       isSubmitting ||
       Boolean(activeSessionState?.pendingInteractive));
   useEffect(() => {
-    const firstVersion = minFiniteMessageVersion(activeMessages);
-    const lastVersion = maxFiniteMessageVersion(activeMessages);
     const diagnosticKey = [
       activeConversationId ?? "",
       activeConversation?.status ?? "",
@@ -11742,10 +11740,9 @@ export function useAgentGUINodeController({
       activeSubmitBlocked ? "submit-blocked" : "submit-open",
       pendingApproval?.requestId ?? "",
       promptRequestId(pendingInteractivePrompt) ?? "",
-      conversation?.rows.length ?? "",
-      conversation?.sourceDetail.turns.length ?? "",
-      firstVersion ?? "",
-      lastVersion ?? "",
+      conversation?.activity.status ?? "",
+      conversation?.pendingApproval?.requestId ?? "",
+      promptRequestId(conversation?.pendingInteractivePrompt ?? null) ?? "",
       isCreatingConversation ? "creating" : "",
       isLoadingMessages ? "loading-messages" : "",
       isSubmitting ? "submitting" : "",
@@ -11784,7 +11781,6 @@ export function useAgentGUINodeController({
     activeConversationId,
     activeHasPendingSubmittedTurn,
     activeLiveState,
-    activeMessages,
     activeRuntimeSession,
     activeSessionState,
     activeSubmitBlocked,

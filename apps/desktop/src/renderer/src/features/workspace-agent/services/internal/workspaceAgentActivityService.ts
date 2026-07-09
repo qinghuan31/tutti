@@ -79,11 +79,24 @@ interface PendingActivityUpdateBatch {
   workspaceId: string;
 }
 
+interface InlineActivityAppliedTraceBatch {
+  agentSessionId: string;
+  appliedCount: number;
+  eventTypeCounts: Record<string, number>;
+  latestSession: Record<string, unknown> | null;
+  latestStatePatch: Record<string, unknown> | null;
+  messageCount: number;
+  statePatchCount: number;
+  timer: ReturnType<typeof setTimeout> | null;
+  workspaceId: string;
+}
+
 interface DeletedSessionTombstone {
   deletedAtUnixMs: number;
 }
 
 const ACTIVITY_UPDATE_BATCH_DELAY_MS = 33;
+const INLINE_ACTIVITY_APPLIED_TRACE_DELAY_MS = 1000;
 
 export class WorkspaceAgentActivityService implements IWorkspaceAgentActivityService {
   readonly _serviceBrand = undefined;
@@ -101,6 +114,10 @@ export class WorkspaceAgentActivityService implements IWorkspaceAgentActivitySer
   private readonly pendingActivityUpdateBatches = new Map<
     string,
     PendingActivityUpdateBatch
+  >();
+  private readonly pendingInlineActivityAppliedTraceBatches = new Map<
+    string,
+    InlineActivityAppliedTraceBatch
   >();
   private readonly deletedSessionTombstones = new Map<
     string,
@@ -1652,19 +1669,18 @@ export class WorkspaceAgentActivityService implements IWorkspaceAgentActivitySer
       });
       return false;
     }
-    this.reportReconcileTrace({
+    this.scheduleInlineActivityAppliedTrace({
       agentSessionId: input.agentSessionId,
-      traceEvent: "inline.applied",
-      workspaceId: input.workspaceId,
-      fields: {
-        eventType: input.eventType,
-        incomingSession: agentActivitySessionReconcileDiagnosticDetails(
-          result.session
-        ),
-        statePatch: agentActivityStatePatchReconcileDiagnosticDetails(
-          result.statePatch
-        )
-      }
+      eventType: input.eventType,
+      latestSession: agentActivitySessionReconcileDiagnosticDetails(
+        result.session
+      ),
+      latestStatePatch: agentActivityStatePatchReconcileDiagnosticDetails(
+        result.statePatch
+      ),
+      messageCount: result.messages.length,
+      statePatchCount: result.statePatch ? 1 : 0,
+      workspaceId: input.workspaceId
     });
     for (const message of result.messages) {
       this.emitSessionEvent(
@@ -1679,6 +1695,79 @@ export class WorkspaceAgentActivityService implements IWorkspaceAgentActivitySer
       });
     }
     return true;
+  }
+
+  private scheduleInlineActivityAppliedTrace(input: {
+    agentSessionId: string;
+    eventType: string;
+    latestSession: Record<string, unknown> | null;
+    latestStatePatch: Record<string, unknown> | null;
+    messageCount: number;
+    statePatchCount: number;
+    workspaceId: string;
+  }): void {
+    const key = sessionKey(input.workspaceId, input.agentSessionId);
+    let batch = this.pendingInlineActivityAppliedTraceBatches.get(key);
+    if (!batch) {
+      batch = {
+        agentSessionId: input.agentSessionId,
+        appliedCount: 0,
+        eventTypeCounts: {},
+        latestSession: null,
+        latestStatePatch: null,
+        messageCount: 0,
+        statePatchCount: 0,
+        timer: null,
+        workspaceId: input.workspaceId
+      };
+      this.pendingInlineActivityAppliedTraceBatches.set(key, batch);
+    }
+    batch.appliedCount += 1;
+    batch.eventTypeCounts[input.eventType] =
+      (batch.eventTypeCounts[input.eventType] ?? 0) + 1;
+    batch.latestSession = input.latestSession;
+    batch.latestStatePatch = input.latestStatePatch;
+    batch.messageCount += input.messageCount;
+    batch.statePatchCount += input.statePatchCount;
+    if (batch.timer !== null) {
+      return;
+    }
+    batch.timer = setTimeout(() => {
+      batch.timer = null;
+      this.flushInlineActivityAppliedTrace(
+        batch.agentSessionId,
+        batch.workspaceId
+      );
+    }, INLINE_ACTIVITY_APPLIED_TRACE_DELAY_MS);
+  }
+
+  private flushInlineActivityAppliedTrace(
+    agentSessionId: string,
+    workspaceId: string
+  ): void {
+    const key = sessionKey(workspaceId, agentSessionId);
+    const batch = this.pendingInlineActivityAppliedTraceBatches.get(key);
+    if (!batch) {
+      return;
+    }
+    this.pendingInlineActivityAppliedTraceBatches.delete(key);
+    if (batch.timer !== null) {
+      clearTimeout(batch.timer);
+      batch.timer = null;
+    }
+    this.reportReconcileTrace({
+      agentSessionId: batch.agentSessionId,
+      traceEvent: "inline.applied.summary",
+      workspaceId: batch.workspaceId,
+      fields: {
+        appliedCount: batch.appliedCount,
+        eventTypeCounts: batch.eventTypeCounts,
+        latestSession: batch.latestSession,
+        latestStatePatch: batch.latestStatePatch,
+        messageCount: batch.messageCount,
+        statePatchCount: batch.statePatchCount
+      }
+    });
   }
 }
 

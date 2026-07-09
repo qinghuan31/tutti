@@ -2282,6 +2282,34 @@ target app`. Compare `/Applications/Tutti.app/Contents/Info.plist` with the
   [createDesktopAgentActivityRuntime.ts](../../apps/desktop/src/renderer/src/features/workspace-agent/services/createDesktopAgentActivityRuntime.ts)
   [agent-gui-node.md](../architecture/agent-gui-node.md)
 
+### Agent diagnostics flood while a turn is streaming
+
+- Symptom:
+  Exported developer logs are dominated by agent diagnostics and the app feels
+  sluggish while a streaming turn is active or while switching AgentGUI sessions.
+- Quick checks:
+  Count repeated `agent submit trace`, `agent.activity.reconcile.trace`, and
+  `agent.gui.node.render_state_changed` lines before blaming one visible click.
+  Runtime event emissions should appear as
+  `runtime.events_emitted.summary`/`runtime.async_events_emitted.summary`;
+  successful inline reconciles should appear as `inline.applied.summary`.
+  If the old per-event names dominate a new log, the running app is stale.
+- Root cause:
+  Per-token runtime events and renderer inline reconcile commits can produce
+  thousands of diagnostic writes. Those writes compete with rendering and also
+  inflate trace/log exports enough to obscure the actual session-switch work.
+- Fix:
+  Keep success-path diagnostics aggregated by turn or short time window. Reserve
+  per-event logging for failures or rare state transitions.
+- Validation:
+  Reproduce a streaming turn and confirm the high-volume success paths collapse
+  to summary entries while `inline.not_applied` and submit failures still retain
+  event-level detail.
+- References:
+  [controller.go](../../packages/agent/daemon/runtime/controller.go)
+  [workspaceAgentActivityService.ts](../../apps/desktop/src/renderer/src/features/workspace-agent/services/internal/workspaceAgentActivityService.ts)
+  [useAgentGUINodeController.ts](../../packages/agent/gui/agent-gui/agentGuiNode/controller/useAgentGUINodeController.ts)
+
 ### Browser Node focus pings miss iframe-hosted editors
 
 - Symptom:
