@@ -170,9 +170,9 @@ The current root entrypoint runs the linter from:
 
 The shared lint configuration currently lives in `services/tuttid/.golangci.yml`.
 
-The shared agent daemon runtime under `packages/agent/daemon` is still linted
-by `pnpm lint:go`.
-During the migration, selected historical files carry file-local
+The shared agent daemon runtime under `packages/agent/daemon` is included by
+changed-aware Go lint when daemon files change, but is not yet part of the root
+`pnpm lint:go` module list. During the migration, selected historical files carry file-local
 `revive:disable:file-length-limit` comments. New tutti-owned daemon
 service/API code should stay outside those exceptions and must continue to
 satisfy the normal Go lint baseline.

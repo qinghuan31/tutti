@@ -31,8 +31,7 @@
     "directory": "packages/workspace/app-release-tools"
   },
   "scripts": {
-    "build": "node -e \"\"",
-    "test": "node --test ../../../tools/scripts/build-tutti-app-release.test.mjs"
+    "build": "node -e \"\""
   },
   "publishConfig": {
     "access": "public"

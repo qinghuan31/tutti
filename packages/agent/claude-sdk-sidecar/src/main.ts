@@ -1139,6 +1139,9 @@ export class SessionRuntime {
     stage: string,
     payload: Record<string, unknown>
   ): void {
+    if (process.env.NODE_TEST_CONTEXT) {
+      return;
+    }
     debugClaudeAuthRefreshLog(stage, {
       providerSessionId: this.providerSessionId,
       cwd: this.cwd,

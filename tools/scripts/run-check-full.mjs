@@ -10,6 +10,10 @@ const pnpmCommand = resolvePnpmCommand();
 
 const phases = [
   {
+    title: "Preparation",
+    tasks: [{ label: "builtin-apps", script: "generate:builtin-apps" }]
+  },
+  {
     title: "Preflight checks",
     tasks: [
       { label: "defaults", script: "check:defaults-generated" },
@@ -34,10 +38,10 @@ const phases = [
     title: "Validation checks",
     tasks: [
       { label: "lint:ts", script: "lint:ts" },
-      { label: "lint:go", script: "lint:go" },
+      { label: "lint:go", script: "lint:go:prepared" },
       { label: "typecheck", script: "typecheck" },
       { label: "test:ts", script: "test:ts" },
-      { label: "test:go", script: "test:go" }
+      { label: "test:go", script: "test:go:prepared" }
     ]
   }
 ];

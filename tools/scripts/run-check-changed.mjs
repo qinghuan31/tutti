@@ -13,6 +13,7 @@ import {
   buildGoTestLane,
   buildPackageTestCommand,
   isBuiltinGenerateRequired,
+  isToolTestRelevant,
   resolveGoValidationTargets
 } from "./run-check-changed-targets.mjs";
 
@@ -246,7 +247,7 @@ function buildChangedLanes() {
     }
   }
 
-  if (changedFiles.some((file) => file.startsWith("tools/scripts/"))) {
+  if (changedFiles.some(isToolTestRelevant)) {
     addLane({
       key: "test:tools",
       label: "test:tools",

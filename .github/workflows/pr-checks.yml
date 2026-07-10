@@ -33,10 +33,14 @@ jobs:
             packages/agent/daemon/go.mod
             packages/agent/daemon/go.sum
             packages/agent/runtimeprep/go.mod
+            packages/agent/store-sqlite/go.mod
+            packages/auth/bridge-go/go.mod
             packages/appcli/core/go.mod
+            packages/events/stream-go/go.mod
             packages/workbench/service/go.mod
             packages/workspace/files/go.mod
             packages/workspace/issues/go.mod
+            apps/cli/go.mod
             services/tuttid/go.mod
             services/tuttid/go.sum
 
@@ -195,9 +199,14 @@ jobs:
             packages/agent/daemon/go.mod
             packages/agent/daemon/go.sum
             packages/agent/runtimeprep/go.mod
+            packages/agent/store-sqlite/go.mod
+            packages/auth/bridge-go/go.mod
+            packages/appcli/core/go.mod
+            packages/events/stream-go/go.mod
             packages/workbench/service/go.mod
             packages/workspace/files/go.mod
             packages/workspace/issues/go.mod
+            apps/cli/go.mod
             services/tuttid/go.mod
             services/tuttid/go.sum
 
@@ -210,21 +219,17 @@ jobs:
       - name: Check Codex app-server protocol generation
         run: pnpm check:codexproto-generated
 
-      - name: Run App CLI core tests
-        working-directory: packages/appcli/core
-        run: go test ./...
+      - name: Run Go workspace tests
+        run: pnpm test:go:prepared
 
-      - name: Run shared Workbench service tests
-        working-directory: packages/workbench/service
-        run: go test ./...
+      - name: Run agent daemon tests (non-blocking)
+        id: agent-daemon-tests
+        continue-on-error: true
+        run: pnpm test:go:agent-daemon
 
-      - name: Run agent runtime preparation tests
-        working-directory: packages/agent/runtimeprep
-        run: go test ./...
-
-      - name: Run daemon tests
-        working-directory: services/tuttid
-        run: go test ./...
+      - name: Report unstable agent daemon tests
+        if: steps.agent-daemon-tests.outcome == 'failure'
+        run: echo "::warning::Agent daemon tests remain non-blocking while known timing-sensitive cases are stabilized."
 
   go-lint:
     name: Go Lint

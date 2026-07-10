@@ -55,8 +55,9 @@ Current behavior:
 
 That root command now uses a repository-owned Node orchestration script so the stable entrypoint stays the same while independent checks can run in parallel in bounded phases:
 
-- phase 1 runs generated-artifact and repository-rule checks in parallel
-- phase 2 runs lint, typecheck, and test commands in parallel only after phase 1 passes
+- the preparation phase generates builtin app assets once
+- the preflight phase runs generated-artifact and repository-rule checks in parallel
+- the validation phase runs lint, typecheck, and blocking test commands in parallel only after preflight passes
 
 That full validation currently includes:
 
@@ -81,6 +82,12 @@ Rules:
 - `pre-push` should stay aligned with first-pass pull-request CI checks
 - slower cross-workspace validation belongs here rather than in `pre-commit`
 - if a check is too expensive for `pre-commit`, keep it in `pre-push` and CI
+
+TypeScript package tests and Go workspace tests use discovery-based runners
+instead of root package/module whitelists. Successful runs print compact
+summaries; complete lane logs are stored under `.tmp/test-runs`. The current
+agent daemon test lane is intentionally non-blocking in pull-request CI and is
+documented in [Testing](./testing.md).
 
 For PR branches that often need rebasing or force-pushing, use
 `pnpm push:checked` instead of running `pnpm check:full` and `git push`

@@ -17,6 +17,7 @@ Current documents:
 - [npm Package Release](./npm-package-release.md)
 - [Runtime Overrides](./runtime-overrides.md)
 - [Static Analysis](./static-analysis.md)
+- [Testing](./testing.md)
 - [Troubleshooting](./troubleshooting/README.md)
 - [Tutti Agent Skills Repository](./tutti-agent-skills-repository.md)
 - [Tutti CLI Contract](./tutti-cli-contract.md)
