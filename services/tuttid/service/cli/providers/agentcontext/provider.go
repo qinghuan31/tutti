@@ -90,9 +90,14 @@ func (Provider) AppID() string {
 }
 
 func (p Provider) Commands() []cliservice.Command {
-	return []cliservice.Command{
-		p.newProvidersCommand(),
-		p.newComposerOptionsCommand(),
+	commands := make([]cliservice.Command, 0, 18)
+	if p.agentTargets != nil {
+		commands = append(commands,
+			p.newProvidersCommand(),
+			p.newComposerOptionsCommand(),
+		)
+	}
+	commands = append(commands,
 		p.newSkillBundleCommand(),
 		p.newProviderStartCommand(providerStartCommandSpec{
 			AppID:         codexAgentAppID,
@@ -134,7 +139,8 @@ func (p Provider) Commands() []cliservice.Command {
 		p.newSessionSummaryCommand(),
 		p.newTurnResourcesCommand(),
 		p.newActivePeersCommand(),
-	}
+	)
+	return commands
 }
 
 func (p Provider) FilterCapabilities(ctx context.Context, _ cliservice.InvokeContext, capabilities []cliservice.Capability) []cliservice.Capability {

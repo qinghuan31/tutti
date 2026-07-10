@@ -48,6 +48,9 @@ func (p Provider) runComposerOptions(ctx context.Context, invoke framework.Invok
 		return nil, err
 	}
 	canonicalProvider := agentproviderbiz.Normalize(input.Provider)
+	if canonicalProvider == "" {
+		return nil, agentservice.ErrInvalidArgument
+	}
 	targets, err := p.enabledAgentTargets(ctx)
 	if err != nil {
 		return nil, err
@@ -59,7 +62,7 @@ func (p Provider) runComposerOptions(ctx context.Context, invoke framework.Invok
 			break
 		}
 	}
-	if canonicalProvider == "" || !providerEnabled {
+	if !providerEnabled {
 		return nil, &agentservice.ProviderUnavailableError{
 			Provider:   input.Provider,
 			ReasonCode: "agent_provider_not_enabled",

@@ -112,6 +112,16 @@ func newTestClaudeStartCommand(provider Provider) cliservice.Command {
 	})
 }
 
+func TestProviderWithoutAgentTargetsDoesNotAdvertiseCatalogCommands(t *testing.T) {
+	provider := NewProviderWithLaunchPublisher(nil, nil, nil)
+	for _, command := range provider.Commands() {
+		path := strings.Join(command.Capability.Path, " ")
+		if path == "agent providers" || path == "agent composer-options" {
+			t.Fatalf("command %q requires AgentTargetLister", path)
+		}
+	}
+}
+
 func (f *fakeAgentSessions) Cancel(_ context.Context, workspaceID string, sessionID string) (agentservice.CancelSessionResult, error) {
 	f.workspaceID = workspaceID
 	f.sessionID = sessionID
@@ -1063,6 +1073,22 @@ func TestComposerOptionsCommandRejectsDisabledProviderBeforeDiscovery(t *testing
 	var unavailable *agentservice.ProviderUnavailableError
 	if !errors.As(err, &unavailable) || unavailable.ReasonCode != "agent_provider_not_enabled" {
 		t.Fatalf("err = %v, want agent_provider_not_enabled", err)
+	}
+	if sessions.composerInput.Provider != "" {
+		t.Fatalf("composer discovery was called: %#v", sessions.composerInput)
+	}
+}
+
+func TestComposerOptionsCommandRejectsUnknownProviderAsInvalidArgument(t *testing.T) {
+	sessions := &fakeAgentSessions{}
+	command := newTestProvider(
+		fakeWorkspaceCatalog{startup: workspacebiz.Summary{ID: "workspace-1"}},
+		sessions,
+	).newComposerOptionsCommand()
+
+	_, err := command.Handler(context.Background(), cliservice.InvokeRequest{Input: map[string]any{"provider": "codxe"}})
+	if !errors.Is(err, agentservice.ErrInvalidArgument) {
+		t.Fatalf("err = %v, want ErrInvalidArgument", err)
 	}
 	if sessions.composerInput.Provider != "" {
 		t.Fatalf("composer discovery was called: %#v", sessions.composerInput)
