@@ -2695,6 +2695,9 @@ func TestServiceGetsComposerOptionsFromTuttiAgentModelCatalog(t *testing.T) {
 	if options.ModelConfig.CurrentValue != "gpt-5.4" || len(options.ModelConfig.Options) != 2 {
 		t.Fatalf("modelConfig = %#v, want catalog-backed tutti-agent models", options.ModelConfig)
 	}
+	if len(options.ReasoningConfig.Options) != 1 || options.ReasoningConfig.Options[0].Value != "high" {
+		t.Fatalf("reasoningConfig = %#v, want only the selected value without a static fallback list", options.ReasoningConfig)
+	}
 	configOptions, ok := options.RuntimeContext["configOptions"].([]map[string]any)
 	if !ok || len(configOptions) < 3 {
 		t.Fatalf("configOptions = %#v", options.RuntimeContext["configOptions"])
@@ -2713,6 +2716,57 @@ func TestServiceGetsComposerOptionsFromTuttiAgentModelCatalog(t *testing.T) {
 	}
 	if len(runtime.sessions) != 0 {
 		t.Fatalf("runtime sessions = %d, want no started sessions", len(runtime.sessions))
+	}
+}
+
+func TestServiceGetsComposerOptionsUsesSelectedTuttiAgentModelReasoningEfforts(t *testing.T) {
+	runtime := newFakeRuntime()
+	service := NewService(runtime)
+	service.ModelCatalog = fakeModelCatalog{
+		result: AgentModelCatalogResult{
+			Provider: "tutti-agent",
+			Source:   "tutti-agent-cli",
+			Models: []AgentModelOption{
+				{
+					ID:                         "gpt-5.6-sol",
+					DisplayName:                "GPT-5.6 Sol",
+					DefaultReasoningEffort:     "high",
+					IsDefault:                  true,
+					ReasoningEffortsAdvertised: true,
+					SupportedReasoningEfforts: []AgentModelReasoningEffortOption{
+						{Value: "high"},
+						{Value: "ultra"},
+					},
+				},
+				{
+					ID:                         "nova-micro",
+					DisplayName:                "Nova Micro",
+					DefaultReasoningEffort:     "low",
+					ReasoningEffortsAdvertised: true,
+					SupportedReasoningEfforts: []AgentModelReasoningEffortOption{
+						{Value: "low"},
+						{Value: "medium"},
+					},
+				},
+			},
+		},
+	}
+
+	options, err := service.GetComposerOptions(context.Background(), ComposerOptionsInput{
+		Provider: "tutti-agent",
+		Settings: ComposerSettings{
+			Model:           "nova-micro",
+			ReasoningEffort: "medium",
+		},
+	})
+	if err != nil {
+		t.Fatalf("GetComposerOptions returned error: %v", err)
+	}
+	if options.ReasoningConfig.CurrentValue != "medium" || len(options.ReasoningConfig.Options) != 2 {
+		t.Fatalf("reasoningConfig = %#v, want selected model reasoning options", options.ReasoningConfig)
+	}
+	if options.ReasoningConfig.Options[0].Value != "low" || options.ReasoningConfig.Options[1].Value != "medium" {
+		t.Fatalf("reasoningConfig.options = %#v, want nova-micro options", options.ReasoningConfig.Options)
 	}
 }
 
@@ -2790,10 +2844,11 @@ func TestServiceGetsComposerOptionsWithResolvedCodexDefaultModel(t *testing.T) {
 			Source:   "codex-cli",
 			Models: []AgentModelOption{
 				{
-					ID:                     "gpt-5.6-sol",
-					DisplayName:            "GPT-5.6-Sol",
-					DefaultReasoningEffort: "low",
-					IsDefault:              true,
+					ID:                         "gpt-5.6-sol",
+					DisplayName:                "GPT-5.6-Sol",
+					DefaultReasoningEffort:     "low",
+					IsDefault:                  true,
+					ReasoningEffortsAdvertised: true,
 					SupportedReasoningEfforts: []AgentModelReasoningEffortOption{
 						{Value: "low", Description: "Fast responses with lighter reasoning"},
 						{Value: "medium"},
@@ -2864,19 +2919,21 @@ func TestServiceGetsComposerOptionsUsesSelectedCodexModelReasoningEfforts(t *tes
 			Source:   "codex-cli",
 			Models: []AgentModelOption{
 				{
-					ID:                     "gpt-5.6-sol",
-					DisplayName:            "GPT-5.6-Sol",
-					DefaultReasoningEffort: "low",
-					IsDefault:              true,
+					ID:                         "gpt-5.6-sol",
+					DisplayName:                "GPT-5.6-Sol",
+					DefaultReasoningEffort:     "low",
+					IsDefault:                  true,
+					ReasoningEffortsAdvertised: true,
 					SupportedReasoningEfforts: []AgentModelReasoningEffortOption{
 						{Value: "low"},
 						{Value: "ultra"},
 					},
 				},
 				{
-					ID:                     "gpt-5.6-luna",
-					DisplayName:            "GPT-5.6-Luna",
-					DefaultReasoningEffort: "medium",
+					ID:                         "gpt-5.6-luna",
+					DisplayName:                "GPT-5.6-Luna",
+					DefaultReasoningEffort:     "medium",
+					ReasoningEffortsAdvertised: true,
 					SupportedReasoningEfforts: []AgentModelReasoningEffortOption{
 						{Value: "low"},
 						{Value: "medium"},
@@ -2918,6 +2975,87 @@ func TestServiceGetsComposerOptionsUsesSelectedCodexModelReasoningEfforts(t *tes
 	if len(solProfile["options"].([]map[string]string)) != 2 ||
 		len(lunaProfile["options"].([]map[string]string)) != 5 {
 		t.Fatalf("reasoning profiles = %#v, want model-specific option counts", profiles)
+	}
+}
+
+func TestServiceGetsComposerOptionsPreservesAdvertisedEmptyReasoningEfforts(t *testing.T) {
+	runtime := newFakeRuntime()
+	service := NewService(runtime)
+	service.ModelCatalog = fakeModelCatalog{
+		result: AgentModelCatalogResult{
+			Provider: "codex",
+			Source:   "codex-cli",
+			Models: []AgentModelOption{
+				{
+					ID:                         "no-reasoning",
+					DisplayName:                "No Reasoning",
+					IsDefault:                  true,
+					ReasoningEffortsAdvertised: true,
+					SupportedReasoningEfforts:  []AgentModelReasoningEffortOption{},
+				},
+			},
+		},
+	}
+
+	options, err := service.GetComposerOptions(context.Background(), ComposerOptionsInput{
+		Provider: "codex",
+	})
+	if err != nil {
+		t.Fatalf("GetComposerOptions returned error: %v", err)
+	}
+	if options.EffectiveSettings.ReasoningEffort != "" || len(options.ReasoningConfig.Options) != 0 {
+		t.Fatalf("reasoningConfig = %#v, want authoritative empty options", options.ReasoningConfig)
+	}
+	profiles, ok := options.RuntimeContext["modelReasoningOptionsByModel"].(map[string]any)
+	if !ok {
+		t.Fatalf("modelReasoningOptionsByModel = %#v", options.RuntimeContext["modelReasoningOptionsByModel"])
+	}
+	profile, ok := profiles["no-reasoning"].(map[string]any)
+	if !ok {
+		t.Fatalf("no-reasoning profile = %#v", profiles["no-reasoning"])
+	}
+	profileOptions, ok := profile["options"].([]map[string]string)
+	if !ok || len(profileOptions) != 0 {
+		t.Fatalf("no-reasoning profile options = %#v, want empty", profile["options"])
+	}
+}
+
+func TestServiceGetsComposerOptionsPreservesAdvertisedMinimalReasoningEffort(t *testing.T) {
+	runtime := newFakeRuntime()
+	service := NewService(runtime)
+	service.ModelCatalog = fakeModelCatalog{
+		result: AgentModelCatalogResult{
+			Provider: "codex",
+			Source:   "codex-cli",
+			Models: []AgentModelOption{
+				{
+					ID:                         "minimal-only",
+					DisplayName:                "Minimal Only",
+					DefaultReasoningEffort:     "minimal",
+					IsDefault:                  true,
+					ReasoningEffortsAdvertised: true,
+					SupportedReasoningEfforts: []AgentModelReasoningEffortOption{
+						{Value: "minimal"},
+					},
+				},
+			},
+		},
+	}
+
+	options, err := service.GetComposerOptions(context.Background(), ComposerOptionsInput{
+		Provider: "codex",
+	})
+	if err != nil {
+		t.Fatalf("GetComposerOptions returned error: %v", err)
+	}
+	if options.EffectiveSettings.ReasoningEffort != "minimal" {
+		t.Fatalf("effectiveSettings.reasoningEffort = %q, want minimal", options.EffectiveSettings.ReasoningEffort)
+	}
+	if options.ReasoningConfig.CurrentValue != "minimal" {
+		t.Fatalf("reasoningConfig.currentValue = %q, want minimal", options.ReasoningConfig.CurrentValue)
+	}
+	if len(options.ReasoningConfig.Options) != 1 || options.ReasoningConfig.Options[0].Value != "minimal" {
+		t.Fatalf("reasoningConfig.options = %#v, want only minimal", options.ReasoningConfig.Options)
 	}
 }
 

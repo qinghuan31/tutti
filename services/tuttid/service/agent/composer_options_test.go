@@ -208,40 +208,55 @@ func TestComposerConfigConfigurableTruthTable(t *testing.T) {
 	}
 }
 
-func TestNormalizeRuntimeContextPreservesCodexModelReasoningOptions(t *testing.T) {
+func TestNormalizeRuntimeContextPreservesCatalogModelReasoningOptions(t *testing.T) {
 	t.Parallel()
-	runtimeContext := map[string]any{
-		"configOptions": []any{
-			map[string]any{
-				"id":           "reasoning_effort",
-				"currentValue": "ultra",
-				"options": []any{
-					map[string]any{"name": "High", "value": "high"},
-					map[string]any{"name": "Ultra", "value": "ultra"},
+	for _, provider := range []string{"codex", "tutti-agent"} {
+		t.Run(provider, func(t *testing.T) {
+			runtimeContext := map[string]any{
+				"configOptions": []any{
+					map[string]any{
+						"id":           "reasoning_effort",
+						"currentValue": "ultra",
+						"options": []any{
+							map[string]any{"name": "High", "value": "high"},
+							map[string]any{"name": "Ultra", "value": "ultra"},
+						},
+					},
 				},
-			},
-		},
-	}
+			}
 
-	normalized := normalizeRuntimeContextForProvider(
-		"codex",
-		ComposerSettings{ReasoningEffort: "ultra"},
-		runtimeContext,
-	)
-	configOptions, ok := normalized["configOptions"].([]any)
-	if !ok || len(configOptions) != 1 {
-		t.Fatalf("configOptions = %#v", normalized["configOptions"])
+			normalized := normalizeRuntimeContextForProvider(
+				provider,
+				ComposerSettings{ReasoningEffort: "ultra"},
+				runtimeContext,
+			)
+			configOptions, ok := normalized["configOptions"].([]any)
+			if !ok || len(configOptions) != 1 {
+				t.Fatalf("configOptions = %#v", normalized["configOptions"])
+			}
+			reasoningOption, ok := configOptions[0].(map[string]any)
+			if !ok {
+				t.Fatalf("reasoning option = %#v", configOptions[0])
+			}
+			options, ok := reasoningOption["options"].([]any)
+			if !ok || len(options) != 2 {
+				t.Fatalf("reasoning options = %#v", reasoningOption["options"])
+			}
+			ultra, ok := options[1].(map[string]any)
+			if !ok || ultra["value"] != "ultra" {
+				t.Fatalf("reasoning options = %#v, want runtime-advertised ultra preserved", options)
+			}
+		})
 	}
-	reasoningOption, ok := configOptions[0].(map[string]any)
-	if !ok {
-		t.Fatalf("reasoning option = %#v", configOptions[0])
+}
+
+func TestResolveAdvertisedReasoningEffortPreservesAuthoritativeMinimalDefault(t *testing.T) {
+	advertised := []AgentModelReasoningEffortOption{{Value: "minimal"}}
+	if got := resolveAdvertisedReasoningEffort("codex", "", "minimal", advertised); got != "minimal" {
+		t.Fatalf("resolveAdvertisedReasoningEffort = %q, want minimal", got)
 	}
-	options, ok := reasoningOption["options"].([]any)
-	if !ok || len(options) != 2 {
-		t.Fatalf("reasoning options = %#v", reasoningOption["options"])
-	}
-	ultra, ok := options[1].(map[string]any)
-	if !ok || ultra["value"] != "ultra" {
-		t.Fatalf("reasoning options = %#v, want runtime-advertised ultra preserved", options)
+	options := composerAdvertisedReasoningOptionValues("codex", "minimal", "en", advertised)
+	if len(options) != 1 || options[0].Value != "minimal" {
+		t.Fatalf("composer advertised options = %#v, want only minimal", options)
 	}
 }

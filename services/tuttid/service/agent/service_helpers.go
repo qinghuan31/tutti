@@ -335,10 +335,11 @@ func normalizeRuntimeConfigOptionsForProvider(
 				runtimeConfigOptionString(record, "currentValue", "current_value"),
 			)
 		}
-		// Codex advertises reasoning efforts for the currently selected model.
-		// Preserve that authoritative list so model-specific values such as max
-		// and ultra are not replaced by a provider-wide compatibility catalog.
-		if agentprovider.Normalize(provider) != agentprovider.Codex {
+		// Catalog-backed Codex runtimes advertise reasoning efforts for the
+		// currently selected model. Preserve that authoritative list so values
+		// such as max and ultra are not replaced by a static compatibility list.
+		normalizedProvider := agentprovider.Normalize(provider)
+		if normalizedProvider != agentprovider.Codex && normalizedProvider != agentprovider.TuttiAgent {
 			nextRecord["options"] = reasoningEffortOptions(provider, currentValue)
 		}
 		if currentValue == "" {

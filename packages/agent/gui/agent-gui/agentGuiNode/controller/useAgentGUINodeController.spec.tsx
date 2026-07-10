@@ -12537,7 +12537,7 @@ describe("useAgentGUINodeController", () => {
       ).toHaveLength(6);
       expect(
         result.current.viewModel.composerSettings.availableReasoningEfforts[5]
-      ).toEqual({ value: "ultra", label: "Ultra" });
+      ).toEqual({ value: "ultra", label: "ultra" });
     });
 
     act(() => {
@@ -13774,7 +13774,9 @@ describe("useAgentGUINodeController", () => {
         agentSessionState("session-1", {
           provider: "claude-code",
           settings: {
-            model: "opus",
+            // Simulate the control-state settings lagging behind ACP's live
+            // model config after the switch.
+            model: "haiku",
             reasoningEffort: "xhigh",
             speed: null,
             planMode: false,
@@ -13952,7 +13954,7 @@ describe("useAgentGUINodeController", () => {
         result.current.viewModel.composerSettings.availableReasoningEfforts
       ).toEqual([
         { value: "high", label: "High" },
-        { value: "xhigh", label: "X-High" }
+        { value: "xhigh", label: "X High" }
       ]);
       expect(getComposerOptions).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -13961,7 +13963,7 @@ describe("useAgentGUINodeController", () => {
       );
     });
     expect(result.current.viewModel.composerSettings.selectedModelValue).toBe(
-      "opus"
+      "haiku"
     );
     expect(
       result.current.viewModel.composerSettings.selectedReasoningEffortValue
@@ -13969,7 +13971,7 @@ describe("useAgentGUINodeController", () => {
     expect(
       result.current.viewModel.composerSettings.draftSettings
     ).toMatchObject({
-      model: "opus",
+      model: "haiku",
       reasoningEffort: "xhigh"
     });
   });

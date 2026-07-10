@@ -183,7 +183,7 @@ func (s *Service) GetComposerOptions(ctx context.Context, input ComposerOptionsI
 			); len(modelReasoningOptions) > 0 {
 				runtimeContext["modelReasoningOptionsByModel"] = modelReasoningOptions
 			}
-			if len(catalogOptions.ReasoningEfforts) > 0 {
+			if catalogOptions.ReasoningEffortsAdvertised {
 				requestedReasoningEffort := effectiveSettings.ReasoningEffort
 				if settings.ReasoningEffort == "" {
 					requestedReasoningEffort = ""
@@ -578,11 +578,12 @@ func composerModelConfig(provider string, selected string, options []ComposerCon
 }
 
 type composerModelCatalogOptions struct {
-	DefaultReasoningEffort string
-	ModelOptions           []ComposerConfigOptionValue
-	ReasoningProfiles      map[string]composerModelReasoningProfile
-	ReasoningEfforts       []AgentModelReasoningEffortOption
-	Source                 string
+	DefaultReasoningEffort     string
+	ModelOptions               []ComposerConfigOptionValue
+	ReasoningEffortsAdvertised bool
+	ReasoningProfiles          map[string]composerModelReasoningProfile
+	ReasoningEfforts           []AgentModelReasoningEffortOption
+	Source                     string
 }
 
 func composerModelOptionsFromCatalog(
@@ -627,7 +628,7 @@ func composerModelOptionsFromCatalog(
 			Description:        strings.TrimSpace(model.Description),
 			SupportsImageInput: model.SupportsImageInput,
 		})
-		if len(model.SupportedReasoningEfforts) > 0 {
+		if model.ReasoningEffortsAdvertised {
 			reasoningProfiles[id] = composerModelReasoningProfile{
 				DefaultReasoningEffort: strings.TrimSpace(model.DefaultReasoningEffort),
 				ReasoningEfforts: append(
@@ -652,6 +653,7 @@ func composerModelOptionsFromCatalog(
 	}
 	if selectedCatalogModel != nil {
 		catalogOptions.DefaultReasoningEffort = strings.TrimSpace(selectedCatalogModel.DefaultReasoningEffort)
+		catalogOptions.ReasoningEffortsAdvertised = selectedCatalogModel.ReasoningEffortsAdvertised
 		catalogOptions.ReasoningEfforts = append(
 			[]AgentModelReasoningEffortOption(nil),
 			selectedCatalogModel.SupportedReasoningEfforts...,

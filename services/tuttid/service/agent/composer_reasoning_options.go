@@ -20,7 +20,7 @@ func composerModelReasoningOptionsRuntimeContext(
 	result := make(map[string]any, len(profiles))
 	for model, profile := range profiles {
 		model = strings.TrimSpace(model)
-		if model == "" || len(profile.ReasoningEfforts) == 0 {
+		if model == "" {
 			continue
 		}
 		defaultValue := resolveAdvertisedReasoningEffort(
@@ -56,7 +56,7 @@ func composerReasoningConfigFromOptions(
 	selected string,
 	options []ComposerConfigOptionValue,
 ) ComposerConfigOption {
-	selected = normalizeReasoningEffortForProvider(provider, selected)
+	selected = strings.TrimSpace(selected)
 	return ComposerConfigOption{
 		Configurable: composerProfileFor(provider).ReasoningEffort,
 		CurrentValue: selected,
@@ -76,7 +76,7 @@ func reasoningEffortOptions(provider string, selected string) []map[string]strin
 }
 
 func reasoningEffortValuesForProvider(provider string) []string {
-	if provider == agentprovider.Codex {
+	if provider == agentprovider.Codex || provider == agentprovider.TuttiAgent {
 		return nil
 	}
 	if provider == agentprovider.ClaudeCode ||
@@ -101,7 +101,7 @@ func composerAdvertisedReasoningOptionValues(
 	locale string,
 	advertised []AgentModelReasoningEffortOption,
 ) []ComposerConfigOptionValue {
-	selected = normalizeReasoningEffortForProvider(provider, selected)
+	selected = strings.TrimSpace(selected)
 	options := make([]ComposerConfigOptionValue, 0, len(advertised)+1)
 	containsSelected := false
 	for _, advertisedOption := range advertised {
@@ -135,17 +135,17 @@ func composerAdvertisedReasoningOptionValues(
 }
 
 func resolveAdvertisedReasoningEffort(
-	provider string,
+	_ string,
 	selected string,
 	advertisedDefault string,
 	advertised []AgentModelReasoningEffortOption,
 ) string {
-	selected = normalizeReasoningEffortForProvider(provider, selected)
-	advertisedDefault = normalizeReasoningEffortForProvider(provider, advertisedDefault)
+	selected = strings.TrimSpace(selected)
+	advertisedDefault = strings.TrimSpace(advertisedDefault)
 	firstValue := ""
 	defaultSupported := false
 	for _, option := range advertised {
-		value := normalizeReasoningEffortForProvider(provider, option.Value)
+		value := strings.TrimSpace(option.Value)
 		if value == "" {
 			continue
 		}
@@ -192,7 +192,7 @@ func normalizeReasoningEffortForProvider(provider string, value string) string {
 		return ""
 	}
 	normalized := strings.TrimSpace(value)
-	if (provider == agentprovider.Codex || provider == agentprovider.ClaudeCode) &&
+	if (provider == agentprovider.Codex || provider == agentprovider.TuttiAgent || provider == agentprovider.ClaudeCode) &&
 		(normalized == "minimal" || normalized == "none") {
 		return "high"
 	}

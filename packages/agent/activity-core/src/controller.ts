@@ -106,6 +106,7 @@ export function createAgentActivityController({
     input: AgentActivityLoadComposerOptionsControllerInput
   ): string =>
     JSON.stringify([
+      input.provider.trim(),
       normalizeComposerCwd(input.cwd),
       normalizeComposerSetting(input.settings?.model),
       normalizeComposerSetting(input.settings?.reasoningEffort),
@@ -113,6 +114,18 @@ export function createAgentActivityController({
       input.settings?.planMode ?? null,
       normalizeComposerSetting(input.settings?.permissionModeId)
     ]);
+  const composerOptionsProviderFromRequestKey = (
+    requestKey: string
+  ): string | null => {
+    try {
+      const values = JSON.parse(requestKey) as unknown;
+      return Array.isArray(values) && typeof values[0] === "string"
+        ? values[0]
+        : null;
+    } catch {
+      return null;
+    }
+  };
   const autoRetainedStreamReleases = new Map<string, () => void>();
   const retainedStreams = new Map<string, RetainedSessionStream>();
   let snapshot: AgentActivitySnapshot =
@@ -295,17 +308,31 @@ export function createAgentActivityController({
           staleTargetKeys.add(targetKey);
         }
       }
-      if (providers === null) {
-        // A full invalidation also clears in-flight freshness markers that have
-        // no snapshot entry yet; those cannot be provider-matched (no cached
-        // value to read the provider from), so only clear them when dropping
-        // everything.
-        for (const targetKey of composerOptionsRequestKeyByTargetKey.keys()) {
+      for (const targetKey of composerOptionsRequestKeyByTargetKey.keys()) {
+        if (providers === null) {
+          staleTargetKeys.add(targetKey);
+        }
+      }
+      for (const [
+        targetKey,
+        requestKey
+      ] of activeComposerOptionsLoadRequestKeys) {
+        const requestProvider =
+          composerOptionsProviderFromRequestKey(requestKey);
+        if (
+          providers === null ||
+          (requestProvider && providers.has(requestProvider))
+        ) {
           staleTargetKeys.add(targetKey);
         }
       }
       for (const targetKey of staleTargetKeys) {
         composerOptionsRequestKeyByTargetKey.delete(targetKey);
+        activeComposerOptionsLoadRequestKeys.delete(targetKey);
+        composerOptionsLoadVersions.set(
+          targetKey,
+          (composerOptionsLoadVersions.get(targetKey) ?? 0) + 1
+        );
       }
     },
     async listSessionMessages({
