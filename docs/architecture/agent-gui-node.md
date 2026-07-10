@@ -920,6 +920,16 @@ User-visible rules:
 - Model, permission, plan mode, reasoning, speed, project, branch, prompt image,
   file mention, and skill/capability controls must read from composer settings
   and provider options. They should not be reconstructed from transcript rows.
+- Reasoning options are model capabilities, not provider-wide constants. The
+  daemon model catalog must preserve each model's advertised effort values and
+  default, pre-session composer options must use the selected model's catalog
+  entry, and active sessions must prefer the runtime's current model-specific
+  options. Compatibility projections that only know persisted settings must not
+  synthesize a full reasoning catalog. Composer-option cache freshness must
+  include the requested settings as well as target and cwd, and an active model
+  change must reload options with the active session settings. ACP owns option
+  values and ordering; the relevant locale catalog owns user-visible labels and
+  descriptions, including when live runtime options are the fresher source.
 - Browser/computer capability controls come from daemon composer options and
   live runtime capabilities. `computerUse` must not be advertised or injected
   unless the daemon can reach the local `cua-driver` and its read-only

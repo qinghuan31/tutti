@@ -146,12 +146,13 @@ func (s *Service) GetComposerOptions(ctx context.Context, input ComposerOptionsI
 	locale := normalizeComposerLocale(input.Locale)
 	permissionConfig := composerPermissionConfig(provider, effectiveSettings.PermissionModeID, locale)
 	modelOptions := composerSelectedModelOptions(effectiveSettings.Model)
+	reasoningOptions := composerReasoningOptionValues(provider, effectiveSettings.ReasoningEffort, locale)
 	if provider == agentprovider.ClaudeCode {
 		modelOptions = []map[string]string{}
 	}
 	runtimeContext := map[string]any{
 		"capabilities":     composerProviderCapabilities(provider),
-		"configOptions":    composerConfigOptions(provider, effectiveSettings, modelOptions),
+		"configOptions":    composerConfigOptions(provider, effectiveSettings, modelOptions, reasoningOptions),
 		"model":            nullableString(effectiveSettings.Model),
 		"permissionModeId": nullableString(effectiveSettings.PermissionModeID),
 		"reasoningEffort":  nullableString(effectiveSettings.ReasoningEffort),
@@ -172,17 +173,48 @@ func (s *Service) GetComposerOptions(ctx context.Context, input ComposerOptionsI
 		runtimeContext["capabilityCatalogErrors"] = capabilityErrors
 	}
 	if composerOptionsProviderUsesModelCatalog(provider) {
-		if catalogOptions, source, ok := composerModelOptionsFromCatalog(ctx, s.ModelCatalog, provider, effectiveSettings.Model); ok {
-			modelOptions = catalogOptions
-			runtimeContext["configOptions"] = composerConfigOptions(provider, effectiveSettings, catalogOptions)
-			runtimeContext["modelCatalogSource"] = source
+		if catalogOptions, ok := composerModelOptionsFromCatalog(ctx, s.ModelCatalog, provider, effectiveSettings.Model); ok {
+			modelOptions = catalogOptions.ModelOptions
+			if modelReasoningOptions := composerModelReasoningOptionsRuntimeContext(
+				provider,
+				locale,
+				catalogOptions.ReasoningProfiles,
+			); len(modelReasoningOptions) > 0 {
+				runtimeContext["modelReasoningOptionsByModel"] = modelReasoningOptions
+			}
+			if catalogOptions.ReasoningEffortsAdvertised {
+				requestedReasoningEffort := effectiveSettings.ReasoningEffort
+				if settings.ReasoningEffort == "" {
+					requestedReasoningEffort = ""
+				}
+				effectiveSettings.ReasoningEffort = resolveAdvertisedReasoningEffort(
+					provider,
+					requestedReasoningEffort,
+					catalogOptions.DefaultReasoningEffort,
+					catalogOptions.ReasoningEfforts,
+				)
+				reasoningOptions = composerAdvertisedReasoningOptionValues(
+					provider,
+					effectiveSettings.ReasoningEffort,
+					locale,
+					catalogOptions.ReasoningEfforts,
+				)
+			}
+			runtimeContext["reasoningEffort"] = nullableString(effectiveSettings.ReasoningEffort)
+			runtimeContext["configOptions"] = composerConfigOptions(
+				provider,
+				effectiveSettings,
+				modelOptions,
+				reasoningOptions,
+			)
+			runtimeContext["modelCatalogSource"] = catalogOptions.Source
 		}
 	}
 	options := ComposerOptions{
 		Provider:          provider,
 		ModelConfig:       composerModelConfig(provider, effectiveSettings.Model, modelOptions),
 		PermissionConfig:  permissionConfig,
-		ReasoningConfig:   composerReasoningConfig(provider, effectiveSettings.ReasoningEffort, locale),
+		ReasoningConfig:   composerReasoningConfigFromOptions(provider, effectiveSettings.ReasoningEffort, reasoningOptions),
 		SpeedConfig:       composerSpeedConfig(provider, effectiveSettings.Speed, locale),
 		EffectiveSettings: effectiveSettings,
 		RuntimeContext:    runtimeContext,
@@ -318,7 +350,12 @@ func composerDefaultModel(
 	}
 }
 
-func composerConfigOptions(provider string, settings ComposerSettings, modelOptions []map[string]string) []map[string]any {
+func composerConfigOptions(
+	provider string,
+	settings ComposerSettings,
+	modelOptions []map[string]string,
+	reasoningOptions []ComposerConfigOptionValue,
+) []map[string]any {
 	if !composerOptionsProviderSupportsSettings(provider) {
 		return []map[string]any{}
 	}
@@ -336,7 +373,7 @@ func composerConfigOptions(provider string, settings ComposerSettings, modelOpti
 	options = append(options, map[string]any{
 		"currentValue": nullableString(settings.ReasoningEffort),
 		"id":           reasoningConfigOptionID(provider),
-		"options":      reasoningEffortOptions(provider, settings.ReasoningEffort),
+		"options":      composerReasoningOptionValuesToRuntimeOptions(reasoningOptions),
 	})
 	if speedProviderSupportsSpeed(provider) {
 		options = append(options, map[string]any{
@@ -596,39 +633,23 @@ func composerModelConfig(provider string, selected string, options []map[string]
 	}
 }
 
-func composerReasoningConfig(provider string, selected string, locale string) ComposerConfigOption {
-	values := reasoningEffortValuesForProvider(provider)
-	options := make([]ComposerConfigOptionValue, 0, len(values)+1)
-	containsSelected := false
-	for _, value := range values {
-		if value == selected {
-			containsSelected = true
-		}
-		options = append(options, ComposerConfigOptionValue{
-			ID:    value,
-			Label: reasoningEffortLabel(value, locale),
-			Value: value,
-		})
-	}
-	selected = normalizeReasoningEffortForProvider(provider, selected)
-	if selected != "" && !containsSelected {
-		options = append(options, ComposerConfigOptionValue{
-			ID:    selected,
-			Label: reasoningEffortLabel(selected, locale),
-			Value: selected,
-		})
-	}
-	return ComposerConfigOption{
-		Configurable: composerOptionsProviderSupportsSettings(provider),
-		CurrentValue: selected,
-		DefaultValue: selected,
-		Options:      options,
-	}
+type composerModelCatalogOptions struct {
+	DefaultReasoningEffort     string
+	ModelOptions               []map[string]string
+	ReasoningEffortsAdvertised bool
+	ReasoningProfiles          map[string]composerModelReasoningProfile
+	ReasoningEfforts           []AgentModelReasoningEffortOption
+	Source                     string
 }
 
-func composerModelOptionsFromCatalog(ctx context.Context, catalog AgentModelCatalog, provider string, selectedModel string) ([]map[string]string, string, bool) {
+func composerModelOptionsFromCatalog(
+	ctx context.Context,
+	catalog AgentModelCatalog,
+	provider string,
+	selectedModel string,
+) (composerModelCatalogOptions, bool) {
 	if catalog == nil {
-		return nil, "", false
+		return composerModelCatalogOptions{}, false
 	}
 	result, err := catalog.ListModels(ctx, provider)
 	if err != nil {
@@ -639,9 +660,11 @@ func composerModelOptionsFromCatalog(ctx context.Context, catalog AgentModelCata
 			"provider", provider,
 			"error", err,
 		)
-		return nil, "", false
+		return composerModelCatalogOptions{}, false
 	}
 	options := make([]map[string]string, 0, len(result.Models)+1)
+	reasoningProfiles := make(map[string]composerModelReasoningProfile)
+	var selectedCatalogModel *AgentModelOption
 	for _, model := range result.Models {
 		id := strings.TrimSpace(model.ID)
 		if id == "" {
@@ -658,12 +681,38 @@ func composerModelOptionsFromCatalog(ctx context.Context, catalog AgentModelCata
 			"name":  name,
 			"value": id,
 		})
+		if model.ReasoningEffortsAdvertised {
+			reasoningProfiles[id] = composerModelReasoningProfile{
+				DefaultReasoningEffort: strings.TrimSpace(model.DefaultReasoningEffort),
+				ReasoningEfforts: append(
+					[]AgentModelReasoningEffortOption(nil),
+					model.SupportedReasoningEfforts...,
+				),
+			}
+		}
+		if id == strings.TrimSpace(selectedModel) {
+			selected := model
+			selectedCatalogModel = &selected
+		}
 	}
 	selected := strings.TrimSpace(selectedModel)
 	if selected != "" && !containsModelOption(options, selected) {
 		options = append(options, map[string]string{"name": selected, "value": selected})
 	}
-	return options, strings.TrimSpace(result.Source), true
+	catalogOptions := composerModelCatalogOptions{
+		ModelOptions:      options,
+		ReasoningProfiles: reasoningProfiles,
+		Source:            strings.TrimSpace(result.Source),
+	}
+	if selectedCatalogModel != nil {
+		catalogOptions.DefaultReasoningEffort = strings.TrimSpace(selectedCatalogModel.DefaultReasoningEffort)
+		catalogOptions.ReasoningEffortsAdvertised = selectedCatalogModel.ReasoningEffortsAdvertised
+		catalogOptions.ReasoningEfforts = append(
+			[]AgentModelReasoningEffortOption(nil),
+			selectedCatalogModel.SupportedReasoningEfforts...,
+		)
+	}
+	return catalogOptions, true
 }
 
 func containsModelOption(options []map[string]string, value string) bool {
@@ -773,46 +822,4 @@ func composerSpeedConfig(provider string, selected string, locale string) Compos
 		DefaultValue: selected,
 		Options:      options,
 	}
-}
-
-func reasoningEffortOptions(provider string, selected string) []map[string]string {
-	values := reasoningEffortValuesForProvider(provider)
-	options := make([]map[string]string, 0, len(values)+1)
-	containsSelected := false
-	for _, value := range values {
-		if value == selected {
-			containsSelected = true
-		}
-		options = append(options, map[string]string{
-			"name":  reasoningEffortLabel(value, preferencesbiz.DefaultDesktopLocale),
-			"value": value,
-		})
-	}
-	selected = normalizeReasoningEffortForProvider(provider, selected)
-	if selected != "" && !containsSelected {
-		options = append(options, map[string]string{
-			"name":  reasoningEffortLabel(selected, preferencesbiz.DefaultDesktopLocale),
-			"value": selected,
-		})
-	}
-	return options
-}
-
-func reasoningEffortValuesForProvider(provider string) []string {
-	if provider == agentprovider.Codex || provider == agentprovider.ClaudeCode {
-		return []string{"low", "medium", "high", "xhigh"}
-	}
-	return []string{"minimal", "low", "medium", "high", "xhigh"}
-}
-
-func normalizeReasoningEffortForProvider(provider string, value string) string {
-	provider = agentprovider.Normalize(provider)
-	if !agentprovider.SupportsComposerSettings(provider) {
-		return ""
-	}
-	normalized := strings.TrimSpace(value)
-	if (provider == agentprovider.Codex || provider == agentprovider.ClaudeCode) && normalized == "minimal" {
-		return "high"
-	}
-	return normalized
 }

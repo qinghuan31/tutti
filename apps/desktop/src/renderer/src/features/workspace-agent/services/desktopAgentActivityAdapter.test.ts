@@ -757,7 +757,10 @@ test("desktop agent activity adapter normalizes legacy runtime config options", 
           },
           reasoningConfig: {
             configurable: true,
-            options: []
+            options: [
+              { id: "low", value: "low", label: "Low" },
+              { id: "ultra", value: "ultra", label: "Ultra" }
+            ]
           },
           runtimeContext: {
             configOptions: [
@@ -769,7 +772,10 @@ test("desktop agent activity adapter normalizes legacy runtime config options", 
               {
                 id: "reasoning_effort",
                 currentValue: "high",
-                options: [{ value: "medium", name: "中" }]
+                options: [
+                  { value: "medium", name: "中" },
+                  { value: "ultra", name: "ultra" }
+                ]
               }
             ]
           },
@@ -792,7 +798,49 @@ test("desktop agent activity adapter normalizes legacy runtime config options", 
   ]);
   assert.deepEqual(options.reasoningEfforts, [
     { value: "medium", label: "中" },
+    { value: "ultra", label: "Ultra" },
     { value: "high", label: "high" }
+  ]);
+});
+
+test("desktop agent activity adapter preserves ACP labels over synthesized config labels", async () => {
+  const adapter = createDesktopAgentActivityAdapter({
+    tuttidClient: createTuttidClient({
+      async getAgentProviderComposerOptions(provider) {
+        return {
+          provider,
+          effectiveSettings: {},
+          modelConfig: { configurable: true, options: [] },
+          permissionConfig: { configurable: false, modes: [] },
+          reasoningConfig: {
+            configurable: true,
+            currentValue: "ultra",
+            options: []
+          },
+          runtimeContext: {
+            configOptions: [
+              {
+                id: "reasoning_effort",
+                currentValue: "ultra",
+                options: [{ value: "ultra", name: "ACP Ultra" }]
+              }
+            ]
+          },
+          skills: [],
+          capabilityCatalog: []
+        };
+      }
+    }),
+    runtimeApi: createRuntimeApi()
+  });
+
+  const options = await adapter.loadComposerOptions({
+    workspaceId,
+    provider: "codex"
+  });
+
+  assert.deepEqual(options.reasoningEfforts, [
+    { value: "ultra", label: "ACP Ultra" }
   ]);
 });
 
