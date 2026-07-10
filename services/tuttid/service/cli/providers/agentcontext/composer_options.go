@@ -3,6 +3,7 @@ package agentcontext
 import (
 	"context"
 
+	agentproviderbiz "github.com/tutti-os/tutti/services/tuttid/biz/agentprovider"
 	preferencesbiz "github.com/tutti-os/tutti/services/tuttid/biz/preferences"
 	agentservice "github.com/tutti-os/tutti/services/tuttid/service/agent"
 	cliservice "github.com/tutti-os/tutti/services/tuttid/service/cli"
@@ -46,7 +47,29 @@ func (p Provider) runComposerOptions(ctx context.Context, invoke framework.Invok
 	if err := p.requireSessions(); err != nil {
 		return nil, err
 	}
-	defaults := p.composerDefaultsForProvider(ctx, input.Provider)
+	canonicalProvider := agentproviderbiz.Normalize(input.Provider)
+	if canonicalProvider == "" {
+		return nil, agentservice.ErrInvalidArgument
+	}
+	targets, err := p.enabledAgentTargets(ctx)
+	if err != nil {
+		return nil, err
+	}
+	providerEnabled := false
+	for _, target := range targets {
+		if target.Provider == canonicalProvider {
+			providerEnabled = true
+			break
+		}
+	}
+	if !providerEnabled {
+		return nil, &agentservice.ProviderUnavailableError{
+			Provider:   input.Provider,
+			ReasonCode: "agent_provider_not_enabled",
+			Message:    "agent provider is not enabled",
+		}
+	}
+	defaults := p.composerDefaultsForProvider(ctx, canonicalProvider)
 	locale := input.Locale
 	if locale == "" {
 		locale = p.composerDefaultLocale(ctx)
@@ -66,7 +89,7 @@ func (p Provider) runComposerOptions(ctx context.Context, invoke framework.Invok
 	return p.sessions.GetComposerOptions(ctx, agentservice.ComposerOptionsInput{
 		Cwd:                      input.Cwd,
 		Locale:                   locale,
-		Provider:                 input.Provider,
+		Provider:                 canonicalProvider,
 		WorkspaceID:              invoke.WorkspaceID,
 		IncludeCapabilityCatalog: input.IncludeCapabilityCatalog,
 		Settings: agentservice.ComposerSettings{
@@ -110,6 +133,7 @@ func (p Provider) composerDefaultsForProvider(ctx context.Context, provider stri
 
 func composerOptionsValue(options agentservice.ComposerOptions) map[string]any {
 	return map[string]any{
+		"schemaVersion":     1,
 		"provider":          options.Provider,
 		"effectiveSettings": agentservice.ComposerSettingsToMap(options.EffectiveSettings),
 		"modelConfig":       composerConfigOptionValue(options.ModelConfig),

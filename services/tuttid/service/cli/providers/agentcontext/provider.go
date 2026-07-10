@@ -43,11 +43,16 @@ type DesktopPreferencesReader interface {
 	Get(context.Context) (preferencesbiz.DesktopPreferences, error)
 }
 
+type AgentTargetLister interface {
+	List(context.Context) ([]agenttargetbiz.Target, error)
+}
+
 type Provider struct {
 	workspaces      cliservice.WorkspaceCatalog
 	sessions        AgentSessions
 	launchPublisher AgentGUILaunchPublisher
 	preferences     DesktopPreferencesReader
+	agentTargets    AgentTargetLister
 }
 
 func NewProviderWithLaunchPublisher(
@@ -68,14 +73,31 @@ func NewProviderWithLaunchPublisher(
 	}
 }
 
+func NewProviderWithAgentTargets(
+	workspaces cliservice.WorkspaceCatalog,
+	sessions AgentSessions,
+	launchPublisher AgentGUILaunchPublisher,
+	agentTargets AgentTargetLister,
+	preferences ...DesktopPreferencesReader,
+) Provider {
+	provider := NewProviderWithLaunchPublisher(workspaces, sessions, launchPublisher, preferences...)
+	provider.agentTargets = agentTargets
+	return provider
+}
+
 func (Provider) AppID() string {
 	return appID
 }
 
 func (p Provider) Commands() []cliservice.Command {
-	return []cliservice.Command{
-		p.newProvidersCommand(),
-		p.newComposerOptionsCommand(),
+	commands := make([]cliservice.Command, 0, 18)
+	if p.agentTargets != nil {
+		commands = append(commands,
+			p.newProvidersCommand(),
+			p.newComposerOptionsCommand(),
+		)
+	}
+	commands = append(commands,
 		p.newSkillBundleCommand(),
 		p.newProviderStartCommand(providerStartCommandSpec{
 			AppID:         codexAgentAppID,
@@ -117,7 +139,8 @@ func (p Provider) Commands() []cliservice.Command {
 		p.newSessionSummaryCommand(),
 		p.newTurnResourcesCommand(),
 		p.newActivePeersCommand(),
-	}
+	)
+	return commands
 }
 
 func (p Provider) FilterCapabilities(ctx context.Context, _ cliservice.InvokeContext, capabilities []cliservice.Capability) []cliservice.Capability {
@@ -186,4 +209,15 @@ func (p Provider) requireSessions() error {
 		return agentservice.ErrInvalidArgument
 	}
 	return nil
+}
+
+func (p Provider) enabledAgentTargets(ctx context.Context) ([]agenttargetbiz.Target, error) {
+	if p.agentTargets == nil {
+		return nil, agentservice.ErrInvalidArgument
+	}
+	targets, err := p.agentTargets.List(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return agenttargetbiz.EnabledTargetsByProvider(targets), nil
 }

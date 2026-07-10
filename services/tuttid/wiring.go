@@ -392,10 +392,11 @@ func buildDaemonAPI(ctx context.Context, store workspacedata.CatalogStore, analy
 			appCenterService,
 			eventstreamservice.WorkbenchNodeLaunchPublisher{Service: events},
 		),
-		agentcontextcli.NewProviderWithLaunchPublisher(
+		agentcontextcli.NewProviderWithAgentTargets(
 			workspaceService,
 			agentSessionService,
 			eventstreamservice.AgentGUILaunchPublisher{Service: events},
+			agentTargets,
 			preferences,
 		),
 	}
