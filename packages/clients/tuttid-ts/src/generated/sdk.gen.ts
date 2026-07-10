@@ -1093,8 +1093,10 @@ export const reloadLocalWorkspaceApp = <ThrowOnError extends boolean = false>(
 /**
  * Get workspace-app agent preference projection
  *
- * Read-only subset of desktop agent preferences for one workspace app runtime. Intended for workspace app server tokens; exposes default provider selection and developer-gated provider visibility only.
+ * Read-only subset of desktop agent preferences for one workspace app runtime. Intended for workspace app server tokens; exposes default provider selection and developer-gated provider visibility only. Deprecated for Agent integrations: use `tutti --json agent providers` through `@tutti-os/agent-acp-kit/tutti`. This compatibility route remains available for one stable release window.
  *
+ *
+ * @deprecated
  */
 export const getWorkspaceAppAgentPreferences = <
   ThrowOnError extends boolean = false
@@ -1114,8 +1116,10 @@ export const getWorkspaceAppAgentPreferences = <
 /**
  * Get agent provider availability for one workspace app
  *
- * Workspace-app scoped alias of `GET /v1/agent-providers/status` for app server tokens. When `providers` is omitted, returns provider statuses for enabled daemon-owned Agent Targets visible to Agent GUI. When `providers` is supplied, it narrows that Agent Target set and cannot expose providers outside it.
+ * Workspace-app scoped alias of `GET /v1/agent-providers/status` for app server tokens. When `providers` is omitted, returns provider statuses for enabled daemon-owned Agent Targets visible to Agent GUI. When `providers` is supplied, it narrows that Agent Target set and cannot expose providers outside it. Deprecated for Agent integrations: use `tutti --json agent providers` through `@tutti-os/agent-acp-kit/tutti`. This compatibility route remains available for one stable release window.
  *
+ *
+ * @deprecated
  */
 export const getWorkspaceAppAgentProviderStatuses = <
   ThrowOnError extends boolean = false
@@ -1135,8 +1139,10 @@ export const getWorkspaceAppAgentProviderStatuses = <
 /**
  * Get agent provider composer options for one workspace app
  *
- * Workspace-app scoped alias of `POST /v1/agent-providers/{provider}/composer-options` for app server tokens.
+ * Workspace-app scoped alias of `POST /v1/agent-providers/{provider}/composer-options` for app server tokens. Deprecated for Agent integrations: use `tutti --json agent composer-options --provider <providerId>` through `@tutti-os/agent-acp-kit/tutti`. This compatibility route remains available for one stable release window.
  *
+ *
+ * @deprecated
  */
 export const getWorkspaceAppAgentProviderComposerOptions = <
   ThrowOnError extends boolean = false

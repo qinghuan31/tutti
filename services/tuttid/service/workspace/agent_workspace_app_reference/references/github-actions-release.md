@@ -27,7 +27,7 @@ This reusable workflow builds, publishes, and verifies the app package. It can a
 
 Declare one exact stable SemVer in `min_tutti_version` for every normal release. Choose the earliest Tutti version that contains every host API and runtime contract used by the app. Use `0.0.0` only when the app requires no minimum Tutti version. Publish a new app version when this minimum changes.
 
-The workspace-app scoped provider APIs first ship in `0.1.19-rc.0`. Production apps that use `references/dynamic-agent-providers.md` require the stable floor `min_tutti_version: "0.1.19"` or later.
+The Agent CLI catalog schema v2 and composer visibility contract ship in the `0.1.19` release line. Production apps that use the `@tutti-os/agent-acp-kit/tutti` auto facade require `min_tutti_version: "0.1.19"` or later and must pin the exact stable kit version validated with that Tutti release.
 
 ## Production Workflow Template
 

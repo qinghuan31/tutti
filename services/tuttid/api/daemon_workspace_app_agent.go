@@ -101,18 +101,12 @@ func (api DaemonAPI) workspaceAppAgentStatusProviders(
 	if err != nil {
 		return nil, err
 	}
+	visibleTargets := agenttargetbiz.EnabledTargetsByProvider(targets)
 	visible := map[string]struct{}{}
-	ordered := make([]string, 0, len(targets))
-	for _, target := range targets {
-		normalized, err := agenttargetbiz.NormalizeTarget(target)
-		if err != nil || !normalized.Enabled {
-			continue
-		}
-		if _, ok := visible[normalized.Provider]; ok {
-			continue
-		}
-		visible[normalized.Provider] = struct{}{}
-		ordered = append(ordered, normalized.Provider)
+	ordered := make([]string, 0, len(visibleTargets))
+	for _, target := range visibleTargets {
+		visible[target.Provider] = struct{}{}
+		ordered = append(ordered, target.Provider)
 	}
 	providers := make([]tuttigenerated.WorkspaceAgentProvider, 0, len(targets))
 	seen := map[string]struct{}{}
