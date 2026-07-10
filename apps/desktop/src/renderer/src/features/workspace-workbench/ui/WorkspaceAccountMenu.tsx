@@ -9,8 +9,8 @@ import {
   Popover,
   PopoverContent,
   PopoverTrigger,
-  SettingsIcon,
-  SignOutIcon
+  SignOutIcon,
+  UserLinedIcon
 } from "@tutti-os/ui-system";
 import { useTranslation } from "@renderer/i18n";
 import { cn } from "@renderer/lib/format";
@@ -402,7 +402,7 @@ const WorkspaceAccountMenuView = memo(function WorkspaceAccountMenuView({
                     openExternal(accountMenuState.links.settingsUrl)
                   }
                 >
-                  <SettingsIcon aria-hidden="true" size={15} />
+                  <UserLinedIcon aria-hidden="true" size={15} />
                   <span className="min-w-0 flex-1 truncate text-left">
                     {labels.accountCenter}
                   </span>
