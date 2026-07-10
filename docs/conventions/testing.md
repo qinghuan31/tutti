@@ -63,6 +63,11 @@ Failures print a bounded tail and the full log path. Use `--tail-lines <n>` to
 change the displayed failure tail and `--max-parallel <n>` to reduce local
 resource pressure.
 
+The TypeScript runner uses up to four package lanes locally. CI runs one package
+lane at a time because large Vitest packages already own internal worker pools;
+stacking package concurrency on a small hosted runner can turn otherwise fast
+component tests into timeout failures.
+
 Agent daemon runtime tests suppress the default structured runtime logger to
 keep test output bounded. Set `TUTTI_TEST_LOGS=1` for a diagnostic run that
 needs the full runtime log stream.

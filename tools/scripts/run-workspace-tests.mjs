@@ -60,7 +60,10 @@ if (isMainModule()) {
 
   const result = await runValidationLanes({
     lanes,
-    maxParallel: readPositiveIntegerOption("--max-parallel", 4),
+    maxParallel: readPositiveIntegerOption(
+      "--max-parallel",
+      process.env.CI ? 1 : 4
+    ),
     summaryLabel: toolsOnly ? "tool tests" : "workspace tests",
     tailLines: readPositiveIntegerOption("--tail-lines", 80),
     tmpDirectoryName: "test-runs/typescript",
