@@ -1,12 +1,22 @@
 package runtimeprep
 
 import (
+	"context"
 	"sort"
 	"strings"
 )
 
 func tuttiCLIPolicy(input PrepareInput) string {
-	return tuttiRuntimePolicy(input) + "\n\n" + strings.TrimSpace(renderProviderSkillTemplate("policy_templates/host-app-context.md", nil))
+	if input.resolved == nil {
+		if resolved, err := resolveCapabilities(context.Background(), input, StandardProfile(), nil); err == nil {
+			input.resolved = resolved
+		}
+	}
+	return tuttiRuntimePolicy(input)
+}
+
+func hostAppContextPolicy() string {
+	return strings.TrimSpace(renderProviderSkillTemplate("policy_templates/host-app-context.md", nil))
 }
 
 func tuttiRuntimePolicy(input PrepareInput) string {
@@ -21,11 +31,11 @@ func tuttiRuntimePolicy(input PrepareInput) string {
 			"{{AGENT_SESSION_ID}}":                        strings.TrimSpace(input.AgentSessionID),
 			"{{PROVIDER}}":                                strings.TrimSpace(input.Provider),
 			"{{PROVIDER_SPECIFIC_MENTION_ROUTING}}":       providerSpecificMentionRouting(input.Provider),
-			"{{PROVIDER_SPECIFIC_EXECUTION_ENVIRONMENT}}": providerSpecificExecutionEnvironment(input.Provider),
-			"{{ENVIRONMENT_POLICY_SECTIONS}}":             renderPolicySections(input, PolicyAnchorEnvironment),
-			"{{TOOLS_POLICY_SECTIONS}}":                   capabilityPolicyLines(input),
-			"{{SKILL_STRATEGY_POLICY_SECTIONS}}":          renderPolicySections(input, PolicyAnchorSkillStrategy),
-			"{{SPECIALIZED_POLICY_SECTIONS}}":             renderPolicySections(input, PolicyAnchorSpecialized),
+			"{{PROVIDER_SPECIFIC_EXECUTION_ENVIRONMENT}}": "",
+			"{{ENVIRONMENT_POLICY_SECTIONS}}":             renderPolicySections(input, PolicyAnchorEnvironment, PolicyDeliveryProviderRuntime),
+			"{{TOOLS_POLICY_SECTIONS}}":                   capabilityPolicyLines(input, PolicyDeliveryProviderRuntime),
+			"{{SKILL_STRATEGY_POLICY_SECTIONS}}":          renderPolicySections(input, PolicyAnchorSkillStrategy, PolicyDeliveryProviderRuntime),
+			"{{SPECIALIZED_POLICY_SECTIONS}}":             renderPolicySections(input, PolicyAnchorSpecialized, PolicyDeliveryProviderRuntime),
 		},
 	))
 }
@@ -54,18 +64,18 @@ func tuttiSkillBundleRecommendedPolicy(input PrepareInput) string {
 			"{{AGENT_SESSION_ID}}":                        strings.TrimSpace(input.AgentSessionID),
 			"{{PROVIDER}}":                                strings.TrimSpace(input.Provider),
 			"{{PROVIDER_SPECIFIC_MENTION_ROUTING}}":       providerSpecificMentionRouting(input.Provider),
-			"{{PROVIDER_SPECIFIC_EXECUTION_ENVIRONMENT}}": providerSpecificExecutionEnvironment(input.Provider),
-			"{{ENVIRONMENT_POLICY_SECTIONS}}":             renderPolicySections(input, PolicyAnchorEnvironment),
-			"{{TOOLS_POLICY_SECTIONS}}":                   capabilityPolicyLines(input),
-			"{{SKILL_STRATEGY_POLICY_SECTIONS}}":          renderPolicySections(input, PolicyAnchorSkillStrategy),
-			"{{SPECIALIZED_POLICY_SECTIONS}}":             renderPolicySections(input, PolicyAnchorSpecialized),
+			"{{PROVIDER_SPECIFIC_EXECUTION_ENVIRONMENT}}": "",
+			"{{ENVIRONMENT_POLICY_SECTIONS}}":             renderPolicySections(input, PolicyAnchorEnvironment, PolicyDeliverySkillBundle),
+			"{{TOOLS_POLICY_SECTIONS}}":                   capabilityPolicyLines(input, PolicyDeliverySkillBundle),
+			"{{SKILL_STRATEGY_POLICY_SECTIONS}}":          renderPolicySections(input, PolicyAnchorSkillStrategy, PolicyDeliverySkillBundle),
+			"{{SPECIALIZED_POLICY_SECTIONS}}":             renderPolicySections(input, PolicyAnchorSpecialized, PolicyDeliverySkillBundle),
 		},
 	))
 }
 
-func capabilityPolicyLines(input PrepareInput) string {
+func capabilityPolicyLines(input PrepareInput, delivery PolicyDelivery) string {
 	if input.resolved != nil {
-		return renderPolicySections(input, PolicyAnchorTools)
+		return renderPolicySections(input, PolicyAnchorTools, delivery)
 	}
 	return strings.TrimSpace(browserUseHandoffPolicyLines(input) + computerUseHandoffPolicyLines(input))
 }
@@ -106,14 +116,15 @@ Claude Code mention routing:
 	}
 }
 
-func providerSpecificExecutionEnvironment(provider string) string {
+func providerSpecificExecutionEnvironment(provider string, cliCommand string) string {
+	command := normalizeCLICommandName(cliCommand)
 	switch strings.ToLower(strings.TrimSpace(provider)) {
 	case "codex":
-		return "- Codex: `tutti-dev` needs localhost/IPC. When running `tutti-dev` from a sandboxed exec tool, set `sandbox_permissions=require_escalated`. If `tutti-dev` reports `daemon is not reachable from this agent execution environment`, rerun once with `sandbox_permissions=require_escalated`.\n"
+		return "- Codex: `" + command + "` needs localhost/IPC. When running `" + command + "` from a sandboxed exec tool, set `sandbox_permissions=require_escalated`. If `" + command + "` reports `daemon is not reachable from this agent execution environment`, rerun once with `sandbox_permissions=require_escalated`.\n"
 	case "claude", "claude-code":
-		return "- Claude Code `Monitor` tool is disabled. Poll async Tutti jobs with one bounded shell/script.\n- Claude Code: run `tutti-dev` only from a shell environment that can reach localhost/IPC. If the provider runtime cannot reach the local Tutti daemon, report that limitation; do not invent Codex `sandbox_permissions`.\n"
+		return "- Claude Code `Monitor` tool is disabled. Poll async Tutti jobs with one bounded shell/script.\n- Claude Code: run `" + command + "` only from a shell environment that can reach localhost/IPC. If the provider runtime cannot reach the local Tutti daemon, report that limitation; do not invent Codex `sandbox_permissions`.\n"
 	case "cursor", "cursor-agent", "hermes", "hermes-agent", "nexight", "tutti", "openclaw", "open-claw", "opencode", "open-code":
-		return "- This provider must run `tutti-dev` from an execution environment with localhost/IPC access. If the daemon is unreachable from the provider runtime, report that limitation instead of retrying with provider-specific sandbox flags.\n"
+		return "- This provider must run `" + command + "` from an execution environment with localhost/IPC access. If the daemon is unreachable from the provider runtime, report that limitation instead of retrying with provider-specific sandbox flags.\n"
 	default:
 		return ""
 	}

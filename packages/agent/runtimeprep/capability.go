@@ -24,11 +24,19 @@ var policyAnchorRank = map[PolicyAnchor]int{
 }
 
 type PolicySection struct {
-	Anchor PolicyAnchor
-	Key    string
-	Order  int
-	Body   string
+	Anchor   PolicyAnchor
+	Key      string
+	Order    int
+	Delivery PolicyDelivery
+	Body     string
 }
+
+type PolicyDelivery string
+
+const (
+	PolicyDeliveryProviderRuntime PolicyDelivery = "provider-runtime"
+	PolicyDeliverySkillBundle     PolicyDelivery = "skill-bundle"
+)
 
 type SkillSpec struct {
 	ID        string
@@ -105,9 +113,46 @@ func StandardProfile() DeploymentProfile {
 		Title: "Tutti Runtime",
 		Intro: "This directory is being used by a Tutti AgentGUI session.",
 		Packs: []CapabilityPack{
-			standardSkillsPack(), BrowserUsePack(), ComputerUsePack(),
+			CoreSkillsPack(), TuttiDesktopHostPack(), BrowserUsePack(), ComputerUsePack(),
 		},
 	}
+}
+
+// CoreSkillsPack contributes the provider-neutral Tutti CLI and mention
+// routing skills. Deployment profiles should include this pack when they want
+// the shared skills without inheriting Tutti desktop-host policy.
+func CoreSkillsPack() CapabilityPack {
+	return CapabilityPack{Name: "tutti-core-skills", Resolve: func(_ context.Context, input PrepareInput) (CapabilityContribution, error) {
+		return CapabilityContribution{Enabled: true, Skills: []SkillSpec{
+			{ID: "tutti/tutti-cli", Name: tuttiSkillName, Files: map[string]string{"SKILL.md": tuttiCLISkill(input), commandGuideReferencePath: commandGuideReference(input)}},
+			{ID: "tutti/tutti-handoff", Name: tuttiHandoffSkillName, Files: map[string]string{"SKILL.md": tuttiHandoffSkill(input)}},
+			{ID: "tutti/issue-manager", Name: issueManagerSkillName, Files: map[string]string{"SKILL.md": issueManagerSkill(input)}},
+			{ID: "tutti/workspace-app", Name: workspaceAppSkillName, Files: map[string]string{"SKILL.md": workspaceAppSkill(input)}},
+			{ID: "tutti/reference", Name: referenceSkillName, Files: map[string]string{"SKILL.md": referenceSkill(input)}},
+		}}, nil
+	}}
+}
+
+// TuttiDesktopHostPack contributes policy that is true for the local Tutti
+// desktop host but not necessarily for other deployments such as managed VMs.
+func TuttiDesktopHostPack() CapabilityPack {
+	return CapabilityPack{Name: "tutti-desktop-host", Resolve: func(_ context.Context, input PrepareInput) (CapabilityContribution, error) {
+		return CapabilityContribution{Enabled: true, PolicySections: []PolicySection{
+			{
+				Anchor: PolicyAnchorTools,
+				Key:    "provider-execution",
+				Order:  -100,
+				Body:   providerSpecificExecutionEnvironment(input.Provider, input.CLICommand),
+			},
+			{
+				Anchor:   PolicyAnchorSpecialized,
+				Key:      "host-app-context",
+				Order:    1000,
+				Delivery: PolicyDeliveryProviderRuntime,
+				Body:     hostAppContextPolicy(),
+			},
+		}}, nil
+	}}
 }
 
 func BrowserUsePack() CapabilityPack {
@@ -129,18 +174,6 @@ func ComputerUsePack() CapabilityPack {
 			PolicySections: []PolicySection{{Anchor: PolicyAnchorTools, Key: "handoff", Body: computerUseHandoffPolicyLines(input)}},
 			EnvOverlay:     computerUseEnv(enabled),
 		}, nil
-	}}
-}
-
-func standardSkillsPack() CapabilityPack {
-	return CapabilityPack{Name: "tutti-core-skills", Resolve: func(_ context.Context, input PrepareInput) (CapabilityContribution, error) {
-		return CapabilityContribution{Enabled: true, Skills: []SkillSpec{
-			{ID: "tutti/tutti-cli", Name: tuttiSkillName, Files: map[string]string{"SKILL.md": tuttiCLISkill(input), commandGuideReferencePath: commandGuideReference(input)}},
-			{ID: "tutti/tutti-handoff", Name: tuttiHandoffSkillName, Files: map[string]string{"SKILL.md": tuttiHandoffSkill(input)}},
-			{ID: "tutti/issue-manager", Name: issueManagerSkillName, Files: map[string]string{"SKILL.md": issueManagerSkill(input)}},
-			{ID: "tutti/workspace-app", Name: workspaceAppSkillName, Files: map[string]string{"SKILL.md": workspaceAppSkill(input)}},
-			{ID: "tutti/reference", Name: referenceSkillName, Files: map[string]string{"SKILL.md": referenceSkill(input)}},
-		}}, nil
 	}}
 }
 
@@ -184,6 +217,9 @@ func resolveCapabilities(ctx context.Context, input PrepareInput, profile Deploy
 			}
 			if strings.TrimSpace(section.Key) == "" {
 				section.Key = fmt.Sprintf("section-%d", index)
+			}
+			if section.Delivery != "" && section.Delivery != PolicyDeliveryProviderRuntime && section.Delivery != PolicyDeliverySkillBundle {
+				return nil, fmt.Errorf("capability pack %s uses unknown policy delivery %q", name, section.Delivery)
 			}
 			section.Key = name + "/" + section.Key
 		}
@@ -262,13 +298,15 @@ func skillSupportsProvider(skill SkillSpec, provider string) bool {
 	return false
 }
 
-func renderPolicySections(input PrepareInput, anchor PolicyAnchor) string {
+func renderPolicySections(input PrepareInput, anchor PolicyAnchor, delivery PolicyDelivery) string {
 	if input.resolved == nil {
 		return ""
 	}
 	var bodies []string
 	for _, section := range input.resolved.PolicySections {
-		if section.Anchor == anchor && strings.TrimSpace(section.Body) != "" {
+		if section.Anchor == anchor &&
+			(section.Delivery == "" || section.Delivery == delivery) &&
+			strings.TrimSpace(section.Body) != "" {
 			bodies = append(bodies, strings.TrimSpace(section.Body))
 		}
 	}

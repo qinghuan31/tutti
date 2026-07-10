@@ -51,6 +51,35 @@ func TestDefaultPreparerResolvesInjectedPackAcrossPolicySkillsAndEnv(t *testing.
 	}
 }
 
+func TestCustomDeploymentProfileDoesNotInheritTuttiDesktopHostPolicy(t *testing.T) {
+	t.Parallel()
+
+	bundle, err := Resolve(t.Context(), PrepareInput{
+		WorkspaceID: "workspace-1", AgentSessionID: "session-1", Provider: "codex", CLICommand: "tutti",
+	}, DeploymentProfile{
+		Name:  "managed-vm",
+		Title: "Managed VM",
+		Intro: "Runs in a managed VM.",
+		Packs: []CapabilityPack{CoreSkillsPack()},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, forbidden := range []string{
+		"# Host App Context",
+		"Tutti desktop app host",
+		"sandbox_permissions=require_escalated",
+		"`tutti-dev`",
+	} {
+		if strings.Contains(bundle.SystemPrompt, forbidden) {
+			t.Fatalf("managed VM prompt inherited desktop host policy %q: %s", forbidden, bundle.SystemPrompt)
+		}
+	}
+	if len(bundle.Skills) != 5 {
+		t.Fatalf("managed VM core skill count = %d, want 5", len(bundle.Skills))
+	}
+}
+
 func TestResolveCapabilitiesRejectsDuplicateSkillIDs(t *testing.T) {
 	profile := DeploymentProfile{Name: "test", Packs: []CapabilityPack{
 		{Name: "one", Resolve: staticCapability(SkillSpec{ID: "shared/skill", Name: "one", Files: map[string]string{"SKILL.md": "one"}})},

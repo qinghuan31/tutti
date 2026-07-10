@@ -66,7 +66,26 @@ runtimeprep.CapabilityPack{
 
 Policy sections sort by anchor, order, and pack-qualified key. Duplicate pack
 names, unknown anchors, duplicate skill IDs, and unsafe skill file paths fail
-resolution rather than silently overriding content.
+resolution rather than silently overriding content. Sections apply to both
+provider runtime policy and dynamic skill bundles by default; set
+`PolicySection.Delivery` when a section is valid for only one delivery path.
+
+`StandardProfile` includes `CoreSkillsPack`, `TuttiDesktopHostPack`, browser
+use, and computer use. A non-desktop deployment should compose its own profile
+from `CoreSkillsPack` and deployment-owned packs instead of copying the
+desktop-host policy:
+
+```go
+profile := runtimeprep.DeploymentProfile{
+    Name:  "managed-vm",
+    Title: "Managed VM Runtime",
+    Intro: "This session runs inside the managed VM.",
+    Packs: []runtimeprep.CapabilityPack{
+        runtimeprep.CoreSkillsPack(),
+        vmEnvironmentPack,
+    },
+}
+```
 
 ## Skill Injection
 
