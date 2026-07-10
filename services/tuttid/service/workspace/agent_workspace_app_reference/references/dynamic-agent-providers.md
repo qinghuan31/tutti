@@ -111,9 +111,10 @@ export async function listAppAgentProviders(
         ...status,
         runtimeProviderId,
         available,
-        reasonCode: runtimeSupported
-          ? (status.availability.reasonCode ?? undefined)
-          : "kit_runtime_unavailable",
+        reasonCode:
+          status.availability.status === "ready" && !runtimeSupported
+            ? "kit_runtime_unavailable"
+            : (status.availability.reasonCode ?? undefined),
         preferred: status.provider === preferences.defaultAgentProvider,
         composerOptions: await getComposerOptions(tutti, status, available)
       };

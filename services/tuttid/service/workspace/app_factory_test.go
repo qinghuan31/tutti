@@ -371,6 +371,7 @@ func TestAppFactoryServiceCreateUsesDraftDirAndReferenceContext(t *testing.T) {
 		"toKitAgentProviderId",
 		"getManagedAgentInvocationCredentialFromHeaders",
 		"isManagedAgentInvocationProviderId",
+		"managedCredential && isManagedAgentInvocationProviderId(runtimeProviderId)",
 	} {
 		if !strings.Contains(agentACPReference, want) {
 			t.Fatalf("agent-acp-kit reference missing %q:\n%s", want, agentACPReference)
@@ -393,6 +394,7 @@ func TestAppFactoryServiceCreateUsesDraftDirAndReferenceContext(t *testing.T) {
 		"availability.reasonCode",
 		"registeredKitProviderIds",
 		"kit_runtime_unavailable",
+		`status.availability.status === "ready" && !runtimeSupported`,
 		"localAgentRuntime.detect()",
 		"agent-providers/status",
 	} {

@@ -124,12 +124,13 @@ if (
 ) {
   throw new Error(`Managed execution does not support ${runtimeProviderId}`);
 }
-const runContext = isManagedAgentInvocationProviderId(runtimeProviderId)
-  ? await createManagedAgentRunContextFromHeaders(req.headers, {
-      providerId: runtimeProviderId,
-      runId
-    })
-  : undefined;
+const runContext =
+  managedCredential && isManagedAgentInvocationProviderId(runtimeProviderId)
+    ? await createManagedAgentRunContextFromHeaders(req.headers, {
+        providerId: runtimeProviderId,
+        runId
+      })
+    : undefined;
 const cwd = runContext?.cwd ?? appLocalRunCwd;
 
 for await (const event of localAgentRuntime.run({
