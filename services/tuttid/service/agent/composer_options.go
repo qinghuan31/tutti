@@ -5,9 +5,10 @@ import (
 	"log/slog"
 	"strings"
 
+	runtimeprep "github.com/tutti-os/tutti/packages/agent/runtimeprep"
 	"github.com/tutti-os/tutti/services/tuttid/biz/agentprovider"
 	preferencesbiz "github.com/tutti-os/tutti/services/tuttid/biz/preferences"
-	agentsidecarservice "github.com/tutti-os/tutti/services/tuttid/service/agentsidecar"
+	computerservice "github.com/tutti-os/tutti/services/tuttid/service/computer"
 )
 
 type PermissionModeSemantic string
@@ -217,13 +218,13 @@ func composerProviderCapabilities(provider string) []string {
 	// Browser use is delivered as a default MCP server to every provider, so the
 	// composer advertises it up front when enabled. Live sessions re-report it
 	// from session env (runtime adapters), which takes precedence in the GUI.
-	if agentsidecarservice.BrowserUseDefaultEnabled() {
+	if runtimeprep.BrowserUseDefaultEnabled() {
 		capabilities = append(capabilities, "browserUse")
 	}
 	// Computer use requires a local cua-driver before the composer advertises it
 	// up front. Live sessions re-report it from session env (runtime adapters),
 	// which takes precedence in the GUI.
-	if agentsidecarservice.ComputerUseAvailable() {
+	if runtimeprep.ComputerUseDefaultEnabled() && computerservice.CheckReady() == nil {
 		capabilities = append(capabilities, "computerUse")
 	}
 	return capabilities

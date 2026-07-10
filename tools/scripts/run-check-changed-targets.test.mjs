@@ -21,6 +21,10 @@ describe("resolveGoModuleRoot", () => {
       resolveGoModuleRoot("apps/cli/internal/app/foo.go"),
       "apps/cli"
     );
+    assert.equal(
+      resolveGoModuleRoot("packages/agent/runtimeprep/preparer.go"),
+      "packages/agent/runtimeprep"
+    );
   });
 });
 

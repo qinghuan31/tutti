@@ -246,7 +246,7 @@ referencescli.NewProvider(workspaceService, appCenterService, issueService),
 
 ### 3.3 Layer ③ — skill + 路由
 
-**`services/tuttid/service/agentsidecar/skill_templates/reference.md`**
+**`packages/agent/runtimeprep/skill_templates/reference.md`**
 
 ```markdown
 ---

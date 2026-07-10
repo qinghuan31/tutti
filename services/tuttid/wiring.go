@@ -11,13 +11,13 @@ import (
 	"time"
 
 	agentdaemon "github.com/tutti-os/tutti/packages/agent/daemon"
+	runtimeprep "github.com/tutti-os/tutti/packages/agent/runtimeprep"
 	workspaceissues "github.com/tutti-os/tutti/packages/workspace/issues"
 	tuttiapi "github.com/tutti-os/tutti/services/tuttid/api"
 	workspacedata "github.com/tutti-os/tutti/services/tuttid/data/workspace"
 	tuttiserver "github.com/tutti-os/tutti/services/tuttid/server"
 	accountservice "github.com/tutti-os/tutti/services/tuttid/service/account"
 	agentservice "github.com/tutti-os/tutti/services/tuttid/service/agent"
-	agentsidecarservice "github.com/tutti-os/tutti/services/tuttid/service/agentsidecar"
 	agentstatusservice "github.com/tutti-os/tutti/services/tuttid/service/agentstatus"
 	agenttargetservice "github.com/tutti-os/tutti/services/tuttid/service/agenttarget"
 	browsersvc "github.com/tutti-os/tutti/services/tuttid/service/browser"
@@ -36,6 +36,7 @@ import (
 	managedruntime "github.com/tutti-os/tutti/services/tuttid/service/managedruntime"
 	preferencesservice "github.com/tutti-os/tutti/services/tuttid/service/preferences"
 	reporterservice "github.com/tutti-os/tutti/services/tuttid/service/reporter"
+	tuttiagentservice "github.com/tutti-os/tutti/services/tuttid/service/tuttiagent"
 	userprojectservice "github.com/tutti-os/tutti/services/tuttid/service/userproject"
 	workspaceservice "github.com/tutti-os/tutti/services/tuttid/service/workspace"
 	tuttitypes "github.com/tutti-os/tutti/services/tuttid/types"
@@ -140,12 +141,12 @@ func (w *tuttiWiring) buildWorkspaceModule(ctx context.Context) error {
 	w.workspaceStore = workspaceStore
 	// Browser use is delivered through the daemon-owned `tutti browser` CLI;
 	// the service owns a chrome-devtools-mcp subprocess per workspace.
-	if agentsidecarservice.BrowserUseDefaultEnabled() {
+	if runtimeprep.BrowserUseDefaultEnabled() {
 		w.browserService = browsersvc.NewService(workspaceStore)
 	}
 	// Computer use is delivered through the daemon-owned `tutti computer` CLI;
 	// the service owns a cua-driver MCP subprocess per workspace.
-	if agentsidecarservice.ComputerUseDefaultEnabled() {
+	if runtimeprep.ComputerUseDefaultEnabled() {
 		w.computerService = computersvc.NewService()
 	}
 	api, appCenterService, agentRuntime, providerAuthWatcher, err := buildDaemonAPI(ctx, workspaceStore, nil, w.browserService, w.computerService)
@@ -282,7 +283,11 @@ func buildDaemonAPI(ctx context.Context, store workspacedata.CatalogStore, analy
 	if err != nil {
 		return tuttiapi.DaemonAPI{}, nil, nil, nil, fmt.Errorf("create agent runtime: %w", err)
 	}
-	agentSidecarPreparer := agentsidecarservice.NewDefaultPreparer(tuttitypes.DefaultStateDir())
+	agentRuntimePreparer := runtimeprep.NewDefaultPreparer(tuttitypes.DefaultStateDir())
+	agentRuntimePreparer.RegisterProvider(tuttiagentservice.NewPreparer())
+	agentRuntimePreparer.ComputerUseAvailable = func() bool {
+		return runtimeprep.ComputerUseDefaultEnabled() && computersvc.CheckReady() == nil
+	}
 	userProjectService := userprojectservice.Service{
 		Store: userProjectStore,
 	}
@@ -307,7 +312,7 @@ func buildDaemonAPI(ctx context.Context, store workspacedata.CatalogStore, analy
 		RootDir:       tuttitypes.DefaultStateDir(),
 		SourceRootDir: filepath.Join(tuttitypes.DefaultStateDir(), "agent-prompt-assets"),
 	}
-	agentSessionService.RuntimePreparer = agentSidecarPreparer
+	agentSessionService.RuntimePreparer = agentRuntimePreparer
 	agentSessionService.AvailabilityChecker = agentservice.AgentStatusProviderAvailabilityChecker{
 		Service: &agentStatusService,
 	}
@@ -406,16 +411,16 @@ func buildDaemonAPI(ctx context.Context, store workspacedata.CatalogStore, analy
 		return tuttiapi.DaemonAPI{}, nil, nil, nil, fmt.Errorf("create cli registry: %w", err)
 	}
 	cliRegistry.AppCommands = appCLIRegistry
-	agentSidecarPreparer.CommandCatalog = cliRegistry
+	agentRuntimePreparer.CommandCatalog = runtimePrepCommandCatalog{Catalog: cliRegistry}
 
 	terminalService := &workspaceservice.TerminalService{}
 	accountService.OnLoginCompleted = func(ctx context.Context) {
-		agentsidecarservice.BootstrapTuttiAgentUserAuth(ctx)
+		tuttiagentservice.BootstrapTuttiAgentUserAuth(ctx)
 	}
 	accountService.OnLogoutCompleted = func(ctx context.Context) {
-		agentsidecarservice.LogoutTuttiAgentUserAuth(ctx)
+		tuttiagentservice.LogoutTuttiAgentUserAuth(ctx)
 	}
-	go agentsidecarservice.BootstrapTuttiAgentUserAuth(context.Background())
+	go tuttiagentservice.BootstrapTuttiAgentUserAuth(context.Background())
 
 	// External credential switchers (for example cc-switch) rewrite provider
 	// auth/config files without notifying tuttid. Watch those files so cached

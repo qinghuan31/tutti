@@ -526,7 +526,8 @@ file or directory`. If the CLI path exists but `codex app-server` cannot
   the daemon readiness probe.
 - References:
   [npm_registry.go](../../services/tuttid/service/agentstatus/npm_registry.go)
-  [tutti_agent.go](../../services/tuttid/service/agentsidecar/tutti_agent.go)
+  [runtimeprep tutti_agent.go](../../packages/agent/runtimeprep/tutti_agent.go)
+  [tuttid tuttiagent service.go](../../services/tuttid/service/tuttiagent/service.go)
 
 ### Dynamic CLI input rejects plausible flags
 
@@ -959,7 +960,7 @@ delimited by ---`, and the composer skill picker may show partial or
   skills, then run `pnpm lint:go` and
   `cd services/tuttid && go test ./... && go build ./...`.
 - References:
-  [codex.go](../../services/tuttid/service/agentsidecar/codex.go)
+  [codex.go](../../packages/agent/runtimeprep/codex.go)
   [skill_options.go](../../services/tuttid/service/agent/skill_options.go)
 
 ### Browser Node failed navigation renders a blank panel
@@ -1426,14 +1427,14 @@ delimited by ---`, and the composer skill picker may show partial or
   the global Codex config. Do not create marker files or directories in the
   user's cwd.
 - Validation:
-  Add or update `agentsidecar` tests that verify no cwd marker is created, the
+  Add or update `runtimeprep` tests that verify no cwd marker is created, the
   generated Codex config preserves user-level provider settings while disabling
   project root markers, and the user's global config is not modified. Run
   `pnpm lint:go` plus
   `cd services/tuttid && go test ./... && go build ./...`.
 - References:
-  [codex.go](../../services/tuttid/service/agentsidecar/codex.go)
-  [preparer_test.go](../../services/tuttid/service/agentsidecar/preparer_test.go)
+  [codex.go](../../packages/agent/runtimeprep/codex.go)
+  [preparer_test.go](../../packages/agent/runtimeprep/preparer_test.go)
 
 ### Cursor sessions create project `.cursor/skills` or `AGENTS.md` changes
 
@@ -1468,14 +1469,15 @@ delimited by ---`, and the composer skill picker may show partial or
   injected skills or Tutti runtime instructions into the workspace cwd for
   Cursor sessions.
 - Validation:
-  Add `agentsidecar` coverage that Cursor prepare creates the runtime plugin
+  Add `runtimeprep` coverage that Cursor prepare creates the runtime plugin
   while leaving project `.cursor/skills` and `AGENTS.md` untouched, runtime
   coverage that Cursor ACP includes `--plugin-dir`, and agent service coverage
   that Cursor composer skill discovery includes plugin skills. Then run
-  `cd services/tuttid && go test ./service/agentsidecar ./service/agent` and
+  `cd packages/agent/runtimeprep && go test ./...`,
+  `cd services/tuttid && go test ./service/agent`, and
   `go test ./packages/agent/daemon/runtime`.
 - References:
-  [cursor.go](../../services/tuttid/service/agentsidecar/cursor.go)
+  [cursor.go](../../packages/agent/runtimeprep/cursor.go)
   [acp_provider_cursor.go](../../packages/agent/daemon/runtime/acp_provider_cursor.go)
   [skill_options.go](../../services/tuttid/service/agent/skill_options.go)
 
@@ -1554,12 +1556,12 @@ delimited by ---`, and the composer skill picker may show partial or
   run-scoped `CODEX_HOME` at the same relative path. Absolute catalog paths
   need no mirror. Do not mutate the user's global config.
 - Validation:
-  Add or update `agentsidecar` tests that set a relative catalog beside
+  Add or update `runtimeprep` tests that set a relative catalog beside
   `config.toml` and assert the sandbox exposes it. Run
-  `cd services/tuttid && go test ./service/agentsidecar`.
+  `cd packages/agent/runtimeprep && go test ./...`.
 - References:
-  [codex.go](../../services/tuttid/service/agentsidecar/codex.go)
-  [preparer_test.go](../../services/tuttid/service/agentsidecar/preparer_test.go)
+  [codex.go](../../packages/agent/runtimeprep/codex.go)
+  [preparer_test.go](../../packages/agent/runtimeprep/preparer_test.go)
 
 ### Codex app-server subagent output appears as the parent reply
 
