@@ -163,6 +163,7 @@ Go linting uses `golangci-lint` across the repository's current Go modules.
 The current root entrypoint runs the linter from:
 
 - `packages/appcli/core`
+- `packages/agent/runtimeprep`
 - `packages/workspace/files`
 - `packages/workbench/service`
 - `services/tuttid`
@@ -176,7 +177,8 @@ During the migration, selected historical files carry file-local
 service/API code should stay outside those exceptions and must continue to
 satisfy the normal Go lint baseline.
 
-Changed-aware Go validation includes the nested `packages/agent/daemon` module.
+Changed-aware Go validation includes the nested `packages/agent/daemon` and
+`packages/agent/runtimeprep` modules.
 Codex app-server protocol changes should also run
 `pnpm check:codexproto-generated` when schema, generator, or generated protocol
 files are touched.

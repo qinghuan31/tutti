@@ -9,6 +9,7 @@ Current documents:
 
 - [Analytics Tracking](./analytics-tracking.md)
 - [Agent Activity Packages](./agent-activity-packages.md)
+- [Agent Runtime Preparation](./agent-runtime-preparation.md)
 - [AgentGuiNode Architecture and Troubleshooting](./agent-gui-node.md)
 - [AgentGUI Registration Credits Toast Plan](./agent-gui-registration-credits-toast-plan.md)
 - [Tutti Agent Readiness Bootstrap](./tutti-agent-readiness-bootstrap.md)

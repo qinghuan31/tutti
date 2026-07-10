@@ -10,10 +10,10 @@ import (
 
 	"github.com/google/uuid"
 	agentsessionstore "github.com/tutti-os/tutti/packages/agent/daemon/activity"
+	runtimeprep "github.com/tutti-os/tutti/packages/agent/runtimeprep"
 	agenttargetbiz "github.com/tutti-os/tutti/services/tuttid/biz/agenttarget"
 	preferencesbiz "github.com/tutti-os/tutti/services/tuttid/biz/preferences"
 	workspacedata "github.com/tutti-os/tutti/services/tuttid/data/workspace"
-	agentsidecarservice "github.com/tutti-os/tutti/services/tuttid/service/agentsidecar"
 )
 
 var (
@@ -310,7 +310,7 @@ func (s *Service) prepareRuntime(ctx context.Context, workspaceID string, cwd st
 		return preparedRuntime{Cwd: cwd}, nil
 	}
 	provider := strings.TrimSpace(input.Provider)
-	prepared, err := s.RuntimePreparer.Prepare(ctx, agentsidecarservice.PrepareInput{
+	prepared, err := s.RuntimePreparer.Prepare(ctx, runtimeprep.PrepareInput{
 		WorkspaceID:       workspaceID,
 		AgentSessionID:    strings.TrimSpace(input.AgentSessionID),
 		AgentTargetID:     strings.TrimSpace(input.AgentTargetID),
@@ -328,7 +328,7 @@ func (s *Service) prepareRuntime(ctx context.Context, workspaceID string, cwd st
 			value(input.ReasoningEffort),
 		),
 		ConversationDetailMode:    input.ConversationDetailMode,
-		ExtraSkills:               sessionSkillBundlesToProviderSkillBundles(input.ExtraSkills),
+		ExtraSkills:               sessionSkillBundlesToRuntimePrepSkills(input.ExtraSkills),
 		Metadata:                  input.Metadata,
 		ExternalRolloutSourcePath: input.ExternalRolloutSourcePath,
 	})
@@ -344,17 +344,17 @@ func (s *Service) prepareRuntime(ctx context.Context, workspaceID string, cwd st
 	}, nil
 }
 
-func sessionSkillBundlesToProviderSkillBundles(input []SessionSkillBundle) []agentsidecarservice.ProviderSkillBundle {
+func sessionSkillBundlesToRuntimePrepSkills(input []SessionSkillBundle) []runtimeprep.ProviderSkillBundle {
 	if len(input) == 0 {
 		return nil
 	}
-	bundles := make([]agentsidecarservice.ProviderSkillBundle, 0, len(input))
+	bundles := make([]runtimeprep.ProviderSkillBundle, 0, len(input))
 	for _, skill := range input {
 		files := make(map[string]string, len(skill.Files))
 		for path, content := range skill.Files {
 			files[path] = content
 		}
-		bundles = append(bundles, agentsidecarservice.ProviderSkillBundle{
+		bundles = append(bundles, runtimeprep.ProviderSkillBundle{
 			Name:  skill.Name,
 			Files: files,
 		})
@@ -550,7 +550,7 @@ func (s *Service) cleanupRuntime(ctx context.Context, workspaceID string, agentS
 	if s.RuntimePreparer == nil {
 		return nil
 	}
-	return s.RuntimePreparer.Cleanup(ctx, agentsidecarservice.CleanupInput{
+	return s.RuntimePreparer.Cleanup(ctx, runtimeprep.CleanupInput{
 		WorkspaceID:    workspaceID,
 		AgentSessionID: agentSessionID,
 	})

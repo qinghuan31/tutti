@@ -8,7 +8,7 @@ import (
 	"time"
 
 	"github.com/tutti-os/tutti/services/tuttid/biz/agentprovider"
-	agentsidecarservice "github.com/tutti-os/tutti/services/tuttid/service/agentsidecar"
+	tuttiagentservice "github.com/tutti-os/tutti/services/tuttid/service/tuttiagent"
 	tuttitypes "github.com/tutti-os/tutti/services/tuttid/types"
 )
 
@@ -173,8 +173,8 @@ func prepareTuttiAgentModelListEnv(env []string) ([]string, error) {
 	env = append([]string(nil), env...)
 	env = withoutEnvKeys(env, "TUTTI_AGENT_HOME", "CODEX_HOME")
 	tuttiAgentHome := filepath.Join(tuttitypes.DefaultStateDir(), "agent-model-catalog", "tutti-agent-home")
-	agentsidecarservice.BootstrapTuttiAgentUserAuth(context.Background())
-	if err := agentsidecarservice.PrepareTuttiAgentHome(tuttiAgentHome, agentsidecarservice.PrepareInput{}); err != nil {
+	tuttiagentservice.BootstrapTuttiAgentUserAuth(context.Background())
+	if err := tuttiagentservice.PrepareHome(tuttiAgentHome); err != nil {
 		return nil, err
 	}
 	env = append(env, "TUTTI_AGENT_HOME="+tuttiAgentHome)

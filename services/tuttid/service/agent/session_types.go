@@ -6,10 +6,10 @@ import (
 	"time"
 
 	agentsessionstore "github.com/tutti-os/tutti/packages/agent/daemon/activity"
+	runtimeprep "github.com/tutti-os/tutti/packages/agent/runtimeprep"
 	agentactivitybiz "github.com/tutti-os/tutti/services/tuttid/biz/agentactivity"
 	agenttargetbiz "github.com/tutti-os/tutti/services/tuttid/biz/agenttarget"
 	userprojectbiz "github.com/tutti-os/tutti/services/tuttid/biz/userproject"
-	agentsidecarservice "github.com/tutti-os/tutti/services/tuttid/service/agentsidecar"
 	reporterservice "github.com/tutti-os/tutti/services/tuttid/service/reporter"
 )
 
@@ -26,7 +26,7 @@ type Service struct {
 	ExternalImportStore           agentactivitybiz.Repository
 	SessionDirectoryAllocator     SessionDirectoryAllocator
 	PromptAttachmentStore         PromptAttachmentStore
-	RuntimePreparer               agentsidecarservice.Preparer
+	RuntimePreparer               runtimeprep.Preparer
 	CapabilityLister              ComposerCapabilityLister
 	ProviderAvailabilityCacheTTL  time.Duration
 	CapabilityCatalogCacheTTL     time.Duration

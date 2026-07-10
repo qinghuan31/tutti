@@ -32,6 +32,7 @@ jobs:
             go.work.sum
             packages/agent/daemon/go.mod
             packages/agent/daemon/go.sum
+            packages/agent/runtimeprep/go.mod
             packages/appcli/core/go.mod
             packages/workbench/service/go.mod
             packages/workspace/files/go.mod
@@ -193,6 +194,7 @@ jobs:
             go.work.sum
             packages/agent/daemon/go.mod
             packages/agent/daemon/go.sum
+            packages/agent/runtimeprep/go.mod
             packages/workbench/service/go.mod
             packages/workspace/files/go.mod
             packages/workspace/issues/go.mod
@@ -214,6 +216,10 @@ jobs:
 
       - name: Run shared Workbench service tests
         working-directory: packages/workbench/service
+        run: go test ./...
+
+      - name: Run agent runtime preparation tests
+        working-directory: packages/agent/runtimeprep
         run: go test ./...
 
       - name: Run daemon tests
@@ -245,6 +251,7 @@ jobs:
           cache-dependency-path: |
             go.work
             go.work.sum
+            packages/agent/runtimeprep/go.mod
             packages/appcli/core/go.mod
             packages/workbench/service/go.mod
             packages/workspace/files/go.mod
