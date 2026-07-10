@@ -1987,8 +1987,8 @@ describe("AgentGUINode", () => {
     const iconEffect = document.querySelector(
       ".agent-gui-node__empty-hero-icon-effect"
     );
-    const launchpadIcon = document.querySelector(
-      ".agent-gui-node__empty-hero-launchpad-icon .agent-gui-node__provider-rail-launchpad-icon"
+    const heroCarousel = document.querySelector(
+      ".agent-gui-node__empty-hero-carousel"
     );
 
     expect(queryComposerEditor()).not.toBeNull();
@@ -1998,10 +1998,10 @@ describe("AgentGUINode", () => {
     expect(screen.queryByTestId("agent-gui-bottom-dock")).toBeNull();
     expect(emptyHeading).toBeTruthy();
     expect(iconEffect).toBeNull();
-    expect(launchpadIcon).not.toBeNull();
+    expect(heroCarousel).not.toBeNull();
     expect(
-      launchpadIcon?.querySelectorAll(
-        ".agent-gui-node__provider-rail-launchpad-item"
+      heroCarousel?.querySelectorAll(
+        ".agent-gui-node__empty-hero-carousel-item"
       )
     ).toHaveLength(7);
     expect(

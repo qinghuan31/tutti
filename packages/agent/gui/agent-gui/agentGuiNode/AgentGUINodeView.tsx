@@ -127,6 +127,7 @@ import type {
   AgentGUIProviderTarget
 } from "../../types";
 import { normalizeManagedAgentProvider } from "../../shared/managedAgentProviders";
+import { AgentGUIHeroAgentCarousel } from "./AgentGUIHeroAgentCarousel";
 import { TaskSearchField } from "../RoomIssueNode/TaskSearchField";
 import type { WorkspaceLinkAction } from "../../actions/workspaceLinkActions";
 import type {
@@ -4080,10 +4081,9 @@ const AgentGUIEmptyHeroPane = memo(function AgentGUIEmptyHeroPane({
       <div className={styles.emptyHeroBody}>
         <div className={styles.emptyHeroIconSlot}>
           {heroIconPresentations.length > 1 ? (
-            <AgentGUIAllProviderGridIcon
+            <AgentGUIHeroAgentCarousel
               key={heroIconAnimationKey}
               activeProvider={provider}
-              className={styles.emptyHeroLaunchpadIcon}
               icons={heroIconPresentations}
               providerTargets={providerTargets}
               onProviderSelect={onProviderSelect}
@@ -4194,10 +4194,13 @@ const AgentGUIProviderReadinessGatePane = memo(
       showAllProviders: showAllProvidersChecking
     });
     const action = providerGateAction(gate.status);
-    // Not-installed / not-logged-in gates keep the ready state's main title and
-    // agent-switch dropdown; only the body (description + button) differs.
+    // Not-installed / not-logged-in / coming-soon gates keep the ready
+    // state's main title and agent-switch dropdown; only the body
+    // (description + button) differs.
     const useSharedHeroTitle =
-      gate.status === "not_installed" || gate.status === "auth_required";
+      gate.status === "not_installed" ||
+      gate.status === "auth_required" ||
+      gate.status === "coming_soon";
     const pendingLabel =
       pendingAction === "install"
         ? labels.providerGatePendingInstall
@@ -4215,9 +4218,8 @@ const AgentGUIProviderReadinessGatePane = memo(
           role="status"
         >
           {showAllProviders ? (
-            <AgentGUIAllProviderGridIcon
+            <AgentGUIHeroAgentCarousel
               activeProvider={provider}
-              className={styles.emptyHeroLaunchpadIcon}
               icons={launchpadIconPresentations}
               providerTargets={providerTargets}
               onProviderSelect={onProviderSelect}
@@ -4356,41 +4358,6 @@ function providerGateAction(
   }
 }
 
-function AgentGUIAllProviderGridIcon({
-  activeProvider,
-  className,
-  icons,
-  providerTargets,
-  onProviderSelect,
-  providerSelectLabel
-}: {
-  activeProvider?: string;
-  className?: string;
-  icons: readonly AgentGUIProviderIconPresentation[];
-  providerTargets?: readonly AgentGUIProviderTarget[];
-  onProviderSelect?: AgentGUINodeViewProps["actions"]["selectHomeComposerAgentTarget"];
-  providerSelectLabel?: string;
-}): React.JSX.Element {
-  const interactive =
-    onProviderSelect != null && (providerTargets?.length ?? 0) > 0;
-  return (
-    <span
-      aria-hidden={interactive ? undefined : "true"}
-      className={[styles.providerRailAvatar, className]
-        .filter(Boolean)
-        .join(" ")}
-    >
-      <AgentGUILaunchpadIconGrid
-        activeProvider={activeProvider}
-        icons={icons}
-        providerTargets={providerTargets}
-        onProviderSelect={onProviderSelect}
-        providerSelectLabel={providerSelectLabel}
-      />
-    </span>
-  );
-}
-
 function AgentGUIUnifiedProviderIcon({
   presentation
 }: {
@@ -4405,119 +4372,6 @@ function AgentGUIUnifiedProviderIcon({
         draggable={false}
         src={iconUrl}
       />
-    </span>
-  );
-}
-
-// Opacity applied to unselected hero launchpad icons. Every non-active agent
-// shares one value so they read as a consistent group; only the selected agent
-// is fully opaque.
-const AGENT_GUI_HERO_STRIP_INACTIVE_OPACITY = 0.4;
-
-function agentGUIHeroStripOpacity(isActive: boolean): number {
-  return isActive ? 1 : AGENT_GUI_HERO_STRIP_INACTIVE_OPACITY;
-}
-
-function agentGUILaunchpadProviderTarget(
-  providerTargets: readonly AgentGUIProviderTarget[],
-  provider: string
-): AgentGUIProviderTarget | null {
-  const normalized = normalizeManagedAgentProvider(provider);
-  return (
-    providerTargets.find(
-      (target) =>
-        target.disabled !== true &&
-        normalizeManagedAgentProvider(target.provider) === normalized
-    ) ?? null
-  );
-}
-
-function AgentGUILaunchpadIconGrid({
-  activeProvider,
-  icons,
-  providerTargets,
-  onProviderSelect,
-  providerSelectLabel
-}: {
-  activeProvider?: string;
-  icons: readonly AgentGUIProviderIconPresentation[];
-  providerTargets?: readonly AgentGUIProviderTarget[];
-  onProviderSelect?: AgentGUINodeViewProps["actions"]["selectHomeComposerAgentTarget"];
-  providerSelectLabel?: string;
-}): React.JSX.Element {
-  const normalizedActiveProvider = activeProvider
-    ? normalizeManagedAgentProvider(activeProvider)
-    : null;
-  const activeIndex =
-    normalizedActiveProvider === null
-      ? -1
-      : icons.findIndex(
-          (icon) =>
-            normalizeManagedAgentProvider(icon.provider) ===
-            normalizedActiveProvider
-        );
-  // Icons become clickable agent switchers when the host wires up targets and a
-  // select handler; otherwise they stay decorative (aria-hidden) as before.
-  const interactive =
-    onProviderSelect != null && (providerTargets?.length ?? 0) > 0;
-  const renderItem = (
-    icon: AgentGUIProviderIconPresentation,
-    isActive: boolean
-  ): React.JSX.Element => {
-    const key = `${icon.provider}:${icon.iconUrl}`;
-    const style = { opacity: agentGUIHeroStripOpacity(isActive) };
-    const dataActive = normalizedActiveProvider === null ? undefined : isActive;
-    const target = interactive
-      ? agentGUILaunchpadProviderTarget(providerTargets ?? [], icon.provider)
-      : null;
-    if (target && onProviderSelect) {
-      const label = providerSelectLabel
-        ? `${providerSelectLabel}: ${target.label}`
-        : target.label;
-      return (
-        <button
-          key={key}
-          type="button"
-          className={styles.providerRailLaunchpadItem}
-          data-provider-active={dataActive}
-          aria-label={label}
-          aria-pressed={isActive}
-          title={target.label}
-          style={style}
-          onClick={() =>
-            onProviderSelect({
-              provider: target.provider,
-              providerTargetId: target.targetId
-            })
-          }
-        >
-          <AgentGUIProviderIconVisual
-            ariaHidden
-            imageClassName=""
-            icon={icon}
-          />
-        </button>
-      );
-    }
-    return (
-      <span
-        key={key}
-        className={styles.providerRailLaunchpadItem}
-        data-provider-active={dataActive}
-        style={style}
-      >
-        <AgentGUIProviderIconVisual imageClassName="" icon={icon} />
-      </span>
-    );
-  };
-  return (
-    <span
-      aria-hidden={interactive ? undefined : "true"}
-      className={styles.providerRailLaunchpadIcon}
-    >
-      {icons.map((icon, index) =>
-        renderItem(icon, activeIndex < 0 ? true : index === activeIndex)
-      )}
     </span>
   );
 }
@@ -4567,13 +4421,11 @@ function EmptyHeroTitle({
   const selectedProviderTargetId =
     selectedProviderTarget?.targetId ??
     `local:${selectedProviderTarget?.provider ?? ""}`;
-  const enabledProviderTargets = providerTargets.filter(
-    (target) => target.disabled !== true
-  );
+  // Every target stays listed — coming-soon placeholders included — so the
+  // currently selected agent always has its own option; picking a disabled
+  // one routes through the same readiness-gate flow as the carousel and rail.
   const canSwitchProvider =
-    enabledProviderTargets.length > 1 &&
-    selectedProviderTarget &&
-    onProviderSelect;
+    providerTargets.length > 1 && selectedProviderTarget && onProviderSelect;
   const providerName = label.slice(providerStart, providerEnd);
 
   return (
@@ -4583,7 +4435,7 @@ function EmptyHeroTitle({
         <Select
           value={selectedProviderTargetId}
           onValueChange={(nextTargetId) => {
-            const target = enabledProviderTargets.find(
+            const target = providerTargets.find(
               (candidate) => candidate.targetId === nextTargetId
             );
             if (!target) {
@@ -4607,11 +4459,16 @@ function EmptyHeroTitle({
             align="center"
             className={cn(styles.composerMenuContent, "min-w-[190px]")}
           >
-            {enabledProviderTargets.map((target) => (
+            {providerTargets.map((target) => (
               <SelectItem
                 key={`${target.provider}:${target.targetId}`}
                 value={target.targetId}
-                className={cn(styles.composerMenuItem, "gap-2")}
+                className={cn(
+                  styles.composerMenuItem,
+                  "gap-2",
+                  // Coming-soon placeholders stay selectable but read muted.
+                  target.disabled === true && "opacity-60"
+                )}
               >
                 <span className="flex min-w-0 items-center gap-1.5">
                   <img
