@@ -187,6 +187,8 @@ import {
   nodeDataFromComposerSettings,
   normalizeConfigOptionValue,
   normalizePermissionModeId,
+  reasoningSelectionForModelFromComposerOptions,
+  reasoningSelectionFromComposerOptions,
   resolveEffectiveComposerSettings,
   sameComposerSettings
 } from "./agentGuiController.composerHelpers";
@@ -437,13 +439,22 @@ function sanitizeComposerSettingsForOptions(
     return settings;
   }
   const modelValues = composerOptionValues(options.models);
-  const reasoningValues = composerOptionValues(options.reasoningEfforts);
+  const model = normalizeOptionalText(settings.model);
+  const reasoningEffort = normalizeOptionalText(
+    settings.reasoningEffort
+  ) as AgentSessionReasoningEffort | null;
+  const modelReasoningSelection = reasoningSelectionForModelFromComposerOptions(
+    options,
+    reasoningEffort,
+    model
+  );
+  const reasoningValues = composerOptionValues(
+    modelReasoningSelection?.options ?? options.reasoningEfforts
+  );
   const speedValues = composerOptionValues(options.speeds ?? []);
   const permissionValues = new Set(
     options.permissionConfig?.modes.map((mode) => mode.id) ?? []
   );
-  const model = normalizeOptionalText(settings.model);
-  const reasoningEffort = normalizeOptionalText(settings.reasoningEffort);
   const speed = normalizeOptionalText(settings.speed);
   const permissionModeId = normalizePermissionModeId(settings.permissionModeId);
   const modelOptionsAreAuthoritative = options.provider === "claude-code";
@@ -460,7 +471,7 @@ function sanitizeComposerSettingsForOptions(
       reasoningEffort &&
       reasoningValues.size > 0 &&
       !reasoningValues.has(reasoningEffort)
-        ? null
+        ? (modelReasoningSelection?.currentValue ?? null)
         : (reasoningEffort as AgentSessionReasoningEffort | null),
     speed:
       speed && speedValues.size > 0 && !speedValues.has(speed)
@@ -2480,19 +2491,6 @@ function configOptionCurrentValue(
     );
   }
   return null;
-}
-
-function reasoningSelectionFromComposerOptions(
-  options: AgentActivityComposerOptions | null,
-  currentValue: AgentSessionReasoningEffort | null
-): ACPConfigOptionSelection | null {
-  if (!options) {
-    return null;
-  }
-  return {
-    options: composerSettingOptionsFromActivity(options.reasoningEfforts),
-    currentValue
-  };
 }
 
 function speedSelectionFromComposerOptions(
@@ -6276,11 +6274,17 @@ export function useAgentGUINodeController({
       if (isCreatingConversationRef.current) {
         return;
       }
-      const settings = readNodeDefaultDraftSettings({
+      const defaultDraftSettings = readNodeDefaultDraftSettings({
         data: targetData.data,
         defaultReasoningEffort,
         drafts: draftSettingsBySessionIdRef.current
       });
+      const activeAgentSessionId = activeConversationIdRef.current;
+      const activeSessionSettings = activeAgentSessionId
+        ? (getAgentSessionView(sessionViewRef(activeAgentSessionId))
+            ?.controlState?.settings ?? null)
+        : null;
+      const settings = activeSessionSettings ?? defaultDraftSettings;
       const composerOptionsCwd =
         selectedProjectPathRef.current?.trim() || workspacePath.trim() || "";
       void Promise.resolve(
@@ -6294,7 +6298,13 @@ export function useAgentGUINodeController({
         })
       ).catch(() => undefined);
     },
-    [agentActivityRuntime, defaultReasoningEffort, workspaceId, workspacePath]
+    [
+      agentActivityRuntime,
+      defaultReasoningEffort,
+      sessionViewRef,
+      workspaceId,
+      workspacePath
+    ]
   );
   const loadDraftComposerOptions = useCallback(
     (options?: { force?: boolean }): void => {
@@ -6389,6 +6399,7 @@ export function useAgentGUINodeController({
     );
   }, [
     activeConversationId,
+    activeSessionState?.settings?.model,
     composerTargetData.agentTargetId,
     composerTargetData.provider,
     isComposerHome,
@@ -10701,9 +10712,16 @@ export function useAgentGUINodeController({
     () =>
       reasoningSelectionFromComposerOptions(
         providerComposerOptions,
-        draftReasoningEffort
+        draftReasoningEffort,
+        draftModel,
+        activeSessionRuntimeContext ?? null
       ),
-    [draftReasoningEffort, providerComposerOptions]
+    [
+      activeSessionRuntimeContext,
+      draftModel,
+      draftReasoningEffort,
+      providerComposerOptions
+    ]
   );
   const activeSessionModelSelection = useMemo(
     () =>
@@ -10743,7 +10761,7 @@ export function useAgentGUINodeController({
     );
     const selectedModelValue = draftModel;
     const selectedReasoningEffortValue =
-      draftReasoningEffort as AgentSessionReasoningEffort | null;
+      activeSessionReasoningSelection?.currentValue ?? draftReasoningEffort;
     const selectedSpeedValue = draftSpeed as AgentSessionSpeed | null;
     const selectedPermissionModeValue =
       normalizePermissionModeId(draftSettings.permissionModeId) ??

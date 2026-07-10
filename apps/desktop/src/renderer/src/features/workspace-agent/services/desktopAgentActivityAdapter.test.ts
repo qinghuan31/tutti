@@ -757,7 +757,10 @@ test("desktop agent activity adapter normalizes legacy runtime config options", 
           },
           reasoningConfig: {
             configurable: true,
-            options: []
+            options: [
+              { id: "low", value: "low", label: "Low" },
+              { id: "ultra", value: "ultra", label: "Ultra" }
+            ]
           },
           runtimeContext: {
             configOptions: [
@@ -769,7 +772,10 @@ test("desktop agent activity adapter normalizes legacy runtime config options", 
               {
                 id: "reasoning_effort",
                 currentValue: "high",
-                options: [{ value: "medium", name: "中" }]
+                options: [
+                  { value: "medium", name: "中" },
+                  { value: "ultra", name: "ultra" }
+                ]
               }
             ]
           },
@@ -792,6 +798,7 @@ test("desktop agent activity adapter normalizes legacy runtime config options", 
   ]);
   assert.deepEqual(options.reasoningEfforts, [
     { value: "medium", label: "中" },
+    { value: "ultra", label: "Ultra" },
     { value: "high", label: "high" }
   ]);
 });

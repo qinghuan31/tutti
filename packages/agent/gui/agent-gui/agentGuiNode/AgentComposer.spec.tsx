@@ -4266,6 +4266,7 @@ function createLabels(): Parameters<typeof AgentComposer>[0]["labels"] {
     reasoningOptionHigh: "高",
     reasoningOptionXHigh: "超高",
     reasoningOptionMax: "最高",
+    reasoningOptionUltra: "极致",
     speedLabel: "Speed",
     speedSelectionLabel: "Speed",
     speedOptionStandard: "Standard",
