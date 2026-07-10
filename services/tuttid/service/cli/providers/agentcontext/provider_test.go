@@ -1036,6 +1036,9 @@ func TestComposerOptionsCommandReturnsProviderOptions(t *testing.T) {
 	if output.Value["provider"] != "codex" {
 		t.Fatalf("output = %#v", output.Value)
 	}
+	if output.Value["schemaVersion"] != 1 {
+		t.Fatalf("schemaVersion = %#v, want 1", output.Value["schemaVersion"])
+	}
 	effectiveSettings := output.Value["effectiveSettings"].(map[string]any)
 	if effectiveSettings["model"] != "gpt-5" || effectiveSettings["reasoningEffort"] != "high" {
 		t.Fatalf("effectiveSettings = %#v", effectiveSettings)

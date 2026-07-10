@@ -133,6 +133,7 @@ func (p Provider) composerDefaultsForProvider(ctx context.Context, provider stri
 
 func composerOptionsValue(options agentservice.ComposerOptions) map[string]any {
 	return map[string]any{
+		"schemaVersion":     1,
 		"provider":          options.Provider,
 		"effectiveSettings": agentservice.ComposerSettingsToMap(options.EffectiveSettings),
 		"modelConfig":       composerConfigOptionValue(options.ModelConfig),
