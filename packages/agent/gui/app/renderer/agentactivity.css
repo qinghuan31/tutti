@@ -8893,29 +8893,6 @@ html[data-theme="light"] [data-message-center-item-id].agent-gui-edge-glow {
   color: var(--brand-primary, var(--tutti-purple));
 }
 
-.agent-gui-node__provider-rail-avatar:has(
-  > .agent-gui-node__provider-rail-launchpad-icon
-),
-.agent-gui-node__provider-rail-tile:hover:not(:disabled)
-  .agent-gui-node__provider-rail-avatar:has(
-    > .agent-gui-node__provider-rail-launchpad-icon
-  ) {
-  border-color: transparent;
-  background: transparent;
-}
-
-.agent-gui-node__provider-rail-tile[data-selected="true"]
-  .agent-gui-node__provider-rail-avatar:has(
-    > .agent-gui-node__provider-rail-launchpad-icon
-  ),
-.agent-gui-node__provider-rail-tile[data-selected="true"]:hover:not(:disabled)
-  .agent-gui-node__provider-rail-avatar:has(
-    > .agent-gui-node__provider-rail-launchpad-icon
-  ) {
-  border-color: var(--tutti-purple);
-  background: var(--transparency-block);
-}
-
 .agent-gui-node__provider-rail-avatar-icon {
   width: 18px;
   height: 18px;
@@ -8948,114 +8925,6 @@ html[data-theme="light"] [data-message-center-item-id].agent-gui-edge-glow {
   width: 100%;
   height: 100%;
   object-fit: cover;
-}
-
-.agent-gui-node__provider-rail-launchpad-icon {
-  box-sizing: border-box;
-  display: grid;
-  width: 28px;
-  height: 28px;
-  grid-template-columns: repeat(2, 1fr);
-  gap: 2px;
-  padding: 1px;
-  border: 0;
-  border-radius: 6px;
-  background: transparent;
-}
-
-.agent-gui-node__provider-rail-launchpad-item {
-  display: grid;
-  min-width: 0;
-  min-height: 0;
-  place-items: center;
-  overflow: hidden;
-  background: var(--background-fronted);
-  border-radius: 4px;
-  box-shadow: 0 0 0 0.5px color-mix(in srgb, var(--line-2) 70%, transparent);
-  transition: opacity 140ms ease;
-}
-
-.agent-gui-node__provider-rail-launchpad-icon img {
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-}
-
-.agent-gui-node__empty-hero-launchpad-icon {
-  /* Size to the strip's actual content and stay centered. A fixed width narrower
-     than the icons left-anchors the overflow, dragging the "centered" selected
-     agent off to one side. */
-  width: fit-content;
-  max-width: 100%;
-  height: 48px;
-  border: 0;
-  border-radius: 0;
-  background: transparent;
-  box-shadow: none;
-  overflow: visible;
-  color: var(--tutti-purple);
-  animation: agent-gui-empty-hero-enter 260ms cubic-bezier(0.16, 1, 0.3, 1) 40ms
-    both;
-}
-
-/* Hero launchpad: agents laid out as one centered horizontal group while
-   neighbours fade away from the selected agent. Scoped to the hero so the left
-   rail "All" tile (a single composed image) is unaffected. */
-.agent-gui-node__empty-hero-launchpad-icon
-  .agent-gui-node__provider-rail-launchpad-icon {
-  display: flex;
-  width: max-content;
-  max-width: 100%;
-  height: 48px;
-  align-items: center;
-  justify-content: center;
-  gap: 10px;
-  padding: 0;
-  border-radius: 0;
-  background: transparent;
-  overflow: visible;
-}
-
-.agent-gui-node__empty-hero-launchpad-icon
-  .agent-gui-node__provider-rail-launchpad-item {
-  flex: 0 0 auto;
-  width: 36px;
-  height: 36px;
-  border-radius: 9px;
-  transition:
-    opacity 220ms ease,
-    transform 220ms cubic-bezier(0.16, 1, 0.3, 1),
-    box-shadow 220ms ease;
-}
-
-.agent-gui-node__empty-hero-launchpad-icon
-  .agent-gui-node__provider-rail-launchpad-item[data-provider-active="true"] {
-  transform: scale(1.14);
-  box-shadow: 0 0 0 1.5px var(--tutti-purple);
-}
-
-/* Clickable agent switchers: reset native button chrome, keep the same box, and
-   give a hover/focus affordance so the strip reads as interactive. */
-button.agent-gui-node__provider-rail-launchpad-item {
-  padding: 0;
-  border: 0;
-  cursor: pointer;
-  appearance: none;
-  -webkit-appearance: none;
-}
-
-.agent-gui-node__empty-hero-launchpad-icon
-  button.agent-gui-node__provider-rail-launchpad-item:hover:not(
-    [data-provider-active="true"]
-  ) {
-  opacity: 1 !important;
-  transform: scale(1.08);
-}
-
-.agent-gui-node__empty-hero-launchpad-icon
-  button.agent-gui-node__provider-rail-launchpad-item:focus-visible {
-  outline: none;
-  box-shadow: 0 0 0 1.5px var(--tutti-purple);
 }
 
 .agent-gui-node__provider-rail-tile[data-loading="true"]
@@ -9105,12 +8974,13 @@ button.agent-gui-node__provider-rail-launchpad-item {
   place-items: center;
 }
 
-/* The horizontal launchpad strip is wider than the single-icon slot; let the
-   slot grow to the strip's width so the selected agent stays centered. */
+/* The coverflow carousel needs a wider, taller stage than the single-icon
+   slot; keep it centered in the hero column. */
 .agent-gui-node__empty-hero-icon-slot:has(
-  > .agent-gui-node__empty-hero-launchpad-icon
+  > .agent-gui-node__empty-hero-carousel
 ) {
-  width: auto;
+  width: min(400px, 100%);
+  height: auto;
 }
 
 .agent-gui-node__empty-hero-icon-effect {
@@ -9179,6 +9049,59 @@ button.agent-gui-node__provider-rail-launchpad-item {
   object-fit: contain;
 }
 
+/* Empty-hero agent carousel ("All" tab): a three.js ring of same-sized agent
+   tiles (see agentGuiHeroCarouselScene.ts). Tiles farther around the ring
+   genuinely shrink and fade with perspective; visuals live on the canvas,
+   while visually-hidden buttons keep the switcher reachable by keyboard,
+   screen readers, and DOM tests. */
+.agent-gui-node__empty-hero-carousel {
+  position: relative;
+  width: 100%;
+  height: 112px;
+  outline: none;
+  touch-action: pan-y;
+  animation: agent-gui-empty-hero-enter 260ms cubic-bezier(0.16, 1, 0.3, 1) 40ms
+    both;
+}
+
+.agent-gui-node__empty-hero-carousel:has(:focus-visible) {
+  border-radius: 12px;
+  box-shadow: 0 0 0 1.5px var(--tutti-purple);
+}
+
+.agent-gui-node__empty-hero-carousel-canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+
+  /* Fade-out mask: a horizontal band dissolves tiles toward the stage sides
+     (the fully-transparent stops sit where the outermost tiles ride, not at
+     the canvas edges), intersected with a vertical band so tiles sinking
+     down the wheel melt away instead of being cut by the canvas bottom. */
+  mask-image:
+    linear-gradient(
+      90deg,
+      transparent 12%,
+      #000 36%,
+      #000 64%,
+      transparent 88%
+    ),
+    linear-gradient(180deg, #000 0%, #000 70%, transparent 96%);
+  mask-composite: intersect;
+}
+
+.agent-gui-node__empty-hero-carousel-item {
+  position: absolute;
+  overflow: hidden;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  border: 0;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
 .agent-gui-node__empty-hero-title {
   margin: 0;
   text-align: center;
@@ -9203,9 +9126,14 @@ button.agent-gui-node__provider-rail-launchpad-item {
 
 /* Gate gap is 8px; add 16px so the icon-to-title spacing is 24px. */
 .agent-gui-node__empty-provider-gate > .agent-gui-node__empty-hero-icon-effect,
-.agent-gui-node__empty-provider-gate
-  > .agent-gui-node__empty-hero-launchpad-icon {
+.agent-gui-node__empty-provider-gate > .agent-gui-node__empty-hero-carousel {
   margin-bottom: 16px;
+}
+
+/* Keep the gate's carousel the same width as the ready hero's so the ring
+   doesn't jump when selection lands on an unavailable agent. */
+.agent-gui-node__empty-provider-gate > .agent-gui-node__empty-hero-carousel {
+  max-width: min(400px, 100%);
 }
 
 .agent-gui-node__empty-provider-gate-description {

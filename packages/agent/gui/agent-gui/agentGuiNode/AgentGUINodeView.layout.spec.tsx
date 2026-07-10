@@ -1237,7 +1237,7 @@ describe("AgentGUINodeView layout persistence", () => {
     expect(allIcon).toHaveAttribute("src", agentColorfulUrl);
   });
 
-  it("renders the empty hero icon area with the All tile launchpad grid", () => {
+  it("renders the empty hero icon area with the agent coverflow carousel", () => {
     const { container } = renderAgentGUINodeView({
       viewModel: {
         ...createViewModel(),
@@ -1249,36 +1249,32 @@ describe("AgentGUINodeView layout persistence", () => {
       }
     });
 
-    const heroIconGrid = container.querySelector(
-      ".agent-gui-node__empty-hero-launchpad-icon .agent-gui-node__provider-rail-launchpad-icon"
+    const carousel = container.querySelector(
+      ".agent-gui-node__empty-hero-carousel"
     );
-    expect(heroIconGrid).not.toBeNull();
+    expect(carousel).not.toBeNull();
+    // The ring visuals render on a WebGL canvas; the DOM keeps
+    // visually-hidden switcher buttons for keyboard and screen readers.
+    expect(
+      carousel?.querySelector(
+        "canvas.agent-gui-node__empty-hero-carousel-canvas"
+      )
+    ).not.toBeNull();
     const items = Array.from(
-      heroIconGrid?.querySelectorAll(
-        ".agent-gui-node__provider-rail-launchpad-item"
-      ) ?? []
+      carousel?.querySelectorAll(".agent-gui-node__empty-hero-carousel-item") ??
+        []
     );
     expect(items.length).toBeGreaterThan(1);
-    // The launchpad keeps all provider icons in one continuous row so the
-    // group, not a synthetic selected-agent center point, stays horizontally
-    // centered in the empty hero.
+    // Exactly one agent occupies the focused, centered slot of the ring.
     expect(
       items.filter(
         (item) => item.getAttribute("data-provider-active") === "true"
       )
     ).toHaveLength(1);
-    expect(heroIconGrid?.children).toHaveLength(items.length);
-    expect(
-      heroIconGrid?.querySelector(
-        ".agent-gui-node__provider-rail-launchpad-side"
-      )
-    ).toBeNull();
     const activeItem = items.find(
       (item) => item.getAttribute("data-provider-active") === "true"
     );
-    expect(activeItem?.querySelector("img")?.getAttribute("src")).toBe(
-      MANAGED_AGENT_PROVIDER_RAIL_ICON_URLS.codex
-    );
+    expect(activeItem?.getAttribute("data-provider")).toBe("codex");
   });
 
   it("remounts the empty hero icon when switching provider targets", () => {
@@ -1327,7 +1323,7 @@ describe("AgentGUINodeView layout persistence", () => {
     );
   });
 
-  it("omits disabled provider options in the empty hero provider select", async () => {
+  it("keeps disabled provider options selectable in the empty hero provider select", async () => {
     const actions = createActions();
     const disabledTuttiTarget = {
       ...createLocalAgentGUIProviderTarget("nexight"),
@@ -1369,14 +1365,19 @@ describe("AgentGUINodeView layout persistence", () => {
 
     expect(await screen.findByRole("option", { name: "Codex" })).toBeVisible();
     expect(screen.getByRole("option", { name: "Claude Code" })).toBeVisible();
-    expect(
-      screen.queryByRole("option", { name: "Tutti Agent" })
-    ).not.toBeInTheDocument();
-    expect(
-      screen.queryByRole("option", { name: "Hermes" })
-    ).not.toBeInTheDocument();
+    // Coming-soon placeholders stay listed so the selected agent always has
+    // its own option; picking one routes through the readiness-gate flow.
+    expect(screen.getByRole("option", { name: "Tutti Agent" })).toBeVisible();
+    expect(screen.getByRole("option", { name: "Hermes" })).toBeVisible();
 
     expect(actions.selectHomeComposerAgentTarget).not.toHaveBeenCalled();
+
+    fireEvent.click(screen.getByRole("option", { name: "Hermes" }));
+
+    expect(actions.selectHomeComposerAgentTarget).toHaveBeenCalledWith({
+      provider: "hermes",
+      providerTargetId: disabledHermesTarget.targetId
+    });
   });
 
   it("requests composer focus after switching the empty hero provider select", async () => {
@@ -5022,9 +5023,12 @@ describe("AgentGUINodeView provider readiness gate", () => {
       })
     });
 
-    expect(
-      screen.getByTestId("agent-gui-provider-readiness-gate")
-    ).toHaveTextContent("providerGateComingSoonTitle");
+    const gate = screen.getByTestId("agent-gui-provider-readiness-gate");
+    // Coming-soon keeps the ready state's shared hero title (with the agent
+    // dropdown); only the description and disabled action are gate-specific.
+    expect(gate).not.toHaveTextContent("providerGateComingSoonTitle");
+    expect(gate).toHaveTextContent("empty");
+    expect(gate).toHaveTextContent("providerGateComingSoonDescription");
     const action = screen.getByTestId(
       "agent-gui-provider-readiness-gate-action"
     );
@@ -5154,7 +5158,7 @@ describe("AgentGUINodeView provider readiness gate", () => {
     expect(gate).toHaveTextContent("providerGateCheckingTitle");
     expect(gate).toHaveTextContent("providerGateCheckingAgentsDescription");
     expect(
-      gate.querySelector(".agent-gui-node__empty-hero-launchpad-icon")
+      gate.querySelector(".agent-gui-node__empty-hero-carousel")
     ).not.toBeNull();
     expect(
       gate.querySelector("img.agent-gui-node__empty-hero-icon-effect")
