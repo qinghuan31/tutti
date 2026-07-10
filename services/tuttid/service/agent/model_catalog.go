@@ -153,15 +153,22 @@ func (c *CachedAgentModelCatalog) ListModels(ctx context.Context, provider strin
 		return cached.result, cached.err
 	}
 	listResult, err := spec.lister(c).ListModels(ctx)
-	models := applyConfiguredDefaultModel(
-		listResult.Models,
-		spec.configuredDefaultModel(),
-		spec.missingDefaultDescription,
-	)
+	configuredDefaultModel := spec.configuredDefaultModel()
+	models := applyConfiguredDefaultModel(listResult.Models, configuredDefaultModel, spec.missingDefaultDescription)
+	source := spec.source
+	if provider == agentprovider.Codex && configuredDefaultModel != "" && codexUsesCustomModelProvider() {
+		models = []AgentModelOption{{
+			ID:          configuredDefaultModel,
+			DisplayName: configuredDefaultModel,
+			Description: spec.missingDefaultDescription,
+			IsDefault:   true,
+		}}
+		source = "codex-configured-model"
+	}
 	models = enrichAgentModelOptions(ctx, provider, models, c.ModelCapabilities)
 	result := AgentModelCatalogResult{
 		Provider:  provider,
-		Source:    spec.source,
+		Source:    source,
 		FetchedAt: now,
 		Models:    models,
 	}

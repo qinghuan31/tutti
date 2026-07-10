@@ -439,6 +439,13 @@ func (c *scriptedAppServerConnection) Send(data []byte) error {
 			c.notify(appServerNotifyAgentMessageDelta, map[string]any{
 				"threadId": "codex-thread-1", "turnId": "turn-1", "itemId": "item-msg", "delta": "the repo.",
 			})
+			// Codex finalizes the assistant item and later repeats the text in
+			// turn/completed. Keep the scripted protocol faithful so this test
+			// catches duplicate completed assistant messages.
+			c.notify(appServerNotifyItemCompleted, map[string]any{
+				"threadId": "codex-thread-1", "turnId": "turn-1",
+				"item": map[string]any{"type": "agentMessage", "id": "item-msg", "text": "I'll check the repo."},
+			})
 			c.notify(appServerNotifyItemStarted, map[string]any{
 				"threadId": "codex-thread-1", "turnId": "turn-1", "startedAtMs": 1750000000000,
 				"item": map[string]any{
@@ -1246,18 +1253,20 @@ func TestCodexAppServerAdapterExecStreamsTurn(t *testing.T) {
 		t.Fatalf("turn/start responsesapiClientMetadata = %#v", turnStart["responsesapiClientMetadata"])
 	}
 
-	messages := eventsOfType(events, activityshared.EventMessageAppended)
-	var assistantText, thinkingText string
-	for _, event := range messages {
+	var completedAssistant []string
+	var thinkingText string
+	for _, event := range eventsOfType(events, activityshared.EventMessageAppended) {
 		switch event.Payload.Role {
 		case activityshared.MessageRoleAssistant:
-			assistantText = event.Payload.Content
+			if event.Payload.Metadata["streamState"] == messageStreamStateCompleted {
+				completedAssistant = append(completedAssistant, event.Payload.Content)
+			}
 		case activityshared.MessageRole(RoleAssistantThinking):
 			thinkingText = event.Payload.Content
 		}
 	}
-	if assistantText != "I'll check the repo." {
-		t.Fatalf("assistant content = %q, want streamed message", assistantText)
+	if len(completedAssistant) != 1 || completedAssistant[0] != "I'll check the repo." {
+		t.Fatalf("completed assistant messages = %#v, want exactly one final answer", completedAssistant)
 	}
 	if thinkingText != "Need context." {
 		t.Fatalf("thinking content = %q", thinkingText)

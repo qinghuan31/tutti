@@ -1479,7 +1479,7 @@ func (a *CodexAppServerAdapter) finalizeSettledTurn(agentSessionID string, appTu
 			appTurn.emitTerminal(terminalEvents)
 		}
 	} else {
-		appTurn.normalizer.ApplyAssistantFinalText(appServerTurnFinalAssistantText(terminal.turn))
+		appTurn.normalizer.ApplyAssistantTurnFinalText(appServerTurnFinalAssistantText(terminal.turn))
 		appTurn.emitTerminal(appServerTurnTerminalEvents(session, turnID, terminal.turn, appTurn.normalizer))
 	}
 	a.endActiveTurn(agentSessionID, appTurn)
@@ -1758,7 +1758,7 @@ func (a *CodexAppServerAdapter) execBlocking(
 		}
 		return snapshotEvents(), nil
 	}
-	normalizer.ApplyAssistantFinalText(appServerTurnFinalAssistantText(finalTurn))
+	normalizer.ApplyAssistantTurnFinalText(appServerTurnFinalAssistantText(finalTurn))
 	emitTerminal(appServerTurnTerminalEvents(session, turnID, finalTurn, normalizer))
 	return snapshotEvents(), nil
 }
@@ -2156,7 +2156,7 @@ func (a *CodexAppServerAdapter) execSlashCommand(
 				a.scheduleGoalContinuationNudge(session)
 				return true, nil
 			}
-			normalizer.ApplyAssistantFinalText(appServerTurnFinalAssistantText(finalTurn))
+			normalizer.ApplyAssistantTurnFinalText(appServerTurnFinalAssistantText(finalTurn))
 			emitTerminal(appServerTurnTerminalEvents(session, turnID, finalTurn, normalizer))
 			a.scheduleGoalContinuationNudge(session)
 			return true, nil

@@ -146,12 +146,46 @@ func (n *acpTurnNormalizer) ApplyAssistantFinalText(finalText string) {
 	if finalText == "" {
 		return
 	}
+	// Codex may close a streamed assistant segment before item/completed
+	// redelivers the same answer with whitespace polish. Preserve the message id
+	// for equivalent text so the replay updates one bubble instead of opening a
+	// duplicate.
+	if n.assistantSegmentCompleted && n.assistantMessageID != "" {
+		previous := strings.TrimSpace(n.assistantContent.String())
+		if previous == finalText {
+			return
+		}
+		if assistantTextEquivalent(previous, finalText) {
+			n.assistantContent.Reset()
+			_, _ = n.assistantContent.WriteString(finalText)
+			n.assistantSegmentCompleted = false
+			return
+		}
+	}
 	if n.assistantMessageID == "" || n.assistantSegmentCompleted {
 		n.assistantMessageID = newID()
 		n.assistantSegmentCompleted = false
 	}
 	n.assistantContent.Reset()
 	_, _ = n.assistantContent.WriteString(finalText)
+}
+
+func assistantTextEquivalent(left, right string) bool {
+	return normalizeAssistantCompareText(left) == normalizeAssistantCompareText(right)
+}
+
+func normalizeAssistantCompareText(text string) string {
+	return strings.Join(strings.Fields(strings.TrimSpace(text)), "")
+}
+
+// ApplyAssistantTurnFinalText uses turn/completed text only when no assistant
+// segment has already completed. item/completed is authoritative once shown;
+// the turn payload commonly replays the same answer with minor polish.
+func (n *acpTurnNormalizer) ApplyAssistantTurnFinalText(finalText string) {
+	if n == nil || n.assistantSegmentCompleted {
+		return
+	}
+	n.ApplyAssistantFinalText(finalText)
 }
 
 func (n *acpTurnNormalizer) AppendAssistantSnapshot(

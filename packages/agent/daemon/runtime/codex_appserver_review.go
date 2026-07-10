@@ -138,7 +138,7 @@ func (a *CodexAppServerAdapter) execReviewSlashCommand(
 		}
 		return true, nil
 	}
-	normalizer.ApplyAssistantFinalText(appServerTurnFinalAssistantText(finalTurn))
+	normalizer.ApplyAssistantTurnFinalText(appServerTurnFinalAssistantText(finalTurn))
 	emitTerminal(appServerTurnTerminalEvents(session, turnID, finalTurn, normalizer))
 	return true, nil
 }

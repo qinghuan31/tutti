@@ -1508,26 +1508,30 @@ delimited by ---`, and the composer skill picker may show partial or
 
 - Symptom:
   The environment wizard / dock marks Codex as needing login ("未登录") even
-  though `OPENAI_API_KEY` is set or `~/.codex/config.toml` declares `api_key`,
-  and Codex sessions can already run successfully.
+  though an API key is configured and Codex sessions can already run
+  successfully. Common sources are `OPENAI_API_KEY` in the environment,
+  `api_key` in `~/.codex/config.toml`, or `OPENAI_API_KEY` inside
+  `~/.codex/auth.json` as written by custom-provider switchers.
 - Quick checks:
   Run `codex login status` (often prints `Not logged in`). Confirm an API
-  credential exists via `echo $OPENAI_API_KEY` or
-  `grep -E 'api_key' ~/.codex/config.toml`.
+  credential exists via `echo $OPENAI_API_KEY`,
+  `grep -E 'api_key' ~/.codex/config.toml`, or a non-empty
+  `OPENAI_API_KEY` field in `~/.codex/auth.json`.
 - Root cause:
   `codex login status` only reflects a ChatGPT OAuth session. API-key billing
-  is invisible to that command, so tuttid used to treat the provider as
-  `auth_required` and block the wizard even though the runtime can authenticate
-  with the key.
+  from the environment, config, or `auth.json` is invisible to that command,
+  so tuttid used to treat the provider as `auth_required` and block the wizard
+  even though the runtime can authenticate with the key.
 - Fix:
   Provider status should call `providerHasAPICredential` for Codex the same way
-  it does for Claude Code. When an API key is present (env or config.toml),
-  report auth as authenticated with method `apiKey` / label
+  it does for Claude Code, including `auth.json` `OPENAI_API_KEY`. When an API
+  key is present, report auth as authenticated with method `apiKey` / label
   `API Usage Billing` instead of requiring login. A bare custom base URL
   without a credential must not trigger this override.
 - Validation:
-  Add or update `agentstatus` tests for Codex API-key-without-login readiness,
-  then run `cd services/tuttid && go test ./service/agentstatus`.
+  Add or update `agentstatus` tests for environment, config.toml, and auth.json
+  API-key-without-login readiness, then run
+  `cd services/tuttid && go test ./service/agentstatus`.
 
 ### Codex session fails with not connected when model_catalog_json is relative
 
@@ -1562,6 +1566,39 @@ delimited by ---`, and the composer skill picker may show partial or
 - References:
   [codex.go](../../packages/agent/runtimeprep/codex.go)
   [preparer_test.go](../../packages/agent/runtimeprep/preparer_test.go)
+
+### Codex custom model_provider mixes models, duplicates replies, or shows metadata warnings
+
+- Symptom:
+  With `model_provider` set to a custom endpoint and `model` set to a vendor
+  model id, the composer mixes official GPT ids with the configured model, a
+  turn may show the same assistant reply twice, or the transcript repeatedly
+  displays `Model metadata for ... not found. Defaulting to fallback metadata`.
+- Quick checks:
+  Inspect top-level `model_provider` and `model` in `~/.codex/config.toml`.
+  In persisted session messages, look for two completed assistant rows with
+  equivalent text but different message ids in one turn. The composer model
+  options should contain only the configured model after the fix.
+- Root cause:
+  The model catalog appended the configured custom model to Codex's official
+  `model/list`, even though the custom endpoint cannot serve those official
+  ids. Separately, Codex can finalize an assistant item after an early stream
+  boundary and replay the answer again in `turn/completed`, sometimes with
+  whitespace polish; treating each report as a new segment creates duplicate
+  bubbles. The model-metadata warning is runtime diagnostic noise rather than
+  an actionable user error.
+- Fix:
+  When a non-default `model_provider` and a top-level `model` are configured,
+  expose only that model in the Codex catalog. Preserve the assistant message
+  id for whitespace-equivalent item-finalization text and ignore turn-final
+  text after an assistant segment has already completed. Filter the metadata
+  fallback warning through the same AgentGUI diagnostic-notice projection used
+  for skills-context-budget warnings.
+- Validation:
+  Run
+  `go test ./packages/agent/daemon/runtime -run 'TestApplyAssistantFinalText|TestApplyAssistantTurnFinalText|TestCodexAppServerAdapterExecStreamsTurn'`,
+  `cd services/tuttid && go test ./service/agent -run TestAgentModelCatalog`,
+  and the focused AgentGUI projection test.
 
 ### Codex app-server subagent output appears as the parent reply
 
