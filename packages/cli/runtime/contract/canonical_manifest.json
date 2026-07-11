@@ -1,0 +1,2782 @@
+{
+  "manifestVersion": "1.0.0",
+  "generatorVersion": "1.0.0",
+  "corpusVersion": "1.0.0",
+  "commands": [
+    {
+      "capability": {
+        "id": "agent-context.agent.active-peers",
+        "path": ["agent", "active-peers"],
+        "summary": "Show active peer agents",
+        "description": "Show logical active peer agents and their execution cwd in the current workspace before editing files.",
+        "visibility": "public",
+        "inputSchema": {
+          "properties": {},
+          "type": "object"
+        },
+        "output": {
+          "defaultMode": "json",
+          "json": true
+        },
+        "source": {
+          "kind": "builtin"
+        }
+      },
+      "conditions": {
+        "registrationGates": ["agent-context"],
+        "requestContext": [
+          {
+            "id": "workspace",
+            "required": false
+          }
+        ]
+      }
+    },
+    {
+      "capability": {
+        "id": "agent-context.agent.cancel",
+        "path": ["agent", "cancel"],
+        "summary": "Cancel an agent session",
+        "description": "Cancel an agent session in the current workspace.",
+        "visibility": "public",
+        "inputSchema": {
+          "properties": {
+            "session-id": {
+              "type": "string"
+            }
+          },
+          "required": ["session-id"],
+          "type": "object"
+        },
+        "output": {
+          "defaultMode": "table",
+          "json": true,
+          "table": {
+            "columns": [
+              {
+                "key": "id",
+                "label": "ID"
+              },
+              {
+                "key": "provider",
+                "label": "Provider"
+              },
+              {
+                "key": "status",
+                "label": "Status"
+              },
+              {
+                "key": "launchRequested",
+                "label": "Launch Requested"
+              }
+            ]
+          }
+        },
+        "source": {
+          "kind": "builtin"
+        }
+      },
+      "conditions": {
+        "registrationGates": ["agent-context"],
+        "requestContext": [
+          {
+            "id": "workspace",
+            "required": false
+          }
+        ]
+      }
+    },
+    {
+      "capability": {
+        "id": "agent-context.agent.composer-options",
+        "path": ["agent", "composer-options"],
+        "summary": "Get agent composer options",
+        "description": "Get provider-specific model and reasoning options without starting an agent session. Claude Code may spin up a hidden live discovery session.",
+        "visibility": "public",
+        "inputSchema": {
+          "properties": {
+            "cwd": {
+              "type": "string"
+            },
+            "include-capability-catalog": {
+              "type": "boolean"
+            },
+            "locale": {
+              "type": "string"
+            },
+            "model": {
+              "type": "string"
+            },
+            "permission-mode": {
+              "type": "string"
+            },
+            "provider": {
+              "type": "string"
+            },
+            "reasoning-effort": {
+              "type": "string"
+            }
+          },
+          "required": ["provider"],
+          "type": "object"
+        },
+        "output": {
+          "defaultMode": "json",
+          "json": true
+        },
+        "source": {
+          "kind": "builtin"
+        }
+      },
+      "conditions": {
+        "registrationGates": ["agent-context"],
+        "providerAvailability": ["agent-targets"],
+        "requestContext": [
+          {
+            "id": "workspace",
+            "required": false
+          }
+        ]
+      }
+    },
+    {
+      "capability": {
+        "id": "agent-context.agent.get",
+        "path": ["agent", "get"],
+        "summary": "Get an agent session",
+        "description": "Get compact agent session context in the current workspace.",
+        "visibility": "public",
+        "inputSchema": {
+          "properties": {
+            "session-id": {
+              "type": "string"
+            }
+          },
+          "required": ["session-id"],
+          "type": "object"
+        },
+        "output": {
+          "defaultMode": "json",
+          "json": true
+        },
+        "source": {
+          "kind": "builtin"
+        }
+      },
+      "conditions": {
+        "registrationGates": ["agent-context"],
+        "requestContext": [
+          {
+            "id": "workspace",
+            "required": false
+          }
+        ]
+      }
+    },
+    {
+      "capability": {
+        "id": "agent-context.agent.open",
+        "path": ["agent", "open"],
+        "summary": "Request AgentGUI open",
+        "description": "Request desktop AgentGUI activation for an existing agent session.",
+        "visibility": "public",
+        "inputSchema": {
+          "properties": {
+            "session-id": {
+              "type": "string"
+            }
+          },
+          "required": ["session-id"],
+          "type": "object"
+        },
+        "output": {
+          "defaultMode": "table",
+          "json": true,
+          "table": {
+            "columns": [
+              {
+                "key": "id",
+                "label": "ID"
+              },
+              {
+                "key": "provider",
+                "label": "Provider"
+              },
+              {
+                "key": "status",
+                "label": "Status"
+              },
+              {
+                "key": "launchRequested",
+                "label": "Launch Requested"
+              }
+            ]
+          }
+        },
+        "source": {
+          "kind": "builtin"
+        }
+      },
+      "conditions": {
+        "registrationGates": ["agent-context"],
+        "requestContext": [
+          {
+            "id": "workspace",
+            "required": false
+          }
+        ]
+      }
+    },
+    {
+      "capability": {
+        "id": "agent-context.agent.providers",
+        "path": ["agent", "providers"],
+        "summary": "List available agent providers",
+        "description": "List enabled Agent Targets and whether tuttid can start their local runtime command.",
+        "visibility": "public",
+        "inputSchema": {
+          "properties": {
+            "provider": {
+              "type": "string"
+            }
+          },
+          "type": "object"
+        },
+        "output": {
+          "defaultMode": "table",
+          "json": true,
+          "table": {
+            "columns": [
+              {
+                "key": "provider",
+                "label": "Provider"
+              },
+              {
+                "key": "status",
+                "label": "Status"
+              },
+              {
+                "key": "detail",
+                "label": "Detail"
+              }
+            ]
+          }
+        },
+        "source": {
+          "kind": "builtin"
+        }
+      },
+      "conditions": {
+        "registrationGates": ["agent-context"],
+        "providerAvailability": ["agent-targets"],
+        "requestContext": [
+          {
+            "id": "workspace",
+            "required": false
+          }
+        ]
+      }
+    },
+    {
+      "capability": {
+        "id": "agent-context.agent.send",
+        "path": ["agent", "send"],
+        "summary": "Send input to an agent session",
+        "description": "Send user input to an existing agent session. Use --guidance to guide the currently active turn without attaching to output.",
+        "visibility": "public",
+        "inputSchema": {
+          "properties": {
+            "guidance": {
+              "description": "Send this prompt as guidance to the currently active turn instead of starting a new turn.",
+              "type": "boolean"
+            },
+            "image": {
+              "description": "Image file to attach to this prompt. May be passed multiple times.",
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "prompt": {
+              "type": "string"
+            },
+            "session-id": {
+              "type": "string"
+            }
+          },
+          "required": ["session-id", "prompt"],
+          "type": "object"
+        },
+        "output": {
+          "defaultMode": "table",
+          "json": true,
+          "table": {
+            "columns": [
+              {
+                "key": "id",
+                "label": "ID"
+              },
+              {
+                "key": "provider",
+                "label": "Provider"
+              },
+              {
+                "key": "status",
+                "label": "Status"
+              },
+              {
+                "key": "launchRequested",
+                "label": "Launch Requested"
+              }
+            ]
+          }
+        },
+        "source": {
+          "kind": "builtin"
+        }
+      },
+      "conditions": {
+        "registrationGates": ["agent-context"],
+        "requestContext": [
+          {
+            "id": "workspace",
+            "required": false
+          }
+        ]
+      }
+    },
+    {
+      "capability": {
+        "id": "agent-context.agent.session-summary",
+        "path": ["agent", "session-summary"],
+        "summary": "Get agent session summary",
+        "description": "Get compact session context and recent messages for agent-session mentions.",
+        "visibility": "public",
+        "inputSchema": {
+          "properties": {
+            "after-version": {
+              "description": "Return messages after this message version.",
+              "minimum": 0,
+              "type": "integer"
+            },
+            "before-version": {
+              "description": "Return messages before this message version when order is desc.",
+              "minimum": 0,
+              "type": "integer"
+            },
+            "limit": {
+              "description": "Maximum number of recent messages to return.",
+              "minimum": 0,
+              "type": "integer"
+            },
+            "order": {
+              "description": "Message order: asc or desc.",
+              "type": "string"
+            },
+            "session-id": {
+              "description": "Agent session id to inspect.",
+              "type": "string"
+            }
+          },
+          "required": ["session-id"],
+          "type": "object"
+        },
+        "output": {
+          "defaultMode": "json",
+          "json": true
+        },
+        "source": {
+          "kind": "builtin"
+        }
+      },
+      "conditions": {
+        "registrationGates": ["agent-context"],
+        "requestContext": [
+          {
+            "id": "workspace",
+            "required": false
+          }
+        ]
+      }
+    },
+    {
+      "capability": {
+        "id": "agent-context.agent.sessions",
+        "path": ["agent", "sessions"],
+        "summary": "List agent sessions",
+        "description": "List agent sessions in the current workspace. JSON output returns compact session summaries.",
+        "visibility": "public",
+        "inputSchema": {
+          "properties": {},
+          "type": "object"
+        },
+        "output": {
+          "defaultMode": "table",
+          "json": true,
+          "table": {
+            "columns": [
+              {
+                "key": "id",
+                "label": "ID"
+              },
+              {
+                "key": "provider",
+                "label": "Provider"
+              },
+              {
+                "key": "status",
+                "label": "Status"
+              },
+              {
+                "key": "title",
+                "label": "Title"
+              }
+            ]
+          }
+        },
+        "source": {
+          "kind": "builtin"
+        }
+      },
+      "conditions": {
+        "registrationGates": ["agent-context"],
+        "requestContext": [
+          {
+            "id": "workspace",
+            "required": false
+          }
+        ]
+      }
+    },
+    {
+      "capability": {
+        "id": "agent-context.agent.start",
+        "path": ["agent", "start"],
+        "summary": "Start an agent session with a provider shortcut",
+        "description": "Start an agent session by canonical provider id. Tutti resolves the provider through the enabled Agent Target catalog.",
+        "visibility": "public",
+        "inputSchema": {
+          "properties": {
+            "cwd": {
+              "type": "string"
+            },
+            "display-prompt": {
+              "type": "string"
+            },
+            "hidden": {
+              "type": "boolean"
+            },
+            "image": {
+              "description": "Image file to attach to the initial prompt. May be passed multiple times.",
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "model": {
+              "type": "string"
+            },
+            "permission-mode": {
+              "type": "string"
+            },
+            "prompt": {
+              "type": "string"
+            },
+            "provider": {
+              "type": "string"
+            },
+            "reasoning-effort": {
+              "type": "string"
+            },
+            "show": {
+              "type": "boolean"
+            },
+            "speed": {
+              "type": "string"
+            },
+            "title": {
+              "type": "string"
+            }
+          },
+          "required": ["provider", "prompt"],
+          "type": "object"
+        },
+        "output": {
+          "defaultMode": "table",
+          "json": true,
+          "table": {
+            "columns": [
+              {
+                "key": "id",
+                "label": "ID"
+              },
+              {
+                "key": "provider",
+                "label": "Provider"
+              },
+              {
+                "key": "status",
+                "label": "Status"
+              },
+              {
+                "key": "launchRequested",
+                "label": "Launch Requested"
+              }
+            ]
+          }
+        },
+        "source": {
+          "kind": "builtin"
+        }
+      },
+      "conditions": {
+        "registrationGates": ["agent-context"],
+        "providerAvailability": ["agent-targets"],
+        "requestContext": [
+          {
+            "id": "workspace",
+            "required": false
+          }
+        ]
+      }
+    },
+    {
+      "capability": {
+        "id": "agent-context.agent.turn-resources",
+        "path": ["agent", "turn-resources"],
+        "summary": "Get agent turn resources",
+        "description": "Get image resources from a specific agent session turn. JSON output keeps images grouped by source user message.",
+        "visibility": "public",
+        "inputSchema": {
+          "properties": {
+            "limit": {
+              "description": "Maximum number of messages from the turn to inspect.",
+              "minimum": 0,
+              "type": "integer"
+            },
+            "session-id": {
+              "description": "Agent session id to inspect.",
+              "type": "string"
+            },
+            "turn-id": {
+              "description": "Turn id whose resources should be returned.",
+              "type": "string"
+            }
+          },
+          "required": ["session-id", "turn-id"],
+          "type": "object"
+        },
+        "output": {
+          "defaultMode": "json",
+          "json": true
+        },
+        "source": {
+          "kind": "builtin"
+        }
+      },
+      "conditions": {
+        "registrationGates": ["agent-context"],
+        "requestContext": [
+          {
+            "id": "workspace",
+            "required": false
+          }
+        ]
+      }
+    },
+    {
+      "capability": {
+        "id": "agent-context.agent.tutti-cli-skill-bundle",
+        "path": ["agent", "tutti-cli-skill-bundle"],
+        "summary": "Get Tutti CLI skill bundle",
+        "description": "Get a dynamically rendered Tutti skill bundle for an external agent runtime.",
+        "visibility": "integration",
+        "inputSchema": {
+          "properties": {
+            "agent-session-id": {
+              "type": "string"
+            },
+            "browser-use": {
+              "type": "boolean"
+            },
+            "computer-use": {
+              "type": "boolean"
+            },
+            "provider": {
+              "type": "string"
+            }
+          },
+          "required": ["provider"],
+          "type": "object"
+        },
+        "output": {
+          "defaultMode": "json",
+          "json": true
+        },
+        "source": {
+          "kind": "builtin"
+        }
+      },
+      "conditions": {
+        "registrationGates": ["agent-context"],
+        "integrationVisibility": ["include-integration"],
+        "requestContext": [
+          {
+            "id": "workspace",
+            "required": false
+          }
+        ]
+      }
+    },
+    {
+      "capability": {
+        "id": "agent-context.agent.wait",
+        "path": ["agent", "wait"],
+        "summary": "Wait for an agent session stop point",
+        "description": "Block until the session reaches a stop point. Use `agent session-summary` for context recovery.",
+        "visibility": "public",
+        "inputSchema": {
+          "properties": {
+            "after-version": {
+              "description": "Wait for a stop point after this message version.",
+              "minimum": 0,
+              "type": "integer"
+            },
+            "session-id": {
+              "description": "Agent session id to await.",
+              "type": "string"
+            },
+            "timeout-ms": {
+              "description": "Maximum time to wait in milliseconds before returning a timeout result.",
+              "minimum": 0,
+              "type": "integer"
+            }
+          },
+          "required": ["session-id"],
+          "type": "object"
+        },
+        "output": {
+          "defaultMode": "json",
+          "json": true
+        },
+        "source": {
+          "kind": "builtin"
+        }
+      },
+      "conditions": {
+        "registrationGates": ["agent-context"],
+        "requestContext": [
+          {
+            "id": "workspace",
+            "required": false
+          }
+        ]
+      }
+    },
+    {
+      "capability": {
+        "id": "agent-context.claude.start",
+        "path": ["claude", "start"],
+        "summary": "Start a Claude Code agent session",
+        "description": "Start a Claude Code agent session in the current workspace. Use --show to request AgentGUI activation.",
+        "visibility": "public",
+        "inputSchema": {
+          "properties": {
+            "cwd": {
+              "type": "string"
+            },
+            "display-prompt": {
+              "type": "string"
+            },
+            "hidden": {
+              "type": "boolean"
+            },
+            "image": {
+              "description": "Image file to attach to the initial prompt. May be passed multiple times.",
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "model": {
+              "type": "string"
+            },
+            "permission-mode": {
+              "type": "string"
+            },
+            "prompt": {
+              "type": "string"
+            },
+            "reasoning-effort": {
+              "type": "string"
+            },
+            "show": {
+              "type": "boolean"
+            },
+            "speed": {
+              "type": "string"
+            },
+            "title": {
+              "type": "string"
+            }
+          },
+          "required": ["prompt"],
+          "type": "object"
+        },
+        "output": {
+          "defaultMode": "table",
+          "json": true,
+          "table": {
+            "columns": [
+              {
+                "key": "id",
+                "label": "ID"
+              },
+              {
+                "key": "provider",
+                "label": "Provider"
+              },
+              {
+                "key": "status",
+                "label": "Status"
+              },
+              {
+                "key": "launchRequested",
+                "label": "Launch Requested"
+              }
+            ]
+          }
+        },
+        "source": {
+          "kind": "app",
+          "appId": "agent-claude-code",
+          "appName": "Claude Code",
+          "cliDescription": "Start a Claude Code agent session in the current workspace. Use --show to request AgentGUI activation."
+        }
+      },
+      "conditions": {
+        "registrationGates": ["agent-context"],
+        "providerAvailability": ["agent-provider:claude-code"],
+        "requestContext": [
+          {
+            "id": "workspace",
+            "required": false
+          }
+        ]
+      }
+    },
+    {
+      "capability": {
+        "id": "agent-context.codex.start",
+        "path": ["codex", "start"],
+        "summary": "Start a Codex agent session",
+        "description": "Start a Codex agent session in the current workspace. Use --show to request AgentGUI activation.",
+        "visibility": "public",
+        "inputSchema": {
+          "properties": {
+            "cwd": {
+              "type": "string"
+            },
+            "display-prompt": {
+              "type": "string"
+            },
+            "hidden": {
+              "type": "boolean"
+            },
+            "image": {
+              "description": "Image file to attach to the initial prompt. May be passed multiple times.",
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "model": {
+              "type": "string"
+            },
+            "permission-mode": {
+              "type": "string"
+            },
+            "prompt": {
+              "type": "string"
+            },
+            "reasoning-effort": {
+              "type": "string"
+            },
+            "show": {
+              "type": "boolean"
+            },
+            "speed": {
+              "type": "string"
+            },
+            "title": {
+              "type": "string"
+            }
+          },
+          "required": ["prompt"],
+          "type": "object"
+        },
+        "output": {
+          "defaultMode": "table",
+          "json": true,
+          "table": {
+            "columns": [
+              {
+                "key": "id",
+                "label": "ID"
+              },
+              {
+                "key": "provider",
+                "label": "Provider"
+              },
+              {
+                "key": "status",
+                "label": "Status"
+              },
+              {
+                "key": "launchRequested",
+                "label": "Launch Requested"
+              }
+            ]
+          }
+        },
+        "source": {
+          "kind": "app",
+          "appId": "agent-codex",
+          "appName": "Codex",
+          "cliDescription": "Start a Codex agent session in the current workspace. Use --show to request AgentGUI activation."
+        }
+      },
+      "conditions": {
+        "registrationGates": ["agent-context"],
+        "providerAvailability": ["agent-provider:codex"],
+        "requestContext": [
+          {
+            "id": "workspace",
+            "required": false
+          }
+        ]
+      }
+    },
+    {
+      "capability": {
+        "id": "agent-context.tutti-agent.start",
+        "path": ["tutti-agent", "start"],
+        "summary": "Start a Tutti Agent session",
+        "description": "Start a Tutti Agent session in the current workspace. Use --show to request AgentGUI activation.",
+        "visibility": "public",
+        "inputSchema": {
+          "properties": {
+            "cwd": {
+              "type": "string"
+            },
+            "display-prompt": {
+              "type": "string"
+            },
+            "hidden": {
+              "type": "boolean"
+            },
+            "image": {
+              "description": "Image file to attach to the initial prompt. May be passed multiple times.",
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "model": {
+              "type": "string"
+            },
+            "permission-mode": {
+              "type": "string"
+            },
+            "prompt": {
+              "type": "string"
+            },
+            "reasoning-effort": {
+              "type": "string"
+            },
+            "show": {
+              "type": "boolean"
+            },
+            "speed": {
+              "type": "string"
+            },
+            "title": {
+              "type": "string"
+            }
+          },
+          "required": ["prompt"],
+          "type": "object"
+        },
+        "output": {
+          "defaultMode": "table",
+          "json": true,
+          "table": {
+            "columns": [
+              {
+                "key": "id",
+                "label": "ID"
+              },
+              {
+                "key": "provider",
+                "label": "Provider"
+              },
+              {
+                "key": "status",
+                "label": "Status"
+              },
+              {
+                "key": "launchRequested",
+                "label": "Launch Requested"
+              }
+            ]
+          }
+        },
+        "source": {
+          "kind": "app",
+          "appId": "agent-tutti-agent",
+          "appName": "Tutti Agent",
+          "cliDescription": "Start a Tutti Agent session in the current workspace. Use --show to request AgentGUI activation."
+        }
+      },
+      "conditions": {
+        "registrationGates": ["agent-context"],
+        "providerAvailability": ["agent-provider:tutti-agent"],
+        "requestContext": [
+          {
+            "id": "workspace",
+            "required": false
+          }
+        ]
+      }
+    },
+    {
+      "capability": {
+        "id": "browser.click",
+        "path": ["browser", "click"],
+        "summary": "Click an element",
+        "description": "Click the element with the given uid (from `tutti browser snapshot`).",
+        "visibility": "public",
+        "inputSchema": {
+          "properties": {
+            "uid": {
+              "type": "string"
+            }
+          },
+          "required": ["uid"],
+          "type": "object"
+        },
+        "output": {
+          "defaultMode": "plain",
+          "json": false
+        },
+        "source": {
+          "kind": "builtin"
+        }
+      },
+      "conditions": {
+        "registrationGates": ["browser"],
+        "providerAvailability": ["browser-service"],
+        "requestContext": [
+          {
+            "id": "workspace",
+            "required": false
+          }
+        ]
+      }
+    },
+    {
+      "capability": {
+        "id": "browser.eval",
+        "path": ["browser", "eval"],
+        "summary": "Evaluate JavaScript on the page",
+        "description": "Run a JS function on the current page, e.g. \"() =\u003e document.title\", and return its result.",
+        "visibility": "public",
+        "inputSchema": {
+          "properties": {
+            "script": {
+              "type": "string"
+            }
+          },
+          "required": ["script"],
+          "type": "object"
+        },
+        "output": {
+          "defaultMode": "plain",
+          "json": false
+        },
+        "source": {
+          "kind": "builtin"
+        }
+      },
+      "conditions": {
+        "registrationGates": ["browser"],
+        "providerAvailability": ["browser-service"],
+        "requestContext": [
+          {
+            "id": "workspace",
+            "required": false
+          }
+        ]
+      }
+    },
+    {
+      "capability": {
+        "id": "browser.fill",
+        "path": ["browser", "fill"],
+        "summary": "Fill a form field",
+        "description": "Type a value into the element with the given uid (from `tutti browser snapshot`).",
+        "visibility": "public",
+        "inputSchema": {
+          "properties": {
+            "uid": {
+              "type": "string"
+            },
+            "value": {
+              "type": "string"
+            }
+          },
+          "required": ["uid", "value"],
+          "type": "object"
+        },
+        "output": {
+          "defaultMode": "plain",
+          "json": false
+        },
+        "source": {
+          "kind": "builtin"
+        }
+      },
+      "conditions": {
+        "registrationGates": ["browser"],
+        "providerAvailability": ["browser-service"],
+        "requestContext": [
+          {
+            "id": "workspace",
+            "required": false
+          }
+        ]
+      }
+    },
+    {
+      "capability": {
+        "id": "browser.list-pages",
+        "path": ["browser", "list-pages"],
+        "summary": "List open browser pages",
+        "description": "List the open pages/tabs in the workspace browser.",
+        "visibility": "public",
+        "inputSchema": {
+          "properties": {},
+          "type": "object"
+        },
+        "output": {
+          "defaultMode": "plain",
+          "json": false
+        },
+        "source": {
+          "kind": "builtin"
+        }
+      },
+      "conditions": {
+        "registrationGates": ["browser"],
+        "providerAvailability": ["browser-service"],
+        "requestContext": [
+          {
+            "id": "workspace",
+            "required": false
+          }
+        ]
+      }
+    },
+    {
+      "capability": {
+        "id": "browser.navigate",
+        "path": ["browser", "navigate"],
+        "summary": "Navigate the browser to a URL",
+        "description": "Open a URL in the workspace browser and return the page state.",
+        "visibility": "public",
+        "inputSchema": {
+          "properties": {
+            "url": {
+              "type": "string"
+            }
+          },
+          "required": ["url"],
+          "type": "object"
+        },
+        "output": {
+          "defaultMode": "plain",
+          "json": false
+        },
+        "source": {
+          "kind": "builtin"
+        }
+      },
+      "conditions": {
+        "registrationGates": ["browser"],
+        "providerAvailability": ["browser-service"],
+        "requestContext": [
+          {
+            "id": "workspace",
+            "required": false
+          }
+        ]
+      }
+    },
+    {
+      "capability": {
+        "id": "browser.screenshot",
+        "path": ["browser", "screenshot"],
+        "summary": "Take a screenshot of the page",
+        "description": "Save a PNG screenshot of the current page to a file and return its path. Pass full-page=true for the whole page.",
+        "visibility": "public",
+        "inputSchema": {
+          "properties": {
+            "full-page": {
+              "type": "boolean"
+            }
+          },
+          "type": "object"
+        },
+        "output": {
+          "defaultMode": "plain",
+          "json": false
+        },
+        "source": {
+          "kind": "builtin"
+        }
+      },
+      "conditions": {
+        "registrationGates": ["browser"],
+        "providerAvailability": ["browser-service"],
+        "requestContext": [
+          {
+            "id": "workspace",
+            "required": false
+          }
+        ]
+      }
+    },
+    {
+      "capability": {
+        "id": "browser.snapshot",
+        "path": ["browser", "snapshot"],
+        "summary": "Capture an accessibility snapshot of the page",
+        "description": "Return a text snapshot (accessibility tree) of the current page, including element uids to click/fill.",
+        "visibility": "public",
+        "inputSchema": {
+          "properties": {},
+          "type": "object"
+        },
+        "output": {
+          "defaultMode": "plain",
+          "json": false
+        },
+        "source": {
+          "kind": "builtin"
+        }
+      },
+      "conditions": {
+        "registrationGates": ["browser"],
+        "providerAvailability": ["browser-service"],
+        "requestContext": [
+          {
+            "id": "workspace",
+            "required": false
+          }
+        ]
+      }
+    },
+    {
+      "capability": {
+        "id": "computer.click",
+        "path": ["computer", "click"],
+        "summary": "Left-click at screen coordinates",
+        "description": "Left-click at the given (x, y) screen coordinates.",
+        "visibility": "public",
+        "inputSchema": {
+          "properties": {
+            "x": {
+              "type": "string"
+            },
+            "y": {
+              "type": "string"
+            }
+          },
+          "required": ["x", "y"],
+          "type": "object"
+        },
+        "output": {
+          "defaultMode": "plain",
+          "json": false
+        },
+        "source": {
+          "kind": "builtin"
+        }
+      },
+      "conditions": {
+        "registrationGates": ["computer"],
+        "providerAvailability": ["computer-service"],
+        "requestContext": [
+          {
+            "id": "workspace",
+            "required": false
+          }
+        ]
+      }
+    },
+    {
+      "capability": {
+        "id": "computer.double-click",
+        "path": ["computer", "double-click"],
+        "summary": "Double-click at screen coordinates",
+        "description": "Double-click at the given (x, y) screen coordinates.",
+        "visibility": "public",
+        "inputSchema": {
+          "properties": {
+            "x": {
+              "type": "string"
+            },
+            "y": {
+              "type": "string"
+            }
+          },
+          "required": ["x", "y"],
+          "type": "object"
+        },
+        "output": {
+          "defaultMode": "plain",
+          "json": false
+        },
+        "source": {
+          "kind": "builtin"
+        }
+      },
+      "conditions": {
+        "registrationGates": ["computer"],
+        "providerAvailability": ["computer-service"],
+        "requestContext": [
+          {
+            "id": "workspace",
+            "required": false
+          }
+        ]
+      }
+    },
+    {
+      "capability": {
+        "id": "computer.move-cursor",
+        "path": ["computer", "move-cursor"],
+        "summary": "Move the cursor without clicking",
+        "description": "Move the mouse cursor to the given (x, y) screen coordinates without clicking.",
+        "visibility": "public",
+        "inputSchema": {
+          "properties": {
+            "x": {
+              "type": "string"
+            },
+            "y": {
+              "type": "string"
+            }
+          },
+          "required": ["x", "y"],
+          "type": "object"
+        },
+        "output": {
+          "defaultMode": "plain",
+          "json": false
+        },
+        "source": {
+          "kind": "builtin"
+        }
+      },
+      "conditions": {
+        "registrationGates": ["computer"],
+        "providerAvailability": ["computer-service"],
+        "requestContext": [
+          {
+            "id": "workspace",
+            "required": false
+          }
+        ]
+      }
+    },
+    {
+      "capability": {
+        "id": "computer.press-key",
+        "path": ["computer", "press-key"],
+        "summary": "Press a key or keyboard shortcut",
+        "description": "Press a key or shortcut, e.g. \"cmd+c\", \"return\", \"escape\".",
+        "visibility": "public",
+        "inputSchema": {
+          "properties": {
+            "key": {
+              "type": "string"
+            }
+          },
+          "required": ["key"],
+          "type": "object"
+        },
+        "output": {
+          "defaultMode": "plain",
+          "json": false
+        },
+        "source": {
+          "kind": "builtin"
+        }
+      },
+      "conditions": {
+        "registrationGates": ["computer"],
+        "providerAvailability": ["computer-service"],
+        "requestContext": [
+          {
+            "id": "workspace",
+            "required": false
+          }
+        ]
+      }
+    },
+    {
+      "capability": {
+        "id": "computer.right-click",
+        "path": ["computer", "right-click"],
+        "summary": "Right-click at screen coordinates",
+        "description": "Right-click at the given (x, y) screen coordinates.",
+        "visibility": "public",
+        "inputSchema": {
+          "properties": {
+            "x": {
+              "type": "string"
+            },
+            "y": {
+              "type": "string"
+            }
+          },
+          "required": ["x", "y"],
+          "type": "object"
+        },
+        "output": {
+          "defaultMode": "plain",
+          "json": false
+        },
+        "source": {
+          "kind": "builtin"
+        }
+      },
+      "conditions": {
+        "registrationGates": ["computer"],
+        "providerAvailability": ["computer-service"],
+        "requestContext": [
+          {
+            "id": "workspace",
+            "required": false
+          }
+        ]
+      }
+    },
+    {
+      "capability": {
+        "id": "computer.screenshot",
+        "path": ["computer", "screenshot"],
+        "summary": "Take a screenshot of the macOS desktop",
+        "description": "Capture the current screen, save it as a PNG file, and return its path.",
+        "visibility": "public",
+        "inputSchema": {
+          "properties": {},
+          "type": "object"
+        },
+        "output": {
+          "defaultMode": "plain",
+          "json": false
+        },
+        "source": {
+          "kind": "builtin"
+        }
+      },
+      "conditions": {
+        "registrationGates": ["computer"],
+        "providerAvailability": ["computer-service"],
+        "requestContext": [
+          {
+            "id": "workspace",
+            "required": false
+          }
+        ]
+      }
+    },
+    {
+      "capability": {
+        "id": "computer.scroll",
+        "path": ["computer", "scroll"],
+        "summary": "Scroll at screen coordinates",
+        "description": "Scroll at the given (x, y) coordinates in the given direction.",
+        "visibility": "public",
+        "inputSchema": {
+          "properties": {
+            "amount": {
+              "type": "string"
+            },
+            "direction": {
+              "type": "string"
+            },
+            "x": {
+              "type": "string"
+            },
+            "y": {
+              "type": "string"
+            }
+          },
+          "required": ["x", "y", "direction"],
+          "type": "object"
+        },
+        "output": {
+          "defaultMode": "plain",
+          "json": false
+        },
+        "source": {
+          "kind": "builtin"
+        }
+      },
+      "conditions": {
+        "registrationGates": ["computer"],
+        "providerAvailability": ["computer-service"],
+        "requestContext": [
+          {
+            "id": "workspace",
+            "required": false
+          }
+        ]
+      }
+    },
+    {
+      "capability": {
+        "id": "computer.type",
+        "path": ["computer", "type"],
+        "summary": "Type text",
+        "description": "Type a string of characters at the current cursor position.",
+        "visibility": "public",
+        "inputSchema": {
+          "properties": {
+            "text": {
+              "type": "string"
+            }
+          },
+          "required": ["text"],
+          "type": "object"
+        },
+        "output": {
+          "defaultMode": "plain",
+          "json": false
+        },
+        "source": {
+          "kind": "builtin"
+        }
+      },
+      "conditions": {
+        "registrationGates": ["computer"],
+        "providerAvailability": ["computer-service"],
+        "requestContext": [
+          {
+            "id": "workspace",
+            "required": false
+          }
+        ]
+      }
+    },
+    {
+      "capability": {
+        "id": "diagnostics.doctor.ping",
+        "path": ["doctor", "ping"],
+        "summary": "Check CLI command routing",
+        "description": "Return a simple diagnostic response from the daemon CLI registry.",
+        "visibility": "public",
+        "inputSchema": {
+          "properties": {},
+          "type": "object"
+        },
+        "output": {
+          "defaultMode": "plain",
+          "json": true
+        },
+        "source": {
+          "kind": "builtin"
+        }
+      },
+      "conditions": {
+        "registrationGates": ["diagnostics"]
+      }
+    },
+    {
+      "capability": {
+        "id": "issue-manager.issue.create",
+        "path": ["issue", "create"],
+        "summary": "Create an issue",
+        "description": "Create an issue in a specific workspace topic.",
+        "visibility": "public",
+        "inputSchema": {
+          "properties": {
+            "content": {
+              "type": "string"
+            },
+            "issue-id": {
+              "type": "string"
+            },
+            "title": {
+              "type": "string"
+            },
+            "topic-id": {
+              "description": "Required topic id. Use issue topic list to discover workspace topics.",
+              "type": "string"
+            }
+          },
+          "required": ["topic-id", "title"],
+          "type": "object"
+        },
+        "output": {
+          "defaultMode": "json",
+          "json": true
+        },
+        "source": {
+          "kind": "app",
+          "appId": "issue-manager",
+          "appName": "Task Manager",
+          "cliDescription": "Manage workspace tasks and runs.",
+          "appDescription": "Plan, track, and execute workspace task work."
+        }
+      },
+      "conditions": {
+        "registrationGates": ["issue-manager"],
+        "requestContext": [
+          {
+            "id": "workspace",
+            "required": false
+          }
+        ]
+      }
+    },
+    {
+      "capability": {
+        "id": "issue-manager.issue.delete",
+        "path": ["issue", "delete"],
+        "summary": "Delete an issue",
+        "description": "Delete an issue from the current workspace.",
+        "visibility": "public",
+        "inputSchema": {
+          "properties": {
+            "issue-id": {
+              "type": "string"
+            }
+          },
+          "required": ["issue-id"],
+          "type": "object"
+        },
+        "output": {
+          "defaultMode": "json",
+          "json": true
+        },
+        "source": {
+          "kind": "app",
+          "appId": "issue-manager",
+          "appName": "Task Manager",
+          "cliDescription": "Manage workspace tasks and runs.",
+          "appDescription": "Plan, track, and execute workspace task work."
+        }
+      },
+      "conditions": {
+        "registrationGates": ["issue-manager"],
+        "requestContext": [
+          {
+            "id": "workspace",
+            "required": false
+          }
+        ]
+      }
+    },
+    {
+      "capability": {
+        "id": "issue-manager.issue.get",
+        "path": ["issue", "get"],
+        "summary": "Get issue detail",
+        "description": "Get an issue detail record and its tasks.",
+        "visibility": "public",
+        "inputSchema": {
+          "properties": {
+            "issue-id": {
+              "type": "string"
+            }
+          },
+          "required": ["issue-id"],
+          "type": "object"
+        },
+        "output": {
+          "defaultMode": "json",
+          "json": true
+        },
+        "source": {
+          "kind": "app",
+          "appId": "issue-manager",
+          "appName": "Task Manager",
+          "cliDescription": "Manage workspace tasks and runs.",
+          "appDescription": "Plan, track, and execute workspace task work."
+        }
+      },
+      "conditions": {
+        "registrationGates": ["issue-manager"],
+        "requestContext": [
+          {
+            "id": "workspace",
+            "required": false
+          }
+        ]
+      }
+    },
+    {
+      "capability": {
+        "id": "issue-manager.issue.list",
+        "path": ["issue", "list"],
+        "summary": "List issues in a topic",
+        "description": "List issue records in one workspace topic. Requires --topic-id; use `issue topic list --json` first when the topic is unknown. JSON output omits issue content bodies.",
+        "visibility": "public",
+        "inputSchema": {
+          "properties": {
+            "page-size": {
+              "maximum": 100,
+              "minimum": 1,
+              "type": "integer"
+            },
+            "page-token": {
+              "type": "string"
+            },
+            "search": {
+              "type": "string"
+            },
+            "status": {
+              "description": "Issue status filter.",
+              "enum": [
+                "all",
+                "not_started",
+                "running",
+                "pending_acceptance",
+                "completed",
+                "failed",
+                "canceled"
+              ],
+              "type": "string"
+            },
+            "topic-id": {
+              "description": "Required topic id. Use issue topic list --json to discover workspace topics before listing issues.",
+              "type": "string"
+            }
+          },
+          "required": ["topic-id"],
+          "type": "object"
+        },
+        "output": {
+          "defaultMode": "table",
+          "json": true,
+          "table": {
+            "columns": [
+              {
+                "key": "id",
+                "label": "ID"
+              },
+              {
+                "key": "title",
+                "label": "Title"
+              },
+              {
+                "key": "status",
+                "label": "Status"
+              },
+              {
+                "key": "updatedAt",
+                "label": "Updated"
+              }
+            ]
+          }
+        },
+        "source": {
+          "kind": "app",
+          "appId": "issue-manager",
+          "appName": "Task Manager",
+          "cliDescription": "Manage workspace tasks and runs.",
+          "appDescription": "Plan, track, and execute workspace task work."
+        }
+      },
+      "conditions": {
+        "registrationGates": ["issue-manager"],
+        "requestContext": [
+          {
+            "id": "workspace",
+            "required": false
+          }
+        ]
+      }
+    },
+    {
+      "capability": {
+        "id": "issue-manager.issue.run.complete",
+        "path": ["issue", "run", "complete"],
+        "summary": "Complete an issue run",
+        "description": "Complete an issue-level execution run and attach output metadata. Do not use for breakdown-only work.",
+        "visibility": "public",
+        "inputSchema": {
+          "properties": {
+            "error-message": {
+              "type": "string"
+            },
+            "issue-id": {
+              "type": "string"
+            },
+            "outputs": {
+              "type": "string"
+            },
+            "run-id": {
+              "type": "string"
+            },
+            "status": {
+              "enum": ["completed", "failed", "canceled"],
+              "type": "string"
+            },
+            "summary": {
+              "type": "string"
+            }
+          },
+          "required": ["issue-id", "run-id", "status"],
+          "type": "object"
+        },
+        "output": {
+          "defaultMode": "json",
+          "json": true
+        },
+        "source": {
+          "kind": "app",
+          "appId": "issue-manager",
+          "appName": "Task Manager",
+          "cliDescription": "Manage workspace tasks and runs.",
+          "appDescription": "Plan, track, and execute workspace task work."
+        }
+      },
+      "conditions": {
+        "registrationGates": ["issue-manager"],
+        "requestContext": [
+          {
+            "id": "workspace",
+            "required": false
+          }
+        ]
+      }
+    },
+    {
+      "capability": {
+        "id": "issue-manager.issue.run.create",
+        "path": ["issue", "run", "create"],
+        "summary": "Create an issue run",
+        "description": "Create an execution run for an issue. Do not use for breakdown-only work.",
+        "visibility": "public",
+        "inputSchema": {
+          "properties": {
+            "agent-session-id": {
+              "description": "Optional override; defaults to the current AgentGUI session when invoked from an agent runtime.",
+              "type": "string"
+            },
+            "agent-target-id": {
+              "type": "string"
+            },
+            "agent-user-id": {
+              "type": "string"
+            },
+            "issue-id": {
+              "type": "string"
+            },
+            "run-id": {
+              "type": "string"
+            }
+          },
+          "required": ["issue-id", "agent-target-id"],
+          "type": "object"
+        },
+        "output": {
+          "defaultMode": "json",
+          "json": true
+        },
+        "source": {
+          "kind": "app",
+          "appId": "issue-manager",
+          "appName": "Task Manager",
+          "cliDescription": "Manage workspace tasks and runs.",
+          "appDescription": "Plan, track, and execute workspace task work."
+        }
+      },
+      "conditions": {
+        "registrationGates": ["issue-manager"],
+        "requestContext": [
+          {
+            "id": "workspace",
+            "required": false
+          }
+        ]
+      }
+    },
+    {
+      "capability": {
+        "id": "issue-manager.issue.task.create",
+        "path": ["issue", "task", "create"],
+        "summary": "Create an issue task",
+        "description": "Create a child task under an issue. Use this to persist task breakdown output without creating a run.",
+        "visibility": "public",
+        "inputSchema": {
+          "properties": {
+            "content": {
+              "description": "Task instructions or notes.",
+              "type": "string"
+            },
+            "due-at-unix": {
+              "description": "Due time as a Unix timestamp in seconds.",
+              "type": "integer"
+            },
+            "issue-id": {
+              "description": "Issue that owns the task.",
+              "type": "string"
+            },
+            "priority": {
+              "description": "Task priority.",
+              "enum": ["high", "medium", "low"],
+              "type": "string"
+            },
+            "task-id": {
+              "description": "Stable task id to create; generated when omitted.",
+              "type": "string"
+            },
+            "title": {
+              "description": "Task title.",
+              "type": "string"
+            }
+          },
+          "required": ["issue-id", "title"],
+          "type": "object"
+        },
+        "output": {
+          "defaultMode": "json",
+          "json": true
+        },
+        "source": {
+          "kind": "app",
+          "appId": "issue-manager",
+          "appName": "Task Manager",
+          "cliDescription": "Manage workspace tasks and runs.",
+          "appDescription": "Plan, track, and execute workspace task work."
+        }
+      },
+      "conditions": {
+        "registrationGates": ["issue-manager"],
+        "requestContext": [
+          {
+            "id": "workspace",
+            "required": false
+          }
+        ]
+      }
+    },
+    {
+      "capability": {
+        "id": "issue-manager.issue.task.create-batch",
+        "path": ["issue", "task", "create-batch"],
+        "summary": "Create ordered issue tasks",
+        "description": "Create multiple child tasks under an issue in the JSON array order. Use this to persist task breakdown output without creating runs.",
+        "visibility": "public",
+        "inputSchema": {
+          "properties": {
+            "issue-id": {
+              "description": "Issue that owns the tasks.",
+              "type": "string"
+            },
+            "tasks-json": {
+              "description": "JSON array of task objects with title, optional taskId, content, priority, and dueAtUnix.",
+              "type": "string"
+            }
+          },
+          "required": ["issue-id", "tasks-json"],
+          "type": "object"
+        },
+        "output": {
+          "defaultMode": "json",
+          "json": true
+        },
+        "source": {
+          "kind": "app",
+          "appId": "issue-manager",
+          "appName": "Task Manager",
+          "cliDescription": "Manage workspace tasks and runs.",
+          "appDescription": "Plan, track, and execute workspace task work."
+        }
+      },
+      "conditions": {
+        "registrationGates": ["issue-manager"],
+        "requestContext": [
+          {
+            "id": "workspace",
+            "required": false
+          }
+        ]
+      }
+    },
+    {
+      "capability": {
+        "id": "issue-manager.issue.task.delete",
+        "path": ["issue", "task", "delete"],
+        "summary": "Delete an issue task",
+        "description": "Delete a task under an issue.",
+        "visibility": "public",
+        "inputSchema": {
+          "properties": {
+            "issue-id": {
+              "type": "string"
+            },
+            "task-id": {
+              "type": "string"
+            }
+          },
+          "required": ["issue-id", "task-id"],
+          "type": "object"
+        },
+        "output": {
+          "defaultMode": "json",
+          "json": true
+        },
+        "source": {
+          "kind": "app",
+          "appId": "issue-manager",
+          "appName": "Task Manager",
+          "cliDescription": "Manage workspace tasks and runs.",
+          "appDescription": "Plan, track, and execute workspace task work."
+        }
+      },
+      "conditions": {
+        "registrationGates": ["issue-manager"],
+        "requestContext": [
+          {
+            "id": "workspace",
+            "required": false
+          }
+        ]
+      }
+    },
+    {
+      "capability": {
+        "id": "issue-manager.issue.task.get",
+        "path": ["issue", "task", "get"],
+        "summary": "Get issue task detail",
+        "description": "Get task detail, latest run, recent runs, and latest outputs.",
+        "visibility": "public",
+        "inputSchema": {
+          "properties": {
+            "issue-id": {
+              "type": "string"
+            },
+            "task-id": {
+              "type": "string"
+            }
+          },
+          "required": ["issue-id", "task-id"],
+          "type": "object"
+        },
+        "output": {
+          "defaultMode": "json",
+          "json": true
+        },
+        "source": {
+          "kind": "app",
+          "appId": "issue-manager",
+          "appName": "Task Manager",
+          "cliDescription": "Manage workspace tasks and runs.",
+          "appDescription": "Plan, track, and execute workspace task work."
+        }
+      },
+      "conditions": {
+        "registrationGates": ["issue-manager"],
+        "requestContext": [
+          {
+            "id": "workspace",
+            "required": false
+          }
+        ]
+      }
+    },
+    {
+      "capability": {
+        "id": "issue-manager.issue.task.list",
+        "path": ["issue", "task", "list"],
+        "summary": "List issue tasks",
+        "description": "List tasks under an issue. JSON output omits task content bodies.",
+        "visibility": "public",
+        "inputSchema": {
+          "properties": {
+            "issue-id": {
+              "type": "string"
+            },
+            "page-size": {
+              "maximum": 100,
+              "minimum": 1,
+              "type": "integer"
+            },
+            "page-token": {
+              "type": "string"
+            },
+            "search": {
+              "type": "string"
+            },
+            "status": {
+              "description": "Task status filter.",
+              "enum": [
+                "all",
+                "not_started",
+                "running",
+                "pending_acceptance",
+                "completed",
+                "failed",
+                "canceled"
+              ],
+              "type": "string"
+            }
+          },
+          "required": ["issue-id"],
+          "type": "object"
+        },
+        "output": {
+          "defaultMode": "table",
+          "json": true,
+          "table": {
+            "columns": [
+              {
+                "key": "id",
+                "label": "ID"
+              },
+              {
+                "key": "title",
+                "label": "Title"
+              },
+              {
+                "key": "status",
+                "label": "Status"
+              },
+              {
+                "key": "priority",
+                "label": "Priority"
+              },
+              {
+                "key": "updatedAt",
+                "label": "Updated"
+              }
+            ]
+          }
+        },
+        "source": {
+          "kind": "app",
+          "appId": "issue-manager",
+          "appName": "Task Manager",
+          "cliDescription": "Manage workspace tasks and runs.",
+          "appDescription": "Plan, track, and execute workspace task work."
+        }
+      },
+      "conditions": {
+        "registrationGates": ["issue-manager"],
+        "requestContext": [
+          {
+            "id": "workspace",
+            "required": false
+          }
+        ]
+      }
+    },
+    {
+      "capability": {
+        "id": "issue-manager.issue.task.run.complete",
+        "path": ["issue", "task", "run", "complete"],
+        "summary": "Complete an issue task run",
+        "description": "Complete an execution run and attach output metadata. Do not use for breakdown-only work.",
+        "visibility": "public",
+        "inputSchema": {
+          "properties": {
+            "error-message": {
+              "type": "string"
+            },
+            "issue-id": {
+              "type": "string"
+            },
+            "outputs": {
+              "type": "string"
+            },
+            "run-id": {
+              "type": "string"
+            },
+            "status": {
+              "enum": ["completed", "failed", "canceled"],
+              "type": "string"
+            },
+            "summary": {
+              "type": "string"
+            },
+            "task-id": {
+              "type": "string"
+            }
+          },
+          "required": ["issue-id", "task-id", "run-id", "status"],
+          "type": "object"
+        },
+        "output": {
+          "defaultMode": "json",
+          "json": true
+        },
+        "source": {
+          "kind": "app",
+          "appId": "issue-manager",
+          "appName": "Task Manager",
+          "cliDescription": "Manage workspace tasks and runs.",
+          "appDescription": "Plan, track, and execute workspace task work."
+        }
+      },
+      "conditions": {
+        "registrationGates": ["issue-manager"],
+        "requestContext": [
+          {
+            "id": "workspace",
+            "required": false
+          }
+        ]
+      }
+    },
+    {
+      "capability": {
+        "id": "issue-manager.issue.task.run.create",
+        "path": ["issue", "task", "run", "create"],
+        "summary": "Create an issue task run",
+        "description": "Create an execution run for an issue task. Do not use for breakdown-only work.",
+        "visibility": "public",
+        "inputSchema": {
+          "properties": {
+            "agent-session-id": {
+              "description": "Optional override; defaults to the current AgentGUI session when invoked from an agent runtime.",
+              "type": "string"
+            },
+            "agent-target-id": {
+              "type": "string"
+            },
+            "agent-user-id": {
+              "type": "string"
+            },
+            "issue-id": {
+              "type": "string"
+            },
+            "run-id": {
+              "type": "string"
+            },
+            "task-id": {
+              "type": "string"
+            }
+          },
+          "required": ["issue-id", "task-id", "agent-target-id"],
+          "type": "object"
+        },
+        "output": {
+          "defaultMode": "json",
+          "json": true
+        },
+        "source": {
+          "kind": "app",
+          "appId": "issue-manager",
+          "appName": "Task Manager",
+          "cliDescription": "Manage workspace tasks and runs.",
+          "appDescription": "Plan, track, and execute workspace task work."
+        }
+      },
+      "conditions": {
+        "registrationGates": ["issue-manager"],
+        "requestContext": [
+          {
+            "id": "workspace",
+            "required": false
+          }
+        ]
+      }
+    },
+    {
+      "capability": {
+        "id": "issue-manager.issue.task.run.get",
+        "path": ["issue", "task", "run", "get"],
+        "summary": "Get issue task run detail",
+        "description": "Get run detail and outputs for an issue task.",
+        "visibility": "public",
+        "inputSchema": {
+          "properties": {
+            "issue-id": {
+              "type": "string"
+            },
+            "run-id": {
+              "type": "string"
+            },
+            "task-id": {
+              "type": "string"
+            }
+          },
+          "required": ["issue-id", "task-id", "run-id"],
+          "type": "object"
+        },
+        "output": {
+          "defaultMode": "json",
+          "json": true
+        },
+        "source": {
+          "kind": "app",
+          "appId": "issue-manager",
+          "appName": "Task Manager",
+          "cliDescription": "Manage workspace tasks and runs.",
+          "appDescription": "Plan, track, and execute workspace task work."
+        }
+      },
+      "conditions": {
+        "registrationGates": ["issue-manager"],
+        "requestContext": [
+          {
+            "id": "workspace",
+            "required": false
+          }
+        ]
+      }
+    },
+    {
+      "capability": {
+        "id": "issue-manager.issue.task.run.list",
+        "path": ["issue", "task", "run", "list"],
+        "summary": "List issue task runs",
+        "description": "List runs for an issue task.",
+        "visibility": "public",
+        "inputSchema": {
+          "properties": {
+            "issue-id": {
+              "type": "string"
+            },
+            "task-id": {
+              "type": "string"
+            }
+          },
+          "required": ["issue-id", "task-id"],
+          "type": "object"
+        },
+        "output": {
+          "defaultMode": "table",
+          "json": true,
+          "table": {
+            "columns": [
+              {
+                "key": "id",
+                "label": "ID"
+              },
+              {
+                "key": "status",
+                "label": "Status"
+              },
+              {
+                "key": "agentProvider",
+                "label": "Provider"
+              },
+              {
+                "key": "agentTargetId",
+                "label": "Target"
+              },
+              {
+                "key": "agentSessionId",
+                "label": "Session"
+              },
+              {
+                "key": "updatedAt",
+                "label": "Updated"
+              }
+            ]
+          }
+        },
+        "source": {
+          "kind": "app",
+          "appId": "issue-manager",
+          "appName": "Task Manager",
+          "cliDescription": "Manage workspace tasks and runs.",
+          "appDescription": "Plan, track, and execute workspace task work."
+        }
+      },
+      "conditions": {
+        "registrationGates": ["issue-manager"],
+        "requestContext": [
+          {
+            "id": "workspace",
+            "required": false
+          }
+        ]
+      }
+    },
+    {
+      "capability": {
+        "id": "issue-manager.issue.task.update",
+        "path": ["issue", "task", "update"],
+        "summary": "Update an issue task",
+        "description": "Update a task under an issue. Breakdown updates should edit task fields without creating or completing runs.",
+        "visibility": "public",
+        "inputSchema": {
+          "properties": {
+            "content": {
+              "description": "Replace the task instructions or notes.",
+              "type": "string"
+            },
+            "due-at-unix": {
+              "description": "Set due time as a Unix timestamp in seconds.",
+              "type": "integer"
+            },
+            "issue-id": {
+              "description": "Issue that owns the task.",
+              "type": "string"
+            },
+            "priority": {
+              "description": "Task priority.",
+              "enum": ["high", "medium", "low"],
+              "type": "string"
+            },
+            "status": {
+              "description": "Task status.",
+              "enum": [
+                "not_started",
+                "running",
+                "pending_acceptance",
+                "completed",
+                "failed",
+                "canceled"
+              ],
+              "type": "string"
+            },
+            "task-id": {
+              "description": "Task to update.",
+              "type": "string"
+            },
+            "title": {
+              "description": "Replace the task title.",
+              "type": "string"
+            }
+          },
+          "required": ["issue-id", "task-id"],
+          "type": "object"
+        },
+        "output": {
+          "defaultMode": "json",
+          "json": true
+        },
+        "source": {
+          "kind": "app",
+          "appId": "issue-manager",
+          "appName": "Task Manager",
+          "cliDescription": "Manage workspace tasks and runs.",
+          "appDescription": "Plan, track, and execute workspace task work."
+        }
+      },
+      "conditions": {
+        "registrationGates": ["issue-manager"],
+        "requestContext": [
+          {
+            "id": "workspace",
+            "required": false
+          }
+        ]
+      }
+    },
+    {
+      "capability": {
+        "id": "issue-manager.issue.topic.create",
+        "path": ["issue", "topic", "create"],
+        "summary": "Create an issue topic",
+        "description": "Create a workspace issue topic.",
+        "visibility": "public",
+        "inputSchema": {
+          "properties": {
+            "summary": {
+              "description": "Topic summary.",
+              "type": "string"
+            },
+            "title": {
+              "description": "Topic title.",
+              "type": "string"
+            },
+            "topic-id": {
+              "description": "Stable topic id to create; generated when omitted.",
+              "type": "string"
+            }
+          },
+          "required": ["title"],
+          "type": "object"
+        },
+        "output": {
+          "defaultMode": "json",
+          "json": true
+        },
+        "source": {
+          "kind": "app",
+          "appId": "issue-manager",
+          "appName": "Task Manager",
+          "cliDescription": "Manage workspace tasks and runs.",
+          "appDescription": "Plan, track, and execute workspace task work."
+        }
+      },
+      "conditions": {
+        "registrationGates": ["issue-manager"],
+        "requestContext": [
+          {
+            "id": "workspace",
+            "required": false
+          }
+        ]
+      }
+    },
+    {
+      "capability": {
+        "id": "issue-manager.issue.topic.delete",
+        "path": ["issue", "topic", "delete"],
+        "summary": "Delete an issue topic",
+        "description": "Delete an empty non-default issue topic.",
+        "visibility": "public",
+        "inputSchema": {
+          "properties": {
+            "topic-id": {
+              "description": "Topic to delete.",
+              "type": "string"
+            }
+          },
+          "required": ["topic-id"],
+          "type": "object"
+        },
+        "output": {
+          "defaultMode": "json",
+          "json": true
+        },
+        "source": {
+          "kind": "app",
+          "appId": "issue-manager",
+          "appName": "Task Manager",
+          "cliDescription": "Manage workspace tasks and runs.",
+          "appDescription": "Plan, track, and execute workspace task work."
+        }
+      },
+      "conditions": {
+        "registrationGates": ["issue-manager"],
+        "requestContext": [
+          {
+            "id": "workspace",
+            "required": false
+          }
+        ]
+      }
+    },
+    {
+      "capability": {
+        "id": "issue-manager.issue.topic.list",
+        "path": ["issue", "topic", "list"],
+        "summary": "List issue topics",
+        "description": "List workspace issue topics. Use a returned topicId when listing or creating issues.",
+        "visibility": "public",
+        "inputSchema": {
+          "properties": {},
+          "type": "object"
+        },
+        "output": {
+          "defaultMode": "table",
+          "json": true,
+          "table": {
+            "columns": [
+              {
+                "key": "id",
+                "label": "ID"
+              },
+              {
+                "key": "title",
+                "label": "Title"
+              },
+              {
+                "key": "default",
+                "label": "Default"
+              },
+              {
+                "key": "pinned",
+                "label": "Pinned"
+              },
+              {
+                "key": "lastActivityAt",
+                "label": "Last Activity"
+              }
+            ]
+          }
+        },
+        "source": {
+          "kind": "app",
+          "appId": "issue-manager",
+          "appName": "Task Manager",
+          "cliDescription": "Manage workspace tasks and runs.",
+          "appDescription": "Plan, track, and execute workspace task work."
+        }
+      },
+      "conditions": {
+        "registrationGates": ["issue-manager"],
+        "requestContext": [
+          {
+            "id": "workspace",
+            "required": false
+          }
+        ]
+      }
+    },
+    {
+      "capability": {
+        "id": "issue-manager.issue.topic.update",
+        "path": ["issue", "topic", "update"],
+        "summary": "Update an issue topic",
+        "description": "Update a workspace issue topic title, summary, or pin state.",
+        "visibility": "public",
+        "inputSchema": {
+          "properties": {
+            "pinned": {
+              "description": "Set whether the topic is pinned.",
+              "type": "boolean"
+            },
+            "summary": {
+              "description": "Replace the topic summary.",
+              "type": "string"
+            },
+            "title": {
+              "description": "Replace the topic title.",
+              "type": "string"
+            },
+            "topic-id": {
+              "description": "Topic to update.",
+              "type": "string"
+            }
+          },
+          "required": ["topic-id"],
+          "type": "object"
+        },
+        "output": {
+          "defaultMode": "json",
+          "json": true
+        },
+        "source": {
+          "kind": "app",
+          "appId": "issue-manager",
+          "appName": "Task Manager",
+          "cliDescription": "Manage workspace tasks and runs.",
+          "appDescription": "Plan, track, and execute workspace task work."
+        }
+      },
+      "conditions": {
+        "registrationGates": ["issue-manager"],
+        "requestContext": [
+          {
+            "id": "workspace",
+            "required": false
+          }
+        ]
+      }
+    },
+    {
+      "capability": {
+        "id": "issue-manager.issue.update",
+        "path": ["issue", "update"],
+        "summary": "Update an issue",
+        "description": "Update issue title, content, or status.",
+        "visibility": "public",
+        "inputSchema": {
+          "properties": {
+            "content": {
+              "description": "Replace the issue content.",
+              "type": "string"
+            },
+            "issue-id": {
+              "description": "Issue to update.",
+              "type": "string"
+            },
+            "status": {
+              "description": "Issue status.",
+              "enum": [
+                "not_started",
+                "running",
+                "pending_acceptance",
+                "completed",
+                "failed",
+                "canceled"
+              ],
+              "type": "string"
+            },
+            "title": {
+              "description": "Replace the issue title.",
+              "type": "string"
+            }
+          },
+          "required": ["issue-id"],
+          "type": "object"
+        },
+        "output": {
+          "defaultMode": "json",
+          "json": true
+        },
+        "source": {
+          "kind": "app",
+          "appId": "issue-manager",
+          "appName": "Task Manager",
+          "cliDescription": "Manage workspace tasks and runs.",
+          "appDescription": "Plan, track, and execute workspace task work."
+        }
+      },
+      "conditions": {
+        "registrationGates": ["issue-manager"],
+        "requestContext": [
+          {
+            "id": "workspace",
+            "required": false
+          }
+        ]
+      }
+    },
+    {
+      "capability": {
+        "id": "references.reference.list",
+        "path": ["reference", "list"],
+        "summary": "List artifact files behind a workspace-reference mention",
+        "description": "Resolve a workspace-reference handle (app+group / topic+issue) into a flat list of artifact files.",
+        "visibility": "public",
+        "inputSchema": {
+          "properties": {
+            "group-id": {
+              "description": "Optional sub-scope: an app group id when source=app, an issueId when source=task. Empty = whole app / whole topic.",
+              "type": "string"
+            },
+            "id": {
+              "description": "Top container id: appId when source=app, topicId when source=task.",
+              "type": "string"
+            },
+            "limit": {
+              "description": "Optional max number of files (default and cap 1000).",
+              "type": "integer"
+            },
+            "query": {
+              "description": "Optional file name filter.",
+              "type": "string"
+            },
+            "source": {
+              "description": "Reference source.",
+              "enum": ["app", "task"],
+              "type": "string"
+            }
+          },
+          "required": ["source", "id"],
+          "type": "object"
+        },
+        "output": {
+          "defaultMode": "json",
+          "json": true,
+          "table": {
+            "columns": [
+              {
+                "key": "displayName",
+                "label": "Name"
+              },
+              {
+                "key": "path",
+                "label": "Path"
+              },
+              {
+                "key": "sizeBytes",
+                "label": "Size"
+              }
+            ]
+          }
+        },
+        "source": {
+          "kind": "builtin"
+        }
+      },
+      "conditions": {
+        "registrationGates": ["references"],
+        "requestContext": [
+          {
+            "id": "workspace",
+            "required": false
+          }
+        ]
+      }
+    },
+    {
+      "capability": {
+        "id": "workspace-apps.app.open",
+        "path": ["app", "open"],
+        "summary": "Open a workspace app",
+        "description": "Launch or activate an installed workspace app. Use --route to pass an origin-root route intent.",
+        "visibility": "public",
+        "inputSchema": {
+          "properties": {
+            "app-id": {
+              "description": "Workspace app id.",
+              "type": "string"
+            },
+            "param": {
+              "description": "Route parameter in key=value form. May be passed multiple times.",
+              "oneOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                }
+              ]
+            },
+            "route": {
+              "description": "Origin-root route path. Must start with /.",
+              "type": "string"
+            },
+            "state-json": {
+              "description": "Optional JSON object passed as route state. Maximum 16KiB.",
+              "type": "string"
+            }
+          },
+          "required": ["app-id"],
+          "type": "object"
+        },
+        "output": {
+          "defaultMode": "table",
+          "json": true,
+          "table": {
+            "columns": [
+              {
+                "key": "appId",
+                "label": "App ID"
+              },
+              {
+                "key": "status",
+                "label": "Status"
+              },
+              {
+                "key": "launchRequested",
+                "label": "Launch Requested"
+              }
+            ]
+          }
+        },
+        "source": {
+          "kind": "builtin"
+        }
+      },
+      "conditions": {
+        "registrationGates": ["workspace-apps"],
+        "requestContext": [
+          {
+            "id": "workspace",
+            "required": false
+          }
+        ]
+      }
+    }
+  ]
+}

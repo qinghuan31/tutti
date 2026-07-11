@@ -9,8 +9,6 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
-
-	"github.com/tutti-os/tutti/apps/cli/internal/daemon"
 )
 
 func runDefaultProgram(t *testing.T, args []string, stdout *bytes.Buffer, stderr *bytes.Buffer) int {
@@ -72,42 +70,10 @@ func TestCliInvokeContextFromEnvIncludesAgentSessionID(t *testing.T) {
 
 	context := cliInvokeContextFromEnv()
 	if context.Source != "cli" ||
-		context.WorkspaceID != "workspace-1" ||
-		context.ParentCommandID != "parent-1" ||
-		context.AgentSessionID != "session-1" {
+		context.WorkspaceID == nil || *context.WorkspaceID != "workspace-1" ||
+		context.ParentCommandID == nil || *context.ParentCommandID != "parent-1" ||
+		context.AgentSessionID == nil || *context.AgentSessionID != "session-1" {
 		t.Fatalf("context = %#v", context)
-	}
-}
-
-func TestWriteDynamicJSONKeepsCommandWarningsOutOfAppValue(t *testing.T) {
-	output := daemon.CommandOutput{
-		Kind: "json",
-		Value: map[string]any{
-			"ok":       true,
-			"warnings": "app-defined",
-		},
-		Warnings: []daemon.CommandWarning{{
-			Code:    "unknown_input_ignored",
-			Message: "Unknown input ignored.",
-		}},
-	}
-
-	var stdout bytes.Buffer
-	var stderr bytes.Buffer
-	if code := writeCommandOutput(&stdout, &stderr, output); code != 0 {
-		t.Fatalf("code = %d stderr = %q", code, stderr.String())
-	}
-	var envelope map[string]any
-	if err := json.Unmarshal(stdout.Bytes(), &envelope); err != nil {
-		t.Fatalf("decode stdout: %v\n%s", err, stdout.String())
-	}
-	value := envelope["value"].(map[string]any)
-	if value["warnings"] != "app-defined" {
-		t.Fatalf("app warnings field was clobbered: %#v", value["warnings"])
-	}
-	warnings := envelope["warnings"].([]any)
-	if len(warnings) != 1 || warnings[0].(map[string]any)["code"] != "unknown_input_ignored" {
-		t.Fatalf("warnings = %#v", envelope["warnings"])
 	}
 }
 

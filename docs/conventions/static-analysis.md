@@ -27,6 +27,7 @@ Repository entrypoints:
 - `pnpm lint:go`
 - `pnpm typecheck`
 - `pnpm check:codexproto-generated`
+- `pnpm check:cli-contract-generated`
 
 `pnpm check:full` remains the full local and CI validation command and includes linting and typechecking.
 
@@ -163,6 +164,7 @@ Go linting uses `golangci-lint` across the repository's current Go modules.
 The current root entrypoint runs the linter from:
 
 - `packages/appcli/core`
+- `packages/cli/runtime`
 - `packages/agent/runtimeprep`
 - `packages/workspace/files`
 - `packages/workbench/service`
@@ -178,7 +180,10 @@ service/API code should stay outside those exceptions and must continue to
 satisfy the normal Go lint baseline.
 
 Changed-aware Go validation includes the nested `packages/agent/daemon` and
-`packages/agent/runtimeprep` modules.
+`packages/agent/runtimeprep` modules as well as the published
+`packages/cli/runtime` contract module. Canonical CLI definition changes must
+also run `pnpm check:cli-contract-generated`; the committed manifest is
+generated from the daemon provider definitions and must not be hand-edited.
 Codex app-server protocol changes should also run
 `pnpm check:codexproto-generated` when schema, generator, or generated protocol
 files are touched.

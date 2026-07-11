@@ -32,7 +32,7 @@ func NewProvider(workspaces cliservice.WorkspaceCatalog, browser BrowserService)
 func (Provider) AppID() string { return appID }
 
 func (p Provider) Commands() []cliservice.Command {
-	return []cliservice.Command{
+	commands := []cliservice.Command{
 		p.newNavigateCommand(),
 		p.newSnapshotCommand(),
 		p.newScreenshotCommand(),
@@ -41,6 +41,14 @@ func (p Provider) Commands() []cliservice.Command {
 		p.newEvalCommand(),
 		p.newListPagesCommand(),
 	}
+	for i := range commands {
+		commands[i] = cliservice.WithCapabilityConditions(commands[i], cliservice.CapabilityConditions{
+			RegistrationGates:    []string{"browser"},
+			ProviderAvailability: []string{"browser-service"},
+			RequestContext:       []cliservice.RequestContextCondition{{ID: "workspace"}},
+		})
+	}
+	return commands
 }
 
 // call invokes the mapped chrome-devtools-mcp tool and returns its text. The

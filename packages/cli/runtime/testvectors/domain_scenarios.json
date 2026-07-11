@@ -1,0 +1,193 @@
+{
+  "version": "1.0.0",
+  "normalizationRules": ["generated-id", "timestamp", "absolute-path"],
+  "scenarios": [
+    {
+      "id": "topic-create",
+      "commandId": "issue-manager.issue.topic.create",
+      "normalizers": ["generated-id", "timestamp"],
+      "postconditions": [
+        { "key": "createdCount", "expected": 1 },
+        { "key": "queryable", "expected": true }
+      ]
+    },
+    {
+      "id": "topic-update",
+      "commandId": "issue-manager.issue.topic.update",
+      "normalizers": ["timestamp"],
+      "postconditions": [
+        { "key": "updatedCount", "expected": 1 },
+        { "key": "omittedFieldsPreserved", "expected": true }
+      ]
+    },
+    {
+      "id": "topic-delete",
+      "commandId": "issue-manager.issue.topic.delete",
+      "postconditions": [
+        { "key": "deletedCount", "expected": 1 },
+        { "key": "queryable", "expected": false }
+      ]
+    },
+    {
+      "id": "issue-create",
+      "commandId": "issue-manager.issue.create",
+      "normalizers": ["generated-id", "timestamp"],
+      "postconditions": [
+        { "key": "createdCount", "expected": 1 },
+        { "key": "belongsToRequestedTopic", "expected": true }
+      ]
+    },
+    {
+      "id": "issue-update",
+      "commandId": "issue-manager.issue.update",
+      "normalizers": ["timestamp"],
+      "postconditions": [
+        { "key": "updatedCount", "expected": 1 },
+        { "key": "omittedFieldsPreserved", "expected": true }
+      ]
+    },
+    {
+      "id": "issue-delete",
+      "commandId": "issue-manager.issue.delete",
+      "postconditions": [
+        { "key": "deletedCount", "expected": 1 },
+        { "key": "queryable", "expected": false }
+      ]
+    },
+    {
+      "id": "task-create",
+      "commandId": "issue-manager.issue.task.create",
+      "normalizers": ["generated-id", "timestamp"],
+      "postconditions": [
+        { "key": "createdCount", "expected": 1 },
+        { "key": "belongsToRequestedIssue", "expected": true }
+      ]
+    },
+    {
+      "id": "task-create-batch",
+      "commandId": "issue-manager.issue.task.create-batch",
+      "normalizers": ["generated-id", "timestamp"],
+      "postconditions": [
+        { "key": "atomic", "expected": true },
+        { "key": "invalidItemRollsBackAll", "expected": true }
+      ]
+    },
+    {
+      "id": "task-update",
+      "commandId": "issue-manager.issue.task.update",
+      "normalizers": ["timestamp"],
+      "postconditions": [
+        { "key": "updatedCount", "expected": 1 },
+        { "key": "omittedFieldsPreserved", "expected": true }
+      ]
+    },
+    {
+      "id": "task-delete",
+      "commandId": "issue-manager.issue.task.delete",
+      "postconditions": [
+        { "key": "deletedCount", "expected": 1 },
+        { "key": "queryable", "expected": false }
+      ]
+    },
+    {
+      "id": "issue-run-create",
+      "commandId": "issue-manager.issue.run.create",
+      "normalizers": ["generated-id", "timestamp"],
+      "postconditions": [
+        { "key": "createdCount", "expected": 1 },
+        { "key": "agentTargetResolvedBeforeCreate", "expected": true }
+      ]
+    },
+    {
+      "id": "issue-run-complete",
+      "commandId": "issue-manager.issue.run.complete",
+      "normalizers": ["timestamp", "absolute-path"],
+      "postconditions": [
+        { "key": "completedCount", "expected": 1 },
+        { "key": "outputsPersisted", "expected": true }
+      ]
+    },
+    {
+      "id": "task-run-create",
+      "commandId": "issue-manager.issue.task.run.create",
+      "normalizers": ["generated-id", "timestamp"],
+      "postconditions": [
+        { "key": "createdCount", "expected": 1 },
+        { "key": "belongsToRequestedTask", "expected": true }
+      ]
+    },
+    {
+      "id": "task-run-complete",
+      "commandId": "issue-manager.issue.task.run.complete",
+      "normalizers": ["timestamp", "absolute-path"],
+      "postconditions": [
+        { "key": "completedCount", "expected": 1 },
+        { "key": "outputsPersisted", "expected": true }
+      ]
+    },
+    {
+      "id": "agent-start",
+      "commandId": "agent-context.agent.start",
+      "normalizers": ["generated-id", "timestamp"],
+      "postconditions": [
+        { "key": "sessionCreatedCount", "expected": 1 },
+        { "key": "selectedTargetPreserved", "expected": true }
+      ]
+    },
+    {
+      "id": "codex-start",
+      "commandId": "agent-context.codex.start",
+      "normalizers": ["generated-id", "timestamp"],
+      "postconditions": [
+        { "key": "sessionCreatedCount", "expected": 1 },
+        { "key": "provider", "expected": "codex" }
+      ]
+    },
+    {
+      "id": "claude-start",
+      "commandId": "agent-context.claude.start",
+      "normalizers": ["generated-id", "timestamp"],
+      "postconditions": [
+        { "key": "sessionCreatedCount", "expected": 1 },
+        { "key": "provider", "expected": "claude-code" }
+      ]
+    },
+    {
+      "id": "tutti-agent-start",
+      "commandId": "agent-context.tutti-agent.start",
+      "normalizers": ["generated-id", "timestamp"],
+      "postconditions": [
+        { "key": "sessionCreatedCount", "expected": 1 },
+        { "key": "provider", "expected": "tutti-agent" }
+      ]
+    },
+    {
+      "id": "agent-open",
+      "commandId": "agent-context.agent.open",
+      "postconditions": [{ "key": "launchIntentPublishedCount", "expected": 1 }]
+    },
+    {
+      "id": "agent-send",
+      "commandId": "agent-context.agent.send",
+      "normalizers": ["generated-id", "timestamp", "absolute-path"],
+      "postconditions": [
+        { "key": "messageAddedCount", "expected": 1 },
+        { "key": "imagesPreserveOrder", "expected": true }
+      ]
+    },
+    {
+      "id": "agent-cancel",
+      "commandId": "agent-context.agent.cancel",
+      "normalizers": ["timestamp"],
+      "postconditions": [{ "key": "sessionStatus", "expected": "canceled" }]
+    },
+    {
+      "id": "app-open",
+      "commandId": "workspace-apps.app.open",
+      "postconditions": [
+        { "key": "selectedAppWindowOpened", "expected": true },
+        { "key": "routeParamsAndStateDelivered", "expected": true }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,147 @@
+{
+  "version": "1.0.0",
+  "invokeContext": {
+    "source": "cli",
+    "workspaceID": "workspace-1",
+    "parentCommandId": "parent-1",
+    "agentSessionId": "session-1"
+  },
+  "cases": [
+    {
+      "name": "integer tokens remain strings",
+      "capabilityId": "issue-manager.issue.list",
+      "args": ["issue", "list", "--topic-id", "topic-1", "--page-size", "25"],
+      "expectedInput": { "topic-id": "topic-1", "page-size": "25" },
+      "expectedOutputMode": "table",
+      "expectedInvoke": true,
+      "expectedExit": 0
+    },
+    {
+      "name": "bare boolean becomes true",
+      "capabilityId": "agent-context.agent.send",
+      "args": ["agent", "send", "session-1", "hello", "--guidance"],
+      "expectedInput": {
+        "session-id": "session-1",
+        "prompt": "hello",
+        "guidance": true
+      },
+      "expectedOutputMode": "table",
+      "expectedInvoke": true,
+      "expectedExit": 0
+    },
+    {
+      "name": "repeated values remain ordered",
+      "capabilityId": "agent-context.agent.send",
+      "args": [
+        "agent",
+        "send",
+        "session-1",
+        "inspect",
+        "--image",
+        "a.png",
+        "--image",
+        "b.png"
+      ],
+      "expectedInput": {
+        "session-id": "session-1",
+        "prompt": "inspect",
+        "image": ["a.png", "b.png"]
+      },
+      "expectedOutputMode": "table",
+      "expectedInvoke": true,
+      "expectedExit": 0
+    },
+    {
+      "name": "agent open positional shortcut",
+      "capabilityId": "agent-context.agent.open",
+      "args": ["agent", "open", "session-1"],
+      "expectedInput": { "session-id": "session-1" },
+      "expectedOutputMode": "table",
+      "expectedInvoke": true,
+      "expectedExit": 0
+    },
+    {
+      "name": "json option overrides default output mode",
+      "capabilityId": "issue-manager.issue.list",
+      "args": ["issue", "list", "--topic-id", "topic-1", "--json"],
+      "expectedInput": { "topic-id": "topic-1" },
+      "expectedOutputMode": "json",
+      "expectedInvoke": true,
+      "expectedExit": 0
+    },
+    {
+      "name": "explicit false and empty values remain present",
+      "capabilityId": "agent-context.agent.send",
+      "args": ["agent", "send", "session-1", "", "--guidance=false"],
+      "expectedInput": {
+        "session-id": "session-1",
+        "prompt": "",
+        "guidance": "false"
+      },
+      "expectedOutputMode": "table",
+      "expectedInvoke": true,
+      "expectedExit": 0
+    },
+    {
+      "name": "zero remains a string for daemon validation",
+      "capabilityId": "issue-manager.issue.list",
+      "args": ["issue", "list", "--topic-id", "topic-1", "--page-size", "0"],
+      "expectedInput": { "topic-id": "topic-1", "page-size": "0" },
+      "expectedOutputMode": "table",
+      "expectedInvoke": true,
+      "expectedExit": 0
+    },
+    {
+      "name": "daemon failure is invoke exit class",
+      "capabilityId": "issue-manager.issue.list",
+      "args": ["issue", "list", "--topic-id", "topic-1"],
+      "expectedInput": { "topic-id": "topic-1" },
+      "expectedOutputMode": "table",
+      "invokeError": "invalid input",
+      "expectedInvoke": true,
+      "expectedStderr": "tutti issue list: invalid input\n",
+      "expectedExit": 1
+    },
+    {
+      "name": "catalog failure is invoke exit class",
+      "capabilityId": "issue-manager.issue.list",
+      "args": ["issue", "list"],
+      "catalogError": "daemon unavailable",
+      "expectedInvoke": false,
+      "expectedStderr": "tutti issue list: daemon unavailable\n",
+      "expectedExit": 1
+    },
+    {
+      "name": "dynamic help is local success",
+      "capabilityId": "issue-manager.issue.list",
+      "args": ["issue", "list", "--help"],
+      "expectedInvoke": false,
+      "expectedStdout": "Usage: tutti issue list [--json] --topic-id <value> [--page-size <value>] [--page-token <value>] [--search <value>] [--status <value>]\n\nList issues in a topic\n\nList issue records in one workspace topic. Requires --topic-id; use `issue topic list --json` first when the topic is unknown. JSON output omits issue content bodies.\n\nFlags:\n  --topic-id    string  required  Required topic id. Use issue topic list --json to discover workspace topics before listing issues.\n  --page-size   integer\n  --page-token  string\n  --search      string\n  --status      string  Issue status filter.\n      Values: all, not_started, running, pending_acceptance, completed, failed, canceled\n",
+      "expectedExit": 0
+    },
+    {
+      "name": "known prefix is local usage",
+      "capabilityId": "issue-manager.issue.list",
+      "args": ["issue"],
+      "expectedInvoke": false,
+      "expectedStdout": "Usage: tutti issue <command> [--json]\n\nCommands:\n  list  List issues in a topic  required: --topic-id <value>\n\nUse \"tutti issue <command> --help\" for command details.\n",
+      "expectedExit": 2
+    },
+    {
+      "name": "unknown command is local usage",
+      "capabilityId": "issue-manager.issue.list",
+      "args": ["missing"],
+      "expectedInvoke": false,
+      "expectedStderr": "unknown command: missing\n",
+      "expectedExit": 2
+    },
+    {
+      "name": "missing flag value is local usage error",
+      "capabilityId": "issue-manager.issue.list",
+      "args": ["issue", "list", "--topic-id"],
+      "expectedInvoke": false,
+      "expectedStderr": "tutti issue list: missing value for --topic-id\n",
+      "expectedExit": 2
+    }
+  ]
+}

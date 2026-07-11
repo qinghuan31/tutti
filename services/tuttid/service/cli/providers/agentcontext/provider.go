@@ -140,6 +140,25 @@ func (p Provider) Commands() []cliservice.Command {
 		p.newTurnResourcesCommand(),
 		p.newActivePeersCommand(),
 	)
+	for i := range commands {
+		conditions := cliservice.CapabilityConditions{
+			RegistrationGates: []string{"agent-context"},
+			RequestContext:    []cliservice.RequestContextCondition{{ID: "workspace"}},
+		}
+		switch commands[i].Capability.Source.AppID {
+		case codexAgentAppID:
+			conditions.ProviderAvailability = []string{"agent-provider:codex"}
+		case claudeCodeAgentAppID:
+			conditions.ProviderAvailability = []string{"agent-provider:claude-code"}
+		case tuttiAgentAppID:
+			conditions.ProviderAvailability = []string{"agent-provider:tutti-agent"}
+		}
+		switch commands[i].Capability.ID {
+		case appID + ".agent.providers", appID + ".agent.composer-options", appID + ".agent.start":
+			conditions.ProviderAvailability = []string{"agent-targets"}
+		}
+		commands[i] = cliservice.WithCapabilityConditions(commands[i], conditions)
+	}
 	return commands
 }
 

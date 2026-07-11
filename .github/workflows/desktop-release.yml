@@ -261,6 +261,7 @@ jobs:
           cache-dependency-path: |
             go.work
             go.work.sum
+            packages/cli/runtime/go.mod
             packages/workbench/service/go.mod
             packages/workspace/files/go.mod
             packages/workspace/issues/go.mod

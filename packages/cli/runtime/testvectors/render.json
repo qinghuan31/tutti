@@ -1,0 +1,65 @@
+{
+  "version": "1.0.0",
+  "cases": [
+    {
+      "name": "plain warnings use stderr",
+      "output": {
+        "kind": "plain",
+        "text": "ok",
+        "warnings": [{ "code": "stale", "message": "data may be stale" }]
+      },
+      "expectedStdout": "ok\n",
+      "expectedStderr": "warning: data may be stale\n",
+      "expectedExit": 0
+    },
+    {
+      "name": "json warnings wrap value",
+      "json": true,
+      "output": {
+        "kind": "json",
+        "value": { "status": "ok", "warnings": "app-defined" },
+        "warnings": [{ "code": "stale", "message": "data may be stale" }]
+      },
+      "expectedStdout": "{\n  \"value\": {\n    \"status\": \"ok\",\n    \"warnings\": \"app-defined\"\n  },\n  \"warnings\": [\n    {\n      \"code\": \"stale\",\n      \"message\": \"data may be stale\"\n    }\n  ]\n}\n",
+      "expectedStderr": "",
+      "expectedExit": 0
+    },
+    {
+      "name": "table output uses declared columns",
+      "output": {
+        "kind": "table",
+        "columns": [{ "key": "id", "label": "ID" }],
+        "rows": [{ "id": "A" }, { "id": "LONG" }]
+      },
+      "expectedStdout": "ID  \n----\nA   \nLONG\n",
+      "expectedStderr": "",
+      "expectedExit": 0
+    },
+    {
+      "name": "json rows render as array",
+      "json": true,
+      "output": { "kind": "table", "rows": [{ "id": "A" }] },
+      "expectedStdout": "[\n  {\n    \"id\": \"A\"\n  }\n]\n",
+      "expectedStderr": "",
+      "expectedExit": 0
+    },
+    {
+      "name": "warning code is fallback text",
+      "output": {
+        "kind": "plain",
+        "text": "ok",
+        "warnings": [{ "code": "stale", "message": "" }]
+      },
+      "expectedStdout": "ok\n",
+      "expectedStderr": "warning: stale\n",
+      "expectedExit": 0
+    },
+    {
+      "name": "unknown output kind uses generic json",
+      "output": { "kind": "custom" },
+      "expectedStdout": "{\n  \"kind\": \"custom\"\n}\n",
+      "expectedStderr": "",
+      "expectedExit": 0
+    }
+  ]
+}

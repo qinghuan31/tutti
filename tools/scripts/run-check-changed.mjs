@@ -13,6 +13,7 @@ import {
   buildGoTestLane,
   buildPackageTestCommand,
   isBuiltinGenerateRequired,
+  isCliContractGenerationRelevant,
   isToolTestRelevant,
   resolveGoValidationTargets
 } from "./run-check-changed-targets.mjs";
@@ -151,6 +152,14 @@ function buildChangedLanes() {
       key: "boundary:renderer",
       label: "boundary:renderer",
       command: [...pnpmCommand, "run", "check:renderer-boundaries"]
+    });
+  }
+
+  if (changedFiles.some(isCliContractGenerationRelevant)) {
+    addLane({
+      key: "generated:cli-contract",
+      label: "generated:cli-contract",
+      command: [...pnpmCommand, "run", "check:cli-contract-generated"]
     });
   }
 

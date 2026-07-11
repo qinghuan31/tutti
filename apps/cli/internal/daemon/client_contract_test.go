@@ -20,6 +20,7 @@ func TestClientTransportModelTracksOpenAPIContract(t *testing.T) {
 		"CliCapabilitiesResponse:",
 		"CliCapability:",
 		"cliDescription:",
+		"iconUrl:",
 		"CliInvokeRequest:",
 		"CliInvokeContext:",
 		"agentSessionId:",

@@ -69,6 +69,7 @@ Current grouping:
 ```text
 packages/
   browser/
+  cli/
   clients/
   configs/
   events/
@@ -83,6 +84,7 @@ Rules:
 - use `clients/*` for domain-specific client access
 - use `events/*` for schema-first shared business event protocol contracts, validators, and generated transport metadata that multiple hosts consume
 - use `browser/*` for reusable browser/workbench node mechanics that are shared by desktop hosts without carrying product-specific bridge methods
+- use `cli/*` for the published, product-neutral CLI client contract and compatibility assets
 - use `configs/*` for shared engineering configuration
 - use `ui/*` for shared frontend foundation packages such as visual-system boundaries, host-agnostic React hooks, and host-agnostic i18n runtime support
 - use `workbench/*` for the shared workbench snapshot contract and reusable workbench interaction surface intended to be shared by the open-source desktop and TSH
@@ -125,12 +127,31 @@ Rules:
 
 `apps/cli` is responsible for:
 
-- terminal argument parsing
 - local daemon endpoint discovery and bearer authentication
-- invoking the daemon-owned CLI capability protocol
-- rendering daemon command output for terminal users
+- product-local health/status behavior and environment-to-context adaptation
+- invoking the shared CLI runtime with the daemon transport adapter
 
 It must not become a second business core. Command metadata, workspace resolution, edition/context filtering, and command execution stay in `services/tuttid`.
+Canonical terminal parsing, matching, help, rendering, and exit semantics live
+in `packages/cli/runtime` so other product entrypoints can consume the exact
+same client behavior.
+
+### `packages/cli/*`
+
+CLI packages define product-neutral, cross-repository terminal contracts.
+
+Current package:
+
+- `packages/cli/runtime`: independently importable Go module containing the
+  `/v1/cli` DTOs, catalog-driven runner, embedded canonical manifest, and
+  shared compatibility vectors
+
+Rules:
+
+- keep endpoint and credential discovery outside the package
+- keep daemon handlers and product business authorities outside the package
+- generate canonical metadata from `services/tuttid` provider definitions
+- release through the shared package workflow and consume only tagged versions
 
 ### `apps/desktop`
 

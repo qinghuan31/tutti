@@ -14,12 +14,14 @@ require (
 	github.com/tutti-os/tutti/packages/agent/store-sqlite v0.0.0
 	github.com/tutti-os/tutti/packages/appcli/core v0.0.0
 	github.com/tutti-os/tutti/packages/auth/bridge-go v0.0.0
+	github.com/tutti-os/tutti/packages/cli/runtime v0.0.0
 	github.com/tutti-os/tutti/packages/events/stream-go v0.0.0
 	github.com/tutti-os/tutti/packages/workbench/service v0.0.0
 	github.com/tutti-os/tutti/packages/workspace/files v0.0.0
 	github.com/tutti-os/tutti/packages/workspace/issues v0.0.0
 	github.com/volcengine/datarangers-sdk-go v1.1.8
 	golang.org/x/mod v0.33.0
+	golang.org/x/sync v0.19.0
 	golang.org/x/sys v0.41.0
 	modernc.org/sqlite v1.45.0
 )
@@ -51,7 +53,6 @@ require (
 	github.com/go-openapi/jsonpointer v0.22.4 // indirect
 	github.com/go-openapi/swag/jsonname v0.25.4 // indirect
 	github.com/golang/snappy v0.0.4 // indirect
-	github.com/google/go-cmp v0.7.0 // indirect
 	github.com/hashicorp/errwrap v1.0.0 // indirect
 	github.com/hashicorp/go-multierror v1.1.1 // indirect
 	github.com/hashicorp/go-uuid v1.0.2 // indirect
@@ -85,7 +86,6 @@ require (
 	golang.org/x/crypto v0.48.0 // indirect
 	golang.org/x/exp v0.0.0-20251023183803-a4bb9ffd2546 // indirect
 	golang.org/x/net v0.50.0 // indirect
-	golang.org/x/sync v0.19.0 // indirect
 	golang.org/x/text v0.34.0 // indirect
 	golang.org/x/tools v0.42.0 // indirect
 	gopkg.in/natefinch/lumberjack.v2 v2.0.0 // indirect
@@ -101,3 +101,5 @@ tool github.com/oapi-codegen/oapi-codegen/v2/cmd/oapi-codegen
 replace github.com/tutti-os/tutti/packages/appcli/core => ../../packages/appcli/core
 
 replace github.com/tutti-os/tutti/packages/auth/bridge-go => ../../packages/auth/bridge-go
+
+replace github.com/tutti-os/tutti/packages/cli/runtime => ../../packages/cli/runtime

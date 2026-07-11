@@ -85,6 +85,10 @@ func (p Provider) Commands() []cliservice.Command {
 	}
 	for i := range commands {
 		commands[i] = issueManagerAppCommand(commands[i])
+		commands[i] = cliservice.WithCapabilityConditions(commands[i], cliservice.CapabilityConditions{
+			RegistrationGates: []string{"issue-manager"},
+			RequestContext:    []cliservice.RequestContextCondition{{ID: "workspace"}},
+		})
 	}
 	return commands
 }

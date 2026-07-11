@@ -47,7 +47,10 @@ func (Provider) AppID() string {
 }
 
 func (p Provider) Commands() []cliservice.Command {
-	return []cliservice.Command{p.newOpenCommand()}
+	return []cliservice.Command{cliservice.WithCapabilityConditions(p.newOpenCommand(), cliservice.CapabilityConditions{
+		RegistrationGates: []string{"workspace-apps"},
+		RequestContext:    []cliservice.RequestContextCondition{{ID: "workspace"}},
+	})}
 }
 
 func (p Provider) newOpenCommand() cliservice.Command {

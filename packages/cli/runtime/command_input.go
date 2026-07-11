@@ -1,24 +1,23 @@
-package app
+package runtime
 
 import (
 	"encoding/json"
 	"fmt"
 	"sort"
 	"strings"
-
-	"github.com/tutti-os/tutti/apps/cli/internal/daemon"
 )
 
-func parseCommandInput(command daemon.Capability, args []string) (map[string]any, error) {
+func parseCommandInput(command Capability, args []string) (map[string]any, error) {
 	if input, ok, err := parsePositionalCommandInput(command, args); ok || err != nil {
 		return input, err
 	}
 	return parseFlagCommandInput(command, args)
 }
 
-func parseFlagCommandInput(command daemon.Capability, args []string) (map[string]any, error) {
-	booleanFlags := commandBooleanFlags(command.InputSchema)
-	arrayFlags := commandArrayFlags(command.InputSchema)
+func parseFlagCommandInput(command Capability, args []string) (map[string]any, error) {
+	schema := valueOrZero(command.InputSchema)
+	booleanFlags := commandBooleanFlags(schema)
+	arrayFlags := commandArrayFlags(schema)
 	input := map[string]any{}
 	for index := 0; index < len(args); index++ {
 		arg := args[index]
@@ -90,7 +89,7 @@ func commandArrayFlags(schema map[string]any) map[string]bool {
 	return flags
 }
 
-func parsePositionalCommandInput(command daemon.Capability, args []string) (map[string]any, bool, error) {
+func parsePositionalCommandInput(command Capability, args []string) (map[string]any, bool, error) {
 	switch command.ID {
 	case "agent-context.agent.open":
 		if len(args) != 1 || strings.HasPrefix(args[0], "--") {
@@ -101,7 +100,7 @@ func parsePositionalCommandInput(command daemon.Capability, args []string) (map[
 		if len(args) < 2 || strings.HasPrefix(args[0], "--") {
 			return nil, false, nil
 		}
-		if flagIndex := firstKnownFlagIndex(command.InputSchema, args[1:]); flagIndex >= 0 {
+		if flagIndex := firstKnownFlagIndex(valueOrZero(command.InputSchema), args[1:]); flagIndex >= 0 {
 			input, err := parseFlagCommandInput(command, args[1+flagIndex:])
 			if err != nil {
 				return nil, true, err

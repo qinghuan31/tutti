@@ -8,6 +8,7 @@ const GO_MODULE_ROOTS = [
   "packages/agent/store-sqlite",
   "packages/appcli/core",
   "packages/auth/bridge-go",
+  "packages/cli/runtime",
   "packages/events/stream-go",
   "packages/workbench/service",
   "packages/workspace/files",
@@ -46,6 +47,16 @@ export function isToolTestRelevant(file) {
   return (
     normalized.startsWith("tools/scripts/") ||
     normalized.startsWith("packages/workspace/app-release-tools/")
+  );
+}
+
+export function isCliContractGenerationRelevant(file) {
+  const normalized = file.replaceAll("\\", "/");
+  return (
+    normalized.startsWith("services/tuttid/service/cli/") ||
+    normalized.startsWith("services/tuttid/cmd/generate-cli-contract/") ||
+    normalized === "services/tuttid/wiring.go" ||
+    normalized.startsWith("packages/cli/runtime/")
   );
 }
 

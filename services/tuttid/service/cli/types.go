@@ -60,6 +60,19 @@ type Capability struct {
 	InputSchema map[string]any
 	Output      CapabilityOutput
 	Source      CapabilitySource
+	Conditions  CapabilityConditions
+}
+
+type CapabilityConditions struct {
+	RegistrationGates     []string
+	ProviderAvailability  []string
+	IntegrationVisibility []string
+	RequestContext        []RequestContextCondition
+}
+
+type RequestContextCondition struct {
+	ID       string
+	Required bool
 }
 
 type InvokeContext struct {

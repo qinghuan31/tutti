@@ -1,0 +1,51 @@
+{
+  "version": "1.0.0",
+  "snapshots": [
+    {
+      "name": "canonical-superset",
+      "registrationGates": {
+        "agent-context": true,
+        "browser": true,
+        "computer": true,
+        "diagnostics": true,
+        "issue-manager": true,
+        "references": true,
+        "workspace-apps": true
+      },
+      "providerAvailability": {
+        "agent-provider:claude-code": true,
+        "agent-provider:codex": true,
+        "agent-provider:tutti-agent": true,
+        "agent-targets": true,
+        "browser-service": true,
+        "computer-service": true
+      },
+      "requestContext": { "workspace": true },
+      "includeIntegration": true,
+      "expectedCommandCount": 55
+    },
+    {
+      "name": "tsh-browser-computer-disabled",
+      "registrationGates": {
+        "agent-context": true,
+        "browser": false,
+        "computer": false,
+        "diagnostics": true,
+        "issue-manager": true,
+        "references": true,
+        "workspace-apps": true
+      },
+      "providerAvailability": {
+        "agent-provider:claude-code": true,
+        "agent-provider:codex": true,
+        "agent-provider:tutti-agent": true,
+        "agent-targets": true,
+        "browser-service": false,
+        "computer-service": false
+      },
+      "requestContext": { "workspace": false },
+      "includeIntegration": true,
+      "expectedCommandCount": 40
+    }
+  ]
+}

@@ -32,7 +32,7 @@ func NewProvider(workspaces cliservice.WorkspaceCatalog, computer ComputerServic
 func (Provider) AppID() string { return appID }
 
 func (p Provider) Commands() []cliservice.Command {
-	return []cliservice.Command{
+	commands := []cliservice.Command{
 		p.newScreenshotCommand(),
 		p.newClickCommand(),
 		p.newDoubleClickCommand(),
@@ -42,6 +42,14 @@ func (p Provider) Commands() []cliservice.Command {
 		p.newScrollCommand(),
 		p.newMoveCursorCommand(),
 	}
+	for i := range commands {
+		commands[i] = cliservice.WithCapabilityConditions(commands[i], cliservice.CapabilityConditions{
+			RegistrationGates:    []string{"computer"},
+			ProviderAvailability: []string{"computer-service"},
+			RequestContext:       []cliservice.RequestContextCondition{{ID: "workspace"}},
+		})
+	}
+	return commands
 }
 
 // call invokes the mapped cua-driver tool and returns the tool's text.

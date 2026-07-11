@@ -4,11 +4,35 @@ import {
   buildGoLintLane,
   buildGoTestLane,
   buildPackageTestCommand,
+  isCliContractGenerationRelevant,
   isBuiltinGenerateRequired,
   isToolTestRelevant,
   resolveGoModuleRoot,
   resolveGoValidationTargets
 } from "./run-check-changed-targets.mjs";
+
+describe("isCliContractGenerationRelevant", () => {
+  it("tracks canonical definitions, generator, wiring, and runtime assets", () => {
+    assert.equal(
+      isCliContractGenerationRelevant(
+        "services/tuttid/service/cli/providers/browser/provider.go"
+      ),
+      true
+    );
+    assert.equal(
+      isCliContractGenerationRelevant("packages/cli/runtime/contract.go"),
+      true
+    );
+    assert.equal(
+      isCliContractGenerationRelevant("services/tuttid/wiring.go"),
+      true
+    );
+    assert.equal(
+      isCliContractGenerationRelevant("apps/desktop/src/main/index.ts"),
+      false
+    );
+  });
+});
 
 describe("isToolTestRelevant", () => {
   it("keeps app release package changes covered by tool-owned tests", () => {
@@ -44,6 +68,10 @@ describe("resolveGoModuleRoot", () => {
     assert.equal(
       resolveGoModuleRoot("packages/auth/bridge-go/bridge.go"),
       "packages/auth/bridge-go"
+    );
+    assert.equal(
+      resolveGoModuleRoot("packages/cli/runtime/runner.go"),
+      "packages/cli/runtime"
     );
     assert.equal(
       resolveGoModuleRoot("packages/events/stream-go/stream.go"),

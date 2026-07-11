@@ -12,6 +12,8 @@ import (
 	"os"
 	"strings"
 	"time"
+
+	cliruntime "github.com/tutti-os/tutti/packages/cli/runtime"
 )
 
 type Client struct {
@@ -35,80 +37,18 @@ type HealthStatus struct {
 	Status  string `json:"status"`
 }
 
-type CapabilityList struct {
-	Commands []Capability `json:"commands"`
-}
-
-type Capability struct {
-	ID          string           `json:"id"`
-	Path        []string         `json:"path"`
-	Summary     string           `json:"summary"`
-	Description string           `json:"description,omitempty"`
-	Visibility  string           `json:"visibility,omitempty"`
-	InputSchema map[string]any   `json:"inputSchema,omitempty"`
-	Output      CapabilityOutput `json:"output"`
-	Source      CapabilitySource `json:"source"`
-}
-
-type CapabilityListOptions struct {
-	IncludeHidden      bool
-	IncludeIntegration bool
-}
-
-type CapabilitySource struct {
-	Kind              string `json:"kind"`
-	AppID             string `json:"appId,omitempty"`
-	AppName           string `json:"appName,omitempty"`
-	CLIDescription    string `json:"cliDescription,omitempty"`
-	AppDescription    string `json:"appDescription,omitempty"`
-	DocumentationFile string `json:"documentationFile,omitempty"`
-	DocumentationPath string `json:"documentationPath,omitempty"`
-}
-
-type CapabilityOutput struct {
-	DefaultMode string `json:"defaultMode"`
-	JSON        bool   `json:"json"`
-	Table       *struct {
-		Columns []TableColumn `json:"columns"`
-	} `json:"table"`
-}
-
-type TableColumn struct {
-	Key   string `json:"key"`
-	Label string `json:"label"`
-}
-
-type InvokeRequest struct {
-	Input      map[string]any `json:"input,omitempty"`
-	OutputMode string         `json:"outputMode,omitempty"`
-	Context    InvokeContext  `json:"context"`
-}
-
-type InvokeContext struct {
-	Source          string `json:"source"`
-	WorkspaceID     string `json:"workspaceID,omitempty"`
-	ParentCommandID string `json:"parentCommandId,omitempty"`
-	AgentSessionID  string `json:"agentSessionId,omitempty"`
-}
-
-type InvokeResponse struct {
-	OK     bool           `json:"ok"`
-	Output *CommandOutput `json:"output,omitempty"`
-}
-
-type CommandOutput struct {
-	Kind     string           `json:"kind"`
-	Columns  []TableColumn    `json:"columns,omitempty"`
-	Rows     []map[string]any `json:"rows,omitempty"`
-	Value    map[string]any   `json:"value,omitempty"`
-	Text     string           `json:"text,omitempty"`
-	Warnings []CommandWarning `json:"warnings,omitempty"`
-}
-
-type CommandWarning struct {
-	Code    string `json:"code"`
-	Message string `json:"message"`
-}
+type CapabilityList = cliruntime.CapabilityList
+type Capability = cliruntime.Capability
+type CapabilityListOptions = cliruntime.CapabilityListOptions
+type CapabilitySource = cliruntime.CapabilitySource
+type CapabilityOutput = cliruntime.CapabilityOutput
+type TableOutput = cliruntime.TableOutput
+type TableColumn = cliruntime.TableColumn
+type InvokeRequest = cliruntime.InvokeRequest
+type InvokeContext = cliruntime.InvokeContext
+type InvokeResponse = cliruntime.InvokeResponse
+type CommandOutput = cliruntime.CommandOutput
+type CommandWarning = cliruntime.CommandWarning
 
 func NewClient(endpoint Endpoint) (*Client, error) {
 	baseURL, err := endpoint.BaseURL()
@@ -132,7 +72,7 @@ func (client *Client) GetHealth(ctx context.Context) (HealthStatus, error) {
 	return result, nil
 }
 
-func (client *Client) ListCapabilitiesForWorkspaceWithOptions(ctx context.Context, workspaceID string, options CapabilityListOptions) (CapabilityList, error) {
+func (client *Client) ListCapabilities(ctx context.Context, workspaceID string, options CapabilityListOptions) (CapabilityList, error) {
 	var result CapabilityList
 	path := cliCapabilitiesPath
 	query := url.Values{}

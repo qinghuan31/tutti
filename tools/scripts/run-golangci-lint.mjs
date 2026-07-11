@@ -13,6 +13,7 @@ const sharedConfigPath = join(
 const goModuleRoots = [
   join(workspaceRoot, "packages", "agent", "runtimeprep"),
   join(workspaceRoot, "packages", "appcli", "core"),
+  join(workspaceRoot, "packages", "cli", "runtime"),
   join(workspaceRoot, "packages", "workbench", "service"),
   join(workspaceRoot, "packages", "workspace", "files"),
   join(workspaceRoot, "services", "tuttid")

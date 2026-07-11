@@ -33,5 +33,8 @@ func (Provider) AppID() string {
 }
 
 func (p Provider) Commands() []cliservice.Command {
-	return []cliservice.Command{p.newReferenceListCommand()}
+	return []cliservice.Command{cliservice.WithCapabilityConditions(p.newReferenceListCommand(), cliservice.CapabilityConditions{
+		RegistrationGates: []string{"references"},
+		RequestContext:    []cliservice.RequestContextCondition{{ID: "workspace"}},
+	})}
 }

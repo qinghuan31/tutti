@@ -1,0 +1,15 @@
+{
+  "version": "1.0.0",
+  "expectedCommandCount": 55,
+  "registrationGateCounts": {
+    "agent-context": 16,
+    "browser": 7,
+    "computer": 8,
+    "diagnostics": 1,
+    "issue-manager": 21,
+    "references": 1,
+    "workspace-apps": 1
+  },
+  "allowedVisibility": ["public", "integration"],
+  "allowedSourceKinds": ["builtin", "app"]
+}

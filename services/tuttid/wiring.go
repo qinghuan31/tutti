@@ -23,13 +23,7 @@ import (
 	browsersvc "github.com/tutti-os/tutti/services/tuttid/service/browser"
 	cliservice "github.com/tutti-os/tutti/services/tuttid/service/cli"
 	appclicli "github.com/tutti-os/tutti/services/tuttid/service/cli/appcli"
-	agentcontextcli "github.com/tutti-os/tutti/services/tuttid/service/cli/providers/agentcontext"
-	browsercli "github.com/tutti-os/tutti/services/tuttid/service/cli/providers/browser"
-	computercli "github.com/tutti-os/tutti/services/tuttid/service/cli/providers/computer"
-	diagnosticscli "github.com/tutti-os/tutti/services/tuttid/service/cli/providers/diagnostics"
-	issuemanagercli "github.com/tutti-os/tutti/services/tuttid/service/cli/providers/issuemanager"
-	referencescli "github.com/tutti-os/tutti/services/tuttid/service/cli/providers/references"
-	workbenchappscli "github.com/tutti-os/tutti/services/tuttid/service/cli/providers/workbenchapps"
+	clicatalog "github.com/tutti-os/tutti/services/tuttid/service/cli/catalog"
 	computersvc "github.com/tutti-os/tutti/services/tuttid/service/computer"
 	eventstreamservice "github.com/tutti-os/tutti/services/tuttid/service/eventstream"
 	managedcredentialsservice "github.com/tutti-os/tutti/services/tuttid/service/managedcredentials"
@@ -383,29 +377,20 @@ func buildDaemonAPI(ctx context.Context, store workspacedata.CatalogStore, analy
 			issueService.RunReconcileQueue.Enqueue(workspace.ID)
 		}
 	}
-	cliProviders := []cliservice.Provider{
-		diagnosticscli.NewProvider(),
-		issuemanagercli.NewProvider(workspaceService, issueService, appCenterService),
-		referencescli.NewProvider(workspaceService, appCenterService, issueService),
-		workbenchappscli.NewProvider(
-			workspaceService,
-			appCenterService,
-			eventstreamservice.WorkbenchNodeLaunchPublisher{Service: events},
-		),
-		agentcontextcli.NewProviderWithAgentTargets(
-			workspaceService,
-			agentSessionService,
-			eventstreamservice.AgentGUILaunchPublisher{Service: events},
-			agentTargets,
-			preferences,
-		),
-	}
-	if browserService != nil {
-		cliProviders = append(cliProviders, browsercli.NewProvider(workspaceService, browserService))
-	}
-	if computerService != nil {
-		cliProviders = append(cliProviders, computercli.NewProvider(workspaceService, computerService))
-	}
+	cliProviders := clicatalog.Providers(clicatalog.Dependencies{
+		Workspaces:      workspaceService,
+		Issues:          issueService,
+		AppReferences:   appCenterService,
+		IssueOutputs:    issueService,
+		AppLauncher:     appCenterService,
+		WorkbenchLaunch: eventstreamservice.WorkbenchNodeLaunchPublisher{Service: events},
+		AgentSessions:   agentSessionService,
+		AgentLaunch:     eventstreamservice.AgentGUILaunchPublisher{Service: events},
+		AgentTargets:    agentTargets,
+		Preferences:     preferences,
+		Browser:         browserService,
+		Computer:        computerService,
+	})
 	cliRegistry, err := cliservice.NewRegistryFromProviders(cliProviders...)
 	if err != nil {
 		agentRuntime.Close()

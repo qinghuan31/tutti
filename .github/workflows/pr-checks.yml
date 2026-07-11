@@ -36,6 +36,7 @@ jobs:
             packages/agent/store-sqlite/go.mod
             packages/auth/bridge-go/go.mod
             packages/appcli/core/go.mod
+            packages/cli/runtime/go.mod
             packages/events/stream-go/go.mod
             packages/workbench/service/go.mod
             packages/workspace/files/go.mod
@@ -54,6 +55,9 @@ jobs:
 
       - name: Check golangci-lint version pin
         run: node ./tools/scripts/setup-dev.mjs --only=golangci-lint
+
+      - name: Check generated CLI contract
+        run: cd services/tuttid && go run ./cmd/generate-cli-contract --check
 
   ts-lint:
     name: TypeScript Lint
@@ -202,6 +206,7 @@ jobs:
             packages/agent/store-sqlite/go.mod
             packages/auth/bridge-go/go.mod
             packages/appcli/core/go.mod
+            packages/cli/runtime/go.mod
             packages/events/stream-go/go.mod
             packages/workbench/service/go.mod
             packages/workspace/files/go.mod
@@ -249,6 +254,7 @@ jobs:
             go.work.sum
             packages/agent/runtimeprep/go.mod
             packages/appcli/core/go.mod
+            packages/cli/runtime/go.mod
             packages/workbench/service/go.mod
             packages/workspace/files/go.mod
             packages/workspace/issues/go.mod

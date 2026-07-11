@@ -106,6 +106,7 @@ release and use the Go submodule tag shape:
 ```text
 packages/workbench/service/v0.0.1
 packages/appcli/core/v0.0.1
+packages/cli/runtime/v0.0.1
 packages/workspace/files/v0.0.1
 packages/workspace/issues/v0.0.1
 ```
@@ -114,6 +115,14 @@ Adding a new `packages/**/go.mod` opts that module into this shared stable
 package release tag sequence. Do not add package Go modules that require an
 independent release cadence unless this convention and the release automation
 are updated together.
+
+`packages/cli/runtime` is an independently importable and pinnable Go module,
+but it intentionally follows this shared stable release cadence. Cross-repo
+consumers must pin an actual `packages/cli/runtime/vX.Y.Z` tag; a local replace,
+branch pseudo-version, or untagged commit is not a release-compatible pin.
+Before the release workflow creates that tag, it runs the CLI runtime release
+preflight: generated-contract freshness, module tests/build/tidy, embedded asset
+enumeration, and a temporary external-consumer import test must all pass.
 
 ## Local Beta Releases
 

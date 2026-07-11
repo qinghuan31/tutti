@@ -20,7 +20,9 @@ func (Provider) AppID() string {
 }
 
 func (Provider) Commands() []cliservice.Command {
-	return []cliservice.Command{newPingCommand()}
+	return []cliservice.Command{cliservice.WithCapabilityConditions(newPingCommand(), cliservice.CapabilityConditions{
+		RegistrationGates: []string{"diagnostics"},
+	})}
 }
 
 func newPingCommand() cliservice.Command {
