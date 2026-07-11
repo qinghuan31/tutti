@@ -204,13 +204,20 @@ function resolveLegacyToolName(
 function resolveLegacyACPToolName(
   item: WorkspaceAgentActivityTimelineItem
 ): string | null {
+  const input = recordValue(item.payload, "input");
   const normalizedKind = normalizeToolToken(
-    stringRecordValue(item.payload, "kind")
+    firstPresentString(
+      stringRecordValue(item.payload, "kind"),
+      stringRecordValue(input, "kind")
+    )
   );
   const normalizedTitle = normalizeToolToken(
-    firstPresentString(stringRecordValue(item.payload, "title"), item.name)
+    firstPresentString(
+      stringRecordValue(item.payload, "title"),
+      stringRecordValue(input, "title"),
+      item.name
+    )
   );
-  const input = recordValue(item.payload, "input");
   const fetchToolName = resolveFetchToolName(item.payload);
 
   if (fetchToolName) {
@@ -246,6 +253,11 @@ function resolveLegacyACPToolName(
   }
   if (normalizedKind === "other") {
     switch (normalizedTitle) {
+      case "todowrite":
+      case "updatetodo":
+        return "TodoWrite";
+      case "skill":
+        return "Skill";
       case "task":
       case "subagent":
       case "runsubagent":

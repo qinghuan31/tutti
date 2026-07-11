@@ -216,34 +216,8 @@ func standardACPToolCallEvent(session Session, turnID string, updateType string,
 	return standardACPToolCallEventWithID(session, newID(), turnID, updateType, update)
 }
 
-func standardACPToolCallEventWithID(session Session, eventID string, turnID string, updateType string, update map[string]any) (activityshared.Event, bool) {
-	callID := firstNonEmpty(asString(update["toolCallId"]), asString(update["callId"]), asString(update["id"]))
-	if callID == "" {
-		callID = newID()
-	}
-	name := firstNonEmpty(asString(update["title"]), asString(update["name"]), callID, "tool")
-	status := acpResolvedToolCallStatus(update, "in_progress")
-	sanitizedUpdate := acpSanitizeImagePayloadMap(update)
-	payload := map[string]any{
-		"callId":   callID,
-		"callType": firstNonEmpty(asString(update["kind"]), asString(update["callType"]), "tool"),
-		"name":     name,
-		"status":   status,
-	}
-	switch status {
-	case messageStreamStateCompleted:
-		payload["output"] = sanitizedUpdate
-		return newTurnActivityEventWithID(session, eventID, EventCallCompleted, turnID, status, "", name, payload), true
-	case messageStreamStateFailed:
-		payload["error"] = sanitizedUpdate
-		return newTurnActivityEventWithID(session, eventID, EventCallFailed, turnID, status, "", name, payload), true
-	default:
-		payload["input"] = sanitizedUpdate
-		if updateType == "tool_call_update" {
-			payload["status"] = messageStreamStateStreaming
-		}
-		return newTurnActivityEventWithID(session, eventID, EventCallStarted, turnID, messageStreamStateStreaming, "", name, payload), true
-	}
+func standardACPToolCallEventWithID(session Session, eventID string, turnID string, _ string, update map[string]any) (activityshared.Event, bool) {
+	return acpToolCallEventWithID(session, eventID, turnID, update)
 }
 
 func acpCanonicalImageGenerationToolName(candidate string, _ any) string {

@@ -167,6 +167,20 @@ is host-supplied launch authority with a real provider identity and opaque targe
 reference. Agent GUI displays and selects targets but does not invent runnable
 targets when the host catalog is absent.
 
+Standard ACP adapters normalize provider wire events before persistence. A tool
+call keeps one stable canonical identity, such as `Bash`, `Edit`, `Read`, or
+`TodoWrite`, from start through terminal updates even when the provider changes
+its human-readable title to a command, path, or result summary. Provider
+envelopes such as `rawInput`, `rawOutput`, and output metadata are projected into
+the canonical tool payload consumed by shared renderers. Agent GUI may normalize
+historical persisted envelopes for display compatibility, but it must not add
+provider-specific rendering branches.
+
+Conversation file links use the selected project root when one exists. For a
+no-project session, the durable session cwd is the file-resolution root. This
+keeps link navigation attached to session identity instead of requiring project
+selection state.
+
 ## Desktop Host Boundary
 
 `apps/desktop` owns Electron/workbench integration and concrete host

@@ -929,9 +929,11 @@ func TestStandardACPToolCallEventInfersCompletedStatusFromRawOutput(t *testing.T
 	if completed.Type != activityshared.EventCallCompleted {
 		t.Fatalf("completed event type = %s, want call.completed", completed.Type)
 	}
-	rawOutput, ok := completed.Payload.Output["rawOutput"].(map[string]any)
-	if !ok || rawOutput["stdout"] != "/workspace/app\n" {
+	if completed.Payload.Output["stdout"] != "/workspace/app\n" {
 		t.Fatalf("completed output = %#v, want stdout preserved", completed.Payload.Output)
+	}
+	if completed.Payload.Metadata["toolName"] != "Bash" {
+		t.Fatalf("completed tool name = %#v, want Bash", completed.Payload.Metadata["toolName"])
 	}
 }
 
@@ -946,9 +948,58 @@ func TestStandardACPToolCallEventInfersFailedStatusFromRawOutput(t *testing.T) {
 	if failed.Type != activityshared.EventCallFailed {
 		t.Fatalf("failed event type = %s, want call.failed", failed.Type)
 	}
-	rawOutput, ok := failed.Payload.Error["rawOutput"].(map[string]any)
-	if !ok || rawOutput["output"] != "Exit code 137" {
+	if failed.Payload.Error["output"] != "Exit code 137" {
 		t.Fatalf("failed error = %#v, want raw output preserved", failed.Payload.Error)
+	}
+}
+
+func TestStandardACPNormalizerKeepsCanonicalToolIdentityAcrossDynamicTitles(t *testing.T) {
+	t.Parallel()
+
+	session := standardTestSession(ProviderOpenCode)
+	normalizer := newACPTurnNormalizer()
+	started := standardACPUpdateEvents(standardACPConfig{provider: ProviderOpenCode}, session, "turn-1", json.RawMessage(`{
+		"update": {
+			"sessionUpdate": "tool_call",
+			"toolCallId": "edit-1",
+			"title": "apply_patch",
+			"status": "in_progress",
+			"kind": "edit",
+			"rawInput": {"patchText": "*** Begin Patch"}
+		}
+	}`), normalizer)
+	completed := standardACPUpdateEvents(standardACPConfig{provider: ProviderOpenCode}, session, "turn-1", json.RawMessage(`{
+		"update": {
+			"sessionUpdate": "tool_call_update",
+			"toolCallId": "edit-1",
+			"title": "Success. Updated the following files: index.html",
+			"status": "completed",
+			"kind": "edit",
+			"rawInput": {"patchText": "*** Begin Patch"},
+			"rawOutput": {"metadata": {"diff": "Index: index.html", "files": [{"filePath": "index.html"}]}}
+		}
+	}`), normalizer)
+	if len(started) != 1 || started[0].Payload.Metadata["toolName"] != "Edit" {
+		t.Fatalf("started events = %#v, want canonical Edit", started)
+	}
+	if len(completed) != 1 || completed[0].Payload.Metadata["toolName"] != "Edit" {
+		t.Fatalf("completed events = %#v, want stable canonical Edit", completed)
+	}
+	if completed[0].Payload.Metadata["kind"] != "edit" {
+		t.Fatalf("completed metadata = %#v, want ACP kind", completed[0].Payload.Metadata)
+	}
+	if completed[0].Payload.Output["diff"] != "Index: index.html" {
+		t.Fatalf("completed output = %#v, want promoted diff", completed[0].Payload.Output)
+	}
+	if files, ok := completed[0].Payload.Output["files"].([]any); !ok || len(files) != 1 {
+		t.Fatalf("completed output = %#v, want promoted files", completed[0].Payload.Output)
+	}
+}
+
+func TestACPToolNameRecognizesOpenCodeTodoPayload(t *testing.T) {
+	t.Parallel()
+	if got := acpToolName("todo-1", "0 todos", "other", map[string]any{"todos": []any{}}); got != "TodoWrite" {
+		t.Fatalf("acpToolName() = %q, want TodoWrite", got)
 	}
 }
 

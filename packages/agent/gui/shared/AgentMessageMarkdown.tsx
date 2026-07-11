@@ -228,7 +228,7 @@ export function AgentMessageMarkdown({
   );
   const handleLinkClick = useCallback(
     (href: string): void => {
-      if (workspaceLinkSource && onLinkAction && workspaceRoot) {
+      if (workspaceLinkSource && onLinkAction && (workspaceRoot || basePath)) {
         const action = resolveWorkspaceLinkAction({
           href,
           workspaceRoot,

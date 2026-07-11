@@ -1039,6 +1039,75 @@ describe("AgentTranscriptView", () => {
     });
   });
 
+  it("opens generated HTML paths from no-project session directories", () => {
+    const onLinkAction = vi.fn();
+    render(
+      <AgentTranscriptView
+        conversation={projectAgentConversationVM(
+          detailViewModel({
+            session: normalizeAgentActivitySession({
+              workspaceId: "workspace-1",
+              agentSessionId: "session-1",
+              userId: "user-1",
+              provider: "opencode",
+              providerSessionId: "provider-session-1",
+              cwd: "/Users/example/Documents/tutti/session-1",
+              title: "OpenCode",
+              createdAtUnixMs: 1,
+              updatedAtUnixMs: 10
+            }),
+            cwd: "/Users/example/Documents/tutti/session-1",
+            workspaceRoot: null,
+            turns: [
+              {
+                ...detailViewModel().turns[0]!,
+                agentMessages: [
+                  {
+                    id: "assistant-1",
+                    body: "打开 `/Users/example/Documents/tutti/session-1/index.html`"
+                  }
+                ],
+                agentItems: [
+                  {
+                    kind: "message",
+                    message: {
+                      id: "assistant-1",
+                      body: "打开 `/Users/example/Documents/tutti/session-1/index.html`"
+                    }
+                  }
+                ],
+                toolCalls: [],
+                toolCallCount: 0,
+                hasFailedToolCall: false
+              }
+            ]
+          })
+        )}
+        onLinkAction={onLinkAction}
+        labels={{
+          thinkingLabel: "Thought process",
+          toolCallsLabel: (count) => `Tool calls (${count})`,
+          processing: "Planning next moves",
+          turnSummary: "Changed files"
+        }}
+      />
+    );
+
+    fireEvent.click(
+      screen.getByRole("link", {
+        name: "/Users/example/Documents/tutti/session-1/index.html"
+      })
+    );
+
+    expect(onLinkAction).toHaveBeenCalledWith({
+      type: "open-workspace-file",
+      path: "/Users/example/Documents/tutti/session-1/index.html",
+      directoryPath: "/Users/example/Documents/tutti/session-1",
+      workspaceRoot: "/Users/example/Documents/tutti/session-1",
+      source: "agent-markdown"
+    });
+  });
+
   it("opens a zoom preview for assistant markdown images", async () => {
     const readFile = vi.fn().mockResolvedValue({
       bytes: new Uint8Array([137, 80, 78, 71])

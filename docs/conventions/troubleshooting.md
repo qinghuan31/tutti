@@ -2394,6 +2394,40 @@ target app`. Compare `/Applications/Tutti.app/Contents/Info.plist` with the
 - References:
   [desktopAgentGUILinkActions.ts](../../apps/desktop/src/renderer/src/features/workspace-agent/services/desktopAgentGUILinkActions.ts)
 
+### Standard ACP tools show generic cards and no-project file links do nothing
+
+- Symptom:
+  OpenCode or another standard ACP provider completes tool calls, but Agent GUI
+  renders generic raw-payload cards instead of terminal, edit, read, search, or
+  todo UI. In a session without a selected project, clicking an absolute HTML
+  or source-file path in an assistant message has no effect.
+- Quick checks:
+  Inspect persisted tool payloads. If `toolName` contains a command, absolute
+  path, or result sentence while `input.kind`, `input.title`, or `rawInput`
+  identifies the actual operation, canonicalization happened too late. For file
+  links, compare the selected project root with the durable session cwd.
+- Root cause:
+  Standard ACP terminal updates may replace the display title with dynamic
+  output. Persisting that title as tool identity prevents shared specialized
+  renderers from matching the call. Older events may also retain protocol
+  envelopes under `rawInput`, `rawOutput`, and output metadata. Separately,
+  requiring a selected project root discards valid link actions for no-project
+  sessions even though their cwd is authoritative.
+- Fix:
+  Canonicalize standard ACP tools before persistence, retain the started call's
+  identity through terminal updates, and promote protocol envelopes into the
+  shared tool payload. Keep a provider-neutral historical projection for rows
+  already stored in the old shape. Resolve conversation files against the
+  selected project root or, when absent, the session cwd.
+- Validation:
+  Cover dynamic ACP start/terminal titles, historical payload projection,
+  specialized renderer data, direct link resolution, and a transcript click
+  from a no-project session. Run the Agent GUI tests and daemon runtime tests.
+- References:
+  [agent-gui-node.md](../architecture/agent-gui-node.md)
+  [acp_tool_normalizer.go](../../packages/agent/daemon/runtime/acp_tool_normalizer.go)
+  [workspaceLinkActions.ts](../../packages/agent/gui/actions/workspaceLinkActions.ts)
+
 ### Imported sessions trigger fresh-completion indicators
 
 - Symptom:
