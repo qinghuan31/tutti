@@ -75,7 +75,7 @@ const workspaceAppGuestWebContents = new Set<WebContents>();
 const workspaceAppGuestContexts = new Map<number, WorkspaceAppGuestContext>();
 const workspaceAppInitialLaunchIntents = new Map<
   string,
-  TuttiExternalWorkspaceOpenRouteIntent
+  TuttiExternalWorkspaceOpenRouteIntent[]
 >();
 let workspaceAppFrontendLogWriter: WorkspaceAppFrontendLogWriter | null = null;
 let workspaceAppGuestLogRateLimiter: WorkspaceAppGuestLogRateLimiter | null =
@@ -105,6 +105,9 @@ export function registerWorkspaceAppGuestWebContents(
   const context = readWorkspaceAppGuestContext(ownerWindow, partition);
   if (context) {
     workspaceAppGuestContexts.set(contents.id, context);
+    contents.once("did-finish-load", () => {
+      drainWorkspaceAppInitialLaunchIntents(contents, context);
+    });
   } else {
     logger?.warn("workspace app guest context unavailable", {
       partition: partition ?? null,
@@ -754,7 +757,9 @@ function persistWorkspaceAppInitialLaunchIntent(
     }
   }
   if (!matchedGuest) {
-    workspaceAppInitialLaunchIntents.set(key, event.intent);
+    const pending = workspaceAppInitialLaunchIntents.get(key) ?? [];
+    pending.push(event.intent);
+    workspaceAppInitialLaunchIntents.set(key, pending);
   }
 }
 
@@ -1322,14 +1327,40 @@ function readWorkspaceAppGuestContext(
     ownerWebContentsId: ownerWindow.webContents.id,
     workspaceID
   });
-  const launchIntent = workspaceAppInitialLaunchIntents.get(intentKey);
-  workspaceAppInitialLaunchIntents.delete(intentKey);
+  const pending = workspaceAppInitialLaunchIntents.get(intentKey) ?? [];
+  const launchIntent = pending.shift();
+  if (pending.length > 0) {
+    workspaceAppInitialLaunchIntents.set(intentKey, pending);
+  } else {
+    workspaceAppInitialLaunchIntents.delete(intentKey);
+  }
   return {
     ...(launchIntent ? { launchIntent } : {}),
     appID,
     ownerWindow,
     workspaceID
   };
+}
+
+function drainWorkspaceAppInitialLaunchIntents(
+  contents: WebContents,
+  context: WorkspaceAppGuestContext
+): void {
+  const key = workspaceAppInitialLaunchIntentKey({
+    appID: context.appID,
+    ownerWebContentsId: context.ownerWindow.webContents.id,
+    workspaceID: context.workspaceID
+  });
+  const pending = workspaceAppInitialLaunchIntents.get(key) ?? [];
+  workspaceAppInitialLaunchIntents.delete(key);
+  for (const intent of pending) {
+    contents.send(desktopIpcChannels.appExternal.guestEvent, {
+      appId: context.appID,
+      intent,
+      type: "workspace.launchIntent",
+      workspaceId: context.workspaceID
+    } satisfies DesktopWorkspaceAppExternalRendererEvent);
+  }
 }
 
 function workspaceAppInitialLaunchIntentKey(input: {

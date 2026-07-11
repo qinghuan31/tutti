@@ -59,6 +59,7 @@ function installWorkspaceAppMainFrameBridge(): void {
   const launchIntentListeners = new Set<
     (intent: TuttiExternalWorkspaceOpenRouteIntent) => void
   >();
+  const pendingLaunchIntents: TuttiExternalWorkspaceOpenRouteIntent[] = [];
   const userProjectSnapshots = createWorkspaceAppUserProjectSnapshotBridge();
   let cachedContext: DesktopWorkspaceAppContext | null = null;
   let pendingContext: Promise<DesktopWorkspaceAppContext> | null = null;
@@ -112,6 +113,9 @@ function installWorkspaceAppMainFrameBridge(): void {
     },
     subscribeToWorkspaceLaunchIntents(listener) {
       launchIntentListeners.add(listener);
+      for (const intent of pendingLaunchIntents.splice(0)) {
+        listener(intent);
+      }
       return () => {
         launchIntentListeners.delete(listener);
       };
@@ -144,6 +148,10 @@ function installWorkspaceAppMainFrameBridge(): void {
         return;
       }
       if (payload.type === "workspace.launchIntent") {
+        if (launchIntentListeners.size === 0) {
+          pendingLaunchIntents.push(payload.intent);
+          return;
+        }
         for (const listener of launchIntentListeners) {
           listener(payload.intent);
         }
