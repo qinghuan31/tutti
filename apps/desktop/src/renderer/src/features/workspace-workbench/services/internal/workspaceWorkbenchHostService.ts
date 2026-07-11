@@ -67,8 +67,8 @@ import { createDesktopAgentGeneratedFileMentionProvider } from "@renderer/featur
 import { IWorkspaceFileManagerService } from "../../../workspace-file-manager/services/workspaceFileManagerService.interface.ts";
 import { createDesktopWorkspaceFileReferenceAdapter } from "../../../workspace-file-manager/services/createDesktopWorkspaceFileReferenceAdapter.ts";
 import { IWorkspaceUserProjectService } from "../../../workspace-user-project/services/workspaceUserProjectService.interface.ts";
-import { defaultWorkspaceWorkbenchContributionFactories } from "./contributions/defaultWorkspaceWorkbenchContributionFactories.ts";
-import { createWorkspaceWorkbenchContributionRegistryResult } from "./workspaceWorkbenchContributionRegistry.ts";
+import { resolveWorkbenchCapabilityRegistry } from "./workbenchCapabilityRegistry.ts";
+import { createTuttiWorkbenchProductProfile } from "./tuttiWorkbenchProductProfile.ts";
 import { createWorkspaceWorkbenchHostInputWithDockEntries } from "./workspaceWorkbenchHostInput.ts";
 import { confirmWorkspaceWindowClose } from "./workspaceWindowCloseCoordinator.ts";
 import {
@@ -136,6 +136,7 @@ import {
 } from "./workbenchHostSession.ts";
 import { IWorkbenchHostCoordinator } from "../workbenchHostCoordinator.interface.ts";
 import { createWorkspaceWorkbenchHostSessionBinding } from "./workspaceWorkbenchHostSessionBinding.ts";
+import { createDesktopWorkbenchDiagnosticsPort } from "./adapters/desktopWorkbenchDiagnosticsPort.ts";
 const workspaceDockNativePreviewMaxWidthPx = 260;
 const workspaceDockNativePreviewMaxHeightPx = 170;
 const workspaceDockNativePreviewTimeoutMs = 2_500;
@@ -283,16 +284,10 @@ export class WorkspaceWorkbenchHostService implements IWorkspaceWorkbenchHostSer
           WorkspaceWorkbenchHostInput,
           CachedWorkspaceWorkbenchHostInput
         >({
-          onDisposalError: (error) =>
-            this.dependencies.runtimeApi
-              .logRendererDiagnostic({
-                details: { error: formatDiagnosticError(error) },
-                event: "workbench.host.session.dispose_failed",
-                level: "warn",
-                source: "workbench-host-session",
-                workspaceId: partition.scope.id
-              })
-              .catch(() => undefined),
+          diagnostics: createDesktopWorkbenchDiagnosticsPort({
+            runtimeApi: this.dependencies.runtimeApi,
+            workspaceId: partition.scope.id
+          }),
           partition,
           resolve: (update, current) => this.resolveHostInput(update, current)
         })
@@ -854,59 +849,57 @@ export class WorkspaceWorkbenchHostService implements IWorkspaceWorkbenchHostSer
       appearance: input.themeAppearance,
       style: input.dockIconStyle
     });
-    const contributionRegistry =
-      createWorkspaceWorkbenchContributionRegistryResult({
-        context: {
-          appI18n: input.appI18n,
-          appLocale: input.appLocale,
-          appCenterService: this.dependencies.appCenterService,
-          browserApi: this.dependencies.browserApi,
-          browserService: this.dependencies.browserService,
-          computerUseApi: this.dependencies.computerUseApi,
-          confirmCloseGuard: (request) => confirmCloseGuardRef.current(request),
-          dockPreviewCache,
-          defaultAgentProvider: input.defaultAgentProvider,
-          defaultAgentTargetId: input.defaultAgentTargetId,
-          dockIcons: {
-            agentUnified: dockIcons.agentUnified,
-            agents: dockIcons.agents,
-            applications: dockIcons.applications,
-            browser: dockIcons.browser,
-            files: createWorkspaceDockImageIcon(dockIcons.files),
-            issue: dockIcons.issue,
-            terminal: createWorkspaceDockImageIcon(dockIcons.terminal)
-          },
-          hostFilesApi: this.dependencies.hostFilesApi,
-          hostWindowApi: this.dependencies.hostWindowApi,
-          i18n: input.i18n,
-          onCapabilitySettingsRequest: (target) => {
-            capabilitySettingsRequestRef.current?.(target);
-          },
-          agents: input.agents ?? [],
-          agentsLoading: input.agentsLoading,
-          comingSoonAgentProviders: input.comingSoonAgentProviders,
-          agentProviderStatusService:
-            this.dependencies.agentProviderStatusService,
-          eventStreamClient: this.dependencies.eventStreamClient,
-          workspaceFileManagerService:
-            this.dependencies.workspaceFileManagerService,
-          workspaceUserProjectService:
-            this.dependencies.workspaceUserProjectService,
-          workspaceAgentActivityService:
-            this.dependencies.workspaceAgentActivityService,
-          workspaceAgentPromptSessionService:
-            this.dependencies.workspaceAgentPromptSessionService,
-          tuttidClient: this.dependencies.tuttidClient,
-          platformApi: this.dependencies.platformApi,
-          reporterService: this.dependencies.reporterService,
-          renderFilesNodeBody: (context) =>
-            renderFilesNodeBodyRef.current(context),
-          richTextAtService: this.dependencies.richTextAtService,
-          runtimeApi: this.dependencies.runtimeApi,
-          workspaceId: input.workspaceId
+    const contributionRegistry = resolveWorkbenchCapabilityRegistry(
+      createTuttiWorkbenchProductProfile({
+        appI18n: input.appI18n,
+        appLocale: input.appLocale,
+        appCenterService: this.dependencies.appCenterService,
+        browserApi: this.dependencies.browserApi,
+        browserService: this.dependencies.browserService,
+        computerUseApi: this.dependencies.computerUseApi,
+        confirmCloseGuard: (request) => confirmCloseGuardRef.current(request),
+        dockPreviewCache,
+        defaultAgentProvider: input.defaultAgentProvider,
+        defaultAgentTargetId: input.defaultAgentTargetId,
+        dockIcons: {
+          agentUnified: dockIcons.agentUnified,
+          agents: dockIcons.agents,
+          applications: dockIcons.applications,
+          browser: dockIcons.browser,
+          files: createWorkspaceDockImageIcon(dockIcons.files),
+          issue: dockIcons.issue,
+          terminal: createWorkspaceDockImageIcon(dockIcons.terminal)
         },
-        factories: defaultWorkspaceWorkbenchContributionFactories
-      });
+        hostFilesApi: this.dependencies.hostFilesApi,
+        hostWindowApi: this.dependencies.hostWindowApi,
+        i18n: input.i18n,
+        onCapabilitySettingsRequest: (target) => {
+          capabilitySettingsRequestRef.current?.(target);
+        },
+        agents: input.agents ?? [],
+        agentsLoading: input.agentsLoading,
+        comingSoonAgentProviders: input.comingSoonAgentProviders,
+        agentProviderStatusService:
+          this.dependencies.agentProviderStatusService,
+        eventStreamClient: this.dependencies.eventStreamClient,
+        workspaceFileManagerService:
+          this.dependencies.workspaceFileManagerService,
+        workspaceUserProjectService:
+          this.dependencies.workspaceUserProjectService,
+        workspaceAgentActivityService:
+          this.dependencies.workspaceAgentActivityService,
+        workspaceAgentPromptSessionService:
+          this.dependencies.workspaceAgentPromptSessionService,
+        tuttidClient: this.dependencies.tuttidClient,
+        platformApi: this.dependencies.platformApi,
+        reporterService: this.dependencies.reporterService,
+        renderFilesNodeBody: (context) =>
+          renderFilesNodeBodyRef.current(context),
+        richTextAtService: this.dependencies.richTextAtService,
+        runtimeApi: this.dependencies.runtimeApi,
+        workspaceId: input.workspaceId
+      })
+    );
 
     const baseHostInput: WorkspaceWorkbenchHostInput = {
       captureNodePreviewImage: createDesktopWorkspaceNodePreviewCapture(

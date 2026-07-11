@@ -149,8 +149,10 @@ test("workbench host session continues cleanup after a disposer throws", () => {
   const events: string[] = [];
   const errors: unknown[] = [];
   const session = new WorkbenchHostSession<string, string, undefined>({
-    onDisposalError(error) {
-      errors.push(error);
+    diagnostics: {
+      report(input) {
+        errors.push(input.error);
+      }
     },
     partition: workspacePartition("workspace-1"),
     resolve(update) {
@@ -177,8 +179,10 @@ test("workbench host session continues cleanup after a disposer throws", () => {
 
 test("workbench host session isolates rejected async disposal diagnostics", async () => {
   const session = new WorkbenchHostSession<string, string, undefined>({
-    async onDisposalError() {
-      throw new Error("diagnostics failed");
+    diagnostics: {
+      async report() {
+        throw new Error("diagnostics failed");
+      }
     },
     partition: workspacePartition("workspace-1"),
     resolve(update) {

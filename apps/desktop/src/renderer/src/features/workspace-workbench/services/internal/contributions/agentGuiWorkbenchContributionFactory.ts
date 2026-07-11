@@ -1,7 +1,39 @@
-import type { DesktopWorkbenchContributionFactory } from "../workspaceWorkbenchContributionFactory";
+import type {
+  DesktopWorkbenchContributionContext,
+  DesktopWorkbenchContributionFactory
+} from "../workspaceWorkbenchContributionFactory";
 import { createWorkspaceAgentGuiContribution } from "../workspaceAgentGuiContribution.ts";
 
-export const agentGuiWorkbenchContributionFactory: DesktopWorkbenchContributionFactory =
+type AgentGuiWorkbenchContributionContext = Pick<
+  DesktopWorkbenchContributionContext,
+  | "agentProviderStatusService"
+  | "agents"
+  | "agentsLoading"
+  | "appCenterService"
+  | "appI18n"
+  | "comingSoonAgentProviders"
+  | "computerUseApi"
+  | "defaultAgentProvider"
+  | "defaultAgentTargetId"
+  | "dockIcons"
+  | "dockPreviewCache"
+  | "hostFilesApi"
+  | "hostWindowApi"
+  | "i18n"
+  | "onCapabilitySettingsRequest"
+  | "platformApi"
+  | "renderAgentsEmpty"
+  | "reporterService"
+  | "richTextAtService"
+  | "runtimeApi"
+  | "tuttidClient"
+  | "workspaceAgentActivityService"
+  | "workspaceFileManagerService"
+  | "workspaceId"
+  | "workspaceUserProjectService"
+>;
+
+export const agentGuiWorkbenchContributionFactory: DesktopWorkbenchContributionFactory<AgentGuiWorkbenchContributionContext> =
   {
     id: "workspace-agent-gui",
     order: 25,

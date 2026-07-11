@@ -1,4 +1,5 @@
 import type { WorkbenchHostHandle } from "@tutti-os/workbench-surface";
+import type { WorkbenchDiagnosticsPort } from "./workbenchHostPorts.ts";
 
 export interface WorkbenchScope {
   readonly id: string;
@@ -20,7 +21,7 @@ export interface WorkbenchHostSessionResolution<THostInput, TState> {
 }
 
 export interface WorkbenchHostSessionOptions<TUpdate, THostInput, TState> {
-  readonly onDisposalError?: (error: unknown) => Promise<void> | void;
+  readonly diagnostics?: WorkbenchDiagnosticsPort;
   readonly partition: WorkbenchSnapshotPartition;
   readonly resolve: (
     update: TUpdate,
@@ -34,8 +35,8 @@ export class WorkbenchHostSession<TUpdate, THostInput, TState> {
     null;
   private disposed = false;
   private readonly disposalCallbacks: Array<() => void> = [];
+  private readonly diagnostics?: WorkbenchDiagnosticsPort;
   private readonly listeners = new Set<() => void>();
-  private readonly onDisposalError?: (error: unknown) => Promise<void> | void;
   private readonly resolve: WorkbenchHostSessionOptions<
     TUpdate,
     THostInput,
@@ -48,7 +49,7 @@ export class WorkbenchHostSession<TUpdate, THostInput, TState> {
     options: WorkbenchHostSessionOptions<TUpdate, THostInput, TState>
   ) {
     this.partition = freezeWorkbenchSnapshotPartition(options.partition);
-    this.onDisposalError = options.onDisposalError;
+    this.diagnostics = options.diagnostics;
     this.resolve = options.resolve;
   }
 
@@ -149,7 +150,10 @@ export class WorkbenchHostSession<TUpdate, THostInput, TState> {
 
   private reportDisposalError(error: unknown): void {
     try {
-      const result = this.onDisposalError?.(error);
+      const result = this.diagnostics?.report({
+        error,
+        event: "workbench.host.session.dispose_failed"
+      });
       void result?.catch(() => undefined);
     } catch {
       // Disposal must continue even when diagnostics fail.

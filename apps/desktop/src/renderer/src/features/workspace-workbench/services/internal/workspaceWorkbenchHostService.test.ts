@@ -34,7 +34,7 @@ const workspaceWorkbenchSource = readFileSync(
 test("workspace workbench host keeps deterministic composition and close preparation wiring", () => {
   assert.match(
     workspaceWorkbenchHostServiceSource,
-    /createWorkspaceWorkbenchContributionRegistryResult\(\{\s+context: \{[\s\S]*?factories: defaultWorkspaceWorkbenchContributionFactories\s+\}\)/
+    /resolveWorkbenchCapabilityRegistry\(\s+createTuttiWorkbenchProductProfile\(\{[\s\S]*?workspaceId: input\.workspaceId\s+\}\)\s+\)/
   );
   assert.match(
     workspaceWorkbenchHostServiceSource,
@@ -61,7 +61,7 @@ test("workspace workbench host delegates workspace lifecycle to the DI coordinat
   );
   assert.match(
     workspaceWorkbenchHostServiceSource,
-    /\.logRendererDiagnostic\([\s\S]*?\)\s+\.catch\(\(\) => undefined\)/
+    /diagnostics: createDesktopWorkbenchDiagnosticsPort\(\{[\s\S]*?workspaceId: partition\.scope\.id/
   );
   assert.doesNotMatch(workspaceWorkbenchHostServiceSource, /cachedHostInputs/);
   assert.doesNotMatch(workspaceWorkbenchHostServiceSource, /hostSessionLeases/);

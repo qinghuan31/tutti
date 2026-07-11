@@ -41,6 +41,7 @@ import type {
   WorkspaceWorkbenchCapabilitySettingsTarget
 } from "../workspaceWorkbenchHostService.interface";
 import type { WorkspaceBrowserService } from "./workspaceBrowserService.ts";
+import type { WorkbenchCapabilityFactoryDescriptor } from "./workbenchProductProfile.ts";
 
 export interface DesktopWorkbenchContributionContext {
   appI18n: I18nRuntime<string>;
@@ -94,10 +95,19 @@ export interface DesktopWorkbenchContributionContext {
   workspaceId: string;
 }
 
-export interface DesktopWorkbenchContributionFactory {
-  create(
-    context: DesktopWorkbenchContributionContext
-  ): WorkbenchContribution | null;
+export interface DesktopWorkbenchContributionFactory<TContext> {
+  create(context: TContext): WorkbenchContribution | null;
   id: string;
   order: number;
+}
+
+export function bindDesktopWorkbenchContributionFactory<TContext>(
+  factory: DesktopWorkbenchContributionFactory<TContext>,
+  context: TContext
+): WorkbenchCapabilityFactoryDescriptor {
+  return {
+    create: () => factory.create(context),
+    id: factory.id,
+    order: factory.order
+  };
 }

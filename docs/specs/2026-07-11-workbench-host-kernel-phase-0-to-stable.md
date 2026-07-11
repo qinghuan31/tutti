@@ -1,7 +1,7 @@
 # Workbench Host Kernel: Phase 0 To Stable
 
 - Date: 2026-07-11
-- Status: Active; ADR accepted, PR 1 merged, and PR 2 private kernel approved
+- Status: Active; ADR accepted, PRs 1–2 merged, and PRs 3–6 approved
 - Architecture decision:
   [ADR 0009](../adr/0009-cross-product-workbench-host-kernel.md)
 - Scope: Tutti-first implementation, npm beta, read-only/downstream TSH
@@ -26,26 +26,27 @@ The implementation is complete only after:
 5. the package is published through the stable fixed release group; and
 6. durable current-architecture/convention docs replace this active plan.
 
-This document does not authorize a beta or stable publication. Each release is
-an explicit approval gate.
+This document authorizes the fixed-group beta after PRs 3–5 merge and their
+required validation passes. Stable publication remains a separate approval
+gate after external TSH validation.
 
 ## Approval state
 
 Approval recorded on 2026-07-11 remains deliberately incremental:
 
-| Scope                                     | Approval                    |
-| ----------------------------------------- | --------------------------- |
-| ADR 0009 architecture boundary            | Accepted                    |
-| PR 1 characterization fixtures/tests      | Merged in #1043             |
-| PR 2 private coordinator/session          | Approved for implementation |
-| PR 3 Product Profile/Ports/adapters split | Not approved                |
-| Public package extraction                 | Not approved                |
-| npm beta publication                      | Not approved                |
-| TSH renderer DI/host migration            | Not approved                |
-| Stable publication                        | Not approved                |
+| Scope                                       | Approval                                 |
+| ------------------------------------------- | ---------------------------------------- |
+| ADR 0009 architecture boundary              | Accepted                                 |
+| PR 1 characterization fixtures/tests        | Merged in #1043                          |
+| PR 2 private coordinator/session            | Merged in #1044                          |
+| PR 3 Product Profile/Ports/adapters split   | Approved for implementation              |
+| Public package extraction and Tutti cutover | Approved after PR 3                      |
+| npm beta publication                        | Approved after PRs 3–5 and validation    |
+| TSH renderer DI/host migration              | Deferred; no TSH changes in current work |
+| Stable publication                          | Not approved                             |
 
-Completing PR 2 produces evidence for the next review; it does not implicitly
-authorize PR 3 or any later step.
+The approvals remain sequenced as independently mergeable and revertible PRs.
+They do not authorize combining PRs 3–5, modifying TSH, or publishing stable.
 
 ### PR 2 implementation evidence
 
@@ -76,6 +77,33 @@ The approved Tutti-private proof keeps the extraction boundary reviewable:
 This proof does not introduce Product Profile or Ports, move product adapters,
 create a package, change public Workbench contracts, or authorize any release or
 TSH change.
+
+### PR 3 implementation evidence
+
+The approved product-boundary split keeps all new seams Tutti-private until the
+package API review:
+
+- `workbenchProductProfile.ts` declares only product ID, scope kind, and bound
+  capability descriptors;
+- `workbenchCapabilityRegistry.ts` owns deterministic `order` then `id`
+  resolution and rejects duplicate factory, contribution, node type, and dock
+  entry ownership before publication;
+- `tuttiWorkbenchProductProfile.ts` owns Tutti capability selection and projects
+  a separate narrow context for each capability adapter rather than passing the
+  complete product context;
+- `workbenchHostPorts.ts` defines product-neutral snapshot and lifecycle
+  diagnostics ports, while desktop repository and diagnostics implementations
+  remain product adapters;
+- the coordinator/session classes use the diagnostics port without importing
+  Tutti runtime APIs, and the existing Tutti host facade still owns all product
+  composition; and
+- focused tests preserve contribution IDs/order, node and dock contracts,
+  repository metadata behavior, diagnostic mapping, session lifecycle, and
+  duplicate ownership rejection.
+
+PR 3 does not create a package, change public Workbench or daemon contracts,
+modify TSH, or publish the approved beta. Those remain the independent PR 4–6
+steps.
 
 ## Baseline evidence
 
@@ -528,10 +556,7 @@ The TSH PR must report:
 
 ## Approval gates
 
-ADR 0009 is accepted, PR 1 merged as #1043, and PR 2 is approved for
-implementation. After PR 2 evidence is reviewed, the recommended next approval
-is PR 3 only.
-
-Package extraction, npm beta, TSH changes, and stable publication remain four
-additional separate approvals. None is implied by the accepted ADR or the PR 1
-and PR 2 approvals.
+ADR 0009 is accepted; PR 1 merged as #1043 and PR 2 merged as #1044. PRs 3–5
+and the fixed-group beta in PR 6 are approved in sequence. TSH integration is
+deferred until later business adoption and remains outside the current Tutti
+implementation scope. Stable publication remains separately unapproved.

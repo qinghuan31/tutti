@@ -164,8 +164,10 @@ test("workbench host coordinator rejects another configuration for the same part
 test("workbench host coordinator continues disposing sessions after one throws", () => {
   const errors: unknown[] = [];
   const coordinator = new WorkbenchHostCoordinator({
-    onDisposalError(error) {
-      errors.push(error);
+    diagnostics: {
+      report(input) {
+        errors.push(input.error);
+      }
     }
   });
   const throwingConfiguration = createWorkbenchHostSessionConfiguration({

@@ -4,6 +4,7 @@ import {
   WorkbenchHostSession,
   type WorkbenchSnapshotPartition
 } from "./workbenchHostSession.ts";
+import type { WorkbenchDiagnosticsPort } from "./workbenchHostPorts.ts";
 
 declare const workbenchHostSessionConfigurationBrand: unique symbol;
 
@@ -43,7 +44,7 @@ interface WorkbenchHostCoordinatorEntry {
 }
 
 export interface WorkbenchHostCoordinatorOptions {
-  readonly onDisposalError?: (error: unknown) => Promise<void> | void;
+  readonly diagnostics?: WorkbenchDiagnosticsPort;
 }
 
 export function createWorkbenchHostSessionConfiguration<
@@ -214,7 +215,10 @@ export class WorkbenchHostCoordinator {
 
   private reportDisposalError(error: unknown): void {
     try {
-      const result = this.options.onDisposalError?.(error);
+      const result = this.options.diagnostics?.report({
+        error,
+        event: "workbench.host.coordinator.dispose_failed"
+      });
       void result?.catch(() => undefined);
     } catch {
       // Disposal must continue even when diagnostics fail.

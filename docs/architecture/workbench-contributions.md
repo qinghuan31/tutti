@@ -369,13 +369,25 @@ services, not through React components.
 
 The desktop workspace workbench currently uses these modules:
 
+- `services/internal/workbenchProductProfile.ts` and
+  `services/internal/workbenchCapabilityRegistry.ts` define the product-neutral
+  private seam that will move to `@tutti-os/workbench-host`. The profile declares
+  a product ID, scope kind, and bound capability descriptors; the registry owns
+  `order` then `id` resolution and rejects duplicate factory, contribution, node
+  type, and dock entry ownership before host input is published.
+- `services/internal/tuttiWorkbenchProductProfile.ts` owns the Tutti capability
+  selection. It binds each desktop contribution factory to a newly projected,
+  capability-specific context so factories do not receive the full product
+  context or discover services through a locator.
 - `services/internal/workspaceWorkbenchContributionFactory.ts` defines the
-  desktop-local contribution factory contract. This is an internal extension
-  seam today: a factory receives host-owned adapters, i18n runtimes, renderer
-  callbacks, and workspace context, then returns one `WorkbenchContribution`.
-- `services/internal/workspaceWorkbenchContributionRegistry.ts` is the
-  deterministic implementation that orders available factories and builds the
-  contribution list for a workspace host.
+  desktop-local adapter input and generic binding helper. Concrete factories
+  declare only the subset of host adapters, i18n runtimes, renderer callbacks,
+  and workspace context their capability uses, then return the existing
+  `WorkbenchContribution` contract.
+- `services/internal/workbenchHostPorts.ts` defines the private snapshot and
+  lifecycle-diagnostics ports. Desktop implementations remain under
+  `services/internal/adapters`; Tutti transport and diagnostic payload mapping
+  do not move into the neutral kernel.
 - `services/internal/contributions/*` owns concrete desktop-local adapters for
   browser, terminal, issue-manager, files, and other workspace capabilities
   that have not yet moved into a shared package factory.
@@ -407,10 +419,11 @@ When adding a new desktop workbench capability, prefer this path:
 
 1. add a contribution factory under the owning feature or
    `workspace-workbench/services/internal/contributions`
-2. register it in the desktop contribution registry
-3. keep daemon clients, preload calls, and product enablement in desktop-owned
+2. declare its narrow context and bind it in `tuttiWorkbenchProductProfile.ts`
+3. let the neutral capability registry resolve and validate the profile
+4. keep daemon clients, preload calls, and product enablement in desktop-owned
    adapters
-4. expose only render callbacks or browser event subscriptions through the UI
+5. expose only render callbacks or browser event subscriptions through the UI
    adapter when React is actually required
 
 Do not add new workbench capability wiring directly to `WorkspaceWorkbench.tsx`,
