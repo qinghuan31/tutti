@@ -218,7 +218,6 @@ function reportAgentComposerDiagnostic(
       void Promise.resolve(reportDiagnostic.call(runtime, input)).catch(
         () => {}
       );
-      return;
     }
     if (!runtime || !agentComposerDevConsoleDiagnosticSinkEnabled(runtime)) {
       return;

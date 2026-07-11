@@ -4512,7 +4512,7 @@ describe("AgentComposer", () => {
     ]);
   });
 
-  it("uses the development console diagnostic sink when the upload runtime omits reportDiagnostic", async () => {
+  it("uses the development console diagnostic sink even when the upload runtime has a reporter", async () => {
     vi.stubEnv("AGENT_GUI_DEV_DIAGNOSTIC_CONSOLE", "1");
     const consoleInfo = vi.spyOn(console, "info").mockImplementation(() => {});
     const uploadPromptContent = vi.fn(async () => ({
@@ -4526,7 +4526,8 @@ describe("AgentComposer", () => {
       ]
     }));
     setAgentActivityRuntimeForTests({
-      uploadPromptContent
+      uploadPromptContent,
+      reportDiagnostic: vi.fn()
     } as unknown as AgentActivityRuntime);
 
     let draftContent = createDraft("");
