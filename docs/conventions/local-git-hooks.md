@@ -59,6 +59,14 @@ That root command now uses a repository-owned Node orchestration script so the s
 - the preflight phase runs generated-artifact and repository-rule checks in parallel
 - the validation phase runs lint, typecheck, and blocking test commands in parallel only after preflight passes
 
+Compact output is the default for both local and automated callers. Each task
+writes its complete output under `.tmp/check-full-runs`; successful phases print
+only timing summaries, and failed tasks share one 120-line terminal output
+budget. Use `pnpm check:full -- --verbose` only when live child-process output is
+needed, or `--tail-lines <n>` to adjust the shared failure budget. The latest
+machine-readable task results and log paths are recorded in
+`.tmp/check-full-runs/latest.json`.
+
 That full validation currently includes:
 
 - `pnpm check:defaults-generated`

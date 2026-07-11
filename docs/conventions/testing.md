@@ -12,7 +12,10 @@ This document defines the repository-managed test discovery and gate policy.
 
 `pnpm check:full` prepares builtin app assets once, then uses the prepared Go
 lint and test entrypoints. This prevents concurrent validation lanes from
-writing the same generated assets.
+writing the same generated assets. It captures complete task output under
+`.tmp/check-full-runs` and prints compact phase summaries by default. Its failed
+tasks share a global 120-line output budget; use `--verbose` for live output or
+`--tail-lines <n>` to change the shared budget.
 
 ## Workspace Test Discovery
 
