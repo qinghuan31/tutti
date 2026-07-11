@@ -682,6 +682,7 @@ function projectUserMessageContentParts(
         mimeType: image.mimeType,
         name: image.name,
         data: image.data,
+        url: image.url,
         path: image.path
       })),
       occurredAtUnixMs: message.occurredAtUnixMs ?? null,
@@ -737,6 +738,7 @@ interface UserPromptImageBlock {
   mimeType: string;
   name?: string | null;
   data?: string | null;
+  url?: string | null;
   path?: string | null;
 }
 
@@ -805,6 +807,10 @@ function userPromptContentBlocks(
         data:
           typeof block.data === "string" && block.data.trim()
             ? block.data.trim()
+            : null,
+        url:
+          typeof block.url === "string" && block.url.trim()
+            ? block.url.trim()
             : null,
         path:
           typeof block.path === "string" && block.path.trim()

@@ -847,15 +847,37 @@ Shared callers may instead supply a URL-backed image block when they already
 uploaded the image. That source must be an absolute HTTPS URL without embedded
 userinfo and must retain a supported PNG, JPEG, or WebP MIME type. `data` and
 `url` are mutually exclusive; ambiguous blocks are rejected. URL-backed images
-bypass the prompt attachment store and owner-side hydration. Capable adapters
-forward the URL as a structured image source, while protocols without a URL
-image variant fail capability validation instead of downloading, converting to
-text, or silently dropping the block. Durable activity reports and diagnostic
-logs should retain safe image metadata such as attachment id, name, and MIME
-type without recording base64 data or full signed URLs. UI-local composer
-drafts and optimistic overlays may retain the URL when needed for preview and
-submission; they must not convert it to base64 or persist it as a local prompt
-attachment.
+bypass the prompt attachment store and owner-side hydration. Until uploaded
+images carry a stable read identity end to end, user-message activity content
+retains the HTTPS URL so reloaded transcripts can render the resource directly;
+diagnostics must still record only safe shape flags and never log prompt bytes
+or the URL itself. UI-local composer drafts and optimistic overlays retain the
+same URL for preview and submission; they must not convert it to base64 or
+persist it as a local prompt attachment.
+Provider transport adapters may materialize that HTTPS resource into inline
+image data only at their final request boundary when the upstream protocol does
+not accept remote image URLs. Codex app-server, standard ACP, and the Claude SDK
+sidecar currently do this immediately before their turn/prompt request; the
+AgentGUI draft, submitted content, and durable activity payload remain
+URL-backed. When a provider gains native remote-image support, remove the
+compatibility conversion only from that provider adapter rather than changing
+the shared composer contract.
+When `uploadPromptContent` returns an image, the composer upload continuation
+must accept every normalized image reference shape: `url`, `attachmentId`,
+`path`, or `data`. A URL-backed result replaces the pre-upload base64 runtime
+source with the trimmed URL while retaining the original `previewUrl` only for
+UI rendering. Submitted-draft reconciliation must compare normalized URLs so
+an in-flight edit to a URL-backed image cannot be mistaken for the submitted
+draft and cleared. Validate this handoff with the focused `AgentComposer` and
+`useAgentGUINodeController` test suites listed under Boundary Checks.
+Composer diagnostics expose this chain without recording prompt bytes or signed
+URLs: `agent.gui.composer.image_upload.requested`, `.resolved`, and `.failed`
+report upload availability and safe reference-shape flags, while
+`agent.gui.composer.submit_state_changed` reports the exact send-button blocker
+such as `submit_disabled`, `image_uploading`, or `image_upload_failed`. These
+composer events use the same development console fallback as controller
+diagnostics when the host runtime implements uploads but omits
+`reportDiagnostic`.
 Claude Code runtime options follow the same parity rule. The legacy ACP adapter
 and the Claude SDK adapter must derive system prompt append text, Tutti detail
 mode instructions, plan-mode instructions, plugin directory, custom model args,
@@ -1461,8 +1483,8 @@ UI affordance. `canUploadAttachment` applies to prompt attachment upload paths
 (pasted images, pasted large text, dropped/host-local files) and must not hide
 ordinary `@` references or workspace-reference mention selection.
 When `reportDiagnostic` is omitted, development builds use a low-cost console
-sink for AgentGUI diagnostics such as message page requests/resolutions,
-render-state changes, and caught errors. Hosts can set
+sink for AgentGUI diagnostics such as composer upload/submit state, message page
+requests/resolutions, render-state changes, and caught errors. Hosts can set
 `devDiagnosticConsoleSink: false` to keep a development runtime silent;
 production remains silent by default.
 

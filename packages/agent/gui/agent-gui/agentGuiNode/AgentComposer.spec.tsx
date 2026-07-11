@@ -4391,6 +4391,209 @@ describe("AgentComposer", () => {
     ]);
   });
 
+  it("accepts URL-only image uploads and submits the remote URL", async () => {
+    type UploadResult = AgentActivityRuntimeUploadPromptContentResult;
+    let resolveUpload: (result: UploadResult) => void = () => undefined;
+    const uploadPromptContent = vi.fn(
+      () =>
+        new Promise<UploadResult>((resolve) => {
+          resolveUpload = resolve;
+        })
+    );
+    const createSession = vi.fn();
+    const sendInput = vi.fn();
+    const reportDiagnostic = vi.fn();
+    setAgentActivityRuntimeForTests({
+      uploadPromptContent,
+      createSession,
+      sendInput,
+      reportDiagnostic
+    } as unknown as AgentActivityRuntime);
+
+    let draftContent = createDraft("");
+    const onDraftContentChange = vi.fn((nextDraft: AgentComposerDraft) => {
+      draftContent = nextDraft;
+    });
+    const onSubmit = vi.fn();
+    const renderComposer = () => (
+      <AgentComposer
+        workspaceId="workspace-1"
+        currentUserId="user-1"
+        provider="codex"
+        draftContent={draftContent}
+        availableCommands={[] satisfies readonly AgentHostAgentSessionCommand[]}
+        disabled={false}
+        submitDisabled={false}
+        placeholder="placeholder"
+        composerSettings={createComposerSettings()}
+        queuedPrompts={[]}
+        drainingQueuedPromptId={null}
+        canQueueWhileBusy={false}
+        showStopButton={false}
+        activePrompt={null}
+        isInterrupting={false}
+        isSendingTurn={false}
+        isSubmittingPrompt={false}
+        labels={createLabels()}
+        workspaceUserProjectI18n={workspaceUserProjectI18n}
+        onDraftContentChange={onDraftContentChange}
+        onSettingsChange={vi.fn()}
+        onSubmit={onSubmit}
+        onSendQueuedPromptNext={vi.fn()}
+        onRemoveQueuedPrompt={vi.fn()}
+        onEditQueuedPrompt={vi.fn()}
+        onInterruptCurrentTurn={vi.fn()}
+        onSubmitInteractivePrompt={vi.fn()}
+      />
+    );
+    const { rerender } = render(renderComposer());
+
+    fireEvent.click(screen.getByTestId("mock-paste-image"));
+    rerender(renderComposer());
+    fireEvent.click(screen.getByRole("button", { name: "发送" }));
+
+    const uploadingSendButton = screen.getByRole("button", { name: "发送" });
+    expect(uploadingSendButton).toBeDisabled();
+    expect(uploadingSendButton).toHaveAttribute(
+      "data-disabled-reason",
+      "image_uploading"
+    );
+    expect(onSubmit).not.toHaveBeenCalled();
+    expect(createSession).not.toHaveBeenCalled();
+    expect(sendInput).not.toHaveBeenCalled();
+
+    resolveUpload({
+      content: [
+        {
+          type: "image",
+          mimeType: "image/png",
+          url: "  https://objects.example.test/signed/screen.png  ",
+          name: "screen.png"
+        }
+      ]
+    });
+    await waitFor(() =>
+      expect(draftContent.images[0]).toMatchObject({
+        url: "https://objects.example.test/signed/screen.png",
+        previewUrl: "data:image/png;base64,aW1hZ2U=",
+        uploading: false
+      })
+    );
+    expect(draftContent.images[0]?.data).toBeUndefined();
+    expect(draftContent.images[0]?.uploadError).toBeUndefined();
+    expect(reportDiagnostic).toHaveBeenCalledWith(
+      expect.objectContaining({
+        event: "agent.gui.composer.image_upload.requested",
+        details: expect.objectContaining({ uploadFunctionAvailable: true })
+      })
+    );
+    expect(reportDiagnostic).toHaveBeenCalledWith(
+      expect.objectContaining({
+        event: "agent.gui.composer.image_upload.resolved",
+        details: expect.objectContaining({
+          hasData: false,
+          hasUrl: true
+        })
+      })
+    );
+    rerender(renderComposer());
+
+    const sendButton = screen.getByRole("button", { name: "发送" });
+    expect(sendButton).not.toBeDisabled();
+    expect(sendButton).not.toHaveAttribute("data-disabled-reason");
+    fireEvent.click(sendButton);
+    expect(onSubmit).toHaveBeenCalledWith([
+      {
+        type: "image",
+        mimeType: "image/png",
+        url: "https://objects.example.test/signed/screen.png",
+        name: "screen.png"
+      }
+    ]);
+  });
+
+  it("uses the development console diagnostic sink even when the upload runtime has a reporter", async () => {
+    vi.stubEnv("AGENT_GUI_DEV_DIAGNOSTIC_CONSOLE", "1");
+    const consoleInfo = vi.spyOn(console, "info").mockImplementation(() => {});
+    const uploadPromptContent = vi.fn(async () => ({
+      content: [
+        {
+          type: "image" as const,
+          mimeType: "image/png" as const,
+          url: "https://objects.example.test/signed/screen.png",
+          name: "screen.png"
+        }
+      ]
+    }));
+    setAgentActivityRuntimeForTests({
+      uploadPromptContent,
+      reportDiagnostic: vi.fn()
+    } as unknown as AgentActivityRuntime);
+
+    let draftContent = createDraft("");
+    const onDraftContentChange = vi.fn((nextDraft: AgentComposerDraft) => {
+      draftContent = nextDraft;
+    });
+    const renderComposer = () => (
+      <AgentComposer
+        workspaceId="workspace-1"
+        currentUserId="user-1"
+        provider="codex"
+        draftContent={draftContent}
+        availableCommands={[] satisfies readonly AgentHostAgentSessionCommand[]}
+        disabled={false}
+        submitDisabled={false}
+        placeholder="placeholder"
+        composerSettings={createComposerSettings()}
+        queuedPrompts={[]}
+        drainingQueuedPromptId={null}
+        canQueueWhileBusy={false}
+        showStopButton={false}
+        activePrompt={null}
+        isInterrupting={false}
+        isSendingTurn={false}
+        isSubmittingPrompt={false}
+        labels={createLabels()}
+        workspaceUserProjectI18n={workspaceUserProjectI18n}
+        onDraftContentChange={onDraftContentChange}
+        onSettingsChange={vi.fn()}
+        onSubmit={vi.fn()}
+        onSendQueuedPromptNext={vi.fn()}
+        onRemoveQueuedPrompt={vi.fn()}
+        onEditQueuedPrompt={vi.fn()}
+        onInterruptCurrentTurn={vi.fn()}
+        onSubmitInteractivePrompt={vi.fn()}
+      />
+    );
+    const { rerender } = render(renderComposer());
+
+    fireEvent.click(screen.getByTestId("mock-paste-image"));
+    await waitFor(() =>
+      expect(draftContent.images[0]).toMatchObject({
+        url: "https://objects.example.test/signed/screen.png",
+        uploading: false
+      })
+    );
+    rerender(renderComposer());
+
+    expect(
+      consoleInfo.mock.calls.some(
+        ([prefix, event, payload]) =>
+          prefix === "[agent-gui]" &&
+          event === "agent.gui.composer.image_upload.resolved" &&
+          payload?.details?.hasUrl === true
+      )
+    ).toBe(true);
+    expect(
+      consoleInfo.mock.calls.some(
+        ([prefix, event, payload]) =>
+          prefix === "[agent-gui]" &&
+          event === "agent.gui.composer.submit_state_changed" &&
+          payload?.details?.sendDisabledReason === null
+      )
+    ).toBe(true);
+  });
+
   it("marks uploaded images without usable references as failed", async () => {
     const uploadPromptContent = vi.fn(async () => ({
       content: [

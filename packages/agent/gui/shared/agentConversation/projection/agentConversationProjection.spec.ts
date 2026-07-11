@@ -1197,6 +1197,7 @@ describe("projectAgentConversationVM", () => {
                           type: "image",
                           mimeType: "image/png",
                           attachmentId: "attachment-1",
+                          url: "https://objects.example.test/signed/screen.png",
                           name: "screen.png"
                         }
                       ]
@@ -1233,6 +1234,7 @@ describe("projectAgentConversationVM", () => {
       workspaceId: "room-1",
       agentSessionId: "session-1",
       attachmentId: "attachment-1",
+      url: "https://objects.example.test/signed/screen.png",
       mimeType: "image/png",
       name: "screen.png"
     });

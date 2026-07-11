@@ -347,7 +347,7 @@ function AgentUserImageGrid({
       }}
     >
       {images.map((image) => {
-        const src = loadedImages.get(image.id) ?? imageDataUrl(image);
+        const src = loadedImages.get(image.id) ?? imageSource(image);
         const loading = !src && loadingIds.has(image.id);
         return (
           <div key={image.id} className={styles.userImageThumbnail}>
@@ -391,7 +391,7 @@ function useAgentMessageImageSources(images: readonly AgentMessageImageVM[]): {
     () =>
       images.filter(
         (image) =>
-          !imageDataUrl(image) &&
+          !imageSource(image) &&
           !sources.has(image.id) &&
           image.workspaceId &&
           image.agentSessionId &&
@@ -473,7 +473,22 @@ function useAgentMessageImageSources(images: readonly AgentMessageImageVM[]): {
   return { loadingIds, sources };
 }
 
-function imageDataUrl(image: AgentMessageImageVM): string | null {
+function imageSource(image: AgentMessageImageVM): string | null {
+  const remoteUrl = image.url?.trim() ?? "";
+  if (remoteUrl) {
+    try {
+      const parsed = new URL(remoteUrl);
+      if (
+        parsed.protocol === "https:" &&
+        !parsed.username &&
+        !parsed.password
+      ) {
+        return parsed.toString();
+      }
+    } catch {
+      return null;
+    }
+  }
   const data = image.data?.trim() ?? "";
   const mimeType = image.mimeType.trim();
   if (!data || !mimeType) {

@@ -828,12 +828,19 @@ function reportAgentGUIRenderStateDiagnostic(input: {
   activeRuntimeSession: AgentActivitySession | null;
   activeSessionState: AgentSessionState | null;
   activeSubmitBlocked: boolean;
+  activeConversationResumeUnavailable: boolean;
   canQueueWhileBusy: boolean;
   canSubmit: boolean;
   conversation: AgentConversationVM | null;
   isCreatingConversation: boolean;
   isLoadingMessages: boolean;
+  isInterrupting: boolean;
   isSubmitting: boolean;
+  providerTargetsLoading: boolean;
+  selectedProviderTargetDisabled: boolean;
+  selectedProviderTargetId: string | null;
+  selectedProviderTargetIsExplicit: boolean;
+  sessionAuthBlocked: boolean;
   pendingApproval: AgentGUIApprovalRequest | null;
   pendingInteractivePrompt: AgentGUIInteractivePrompt | null;
   runtime: AgentActivityRuntime;
@@ -848,18 +855,26 @@ function reportAgentGUIRenderStateDiagnostic(input: {
       activeHasPendingSubmittedTurn: input.activeHasPendingSubmittedTurn,
       activeLiveState: input.activeLiveState,
       activeSubmitBlocked: input.activeSubmitBlocked,
+      activeConversationResumeUnavailable:
+        input.activeConversationResumeUnavailable,
       canQueueWhileBusy: input.canQueueWhileBusy,
       canSubmit: input.canSubmit,
       conversation: agentGUIConversationDiagnosticDetails(input.conversation),
       isCreatingConversation: input.isCreatingConversation,
+      isInterrupting: input.isInterrupting,
       isLoadingMessages: input.isLoadingMessages,
       isSubmitting: input.isSubmitting,
+      providerTargetsLoading: input.providerTargetsLoading,
       pendingApprovalRequestId: input.pendingApproval?.requestId ?? null,
       pendingInteractivePromptKind:
         input.pendingInteractivePrompt?.kind ?? null,
       pendingInteractivePromptRequestId: promptRequestId(
         input.pendingInteractivePrompt
       ),
+      selectedProviderTargetDisabled: input.selectedProviderTargetDisabled,
+      selectedProviderTargetId: input.selectedProviderTargetId,
+      selectedProviderTargetIsExplicit: input.selectedProviderTargetIsExplicit,
+      sessionAuthBlocked: input.sessionAuthBlocked,
       runtimeSession: agentGUIRuntimeSessionDiagnosticDetails(
         input.activeRuntimeSession
       ),
@@ -1191,7 +1206,7 @@ function toRuntimeSendContent(
   });
 }
 
-function shouldClearSubmittedDraft(input: {
+function promptSubmissionMatchesCurrentDraft(input: {
   currentDraft: AgentComposerDraft | undefined;
   submittedContent: readonly AgentPromptContentBlock[];
 }): boolean {
@@ -1223,11 +1238,14 @@ function shouldClearSubmittedDraft(input: {
     const submittedPath = submittedImage.path?.trim() ?? "";
     const draftData = image.data?.trim() ?? "";
     const submittedData = submittedImage.data?.trim() ?? "";
+    const draftUrl = image.url?.trim() ?? "";
+    const submittedUrl = submittedImage.url?.trim() ?? "";
     const draftName = image.name.trim();
     const submittedName = submittedImage.name?.trim() ?? "";
     return (
       draftPath === submittedPath &&
       draftData === submittedData &&
+      draftUrl === submittedUrl &&
       draftName === submittedName
     );
   });
@@ -3393,6 +3411,7 @@ function areAgentComposerDraftsEqual(
         image.name === other.name &&
         image.mimeType === other.mimeType &&
         image.data === other.data &&
+        image.url === other.url &&
         image.path === other.path &&
         image.previewUrl === other.previewUrl &&
         image.uploading === other.uploading &&
@@ -4060,6 +4079,9 @@ export function useAgentGUINodeController({
   );
   const effectiveSelectedProviderTarget =
     homeComposerTargetOverride ?? selectedProviderTarget;
+  const effectiveSelectedProviderTargetIsExplicit = homeComposerTargetOverride
+    ? homeComposerTargetOverrideIsExplicit
+    : selectedProviderTargetIsExplicit;
   const firstReadyHomeComposerProviderTarget = useMemo(() => {
     if (!providerReadinessGates) {
       return null;
@@ -4660,13 +4682,10 @@ export function useAgentGUINodeController({
   const selectedProviderTargetRef = useRef(effectiveSelectedProviderTarget);
   selectedProviderTargetRef.current = effectiveSelectedProviderTarget;
   const selectedProviderTargetIsExplicitRef = useRef(
-    homeComposerTargetOverride
-      ? homeComposerTargetOverrideIsExplicit
-      : selectedProviderTargetIsExplicit
+    effectiveSelectedProviderTargetIsExplicit
   );
-  selectedProviderTargetIsExplicitRef.current = homeComposerTargetOverride
-    ? homeComposerTargetOverrideIsExplicit
-    : selectedProviderTargetIsExplicit;
+  selectedProviderTargetIsExplicitRef.current =
+    effectiveSelectedProviderTargetIsExplicit;
   const providerTargetsProvidedRef = useRef(providerTargets !== undefined);
   providerTargetsProvidedRef.current = providerTargets !== undefined;
   const selectedComposerTargetDataRef = useRef(selectedComposerTargetData);
@@ -8855,7 +8874,7 @@ export function useAgentGUINodeController({
           setDraftBySessionId((current) => {
             const currentDraft = current[agentSessionId];
             if (
-              !shouldClearSubmittedDraft({
+              !promptSubmissionMatchesCurrentDraft({
                 currentDraft,
                 submittedContent: normalizedContent
               })
@@ -11784,9 +11803,7 @@ export function useAgentGUINodeController({
     !activeConversationResumeUnavailable &&
     (activeConversationId !== null ||
       (effectiveSelectedProviderTarget.disabled !== true &&
-        (homeComposerTargetOverride
-          ? homeComposerTargetOverrideIsExplicit
-          : selectedProviderTargetIsExplicit))) &&
+        effectiveSelectedProviderTargetIsExplicit)) &&
     (composerTargetData.provider !== "openclaw" ||
       openclawGateway?.status === "ready") &&
     pendingApproval === null &&
@@ -11851,15 +11868,25 @@ export function useAgentGUINodeController({
       activeRuntimeSession,
       activeSessionState,
       activeSubmitBlocked,
+      activeConversationResumeUnavailable,
       canQueueWhileBusy,
       canSubmit,
       conversation,
       isCreatingConversation,
+      isInterrupting,
       isLoadingMessages,
       isSubmitting,
       pendingApproval,
       pendingInteractivePrompt,
+      providerTargetsLoading,
       runtime: agentActivityRuntime,
+      selectedProviderTargetDisabled:
+        effectiveSelectedProviderTarget.disabled === true,
+      selectedProviderTargetId:
+        effectiveSelectedProviderTarget.agentTargetId ?? null,
+      selectedProviderTargetIsExplicit:
+        effectiveSelectedProviderTargetIsExplicit,
+      sessionAuthBlocked: sessionChrome.auth !== null,
       workspaceId
     });
   }, [
@@ -11872,16 +11899,22 @@ export function useAgentGUINodeController({
     activeRuntimeSession,
     activeSessionState,
     activeSubmitBlocked,
+    activeConversationResumeUnavailable,
     agentActivityRuntime,
     canQueueWhileBusy,
     canSubmit,
     conversation,
+    effectiveSelectedProviderTarget.agentTargetId,
+    effectiveSelectedProviderTarget.disabled,
+    effectiveSelectedProviderTargetIsExplicit,
     isCreatingConversation,
+    isInterrupting,
     isLoadingMessages,
     isSubmitting,
     pendingApproval,
     pendingInteractivePrompt,
     providerTargetsLoading,
+    sessionChrome.auth,
     workspaceId
   ]);
   const activeSessionReasoningSelection = useMemo(

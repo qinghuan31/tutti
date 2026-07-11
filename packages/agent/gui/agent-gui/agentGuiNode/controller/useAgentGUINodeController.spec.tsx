@@ -19210,6 +19210,104 @@ describe("useAgentGUINodeController", () => {
     expect(result.current.viewModel.draftContent.images).toEqual([]);
   });
 
+  it("keeps a URL image draft changed while prompt submission settles", async () => {
+    const submittedUrl = "https://objects.example.test/signed/panel-a.png";
+    const changedUrl = "https://objects.example.test/signed/panel-b.png";
+    const imagePromptContent: AgentPromptContentBlock[] = [
+      { type: "text", text: "describe this" },
+      {
+        type: "image",
+        mimeType: "image/png",
+        url: submittedUrl,
+        name: "panel.png"
+      }
+    ];
+    let resolveExec:
+      | ((result: {
+          accepted: boolean;
+          agentSessionId: string;
+          turnId: string;
+          sessionStatus: string;
+        }) => void)
+      | undefined;
+    const exec = vi.fn(
+      () =>
+        new Promise<{
+          accepted: boolean;
+          agentSessionId: string;
+          turnId: string;
+          sessionStatus: string;
+        }>((resolve) => {
+          resolveExec = resolve;
+        })
+    );
+    installAgentHostApi({
+      list: vi.fn(async () => snapshotWithSession("session-1")),
+      listSessionTimeline: vi.fn(async () => ({ timelineItems: [] })),
+      subscribeEvents: vi.fn(() => vi.fn()),
+      getComposerOptions: vi.fn(async () => imageCapableComposerOptions()),
+      exec
+    });
+
+    const { result } = renderHook(() =>
+      useAgentGUINodeController({
+        workspaceId: "room-1",
+        currentUserId: "user-1",
+        workspacePath: "/workspace",
+        avoidGroupingEdits: false,
+        data: agentGuiData("session-1"),
+        onDataChange: vi.fn()
+      })
+    );
+
+    await waitFor(() => {
+      expect(result.current.viewModel.activeConversationId).toBe("session-1");
+    });
+
+    const imageDraft = (url: string) => ({
+      prompt: "describe this",
+      images: [
+        {
+          id: "draft-image-1",
+          name: "panel.png",
+          mimeType: "image/png" as const,
+          url,
+          previewUrl: "data:image/png;base64,aW1hZ2U="
+        }
+      ]
+    });
+
+    act(() => {
+      result.current.actions.updateDraftContent(imageDraft(submittedUrl));
+      result.current.actions.submitPrompt(imagePromptContent);
+    });
+
+    await waitFor(() => {
+      expect(exec).toHaveBeenCalledWith({
+        workspaceId: "room-1",
+        agentSessionId: "session-1",
+        content: imagePromptContent
+      });
+    });
+
+    act(() => {
+      result.current.actions.updateDraftContent(imageDraft(changedUrl));
+      resolveExec?.({
+        accepted: true,
+        agentSessionId: "session-1",
+        turnId: "turn-1",
+        sessionStatus: "working"
+      });
+    });
+
+    await waitFor(() => {
+      expect(result.current.viewModel.isSubmitting).toBe(false);
+    });
+    expect(result.current.viewModel.draftContent.images).toEqual([
+      expect.objectContaining({ url: changedUrl })
+    ]);
+  });
+
   it("edits a local queued prompt back into the draft", async () => {
     installAgentHostApi({
       list: vi.fn(async () => snapshotWithWaitingSession("session-1")),
