@@ -98,9 +98,6 @@
             "cwd": {
               "type": "string"
             },
-            "include-capability-catalog": {
-              "type": "boolean"
-            },
             "locale": {
               "type": "string"
             },
