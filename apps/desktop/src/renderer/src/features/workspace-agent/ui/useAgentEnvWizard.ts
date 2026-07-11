@@ -78,6 +78,7 @@ export interface AgentEnvWizardActions {
 }
 
 export function useAgentEnvWizard(input: {
+  activeProvider?: WorkspaceAgentProvider;
   service: IAgentProviderStatusService;
   workspaceId: string;
   workbenchHost?: unknown;
@@ -91,7 +92,7 @@ export function useAgentEnvWizard(input: {
   logExpanded: boolean;
   actions: AgentEnvWizardActions;
 } {
-  const { service, workspaceId, workbenchHost } = input;
+  const { activeProvider, service, workspaceId, workbenchHost } = input;
   const { t } = useTranslation();
   const { service: accountService } = useAccountService();
   const request = useAgentEnvPanelRequest();
@@ -99,8 +100,12 @@ export function useAgentEnvWizard(input: {
   const wizard = useAgentEnvWizardState();
 
   const { provider, isSupported } = useMemo(
-    () => resolveActiveProvider(request.provider, snapshot.defaultProvider),
-    [request.provider, snapshot.defaultProvider]
+    () =>
+      resolveActiveProvider(
+        activeProvider ?? request.provider,
+        snapshot.defaultProvider
+      ),
+    [activeProvider, request.provider, snapshot.defaultProvider]
   );
 
   const status = useMemo(
