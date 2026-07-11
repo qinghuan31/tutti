@@ -67,11 +67,17 @@ that starts the adapter.
 ## Output and Logs
 
 Root test runners execute independent lanes with bounded concurrency. Successful
-runs print one compact summary. Each lane writes its complete output under:
+runs print one compact summary plus the three slowest lanes. Each lane writes
+its complete output under:
 
 - `.tmp/test-runs/typescript`
 - `.tmp/test-runs/go`
 - `.tmp/test-runs/go-agent-daemon`
+
+Each root also writes `latest.json`, with per-lane duration, exit code, and log
+path, plus a timestamped run directory containing the same `summary.json`.
+Inspect that manifest first when an AI agent needs to identify the slow or
+failed owner without scanning every log.
 
 Failures print a bounded tail and the full log path. Use `--tail-lines <n>` to
 change the displayed failure tail and `--max-parallel <n>` to reduce local

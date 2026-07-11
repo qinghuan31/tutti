@@ -58,12 +58,14 @@ export async function runValidationLanes({
     console.log(
       `${summaryLabel} passed ${lanes.length} lane(s) in ${formatDuration(durationMs)}`
     );
+    printLaneTimingSummary(results, workspaceRoot, tmpRoot);
     return { exitCode: 0, results };
   }
 
   console.error(
     `${summaryLabel} failed ${failures.length}/${lanes.length} lane(s) in ${formatDuration(durationMs)}`
   );
+  printLaneTimingSummary(results, workspaceRoot, tmpRoot, console.error);
   console.error(
     `failed lanes: ${failures.map((failure) => failure.label).join(", ")}`
   );
@@ -181,6 +183,33 @@ function sanitizeFileName(value) {
 
 function formatDuration(durationMs) {
   return `${(durationMs / 1000).toFixed(1)}s`;
+}
+
+export function formatSlowestLanes(results, limit = 3) {
+  return [...results]
+    .filter((result) => Number.isFinite(result.durationMs))
+    .sort(
+      (left, right) =>
+        right.durationMs - left.durationMs ||
+        left.label.localeCompare(right.label)
+    )
+    .slice(0, Math.max(0, limit))
+    .map((result) => `${result.label} ${formatDuration(result.durationMs)}`)
+    .join(", ");
+}
+
+function printLaneTimingSummary(
+  results,
+  workspaceRoot,
+  tmpRoot,
+  write = console.log
+) {
+  const slowest = formatSlowestLanes(results);
+  if (slowest === "") {
+    return;
+  }
+  const latestPath = relative(workspaceRoot, join(tmpRoot, "latest.json"));
+  write(`slowest lanes: ${slowest} (details: ${latestPath})`);
 }
 
 function tailFile(path, lineCount) {

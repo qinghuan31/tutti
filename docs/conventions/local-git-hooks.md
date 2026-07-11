@@ -85,9 +85,10 @@ Rules:
 
 TypeScript package tests and Go workspace tests use discovery-based runners
 instead of root package/module whitelists. Successful runs print compact
-summaries; complete lane logs are stored under `.tmp/test-runs`. Every `go.work`
-module, including `packages/agent/daemon`, participates in the blocking Go test
-gate. The focused agent daemon command and its stabilization expectations are
+summaries with the slowest lanes; complete lane logs and a machine-readable
+`latest.json` are stored under `.tmp/test-runs`. Every `go.work` module,
+including `packages/agent/daemon`, participates in the blocking Go test gate.
+The focused agent daemon command and its stabilization expectations are
 documented in [Testing](./testing.md).
 
 For PR branches that often need rebasing or force-pushing, use
