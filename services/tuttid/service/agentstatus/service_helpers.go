@@ -277,6 +277,18 @@ func (s Service) authFromMarkerFile(spec ProviderSpec, path string) (AuthInfo, b
 		}
 		return AuthInfo{}, false
 	}
+	if spec.Provider == agentprovider.Cursor {
+		if auth, ok := parseCursorAuthMarkerFile(path); ok {
+			return auth, true
+		}
+		return AuthInfo{}, false
+	}
+	if spec.Provider == agentprovider.OpenCode {
+		if auth, ok := parseOpenCodeAuthMarkerFile(path); ok {
+			return auth, true
+		}
+		return AuthInfo{}, false
+	}
 	return AuthInfo{Status: AuthAuthenticated}, true
 }
 

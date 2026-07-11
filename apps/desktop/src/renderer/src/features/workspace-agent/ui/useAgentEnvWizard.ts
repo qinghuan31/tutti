@@ -11,7 +11,7 @@ import { useTranslation } from "@renderer/i18n";
 import type { IAgentProviderStatusService } from "../services/agentProviderStatusService.interface";
 import {
   desktopManagedAgentProviders,
-  isDesktopManagedAgentProvider
+  isDesktopManagedAgentProviderSetupSupported
 } from "../services/internal/desktopManagedAgentProviders.ts";
 import {
   attachAgentEnvWizard,
@@ -56,10 +56,13 @@ function resolveActiveProvider(
   if (requested) {
     return {
       provider: requested as WorkspaceAgentProvider,
-      isSupported: isDesktopManagedAgentProvider(requested)
+      isSupported: isDesktopManagedAgentProviderSetupSupported(requested)
     };
   }
-  if (defaultProvider && isDesktopManagedAgentProvider(defaultProvider)) {
+  if (
+    defaultProvider &&
+    isDesktopManagedAgentProviderSetupSupported(defaultProvider)
+  ) {
     return { provider: defaultProvider, isSupported: true };
   }
   const fallback = desktopManagedAgentProviders.includes("codex")

@@ -115,16 +115,17 @@ type RunActionResult struct {
 }
 
 type ProviderStatus struct {
-	Provider     string
-	Availability Availability
-	CLI          CLIStatus
-	Adapter      AdapterStatus
-	Auth         AuthInfo
-	Actions      []Action
-	Network      *NetworkStatus
-	Checks       []ProviderCheck
-	LastError    *ProviderLastError
-	ActiveAction *ActiveAction
+	Provider             string
+	Availability         Availability
+	CLI                  CLIStatus
+	Adapter              AdapterStatus
+	Auth                 AuthInfo
+	Actions              []Action
+	ManualInstallCommand string
+	Network              *NetworkStatus
+	Checks               []ProviderCheck
+	LastError            *ProviderLastError
+	ActiveAction         *ActiveAction
 }
 
 type ProviderCheck struct {
@@ -655,8 +656,9 @@ func (s Service) statusForSpec(ctx context.Context, spec ProviderSpec, now time.
 	}
 
 	status := ProviderStatus{
-		Provider:     spec.Provider,
-		Availability: availability,
+		Provider:             spec.Provider,
+		ManualInstallCommand: spec.Install.DisplayCommand,
+		Availability:         availability,
 		CLI: CLIStatus{
 			Installed:  installed,
 			BinaryPath: runtimeResolution.CLIPath,
@@ -704,10 +706,14 @@ func (s Service) statusForSpec(ctx context.Context, spec ProviderSpec, now time.
 }
 
 func (s Service) shouldProbeAdapterCommandForStatus(spec ProviderSpec, runtimeResolution providerRuntimeResolution) bool {
+	if spec.Provider == agentprovider.Cursor && providerInstallInFlight(spec.Provider) {
+		return false
+	}
 	if strings.TrimSpace(spec.ExternalRegistryID) != "" {
 		return true
 	}
-	return spec.Provider == agentprovider.Codex && s.executableFile(runtimeResolution.AdapterPath)
+	return (spec.Provider == agentprovider.Codex || spec.Provider == agentprovider.Cursor) &&
+		s.executableFile(runtimeResolution.AdapterPath)
 }
 
 func (s Service) probeReadyAfterForSpec(spec ProviderSpec) time.Duration {

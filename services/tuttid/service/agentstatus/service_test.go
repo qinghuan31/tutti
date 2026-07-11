@@ -148,6 +148,9 @@ func TestDefaultRegistryUsesTuttiAgentManagedNPMInstaller(t *testing.T) {
 	if !install.ManagedNPM.IncludeOptional {
 		t.Fatalf("IncludeOptional = false, want true")
 	}
+	if install.DisplayCommand != "npm install -g @tutti-os/tutti-agent@"+minTuttiAgentVersion+" --include=optional" {
+		t.Fatalf("DisplayCommand = %q, want Tutti Agent manual repair command", install.DisplayCommand)
+	}
 	if specs[0].AdapterPackage.Name != "@tutti-os/tutti-agent" || specs[0].AdapterPackage.Version != minTuttiAgentVersion {
 		t.Fatalf("AdapterPackage = %+v, want @tutti-os/tutti-agent >= %s", specs[0].AdapterPackage, minTuttiAgentVersion)
 	}

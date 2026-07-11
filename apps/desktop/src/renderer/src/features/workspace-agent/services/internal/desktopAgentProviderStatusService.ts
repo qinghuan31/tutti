@@ -46,7 +46,6 @@ import {
   type AgentAnalyticsFlow,
   type AgentAnalyticsNode
 } from "./agentNodeResultAnalytics.ts";
-import { applyDesktopAgentProviderRuntimeProbeFallbacks } from "./desktopAgentProviderRuntimeProbeFallback.ts";
 
 export interface DesktopAgentProviderStatusServiceDependencies {
   loginStatusPollDurationMs?: number;
@@ -220,15 +219,11 @@ export class DesktopAgentProviderStatusService implements IAgentProviderStatusSe
         let responseProviders = response.providers;
         if (this.requestSequence === requestId) {
           const previousStatuses = this.snapshot.statuses;
-          const maybeReconciledStatuses =
-            this.reconcileProviderStatusesWithProbe(
-              previousStatuses,
-              response.providers,
-              input.providers
-            );
-          const reconciledStatuses = Array.isArray(maybeReconciledStatuses)
-            ? maybeReconciledStatuses
-            : await maybeReconciledStatuses;
+          const reconciledStatuses = this.reconcileProviderStatuses(
+            previousStatuses,
+            response.providers,
+            input.providers
+          );
           responseProviders = [...reconciledStatuses];
           this.setSnapshot({
             capturedAt: response.capturedAt,
@@ -540,24 +535,6 @@ export class DesktopAgentProviderStatusService implements IAgentProviderStatusSe
       }
     }
     return merged;
-  }
-
-  private reconcileProviderStatusesWithProbe(
-    previousStatuses: readonly AgentProviderStatus[],
-    responseStatuses: readonly AgentProviderStatus[],
-    requestedProviders: readonly WorkspaceAgentProvider[] | undefined
-  ): readonly AgentProviderStatus[] | Promise<readonly AgentProviderStatus[]> {
-    const reconciledStatuses = this.reconcileProviderStatuses(
-      previousStatuses,
-      responseStatuses,
-      requestedProviders
-    );
-    return applyDesktopAgentProviderRuntimeProbeFallbacks({
-      probeProvider: (provider) =>
-        this.dependencies.tuttidClient.probeAgentProvider(provider),
-      requestedProviders,
-      statuses: reconciledStatuses
-    });
   }
 
   /**
