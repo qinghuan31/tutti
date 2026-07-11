@@ -72,3 +72,20 @@ test("reads each capability entry once before validating it", () => {
   );
   assert.equal(reads, 1);
 });
+
+test("snapshots capability length before reading accessor entries", () => {
+  const operations: unknown[] = ["app.getContext", "files.open"];
+  Object.defineProperty(operations, 0, {
+    configurable: true,
+    enumerable: true,
+    get() {
+      operations.length = 1;
+      return "app.getContext";
+    }
+  });
+
+  assert.throws(
+    () => normalizeTuttiExternalCapabilities({ operations } as never),
+    /capabilities are invalid/
+  );
+});

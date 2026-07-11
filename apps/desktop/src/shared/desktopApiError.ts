@@ -65,14 +65,14 @@ export function readDesktopApiErrorDetails(
     const reason = readNonEmptyString(value?.reason);
     const developerMessage = readNonEmptyString(value?.developerMessage);
     const correlationId = readNonEmptyString(value?.correlationId);
+    const params = value.params;
+    const retryable = value.retryable;
     return {
       code,
       message,
       ...(reason ? { reason } : {}),
-      ...(isRecord(value?.params) ? { params: value.params } : {}),
-      ...(typeof value?.retryable === "boolean"
-        ? { retryable: value.retryable }
-        : {}),
+      ...(isRecord(params) ? { params } : {}),
+      ...(typeof retryable === "boolean" ? { retryable } : {}),
       ...(developerMessage ? { developerMessage } : {}),
       ...(correlationId ? { correlationId } : {})
     };

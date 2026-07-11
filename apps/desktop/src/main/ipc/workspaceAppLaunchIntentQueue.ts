@@ -219,6 +219,10 @@ export class WorkspaceAppLaunchIntentQueue {
     return this.#entries.has(launchIntentTargetKey(target));
   }
 
+  isExpired(delivery: WorkspaceAppLaunchIntentDelivery): boolean {
+    return delivery.enqueuedAtMs <= this.#now() - this.#ttlMs;
+  }
+
   #evictOldestIntent(): void {
     let oldestKey: string | undefined;
     let oldestTime = Number.POSITIVE_INFINITY;
@@ -341,6 +345,14 @@ export class WorkspaceAppLaunchIntentDeliveryState {
     intent: TuttiExternalWorkspaceOpenRouteIntent
   ): void {
     this.#queue.enqueue(target, intent);
+  }
+
+  consumeInitialDelivery(
+    delivery: WorkspaceAppLaunchIntentDelivery | undefined
+  ): TuttiExternalWorkspaceOpenRouteIntent | undefined {
+    return delivery && !this.#queue.isExpired(delivery)
+      ? delivery.intent
+      : undefined;
   }
 
   markNotReady(guestWebContentsId: number): void {

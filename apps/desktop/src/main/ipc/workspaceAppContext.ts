@@ -1308,7 +1308,9 @@ function createWorkspaceAppContext(
   }
   const issuer = new URL(resolveDesktopDaemonBaseUrl(endpoint)).origin;
   const installationId = `${context.workspaceID}:${context.appID}`;
-  const launchIntent = context.launchIntentDelivery?.intent;
+  const launchIntent = workspaceAppLaunchIntents.consumeInitialDelivery(
+    context.launchIntentDelivery
+  );
   delete context.launchIntentDelivery;
   return {
     appId: context.appID,

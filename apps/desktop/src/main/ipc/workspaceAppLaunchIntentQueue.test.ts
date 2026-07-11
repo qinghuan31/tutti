@@ -311,3 +311,17 @@ test("does not renew an unconsumed initial intent TTL during reload", () => {
 
   assert.equal(state.registerGuest(11, target), undefined);
 });
+
+test("expires an initial delivery held until a delayed context request", () => {
+  let nowMs = 1_000;
+  const state = new WorkspaceAppLaunchIntentDeliveryState({
+    now: () => nowMs,
+    ttlMs: 100
+  });
+  state.enqueue(target, intent("/initial"));
+  const initial = state.registerGuest(10, target);
+  assert.equal(state.consumeInitialDelivery(initial)?.route, "/initial");
+
+  nowMs = 1_101;
+  assert.equal(state.consumeInitialDelivery(initial), undefined);
+});

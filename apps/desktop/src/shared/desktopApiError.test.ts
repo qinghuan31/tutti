@@ -90,3 +90,29 @@ test("always returns a string message for hostile or mutated errors", () => {
     message: "Unknown desktop API error."
   });
 });
+
+test("reads structured params and retryable accessors only once", () => {
+  let paramsReads = 0;
+  let retryableReads = 0;
+  const error = {
+    code: "COMMON.UNAVAILABLE",
+    message: "offline",
+    get params() {
+      paramsReads += 1;
+      return paramsReads === 1 ? { authorityId: "device-1" } : [];
+    },
+    get retryable() {
+      retryableReads += 1;
+      return retryableReads === 1 ? true : "yes";
+    }
+  };
+
+  assert.deepEqual(normalizeDesktopApiErrorDetails(error), {
+    code: "COMMON.UNAVAILABLE",
+    message: "offline",
+    params: { authorityId: "device-1" },
+    retryable: true
+  });
+  assert.equal(paramsReads, 1);
+  assert.equal(retryableReads, 1);
+});

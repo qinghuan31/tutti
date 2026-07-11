@@ -79,8 +79,9 @@ function normalizeCapabilityArray<T>(
   if (!Array.isArray(values)) {
     throw new Error(`tuttiExternal host ${field} capabilities are invalid.`);
   }
+  const length = values.length;
   const materialized: T[] = [];
-  for (let index = 0; index < values.length; index += 1) {
+  for (let index = 0; index < length; index += 1) {
     if (!Object.hasOwn(values, index)) {
       throw new Error(`tuttiExternal host ${field} capabilities are invalid.`);
     }
