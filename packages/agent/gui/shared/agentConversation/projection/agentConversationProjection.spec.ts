@@ -858,6 +858,181 @@ describe("projectAgentConversationVM", () => {
     );
   });
 
+  it("uses lifecycle turn start time when available for live elapsed timing", () => {
+    const conversation = projectAgentConversationVM(
+      detailViewModel({
+        session: {
+          ...detailViewModel().session,
+          turnLifecycle: {
+            activeTurnId: "turn-1",
+            phase: "running",
+            startedAtUnixMs: 4_000
+          } as NonNullable<
+            WorkspaceAgentSessionDetailViewModel["session"]["turnLifecycle"]
+          > & { startedAtUnixMs: number }
+        },
+        turns: [
+          {
+            id: "turn-1",
+            userMessage: {
+              id: "user-1",
+              body: "Ship it",
+              occurredAtUnixMs: 1_000
+            },
+            userMessages: [
+              { id: "user-1", body: "Ship it", occurredAtUnixMs: 1_000 }
+            ],
+            agentMessages: [],
+            toolCalls: [],
+            toolCallCount: 0,
+            hasFailedToolCall: false,
+            agentItems: []
+          }
+        ],
+        showProcessingIndicator: true
+      })
+    );
+
+    const processing = conversation.rows.find(
+      (row) => row.kind === "processing"
+    );
+
+    expect(conversation.rows.map((row) => row.kind)).toEqual([
+      "message",
+      "processing"
+    ]);
+    expect(processing).toEqual(
+      expect.objectContaining({
+        id: "processing:turn-1:elapsed",
+        startedAtUnixMs: 4_000,
+        live: true
+      })
+    );
+  });
+
+  it("projects a completed elapsed row with a fixed duration after a turn completes", () => {
+    const conversation = projectAgentConversationVM(
+      detailViewModel({
+        session: {
+          ...detailViewModel().session,
+          status: "completed",
+          turnLifecycle: null
+        },
+        turns: [
+          {
+            id: "turn-1",
+            userMessage: {
+              id: "user-1",
+              body: "Ship it",
+              occurredAtUnixMs: 1_000
+            },
+            userMessages: [
+              { id: "user-1", body: "Ship it", occurredAtUnixMs: 1_000 }
+            ],
+            agentMessages: [
+              { id: "assistant-1", body: "Done", occurredAtUnixMs: 5_000 }
+            ],
+            toolCalls: [],
+            toolCallCount: 0,
+            hasFailedToolCall: false,
+            agentItems: [
+              {
+                kind: "message",
+                message: {
+                  id: "assistant-1",
+                  body: "Done",
+                  occurredAtUnixMs: 5_000
+                }
+              }
+            ]
+          }
+        ],
+        showProcessingIndicator: false
+      })
+    );
+
+    const elapsed = conversation.rows.find(
+      (row) => row.kind === "turn-elapsed"
+    );
+
+    expect(conversation.rows.map((row) => row.kind)).toEqual([
+      "message",
+      "turn-elapsed",
+      "message",
+      "turn-summary"
+    ]);
+    expect(conversation.rows.some((row) => row.kind === "processing")).toBe(
+      false
+    );
+    expect(elapsed).toEqual(
+      expect.objectContaining({
+        id: "turn-elapsed:turn-1",
+        startedAtUnixMs: 1_000,
+        completedAtUnixMs: 5_000
+      })
+    );
+  });
+
+  it("freezes elapsed timing at the lifecycle terminal time after a user stop", () => {
+    const base = detailViewModel();
+    const conversation = projectAgentConversationVM(
+      detailViewModel({
+        session: {
+          ...base.session,
+          status: "canceled",
+          turnLifecycle: {
+            activeTurnId: null,
+            phase: "settled",
+            outcome: "canceled",
+            startedAtUnixMs: 4_000,
+            completedAtUnixMs: 9_000
+          } as NonNullable<
+            WorkspaceAgentSessionDetailViewModel["session"]["turnLifecycle"]
+          > & {
+            startedAtUnixMs: number;
+            completedAtUnixMs: number;
+          }
+        },
+        turns: [
+          {
+            id: "turn-1",
+            userMessage: {
+              id: "user-1",
+              body: "Keep working",
+              occurredAtUnixMs: 1_000
+            },
+            userMessages: [
+              {
+                id: "user-1",
+                body: "Keep working",
+                occurredAtUnixMs: 1_000
+              }
+            ],
+            agentMessages: [],
+            toolCalls: [],
+            toolCallCount: 0,
+            hasFailedToolCall: false,
+            agentItems: []
+          }
+        ],
+        showProcessingIndicator: false
+      })
+    );
+
+    expect(conversation.rows.some((row) => row.kind === "processing")).toBe(
+      false
+    );
+    expect(
+      conversation.rows.find((row) => row.kind === "turn-elapsed")
+    ).toEqual(
+      expect.objectContaining({
+        id: "turn-elapsed:turn-1",
+        startedAtUnixMs: 4_000,
+        completedAtUnixMs: 9_000
+      })
+    );
+  });
+
   it("scopes the transient processing row identity to the latest turn", () => {
     const firstTurn = detailViewModel().turns[0]!;
     const secondTurn = {
@@ -1403,6 +1578,44 @@ describe("projectAgentConversationVM", () => {
     const reconciled = reconcileProjectedAgentConversationVM(previous, next);
 
     expect(reconciled.rows).toBe(previous.rows);
+  });
+
+  it("keeps a settling turn live until it has an authoritative completion time", () => {
+    const base = detailViewModel();
+    const turn = base.turns[0]!;
+    const detail = detailViewModel({
+      session: {
+        ...base.session,
+        turnLifecycle: {
+          activeTurnId: "turn-1",
+          phase: "running",
+          settling: true,
+          startedAtUnixMs: 1_000
+        }
+      },
+      turns: [
+        {
+          ...turn,
+          agentMessages: [
+            {
+              ...turn.agentMessages[0]!,
+              occurredAtUnixMs: 2_000
+            }
+          ]
+        }
+      ]
+    });
+
+    const conversation = projectAgentConversationVM(detail);
+
+    expect(conversation.rows.some((row) => row.kind === "turn-elapsed")).toBe(
+      false
+    );
+    expect(
+      conversation.rows.some(
+        (row) => row.kind === "processing" && row.live === true
+      )
+    ).toBe(true);
   });
 });
 

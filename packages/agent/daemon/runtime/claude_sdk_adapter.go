@@ -66,6 +66,14 @@ type claudeSDKAdapterSession struct {
 	// over different channels (the Exec emit closure and the session event
 	// sink) can drop stale ones. Guarded by the adapter mutex.
 	lifecycleSeq uint64
+	// turnStartedAtUnixMS remembers the adapter-observed start timestamp for
+	// each live turn, copied onto later lifecycle snapshots for stable UI timers.
+	// Guarded by the adapter mutex.
+	turnStartedAtUnixMS map[string]int64
+	// settledTurnTimings keeps the first terminal timing for recently settled
+	// turns so a later provider duplicate cannot move the UI's frozen duration.
+	// Guarded by the adapter mutex and bounded with settledTurns.
+	settledTurnTimings map[string]adapterTurnLifecycleTiming
 	// settledTurns remembers turn IDs whose terminal event already left this
 	// adapter, so a late Cancel re-states the settled snapshot instead of
 	// fabricating a competing terminal transition. Guarded by the adapter
@@ -747,6 +755,38 @@ func (a *ClaudeCodeSDKAdapter) nextTurnLifecycleSeq(adapterSession *claudeSDKAda
 	return adapterSession.lifecycleSeq
 }
 
+func (a *ClaudeCodeSDKAdapter) lifecycleTiming(adapterSession *claudeSDKAdapterSession, turnID string, event activityshared.Event) adapterTurnLifecycleTiming {
+	if a == nil || adapterSession == nil {
+		return adapterTurnLifecycleTiming{}
+	}
+	turnID = strings.TrimSpace(turnID)
+	if turnID == "" {
+		return adapterTurnLifecycleTiming{}
+	}
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	if adapterSession.turnStartedAtUnixMS == nil {
+		adapterSession.turnStartedAtUnixMS = make(map[string]int64)
+	}
+	if event.Type == activityshared.EventTurnStarted && event.OccurredAtUnixMS > 0 && adapterSession.turnStartedAtUnixMS[turnID] == 0 {
+		adapterSession.turnStartedAtUnixMS[turnID] = event.OccurredAtUnixMS
+	}
+	if adapterSession.settledTurnTimings == nil {
+		adapterSession.settledTurnTimings = make(map[string]adapterTurnLifecycleTiming)
+	}
+	if settled, ok := adapterSession.settledTurnTimings[turnID]; ok {
+		return settled
+	}
+	timing := adapterTurnLifecycleTiming{StartedAtUnixMS: adapterSession.turnStartedAtUnixMS[turnID]}
+	switch event.Type {
+	case activityshared.EventTurnCompleted, activityshared.EventTurnFailed:
+		timing.CompletedAtUnixMS = event.OccurredAtUnixMS
+		adapterSession.settledTurnTimings[turnID] = timing
+		delete(adapterSession.turnStartedAtUnixMS, turnID)
+	}
+	return timing
+}
+
 // stampTurnLifecycleSnapshots stamps an adapter-origin TurnLifecycle snapshot
 // onto every turn.* event in the batch (ADR 0008); see
 // stampAdapterTurnLifecycleEvents for the contract. It also records terminal
@@ -756,9 +796,13 @@ func (a *ClaudeCodeSDKAdapter) stampTurnLifecycleSnapshots(adapterSession *claud
 	if a == nil || adapterSession == nil || len(events) == 0 {
 		return events
 	}
-	events = stampAdapterTurnLifecycleEvents(events, func() uint64 {
-		return a.nextTurnLifecycleSeq(adapterSession)
-	})
+	events = stampAdapterTurnLifecycleEvents(
+		events,
+		func() uint64 { return a.nextTurnLifecycleSeq(adapterSession) },
+		func(turnID string, event activityshared.Event) adapterTurnLifecycleTiming {
+			return a.lifecycleTiming(adapterSession, turnID, event)
+		},
+	)
 	a.mu.Lock()
 	for _, event := range events {
 		switch event.Type {
@@ -777,6 +821,13 @@ func (a *ClaudeCodeSDKAdapter) stampTurnLifecycleSnapshots(adapterSession *claud
 			// growing one entry per turn forever.
 			if len(adapterSession.settledTurns) > 64 {
 				adapterSession.settledTurns = make(map[string]string)
+				adapterSession.settledTurnTimings = make(map[string]adapterTurnLifecycleTiming)
+				if snapshot, ok := activityshared.TurnLifecycleSnapshotFromEvent(event); ok {
+					adapterSession.settledTurnTimings[turnID] = adapterTurnLifecycleTiming{
+						StartedAtUnixMS:   snapshot.StartedAtUnixMS,
+						CompletedAtUnixMS: snapshot.CompletedAtUnixMS,
+					}
+				}
 			}
 			outcome := strings.TrimSpace(event.Payload.TurnOutcome)
 			if outcome == "" {

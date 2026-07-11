@@ -1297,7 +1297,11 @@ test("controller clears active turn and submit block from settled inline state p
         Promise.resolve({
           sessions: [
             createSession({
-              turnLifecycle: { activeTurnId: "turn-1", phase: "running" },
+              turnLifecycle: {
+                activeTurnId: "turn-1",
+                phase: "running",
+                startedAtUnixMs: 1000
+              },
               submitAvailability: {
                 state: "blocked",
                 reason: "active_turn"
@@ -1330,6 +1334,7 @@ test("controller clears active turn and submit block from settled inline state p
         phase: "settled",
         outcome: "completed",
         submitAvailability: { state: "available" },
+        startedAtUnixMs: 1000,
         completedAtUnixMs: 2000
       }
     }
@@ -1341,6 +1346,8 @@ test("controller clears active turn and submit block from settled inline state p
     activeTurnId: null,
     phase: "settled",
     settling: undefined,
+    startedAtUnixMs: 1000,
+    completedAtUnixMs: 2000,
     outcome: "completed",
     completedCommand: null
   });

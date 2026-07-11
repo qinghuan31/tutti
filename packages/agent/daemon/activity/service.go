@@ -1545,10 +1545,28 @@ func applyExplicitTurnLifecycleToPatch(patch *WorkspaceAgentStatePatch, event ac
 		patch.Turn.CompletedCommand = command
 	}
 	patch.SubmitAvailability = cloneSubmitAvailability(patch.Turn.SubmitAvailability)
+	startedAtUnixMS := patch.Turn.StartedAtUnixMS
+	completedAtUnixMS := patch.Turn.CompletedAtUnixMS
+	switch event.Type {
+	case activityshared.EventTurnStarted:
+		if startedAtUnixMS <= 0 {
+			startedAtUnixMS = event.OccurredAtUnixMS
+		}
+	case activityshared.EventTurnCompleted, activityshared.EventTurnFailed:
+		if completedAtUnixMS <= 0 {
+			completedAtUnixMS = event.OccurredAtUnixMS
+		}
+	default:
+		if string(event.Type) == "turn.canceled" && completedAtUnixMS <= 0 {
+			completedAtUnixMS = event.OccurredAtUnixMS
+		}
+	}
 	patch.TurnLifecycle = &WorkspaceAgentTurnLifecycle{
-		ActiveTurnID:     turnActive,
-		Phase:            lifecyclePhase,
-		CompletedCommand: cloneCompletedCommand(patch.Turn.CompletedCommand),
+		ActiveTurnID:      turnActive,
+		Phase:             lifecyclePhase,
+		StartedAtUnixMS:   startedAtUnixMS,
+		CompletedAtUnixMS: completedAtUnixMS,
+		CompletedCommand:  cloneCompletedCommand(patch.Turn.CompletedCommand),
 	}
 	if outcome != "" {
 		patch.TurnLifecycle.Outcome = &outcome

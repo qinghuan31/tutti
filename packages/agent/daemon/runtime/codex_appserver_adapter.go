@@ -199,6 +199,14 @@ type codexAppServerSession struct {
 	goalRevision           uint64
 	startupModelsReady     bool
 	startupRateLimitsReady bool
+	// turnStartedAtUnixMS remembers the adapter-observed start timestamp for
+	// each live turn, copied onto later lifecycle snapshots for stable UI timers.
+	// Guarded by the adapter mutex.
+	turnStartedAtUnixMS map[string]int64
+	// settledTurnTimings keeps the first terminal timing for recently settled
+	// turns so duplicate provider notifications cannot move the frozen duration.
+	// Guarded by the adapter mutex.
+	settledTurnTimings map[string]adapterTurnLifecycleTiming
 	// lifecycleSeq numbers the adapter's TurnLifecycle snapshots (ADR 0008):
 	// monotonically increasing per session so consumers receiving snapshots
 	// over different channels can drop stale ones. Guarded by the adapter
@@ -1356,9 +1364,53 @@ func (a *CodexAppServerAdapter) nextTurnLifecycleSeq(agentSessionID string) uint
 // onto every turn.* event in the batch (ADR 0008); see
 // stampAdapterTurnLifecycleEvents for the contract.
 func (a *CodexAppServerAdapter) stampTurnLifecycleSnapshots(agentSessionID string, events []activityshared.Event) []activityshared.Event {
-	return stampAdapterTurnLifecycleEvents(events, func() uint64 {
-		return a.nextTurnLifecycleSeq(agentSessionID)
-	})
+	stamped := stampAdapterTurnLifecycleEvents(
+		events,
+		func() uint64 { return a.nextTurnLifecycleSeq(agentSessionID) },
+		func(turnID string, event activityshared.Event) adapterTurnLifecycleTiming {
+			return a.lifecycleTiming(agentSessionID, turnID, event)
+		},
+	)
+	return stamped
+}
+
+func (a *CodexAppServerAdapter) lifecycleTiming(agentSessionID string, turnID string, event activityshared.Event) adapterTurnLifecycleTiming {
+	if a == nil {
+		return adapterTurnLifecycleTiming{}
+	}
+	turnID = strings.TrimSpace(turnID)
+	if turnID == "" {
+		return adapterTurnLifecycleTiming{}
+	}
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	appSession := a.sessions[strings.TrimSpace(agentSessionID)]
+	if appSession == nil {
+		return adapterTurnLifecycleTiming{}
+	}
+	if appSession.turnStartedAtUnixMS == nil {
+		appSession.turnStartedAtUnixMS = make(map[string]int64)
+	}
+	if event.Type == activityshared.EventTurnStarted && event.OccurredAtUnixMS > 0 && appSession.turnStartedAtUnixMS[turnID] == 0 {
+		appSession.turnStartedAtUnixMS[turnID] = event.OccurredAtUnixMS
+	}
+	if appSession.settledTurnTimings == nil {
+		appSession.settledTurnTimings = make(map[string]adapterTurnLifecycleTiming)
+	}
+	if settled, ok := appSession.settledTurnTimings[turnID]; ok {
+		return settled
+	}
+	timing := adapterTurnLifecycleTiming{StartedAtUnixMS: appSession.turnStartedAtUnixMS[turnID]}
+	switch event.Type {
+	case activityshared.EventTurnCompleted, activityshared.EventTurnFailed:
+		timing.CompletedAtUnixMS = event.OccurredAtUnixMS
+		if len(appSession.settledTurnTimings) > 64 {
+			appSession.settledTurnTimings = make(map[string]adapterTurnLifecycleTiming)
+		}
+		appSession.settledTurnTimings[turnID] = timing
+		delete(appSession.turnStartedAtUnixMS, turnID)
+	}
+	return timing
 }
 
 func (a *CodexAppServerAdapter) emitSessionEvents(agentSessionID string, events []activityshared.Event) {

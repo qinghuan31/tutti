@@ -22,6 +22,100 @@ func lifecycleWith(phase string, turnID string, outcome string) *TurnLifecycle {
 	return lifecycle
 }
 
+func TestAdapterTurnLifecycleSnapshotsCarryStartedAt(t *testing.T) {
+	t.Parallel()
+
+	ctx := activityshared.EventContext{
+		AgentSessionID:   "session-1",
+		Provider:         activityshared.ProviderCodex,
+		OccurredAtUnixMS: 1000,
+	}
+	events := []activityshared.Event{
+		activityshared.NewTurnStarted(ctx, "turn-1"),
+		activityshared.NewTurnUpdated(activityshared.EventContext{AgentSessionID: "session-1", Provider: activityshared.ProviderCodex, OccurredAtUnixMS: 1500}, "turn-1", activityshared.TurnPhaseWaitingApproval),
+		activityshared.NewTurnCompleted(activityshared.EventContext{AgentSessionID: "session-1", Provider: activityshared.ProviderCodex, OccurredAtUnixMS: 2000}, "turn-1", activityshared.TurnOutcomeCompleted),
+	}
+	startedByTurn := map[string]int64{}
+	seq := uint64(0)
+	stamped := stampAdapterTurnLifecycleEvents(
+		events,
+		func() uint64 { seq++; return seq },
+		func(turnID string, event activityshared.Event) adapterTurnLifecycleTiming {
+			turnID = strings.TrimSpace(turnID)
+			if event.Type == activityshared.EventTurnStarted {
+				startedByTurn[turnID] = event.OccurredAtUnixMS
+			}
+			return adapterTurnLifecycleTiming{StartedAtUnixMS: startedByTurn[turnID]}
+		},
+	)
+
+	for index, event := range stamped {
+		snapshot, ok := activityshared.TurnLifecycleSnapshotFromEvent(event)
+		if !ok {
+			t.Fatalf("event %d missing lifecycle snapshot", index)
+		}
+		if snapshot.StartedAtUnixMS != 1000 {
+			t.Fatalf("event %d startedAtUnixMs = %d, want 1000", index, snapshot.StartedAtUnixMS)
+		}
+		if event.Type == activityshared.EventTurnCompleted && snapshot.CompletedAtUnixMS != 2000 {
+			t.Fatalf("event %d completedAtUnixMs = %d, want 2000", index, snapshot.CompletedAtUnixMS)
+		}
+	}
+}
+
+func TestClaudeAdapterDuplicateTerminalKeepsFirstLifecycleTiming(t *testing.T) {
+	t.Parallel()
+
+	adapter := &ClaudeCodeSDKAdapter{}
+	adapterSession := &claudeSDKAdapterSession{}
+	session := Session{AgentSessionID: "session-1", Provider: ProviderClaudeCode}
+	start := newTurnActivityEvent(session, EventTurnStarted, "turn-1", SessionStatusWorking, "", "", nil)
+	start.OccurredAtUnixMS = 1000
+	adapter.stampTurnLifecycleSnapshots(adapterSession, []activityshared.Event{start})
+
+	firstTerminal := newTurnActivityEvent(session, EventTurnCanceled, "turn-1", SessionStatusCanceled, "", "", nil)
+	firstTerminal.OccurredAtUnixMS = 2000
+	adapter.stampTurnLifecycleSnapshots(adapterSession, []activityshared.Event{firstTerminal})
+
+	duplicateTerminal := newTurnActivityEvent(session, EventTurnCanceled, "turn-1", SessionStatusCanceled, "", "", nil)
+	duplicateTerminal.OccurredAtUnixMS = 3000
+	stamped := adapter.stampTurnLifecycleSnapshots(adapterSession, []activityshared.Event{duplicateTerminal})
+	snapshot, ok := activityshared.TurnLifecycleSnapshotFromEvent(stamped[0])
+	if !ok {
+		t.Fatal("duplicate terminal missing lifecycle snapshot")
+	}
+	if snapshot.StartedAtUnixMS != 1000 || snapshot.CompletedAtUnixMS != 2000 {
+		t.Fatalf("duplicate terminal timing = (%d, %d), want first terminal timing (1000, 2000)", snapshot.StartedAtUnixMS, snapshot.CompletedAtUnixMS)
+	}
+}
+
+func TestCodexAdapterDuplicateTerminalKeepsFirstLifecycleTiming(t *testing.T) {
+	t.Parallel()
+
+	adapter := &CodexAppServerAdapter{
+		sessions: map[string]*codexAppServerSession{"session-1": {}},
+	}
+	session := Session{AgentSessionID: "session-1", Provider: ProviderCodex}
+	start := newTurnActivityEvent(session, EventTurnStarted, "turn-1", SessionStatusWorking, "", "", nil)
+	start.OccurredAtUnixMS = 1000
+	adapter.stampTurnLifecycleSnapshots(session.AgentSessionID, []activityshared.Event{start})
+
+	firstTerminal := newTurnActivityEvent(session, EventTurnCompleted, "turn-1", SessionStatusReady, "", "", nil)
+	firstTerminal.OccurredAtUnixMS = 2000
+	adapter.stampTurnLifecycleSnapshots(session.AgentSessionID, []activityshared.Event{firstTerminal})
+
+	duplicateTerminal := newTurnActivityEvent(session, EventTurnCompleted, "turn-1", SessionStatusReady, "", "", nil)
+	duplicateTerminal.OccurredAtUnixMS = 3000
+	stamped := adapter.stampTurnLifecycleSnapshots(session.AgentSessionID, []activityshared.Event{duplicateTerminal})
+	snapshot, ok := activityshared.TurnLifecycleSnapshotFromEvent(stamped[0])
+	if !ok {
+		t.Fatal("duplicate terminal missing lifecycle snapshot")
+	}
+	if snapshot.StartedAtUnixMS != 1000 || snapshot.CompletedAtUnixMS != 2000 {
+		t.Fatalf("duplicate terminal timing = (%d, %d), want first terminal timing (1000, 2000)", snapshot.StartedAtUnixMS, snapshot.CompletedAtUnixMS)
+	}
+}
+
 // statusForAuthoritySession is THE status derivation for snapshot-authority
 // sessions (ADR 0008); this table pins it.
 func TestStatusForAuthoritySession(t *testing.T) {
@@ -155,12 +249,15 @@ func TestApplyLifecycleSnapshotToPatchProviderAgnostic(t *testing.T) {
 		Provider:          ProviderClaudeCode,
 		ProviderSessionID: "claude-1",
 	}
-	event := newTurnActivityEvent(session, EventTurnStarted, "turn-9", SessionStatusWorking, "", "", nil)
+	event := newTurnActivityEvent(session, EventTurnUpdated, "turn-9", SessionStatusWorking, "", "", nil)
 	activityshared.StampTurnLifecycleSnapshot(&event, activityshared.TurnLifecycleSnapshot{
-		Origin:       activityshared.TurnLifecycleOriginAdapter,
-		Seq:          1,
-		ActiveTurnID: "turn-9",
-		Phase:        string(activityshared.TurnPhaseRunning),
+		Origin:            activityshared.TurnLifecycleOriginAdapter,
+		Seq:               1,
+		ActiveTurnID:      "turn-9",
+		Phase:             string(activityshared.TurnPhaseRunning),
+		Settling:          true,
+		StartedAtUnixMS:   1000,
+		CompletedAtUnixMS: 2000,
 	})
 	patch, ok := statePatchFromSessionEvent(agentsessionstore.EventSource{Provider: ProviderClaudeCode}, event, "agent-1", 1)
 	if !ok {
@@ -168,6 +265,12 @@ func TestApplyLifecycleSnapshotToPatchProviderAgnostic(t *testing.T) {
 	}
 	if patch.TurnLifecycle == nil || patch.TurnLifecycle.Phase != string(activityshared.TurnPhaseRunning) {
 		t.Fatalf("patch lifecycle not copied from snapshot: %#v", patch.TurnLifecycle)
+	}
+	if patch.Turn == nil || patch.Turn.StartedAtUnixMS != 1000 || patch.Turn.CompletedAtUnixMS != 2000 || !patch.Turn.Settling {
+		t.Fatalf("patch turn timing not copied from snapshot: %#v", patch.Turn)
+	}
+	if !patch.TurnLifecycle.Settling {
+		t.Fatalf("patch lifecycle settling = false, want true: %#v", patch.TurnLifecycle)
 	}
 	if patch.SubmitAvailability == nil || patch.SubmitAvailability.State != "blocked" {
 		t.Fatalf("patch submit availability not derived: %#v", patch.SubmitAvailability)

@@ -4449,6 +4449,58 @@ describe("AgentGUINodeView layout persistence", () => {
     });
   });
 
+  it("does not mark the composer busy for completed elapsed timing rows", () => {
+    const activeConversation = createConversationSummary("session-1", {
+      status: "completed"
+    });
+    const baseDetail = createConversationDetail();
+    const detail: WorkspaceAgentSessionDetailViewModel = {
+      ...baseDetail,
+      activity: {
+        ...baseDetail.activity,
+        status: "completed"
+      },
+      session: {
+        ...baseDetail.session,
+        effectiveStatus: "completed",
+        turnPhase: "settled"
+      },
+      showProcessingIndicator: false
+    };
+
+    renderAgentGUINodeView({
+      viewModel: {
+        ...createViewModel(),
+        activeConversation,
+        activeConversationId: activeConversation.id,
+        conversation: {
+          activity: detail.activity,
+          workspaceRoot: detail.workspaceRoot,
+          sourceDetail: detail,
+          rows: [
+            {
+              kind: "turn-elapsed",
+              id: "turn-elapsed:turn-1",
+              turnId: "turn-1",
+              occurredAtUnixMs: 1_000,
+              startedAtUnixMs: 1_000,
+              completedAtUnixMs: 5_000
+            }
+          ],
+          pendingApproval: null,
+          pendingInteractivePrompt: null
+        },
+        conversationDetail: detail,
+        isSubmitting: false
+      }
+    });
+
+    expect(composerMock.calls.at(-1)).toMatchObject({
+      isSendingTurn: false,
+      showStopButton: false
+    });
+  });
+
   it("does not insert local project summaries ahead of the persisted runtime rail page", () => {
     const project = {
       id: "ryan",
@@ -5971,6 +6023,8 @@ function createLabels(): AgentGUIViewLabels {
     goalResumeAction: "goalResumeAction",
     goalClearAction: "goalClearAction",
     processing: "processing",
+    processingElapsed: (seconds: number) => `Processed ${seconds}s`,
+    turnElapsed: (seconds: number) => `Total ${seconds}s`,
     turnSummary: "turnSummary",
     userMessageLocator: "userMessageLocator",
     planLead: "planLead",

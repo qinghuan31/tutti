@@ -884,6 +884,13 @@ require a fetch so the controller snapshot remains authoritative. UI code
 should debug both the event payload and the reconcile fetch before treating a
 missing transcript row as a rendering-only bug.
 
+When desktop reconciliation serializes a fetched session back into a host state
+patch, `session.turnLifecycle` is authoritative over transcript-derived turn
+inference. Carry its active id, phase, settling flag, outcome, command, and
+start/completion timestamps together; only infer a turn from messages when the
+session has no lifecycle. Otherwise a stale final user message can replace a
+settled lifecycle and discard the terminal duration.
+
 Live display-only clocks in transcript rows, such as running sub-agent elapsed
 time, are UI-local interaction state. Do not derive a running timer solely from
 `latestActivityAt - startedAt`: `latestActivityAt` only changes when a durable
@@ -891,6 +898,11 @@ activity event arrives, so quiet but still-running work will appear frozen.
 Running rows that need wall-clock elapsed text should own a local tick, while
 completed, failed, or canceled rows should render a fixed terminal duration
 from terminal/latest activity timestamps.
+Provider adapters must preserve the first settled lifecycle timing for a turn.
+If a synthetic cancel terminal is followed by the provider's natural terminal
+notification, the later snapshot may advance its sequence but must repeat the
+first `startedAtUnixMs` and `completedAtUnixMs` so the frozen duration cannot
+move after completion.
 
 When a session status bug mentions "still processing", "queued", or a disabled
 composer after a turn finishes, inspect the full runtime tuple:
@@ -1080,6 +1092,16 @@ User-visible rules:
   provider-specific payloads ad hoc.
 - The "processing" row in the transcript represents turn/progress projection.
   It is not the same state as the new-session activation loading button.
+- Imported Codex and Claude Code history must preserve provider turn ids when
+  available; otherwise the importer groups each user prompt with the following
+  assistant and tool activity under one stable turn id. Do not assign one turn
+  id per imported message: completed elapsed rows derive their start and end
+  timestamps from all persisted activity in that turn. Re-import may explicitly
+  repair legacy imported message turn ids, but ordinary runtime message updates
+  must keep turn ownership immutable. The persistence boundary must authorize
+  that repair from both the incoming report origin and the existing session's
+  persisted imported origin; a per-message repair flag is only a request and
+  cannot change session provenance or grant itself permission.
 - Detail errors should be tied to the active session and cleared when a new
   active session is selected or a retry begins.
 - Auto-scroll, bottom anchoring, and pending-row placement are visual behaviors

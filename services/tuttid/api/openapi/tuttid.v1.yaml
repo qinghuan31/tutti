@@ -6895,6 +6895,12 @@ components:
           minLength: 1
         settling:
           type: boolean
+        startedAtUnixMs:
+          type: integer
+          format: int64
+        completedAtUnixMs:
+          type: integer
+          format: int64
         outcome:
           type: string
           nullable: true

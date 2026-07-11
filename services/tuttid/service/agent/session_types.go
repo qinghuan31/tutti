@@ -390,11 +390,13 @@ type SubmitAvailability struct {
 }
 
 type TurnLifecycle struct {
-	ActiveTurnID     *string
-	Phase            string
-	Settling         bool
-	Outcome          *string
-	CompletedCommand *CompletedCommand
+	ActiveTurnID      *string
+	Phase             string
+	Settling          bool
+	StartedAtUnixMS   int64
+	CompletedAtUnixMS int64
+	Outcome           *string
+	CompletedCommand  *CompletedCommand
 }
 
 type RuntimeCancelInput struct {

@@ -180,16 +180,17 @@ type MessageSnapshot struct {
 }
 
 type MessageUpdate struct {
-	MessageID         string
-	TurnID            string
-	Role              string
-	Kind              string
-	Status            string
-	ContentDelta      string
-	Payload           map[string]any
-	OccurredAtUnixMS  int64
-	StartedAtUnixMS   int64
-	CompletedAtUnixMS int64
+	MessageID             string
+	TurnID                string
+	AllowTurnReassignment bool
+	Role                  string
+	Kind                  string
+	Status                string
+	ContentDelta          string
+	Payload               map[string]any
+	OccurredAtUnixMS      int64
+	StartedAtUnixMS       int64
+	CompletedAtUnixMS     int64
 }
 
 func ProjectMessageUpdate(
@@ -223,7 +224,7 @@ func ProjectMessageUpdate(
 		message.CreatedAtUnixMS = existing.CreatedAtUnixMS
 		if message.TurnID == "" {
 			message.TurnID = existing.TurnID
-		} else if existingTurnID := strings.TrimSpace(existing.TurnID); existingTurnID != "" && message.TurnID != existingTurnID {
+		} else if existingTurnID := strings.TrimSpace(existing.TurnID); existingTurnID != "" && message.TurnID != existingTurnID && !update.AllowTurnReassignment {
 			return MessageSnapshot{}, false
 		}
 		if message.Role == "" {

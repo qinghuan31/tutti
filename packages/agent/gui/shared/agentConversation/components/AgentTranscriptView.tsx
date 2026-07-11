@@ -53,6 +53,8 @@ interface AgentTranscriptViewProps {
     toolCallsLabel: (count: number) => string;
     thinkingLabel: string;
     processing: string;
+    processingElapsed: (elapsedSeconds: number) => string;
+    turnElapsed: (elapsedSeconds: number) => string;
     turnSummary: string;
     rawTimelineJson?: string;
     userMessageLocator?: string;
@@ -81,6 +83,8 @@ function transcriptLabelsEqual(
     previous === next ||
     (previous.thinkingLabel === next.thinkingLabel &&
       previous.processing === next.processing &&
+      previous.processingElapsed === next.processingElapsed &&
+      previous.turnElapsed === next.turnElapsed &&
       previous.turnSummary === next.turnSummary &&
       previous.rawTimelineJson === next.rawTimelineJson &&
       previous.userMessageLocator === next.userMessageLocator &&
@@ -263,7 +267,9 @@ export const AgentTranscriptView = memo(function AgentTranscriptView({
     const rowKey = rowKeys[rowIndex] ?? transcriptRowKey(row);
     const showTurnDivider = dividerRowIndexes.has(rowIndex);
     const shouldAnimateEnter =
-      row.kind !== "processing" && enteringRowKeys.has(rowKey);
+      row.kind !== "processing" &&
+      row.kind !== "turn-elapsed" &&
+      enteringRowKeys.has(rowKey);
 
     return (
       <Fragment key={rowKey}>

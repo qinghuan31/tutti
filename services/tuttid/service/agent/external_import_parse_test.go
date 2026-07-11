@@ -181,6 +181,73 @@ func TestParseCodexJSONLPreservesToolCallStructure(t *testing.T) {
 	if output["output"] != "Chunk ID: abc\nOutput:\n M file.go" {
 		t.Fatalf("completed output = %#v, want command output", output)
 	}
+	if started.TurnID == "" || started.TurnID != session.Messages[0].TurnID || completed.TurnID != started.TurnID {
+		t.Fatalf("turn ids = %#v, want the user prompt and tool lifecycle grouped into one turn", []string{
+			session.Messages[0].TurnID,
+			started.TurnID,
+			completed.TurnID,
+		})
+	}
+}
+
+func TestParseCodexJSONLGroupsMessagesByProviderTurn(t *testing.T) {
+	cwd := t.TempDir()
+	session, ok, err := parseCodexJSONL(
+		filepath.Join(cwd, "rollout.jsonl"),
+		strings.NewReader(testAgentJSONL(t,
+			map[string]any{
+				"timestamp": "2026-06-18T00:00:00Z",
+				"type":      "session_meta",
+				"payload":   map[string]any{"id": "codex-turns", "cwd": cwd},
+			},
+			map[string]any{
+				"timestamp": "2026-06-18T00:00:01Z",
+				"type":      "turn_context",
+				"payload":   map[string]any{"turn_id": "provider-turn-1"},
+			},
+			map[string]any{
+				"timestamp": "2026-06-18T00:00:02Z",
+				"type":      "response_item",
+				"payload": map[string]any{
+					"type": "message", "id": "user-1", "role": "user",
+					"content": []any{map[string]any{"type": "input_text", "text": "First prompt"}},
+				},
+			},
+			map[string]any{
+				"timestamp": "2026-06-18T00:00:05Z",
+				"type":      "response_item",
+				"payload": map[string]any{
+					"type": "message", "id": "assistant-1", "role": "assistant",
+					"content": []any{map[string]any{"type": "output_text", "text": "First answer"}},
+				},
+			},
+			map[string]any{
+				"timestamp": "2026-06-18T00:00:06Z",
+				"type":      "turn_context",
+				"payload":   map[string]any{"turn_id": "provider-turn-2"},
+			},
+			map[string]any{
+				"timestamp": "2026-06-18T00:00:07Z",
+				"type":      "response_item",
+				"payload": map[string]any{
+					"type": "message", "id": "user-2", "role": "user",
+					"content": []any{map[string]any{"type": "input_text", "text": "Second prompt"}},
+				},
+			},
+		)),
+	)
+	if err != nil || !ok {
+		t.Fatalf("parseCodexJSONL ok=%v err=%v", ok, err)
+	}
+	if len(session.Messages) != 3 {
+		t.Fatalf("messages = %#v, want three messages", session.Messages)
+	}
+	if session.Messages[0].TurnID != "provider-turn-1" || session.Messages[1].TurnID != "provider-turn-1" {
+		t.Fatalf("first turn ids = %#v, want provider-turn-1", []string{session.Messages[0].TurnID, session.Messages[1].TurnID})
+	}
+	if session.Messages[2].TurnID != "provider-turn-2" {
+		t.Fatalf("second turn id = %q, want provider-turn-2", session.Messages[2].TurnID)
+	}
 }
 
 func TestParseCodexJSONLExtractsPromptFromIDEContext(t *testing.T) {
@@ -521,6 +588,45 @@ func TestParseClaudeCodeJSONLDoesNotUseCodexScratchCwdNoProjectRule(t *testing.T
 	}
 	if session.NoProject {
 		t.Fatalf("NoProject = true for non-Codex provider cwd %q", session.Cwd)
+	}
+}
+
+func TestParseClaudeCodeJSONLGroupsRepliesWithThePrecedingUserTurn(t *testing.T) {
+	cwd := t.TempDir()
+	session, ok, err := parseClaudeCodeJSONL(
+		filepath.Join(cwd, "claude.jsonl"),
+		strings.NewReader(testAgentJSONL(t,
+			map[string]any{
+				"timestamp": "2026-06-18T00:00:01Z", "sessionId": "claude-turns", "cwd": cwd, "uuid": "user-1",
+				"message": map[string]any{"role": "user", "content": "First prompt"},
+			},
+			map[string]any{
+				"timestamp": "2026-06-18T00:00:04Z", "sessionId": "claude-turns", "cwd": cwd, "uuid": "assistant-1",
+				"message": map[string]any{"role": "assistant", "content": "First answer"},
+			},
+			map[string]any{
+				"timestamp": "2026-06-18T00:00:05Z", "sessionId": "claude-turns", "cwd": cwd, "uuid": "user-2",
+				"message": map[string]any{"role": "user", "content": "Second prompt"},
+			},
+			map[string]any{
+				"timestamp": "2026-06-18T00:00:09Z", "sessionId": "claude-turns", "cwd": cwd, "uuid": "assistant-2",
+				"message": map[string]any{"role": "assistant", "content": "Second answer"},
+			},
+		)),
+	)
+	if err != nil || !ok {
+		t.Fatalf("parseClaudeCodeJSONL ok=%v err=%v", ok, err)
+	}
+	if len(session.Messages) != 4 {
+		t.Fatalf("messages = %#v, want four messages", session.Messages)
+	}
+	firstTurnID := session.Messages[0].TurnID
+	secondTurnID := session.Messages[2].TurnID
+	if firstTurnID == "" || session.Messages[1].TurnID != firstTurnID {
+		t.Fatalf("first turn ids = %#v, want one non-empty turn id", []string{firstTurnID, session.Messages[1].TurnID})
+	}
+	if secondTurnID == "" || secondTurnID == firstTurnID || session.Messages[3].TurnID != secondTurnID {
+		t.Fatalf("second turn ids = %#v, want a distinct non-empty turn id", []string{secondTurnID, session.Messages[3].TurnID})
 	}
 }
 

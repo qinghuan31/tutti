@@ -30,6 +30,7 @@ import {
   resolveAgentErrorPresentation
 } from "../../agentEnv/agentErrorPresentation";
 import type { AgentGUIProviderSkillOption } from "../../../agent-gui/agentGuiNode/model/agentGuiNodeTypes";
+import { formatElapsedSeconds, useElapsedSeconds } from "../lib/elapsedClock";
 import type {
   AgentMessageContentVM,
   AgentMessageImageVM,
@@ -664,35 +665,13 @@ function ContextCompactionProgressDivider({
   startedAtUnixMs: number | null;
 }): JSX.Element {
   "use memo";
-  const elapsedSeconds = useElapsedSeconds(startedAtUnixMs);
+  const elapsedSeconds = useElapsedSeconds(startedAtUnixMs, null, true);
   const label = translate("agentHost.agentGui.contextCompactionInProgress");
   const text =
     elapsedSeconds === null
       ? label
       : `${label} · ${formatElapsedSeconds(elapsedSeconds)}`;
   return <ContextCompactionDivider text={text} />;
-}
-
-function useElapsedSeconds(startUnixMs: number | null): number | null {
-  const [nowUnixMs, setNowUnixMs] = useState(() => Date.now());
-  useEffect(() => {
-    if (startUnixMs === null) {
-      return;
-    }
-    const timer = setInterval(() => setNowUnixMs(Date.now()), 1000);
-    return () => clearInterval(timer);
-  }, [startUnixMs]);
-  if (startUnixMs === null) {
-    return null;
-  }
-  return Math.max(0, Math.floor((nowUnixMs - startUnixMs) / 1000));
-}
-
-function formatElapsedSeconds(seconds: number): string {
-  if (seconds < 60) {
-    return `${seconds}s`;
-  }
-  return `${Math.floor(seconds / 60)}m ${seconds % 60}s`;
 }
 
 // Codex plan-mode proposals render as a framed card (mirrors the codex TUI

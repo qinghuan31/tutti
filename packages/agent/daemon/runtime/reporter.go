@@ -707,21 +707,27 @@ func statePatchFromSessionEvent(source agentsessionstore.EventSource, event acti
 		patch.LifecycleStatus = firstNonEmptyString(patch.LifecycleStatus, string(activityshared.SessionLifecycleStatusActive))
 		patch.CurrentPhase = firstNonEmptyString(patch.CurrentPhase, string(activityshared.TurnPhaseWorking))
 		if patch.Turn != nil {
-			patch.Turn.StartedAtUnixMS = timestamp
+			if patch.Turn.StartedAtUnixMS <= 0 {
+				patch.Turn.StartedAtUnixMS = timestamp
+			}
 			patch.Turn.Phase = firstNonEmptyString(patch.Turn.Phase, patch.CurrentPhase)
 		}
 	case activityshared.EventTurnCompleted:
 		patch.LifecycleStatus = firstNonEmptyString(patch.LifecycleStatus, string(activityshared.SessionLifecycleStatusActive))
 		patch.CurrentPhase = firstNonEmptyString(patch.CurrentPhase, string(activityshared.TurnPhaseIdle))
 		if patch.Turn != nil {
-			patch.Turn.CompletedAtUnixMS = timestamp
+			if patch.Turn.CompletedAtUnixMS <= 0 {
+				patch.Turn.CompletedAtUnixMS = timestamp
+			}
 			patch.Turn.Phase = firstNonEmptyString(patch.Turn.Phase, patch.CurrentPhase)
 		}
 	case activityshared.EventTurnFailed:
 		patch.LifecycleStatus = firstNonEmptyString(patch.LifecycleStatus, string(activityshared.SessionLifecycleStatusActive))
 		patch.CurrentPhase = firstNonEmptyString(patch.CurrentPhase, string(activityshared.TurnPhaseIdle))
 		if patch.Turn != nil {
-			patch.Turn.CompletedAtUnixMS = timestamp
+			if patch.Turn.CompletedAtUnixMS <= 0 {
+				patch.Turn.CompletedAtUnixMS = timestamp
+			}
 			patch.Turn.Phase = firstNonEmptyString(patch.Turn.Phase, patch.CurrentPhase)
 		}
 	}
@@ -761,11 +767,13 @@ func cloneTurnLifecycle(value *agentsessionstore.WorkspaceAgentTurnLifecycle) *a
 		return nil
 	}
 	return &agentsessionstore.WorkspaceAgentTurnLifecycle{
-		ActiveTurnID:     cloneStringPointer(value.ActiveTurnID),
-		Phase:            strings.TrimSpace(value.Phase),
-		Settling:         value.Settling,
-		Outcome:          cloneStringPointer(value.Outcome),
-		CompletedCommand: cloneCompletedCommand(value.CompletedCommand),
+		ActiveTurnID:      cloneStringPointer(value.ActiveTurnID),
+		Phase:             strings.TrimSpace(value.Phase),
+		Settling:          value.Settling,
+		StartedAtUnixMS:   value.StartedAtUnixMS,
+		CompletedAtUnixMS: value.CompletedAtUnixMS,
+		Outcome:           cloneStringPointer(value.Outcome),
+		CompletedCommand:  cloneCompletedCommand(value.CompletedCommand),
 	}
 }
 
@@ -816,16 +824,22 @@ func applyLifecycleSnapshotToPatch(patch *agentsessionstore.WorkspaceAgentStateP
 	patch.Turn.Phase = snapshot.Phase
 	patch.Turn.ActiveTurnID = turnActive
 	patch.Turn.Outcome = outcome
+	patch.Turn.Settling = snapshot.Settling
+	patch.Turn.StartedAtUnixMS = snapshot.StartedAtUnixMS
+	patch.Turn.CompletedAtUnixMS = snapshot.CompletedAtUnixMS
 	patch.Turn.SubmitAvailability = submitAvailabilityPatchForSnapshotPhase(snapshot.Phase)
 	if command := completedCommandFromEventMetadata(event.Payload.Metadata); command != nil {
 		patch.Turn.CompletedCommand = command
 	}
 	patch.SubmitAvailability = cloneSubmitAvailability(patch.Turn.SubmitAvailability)
 	patch.TurnLifecycle = &agentsessionstore.WorkspaceAgentTurnLifecycle{
-		ActiveTurnID:     turnActive,
-		Phase:            snapshot.Phase,
-		Outcome:          nil,
-		CompletedCommand: cloneCompletedCommand(patch.Turn.CompletedCommand),
+		ActiveTurnID:      turnActive,
+		Phase:             snapshot.Phase,
+		Settling:          snapshot.Settling,
+		StartedAtUnixMS:   snapshot.StartedAtUnixMS,
+		CompletedAtUnixMS: snapshot.CompletedAtUnixMS,
+		Outcome:           nil,
+		CompletedCommand:  cloneCompletedCommand(patch.Turn.CompletedCommand),
 	}
 	if outcome != "" {
 		patch.TurnLifecycle.Outcome = &outcome

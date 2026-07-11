@@ -2,6 +2,7 @@ import { useMemo, type JSX } from "react";
 import type { WorkspaceLinkAction } from "../contexts/workspace/presentation/renderer/actions/workspaceLinkActions";
 import { translate } from "../i18n/index";
 import { AgentConversationFlow } from "./agentConversation/components/AgentConversationFlow";
+import { formatLocalizedElapsedLabel } from "./agentConversation/lib/elapsedClock";
 import { useProjectedAgentConversation } from "./agentConversation/projection/useProjectedAgentConversation";
 import type { WorkspaceAgentSessionDetailViewModel } from "./workspaceAgentSessionDetailViewModel";
 
@@ -49,6 +50,8 @@ export function WorkspaceAgentSessionDetail({
       thinkingLabel,
       toolCallsLabel,
       processing: translate("agentHost.agentGui.processing"),
+      processingElapsed: formatProcessingElapsedLabel,
+      turnElapsed: formatTurnElapsedLabel,
       turnSummary: translate("agentHost.agentGui.turnSummary"),
       rawTimelineJson: rawTimelineJsonLabel
     }),
@@ -91,6 +94,8 @@ export function WorkspaceAgentSessionDetailSkeleton({
       toolCallsLabel: (count: number) =>
         translate("agentHost.workspaceAgentSessionDetailToolCalls", { count }),
       processing: translate("agentHost.agentGui.processing"),
+      processingElapsed: formatProcessingElapsedLabel,
+      turnElapsed: formatTurnElapsedLabel,
       turnSummary: translate("agentHost.agentGui.turnSummary")
     }),
     []
@@ -118,4 +123,16 @@ export function WorkspaceAgentSessionDetailSkeleton({
       />
     </div>
   );
+}
+
+function formatProcessingElapsedLabel(elapsedSeconds: number): string {
+  return formatLocalizedElapsedLabel(
+    translate,
+    elapsedSeconds,
+    "processingElapsed"
+  );
+}
+
+function formatTurnElapsedLabel(elapsedSeconds: number): string {
+  return formatLocalizedElapsedLabel(translate, elapsedSeconds, "turnElapsed");
 }

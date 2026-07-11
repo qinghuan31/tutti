@@ -17,6 +17,8 @@ interface AgentTranscriptItemViewProps {
     toolCallsLabel: (count: number) => string;
     thinkingLabel: string;
     processing: string;
+    processingElapsed: (elapsedSeconds: number) => string;
+    turnElapsed: (elapsedSeconds: number) => string;
     turnSummary: string;
     rawTimelineJson?: string;
   };
@@ -108,6 +110,14 @@ export const AgentTranscriptItemView = memo(function AgentTranscriptItemView({
         />
       );
     case "processing":
-      return <AgentProcessingRow row={row} label={labels.processing} />;
+    case "turn-elapsed":
+      return (
+        <AgentProcessingRow
+          row={row}
+          label={labels.processing}
+          elapsedLabel={labels.processingElapsed}
+          completedElapsedLabel={labels.turnElapsed}
+        />
+      );
   }
 });

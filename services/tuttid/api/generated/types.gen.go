@@ -1907,11 +1907,13 @@ type AgentActivitySubmitAvailability struct {
 
 // AgentActivityTurnLifecycle defines model for AgentActivityTurnLifecycle.
 type AgentActivityTurnLifecycle struct {
-	ActiveTurnId     *string                        `json:"activeTurnId"`
-	CompletedCommand *AgentActivityCompletedCommand `json:"completedCommand,omitempty"`
-	Outcome          *string                        `json:"outcome,omitempty"`
-	Phase            string                         `json:"phase"`
-	Settling         *bool                          `json:"settling,omitempty"`
+	ActiveTurnId      *string                        `json:"activeTurnId"`
+	CompletedAtUnixMs *int64                         `json:"completedAtUnixMs,omitempty"`
+	CompletedCommand  *AgentActivityCompletedCommand `json:"completedCommand,omitempty"`
+	Outcome           *string                        `json:"outcome,omitempty"`
+	Phase             string                         `json:"phase"`
+	Settling          *bool                          `json:"settling,omitempty"`
+	StartedAtUnixMs   *int64                         `json:"startedAtUnixMs,omitempty"`
 }
 
 // AgentPromptContentBlock defines model for AgentPromptContentBlock.

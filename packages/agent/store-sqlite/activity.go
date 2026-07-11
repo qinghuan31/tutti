@@ -12,6 +12,8 @@ import (
 	agentactivityprojection "github.com/tutti-os/tutti/packages/agent/daemon/activity/projection"
 )
 
+const workspaceAgentSessionOriginImported = "WORKSPACE_AGENT_SESSION_ORIGIN_IMPORTED"
+
 func (s *Store) ReportSessionState(
 	ctx context.Context,
 	input SessionStateReport,
@@ -76,10 +78,22 @@ func (s *Store) ReportSessionMessages(
 	if err != nil {
 		return MessageReportResult{}, err
 	}
+	existingSession, hasExistingSession, err := getAgentSessionForUpdate(ctx, tx, workspaceID, agentSessionID)
+	if err != nil {
+		return MessageReportResult{}, err
+	}
+	reportOrigin := strings.TrimSpace(input.Origin)
+	allowImportedTurnRepair := reportOrigin == workspaceAgentSessionOriginImported &&
+		(!hasExistingSession || strings.TrimSpace(existingSession.Origin) == workspaceAgentSessionOriginImported)
+	if hasExistingSession {
+		// A message report can append to a session, but it cannot change the
+		// session's provenance and thereby grant itself import-repair authority.
+		reportOrigin = existingSession.Origin
+	}
 	accepted, _, _, _, err := s.upsertAgentSessionTx(ctx, tx, SessionStateReport{
 		WorkspaceID:    workspaceID,
 		AgentSessionID: agentSessionID,
-		Origin:         input.Origin,
+		Origin:         reportOrigin,
 		Provider:       input.Provider,
 	}, now)
 	if err != nil {
@@ -103,7 +117,7 @@ func (s *Store) ReportSessionMessages(
 		if err != nil {
 			return MessageReportResult{}, err
 		}
-		acceptedMessage, accepted, err := upsertAgentMessageTx(ctx, tx, workspaceID, agentSessionID, version, message, now)
+		acceptedMessage, accepted, err := upsertAgentMessageTx(ctx, tx, workspaceID, agentSessionID, version, message, allowImportedTurnRepair, now)
 		if err != nil {
 			return MessageReportResult{}, err
 		}

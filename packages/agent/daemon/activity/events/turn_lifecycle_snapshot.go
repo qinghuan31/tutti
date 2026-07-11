@@ -1,6 +1,9 @@
 package events
 
-import "strings"
+import (
+	"math"
+	"strings"
+)
 
 // TurnLifecycleSnapshot is the authoritative, idempotent statement of a
 // session's turn lifecycle, published by the turn owner (the provider
@@ -29,6 +32,10 @@ type TurnLifecycleSnapshot struct {
 	Outcome string `json:"outcome,omitempty"`
 	// Settling marks a live turn that is being wound down (interrupting).
 	Settling bool `json:"settling,omitempty"`
+	// StartedAtUnixMS is stamped by the adapter when the turn actually starts
+	// and then copied through subsequent live lifecycle snapshots for that turn.
+	StartedAtUnixMS   int64 `json:"startedAtUnixMs,omitempty"`
+	CompletedAtUnixMS int64 `json:"completedAtUnixMs,omitempty"`
 }
 
 // TurnLifecycleSnapshotMetadataKey is the event metadata key carrying the
@@ -102,13 +109,15 @@ func StampTurnLifecycleSnapshot(event *Event, snapshot TurnLifecycleSnapshot) {
 		event.Payload.Metadata = map[string]any{}
 	}
 	event.Payload.Metadata[TurnLifecycleSnapshotMetadataKey] = map[string]any{
-		"v":            snapshot.Version,
-		"origin":       snapshot.Origin,
-		"seq":          snapshot.Seq,
-		"activeTurnId": snapshot.ActiveTurnID,
-		"phase":        snapshot.Phase,
-		"outcome":      snapshot.Outcome,
-		"settling":     snapshot.Settling,
+		"v":                 snapshot.Version,
+		"origin":            snapshot.Origin,
+		"seq":               snapshot.Seq,
+		"activeTurnId":      snapshot.ActiveTurnID,
+		"phase":             snapshot.Phase,
+		"outcome":           snapshot.Outcome,
+		"settling":          snapshot.Settling,
+		"startedAtUnixMs":   snapshot.StartedAtUnixMS,
+		"completedAtUnixMs": snapshot.CompletedAtUnixMS,
 	}
 }
 
@@ -124,13 +133,15 @@ func TurnLifecycleSnapshotFromEvent(event Event) (TurnLifecycleSnapshot, bool) {
 		return TurnLifecycleSnapshot{}, false
 	}
 	snapshot := TurnLifecycleSnapshot{
-		Version:      intFromAny(payload["v"]),
-		Origin:       stringFromAny(payload["origin"]),
-		Seq:          uint64(intFromAny(payload["seq"])),
-		ActiveTurnID: stringFromAny(payload["activeTurnId"]),
-		Phase:        stringFromAny(payload["phase"]),
-		Outcome:      stringFromAny(payload["outcome"]),
-		Settling:     boolFromAny(payload["settling"]),
+		Version:           intFromAny(payload["v"]),
+		Origin:            stringFromAny(payload["origin"]),
+		Seq:               uint64(intFromAny(payload["seq"])),
+		ActiveTurnID:      stringFromAny(payload["activeTurnId"]),
+		Phase:             stringFromAny(payload["phase"]),
+		Outcome:           stringFromAny(payload["outcome"]),
+		Settling:          boolFromAny(payload["settling"]),
+		StartedAtUnixMS:   int64FromAny(payload["startedAtUnixMs"]),
+		CompletedAtUnixMS: int64FromAny(payload["completedAtUnixMs"]),
 	}
 	if snapshot.Phase == "" {
 		return TurnLifecycleSnapshot{}, false
@@ -141,6 +152,24 @@ func TurnLifecycleSnapshotFromEvent(event Event) (TurnLifecycleSnapshot, bool) {
 func stringFromAny(value any) string {
 	text, _ := value.(string)
 	return strings.TrimSpace(text)
+}
+
+func int64FromAny(value any) int64 {
+	switch typed := value.(type) {
+	case int:
+		return int64(typed)
+	case int64:
+		return typed
+	case uint64:
+		if typed > math.MaxInt64 {
+			return 0
+		}
+		return int64(typed)
+	case float64:
+		return int64(typed)
+	default:
+		return 0
+	}
 }
 
 func intFromAny(value any) int {

@@ -451,6 +451,34 @@ func TestProjectMessageUpdateRejectsExistingMessageTurnChange(t *testing.T) {
 	}
 }
 
+func TestProjectMessageUpdateAllowsExplicitImportedTurnRepair(t *testing.T) {
+	existing := MessageSnapshot{
+		ID:               7,
+		AgentSessionID:   "session-1",
+		MessageID:        "message-1",
+		Version:          1,
+		TurnID:           "legacy-turn-message-1",
+		Role:             "assistant",
+		Kind:             "text",
+		Payload:          map[string]any{"text": "hello"},
+		OccurredAtUnixMS: 120,
+		CreatedAtUnixMS:  100,
+		UpdatedAtUnixMS:  100,
+	}
+	message, ok := ProjectMessageUpdate(existing, true, MessageUpdate{
+		MessageID:             "message-1",
+		TurnID:                "imported-turn-1",
+		AllowTurnReassignment: true,
+	}, 2, 160)
+
+	if !ok {
+		t.Fatal("ok = false, want imported turn repair accepted")
+	}
+	if message.TurnID != "imported-turn-1" {
+		t.Fatalf("TurnID = %q, want imported-turn-1", message.TurnID)
+	}
+}
+
 func TestCanonicalSessionStatus(t *testing.T) {
 	tests := []struct {
 		name      string

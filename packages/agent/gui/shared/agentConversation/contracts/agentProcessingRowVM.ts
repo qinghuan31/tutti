@@ -4,4 +4,7 @@ export interface AgentProcessingRowVM {
   turnId: string | null;
   label?: string | null;
   occurredAtUnixMs: number | null;
+  startedAtUnixMs?: number | null;
+  completedAtUnixMs?: number | null;
+  live?: boolean;
 }

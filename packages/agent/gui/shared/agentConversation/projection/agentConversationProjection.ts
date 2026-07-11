@@ -18,7 +18,10 @@ import {
   computeAgentToolGroups
 } from "./agentToolGroupingProjection";
 import { projectTurnRows } from "./agentTurnRowProjection";
-import { projectAgentProcessingRow } from "./agentProcessingProjection";
+import {
+  projectAgentProcessingRow,
+  projectAgentTurnTimingRow
+} from "./agentProcessingProjection";
 import { linkifyPastedTextReferences } from "../../../agent-gui/agentGuiNode/model/agentComposerDraft";
 import {
   projectAgentTurnSummaryRowForTurn,
@@ -45,6 +48,10 @@ export function projectAgentConversationVM(
 
   turns.forEach((turn, index) => {
     rows.push(...projectUserRows(turn, detail.session.workspaceId));
+    const turnTiming = projectAgentTurnTimingRow(detail, turn);
+    if (turnTiming) {
+      rows.push(turnTiming);
+    }
     rows.push(
       ...projectTurnAgentRows(turn, {
         agentSessionId: detail.session.agentSessionId,
@@ -70,9 +77,15 @@ export function projectAgentConversationVM(
     rows.push(...projectAgentTurnSummaryRows(detail));
   }
 
-  const processing = projectAgentProcessingRow(detail, rows);
-  if (processing) {
-    rows.push(processing);
+  const trailingProcessing = projectAgentProcessingRow(detail, rows);
+  if (
+    trailingProcessing &&
+    !rows.some(
+      (row) =>
+        row.kind === "processing" && row.turnId === trailingProcessing.turnId
+    )
+  ) {
+    rows.push(trailingProcessing);
   }
 
   const normalizedRows = projectMessageCopyText(

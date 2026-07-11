@@ -303,6 +303,76 @@ func TestStoreReportAndListSessionLifecycle(t *testing.T) {
 	}
 }
 
+func TestStoreRestrictsTurnReassignmentToImportedSessions(t *testing.T) {
+	t.Parallel()
+
+	store := openTestStore(t, testOptions(&staticProjectPaths{}))
+	ctx := context.Background()
+
+	tests := []struct {
+		name          string
+		sessionOrigin string
+		reportOrigin  string
+		wantAccepted  int
+		wantTurnID    string
+	}{
+		{name: "runtime", sessionOrigin: "runtime", reportOrigin: "runtime", wantTurnID: "turn-1"},
+		{name: "spoofed imported report", sessionOrigin: "runtime", reportOrigin: workspaceAgentSessionOriginImported, wantTurnID: "turn-1"},
+		{name: "imported", sessionOrigin: workspaceAgentSessionOriginImported, reportOrigin: workspaceAgentSessionOriginImported, wantAccepted: 1, wantTurnID: "turn-2"},
+	}
+	for _, test := range tests {
+		sessionID := strings.ReplaceAll(test.name, " ", "-") + "-session"
+		if _, err := store.ReportSessionState(ctx, SessionStateReport{
+			WorkspaceID:      "ws-1",
+			AgentSessionID:   sessionID,
+			Origin:           test.sessionOrigin,
+			Provider:         "codex",
+			OccurredAtUnixMS: 100,
+		}); err != nil {
+			t.Fatalf("seed %s session: %v", test.name, err)
+		}
+		if _, err := store.ReportSessionMessages(ctx, SessionMessageReport{
+			WorkspaceID:    "ws-1",
+			AgentSessionID: sessionID,
+			Origin:         test.sessionOrigin,
+			Messages:       []MessageUpdate{{MessageID: "message-1", TurnID: "turn-1", Role: "assistant", Kind: "text"}},
+		}); err != nil {
+			t.Fatalf("seed %s message: %v", test.name, err)
+		}
+		result, err := store.ReportSessionMessages(ctx, SessionMessageReport{
+			WorkspaceID:    "ws-1",
+			AgentSessionID: sessionID,
+			Origin:         test.reportOrigin,
+			Messages: []MessageUpdate{{
+				MessageID:             "message-1",
+				TurnID:                "turn-2",
+				AllowTurnReassignment: true,
+			}},
+		})
+		if err != nil {
+			t.Fatalf("repair %s message: %v", test.name, err)
+		}
+		if result.AcceptedCount != test.wantAccepted {
+			t.Fatalf("%s repair accepted = %d, want %d", test.name, result.AcceptedCount, test.wantAccepted)
+		}
+		page, ok, err := store.ListSessionMessages(ctx, ListSessionMessagesInput{
+			WorkspaceID:    "ws-1",
+			AgentSessionID: sessionID,
+			Limit:          10,
+		})
+		if err != nil || !ok || len(page.Messages) != 1 {
+			t.Fatalf("list %s messages = %#v, ok=%v error=%v", test.name, page, ok, err)
+		}
+		if page.Messages[0].TurnID != test.wantTurnID {
+			t.Fatalf("%s turn id = %q, want %q", test.name, page.Messages[0].TurnID, test.wantTurnID)
+		}
+		session, ok, err := store.GetSession(ctx, "ws-1", sessionID)
+		if err != nil || !ok || session.Origin != test.sessionOrigin {
+			t.Fatalf("%s session origin = %q, ok=%v error=%v, want %q", test.name, session.Origin, ok, err, test.sessionOrigin)
+		}
+	}
+}
+
 func TestStoreClearSessionsTxJoinsCallerTransaction(t *testing.T) {
 	t.Parallel()
 

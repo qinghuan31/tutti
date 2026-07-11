@@ -175,6 +175,7 @@ describe("projectWorkspaceAgentMessagesToConversationVM", () => {
       })
     ).toEqual([
       "user:Inspect AI Canvas",
+      "turn-elapsed",
       "tool:Bash",
       "assistant:项目里有图片和视频。"
     ]);

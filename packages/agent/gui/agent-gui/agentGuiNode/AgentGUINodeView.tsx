@@ -536,6 +536,8 @@ export interface AgentGUIViewLabels {
   goalResumeAction: string;
   goalClearAction: string;
   processing: string;
+  processingElapsed: (elapsedSeconds: number) => string;
+  turnElapsed: (elapsedSeconds: number) => string;
   turnSummary: string;
   userMessageLocator: string;
   planLead: string;
@@ -2585,11 +2587,15 @@ const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
       thinkingLabel: labels.thinkingLabel,
       toolCallsLabel: labels.toolCallsLabel,
       processing: labels.processing,
+      processingElapsed: labels.processingElapsed,
+      turnElapsed: labels.turnElapsed,
       turnSummary: labels.turnSummary,
       userMessageLocator: labels.userMessageLocator
     }),
     [
       labels.processing,
+      labels.processingElapsed,
+      labels.turnElapsed,
       labels.thinkingLabel,
       labels.toolCallsLabel,
       labels.turnSummary,
@@ -8262,6 +8268,8 @@ interface AgentGUIConversationTimelinePaneProps {
     thinkingLabel: string;
     toolCallsLabel: (count: number) => string;
     processing: string;
+    processingElapsed: (elapsedSeconds: number) => string;
+    turnElapsed: (elapsedSeconds: number) => string;
     turnSummary: string;
     userMessageLocator: string;
   };

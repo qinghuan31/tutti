@@ -21,6 +21,7 @@ describe("projectWorkspaceAgentTimelineToConversationVM", () => {
 
     expect(conversation.rows.map((row) => row.kind)).toEqual([
       "message",
+      "turn-elapsed",
       "message",
       "tool-group",
       "tool-group",
@@ -182,6 +183,7 @@ describe("projectWorkspaceAgentTimelineToConversationVM", () => {
 
     expect(conversation.rows.map((row) => row.kind)).toEqual([
       "message",
+      "turn-elapsed",
       "message",
       "tool-group",
       "tool-group",

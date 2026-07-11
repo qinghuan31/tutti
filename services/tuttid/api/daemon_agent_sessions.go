@@ -698,11 +698,13 @@ func generatedAgentCompletedCommand(value *agentservice.CompletedCommand) *tutti
 
 func generatedAgentTurnLifecycle(value agentservice.TurnLifecycle) tuttigenerated.AgentActivityTurnLifecycle {
 	return tuttigenerated.AgentActivityTurnLifecycle{
-		ActiveTurnId:     value.ActiveTurnID,
-		Phase:            value.Phase,
-		Settling:         boolPointer(value.Settling),
-		Outcome:          value.Outcome,
-		CompletedCommand: generatedAgentCompletedCommand(value.CompletedCommand),
+		ActiveTurnId:      value.ActiveTurnID,
+		Phase:             value.Phase,
+		Settling:          boolPointer(value.Settling),
+		StartedAtUnixMs:   int64Pointer(value.StartedAtUnixMS),
+		CompletedAtUnixMs: int64Pointer(value.CompletedAtUnixMS),
+		Outcome:           value.Outcome,
+		CompletedCommand:  generatedAgentCompletedCommand(value.CompletedCommand),
 	}
 }
 

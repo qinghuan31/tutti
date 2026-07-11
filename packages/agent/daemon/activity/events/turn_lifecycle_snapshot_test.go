@@ -10,10 +10,12 @@ func TestTurnLifecycleSnapshotRoundTrip(t *testing.T) {
 
 	event := Event{Payload: EventPayload{}}
 	StampTurnLifecycleSnapshot(&event, TurnLifecycleSnapshot{
-		Origin:       TurnLifecycleOriginAdapter,
-		Seq:          7,
-		ActiveTurnID: "turn-1",
-		Phase:        string(TurnPhaseRunning),
+		Origin:            TurnLifecycleOriginAdapter,
+		Seq:               7,
+		ActiveTurnID:      "turn-1",
+		Phase:             string(TurnPhaseRunning),
+		StartedAtUnixMS:   1234,
+		CompletedAtUnixMS: 2345,
 	})
 
 	parsed, ok := TurnLifecycleSnapshotFromEvent(event)
@@ -25,6 +27,8 @@ func TestTurnLifecycleSnapshotRoundTrip(t *testing.T) {
 		parsed.Seq != 7 ||
 		parsed.ActiveTurnID != "turn-1" ||
 		parsed.Phase != string(TurnPhaseRunning) ||
+		parsed.StartedAtUnixMS != 1234 ||
+		parsed.CompletedAtUnixMS != 2345 ||
 		parsed.Outcome != "" ||
 		parsed.Settling {
 		t.Fatalf("snapshot round trip mismatch: %#v", parsed)
@@ -36,10 +40,12 @@ func TestTurnLifecycleSnapshotSurvivesJSON(t *testing.T) {
 
 	event := Event{Payload: EventPayload{}}
 	StampTurnLifecycleSnapshot(&event, TurnLifecycleSnapshot{
-		Origin:  TurnLifecycleOriginController,
-		Seq:     42,
-		Phase:   string(TurnPhaseSettled),
-		Outcome: string(TurnOutcomeInterrupted),
+		Origin:            TurnLifecycleOriginController,
+		Seq:               42,
+		Phase:             string(TurnPhaseSettled),
+		Outcome:           string(TurnOutcomeInterrupted),
+		StartedAtUnixMS:   5678,
+		CompletedAtUnixMS: 6789,
 	})
 	raw, err := json.Marshal(event.Payload.Metadata)
 	if err != nil {
@@ -54,7 +60,9 @@ func TestTurnLifecycleSnapshotSurvivesJSON(t *testing.T) {
 		t.Fatal("snapshot lost across JSON round trip")
 	}
 	if parsed.Seq != 42 || parsed.Phase != string(TurnPhaseSettled) ||
-		parsed.Outcome != string(TurnOutcomeInterrupted) {
+		parsed.Outcome != string(TurnOutcomeInterrupted) ||
+		parsed.StartedAtUnixMS != 5678 ||
+		parsed.CompletedAtUnixMS != 6789 {
 		t.Fatalf("snapshot JSON round trip mismatch: %#v", parsed)
 	}
 }

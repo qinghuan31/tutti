@@ -1288,6 +1288,8 @@ export type AgentActivityTurnLifecycle = {
   activeTurnId: string | null;
   phase: string;
   settling?: boolean;
+  startedAtUnixMs?: number;
+  completedAtUnixMs?: number;
   outcome?: string | null;
   completedCommand?: AgentActivityCompletedCommand;
 };

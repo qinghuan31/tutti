@@ -177,16 +177,20 @@ type SessionMessageReport struct {
 }
 
 type MessageUpdate struct {
-	MessageID         string
-	TurnID            string
-	Role              string
-	Kind              string
-	Status            string
-	ContentDelta      string
-	Payload           map[string]any
-	OccurredAtUnixMS  int64
-	StartedAtUnixMS   int64
-	CompletedAtUnixMS int64
+	MessageID string
+	TurnID    string
+	// AllowTurnReassignment requests repair of imported history after its source
+	// turn-grouping rules improve. The store still verifies the report and
+	// persisted session origins; this flag alone never grants permission.
+	AllowTurnReassignment bool
+	Role                  string
+	Kind                  string
+	Status                string
+	ContentDelta          string
+	Payload               map[string]any
+	OccurredAtUnixMS      int64
+	StartedAtUnixMS       int64
+	CompletedAtUnixMS     int64
 }
 
 type MessageReportResult struct {

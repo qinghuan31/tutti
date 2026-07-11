@@ -4,6 +4,7 @@ import { createWorkspaceFileManagerI18nRuntime } from "@tutti-os/workspace-file-
 import type { WorkspaceFileEntry } from "@tutti-os/workspace-file-manager/services";
 import { useTranslation, type TranslateFn } from "../../i18n/index";
 import { toLocalShortDateTime } from "../../app/renderer/shell/utils/format";
+import { formatLocalizedElapsedLabel } from "../../shared/agentConversation/lib/elapsedClock";
 import type {
   WorkspaceFileReferenceAdapter,
   WorkspaceFileReference,
@@ -1429,6 +1430,10 @@ export const AgentGUINode = memo(function AgentGUINode({
       goalResumeAction: t("agentHost.agentGui.goalResumeAction"),
       goalClearAction: t("agentHost.agentGui.goalClearAction"),
       processing: t("agentHost.agentGui.processing"),
+      processingElapsed: (elapsedSeconds: number) =>
+        formatLocalizedElapsedLabel(t, elapsedSeconds, "processingElapsed"),
+      turnElapsed: (elapsedSeconds: number) =>
+        formatLocalizedElapsedLabel(t, elapsedSeconds, "turnElapsed"),
       turnSummary: t("agentHost.agentGui.turnSummary"),
       userMessageLocator: t("agentHost.agentGui.userMessageLocator"),
       planLead: t("agentHost.agentGui.planLead"),

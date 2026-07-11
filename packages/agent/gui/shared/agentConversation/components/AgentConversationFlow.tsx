@@ -22,6 +22,8 @@ interface AgentConversationFlowProps {
     toolCallsLabel: (count: number) => string;
     thinkingLabel: string;
     processing: string;
+    processingElapsed: (elapsedSeconds: number) => string;
+    turnElapsed: (elapsedSeconds: number) => string;
     turnSummary: string;
     rawTimelineJson?: string;
     userMessageLocator?: string;

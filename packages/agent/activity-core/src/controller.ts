@@ -1611,7 +1611,10 @@ function agentActivitySessionFromInlineStatePatch(input: {
     title: input.patch.title ?? input.existingSession.title,
     status: input.patch.lifecycleStatus ?? input.existingSession.status,
     turnLifecycle:
-      turnLifecycleFromStatePatch(input.patch) ??
+      turnLifecycleFromStatePatch(
+        input.patch,
+        input.existingSession.turnLifecycle
+      ) ??
       (cloneJSONValue(
         input.existingSession.turnLifecycle
       ) as AgentActivitySession["turnLifecycle"]),
@@ -1690,7 +1693,8 @@ function cloneAgentActivityStatePatch(
 }
 
 function turnLifecycleFromStatePatch(
-  patch: AgentActivityStatePatch
+  patch: AgentActivityStatePatch,
+  existingLifecycle: AgentActivitySession["turnLifecycle"] | null | undefined
 ): AgentActivitySession["turnLifecycle"] | undefined {
   const turn = patch.turn;
   if (!turn?.phase) {
@@ -1703,13 +1707,50 @@ function turnLifecycleFromStatePatch(
       : phase === "settled"
         ? null
         : turn.turnId || null;
+  const preserveExistingTiming = isSameTurnLifecyclePatch(
+    turn,
+    activeTurnId,
+    existingLifecycle
+  );
   return {
     activeTurnId,
     phase,
     settling: turn.settling,
+    ...(turn.startedAtUnixMs !== undefined
+      ? { startedAtUnixMs: turn.startedAtUnixMs }
+      : preserveExistingTiming &&
+          existingLifecycle?.startedAtUnixMs !== undefined
+        ? { startedAtUnixMs: existingLifecycle.startedAtUnixMs }
+        : {}),
+    ...(turn.completedAtUnixMs !== undefined
+      ? { completedAtUnixMs: turn.completedAtUnixMs }
+      : preserveExistingTiming &&
+          existingLifecycle?.completedAtUnixMs !== undefined
+        ? { completedAtUnixMs: existingLifecycle.completedAtUnixMs }
+        : {}),
     outcome: turn.outcome ?? null,
     completedCommand: turn.completedCommand ?? null
   };
+}
+
+function isSameTurnLifecyclePatch(
+  turn: NonNullable<AgentActivityStatePatch["turn"]>,
+  activeTurnId: string | null,
+  existingLifecycle: AgentActivitySession["turnLifecycle"] | null | undefined
+): boolean {
+  if (!existingLifecycle) {
+    return false;
+  }
+  const existingActiveTurnId = existingLifecycle.activeTurnId?.trim() || null;
+  const patchTurnId = turn.turnId?.trim() || null;
+  const nextActiveTurnId = activeTurnId?.trim() || null;
+  if (existingActiveTurnId && nextActiveTurnId) {
+    return existingActiveTurnId === nextActiveTurnId;
+  }
+  if (existingActiveTurnId && patchTurnId) {
+    return existingActiveTurnId === patchTurnId;
+  }
+  return false;
 }
 
 function recordValue(value: unknown): Record<string, unknown> | null {

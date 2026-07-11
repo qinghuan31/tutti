@@ -46,6 +46,8 @@ describe("AgentTranscriptView virtual rendering", () => {
             thinkingLabel: "Thought process",
             toolCallsLabel: (count) => `Tool calls (${count})`,
             processing: "Planning next moves",
+            processingElapsed: (seconds: number) => `Processed ${seconds}s`,
+            turnElapsed: (seconds: number) => `Total ${seconds}s`,
             turnSummary: "Changed files"
           }}
         />
@@ -73,6 +75,8 @@ describe("AgentTranscriptView virtual rendering", () => {
             thinkingLabel: "Thought process",
             toolCallsLabel: (count) => `Tool calls (${count})`,
             processing: "Planning next moves",
+            processingElapsed: (seconds: number) => `Processed ${seconds}s`,
+            turnElapsed: (seconds: number) => `Total ${seconds}s`,
             turnSummary: "Changed files"
           }}
         />
@@ -104,6 +108,8 @@ describe("AgentTranscriptView virtual rendering", () => {
             thinkingLabel: "Thought process",
             toolCallsLabel: (count) => `Tool calls (${count})`,
             processing: "Planning next moves",
+            processingElapsed: (seconds: number) => `Processed ${seconds}s`,
+            turnElapsed: (seconds: number) => `Total ${seconds}s`,
             turnSummary: "Changed files"
           }}
         />
@@ -142,6 +148,8 @@ describe("AgentTranscriptView virtual rendering", () => {
             thinkingLabel: "Thought process",
             toolCallsLabel: (count) => `Tool calls (${count})`,
             processing: "Planning next moves",
+            processingElapsed: (seconds: number) => `Processed ${seconds}s`,
+            turnElapsed: (seconds: number) => `Total ${seconds}s`,
             turnSummary: "Changed files"
           }}
         />
@@ -170,6 +178,8 @@ describe("AgentTranscriptView virtual rendering", () => {
             thinkingLabel: "Thought process",
             toolCallsLabel: (count) => `Tool calls (${count})`,
             processing: "Planning next moves",
+            processingElapsed: (seconds: number) => `Processed ${seconds}s`,
+            turnElapsed: (seconds: number) => `Total ${seconds}s`,
             turnSummary: "Changed files"
           }}
         />

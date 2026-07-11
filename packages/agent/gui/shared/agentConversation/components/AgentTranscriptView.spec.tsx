@@ -31,6 +31,8 @@ describe("AgentTranscriptView", () => {
       thinkingLabel: "Thought process",
       toolCallsLabel: (count: number) => `Tool calls (${count})`,
       processing: "Planning next moves",
+      processingElapsed: (seconds: number) => `Processed ${seconds}s`,
+      turnElapsed: (seconds: number) => `Total ${seconds}s`,
       turnSummary: "Changed files"
     };
     const conversation = projectAgentConversationVM(detailViewModel());
@@ -60,6 +62,8 @@ describe("AgentTranscriptView", () => {
           thinkingLabel: "Thought process",
           toolCallsLabel: (count) => `Tool calls (${count})`,
           processing: "Planning next moves",
+          processingElapsed: (seconds: number) => `Processed ${seconds}s`,
+          turnElapsed: (seconds: number) => `Total ${seconds}s`,
           turnSummary: "Changed files"
         }}
       />
@@ -98,6 +102,8 @@ describe("AgentTranscriptView", () => {
       thinkingLabel: "Thought process",
       toolCallsLabel: (count: number) => `Tool calls (${count})`,
       processing: "Planning next moves",
+      processingElapsed: (seconds: number) => `Processed ${seconds}s`,
+      turnElapsed: (seconds: number) => `Total ${seconds}s`,
       turnSummary: "Changed files"
     };
     const { rerender } = render(
@@ -126,9 +132,9 @@ describe("AgentTranscriptView", () => {
       />
     );
 
-    const processingRow = screen
-      .getByText("Planning next moves")
-      .closest("[data-agent-transcript-row]");
+    const processingRow = document.querySelector(
+      '[data-agent-transcript-row-kind="processing"]'
+    );
     expect(processingRow).toBeInstanceOf(HTMLElement);
     expect(processingRow).not.toHaveAttribute(
       "data-agent-transcript-row-enter"
@@ -140,6 +146,8 @@ describe("AgentTranscriptView", () => {
       thinkingLabel: "Thought process",
       toolCallsLabel: (count: number) => `Tool calls (${count})`,
       processing: "Planning next moves",
+      processingElapsed: (seconds: number) => `Processed ${seconds}s`,
+      turnElapsed: (seconds: number) => `Total ${seconds}s`,
       turnSummary: "Changed files"
     };
     const { rerender } = render(
@@ -201,6 +209,8 @@ describe("AgentTranscriptView", () => {
           thinkingLabel: "Thought process",
           toolCallsLabel: (count) => `Tool calls (${count})`,
           processing: "Planning next moves",
+          processingElapsed: (seconds: number) => `Processed ${seconds}s`,
+          turnElapsed: (seconds: number) => `Total ${seconds}s`,
           turnSummary: "Changed files"
         }}
       />
@@ -250,6 +260,8 @@ describe("AgentTranscriptView", () => {
             thinkingLabel: "Thought process",
             toolCallsLabel: (count) => `Tool calls (${count})`,
             processing: "Planning next moves",
+            processingElapsed: (seconds: number) => `Processed ${seconds}s`,
+            turnElapsed: (seconds: number) => `Total ${seconds}s`,
             turnSummary: "Changed files",
             userMessageLocator: "User messages"
           }}
@@ -343,6 +355,8 @@ describe("AgentTranscriptView", () => {
             thinkingLabel: "Thought process",
             toolCallsLabel: (count) => `Tool calls (${count})`,
             processing: "Planning next moves",
+            processingElapsed: (seconds: number) => `Processed ${seconds}s`,
+            turnElapsed: (seconds: number) => `Total ${seconds}s`,
             turnSummary: "Changed files",
             userMessageLocator: "User messages"
           }}
@@ -428,6 +442,8 @@ describe("AgentTranscriptView", () => {
               thinkingLabel: "Thought process",
               toolCallsLabel: (count) => `Tool calls (${count})`,
               processing: "Planning next moves",
+              processingElapsed: (seconds: number) => `Processed ${seconds}s`,
+              turnElapsed: (seconds: number) => `Total ${seconds}s`,
               turnSummary: "Changed files",
               userMessageLocator: "User messages"
             }}
@@ -530,6 +546,8 @@ describe("AgentTranscriptView", () => {
           thinkingLabel: "Thought process",
           toolCallsLabel: (count) => `Tool calls (${count})`,
           processing: "Planning next moves",
+          processingElapsed: (seconds: number) => `Processed ${seconds}s`,
+          turnElapsed: (seconds: number) => `Total ${seconds}s`,
           turnSummary: "Changed files",
           userMessageLocator: "User messages"
         }}
@@ -597,6 +615,8 @@ describe("AgentTranscriptView", () => {
             thinkingLabel: "Thought process",
             toolCallsLabel: (count) => `Tool calls (${count})`,
             processing: "Planning next moves",
+            processingElapsed: (seconds: number) => `Processed ${seconds}s`,
+            turnElapsed: (seconds: number) => `Total ${seconds}s`,
             turnSummary: "Changed files",
             userMessageLocator: "User messages"
           }}
@@ -656,6 +676,8 @@ describe("AgentTranscriptView", () => {
             thinkingLabel: "Thought process",
             toolCallsLabel: (count) => `Tool calls (${count})`,
             processing: "Planning next moves",
+            processingElapsed: (seconds: number) => `Processed ${seconds}s`,
+            turnElapsed: (seconds: number) => `Total ${seconds}s`,
             turnSummary: "Changed files",
             userMessageLocator: "User messages"
           }}
@@ -694,6 +716,8 @@ describe("AgentTranscriptView", () => {
       thinkingLabel: "Thought process",
       toolCallsLabel: (count: number) => `Tool calls (${count})`,
       processing: "Planning next moves",
+      processingElapsed: (seconds: number) => `Processed ${seconds}s`,
+      turnElapsed: (seconds: number) => `Total ${seconds}s`,
       turnSummary: "Changed files",
       userMessageLocator: "User messages"
     };
@@ -740,6 +764,8 @@ describe("AgentTranscriptView", () => {
       thinkingLabel: "Thought process",
       toolCallsLabel: (count: number) => `Tool calls (${count})`,
       processing: "Planning next moves",
+      processingElapsed: (seconds: number) => `Processed ${seconds}s`,
+      turnElapsed: (seconds: number) => `Total ${seconds}s`,
       turnSummary: "Changed files",
       userMessageLocator: "User messages"
     };
@@ -859,6 +885,8 @@ describe("AgentTranscriptView", () => {
           thinkingLabel: "Thought process",
           toolCallsLabel: (count) => `Tool calls (${count})`,
           processing: "Planning next moves",
+          processingElapsed: (seconds: number) => `Processed ${seconds}s`,
+          turnElapsed: (seconds: number) => `Total ${seconds}s`,
           turnSummary: "Changed files"
         }}
       />
@@ -905,6 +933,8 @@ describe("AgentTranscriptView", () => {
           thinkingLabel: "Thought process",
           toolCallsLabel: (count) => `Tool calls (${count})`,
           processing: "Planning next moves",
+          processingElapsed: (seconds: number) => `Processed ${seconds}s`,
+          turnElapsed: (seconds: number) => `Total ${seconds}s`,
           turnSummary: "Changed files"
         }}
       />
@@ -969,6 +999,8 @@ describe("AgentTranscriptView", () => {
           thinkingLabel: "Thought process",
           toolCallsLabel: (count) => `Tool calls (${count})`,
           processing: "Planning next moves",
+          processingElapsed: (seconds: number) => `Processed ${seconds}s`,
+          turnElapsed: (seconds: number) => `Total ${seconds}s`,
           turnSummary: "Changed files"
         }}
       />
@@ -1019,6 +1051,8 @@ describe("AgentTranscriptView", () => {
           thinkingLabel: "Thought process",
           toolCallsLabel: (count) => `Tool calls (${count})`,
           processing: "Planning next moves",
+          processingElapsed: (seconds: number) => `Processed ${seconds}s`,
+          turnElapsed: (seconds: number) => `Total ${seconds}s`,
           turnSummary: "Changed files"
         }}
       />
@@ -1094,6 +1128,8 @@ describe("AgentTranscriptView", () => {
           thinkingLabel: "Thought process",
           toolCallsLabel: (count) => `Tool calls (${count})`,
           processing: "Planning next moves",
+          processingElapsed: (seconds: number) => `Processed ${seconds}s`,
+          turnElapsed: (seconds: number) => `Total ${seconds}s`,
           turnSummary: "Changed files"
         }}
       />
@@ -1147,6 +1183,8 @@ describe("AgentTranscriptView", () => {
           thinkingLabel: "Thought process",
           toolCallsLabel: (count) => `Tool calls (${count})`,
           processing: "Planning next moves",
+          processingElapsed: (seconds: number) => `Processed ${seconds}s`,
+          turnElapsed: (seconds: number) => `Total ${seconds}s`,
           turnSummary: "Changed files"
         }}
       />
@@ -1239,6 +1277,8 @@ describe("AgentTranscriptView", () => {
           thinkingLabel: "Thought process",
           toolCallsLabel: (count) => `Tool calls (${count})`,
           processing: "Planning next moves",
+          processingElapsed: (seconds: number) => `Processed ${seconds}s`,
+          turnElapsed: (seconds: number) => `Total ${seconds}s`,
           turnSummary: "Changed files"
         }}
       />
@@ -1246,7 +1286,9 @@ describe("AgentTranscriptView", () => {
 
     expect(screen.getByText("Edit file")).toBeTruthy();
     expect(screen.getByText("Write file")).toBeTruthy();
-    expect(screen.getByText("Planning next moves")).toBeTruthy();
+    expect(
+      document.querySelector('[data-agent-transcript-row-kind="processing"]')
+    ).toBeTruthy();
   });
 
   it("keeps every completed tool of an unfinalized tail chain visible", () => {
@@ -1317,6 +1359,8 @@ describe("AgentTranscriptView", () => {
           thinkingLabel: "Thought process",
           toolCallsLabel: (count) => `Tool calls (${count})`,
           processing: "Planning next moves",
+          processingElapsed: (seconds: number) => `Processed ${seconds}s`,
+          turnElapsed: (seconds: number) => `Total ${seconds}s`,
           turnSummary: "Changed files"
         }}
       />
@@ -1332,6 +1376,8 @@ describe("AgentTranscriptView", () => {
       thinkingLabel: "Thought process",
       toolCallsLabel: (count: number) => `Tool calls (${count})`,
       processing: "Planning next moves",
+      processingElapsed: (seconds: number) => `Processed ${seconds}s`,
+      turnElapsed: (seconds: number) => `Total ${seconds}s`,
       turnSummary: "Changed files"
     };
     const { rerender } = render(
@@ -1484,6 +1530,8 @@ describe("AgentTranscriptView", () => {
           thinkingLabel: "Thought process",
           toolCallsLabel: (count) => `Tool calls (${count})`,
           processing: "Planning next moves",
+          processingElapsed: (seconds: number) => `Processed ${seconds}s`,
+          turnElapsed: (seconds: number) => `Total ${seconds}s`,
           turnSummary: "Changed files"
         }}
       />
@@ -1534,6 +1582,8 @@ describe("AgentTranscriptView", () => {
           thinkingLabel: "Thought process",
           toolCallsLabel: (count) => `Tool calls (${count})`,
           processing: "Planning next moves",
+          processingElapsed: (seconds: number) => `Processed ${seconds}s`,
+          turnElapsed: (seconds: number) => `Total ${seconds}s`,
           turnSummary: "Changed files"
         }}
       />
@@ -1602,6 +1652,8 @@ describe("AgentTranscriptView", () => {
           thinkingLabel: "Thought process",
           toolCallsLabel: (count) => `Tool calls (${count})`,
           processing: "Planning next moves",
+          processingElapsed: (seconds: number) => `Processed ${seconds}s`,
+          turnElapsed: (seconds: number) => `Total ${seconds}s`,
           turnSummary: "Changed files"
         }}
       />

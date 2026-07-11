@@ -2041,12 +2041,16 @@ function hostStatePatchEventFromSession(
   session: AgentActivitySession,
   messages: readonly AgentActivityMessage[] = []
 ): unknown {
+  const lifecycleTurnState = statePatchTurnFromLifecycle(session, messages);
   const inferredTurnState = inferActiveTurnState(session, messages);
   return {
     data: {
       agentSessionId: session.agentSessionId,
       currentPhase:
-        inferredTurnState?.phase ?? session.currentPhase ?? undefined,
+        session.currentPhase ??
+        lifecycleTurnState?.phase ??
+        inferredTurnState?.phase ??
+        undefined,
       cwd: session.cwd,
       lastError: session.lastError ?? undefined,
       lifecycleStatus: session.status,
@@ -2063,17 +2067,57 @@ function hostStatePatchEventFromSession(
         ? { pendingInteractive: session.pendingInteractive }
         : {}),
       title: session.title,
-      ...(inferredTurnState
-        ? {
-            turn: {
-              phase: inferredTurnState.phase,
-              turnId: inferredTurnState.turnId
+      ...(lifecycleTurnState
+        ? { turn: lifecycleTurnState }
+        : inferredTurnState
+          ? {
+              turn: {
+                phase: inferredTurnState.phase,
+                turnId: inferredTurnState.turnId
+              }
             }
-          }
-        : {}),
+          : {}),
       workspaceId: session.workspaceId
     },
     eventType: "state_patch"
+  };
+}
+
+function statePatchTurnFromLifecycle(
+  session: AgentActivitySession,
+  messages: readonly AgentActivityMessage[]
+): {
+  activeTurnId: string | null;
+  completedCommand: NonNullable<
+    AgentActivitySession["turnLifecycle"]
+  >["completedCommand"];
+  completedAtUnixMs?: number;
+  outcome: string | null;
+  phase: string;
+  settling: boolean;
+  startedAtUnixMs?: number;
+  turnId: string;
+} | null {
+  const lifecycle = session.turnLifecycle;
+  const phase = lifecycle?.phase?.trim();
+  if (!lifecycle || !phase) {
+    return null;
+  }
+  const activeTurnId = lifecycle.activeTurnId?.trim() || null;
+  const latestTurnId = latestMessageWithTurn(messages)?.turnId?.trim() || "";
+  return {
+    activeTurnId,
+    completedCommand: lifecycle.completedCommand ?? null,
+    ...(lifecycle.completedAtUnixMs !== undefined
+      ? { completedAtUnixMs: lifecycle.completedAtUnixMs }
+      : {}),
+    outcome: lifecycle.outcome ?? null,
+    phase,
+    settling: lifecycle.settling ?? false,
+    ...(lifecycle.startedAtUnixMs !== undefined
+      ? { startedAtUnixMs: lifecycle.startedAtUnixMs }
+      : {}),
+    turnId: activeTurnId ?? latestTurnId
   };
 }
 

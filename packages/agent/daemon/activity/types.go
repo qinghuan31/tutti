@@ -141,11 +141,13 @@ type WorkspaceAgentSubmitAvailability struct {
 }
 
 type WorkspaceAgentTurnLifecycle struct {
-	ActiveTurnID     *string                         `json:"activeTurnId"`
-	Phase            string                          `json:"phase"`
-	Settling         bool                            `json:"settling,omitempty"`
-	Outcome          *string                         `json:"outcome,omitempty"`
-	CompletedCommand *WorkspaceAgentCompletedCommand `json:"completedCommand,omitempty"`
+	ActiveTurnID      *string                         `json:"activeTurnId"`
+	Phase             string                          `json:"phase"`
+	Settling          bool                            `json:"settling,omitempty"`
+	StartedAtUnixMS   int64                           `json:"startedAtUnixMs,omitempty"`
+	CompletedAtUnixMS int64                           `json:"completedAtUnixMs,omitempty"`
+	Outcome           *string                         `json:"outcome,omitempty"`
+	CompletedCommand  *WorkspaceAgentCompletedCommand `json:"completedCommand,omitempty"`
 }
 
 type WorkspaceAgentInteractivePrompt struct {

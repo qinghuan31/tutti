@@ -800,6 +800,12 @@ export const en = {
       goalResumeAction: "Resume goal",
       goalClearAction: "Delete goal",
       processing: "Planning next moves",
+      processingElapsedSeconds: "Processed {{count}}s",
+      processingElapsedMinutes: "Processed {{minutes}}m {{seconds}}s",
+      processingElapsedMinutesOnly: "Processed {{minutes}}m",
+      turnElapsedSeconds: "Total {{count}}s",
+      turnElapsedMinutes: "Total {{minutes}}m {{seconds}}s",
+      turnElapsedMinutesOnly: "Total {{minutes}}m",
       agentTargetRequired:
         "Select an available agent target before starting a session.",
       promptImagesUnsupported:

@@ -123,11 +123,13 @@ func cloneTurnLifecycle(value *TurnLifecycle) *TurnLifecycle {
 		outcome = &next
 	}
 	return &TurnLifecycle{
-		ActiveTurnID:     activeTurnID,
-		Phase:            strings.TrimSpace(value.Phase),
-		Settling:         value.Settling,
-		Outcome:          outcome,
-		CompletedCommand: cloneCompletedCommand(value.CompletedCommand),
+		ActiveTurnID:      activeTurnID,
+		Phase:             strings.TrimSpace(value.Phase),
+		Settling:          value.Settling,
+		StartedAtUnixMS:   value.StartedAtUnixMS,
+		CompletedAtUnixMS: value.CompletedAtUnixMS,
+		Outcome:           outcome,
+		CompletedCommand:  cloneCompletedCommand(value.CompletedCommand),
 	}
 }
 

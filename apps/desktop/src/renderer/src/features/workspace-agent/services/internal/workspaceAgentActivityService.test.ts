@@ -322,6 +322,7 @@ test("WorkspaceAgentActivityService.importExternalSessions refreshes sessions an
 
 test("WorkspaceAgentActivityService fetches combined reconcile state after messages", async () => {
   const diagnostics: unknown[] = [];
+  const sessionEvents: unknown[] = [];
   const calls: string[] = [];
   let messagesResolved = false;
   const staleSession = workspaceAgentSession({
@@ -339,8 +340,11 @@ test("WorkspaceAgentActivityService fetches combined reconcile state after messa
     currentPhase: "idle",
     turnLifecycle: {
       activeTurnId: null,
+      completedCommand: null,
+      completedAtUnixMs: 2_000,
       outcome: "completed",
-      phase: "settled"
+      phase: "settled",
+      startedAtUnixMs: 1_000
     },
     submitAvailability: { state: "available" }
   });
@@ -361,7 +365,18 @@ test("WorkspaceAgentActivityService fetches combined reconcile state after messa
         return {
           hasMore: false,
           latestVersion: 2,
-          messages: []
+          messages: [
+            {
+              agentSessionId: "session-1",
+              kind: "text",
+              messageId: "user-1",
+              occurredAtUnixMs: 1_000,
+              payload: {},
+              role: "user",
+              turnId: "turn-1",
+              version: 2
+            }
+          ]
         };
       }
     } as unknown as TuttidClient,
@@ -373,6 +388,9 @@ test("WorkspaceAgentActivityService fetches combined reconcile state after messa
   });
 
   await service.load("ws-1");
+  const unsubscribe = service.onSessionEvent("ws-1", (event) => {
+    sessionEvents.push(event);
+  });
   await (
     service as unknown as {
       reconcileAgentActivityUpdate(input: {
@@ -386,12 +404,33 @@ test("WorkspaceAgentActivityService fetches combined reconcile state after messa
     eventType: "message_update",
     workspaceId: "ws-1"
   });
+  unsubscribe();
 
   const session = service.getSnapshot("ws-1").sessions[0];
   assert.deepEqual(calls, ["listMessages", "getSession"]);
   assert.equal(session?.status, "ready");
   assert.equal(session?.turnLifecycle?.phase, "settled");
+  assert.equal(session?.turnLifecycle?.startedAtUnixMs, 1_000);
+  assert.equal(session?.turnLifecycle?.completedAtUnixMs, 2_000);
   assert.equal(session?.submitAvailability?.state, "available");
+  assert.deepEqual(
+    sessionEvents.find(
+      (event): event is { data: { turn?: unknown }; eventType: string } =>
+        typeof event === "object" &&
+        event !== null &&
+        (event as { eventType?: unknown }).eventType === "state_patch"
+    )?.data.turn,
+    {
+      activeTurnId: null,
+      completedCommand: null,
+      completedAtUnixMs: 2_000,
+      outcome: "completed",
+      phase: "settled",
+      settling: false,
+      startedAtUnixMs: 1_000,
+      turnId: "turn-1"
+    }
+  );
   assert.deepEqual(
     diagnostics
       .filter(

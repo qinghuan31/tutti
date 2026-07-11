@@ -129,6 +129,8 @@ export interface AgentHostAgentActivityTurnLifecycle {
   activeTurnId: string | null;
   phase: string;
   settling?: boolean;
+  startedAtUnixMs?: number;
+  completedAtUnixMs?: number;
   outcome?: string | null;
   completedCommand?: AgentHostAgentActivityCompletedCommand | null;
 }

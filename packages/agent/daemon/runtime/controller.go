@@ -1658,7 +1658,12 @@ func applyTurnLifecycleSnapshot(session Session, snapshot activityshared.TurnLif
 	default:
 		return session
 	}
-	lifecycle := TurnLifecycle{Phase: snapshot.Phase, Settling: snapshot.Settling}
+	lifecycle := TurnLifecycle{
+		Phase:             snapshot.Phase,
+		Settling:          snapshot.Settling,
+		StartedAtUnixMS:   snapshot.StartedAtUnixMS,
+		CompletedAtUnixMS: snapshot.CompletedAtUnixMS,
+	}
 	if turnID := strings.TrimSpace(snapshot.ActiveTurnID); turnID != "" {
 		lifecycle.ActiveTurnID = &turnID
 	}
@@ -1789,7 +1794,16 @@ func applyTurnLifecycleFromEvents(session Session, events []activityshared.Event
 			continue
 		}
 		lifecycle := TurnLifecycle{Phase: phase}
+		if session.TurnLifecycle != nil && session.TurnLifecycle.ActiveTurnID != nil && strings.TrimSpace(*session.TurnLifecycle.ActiveTurnID) == turnID {
+			lifecycle.StartedAtUnixMS = session.TurnLifecycle.StartedAtUnixMS
+		}
+		if event.Type == activityshared.EventTurnStarted && event.OccurredAtUnixMS > 0 {
+			lifecycle.StartedAtUnixMS = event.OccurredAtUnixMS
+		}
 		if phase == "settled" {
+			if event.OccurredAtUnixMS > 0 {
+				lifecycle.CompletedAtUnixMS = event.OccurredAtUnixMS
+			}
 			outcome := turnLifecycleOutcomeFromEvent(event)
 			if outcome != "" {
 				lifecycle.Outcome = &outcome
@@ -1884,11 +1898,13 @@ func cloneRuntimeTurnLifecycle(value *TurnLifecycle) *TurnLifecycle {
 		outcome = &next
 	}
 	return &TurnLifecycle{
-		ActiveTurnID:     activeTurnID,
-		Phase:            strings.TrimSpace(value.Phase),
-		Settling:         value.Settling,
-		Outcome:          outcome,
-		CompletedCommand: cloneRuntimeCompletedCommand(value.CompletedCommand),
+		ActiveTurnID:      activeTurnID,
+		Phase:             strings.TrimSpace(value.Phase),
+		Settling:          value.Settling,
+		StartedAtUnixMS:   value.StartedAtUnixMS,
+		CompletedAtUnixMS: value.CompletedAtUnixMS,
+		Outcome:           outcome,
+		CompletedCommand:  cloneRuntimeCompletedCommand(value.CompletedCommand),
 	}
 }
 
@@ -1973,9 +1989,11 @@ func settleFinishedTurnLifecycle(session Session, turnID string) Session {
 		outcome = strings.TrimSpace(*session.TurnLifecycle.Outcome)
 	}
 	session.TurnLifecycle = &TurnLifecycle{
-		Phase:            "settled",
-		Outcome:          &outcome,
-		CompletedCommand: cloneRuntimeCompletedCommand(session.TurnLifecycle.CompletedCommand),
+		Phase:             "settled",
+		StartedAtUnixMS:   session.TurnLifecycle.StartedAtUnixMS,
+		CompletedAtUnixMS: session.TurnLifecycle.CompletedAtUnixMS,
+		Outcome:           &outcome,
+		CompletedCommand:  cloneRuntimeCompletedCommand(session.TurnLifecycle.CompletedCommand),
 	}
 	session.SubmitAvailability = availableSubmitAvailability()
 	return session
@@ -2134,9 +2152,11 @@ func settledFallbackTurnEvents(session Session, turnID string) []activityshared.
 	}
 	event := activityshared.NewTurnUpdated(ctx, turnID, activityshared.TurnPhaseIdle)
 	activityshared.StampTurnLifecycleSnapshot(&event, activityshared.TurnLifecycleSnapshot{
-		Origin:  activityshared.TurnLifecycleOriginController,
-		Phase:   "settled",
-		Outcome: string(activityshared.TurnOutcomeCompleted),
+		Origin:            activityshared.TurnLifecycleOriginController,
+		Phase:             "settled",
+		Outcome:           string(activityshared.TurnOutcomeCompleted),
+		StartedAtUnixMS:   session.TurnLifecycle.StartedAtUnixMS,
+		CompletedAtUnixMS: ctx.OccurredAtUnixMS,
 	})
 	return []activityshared.Event{event}
 }
@@ -3019,11 +3039,13 @@ func activityTurnLifecycleFromRuntime(value *TurnLifecycle) *agentsessionstore.W
 		outcome = &next
 	}
 	return &agentsessionstore.WorkspaceAgentTurnLifecycle{
-		ActiveTurnID:     activeTurnID,
-		Phase:            strings.TrimSpace(value.Phase),
-		Settling:         value.Settling,
-		Outcome:          outcome,
-		CompletedCommand: activityCompletedCommandFromRuntime(value.CompletedCommand),
+		ActiveTurnID:      activeTurnID,
+		Phase:             strings.TrimSpace(value.Phase),
+		Settling:          value.Settling,
+		StartedAtUnixMS:   value.StartedAtUnixMS,
+		CompletedAtUnixMS: value.CompletedAtUnixMS,
+		Outcome:           outcome,
+		CompletedCommand:  activityCompletedCommandFromRuntime(value.CompletedCommand),
 	}
 }
 

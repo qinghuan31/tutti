@@ -3685,15 +3685,31 @@ function mergeSessionControlStatePatch(
     changed = true;
   }
   if (patch.turn?.phase) {
+    const nextActiveTurnId =
+      patch.turn.activeTurnId !== undefined
+        ? patch.turn.activeTurnId
+        : patch.turn.phase === "settled" || patch.turn.phase === "idle"
+          ? null
+          : patch.turn.turnId;
+    const preserveCurrentTiming = isSameActiveTurnLifecycle(
+      current.turnLifecycle,
+      nextActiveTurnId,
+      patch.turn.turnId
+    );
     next.turnLifecycle = {
-      activeTurnId:
-        patch.turn.activeTurnId !== undefined
-          ? patch.turn.activeTurnId
-          : patch.turn.phase === "settled" || patch.turn.phase === "idle"
-            ? null
-            : patch.turn.turnId,
+      activeTurnId: nextActiveTurnId,
       phase: patch.turn.phase,
       settling: patch.turn.settling,
+      startedAtUnixMs:
+        patch.turn.startedAtUnixMs ??
+        (preserveCurrentTiming
+          ? current.turnLifecycle?.startedAtUnixMs
+          : undefined),
+      completedAtUnixMs:
+        patch.turn.completedAtUnixMs ??
+        (preserveCurrentTiming
+          ? current.turnLifecycle?.completedAtUnixMs
+          : undefined),
       outcome: patch.turn.outcome ?? null,
       completedCommand: patch.turn.completedCommand ?? null
     };
@@ -3713,6 +3729,23 @@ function sameJSONValue(left: unknown, right: unknown): boolean {
   return JSON.stringify(left ?? null) === JSON.stringify(right ?? null);
 }
 
+function isSameActiveTurnLifecycle(
+  current: { activeTurnId?: string | null } | null | undefined,
+  nextActiveTurnId: string | null | undefined,
+  patchTurnId: string | null | undefined
+): boolean {
+  const currentTurnId = current?.activeTurnId?.trim();
+  if (!currentTurnId) {
+    return false;
+  }
+  const activeTurnId = nextActiveTurnId?.trim();
+  if (activeTurnId) {
+    return activeTurnId === currentTurnId;
+  }
+  const turnId = patchTurnId?.trim();
+  return Boolean(turnId && turnId === currentTurnId);
+}
+
 function conversationStatusFromSessionState(
   state: AgentSessionState
 ): AgentGUIConversationSummary["status"] | null {
@@ -3725,6 +3758,7 @@ function conversationStatusFromSessionState(
         phase: state.turnLifecycle.phase,
         outcome: state.turnLifecycle.outcome ?? undefined,
         settling: state.turnLifecycle.settling,
+        completedAtUnixMs: state.turnLifecycle.completedAtUnixMs,
         completedCommand: state.turnLifecycle.completedCommand ?? undefined
       }
     });
@@ -8786,6 +8820,7 @@ export function useAgentGUINodeController({
                 outcome: result.turnLifecycle.outcome ?? undefined,
                 activeTurnId: result.turnLifecycle.activeTurnId,
                 settling: result.turnLifecycle.settling,
+                completedAtUnixMs: result.turnLifecycle.completedAtUnixMs,
                 completedCommand:
                   result.turnLifecycle.completedCommand ?? undefined,
                 submitAvailability: result.submitAvailability
@@ -11191,7 +11226,11 @@ export function useAgentGUINodeController({
         (previous.turnLifecycle?.phase ?? null) ===
           (turnLifecycle?.phase ?? null) &&
         (previous.turnLifecycle?.settling ?? false) ===
-          (turnLifecycle?.settling ?? false)
+          (turnLifecycle?.settling ?? false) &&
+        (previous.turnLifecycle?.startedAtUnixMs ?? null) ===
+          (turnLifecycle?.startedAtUnixMs ?? null) &&
+        (previous.turnLifecycle?.completedAtUnixMs ?? null) ===
+          (turnLifecycle?.completedAtUnixMs ?? null)
       ) {
         return previous;
       }
@@ -11224,10 +11263,14 @@ export function useAgentGUINodeController({
       activeRuntimeTurnLifecycle?.activeTurnId,
       activeRuntimeTurnLifecycle?.phase,
       activeRuntimeTurnLifecycle?.settling,
+      activeRuntimeTurnLifecycle?.startedAtUnixMs,
+      activeRuntimeTurnLifecycle?.completedAtUnixMs,
       activeSessionState?.agentSessionId,
       activeSessionState?.turnLifecycle?.activeTurnId,
       activeSessionState?.turnLifecycle?.phase,
-      activeSessionState?.turnLifecycle?.settling
+      activeSessionState?.turnLifecycle?.settling,
+      activeSessionState?.turnLifecycle?.startedAtUnixMs,
+      activeSessionState?.turnLifecycle?.completedAtUnixMs
     ]);
   const draftContent = activeConversationId
     ? (draftBySessionId[activeConversationId] ?? EMPTY_AGENT_COMPOSER_DRAFT)

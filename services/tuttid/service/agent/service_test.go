@@ -1405,6 +1405,23 @@ func TestServiceImportsExternalAgentSessionsByProject(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ListMessages imported session error = %v", err)
 	}
+	if len(importedMessages.Messages) == 0 {
+		t.Fatal("imported messages are empty")
+	}
+	importedTurnID := importedMessages.Messages[0].TurnID
+	if importedTurnID == "" || !slices.ContainsFunc(importedMessages.Messages, func(message SessionMessage) bool {
+		return message.Role == "assistant" && message.TurnID == importedTurnID
+	}) || slices.ContainsFunc(importedMessages.Messages, func(message SessionMessage) bool {
+		return message.TurnID != importedTurnID
+	}) {
+		t.Fatalf("imported message turn ids = %#v, want one non-empty turn containing the prompt and replies", func() []string {
+			turnIDs := make([]string, 0, len(importedMessages.Messages))
+			for _, message := range importedMessages.Messages {
+				turnIDs = append(turnIDs, message.TurnID)
+			}
+			return turnIDs
+		}())
+	}
 	if !slices.ContainsFunc(importedMessages.Messages, func(message SessionMessage) bool {
 		input, _ := message.Payload["input"].(map[string]any)
 		output, _ := message.Payload["output"].(map[string]any)
@@ -1416,6 +1433,48 @@ func TestServiceImportsExternalAgentSessionsByProject(t *testing.T) {
 			output["output"] == "Chunk ID: abc\nOutput:\n M file.go"
 	}) {
 		t.Fatalf("imported messages = %#v, want structured Codex tool call", importedMessages.Messages)
+	}
+
+	legacyTurnUpdates := make([]agentactivitybiz.MessageUpdate, 0, len(importedMessages.Messages))
+	for _, message := range importedMessages.Messages {
+		legacyTurnUpdates = append(legacyTurnUpdates, agentactivitybiz.MessageUpdate{
+			MessageID:             message.MessageID,
+			TurnID:                "legacy-turn-" + message.MessageID,
+			AllowTurnReassignment: true,
+		})
+	}
+	if _, err := store.ReportSessionMessages(ctx, agentactivitybiz.SessionMessageReport{
+		WorkspaceID:    "ws-1",
+		AgentSessionID: codexAID,
+		Origin:         WorkspaceAgentSessionOriginImported,
+		Provider:       "codex",
+		Messages:       legacyTurnUpdates,
+	}); err != nil {
+		t.Fatalf("seed legacy imported turn ids error = %v", err)
+	}
+	repaired, err := service.ImportExternalSessions(ctx, "ws-1", ExternalImportInput{
+		Projects: []ExternalImportProjectSelection{{Path: projectA, SessionIDs: []string{codexAID}}},
+	})
+	if err != nil {
+		t.Fatalf("repair imported turn ids error = %v", err)
+	}
+	if repaired.ImportedSessions != 1 || repaired.ImportedMessages != 4 {
+		t.Fatalf("repair import result = %#v, want four source updates to repair legacy turn ids", repaired)
+	}
+	repairedMessages, err := service.ListMessages(ctx, "ws-1", codexAID, ListMessagesInput{Limit: 10})
+	if err != nil {
+		t.Fatalf("ListMessages repaired imported session error = %v", err)
+	}
+	if slices.ContainsFunc(repairedMessages.Messages, func(message SessionMessage) bool {
+		return message.TurnID != importedTurnID
+	}) {
+		t.Fatalf("repaired message turn ids = %#v, want %q", func() []string {
+			turnIDs := make([]string, 0, len(repairedMessages.Messages))
+			for _, message := range repairedMessages.Messages {
+				turnIDs = append(turnIDs, message.TurnID)
+			}
+			return turnIDs
+		}(), importedTurnID)
 	}
 	sessions, err := service.List(ctx, "ws-1")
 	if err != nil {

@@ -15,6 +15,7 @@ import (
 
 func parseCodexJSONL(path string, reader io.Reader) (externalImportedSession, bool, error) {
 	session := externalImportedSession{Provider: agentproviderbiz.Codex, SourcePath: path}
+	currentTurnID := ""
 	err := readJSONLLines(reader, func(index int, raw map[string]any) {
 		timestamp := unixMSFromAny(raw["timestamp"])
 		switch stringField(raw, "type") {
@@ -33,6 +34,7 @@ func parseCodexJSONL(path string, reader io.Reader) (externalImportedSession, bo
 			// earlier ones so the imported session reflects the most recent
 			// configuration the user had in place.
 			payload := mapField(raw, "payload")
+			currentTurnID = firstNonEmptyString(stringField(payload, "turn_id"), stringField(payload, "turnId"))
 			if model := stringField(payload, "model"); model != "" {
 				session.Model = model
 			}
@@ -43,6 +45,7 @@ func parseCodexJSONL(path string, reader io.Reader) (externalImportedSession, bo
 			payload := mapField(raw, "payload")
 			message := codexMessageFromPayload(payload, index, timestamp)
 			if externalImportedMessageHasContent(message) {
+				message.TurnID = currentTurnID
 				session.Messages = append(session.Messages, message)
 			}
 		case "event_msg":
@@ -340,10 +343,31 @@ func normalizeExternalParsedSession(session externalImportedSession) (externalIm
 		}
 	}
 	session.Messages = messages
+	assignExternalImportedTurnIDs(session.Messages)
 	session.StartedAtUnixMS = firstExternalMessageUnixMS(messages)
 	session.UpdatedAtUnixMS = lastExternalMessageUnixMS(messages)
 	session.Title = resolveExternalSessionTitle(session.Provider, session.SummaryTitle, session.Title, messages)
 	return session, true, nil
+}
+
+// assignExternalImportedTurnIDs preserves provider turn ids when available and
+// otherwise groups each user prompt with the assistant/tool activity that
+// follows it. Import persistence hashes this stable source id into the local
+// turn id used by transcript projection.
+func assignExternalImportedTurnIDs(messages []externalImportedMessage) {
+	currentTurnID := ""
+	for index := range messages {
+		message := &messages[index]
+		if explicit := strings.TrimSpace(message.TurnID); explicit != "" {
+			currentTurnID = explicit
+			continue
+		}
+		if message.Role == "user" || currentTurnID == "" {
+			seed := firstNonEmptyString(message.RawID, message.MessageIDSeed, strconv.Itoa(index))
+			currentTurnID = "message:" + seed
+		}
+		message.TurnID = currentTurnID
+	}
 }
 
 // resolveExternalImportSessionCwd resolves a session's recorded working

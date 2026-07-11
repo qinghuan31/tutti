@@ -258,11 +258,13 @@ func cloneTurnLifecycle(value *WorkspaceAgentTurnLifecycle) *WorkspaceAgentTurnL
 		return nil
 	}
 	return &WorkspaceAgentTurnLifecycle{
-		ActiveTurnID:     cloneStringPointer(value.ActiveTurnID),
-		Phase:            strings.TrimSpace(value.Phase),
-		Settling:         value.Settling,
-		Outcome:          cloneStringPointer(value.Outcome),
-		CompletedCommand: cloneCompletedCommand(value.CompletedCommand),
+		ActiveTurnID:      cloneStringPointer(value.ActiveTurnID),
+		Phase:             strings.TrimSpace(value.Phase),
+		Settling:          value.Settling,
+		StartedAtUnixMS:   value.StartedAtUnixMS,
+		CompletedAtUnixMS: value.CompletedAtUnixMS,
+		Outcome:           cloneStringPointer(value.Outcome),
+		CompletedCommand:  cloneCompletedCommand(value.CompletedCommand),
 	}
 }
 
