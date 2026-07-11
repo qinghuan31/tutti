@@ -29,6 +29,7 @@ import {
   agentGuiWorkbenchProviderFromInstanceId,
   agentGuiWorkbenchProviderFromInstanceIdOrNull,
   createAgentGuiWorkbenchNodeStateSource,
+  migrateLegacyAgentGuiWorkbenchState,
   normalizeAgentGuiWorkbenchNodeState,
   normalizeAgentGuiWorkbenchState
 } from "./state.ts";
@@ -42,11 +43,8 @@ import type {
   AgentGuiWorkbenchProvider,
   AgentGuiWorkbenchState
 } from "./types.ts";
-import { normalizeAgentGUIProviderTargets } from "../providerTargets.ts";
-import type {
-  AgentGUIProviderTarget,
-  AgentGUIProviderTargetRef
-} from "../types.ts";
+import { normalizeAgentGUIAgents } from "../agents.ts";
+import type { AgentGUIAgent } from "../types.ts";
 
 export const agentGuiWorkbenchDefaultNodeFrame: WorkbenchFrame = {
   height: 560,
@@ -133,14 +131,14 @@ export interface AgentGuiWorkbenchRenderBodyHelpers {
 export interface CreateAgentGuiWorkbenchContributionInput {
   copy?: AgentGuiWorkbenchContributionCopyOverrides;
   defaultProvider?: AgentGuiWorkbenchProvider | null;
-  defaultProviderTargetId?: string | null;
+  defaultAgentTargetId?: string | null;
   dockIconUrls?: Partial<Record<AgentGuiWorkbenchProvider, string>>;
   dockSectionId?: string;
   frame?: WorkbenchFrame;
   id?: string;
   providerAvailability?: AgentGuiWorkbenchProviderAvailability;
-  providerTargets?: readonly AgentGUIProviderTarget[] | null;
-  providerTargetsLoading?: boolean;
+  agents?: readonly AgentGUIAgent[] | null;
+  agentsLoading?: boolean;
   renderBody(
     context: WorkbenchHostNodeBodyContext<
       AgentGuiWorkbenchState | null,
@@ -176,7 +174,7 @@ export interface CreateAgentGuiWorkbenchContributionInput {
   onOpenDetachedWindow?: (input: {
     agentSessionId?: string | null;
     agentTargetId?: string | null;
-    providerTargets?: readonly AgentGUIProviderTarget[];
+    agents?: readonly AgentGUIAgent[];
     provider: AgentGuiWorkbenchProvider;
     workspaceId: string;
   }) => void | Promise<void>;
@@ -195,16 +193,16 @@ export function createAgentGuiWorkbenchContribution(
   return {
     dockEntries: buildAgentGuiDockEntries({
       defaultProvider: input.defaultProvider,
-      defaultProviderTargetId: input.defaultProviderTargetId,
+      defaultAgentTargetId: input.defaultAgentTargetId,
       dockIconUrls: input.dockIconUrls,
       label: copy.nodeTitle,
       providerAvailability: input.providerAvailability,
-      providerTargetsLoading: input.providerTargetsLoading,
+      agentsLoading: input.agentsLoading,
       renderPreview: input.renderPreview,
       resolveDockPopupIdentity: input.resolveDockPopupIdentity,
       resolveDockPopupTitle: input.resolveDockPopupTitle,
       sectionId: input.dockSectionId ?? "agents",
-      targets: input.providerTargets,
+      agents: input.agents,
       unifiedDockIconUrl: input.unifiedDockIconUrl
     }),
     externalStateSource: nodeStateSource.externalStateSource,
@@ -257,10 +255,13 @@ export function createAgentGuiWorkbenchContribution(
             | Partial<AgentGuiWorkbenchNodeState>
             | null
             | undefined;
-          const workbenchState =
-            normalizeAgentGuiWorkbenchState(rawWorkbenchState);
+          const migratedWorkbenchState =
+            migrateLegacyAgentGuiWorkbenchState(rawWorkbenchState);
+          const workbenchState = normalizeAgentGuiWorkbenchState(
+            migratedWorkbenchState
+          );
           const nodeState = normalizeAgentGuiWorkbenchNodeState(
-            rawWorkbenchState,
+            migratedWorkbenchState as Partial<AgentGuiWorkbenchNodeState>,
             provider
           );
           const isConversationRailAutoCollapsed =
@@ -357,7 +358,7 @@ export function createAgentGuiWorkbenchContribution(
                   void input.onOpenDetachedWindow?.({
                     agentSessionId: workbenchState.lastActiveAgentSessionId,
                     agentTargetId: nodeState.agentTargetId,
-                    providerTargets: input.providerTargets ?? undefined,
+                    agents: input.agents ?? undefined,
                     provider,
                     workspaceId: input.workspaceId
                   });
@@ -431,7 +432,6 @@ export function createAgentGuiWorkbenchContribution(
         dockEntryId,
         instanceId: descriptorInstanceId,
         openInNewWindow,
-        provider,
         reuseDockEntryNode,
         reuseExistingSessionNode,
         targetAgentSessionId
@@ -448,13 +448,8 @@ export function createAgentGuiWorkbenchContribution(
           : null;
       const instanceId = existingInstanceId ?? descriptorInstanceId;
       const title = copy.nodeTitle;
-      const providerTarget = providerTargetLaunchPayloadFromRequest(
-        launchPayload,
-        provider
-      );
-      // Identity is the agentTargetId only — a providerTargetId is a deprecated
-      // ref and must never be laundered into the agentTargetId slot.
-      const launchAgentTargetId = providerTarget.agentTargetId;
+      const launchTarget = agentTargetLaunchPayloadFromRequest(launchPayload);
+      const launchAgentTargetId = launchTarget.agentTargetId;
       if (targetAgentSessionId) {
         const previousState = nodeStateSource.readNodeState({
           instanceId,
@@ -471,11 +466,7 @@ export function createAgentGuiWorkbenchContribution(
           },
           typeId: agentGuiWorkbenchTypeId
         });
-      } else if (
-        providerTarget.agentTargetId ||
-        providerTarget.providerTargetId ||
-        providerTarget.providerTargetRef
-      ) {
+      } else if (launchAgentTargetId) {
         const previousState = nodeStateSource.readNodeState({
           instanceId,
           typeId: agentGuiWorkbenchTypeId
@@ -485,9 +476,7 @@ export function createAgentGuiWorkbenchContribution(
           state: {
             ...normalizeAgentGuiWorkbenchState(previousState),
             lastActiveAgentSessionId: null,
-            ...(providerTarget.agentTargetId
-              ? { agentTargetId: providerTarget.agentTargetId }
-              : {})
+            agentTargetId: launchAgentTargetId
           },
           typeId: agentGuiWorkbenchTypeId
         });
@@ -539,16 +528,16 @@ export type AgentGuiWorkbenchProviderAvailability = Partial<
 
 export interface BuildAgentGuiDockEntriesInput {
   defaultProvider?: AgentGuiWorkbenchProvider | null;
-  defaultProviderTargetId?: string | null;
+  defaultAgentTargetId?: string | null;
   dockIconUrls?: Partial<Record<AgentGuiWorkbenchProvider, string>>;
   label?: string;
   providerAvailability?: AgentGuiWorkbenchProviderAvailability;
-  providerTargetsLoading?: boolean;
+  agentsLoading?: boolean;
   renderPreview?: CreateAgentGuiWorkbenchContributionInput["renderPreview"];
   resolveDockPopupIdentity?: CreateAgentGuiWorkbenchContributionInput["resolveDockPopupIdentity"];
   resolveDockPopupTitle?: CreateAgentGuiWorkbenchContributionInput["resolveDockPopupTitle"];
   sectionId?: string;
-  targets?: readonly AgentGUIProviderTarget[] | null;
+  agents?: readonly AgentGUIAgent[] | null;
   unifiedDockIconUrl?: string;
 }
 
@@ -588,24 +577,20 @@ export function resolveAgentGuiUnifiedDockLaunchPayload(
   input: Pick<
     BuildAgentGuiDockEntriesInput,
     | "defaultProvider"
-    | "defaultProviderTargetId"
+    | "defaultAgentTargetId"
     | "providerAvailability"
-    | "providerTargetsLoading"
-    | "targets"
+    | "agentsLoading"
+    | "agents"
   >
 ): {
   provider: AgentGuiWorkbenchProvider;
   agentTargetId?: string;
-  providerTargetId?: string;
-  providerTargetRef?: AgentGUIProviderTargetRef;
 } {
   const target = resolveUnifiedAgentGuiDockTarget(input);
   if (target) {
     return {
       provider: target.provider,
-      ...(target.agentTargetId ? { agentTargetId: target.agentTargetId } : {}),
-      providerTargetId: target.targetId,
-      providerTargetRef: target.ref
+      agentTargetId: target.agentTargetId
     };
   }
   return {
@@ -874,30 +859,27 @@ function resolveUnifiedAgentGuiDockTarget(
   input: Pick<
     BuildAgentGuiDockEntriesInput,
     | "defaultProvider"
-    | "defaultProviderTargetId"
+    | "defaultAgentTargetId"
     | "providerAvailability"
-    | "providerTargetsLoading"
-    | "targets"
+    | "agentsLoading"
+    | "agents"
   >
-): AgentGUIProviderTarget | null {
-  const targets = normalizeAgentGUIProviderTargets(input.targets, {
-    useStaticCatalog:
-      input.providerTargetsLoading !== true && input.targets == null
-  }).filter(
+): AgentGUIAgent | null {
+  const targets = normalizeAgentGUIAgents(input.agents).filter(
     (
       target
-    ): target is AgentGUIProviderTarget & {
+    ): target is AgentGUIAgent & {
       provider: (typeof agentGuiWorkbenchDefaultDockProviders)[number];
     } =>
       isAgentGuiWorkbenchProvider(target.provider) &&
       isUnifiedAgentGuiDockProvider(target.provider) &&
-      target.disabled !== true &&
+      target.availability.status === "ready" &&
       isAgentGuiProviderAvailable(target.provider, input.providerAvailability)
   );
-  const defaultProviderTargetId = input.defaultProviderTargetId?.trim();
-  if (defaultProviderTargetId) {
+  const defaultAgentTargetId = input.defaultAgentTargetId?.trim();
+  if (defaultAgentTargetId) {
     const explicitTarget = targets.find(
-      (target) => target.targetId === defaultProviderTargetId
+      (target) => target.agentTargetId === defaultAgentTargetId
     );
     if (explicitTarget) {
       return explicitTarget;
@@ -927,7 +909,7 @@ function resolveUnifiedAgentGuiDockTarget(
 function resolveUnifiedAgentGuiDockProvider(
   input: Pick<
     BuildAgentGuiDockEntriesInput,
-    "defaultProvider" | "providerAvailability" | "targets"
+    "defaultProvider" | "providerAvailability"
   >
 ): AgentGuiWorkbenchProvider {
   if (
@@ -960,13 +942,11 @@ function isUnifiedAgentGuiDockProvider(
 }
 
 function preferredAgentGuiDockTargetForProvider(
-  targets: readonly AgentGUIProviderTarget[],
+  targets: readonly AgentGUIAgent[],
   provider: AgentGuiWorkbenchProvider
-): AgentGUIProviderTarget | null {
-  const providerTargets = targets.filter(
-    (target) => target.provider === provider
-  );
-  return providerTargets[0] ?? null;
+): AgentGUIAgent | null {
+  const agents = targets.filter((target) => target.provider === provider);
+  return agents[0] ?? null;
 }
 
 function isAgentGuiProviderAvailable(
@@ -989,48 +969,19 @@ function isAgentGuiProviderAvailable(
   return value.status === "ready" || value.status === "available";
 }
 
-function providerTargetLaunchPayloadFromRequest(
-  payload: unknown,
-  expectedProvider: AgentGuiWorkbenchProvider
-): {
+function agentTargetLaunchPayloadFromRequest(payload: unknown): {
   agentTargetId: string | null;
-  providerTargetId: string | null;
-  providerTargetRef: AgentGUIProviderTargetRef | null;
 } {
   if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
     return {
-      agentTargetId: null,
-      providerTargetId: null,
-      providerTargetRef: null
+      agentTargetId: null
     };
   }
   const agentTargetId = (payload as { agentTargetId?: unknown }).agentTargetId;
-  const providerTargetId = (payload as { providerTargetId?: unknown })
-    .providerTargetId;
-  const providerTargetRef = (payload as { providerTargetRef?: unknown })
-    .providerTargetRef;
   return {
     agentTargetId:
       typeof agentTargetId === "string" && agentTargetId.trim()
         ? agentTargetId.trim()
-        : null,
-    providerTargetId:
-      typeof providerTargetId === "string" && providerTargetId.trim()
-        ? providerTargetId.trim()
-        : null,
-    providerTargetRef:
-      providerTargetRef &&
-      typeof providerTargetRef === "object" &&
-      !Array.isArray(providerTargetRef) &&
-      (providerTargetRef as { provider?: unknown }).provider ===
-        expectedProvider &&
-      typeof (providerTargetRef as { kind?: unknown }).kind === "string" &&
-      (providerTargetRef as { kind: string }).kind.trim()
-        ? {
-            ...(providerTargetRef as AgentGUIProviderTargetRef),
-            kind: (providerTargetRef as { kind: string }).kind.trim(),
-            provider: expectedProvider
-          }
         : null
   };
 }

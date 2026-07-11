@@ -5,6 +5,7 @@ import {
   areAgentGuiWorkbenchStatesEqual,
   createAgentGuiWorkbenchNodeStateSource,
   createDefaultAgentGuiWorkbenchNodeState,
+  migrateLegacyAgentGuiWorkbenchState,
   normalizeAgentGuiWorkbenchNodeState,
   normalizeAgentGuiWorkbenchState,
   projectAgentGuiWorkbenchState
@@ -62,13 +63,7 @@ describe("agent gui workbench state", () => {
         conversationRailWidthPx: 360.4,
         agentTargetId: "shared-agent:agent-1",
         lastActiveAgentSessionId: "session-1",
-        lastActiveConversationTitle: "A title",
-        providerTargetId: "legacy-target",
-        providerTargetRef: {
-          kind: "shared-agent",
-          provider: "hermes",
-          sharedAgentId: "agent-1"
-        }
+        lastActiveConversationTitle: "A title"
       })
     ).toEqual({
       agentTargetId: "shared-agent:agent-1",
@@ -80,48 +75,50 @@ describe("agent gui workbench state", () => {
   });
 
   it("migrates legacy provider target ids to agent target selection", () => {
-    const providerTargetRef = {
-      kind: "shared-agent",
-      provider: "codex" as const,
-      sharedAgentId: "agent-1"
-    };
+    expect(
+      normalizeAgentGuiWorkbenchState({
+        providerTargetId: "shared-agent:agent-1"
+      })
+    ).not.toHaveProperty("agentTargetId");
+    expect(
+      normalizeAgentGuiWorkbenchNodeState({
+        provider: "codex",
+        providerTargetId: "shared-agent:agent-1"
+      } as never).agentTargetId
+    ).toBeNull();
 
     expect(
-      projectAgentGuiWorkbenchState({
-        ...createDefaultAgentGuiWorkbenchNodeState("codex"),
-        providerTargetId: "shared-agent:agent-1",
-        providerTargetRef
-      })
+      normalizeAgentGuiWorkbenchState(
+        migrateLegacyAgentGuiWorkbenchState({
+          providerTargetId: "shared-agent:agent-1"
+        })
+      )
     ).toMatchObject({
       agentTargetId: "shared-agent:agent-1"
     });
 
     expect(
-      normalizeAgentGuiWorkbenchNodeState({
-        provider: "codex",
-        providerTargetId: "shared-agent:agent-1",
-        providerTargetRef
-      })
+      normalizeAgentGuiWorkbenchNodeState(
+        migrateLegacyAgentGuiWorkbenchState({
+          provider: "codex",
+          providerTargetId: "shared-agent:agent-1"
+        }) as never
+      )
     ).toMatchObject({
       agentTargetId: "shared-agent:agent-1",
-      provider: "codex",
-      providerTargetId: "shared-agent:agent-1",
-      providerTargetRef
+      provider: "codex"
     });
 
     expect(
-      normalizeAgentGuiWorkbenchNodeState({
-        provider: "codex",
-        providerTargetId: "shared-agent:agent-1",
-        providerTargetRef: {
-          ...providerTargetRef,
-          provider: "claude-code"
-        }
-      })
+      normalizeAgentGuiWorkbenchNodeState(
+        migrateLegacyAgentGuiWorkbenchState({
+          provider: "codex",
+          providerTargetId: "shared-agent:agent-1"
+        }) as never
+      )
     ).toMatchObject({
-      provider: "codex",
-      providerTargetId: "shared-agent:agent-1",
-      providerTargetRef: null
+      agentTargetId: "shared-agent:agent-1",
+      provider: "codex"
     });
   });
 
@@ -147,10 +144,12 @@ describe("agent gui workbench state", () => {
     ).toBe(true);
     expect(
       areAgentGuiWorkbenchStatesEqual(
-        normalizeAgentGuiWorkbenchState({
-          lastActiveAgentSessionId: "session-1",
-          providerTargetId: "legacy-target"
-        }),
+        normalizeAgentGuiWorkbenchState(
+          migrateLegacyAgentGuiWorkbenchState({
+            lastActiveAgentSessionId: "session-1",
+            providerTargetId: "legacy-target"
+          })
+        ),
         normalizeAgentGuiWorkbenchState({
           lastActiveAgentSessionId: "session-1",
           agentTargetId: "legacy-target"

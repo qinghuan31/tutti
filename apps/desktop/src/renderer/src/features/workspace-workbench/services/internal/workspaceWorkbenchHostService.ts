@@ -1,8 +1,5 @@
 import type { ReactNode } from "react";
-import type {
-  AgentGUIProvider,
-  AgentGUIProviderTarget
-} from "@tutti-os/agent-gui";
+import type { AgentGUIProvider, AgentGUIAgent } from "@tutti-os/agent-gui";
 import type { I18nRuntime } from "@tutti-os/ui-i18n-runtime";
 import {
   workspaceWorkbenchDesktopI18nKeys,
@@ -124,6 +121,7 @@ import {
   IAgentsService,
   type IAgentsService as AgentsService
 } from "../../../workspace-agent/services/agentsService.interface.ts";
+import { AgentGuiAgentsLoader } from "./agentGuiAgentsLoader.ts";
 const workspaceDockNativePreviewMaxWidthPx = 260;
 const workspaceDockNativePreviewMaxHeightPx = 170;
 const workspaceDockNativePreviewTimeoutMs = 2_500;
@@ -215,9 +213,7 @@ export class WorkspaceWorkbenchHostService implements IWorkspaceWorkbenchHostSer
   };
   private readonly windowCloseRequestTracker =
     createWindowCloseRequestTracker();
-  private agentGuiProviderTargetsPromise: Promise<
-    readonly AgentGUIProviderTarget[]
-  > | null = null;
+  private readonly agentGuiAgentsLoader: AgentGuiAgentsLoader;
 
   constructor(
     externalDependencies: WorkspaceWorkbenchHostExternalDependencies,
@@ -263,13 +259,16 @@ export class WorkspaceWorkbenchHostService implements IWorkspaceWorkbenchHostSer
       runtimeApi: externalDependencies.runtimeApi,
       wallpaperApi: externalDependencies.wallpaperApi
     };
+    this.agentGuiAgentsLoader = new AgentGuiAgentsLoader(() =>
+      this.dependencies.agentsService.load().then((snapshot) => snapshot.agents)
+    );
     this.dependencies.repository.subscribe(() => {
       this.notifyWallpaperListeners();
     });
     // Provider visibility changes (e.g. the Cursor feature gate) invalidate the
     // cached agent target list so the next load reflects the new gate.
     this.dependencies.subscribeAgentProviderVisibility?.(() => {
-      this.agentGuiProviderTargetsPromise = null;
+      this.agentGuiAgentsLoader.invalidate();
     });
     this.subscribeWorkbenchNodeLaunchRequests();
     void this.loadCustomWallpaper();
@@ -279,14 +278,8 @@ export class WorkspaceWorkbenchHostService implements IWorkspaceWorkbenchHostSer
     return this.dependencies.hostWindowApi.approveClose();
   }
 
-  loadAgentGuiProviderTargets(): Promise<readonly AgentGUIProviderTarget[]> {
-    if (!this.agentGuiProviderTargetsPromise) {
-      this.agentGuiProviderTargetsPromise = this.dependencies.agentsService
-        .load()
-        .then((snapshot) => snapshot.providerTargets)
-        .catch(() => []);
-    }
-    return this.agentGuiProviderTargetsPromise;
+  loadAgentGuiAgents(): Promise<readonly AgentGUIAgent[]> {
+    return this.agentGuiAgentsLoader.load();
   }
 
   onWindowCloseRequest(
@@ -756,12 +749,12 @@ export class WorkspaceWorkbenchHostService implements IWorkspaceWorkbenchHostSer
     dockIconStyle: DesktopDockIconStyle;
     themeAppearance: DesktopThemeAppearance;
     defaultAgentProvider?: string | null;
-    defaultProviderTargetId?: string | null;
+    defaultAgentTargetId?: string | null;
     onCapabilitySettingsRequest?: (
       target: WorkspaceWorkbenchCapabilitySettingsTarget
     ) => void;
-    providerTargets?: readonly AgentGUIProviderTarget[];
-    providerTargetsLoading?: boolean;
+    agents?: readonly AgentGUIAgent[];
+    agentsLoading?: boolean;
     comingSoonAgentProviders?: readonly AgentGUIProvider[];
     renderFilesNodeBody: (
       context: WorkspaceWorkbenchBodyRendererContext
@@ -774,11 +767,11 @@ export class WorkspaceWorkbenchHostService implements IWorkspaceWorkbenchHostSer
       cached.appI18n === input.appI18n &&
       cached.appLocale === input.appLocale &&
       cached.defaultAgentProvider === input.defaultAgentProvider &&
-      cached.defaultProviderTargetId === input.defaultProviderTargetId &&
+      cached.defaultAgentTargetId === input.defaultAgentTargetId &&
       cached.dockIconStyle === input.dockIconStyle &&
       cached.i18n === input.i18n &&
-      cached.providerTargets === input.providerTargets &&
-      cached.providerTargetsLoading === input.providerTargetsLoading &&
+      cached.agents === input.agents &&
+      cached.agentsLoading === input.agentsLoading &&
       cached.comingSoonAgentProviders === input.comingSoonAgentProviders &&
       cached.themeAppearance === input.themeAppearance
     ) {
@@ -824,7 +817,7 @@ export class WorkspaceWorkbenchHostService implements IWorkspaceWorkbenchHostSer
           confirmCloseGuard: (request) => confirmCloseGuardRef.current(request),
           dockPreviewCache,
           defaultAgentProvider: input.defaultAgentProvider,
-          defaultProviderTargetId: input.defaultProviderTargetId,
+          defaultAgentTargetId: input.defaultAgentTargetId,
           dockIcons: {
             agentUnified: dockIcons.agentUnified,
             agents: dockIcons.agents,
@@ -840,8 +833,8 @@ export class WorkspaceWorkbenchHostService implements IWorkspaceWorkbenchHostSer
           onCapabilitySettingsRequest: (target) => {
             capabilitySettingsRequestRef.current?.(target);
           },
-          providerTargets: input.providerTargets,
-          providerTargetsLoading: input.providerTargetsLoading,
+          agents: input.agents ?? [],
+          agentsLoading: input.agentsLoading,
           comingSoonAgentProviders: input.comingSoonAgentProviders,
           agentProviderStatusService:
             this.dependencies.agentProviderStatusService,
@@ -882,7 +875,7 @@ export class WorkspaceWorkbenchHostService implements IWorkspaceWorkbenchHostSer
         agentProviderStatusService:
           this.dependencies.agentProviderStatusService,
         i18n: input.i18n,
-        providerTargets: input.providerTargets,
+        agents: input.agents,
         isAgentProviderHidden: this.dependencies.isAgentProviderHidden,
         subscribeAgentProviderVisibility:
           this.dependencies.subscribeAgentProviderVisibility,
@@ -923,12 +916,12 @@ export class WorkspaceWorkbenchHostService implements IWorkspaceWorkbenchHostSer
       capabilitySettingsRequestRef,
       confirmCloseGuardRef,
       defaultAgentProvider: input.defaultAgentProvider,
-      defaultProviderTargetId: input.defaultProviderTargetId,
+      defaultAgentTargetId: input.defaultAgentTargetId,
       dockIconStyle: input.dockIconStyle,
       dockIcons,
       i18n: input.i18n,
-      providerTargets: input.providerTargets,
-      providerTargetsLoading: input.providerTargetsLoading,
+      agents: input.agents,
+      agentsLoading: input.agentsLoading,
       comingSoonAgentProviders: input.comingSoonAgentProviders,
       renderFilesNodeBodyRef,
       themeAppearance: input.themeAppearance
@@ -1329,15 +1322,15 @@ interface CachedWorkspaceWorkbenchHostInput {
     ) => Promise<boolean> | boolean;
   };
   defaultAgentProvider?: string | null;
-  defaultProviderTargetId?: string | null;
+  defaultAgentTargetId?: string | null;
   dockIconStyle: DesktopDockIconStyle;
   dockIcons: WorkspaceDockIconSet;
   dynamicAppI18n?: I18nRuntime<string>;
   dynamicDockSignature?: string;
   dynamicHostInput?: WorkspaceWorkbenchHostInput;
   i18n: WorkspaceWorkbenchDesktopI18nRuntime;
-  providerTargets?: readonly AgentGUIProviderTarget[];
-  providerTargetsLoading?: boolean;
+  agents?: readonly AgentGUIAgent[];
+  agentsLoading?: boolean;
   comingSoonAgentProviders?: readonly AgentGUIProvider[];
   renderFilesNodeBodyRef: {
     current: (context: WorkspaceWorkbenchBodyRendererContext) => ReactNode;

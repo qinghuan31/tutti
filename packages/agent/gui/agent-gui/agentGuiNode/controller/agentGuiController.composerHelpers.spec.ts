@@ -248,8 +248,6 @@ describe("target-keyed composer defaults", () => {
   const baseNodeData: AgentGUINodeData = {
     provider: "codex",
     agentTargetId: "local:codex",
-    providerTargetId: null,
-    providerTargetRef: null,
     lastActiveAgentSessionId: null,
     composerOverrides: null,
     composerOverridesByAgentTargetId: {

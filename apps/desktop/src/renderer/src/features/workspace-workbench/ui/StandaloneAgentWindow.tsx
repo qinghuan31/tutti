@@ -10,8 +10,8 @@ import {
 import { AgentGuiWorkbenchHeader } from "@tutti-os/agent-gui/workbench";
 import { useWorkspaceSettingsPanelRequest } from "@tutti-os/agent-gui/workspace-settings-panel";
 import {
-  normalizeAgentGUIProviderTargets,
-  type AgentGUIProviderTarget
+  normalizeAgentGUIAgents,
+  type AgentGUIAgent
 } from "@tutti-os/agent-gui";
 import type {
   WorkspaceAgentProvider,
@@ -113,10 +113,7 @@ export function StandaloneAgentWindow({
   );
   const launchAgentSessionId = params.get("agentSessionId")?.trim() || null;
   const launchAgentTargetId = params.get("agentTargetId")?.trim() || null;
-  const bootstrapProviderTargets = useMemo(
-    () => readBootstrapProviderTargets(params),
-    [params]
-  );
+  const bootstrapAgents = useMemo(() => readBootstrapAgents(params), [params]);
   const providerStatusBootstrapSnapshot = useMemo(
     () => readProviderStatusBootstrapSnapshot(params),
     [params]
@@ -141,9 +138,9 @@ export function StandaloneAgentWindow({
   const [isWindowMaximized, setIsWindowMaximized] = useState(
     readWindowMaximizedState
   );
-  const [providerTargets, setProviderTargets] = useState<
-    Awaited<ReturnType<typeof agentsService.load>>["providerTargets"] | null
-  >(() => bootstrapProviderTargets);
+  const [agents, setAgents] = useState<
+    Awaited<ReturnType<typeof agentsService.load>>["agents"] | null
+  >(() => bootstrapAgents);
   const [nodeState, setNodeState] = useState<DesktopAgentGUIWorkbenchState>(
     () => ({
       agentTargetId: launchAgentTargetId,
@@ -200,12 +197,12 @@ export function StandaloneAgentWindow({
   const activeAgentTargetId = nodeState.agentTargetId?.trim() || null;
   const headerProvider = resolveDesktopAgentGUIProviderForAgentTarget(
     activeAgentTargetId,
-    providerTargets ?? undefined,
+    agents ?? undefined,
     readStandaloneNodeProvider(nodeState, launchProvider)
   );
   const headerAgentTarget =
-    activeAgentTargetId && providerTargets
-      ? (providerTargets.find(
+    activeAgentTargetId && agents
+      ? (agents.find(
           (target) => target.agentTargetId === activeAgentTargetId
         ) ?? null)
       : null;
@@ -298,13 +295,21 @@ export function StandaloneAgentWindow({
 
   useEffect(() => {
     let disposed = false;
-    void agentsService.load().then((snapshot) => {
-      if (!disposed) {
-        setProviderTargets(snapshot.providerTargets);
-      }
-    });
+    const loadAgents = () => {
+      void agentsService
+        .load()
+        .then((snapshot) => {
+          if (!disposed) {
+            setAgents(snapshot.agents);
+          }
+        })
+        .catch(() => undefined);
+    };
+    loadAgents();
+    window.addEventListener("focus", loadAgents);
     return () => {
       disposed = true;
+      window.removeEventListener("focus", loadAgents);
     };
   }, [agentsService]);
   useEffect(() => {
@@ -437,15 +442,15 @@ export function StandaloneAgentWindow({
             void hostWindowApi.openAgentWindow({
               agentSessionId,
               providerStatusSnapshot: agentProviderStatusService.getSnapshot(),
-              providerTargets: providerTargets ?? undefined,
+              agents: agents ?? undefined,
               provider,
               workspaceId
             });
           }}
           onStateChange={setNodeState}
           providerStatusBootstrapSnapshot={providerStatusBootstrapSnapshot}
-          providerTargets={providerTargets ?? []}
-          providerTargetsLoading={providerTargets === null}
+          agents={agents ?? []}
+          agentsLoading={agents === null}
           contextMentionProviders={agentGuiHostInput.contextMentionProviders}
           runtimeApi={desktopApi.runtime}
           trackAgentProviderChatReady={
@@ -600,22 +605,19 @@ function StandaloneAgentWindowPanelHosts({
   );
 }
 
-function readBootstrapProviderTargets(
+function readBootstrapAgents(
   params: URLSearchParams
-): readonly AgentGUIProviderTarget[] | null {
-  const encodedProviderTargets = params.get("agentProviderTargets");
-  if (!encodedProviderTargets) {
+): readonly AgentGUIAgent[] | null {
+  const encodedAgents = params.get("agents");
+  if (!encodedAgents) {
     return null;
   }
   try {
-    const parsed = JSON.parse(encodedProviderTargets);
+    const parsed = JSON.parse(encodedAgents);
     if (!Array.isArray(parsed)) {
       return null;
     }
-    return normalizeAgentGUIProviderTargets(
-      parsed as readonly AgentGUIProviderTarget[],
-      { useStaticCatalog: false }
-    );
+    return normalizeAgentGUIAgents(parsed as readonly AgentGUIAgent[]);
   } catch {
     return null;
   }

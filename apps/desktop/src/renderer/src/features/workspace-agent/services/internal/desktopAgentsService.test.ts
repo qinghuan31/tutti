@@ -3,10 +3,10 @@ import test from "node:test";
 import type { AgentTarget } from "@tutti-os/client-tuttid-ts";
 import {
   mapAgentTargetsToPresentations,
-  mapAgentTargetPresentationsToProviderTargets
+  mapAgentTargetPresentationsToAgents
 } from "./desktopAgentsService.ts";
 
-test("desktop agents service maps agent targets into renderer presentations and AgentGUI provider targets", () => {
+test("desktop agents service maps agent targets into renderer presentations and AgentGUI agents", () => {
   const presentations = mapAgentTargetsToPresentations(
     [
       createAgentTarget({
@@ -51,37 +51,41 @@ test("desktop agents service maps agent targets into renderer presentations and 
     ]
   );
 
-  assert.deepEqual(
-    mapAgentTargetPresentationsToProviderTargets(presentations),
+  assert.deepEqual(mapAgentTargetPresentationsToAgents(presentations), [
+    {
+      agentTargetId: "local:codex",
+      availability: { status: "ready" },
+      iconUrl: "tutti-asset://agent/codex.png",
+      name: "Codex",
+      provider: "codex"
+    },
+    {
+      agentTargetId: "local:claude-code",
+      availability: { status: "coming_soon" },
+      iconUrl: "tutti-asset://agent/claude-code.png",
+      name: "Claude Code",
+      provider: "claude-code"
+    }
+  ]);
+});
+
+test("desktop agents service resolves target iconKey before provider artwork", () => {
+  const [presentation] = mapAgentTargetsToPresentations(
     [
       {
-        agentTargetId: "local:codex",
-        disabled: false,
-        iconUrl: "tutti-asset://agent/codex.png",
-        label: "Codex",
-        provider: "codex",
-        ref: {
-          kind: "local_cli",
+        ...createAgentTarget({
+          id: "shared:alice",
+          name: "Alice's Codex",
           provider: "codex",
-          targetId: "local:codex"
-        },
-        targetId: "local:codex"
-      },
-      {
-        agentTargetId: "local:claude-code",
-        disabled: true,
-        iconUrl: "tutti-asset://agent/claude-code.png",
-        label: "Claude Code",
-        provider: "claude-code",
-        ref: {
-          kind: "local_cli",
-          provider: "claude-code",
-          targetId: "local:claude-code"
-        },
-        targetId: "local:claude-code"
+          sortOrder: 10
+        }),
+        iconKey: "alice-custom"
       }
-    ]
+    ],
+    { resolveAgentIconUrl: (key) => `tutti-asset://agent/${key}.png` }
   );
+
+  assert.equal(presentation?.iconUrl, "tutti-asset://agent/alice-custom.png");
 });
 
 function createAgentTarget(input: {

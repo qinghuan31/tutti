@@ -29,10 +29,7 @@ import {
   type AgentActivityRuntimeSessionSectionsResult
 } from "../../agentActivityRuntime";
 import { agentColorfulUrl } from "../../managedAgentIconAssets";
-import {
-  MANAGED_AGENT_ICON_URLS,
-  MANAGED_AGENT_PROVIDER_RAIL_ICON_URLS
-} from "../../shared/managedAgentIcons";
+import { MANAGED_AGENT_PROVIDER_RAIL_ICON_URLS } from "../../shared/managedAgentIcons";
 
 const conversationFlowMock = vi.hoisted(() => ({
   calls: [] as Array<{ conversation: unknown; labels: unknown }>
@@ -735,7 +732,7 @@ describe("AgentGUINodeView layout persistence", () => {
 
     expect(actions.selectConversationFilterTarget).toHaveBeenCalledWith({
       provider: "claude-code",
-      providerTargetId: claudeTarget.targetId
+      agentTargetId: claudeTarget.targetId
     });
     expect(actions.updateConversationFilter).not.toHaveBeenCalled();
     expect(actions.selectHomeComposerAgentTarget).not.toHaveBeenCalled();
@@ -841,21 +838,21 @@ describe("AgentGUINodeView layout persistence", () => {
     expect(actions.selectConversationFilterTarget).toHaveBeenCalledTimes(3);
     expect(actions.selectConversationFilterTarget).toHaveBeenNthCalledWith(1, {
       provider: "nexight",
-      providerTargetId: tuttiTarget.targetId
+      agentTargetId: tuttiTarget.targetId
     });
     expect(actions.selectConversationFilterTarget).toHaveBeenNthCalledWith(2, {
       provider: "hermes",
-      providerTargetId: hermesTarget.targetId
+      agentTargetId: hermesTarget.targetId
     });
     expect(actions.selectConversationFilterTarget).toHaveBeenNthCalledWith(3, {
       provider: "openclaw",
-      providerTargetId: openclawTarget.targetId
+      agentTargetId: openclawTarget.targetId
     });
     expect(actions.updateConversationFilter).not.toHaveBeenCalled();
     expect(actions.selectHomeComposerAgentTarget).not.toHaveBeenCalled();
   });
 
-  it("hides the legacy disabled Tutti rail target when Tutti Agent is available", () => {
+  it("renders every host-provided agent even when agents share product branding", () => {
     renderAgentGUINodeView({
       viewModel: {
         ...createViewModel(),
@@ -870,12 +867,10 @@ describe("AgentGUINodeView layout persistence", () => {
     });
 
     expect(screen.getAllByRole("tab", { name: "Tutti Agent" })).toHaveLength(1);
-    expect(
-      screen.queryByRole("tab", { name: "Tutti" })
-    ).not.toBeInTheDocument();
+    expect(screen.getByRole("tab", { name: "Tutti" })).toBeInTheDocument();
   });
 
-  it("orders provider rail tiles as Codex, Claude Code, Cursor, Tutti, OpenCode, Hermes, OpenClaw without visible provider labels", () => {
+  it("preserves host agent order without synthesizing catalog entries", () => {
     renderAgentGUINodeView({
       viewModel: {
         ...createViewModel(),
@@ -903,16 +898,7 @@ describe("AgentGUINodeView layout persistence", () => {
             tab.getAttribute("aria-label") ??
             tab.textContent?.replace(/\s+/gu, " ").trim()
         )
-    ).toEqual([
-      "All",
-      "Codex",
-      "Claude Code",
-      "Cursor",
-      "Tutti",
-      "Open Code",
-      "Hermes",
-      "OpenClaw"
-    ]);
+    ).toEqual(["All", "Tutti", "Claude Code", "Open Code", "Hermes", "Codex"]);
     expect(screen.getByRole("tab", { name: "All" })).toHaveTextContent("All");
     expect(screen.getByRole("tab", { name: "Codex" })).toHaveTextContent("");
     expect(screen.getByRole("tab", { name: "Claude Code" })).toHaveTextContent(
@@ -923,20 +909,12 @@ describe("AgentGUINodeView layout persistence", () => {
     );
     expect(screen.getByRole("tab", { name: "Tutti" })).toHaveTextContent("");
     expect(screen.getByRole("tab", { name: "Hermes" })).toHaveTextContent("");
-    expect(screen.getByRole("tab", { name: "OpenClaw" })).toHaveTextContent("");
-
     expect(
       screen
         .getByRole("tab", { name: "Claude Code" })
         .querySelector("img")
         ?.getAttribute("src")
     ).toBe(MANAGED_AGENT_PROVIDER_RAIL_ICON_URLS["claude-code"]);
-    expect(
-      screen
-        .getByRole("tab", { name: "Cursor" })
-        .querySelector("img")
-        ?.getAttribute("src")
-    ).toBe(MANAGED_AGENT_PROVIDER_RAIL_ICON_URLS.cursor);
     expect(
       screen
         .getByRole("tab", { name: "Tutti" })
@@ -965,9 +943,7 @@ describe("AgentGUINodeView layout persistence", () => {
       "All",
       "Codex",
       "Claude Code",
-      "Cursor",
-      "Hermes",
-      "OpenClaw"
+      "Cursor"
     ]);
 
     const codexTile = screen.getByRole("tab", { name: "Codex" });
@@ -1005,17 +981,13 @@ describe("AgentGUINodeView layout persistence", () => {
       "All",
       "Cursor",
       "Codex",
-      "Claude Code",
-      "Hermes",
-      "OpenClaw"
+      "Claude Code"
     ]);
     expect(
       globalThis.localStorage.getItem(
         agentGUIProviderRailOrderStorageKey("room-1")
       )
-    ).toBe(
-      '["local:cursor","local:codex","local:claude-code","local:hermes","local:openclaw"]'
-    );
+    ).toBe('["local:cursor","local:codex","local:claude-code"]');
 
     rerender(
       buildAgentGUINodeViewElement({
@@ -1031,14 +1003,12 @@ describe("AgentGUINodeView layout persistence", () => {
         "All",
         "Cursor",
         "Codex",
-        "Claude Code",
-        "Hermes",
-        "OpenClaw"
+        "Claude Code"
       ]);
     });
   });
 
-  it("uses Cursor colorful artwork for the provider rail even when the target has a session icon", () => {
+  it("uses the host-provided agent icon in the rail", () => {
     renderAgentGUINodeView({
       viewModel: {
         ...createViewModel(),
@@ -1056,11 +1026,18 @@ describe("AgentGUINodeView layout persistence", () => {
         .getByRole("tab", { name: "Cursor" })
         .querySelector("img")
         ?.getAttribute("src")
-    ).toBe(MANAGED_AGENT_PROVIDER_RAIL_ICON_URLS.cursor);
+    ).toBe("app://old-cursor-target-icon.png");
   });
 
   it("uses the configured All provider rail icon when provided", () => {
     renderAgentGUINodeView({
+      viewModel: {
+        ...createViewModel(),
+        providerTargets: [
+          createLocalAgentGUIProviderTarget("codex"),
+          createLocalAgentGUIProviderTarget("claude-code")
+        ]
+      },
       providerRailAllPresentation: {
         iconUrl: "app://workspace-agent/all.png"
       }
@@ -1116,7 +1093,7 @@ describe("AgentGUINodeView layout persistence", () => {
 
     expect(actions.selectConversationFilterTarget).toHaveBeenCalledWith({
       provider: "codex",
-      providerTargetId: codexTarget.targetId
+      agentTargetId: codexTarget.targetId
     });
     expect(actions.updateConversationFilter).not.toHaveBeenCalled();
     expect(actions.selectHomeComposerAgentTarget).not.toHaveBeenCalled();
@@ -1297,7 +1274,7 @@ describe("AgentGUINodeView layout persistence", () => {
     );
     expect(initialIcon).not.toBeNull();
     expect(initialIcon?.getAttribute("src")).toBe(
-      MANAGED_AGENT_ICON_URLS.codex
+      MANAGED_AGENT_PROVIDER_RAIL_ICON_URLS.codex
     );
 
     rerender(
@@ -1319,7 +1296,7 @@ describe("AgentGUINodeView layout persistence", () => {
     expect(nextIcon).not.toBeNull();
     expect(nextIcon).not.toBe(initialIcon);
     expect(nextIcon?.getAttribute("src")).toBe(
-      MANAGED_AGENT_ICON_URLS["claude-code"]
+      MANAGED_AGENT_PROVIDER_RAIL_ICON_URLS["claude-code"]
     );
   });
 
@@ -1376,7 +1353,7 @@ describe("AgentGUINodeView layout persistence", () => {
 
     expect(actions.selectHomeComposerAgentTarget).toHaveBeenCalledWith({
       provider: "hermes",
-      providerTargetId: disabledHermesTarget.targetId
+      agentTargetId: disabledHermesTarget.targetId
     });
   });
 
@@ -1409,7 +1386,7 @@ describe("AgentGUINodeView layout persistence", () => {
 
     expect(actions.selectHomeComposerAgentTarget).toHaveBeenCalledWith({
       provider: "claude-code",
-      providerTargetId: claudeTarget.targetId
+      agentTargetId: claudeTarget.targetId
     });
     await waitFor(() => {
       expect(composerMock.calls.at(-1)?.composerFocusRequestSequence).toBe(1);
@@ -1457,13 +1434,13 @@ describe("AgentGUINodeView layout persistence", () => {
     });
 
     expect(screen.getByRole("tablist")).toHaveAttribute("aria-busy", "true");
-    expect(screen.getByRole("tab", { name: "All" })).toBeInTheDocument();
+    expect(screen.queryByRole("tab", { name: "All" })).toBeNull();
     expect(screen.queryByRole("tab", { name: "Codex" })).toBeNull();
     expect(screen.queryByRole("tab", { name: "Claude Code" })).toBeNull();
-    expect(screen.getAllByRole("tab")).toHaveLength(4);
+    expect(screen.getAllByRole("tab")).toHaveLength(3);
   });
 
-  it("synthesizes local provider rail tiles when provider targets load empty", () => {
+  it("keeps the agent rail empty when the host agent list is empty", () => {
     renderAgentGUINodeView({
       viewModel: {
         ...createViewModel(),
@@ -1473,26 +1450,16 @@ describe("AgentGUINodeView layout persistence", () => {
     });
 
     expect(screen.getByRole("tablist")).toHaveAttribute("aria-busy", "false");
-    expect(screen.getByRole("tab", { name: "All" })).toBeInTheDocument();
-    expect(screen.getByRole("tab", { name: "Codex" })).toBeInTheDocument();
-    expect(
-      screen.getByRole("tab", { name: "Claude Code" })
-    ).toBeInTheDocument();
-    expect(screen.getByRole("tab", { name: "Cursor" })).toBeInTheDocument();
-    expect(screen.getByRole("tab", { name: "Hermes" })).toBeInTheDocument();
-    expect(screen.getByRole("tab", { name: "OpenClaw" })).toBeInTheDocument();
-    expect(screen.getByRole("tab", { name: "Hermes" })).not.toBeDisabled();
-    expect(screen.getByRole("tab", { name: "OpenClaw" })).not.toBeDisabled();
-    expect(
-      screen.getAllByRole("tab").map((tab) => tab.getAttribute("aria-label"))
-    ).toEqual(["All", "Codex", "Claude Code", "Cursor", "Hermes", "OpenClaw"]);
+    expect(screen.queryAllByRole("tab")).toHaveLength(0);
+    expect(screen.getByTestId("agent-gui-agents-empty")).toHaveTextContent(
+      "agentsEmpty"
+    );
   });
 
   it("renders exactly the provided targets in exact rail mode", () => {
     renderAgentGUINodeView({
       viewModel: {
         ...createViewModel(),
-        providerRailMode: "exact",
         providerTargets: [
           {
             targetId: "shared-agent:alice-codex",
@@ -1527,11 +1494,56 @@ describe("AgentGUINodeView layout persistence", () => {
     expect(screen.queryByRole("tab", { name: "Hermes" })).toBeNull();
   });
 
+  it("selects the exact agentTargetId when two agents use the same provider", () => {
+    const actions = createActions();
+    renderAgentGUINodeView({
+      actions,
+      viewModel: {
+        ...createViewModel(),
+        providerTargets: [
+          {
+            targetId: "shared-agent:alice-codex",
+            agentTargetId: "shared-agent:alice-codex",
+            provider: "codex",
+            ref: { kind: "agent-directory", provider: "codex" },
+            label: "Alice's Codex",
+            iconUrl: "app://agents/alice.png"
+          },
+          {
+            targetId: "shared-agent:bob-codex",
+            agentTargetId: "shared-agent:bob-codex",
+            provider: "codex",
+            ref: { kind: "agent-directory", provider: "codex" },
+            label: "Bob's Codex",
+            iconUrl: "app://agents/bob.png"
+          }
+        ],
+        providerTargetsLoading: false
+      }
+    });
+
+    const bobAgent = screen.getByRole("tab", { name: "Bob's Codex" });
+    expect(bobAgent).toHaveAttribute(
+      "data-agent-target-id",
+      "shared-agent:bob-codex"
+    );
+    expect(bobAgent.querySelector("img")).toHaveAttribute(
+      "src",
+      "app://agents/bob.png"
+    );
+
+    fireEvent.click(bobAgent);
+
+    expect(actions.selectConversationFilterTarget).toHaveBeenCalledWith({
+      provider: "codex",
+      agentTargetId: "shared-agent:bob-codex"
+    });
+  });
+
   it("renders provider target badges on rail tiles", () => {
     const { container } = renderAgentGUINodeView({
       viewModel: {
         ...createViewModel(),
-        providerRailMode: "exact",
         providerTargets: [
           {
             targetId: "shared-agent:alice-codex",
@@ -1571,7 +1583,6 @@ describe("AgentGUINodeView layout persistence", () => {
     renderAgentGUINodeView({
       viewModel: {
         ...createViewModel(),
-        providerRailMode: "exact",
         // claude-code first, then codex — the built-in provider order would flip
         // these; exact mode must keep the caller's order.
         providerTargets: [
@@ -1609,7 +1620,6 @@ describe("AgentGUINodeView layout persistence", () => {
     renderAgentGUINodeView({
       viewModel: {
         ...createViewModel(),
-        providerRailMode: "exact",
         providerTargets: [],
         providerTargetsLoading: false
       },
@@ -1680,7 +1690,7 @@ describe("AgentGUINodeView layout persistence", () => {
 
     expect(actions.selectConversationFilterTarget).toHaveBeenCalledWith({
       provider: "hermes",
-      providerTargetId: "shared-agent:hermes-1"
+      agentTargetId: "shared-agent:hermes-1"
     });
     expect(actions.updateConversationFilter).not.toHaveBeenCalled();
     expect(actions.selectHomeComposerAgentTarget).not.toHaveBeenCalled();
@@ -1738,7 +1748,7 @@ describe("AgentGUINodeView layout persistence", () => {
     expect(trigger).toHaveTextContent("Codex");
   });
 
-  it("uses Cursor colorful artwork in the empty hero provider select", async () => {
+  it("uses the host-provided Cursor icon in the empty hero agent select", async () => {
     const providerTargets = [
       createLocalAgentGUIProviderTarget("codex"),
       {
@@ -1777,10 +1787,10 @@ describe("AgentGUINodeView layout persistence", () => {
       (await screen.findByRole("option", { name: "Cursor" })).querySelector(
         "img"
       )
-    ).toHaveAttribute("src", MANAGED_AGENT_PROVIDER_RAIL_ICON_URLS.cursor);
+    ).toHaveAttribute("src", "app://old-cursor-target-icon.png");
   });
 
-  it("uses Cursor colorful artwork in the empty hero icon", () => {
+  it("uses the host-provided Cursor icon in the empty hero icon", () => {
     const providerTargets = [
       createLocalAgentGUIProviderTarget("codex"),
       {
@@ -1811,7 +1821,7 @@ describe("AgentGUINodeView layout persistence", () => {
 
     expect(
       document.querySelector(".agent-gui-node__empty-hero-icon-effect")
-    ).toHaveAttribute("src", MANAGED_AGENT_PROVIDER_RAIL_ICON_URLS.cursor);
+    ).toHaveAttribute("src", "app://old-cursor-target-icon.png");
   });
 
   it("renders the composer from the selected provider target", () => {
@@ -4972,6 +4982,27 @@ describe("AgentGUINodeView provider readiness gate", () => {
     expect(onAction).toHaveBeenCalledWith("codex", "install");
   });
 
+  it("preserves a disabled agent's install gate instead of coercing it to coming soon", () => {
+    const disabledTarget = {
+      ...createLocalAgentGUIProviderTarget("codex"),
+      disabled: true
+    };
+    renderAgentGUINodeView({
+      viewModel: createViewModel({
+        providerReadinessGate: { status: "not_installed" },
+        selectedProviderTarget: disabledTarget,
+        providerTargets: [disabledTarget]
+      })
+    });
+
+    expect(
+      screen.getByTestId("agent-gui-provider-readiness-gate-description")
+    ).toHaveTextContent("providerGateInstallDescription");
+    expect(
+      screen.getByTestId("agent-gui-provider-readiness-gate-action")
+    ).toHaveTextContent("providerGateInstallAction");
+  });
+
   it("renders a login gate for auth-required providers", () => {
     const onAction = vi.fn();
     renderAgentGUINodeView({
@@ -5590,8 +5621,6 @@ function createViewModel(
     providerTargets: [createLocalAgentGUIProviderTarget("codex")],
     handoffProviderTargets: [createLocalAgentGUIProviderTarget("codex")],
     providerTargetsLoading: false,
-    providerRailMode: "catalog",
-    comingSoonProviders: [],
     conversationFilter: { kind: "all" },
     conversations: [],
     userProjects: [],
@@ -5760,6 +5789,7 @@ function createConversationDetailWithUserMessage(
 
 function createLabels(): AgentGUIViewLabels {
   return {
+    agentsEmpty: "agentsEmpty",
     initialPlaceholder: "initialPlaceholder",
     followupPlaceholder: "followupPlaceholder",
     installRequiredPlaceholder: "installRequiredPlaceholder",

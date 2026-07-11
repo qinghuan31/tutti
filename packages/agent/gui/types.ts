@@ -45,10 +45,6 @@ export interface AgentNodeData {
 export interface AgentGUINodeData {
   provider: AgentGUIProvider;
   agentTargetId?: string | null;
-  /** @deprecated Use agentTargetId for selection restore. */
-  providerTargetId?: string | null;
-  /** @deprecated Provider target refs are resolved from the current target list. */
-  providerTargetRef?: AgentGUIProviderTargetRef | null;
   lastActiveAgentSessionId: string | null;
   lastActiveConversationTitle?: string | null;
   conversationCount?: number | null;
@@ -75,6 +71,48 @@ export type AgentGUIProvider = Extract<
   | "openclaw"
   | "opencode"
 >;
+
+export type AgentGUIAgentAvailabilityStatus =
+  | "ready"
+  | "checking"
+  | "coming_soon"
+  | "not_installed"
+  | "auth_required"
+  | "unavailable";
+
+export type AgentGUIAgentAvailabilityAction = "install" | "login" | "refresh";
+
+export interface AgentGUIAgentAvailability {
+  status: AgentGUIAgentAvailabilityStatus;
+  reason?: string | null;
+  pendingAction?: AgentGUIAgentAvailabilityAction | null;
+}
+
+export interface AgentGUIAgentOwner {
+  name?: string | null;
+  avatarUrl?: string | null;
+}
+
+/**
+ * Host-projected entry from the workspace `/agents` directory.
+ *
+ * `agentTargetId` is the only UI and launch identity. `provider` remains
+ * execution metadata for provider-native composer/runtime policy and must not
+ * be used to group, deduplicate, name, or select entries.
+ */
+export interface AgentGUIAgent {
+  agentTargetId: string;
+  name: string;
+  iconUrl: string;
+  description?: string | null;
+  owner?: AgentGUIAgentOwner | null;
+  availability: AgentGUIAgentAvailability;
+  provider: AgentGUIProvider;
+}
+
+export interface AgentGUIAllAgentsPresentation {
+  iconUrl?: string | null;
+}
 
 export interface AgentGUIProviderTargetRef {
   kind: string;

@@ -165,20 +165,20 @@ show the generic Agent title while the conversation rail is expanded. When the
 conversation rail is collapsed, that title area switches to the active session
 identity by showing the session's agent icon and conversation title.
 
-AgentGuiNode may expose provider target selection in multiple UI-local entry
-points, including the conversation rail target grid and the provider select next
-to the composer add/reference control.
-The composer provider select is a launch/default selection surface: it must
+AgentGuiNode may expose agent selection in multiple UI-local entry points,
+including the conversation rail agent grid and the agent select next to the
+composer add/reference control.
+The composer agent select is a launch/default selection surface: it must
 flow through the controller's home-composer agent-target selection action,
-resolve an `AgentGUIProviderTarget`, return the node to the home composer when
+resolve an `AgentGUIAgent` by `agentTargetId`, return the node to the home composer when
 switching targets, and preserve the real provider identity used by runtime
-create/send commands. Once a session is active, the composer provider select is
+create/send commands. Once a session is active, the composer agent select is
 display-only and must not switch the running session. The conversation rail
-target grid is a navigation surface: clicking Codex or Claude Code scopes the
-visible rail list and reopens the first already-loaded conversation matching
-that target. Only when no matching conversation is available should the target
-click enter that target's empty home composer. Empty-home rail target clicks may
-also sync the home composer launch target.
+agent grid is a navigation surface: clicking an agent scopes the visible rail
+list by its exact `agentTargetId` and reopens the first already-loaded matching
+conversation. Only when no matching conversation is available should the click
+enter that agent's empty home composer. Empty-home rail clicks may also sync the
+home composer launch target.
 In an active session, the composer footer may replace the display-only provider
 select with a handoff affordance. Handoff is a workbench launch, not an
 in-session provider switch: AgentGUI serializes the active session as a single
@@ -196,10 +196,9 @@ Manager task execution and task breakdown, must request a new AgentGUI window
 and must not reuse an existing dock-entry node. Reusing the dock entry can focus
 or restore the previous active conversation before the new draft composer is
 visible.
-The handoff menu is a launch surface, so its options must come from the
-host-provided, enabled provider targets. It must not use the provider rail's
-static catalog fallback or coming-soon placeholders, which are display chrome
-rather than proof that the user has configured a runnable agent.
+The handoff menu is a launch surface, so its options must come from ready entries
+in the host-provided `agents` array. It must not synthesize a provider catalog
+or infer runnable agents from provider metadata.
 When provider selection happens from the empty-home composer or title control
 while the rail is already scoped to a provider target in multi-provider scope,
 it must update the rail conversation filter to the matching agent target so the
@@ -209,23 +208,19 @@ the aggregate rail selection intact.
 Provider selection from either the empty-home title control or the composer
 footer should also request focus for the composer input, matching provider rail
 target clicks so users can continue typing immediately after switching agents.
-The empty composer chrome and settings defaults must follow the selected
-provider target immediately, including the empty-state artwork, model options,
+The empty composer chrome and settings defaults must follow the selected agent
+immediately, including host-provided name/artwork, model options,
 and permission modes. Generic home composer overrides are single-target draft
-state and must be cleared when the selected provider target changes; provider-
+state and must be cleared when the selected agent changes; provider-
 or target-scoped defaults may still provide the next settings.
-Host feature switches that disable a provider for new conversations should keep
-the provider target present with `disabled: true` when another surface still
-needs to show the provider in a disabled state. Filter the target out only for
-surfaces that should completely hide it. All empty-home new-conversation
-affordances, including rail toolbar and section actions, must read the selected
-provider target's disabled state so coming-soon targets remain inspectable but
-cannot start sessions. Hosts that need product-specific temporarily-unavailable
-presentation for the selected disabled target may use AgentGUI's
-`renderProviderUnavailableState`. Hosts that need product-specific presentation
-for host-projected readiness gates such as coming-soon, install, login,
-checking, or unavailable should use `renderProviderReadinessGateState` instead
-of covering the built-in pane outside AgentGUI.
+Host feature switches that disable an agent for new conversations should keep
+the entry present with a non-ready `availability.status` when another surface
+still needs to show it. Filter the entry out only for surfaces that should
+completely hide it. All empty-home new-conversation affordances must read the
+selected agent's availability so coming-soon entries remain inspectable but
+cannot start sessions. Hosts may use `renderAgentUnavailableState` and
+`renderAgentReadinessState` for product-specific presentation, with actions
+routed through `onAgentAvailabilityAction`.
 When an empty composer has an `agentTargetId`, model, permission, reasoning,
 and speed options are target-scoped. Do not fall back to provider-level options
 for that target; a missing target-scoped option snapshot should remain a
@@ -240,10 +235,11 @@ Provider rail containers and tiles are interactive workbench chrome: they must
 explicitly release host/window drag regions with `nodrag` and
 `-webkit-app-region: no-drag`, otherwise clicks near the window edge can be
 captured as drag gestures before AgentGUI sees the provider filter action.
-Provider rail target ordering is also UI-local chrome state. Drag sorting may
+Agent rail ordering is also UI-local chrome state. Drag sorting may
 persist a workspace-scoped order in browser-local storage, but must not write
 that preference into controller state, session state, or durable AgentGUI node
-data. The aggregate `All` target stays fixed above provider-specific targets.
+data. The aggregate `All` entry exists only for multiple agents and stays fixed
+above them.
 Provider-scoped rail footer affordances, such as usage limits and environment
 setup, follow the rail's active provider filter target in multi-provider scope;
 when the rail filter is `All`, they should stay hidden because there is no
@@ -258,13 +254,12 @@ valtio store: pass it as a direct function prop and give it only existing
 neutral context such as `currentUserId` and `activeConversation`. Product
 concepts such as sharing, ownership, availability, quota, or authorization live
 entirely inside the React node supplied by the host.
-Unified empty-home provider readiness is a host-projected, provider-scoped gate,
+Unified empty-home readiness is a host-projected, agent-scoped gate,
 not a durable session rule. Desktop may subscribe to its
-`agentProviderStatusService` and pass a narrow readiness map plus install,
-login, or refresh callbacks into AgentGUI. AgentGUI resolves the gate from the selected
-`AgentGUIProviderTarget.provider` first, from `agentTargetId` through the
-current provider target list second, and from legacy node/session `provider`
-only when no target can be resolved. A non-ready provider replaces only the
+`agentProviderStatusService`, merge runtime status into `/agents` availability,
+and pass install, login, or refresh callbacks into AgentGUI. AgentGUI resolves
+the selected entry by exact `agentTargetId`; provider may supply runtime status
+metadata but never selection fallback. A non-ready agent replaces only the
 empty-home composer with a friendly gate; active/history conversations and
 existing-session composer behavior remain outside this gate.
 When the desktop status list returns an ambiguous startup result for a provider
@@ -317,8 +312,8 @@ context, but durable conversations, session activation, login, provider
 readiness, and file/project data must still flow through the shared desktop
 AgentGUI host input and activity runtime.
 Opening an existing session is session-authoritative. If the launch payload has
-no `agentTargetId` or provider target id, workbench node state must clear any
-previous target constraint instead of inheriting it from the reused node. When a
+no `agentTargetId`, workbench node state must clear any previous target
+constraint instead of inheriting it from the reused node. When a
 stale target resolves to a different provider than the launched session node,
 desktop activation must drop that target before persisting `lastActiveAgentSessionId`;
 otherwise the node can open the requested session while the conversation rail
@@ -1470,20 +1465,28 @@ activity data source:
 - account or user-project lookup
 - local file picking, local file reading, and batch export helpers
 
-### Provider Targets
+### Agent Directory
 
-AgentGUI distinguishes launch authority, real provider identity, and legacy
-provider-target state recovery. `agentTargetId` is required authority for new
-session launches, workbench target selection, and AgentGUI node state. The
-daemon resolves that id against `agent_targets` and derives the execution
-provider and runtime `providerTargetRef` from the trusted target `launchRef`.
+AgentGUI distinguishes directory identity, launch authority, and runtime
+provider metadata. The host must project its `/agents` snapshot into the public
+`agents: AgentGUIAgent[]` prop. That array is the complete ordered UI directory:
+AgentGUI must not synthesize provider-catalog entries, reorder by provider, or
+replace a loaded-empty array with local defaults.
+
+`agentTargetId` is the sole AgentGUI identity for selection, conversation
+filtering, composer-option caches, workbench node state, and new-session
+launches. The daemon resolves it against `agent_targets` and derives the
+execution provider and runtime target reference from trusted target state.
 Target-backed create requests may omit `provider`; if a request supplies both
 `agentTargetId` and `provider`, the daemon rejects mismatches. Client-supplied
-`providerTargetRef` must not override the daemon-derived target ref when
-`agentTargetId` is present. `provider` continues to mean the concrete provider
-family (`codex`, `claude-code`, `nexight`, and so on) and remains the key for
-display labels/icons, probes, provider status, historical conversation filters,
-telemetry, and provider execution policy.
+target-reference data must not override the daemon-derived launch data when
+`agentTargetId` is present.
+
+`provider` remains runtime metadata for provider-native composer behavior,
+probes, capability checks, telemetry, and execution policy. It is not a UI
+identity. AgentGUI must not group, deduplicate, name, icon, select, or cache
+directory entries by provider. Multiple agents may share one provider and must
+remain independently selectable by `agentTargetId`.
 
 `agentTargetId` is a foreign key into the local target directory, not an opaque
 identity supplied by a session. Session ingestion preserves an id only when it
@@ -1501,55 +1504,60 @@ and read-only history. A legacy provider-only session resolves through the
 registered `local:<provider>` target. This is still a directory lookup, not a
 provider fallback.
 
-`providerTargets` lets a host expose multiple targets under that same provider.
-AgentGUI owns only target display and passthrough:
+Target-bearing launch and prefill requests follow the same foreign-key rule:
+wait while the directory is loading, then require an exact `agentTargetId`
+match. A missing explicit id must not fall back to a sibling that happens to use
+the same provider or to the first directory entry.
 
-- show `target.label` for new-session surfaces
-- render optional `target.badge` as target presentation metadata on provider
-  rail tiles; product ownership, sharing, avatar, or availability semantics
-  stay in the host-projected target data
-- keep provider behavior keyed by `target.provider`
-- persist `agentTargetId` in new workbench node state when the host target has
-  one
-- read legacy `providerTargetId` / `providerTargetRef` from old workbench node
-  state to recover the selected target
-- pass `agentTargetId` through `AgentActivityRuntime.activateSession`
-- pass `providerTargetRef` only as legacy opaque state for selection recovery;
-  it must not authorize or replace `agentTargetId` for new launches
-- use the resolved target id as the opaque activity-core composer `targetKey`;
-  never derive a cache key from provider or provider-target state
+Directory loading has three distinct outcomes: unknown/loading, successfully
+loaded (including `[]`), and failed. Hosts may cache successful empty results,
+but a failed request must clear its cache so a later load can retry; it must not
+be converted into an authoritative empty directory. Window/bootstrap transport
+must serialize an explicit `agents: []` so detached windows preserve this
+distinction instead of reverting to loading.
+
+The public directory entry owns its presentation and availability:
+
+- render `agents[].name` and `agents[].iconUrl` as the primary identity
+- render `owner.avatarUrl` separately as an ownership badge
+- preserve host array order; normalization keeps the first valid occurrence of
+  each `agentTargetId`
+- use `availability.status` for ready, checking, coming-soon, install, login,
+  and unavailable presentation
+- show no aggregate `All` entry when exactly one agent exists
+- show `All` plus the host-ordered rail and home carousel when multiple agents
+  exist
+- persist and pass only `agentTargetId` for target selection and launch
+- use `agentTargetId` as the opaque activity-core composer `targetKey`; never
+  derive a cache key from provider
 
 New-session surfaces, including the composer, batch runner, App Center, and
 issue-manager launchers, must fail or disable launch when no `agentTargetId` is
 available. They must not synthesize `local:<provider>` from a provider-only
 selection as a compatibility fallback.
 
-`providerTargetId` and `providerTargetRef` are transition fields, not daemon
-authority. AgentGUI must not interpret `ref.kind`, mint invocation-control
-tokens, resolve invocation plans, contact command gateways, or handle raw
-credentials. Host/trusted code must re-authenticate the current user and
-workspace and resolve any invocation plan before launching. When
-`agentTargetId` is present, the daemon maps the stored launch ref to the runtime
-target ref shape, currently `{ kind: launchRef.type, provider, targetId }`, and
-runtime session reuse must match that ref as part of the launch key. A target
-may identify shared, local, remote, or other host-owned launch mechanisms, but
-those meanings stay outside AgentGUI.
+The removed public `providerTargets`, `providerRailMode`, provider-target
+renderers, and `defaultProviderTargetId` fields have no runtime compatibility
+alias. Workbench hydration may read legacy `providerTargetId` once and project
+it to `agentTargetId`, but canonical state and every subsequent write must omit
+legacy provider-target fields. Keep this read in a dedicated persisted-state
+migration; current-state normalizers must reject the removed alias.
+`providerTargetRef` remains daemon/runtime
+implementation data and must not cross back into AgentGUI's public UI contract.
 
-When `providerTargets` is omitted, package-level AgentGUI hosts synthesize local
-targets from the static provider catalog for picker/display compatibility.
+AgentGUI must not mint invocation-control tokens, resolve invocation plans,
+contact command gateways, or handle raw credentials. Host/trusted code must
+re-authenticate the current user and workspace and resolve launch authority.
+An agent may represent shared, local, remote, or other host-owned launch
+mechanisms, but those meanings stay outside AgentGUI.
+
 Desktop workbench feeds the renderer `AgentsService` `/agents` snapshot into
-AgentGUI so Codex and Claude Code can use service-backed agent targets. An empty
-snapshot still resolves to omitted `providerTargets`, letting AgentGUI preserve
-the static catalog for picker/display compatibility instead of hiding the rail.
-Future providers in the static provider catalog, such as Hermes and OpenClaw,
-must render as selectable disabled/coming-soon targets: provider rail clicks
-may select their empty composer state, but launch/send controls stay disabled
-until their real `/agents` targets are supported. The historical `nexight`
-"Tutti" placeholder must not be synthesized into the default AgentGUI rail; use
-the first-party `tutti-agent` provider path for Tutti Agent entry points.
-OpenCode is not a future placeholder: it is a real local provider target backed
-by `local:opencode`, but desktop hides it behind the `enableOpenCodeAgent`
-developer preference until the preview is enabled.
+AgentGUI. Product feature gates may filter that array before rendering; a
+loaded empty result remains empty. Availability states that should stay visible
+must remain in the array with the matching non-ready status instead of becoming
+synthetic provider placeholders. OpenCode remains gated by the
+`enableOpenCodeAgent` developer preference, and Tutti Agent remains gated by
+`tuttiAgentSwitchEnabled` before the directory reaches AgentGUI.
 Provider slash commands must come from the runtime command snapshot or an
 explicit adapter-owned command seed. Do not add AgentGUI-only slash-command
 fallbacks to make providers look aligned. For OpenCode, `/compact` and
@@ -1567,12 +1575,6 @@ snapshot. This mode controls command-list synthesis, not the semantics of
 advertised commands: when the owner explicitly advertises a built-in name such
 as `/plan`, `/fast`, or `/status`, AgentGUI may still handle it with the same
 local composer behavior used for local sessions.
-Static catalog targets do not change the legacy activation contract: AgentGUI
-does not persist or send their `providerTargetRef`. Synthesized local targets
-may expose stable `local:<provider>` values as `agentTargetId` for supported
-default and coming-soon placeholders, so the conversation rail can scope to an
-empty provider-specific list without falling back to All.
-
 Desktop workbench may apply product entry gates before passing target data into
 AgentGUI. The Tutti Agent switch (`tuttiAgentSwitchEnabled`) is one such gate:
 when off, desktop removes `local:tutti-agent` from new-session targets, unified

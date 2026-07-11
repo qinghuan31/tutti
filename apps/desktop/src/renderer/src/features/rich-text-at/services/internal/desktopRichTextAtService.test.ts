@@ -15,7 +15,7 @@ import {
 import { DesktopRichTextAtService } from "./desktopRichTextAtService.ts";
 import {
   mapAgentTargetsToPresentations,
-  mapAgentTargetPresentationsToProviderTargets
+  mapAgentTargetPresentationsToAgents
 } from "../../../workspace-agent/services/internal/desktopAgentsService.ts";
 import type {
   AgentsSnapshot,
@@ -948,7 +948,7 @@ function createAgentsService(
   const snapshot: AgentsSnapshot = {
     agentTargets,
     capturedAtUnixMs: 1780272000000,
-    providerTargets: mapAgentTargetPresentationsToProviderTargets(agentTargets)
+    agents: mapAgentTargetPresentationsToAgents(agentTargets)
   };
   return {
     async load() {

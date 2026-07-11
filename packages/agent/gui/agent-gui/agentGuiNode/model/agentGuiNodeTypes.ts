@@ -1,8 +1,6 @@
 import type { AgentActivityUsage } from "@tutti-os/agent-activity-core";
 import type {
   AgentGUINodeData,
-  AgentGUIProvider,
-  AgentGUIProviderRailMode,
   AgentGUIProviderReadinessGate,
   AgentGUIProviderTarget
 } from "../../../types";
@@ -267,10 +265,6 @@ export interface AgentGUINodeViewModel {
   providerTargets: readonly AgentGUIProviderTarget[];
   handoffProviderTargets: readonly AgentGUIProviderTarget[];
   providerTargetsLoading: boolean;
-  /** How the rail composes its list — "exact" renders targets verbatim with no static injection. */
-  providerRailMode: AgentGUIProviderRailMode;
-  /** Providers gated by the host (feature-gated) — rail renders coming-soon placeholders. */
-  comingSoonProviders: readonly AgentGUIProvider[];
   conversationFilter: AgentGUIConversationFilter;
   conversations: AgentGUIConversationSummary[];
   userProjects: AgentGUIConversationUserProject[];

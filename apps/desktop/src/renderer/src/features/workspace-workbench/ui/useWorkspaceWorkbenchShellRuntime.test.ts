@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import type { AgentGUIProviderTarget } from "@tutti-os/agent-gui";
-import { filterWorkspaceAgentGuiProviderTargets } from "./workspaceAgentGuiProviderTargetFilter.ts";
+import type { AgentGUIAgent } from "@tutti-os/agent-gui";
+import { filterWorkspaceAgentGuiAgents } from "./workspaceAgentGuiAgentFilter.ts";
 
 const targets = [
   createTarget("codex"),
@@ -9,23 +9,19 @@ const targets = [
   createTarget("claude-code")
 ];
 
-test("filterWorkspaceAgentGuiProviderTargets disables Tutti Agent new-entry targets when the switch is off", () => {
-  const filtered = filterWorkspaceAgentGuiProviderTargets(targets, {
+test("filterWorkspaceAgentGuiAgents removes Tutti Agent new-entry targets when the switch is off", () => {
+  const filtered = filterWorkspaceAgentGuiAgents(targets, {
     tuttiAgentSwitchEnabled: false
   });
 
   assert.deepEqual(
     filtered.map((target) => target.provider),
-    ["codex", "tutti-agent", "claude-code"]
-  );
-  assert.equal(
-    filtered.find((target) => target.provider === "tutti-agent")?.disabled,
-    true
+    ["codex", "claude-code"]
   );
 });
 
-test("filterWorkspaceAgentGuiProviderTargets keeps Tutti Agent new-entry targets when the switch is on", () => {
-  const filtered = filterWorkspaceAgentGuiProviderTargets(targets, {
+test("filterWorkspaceAgentGuiAgents keeps Tutti Agent new-entry targets when the switch is on", () => {
+  const filtered = filterWorkspaceAgentGuiAgents(targets, {
     tuttiAgentSwitchEnabled: true
   });
 
@@ -33,23 +29,14 @@ test("filterWorkspaceAgentGuiProviderTargets keeps Tutti Agent new-entry targets
     filtered.map((target) => target.provider),
     ["codex", "tutti-agent", "claude-code"]
   );
-  assert.equal(
-    filtered.find((target) => target.provider === "tutti-agent")?.disabled,
-    undefined
-  );
 });
 
-function createTarget(
-  provider: AgentGUIProviderTarget["provider"]
-): AgentGUIProviderTarget {
+function createTarget(provider: AgentGUIAgent["provider"]): AgentGUIAgent {
   return {
-    targetId: `local:${provider}`,
     agentTargetId: `local:${provider}`,
-    provider,
-    label: provider,
-    ref: {
-      kind: "local",
-      provider
-    }
+    availability: { status: "ready" },
+    iconUrl: `app://icons/${provider}.png`,
+    name: provider,
+    provider
   };
 }

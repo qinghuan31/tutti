@@ -7,7 +7,6 @@ import {
   isAgentGuiWorkbenchProvider,
   normalizeAgentGuiWorkbenchProvider
 } from "./providerCatalog.ts";
-import { agentGUIProviderTargetRefsEqual } from "../providerTargets.ts";
 import type {
   AgentGuiWorkbenchComposerOverrides,
   AgentGuiWorkbenchComposerOverridesByAgentTargetId,
@@ -17,7 +16,6 @@ import type {
   AgentGuiWorkbenchState,
   AgentGuiWorkbenchWorkspaceState
 } from "./types.ts";
-import type { AgentGUIProviderTargetRef } from "../types.ts";
 
 type AgentGuiWorkbenchStateLookupRequest = Pick<
   WorkbenchHostExternalStateLookupInput,
@@ -38,9 +36,7 @@ export function createDefaultAgentGuiWorkbenchNodeState(
     conversationRailWidthPx: null,
     lastActiveAgentSessionId: null,
     lastActiveConversationTitle: null,
-    provider,
-    providerTargetId: null,
-    providerTargetRef: null
+    provider
   };
 }
 
@@ -50,9 +46,7 @@ export function normalizeAgentGuiWorkbenchState(
   if (!isRecord(state)) {
     return createDefaultAgentGuiWorkbenchState();
   }
-  const agentTargetId =
-    normalizeOptionalNonEmptyString(state.agentTargetId) ??
-    normalizeOptionalNonEmptyString(state.providerTargetId);
+  const agentTargetId = normalizeOptionalNonEmptyString(state.agentTargetId);
   return {
     ...(agentTargetId ? { agentTargetId } : {}),
     conversationRailCollapsed: state.conversationRailCollapsed === true,
@@ -69,12 +63,30 @@ export function normalizeAgentGuiWorkbenchState(
   };
 }
 
+/**
+ * One-time persisted-state reader for snapshots written before agentTargetId
+ * became the canonical AgentGUI selection key. Current-state normalizers stay
+ * strict so live callers cannot continue using the removed alias.
+ */
+export function migrateLegacyAgentGuiWorkbenchState(state: unknown): unknown {
+  if (
+    !isRecord(state) ||
+    normalizeOptionalNonEmptyString(state.agentTargetId)
+  ) {
+    return state;
+  }
+  const legacyAgentTargetId = normalizeOptionalNonEmptyString(
+    state.providerTargetId
+  );
+  return legacyAgentTargetId
+    ? { ...state, agentTargetId: legacyAgentTargetId }
+    : state;
+}
+
 export function projectAgentGuiWorkbenchState(
   state: AgentGuiWorkbenchNodeState
 ): AgentGuiWorkbenchState {
-  const agentTargetId =
-    normalizeOptionalNonEmptyString(state.agentTargetId) ??
-    normalizeOptionalNonEmptyString(state.providerTargetId);
+  const agentTargetId = normalizeOptionalNonEmptyString(state.agentTargetId);
   return {
     ...(agentTargetId ? { agentTargetId } : {}),
     conversationRailCollapsed: state.conversationRailCollapsed === true,
@@ -112,9 +124,7 @@ export function normalizeAgentGuiWorkbenchNodeState(
   );
   return {
     ...createDefaultAgentGuiWorkbenchNodeState(provider),
-    agentTargetId:
-      normalizeOptionalNonEmptyString(state?.agentTargetId) ??
-      normalizeOptionalNonEmptyString(state?.providerTargetId),
+    agentTargetId: normalizeOptionalNonEmptyString(state?.agentTargetId),
     composerOverrides: normalizeAgentGuiWorkbenchComposerOverrides(
       state?.composerOverrides
     ),
@@ -141,12 +151,7 @@ export function normalizeAgentGuiWorkbenchNodeState(
       typeof state?.lastActiveConversationTitle === "string"
         ? state.lastActiveConversationTitle
         : null,
-    provider,
-    providerTargetId: normalizeOptionalNonEmptyString(state?.providerTargetId),
-    providerTargetRef: normalizeAgentGuiProviderTargetRef(
-      state?.providerTargetRef,
-      provider
-    )
+    provider
   };
 }
 
@@ -171,12 +176,7 @@ export function areAgentGuiWorkbenchNodeStatesEqual(
     left.lastActiveAgentSessionId === right.lastActiveAgentSessionId &&
     left.lastActiveConversationTitle === right.lastActiveConversationTitle &&
     left.provider === right.provider &&
-    (left.agentTargetId ?? null) === (right.agentTargetId ?? null) &&
-    (left.providerTargetId ?? null) === (right.providerTargetId ?? null) &&
-    agentGUIProviderTargetRefsEqual(
-      left.providerTargetRef,
-      right.providerTargetRef
-    )
+    (left.agentTargetId ?? null) === (right.agentTargetId ?? null)
   );
 }
 
@@ -361,28 +361,6 @@ function createDefaultAgentGuiWorkbenchState(): AgentGuiWorkbenchState {
 
 function normalizeOptionalNonEmptyString(value: unknown): string | null {
   return typeof value === "string" && value.trim() ? value.trim() : null;
-}
-
-function normalizeAgentGuiProviderTargetRef(
-  value: unknown,
-  expectedProvider?: AgentGuiWorkbenchProvider
-): AgentGUIProviderTargetRef | null {
-  if (!isRecord(value)) {
-    return null;
-  }
-  const kind = normalizeOptionalNonEmptyString(value.kind);
-  const provider = value.provider;
-  if (!kind || !isAgentGuiWorkbenchProvider(provider)) {
-    return null;
-  }
-  if (expectedProvider && provider !== expectedProvider) {
-    return null;
-  }
-  return {
-    ...value,
-    kind,
-    provider
-  };
 }
 
 function normalizeAgentGuiWorkbenchComposerOverrides(

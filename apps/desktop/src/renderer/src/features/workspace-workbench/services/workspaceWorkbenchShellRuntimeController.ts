@@ -1,8 +1,5 @@
 import type { ReactNode } from "react";
-import type {
-  AgentGUIProvider,
-  AgentGUIProviderTarget
-} from "@tutti-os/agent-gui";
+import type { AgentGUIProvider, AgentGUIAgent } from "@tutti-os/agent-gui";
 import type {
   WorkbenchHostCloseDialogRequest,
   WorkbenchHostHandle,
@@ -131,14 +128,14 @@ export interface WorkspaceWorkbenchShellHostInput {
   appCenterRevision?: number;
   createHostInput: IWorkspaceWorkbenchHostService["createHostInput"];
   defaultAgentProvider?: string | null;
-  defaultProviderTargetId?: string | null;
+  defaultAgentTargetId?: string | null;
   dockIconStyle: DesktopDockIconStyle;
   i18n: WorkspaceWorkbenchDesktopI18nRuntime;
   onCapabilitySettingsRequest?: (
     target: WorkspaceWorkbenchCapabilitySettingsTarget
   ) => void;
-  providerTargets?: readonly AgentGUIProviderTarget[];
-  providerTargetsLoading?: boolean;
+  agents?: readonly AgentGUIAgent[];
+  agentsLoading?: boolean;
   comingSoonAgentProviders?: readonly AgentGUIProvider[];
   renderFilesNodeBody: (
     context: WorkspaceWorkbenchBodyRendererContext
@@ -287,12 +284,12 @@ function createHostInput(input: {
     appCenterRevision: input.input.appCenterRevision,
     confirmCloseGuard: input.closeDialog.requestConfirmation,
     defaultAgentProvider: input.input.defaultAgentProvider,
-    defaultProviderTargetId: input.input.defaultProviderTargetId,
+    defaultAgentTargetId: input.input.defaultAgentTargetId,
     dockIconStyle: input.input.dockIconStyle,
     i18n: input.input.i18n,
     onCapabilitySettingsRequest: input.input.onCapabilitySettingsRequest,
-    providerTargets: input.input.providerTargets,
-    providerTargetsLoading: input.input.providerTargetsLoading,
+    agents: input.input.agents,
+    agentsLoading: input.input.agentsLoading,
     renderFilesNodeBody: input.input.renderFilesNodeBody,
     themeAppearance: input.input.themeAppearance,
     workspaceId: input.input.workspaceId

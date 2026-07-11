@@ -181,12 +181,7 @@ describe("AgentGUINode memoization", () => {
     mockViewModel = createViewModel();
     const props = createProps({
       state: createState({
-        providerTargetId: "shared-agent:codex-a",
-        providerTargetRef: {
-          kind: "shared-agent",
-          provider: "codex",
-          sharedAgentId: "codex-a"
-        }
+        agentTargetId: "shared-agent:codex-a"
       })
     });
     const { rerender } = render(<AgentGUINode {...props} />);
@@ -198,12 +193,7 @@ describe("AgentGUINode memoization", () => {
       <AgentGUINode
         {...props}
         state={createState({
-          providerTargetId: "shared-agent:codex-b",
-          providerTargetRef: {
-            kind: "shared-agent",
-            provider: "codex",
-            sharedAgentId: "codex-b"
-          }
+          agentTargetId: "shared-agent:codex-b"
         })}
       />
     );

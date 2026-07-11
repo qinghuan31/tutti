@@ -1,9 +1,8 @@
 import type { ReactNode } from "react";
 import type {
   AgentGUIProvider,
-  AgentGUIProviderRailMode,
-  AgentGUIProviderRailEmptyRenderer,
-  AgentGUIProviderTarget
+  AgentGUIAgentsEmptyRenderer,
+  AgentGUIAgent
 } from "@tutti-os/agent-gui";
 import type {
   TuttidClient,
@@ -55,7 +54,7 @@ export interface DesktopWorkbenchContributionContext {
   ) => Promise<boolean> | boolean;
   dockPreviewCache: WorkbenchDockPreviewCache;
   defaultAgentProvider?: string | null;
-  defaultProviderTargetId?: string | null;
+  defaultAgentTargetId?: string | null;
   dockIcons: {
     agentUnified: string;
     agents: Record<string, string>;
@@ -71,12 +70,9 @@ export interface DesktopWorkbenchContributionContext {
   onCapabilitySettingsRequest?: (
     target: WorkspaceWorkbenchCapabilitySettingsTarget
   ) => void;
-  providerTargets?: readonly AgentGUIProviderTarget[];
-  providerTargetsLoading?: boolean;
-  /** "exact" renders only the provided targets (no static catalog). Defaults to "catalog". */
-  providerRailMode?: AgentGUIProviderRailMode;
-  /** Host-owned empty state for the provider rail in "exact" mode. */
-  renderProviderRailEmpty?: AgentGUIProviderRailEmptyRenderer;
+  agents: readonly AgentGUIAgent[];
+  agentsLoading?: boolean;
+  renderAgentsEmpty?: AgentGUIAgentsEmptyRenderer;
   comingSoonAgentProviders?: readonly AgentGUIProvider[];
   agentProviderStatusService: AgentProviderStatusService;
   workspaceFileManagerService: IWorkspaceFileManagerService;

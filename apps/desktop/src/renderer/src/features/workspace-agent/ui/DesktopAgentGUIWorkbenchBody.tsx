@@ -14,12 +14,11 @@ import { AgentGUI } from "@tutti-os/agent-gui";
 import type {
   AgentActivityRuntime,
   AgentQueuedPromptRuntime,
+  AgentGUIAgent,
+  AgentGUIAgentAvailabilityAction,
+  AgentGUIAllAgentsPresentation,
+  AgentGUIAgentsEmptyRenderer,
   AgentGUIProvider,
-  AgentGUIProviderRailAllPresentation,
-  AgentGUIProviderRailMode,
-  AgentGUIProviderRailEmptyRenderer,
-  AgentGUIProviderReadinessGateAction,
-  AgentGUIProviderTarget,
   AgentGUIProps,
   AgentHostInputApi
 } from "@tutti-os/agent-gui";
@@ -117,15 +116,12 @@ interface DesktopAgentGUIWorkbenchBodyProps {
   onStateChange: (state: DesktopAgentGUIWorkbenchState) => void;
   previewMode?: boolean;
   providerStatusBootstrapSnapshot?: AgentProviderStatusSnapshot | null;
-  providerTargets?: readonly AgentGUIProviderTarget[];
-  providerTargetsLoading?: boolean;
-  providerRailAllPresentation?: AgentGUIProviderRailAllPresentation | null;
-  /** "exact" renders only the provided targets (no static catalog). Defaults to "catalog". */
-  providerRailMode?: AgentGUIProviderRailMode;
-  /** Host-owned empty state for the provider rail in "exact" mode. */
-  renderProviderRailEmpty?: AgentGUIProviderRailEmptyRenderer;
+  agents: readonly AgentGUIAgent[];
+  agentsLoading?: boolean;
+  allAgentsPresentation?: AgentGUIAllAgentsPresentation | null;
+  renderAgentsEmpty?: AgentGUIAgentsEmptyRenderer;
   comingSoonAgentProviders?: readonly AgentGUIProvider[];
-  defaultProviderTargetId?: string | null;
+  defaultAgentTargetId?: string | null;
   contextMentionProviders: NonNullable<
     AgentGUIProps["contextMentionProviders"]
   >;
@@ -204,14 +200,13 @@ function areDesktopAgentGUIWorkbenchBodyPropsEqual(
     previous.previewMode === next.previewMode &&
     previous.providerStatusBootstrapSnapshot ===
       next.providerStatusBootstrapSnapshot &&
-    previous.providerTargets === next.providerTargets &&
-    previous.providerTargetsLoading === next.providerTargetsLoading &&
-    previous.providerRailAllPresentation?.iconUrl ===
-      next.providerRailAllPresentation?.iconUrl &&
-    previous.providerRailMode === next.providerRailMode &&
-    previous.renderProviderRailEmpty === next.renderProviderRailEmpty &&
+    previous.agents === next.agents &&
+    previous.agentsLoading === next.agentsLoading &&
+    previous.allAgentsPresentation?.iconUrl ===
+      next.allAgentsPresentation?.iconUrl &&
+    previous.renderAgentsEmpty === next.renderAgentsEmpty &&
     previous.comingSoonAgentProviders === next.comingSoonAgentProviders &&
-    previous.defaultProviderTargetId === next.defaultProviderTargetId &&
+    previous.defaultAgentTargetId === next.defaultAgentTargetId &&
     previous.contextMentionProviders === next.contextMentionProviders &&
     previous.runtimeApi === next.runtimeApi &&
     previous.trackAgentProviderChatReady === next.trackAgentProviderChatReady &&
@@ -272,13 +267,12 @@ function DesktopAgentGUIWorkbenchBodyImpl({
   onStateChange,
   previewMode = false,
   providerStatusBootstrapSnapshot = null,
-  providerTargets,
-  providerTargetsLoading = false,
-  providerRailAllPresentation = null,
-  providerRailMode = "catalog",
-  renderProviderRailEmpty,
+  agents,
+  agentsLoading = false,
+  allAgentsPresentation = null,
+  renderAgentsEmpty,
   comingSoonAgentProviders,
-  defaultProviderTargetId = null,
+  defaultAgentTargetId = null,
   contextMentionProviders,
   runtimeApi,
   trackAgentProviderChatReady,
@@ -532,7 +526,7 @@ function DesktopAgentGUIWorkbenchBodyImpl({
   const handleProviderReadinessGateAction = useCallback(
     (
       actionProvider: AgentGUIProvider,
-      action: AgentGUIProviderReadinessGateAction
+      action: AgentGUIAgentAvailabilityAction
     ) => {
       if (!isDesktopManagedAgentProvider(actionProvider)) {
         return;
@@ -557,14 +551,50 @@ function DesktopAgentGUIWorkbenchBodyImpl({
       previewMode
         ? null
         : projectDesktopAgentProviderReadinessGates({
-            snapshot: effectiveProviderStatusSnapshot,
-            onAction: handleProviderReadinessGateAction
+            snapshot: effectiveProviderStatusSnapshot
           }),
-    [
-      effectiveProviderStatusSnapshot,
-      handleProviderReadinessGateAction,
-      previewMode
-    ]
+    [effectiveProviderStatusSnapshot, previewMode]
+  );
+  const comingSoonAgentProviderSet = useMemo(
+    () => new Set(comingSoonAgentProviders ?? []),
+    [comingSoonAgentProviders]
+  );
+  const effectiveAgents = useMemo(
+    () =>
+      agents.map((agent) => {
+        if (comingSoonAgentProviderSet.has(agent.provider)) {
+          return {
+            ...agent,
+            availability: { status: "coming_soon" as const }
+          };
+        }
+        const gate = providerReadinessGates?.[agent.provider] ?? null;
+        return gate
+          ? {
+              ...agent,
+              availability: {
+                status: gate.status,
+                pendingAction: gate.pendingAction ?? null
+              }
+            }
+          : agent;
+      }),
+    [agents, comingSoonAgentProviderSet, providerReadinessGates]
+  );
+  const handleAgentAvailabilityAction = useCallback(
+    (input: {
+      action: AgentGUIAgentAvailabilityAction;
+      agentTargetId: string;
+    }) => {
+      const agent = effectiveAgents.find(
+        (candidate) => candidate.agentTargetId === input.agentTargetId
+      );
+      if (!agent) {
+        return;
+      }
+      handleProviderReadinessGateAction(agent.provider, input.action);
+    },
+    [effectiveAgents, handleProviderReadinessGateAction]
   );
   const rawWorkbenchStateSource = useMemo(
     () => context.externalNodeState ?? context.node.data.runtimeNodeState,
@@ -592,10 +622,10 @@ function DesktopAgentGUIWorkbenchBodyImpl({
     () =>
       resolveDesktopAgentGUIProviderForAgentTarget(
         workbenchAgentTargetId,
-        providerTargets,
+        agents,
         provider
       ),
-    [provider, providerTargets, workbenchAgentTargetId]
+    [agents, provider, workbenchAgentTargetId]
   );
   // Remembered defaults are keyed by agent target id; the daemon overlays
   // legacy provider-keyed entries onto local target ids at read time.
@@ -903,7 +933,7 @@ function DesktopAgentGUIWorkbenchBodyImpl({
       resolveAgentTargetProvider: (agentTargetId) =>
         resolveDesktopAgentGUIProviderForAgentTarget(
           agentTargetId,
-          providerTargets,
+          agents,
           provider
         ),
       workspaceId,
@@ -917,7 +947,7 @@ function DesktopAgentGUIWorkbenchBodyImpl({
     handleOpenSessionActivationError,
     handleUpdateNode,
     provider,
-    providerTargets,
+    agents,
     workspaceId
   ]);
 
@@ -941,9 +971,7 @@ function DesktopAgentGUIWorkbenchBodyImpl({
           agentTargetId: request.agentTargetId ?? current.agentTargetId ?? null,
           lastActiveAgentSessionId: null,
           lastActiveConversationTitle: null,
-          provider: request.provider ?? current.provider,
-          providerTargetId: null,
-          providerTargetRef: null
+          provider: request.provider ?? current.provider
         }));
       } else {
         handleUpdateNode((current) =>
@@ -1214,14 +1242,12 @@ function DesktopAgentGUIWorkbenchBodyImpl({
         prefillPromptRequest={prefillPromptRequest}
         managedAgentsState={effectiveManagedAgentsState}
         nodeId={context.node.id}
-        providerTargets={providerTargetsLoading ? [] : providerTargets}
-        providerTargetsLoading={providerTargetsLoading}
-        providerRailAllPresentation={providerRailAllPresentation}
-        providerRailMode={providerRailMode}
-        renderProviderRailEmpty={renderProviderRailEmpty}
-        comingSoonProviders={comingSoonAgentProviders}
-        providerReadinessGates={providerReadinessGates}
-        defaultProviderTargetId={defaultProviderTargetId}
+        agents={agentsLoading ? [] : effectiveAgents}
+        agentsLoading={agentsLoading}
+        allAgentsPresentation={allAgentsPresentation}
+        renderAgentsEmpty={renderAgentsEmpty}
+        onAgentAvailabilityAction={handleAgentAvailabilityAction}
+        defaultAgentTargetId={defaultAgentTargetId}
         workspaceAgentProbes={workspaceAgentProbes}
         providerAuthAccountLabels={providerAuthAccountLabels}
         onAgentProbeDemandChange={

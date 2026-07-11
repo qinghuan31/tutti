@@ -17,7 +17,7 @@ export const issueManagerWorkbenchContributionFactory: DesktopWorkbenchContribut
         eventStreamClient: context.eventStreamClient,
         tuttidClient: context.tuttidClient,
         platformApi: context.platformApi,
-        providerTargets: context.providerTargets,
+        agents: context.agents,
         reporterService: context.reporterService,
         richTextAtService: context.richTextAtService,
         runtimeApi: context.runtimeApi,

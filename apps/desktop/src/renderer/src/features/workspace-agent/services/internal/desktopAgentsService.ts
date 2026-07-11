@@ -1,9 +1,5 @@
 import type { AgentTarget, TuttidClient } from "@tutti-os/client-tuttid-ts";
-import type {
-  AgentGUIProvider,
-  AgentGUIProviderTarget,
-  AgentGUIProviderTargetRef
-} from "@tutti-os/agent-gui";
+import type { AgentGUIAgent, AgentGUIProvider } from "@tutti-os/agent-gui";
 import type {
   AgentsSnapshot,
   AgentTargetPresentation,
@@ -19,9 +15,9 @@ export interface DesktopAgentsServiceDependencies {
 }
 
 const EMPTY_AGENTS_SNAPSHOT: AgentsSnapshot = Object.freeze({
+  agents: Object.freeze([]),
   agentTargets: Object.freeze([]),
-  capturedAtUnixMs: null,
-  providerTargets: Object.freeze([])
+  capturedAtUnixMs: null
 });
 
 export class DesktopAgentsService implements IAgentsService {
@@ -91,10 +87,9 @@ export class DesktopAgentsService implements IAgentsService {
         : target
     );
     const nextSnapshot: AgentsSnapshot = {
+      agents: mapAgentTargetPresentationsToAgents(agentTargets),
       agentTargets,
-      capturedAtUnixMs: this.dependencies.now?.() ?? Date.now(),
-      providerTargets:
-        mapAgentTargetPresentationsToProviderTargets(agentTargets)
+      capturedAtUnixMs: this.dependencies.now?.() ?? Date.now()
     };
     this.snapshot = nextSnapshot;
     this.emit();
@@ -127,33 +122,30 @@ export function mapAgentTargetsToPresentations(
   }));
 }
 
-export function mapAgentTargetPresentationsToProviderTargets(
+export function mapAgentTargetPresentationsToAgents(
   targets: readonly AgentTargetPresentation[]
-): readonly AgentGUIProviderTarget[] {
-  return targets.map((target) => {
-    const provider = target.provider as AgentGUIProvider;
-    const ref: AgentGUIProviderTargetRef = {
-      kind: target.launchRefType,
-      provider,
-      targetId: target.agentTargetId
-    };
-    return {
-      targetId: target.agentTargetId,
-      agentTargetId: target.agentTargetId,
-      provider,
-      ref,
-      label: target.name,
-      iconUrl: target.iconUrl,
-      disabled: target.enabled !== true
-    };
-  });
+): readonly AgentGUIAgent[] {
+  return targets.map((target) => ({
+    agentTargetId: target.agentTargetId,
+    name: target.name,
+    iconUrl: target.iconUrl,
+    availability: {
+      status: target.enabled === true ? "ready" : "coming_soon"
+    },
+    provider: target.provider as AgentGUIProvider
+  }));
 }
 
 function resolveAgentTargetIconUrl(
   target: AgentTarget,
   resolveAgentIconUrl?: (provider: string) => string
 ): string {
-  return resolveAgentIconUrl?.(target.provider) ?? "";
+  const iconKey = target.iconKey?.trim();
+  return (
+    (iconKey ? resolveAgentIconUrl?.(iconKey) : null) ||
+    resolveAgentIconUrl?.(target.provider) ||
+    ""
+  );
 }
 
 function compareAgentTargetsForDisplay(

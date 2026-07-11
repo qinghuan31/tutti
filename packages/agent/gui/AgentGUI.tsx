@@ -3,6 +3,7 @@ import type { I18nRuntime } from "@tutti-os/ui-i18n-runtime";
 import { TooltipProvider } from "@tutti-os/ui-system";
 import type { AgentActivityRuntime } from "./agentActivityRuntime";
 import type { AgentHostInputApi } from "./host/agentHostApi";
+import type { AgentGUIAgent } from "./types";
 import {
   AgentGUINode,
   type AgentGUINodeProps
@@ -14,7 +15,8 @@ import {
 } from "./agentQueuedPromptRuntime";
 import { AgentGuiI18nProvider, type AgentGuiI18nLocale } from "./i18n/index";
 
-export interface AgentGUIProps extends AgentGUINodeProps {
+export interface AgentGUIProps extends Omit<AgentGUINodeProps, "agents"> {
+  agents: readonly AgentGUIAgent[];
   agentActivityRuntime: AgentActivityRuntime;
   agentQueuedPromptRuntime: AgentQueuedPromptRuntime;
   agentHostApi?: AgentHostInputApi | null;

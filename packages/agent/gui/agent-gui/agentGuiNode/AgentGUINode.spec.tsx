@@ -18,7 +18,10 @@ import type {
 import type { ReferenceSourceAggregator } from "@tutti-os/workspace-file-reference/core";
 import type { WorkspaceLinkAction } from "../../actions/workspaceLinkActions";
 import type { AgentActivitySnapshot } from "@tutti-os/agent-activity-core";
-import { MANAGED_AGENT_ICON_URLS } from "../../shared/managedAgentIcons";
+import {
+  MANAGED_AGENT_ICON_URLS,
+  MANAGED_AGENT_PROVIDER_RAIL_ICON_URLS
+} from "../../shared/managedAgentIcons";
 import { AgentActivityHostProvider } from "../../agentActivityHost";
 import type { AgentActivityRuntime } from "../../agentActivityRuntime";
 import { AgentGUINode } from "./AgentGUINode";
@@ -1997,13 +2000,8 @@ describe("AgentGUINode", () => {
     ).toBeTruthy();
     expect(screen.queryByTestId("agent-gui-bottom-dock")).toBeNull();
     expect(emptyHeading).toBeTruthy();
-    expect(iconEffect).toBeNull();
-    expect(heroCarousel).not.toBeNull();
-    expect(
-      heroCarousel?.querySelectorAll(
-        ".agent-gui-node__empty-hero-carousel-item"
-      )
-    ).toHaveLength(7);
+    expect(iconEffect).not.toBeNull();
+    expect(heroCarousel).toBeNull();
     expect(
       document.querySelector(".agent-gui-node__timeline-centered")
     ).toContainElement(emptyHeading);
@@ -2043,7 +2041,7 @@ describe("AgentGUINode", () => {
     );
     expect(iconEffect).toHaveAttribute(
       "src",
-      MANAGED_AGENT_ICON_URLS["claude-code"]
+      MANAGED_AGENT_PROVIDER_RAIL_ICON_URLS["claude-code"]
     );
   });
 
@@ -7690,8 +7688,6 @@ function createViewModel(
     providerTargets: [createLocalAgentGUIProviderTarget("codex")],
     handoffProviderTargets: [createLocalAgentGUIProviderTarget("codex")],
     providerTargetsLoading: false,
-    providerRailMode: "catalog",
-    comingSoonProviders: [],
     conversations: [],
     userProjects: [],
     activeConversation: null,

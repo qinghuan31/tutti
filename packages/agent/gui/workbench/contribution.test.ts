@@ -10,7 +10,7 @@ import {
   type ReactNode
 } from "react";
 import { agentGuiDockIconUrls } from "../dockIcons.ts";
-import { createLocalAgentGUIProviderTarget } from "../providerTargets.ts";
+import type { AgentGUIAgent, AgentGUIProvider } from "../types.ts";
 import {
   AGENT_GUI_WORKBENCH_NEW_CONVERSATION_EVENT,
   agentGuiWorkbenchDefaultCopy,
@@ -27,6 +27,20 @@ import {
   agentGuiWorkbenchTypeId
 } from "./launch.ts";
 import type { AgentGuiWorkbenchState } from "./types.ts";
+
+function createAgent(
+  provider: AgentGUIProvider,
+  overrides: Partial<AgentGUIAgent> = {}
+): AgentGUIAgent {
+  return {
+    agentTargetId: `local:${provider}`,
+    name: provider,
+    iconUrl: `app://icons/${provider}.png`,
+    availability: { status: "ready" },
+    provider,
+    ...overrides
+  };
+}
 
 function readDockEntryIconImageSrcs(icon: ReactNode): string[] {
   if (!isValidElement(icon)) {
@@ -78,7 +92,7 @@ const testLaunchLayout = {
 
 describe("agent GUI workbench contribution copy", () => {
   it("builds one unified dock entry with the selected default target payload", () => {
-    const claudeTarget = createLocalAgentGUIProviderTarget("claude-code");
+    const claudeTarget = createAgent("claude-code");
     const entries = buildAgentGuiDockEntries({
       defaultProvider: "codex",
       label: "Agent",
@@ -86,7 +100,7 @@ describe("agent GUI workbench contribution copy", () => {
         "claude-code": true,
         codex: false
       },
-      targets: [createLocalAgentGUIProviderTarget("codex"), claudeTarget]
+      agents: [createAgent("codex"), claudeTarget]
     });
 
     expect(entries).toHaveLength(1);
@@ -94,9 +108,7 @@ describe("agent GUI workbench contribution copy", () => {
     expect(entries[0]?.label).toBe("Agent");
     expect(entries[0]?.launchPayload).toEqual({
       agentTargetId: "local:claude-code",
-      provider: "claude-code",
-      providerTargetId: "local:claude-code",
-      providerTargetRef: claudeTarget.ref
+      provider: "claude-code"
     });
   });
 
@@ -107,7 +119,7 @@ describe("agent GUI workbench contribution copy", () => {
       providerAvailability: {
         codex: true
       },
-      targets: [createLocalAgentGUIProviderTarget("codex")],
+      agents: [createAgent("codex")],
       unifiedDockIconUrl: "app://icons/agent-unified.png"
     });
 
@@ -128,15 +140,13 @@ describe("agent GUI workbench contribution copy", () => {
 
   it("uses the first enabled target in host order after an unavailable default provider", () => {
     const disabledClaudeTarget = {
-      ...createLocalAgentGUIProviderTarget("claude-code"),
+      ...createAgent("claude-code"),
       agentTargetId: "disabled-claude",
-      disabled: true,
-      targetId: "disabled-claude"
+      availability: { status: "unavailable" as const }
     };
     const enabledClaudeTarget = {
-      ...createLocalAgentGUIProviderTarget("claude-code"),
-      agentTargetId: "daemon-claude",
-      targetId: "daemon-claude"
+      ...createAgent("claude-code"),
+      agentTargetId: "daemon-claude"
     };
     const entries = buildAgentGuiDockEntries({
       defaultProvider: "codex",
@@ -145,49 +155,40 @@ describe("agent GUI workbench contribution copy", () => {
         "claude-code": true,
         codex: false
       },
-      targets: [
-        createLocalAgentGUIProviderTarget("codex"),
-        disabledClaudeTarget,
-        enabledClaudeTarget
-      ]
+      agents: [createAgent("codex"), disabledClaudeTarget, enabledClaudeTarget]
     });
 
     expect(entries[0]?.launchPayload).toEqual({
       agentTargetId: "daemon-claude",
-      provider: "claude-code",
-      providerTargetId: "daemon-claude",
-      providerTargetRef: enabledClaudeTarget.ref
+      provider: "claude-code"
     });
   });
 
   it("uses host target order for an available default provider", () => {
     const daemonCodexTarget = {
-      ...createLocalAgentGUIProviderTarget("codex"),
-      agentTargetId: "daemon-codex",
-      targetId: "daemon-codex"
+      ...createAgent("codex"),
+      agentTargetId: "daemon-codex"
     };
-    const localCodexTarget = createLocalAgentGUIProviderTarget("codex");
+    const localCodexTarget = createAgent("codex");
     const entries = buildAgentGuiDockEntries({
       defaultProvider: "codex",
       label: "Agent",
       providerAvailability: {
         codex: true
       },
-      targets: [daemonCodexTarget, localCodexTarget]
+      agents: [daemonCodexTarget, localCodexTarget]
     });
 
     expect(entries[0]?.launchPayload).toEqual({
       agentTargetId: "daemon-codex",
-      provider: "codex",
-      providerTargetId: "daemon-codex",
-      providerTargetRef: daemonCodexTarget.ref
+      provider: "codex"
     });
   });
 
   it("matches unified dock nodes across provider-specific and historical agent GUI identities", () => {
     const [entry] = buildAgentGuiDockEntries({
       providerAvailability: {},
-      targets: []
+      agents: []
     });
 
     expect(
@@ -383,20 +384,15 @@ describe("agent GUI workbench contribution copy", () => {
   });
 
   it("resolves unified empty dock launches lazily from current provider availability", () => {
-    const claudeTarget = createLocalAgentGUIProviderTarget("claude-code");
+    const claudeTarget = createAgent("claude-code");
     const contribution = createTestAgentGuiWorkbenchContribution({
       defaultProvider: "codex",
       providerAvailability: {},
-      providerTargets: [
-        createLocalAgentGUIProviderTarget("codex"),
-        claudeTarget
-      ],
+      agents: [createAgent("codex"), claudeTarget],
       renderBody: () => null,
       resolveDockLaunchPayload: () => ({
         agentTargetId: claudeTarget.agentTargetId,
-        provider: "claude-code",
-        providerTargetId: claudeTarget.targetId,
-        providerTargetRef: claudeTarget.ref
+        provider: "claude-code"
       }),
       workspaceId: "workspace-1"
     });
@@ -440,13 +436,10 @@ describe("agent GUI workbench contribution copy", () => {
   });
 
   it("seeds unified launch descriptor target state without changing provider identity", () => {
-    const claudeTarget = createLocalAgentGUIProviderTarget("claude-code");
+    const claudeTarget = createAgent("claude-code");
     const contribution = createTestAgentGuiWorkbenchContribution({
-      defaultProviderTargetId: claudeTarget.targetId,
-      providerTargets: [
-        createLocalAgentGUIProviderTarget("codex"),
-        claudeTarget
-      ],
+      defaultAgentTargetId: claudeTarget.agentTargetId,
+      agents: [createAgent("codex"), claudeTarget],
       renderBody: () => null,
       workspaceId: "workspace-1"
     });
@@ -489,13 +482,10 @@ describe("agent GUI workbench contribution copy", () => {
   });
 
   it("opens a fresh cascading window for the dock 'New window' payload", () => {
-    const claudeTarget = createLocalAgentGUIProviderTarget("claude-code");
+    const claudeTarget = createAgent("claude-code");
     const contribution = createTestAgentGuiWorkbenchContribution({
-      defaultProviderTargetId: claudeTarget.targetId,
-      providerTargets: [
-        createLocalAgentGUIProviderTarget("codex"),
-        claudeTarget
-      ],
+      defaultAgentTargetId: claudeTarget.agentTargetId,
+      agents: [createAgent("codex"), claudeTarget],
       renderBody: () => null,
       workspaceId: "workspace-1"
     });
@@ -576,8 +566,8 @@ describe("agent GUI workbench contribution copy", () => {
 
   it("does not seed fallback target state while provider targets are loading", () => {
     const contribution = createTestAgentGuiWorkbenchContribution({
-      providerTargets: [],
-      providerTargetsLoading: true,
+      agents: [],
+      agentsLoading: true,
       renderBody: () => null,
       workspaceId: "workspace-1"
     });
@@ -612,7 +602,7 @@ describe("agent GUI workbench contribution copy", () => {
 
   it("does not seed fallback target state when provider targets are explicitly empty", () => {
     const contribution = createTestAgentGuiWorkbenchContribution({
-      providerTargets: [],
+      agents: [],
       renderBody: () => null,
       workspaceId: "workspace-1"
     });

@@ -6,10 +6,7 @@ import {
   useState,
   useSyncExternalStore
 } from "react";
-import type {
-  AgentGUIProvider,
-  AgentGUIProviderTarget
-} from "@tutti-os/agent-gui";
+import type { AgentGUIProvider, AgentGUIAgent } from "@tutti-os/agent-gui";
 import { useService } from "@tutti-os/infra/di";
 import type {
   WorkspaceAgentProvider,
@@ -65,7 +62,7 @@ import { renderWorkspaceFilesNodeBody } from "./WorkspaceFilesNodeBody";
 import { useWorkspaceSettingsService } from "./useWorkspaceSettingsService";
 import { useWorkspaceWorkbenchHostService } from "./useWorkspaceWorkbenchHostService";
 import { workspaceOnboardingAppId } from "../services/workspaceOnboarding.ts";
-import { filterWorkspaceAgentGuiProviderTargets } from "./workspaceAgentGuiProviderTargetFilter.ts";
+import { filterWorkspaceAgentGuiAgents } from "./workspaceAgentGuiAgentFilter.ts";
 
 export interface WorkspaceWorkbenchShellRuntime {
   appI18n: I18nRuntime<string>;
@@ -140,25 +137,20 @@ export function useWorkspaceWorkbenchShellRuntime({
     useWorkspaceSettingsService();
   const workspaceFileManagerService = useWorkspaceFileManagerService();
   const workbenchHostService = useWorkspaceWorkbenchHostService();
-  const [agentGuiProviderTargets, setAgentGuiProviderTargets] = useState<
-    readonly AgentGUIProviderTarget[] | undefined
+  const [agentGuiAgents, setAgentGuiAgents] = useState<
+    readonly AgentGUIAgent[] | undefined
   >(undefined);
-  const agentGuiProviderTargetsLoading = agentGuiProviderTargets === undefined;
-  // An empty daemon /agents target list means "no service-backed targets are
-  // available yet", not "hide the Codex/Claude AgentGUI rail tiles".
-  const resolvedAgentGuiProviderTargets = useMemo(() => {
-    const targets =
-      agentGuiProviderTargets && agentGuiProviderTargets.length > 0
-        ? agentGuiProviderTargets
-        : undefined;
-    if (!targets) {
-      return undefined;
+  const agentGuiAgentsLoading = agentGuiAgents === undefined;
+  // The daemon /agents directory is the complete new-entry source of truth.
+  const resolvedAgentGuiAgents = useMemo(() => {
+    if (!agentGuiAgents) {
+      return [];
     }
-    return filterWorkspaceAgentGuiProviderTargets(targets, {
+    return filterWorkspaceAgentGuiAgents(agentGuiAgents, {
       tuttiAgentSwitchEnabled:
         workspaceSettingsState.tuttiAgentSwitchEnabled === true
     });
-  }, [agentGuiProviderTargets, workspaceSettingsState.tuttiAgentSwitchEnabled]);
+  }, [agentGuiAgents, workspaceSettingsState.tuttiAgentSwitchEnabled]);
   const comingSoonAgentProviders = useMemo<readonly AgentGUIProvider[]>(
     () => [
       ...(desktopPreferencesState.enableCursorAgent ? [] : ["cursor" as const]),
@@ -175,12 +167,9 @@ export function useWorkspaceWorkbenchShellRuntime({
     () =>
       resolveDefaultAgentTargetId({
         defaultProvider: desktopPreferencesState.defaultAgentProvider,
-        targets: resolvedAgentGuiProviderTargets
+        agents: resolvedAgentGuiAgents
       }),
-    [
-      desktopPreferencesState.defaultAgentProvider,
-      resolvedAgentGuiProviderTargets
-    ]
+    [desktopPreferencesState.defaultAgentProvider, resolvedAgentGuiAgents]
   );
   const reporterService = useService(IReporterService);
   const wallpaperRevision = useSyncExternalStore(
@@ -217,9 +206,9 @@ export function useWorkspaceWorkbenchShellRuntime({
           createHostInput: (hostInput) =>
             workbenchHostService.createHostInput(hostInput),
           defaultAgentProvider: desktopPreferencesState.defaultAgentProvider,
-          defaultProviderTargetId: defaultAgentTargetId,
-          providerTargets: resolvedAgentGuiProviderTargets,
-          providerTargetsLoading: agentGuiProviderTargetsLoading,
+          defaultAgentTargetId: defaultAgentTargetId,
+          agents: resolvedAgentGuiAgents,
+          agentsLoading: agentGuiAgentsLoading,
           comingSoonAgentProviders,
           dockIconStyle: desktopPreferencesState.dockIconStyle,
           i18n: workbenchDesktopI18n,
@@ -291,14 +280,22 @@ export function useWorkspaceWorkbenchShellRuntime({
 
   useEffect(() => {
     let disposed = false;
-    setAgentGuiProviderTargets(undefined);
-    void workbenchHostService.loadAgentGuiProviderTargets().then((targets) => {
-      if (!disposed) {
-        setAgentGuiProviderTargets(targets);
-      }
-    });
+    setAgentGuiAgents(undefined);
+    const loadAgents = () => {
+      void workbenchHostService
+        .loadAgentGuiAgents()
+        .then((targets) => {
+          if (!disposed) {
+            setAgentGuiAgents(targets);
+          }
+        })
+        .catch(() => undefined);
+    };
+    loadAgents();
+    window.addEventListener("focus", loadAgents);
     return () => {
       disposed = true;
+      window.removeEventListener("focus", loadAgents);
     };
     // comingSoonAgentProviders: the provider gate disables gated targets in
     // the daemon target list, so a gate flip must reload it (the host service
@@ -355,9 +352,9 @@ export function useWorkspaceWorkbenchShellRuntime({
       createHostInput: (hostInput) =>
         workbenchHostService.createHostInput(hostInput),
       defaultAgentProvider: desktopPreferencesState.defaultAgentProvider,
-      defaultProviderTargetId: defaultAgentTargetId,
-      providerTargets: resolvedAgentGuiProviderTargets,
-      providerTargetsLoading: agentGuiProviderTargetsLoading,
+      defaultAgentTargetId: defaultAgentTargetId,
+      agents: resolvedAgentGuiAgents,
+      agentsLoading: agentGuiAgentsLoading,
       comingSoonAgentProviders,
       dockIconStyle: desktopPreferencesState.dockIconStyle,
       i18n: workbenchDesktopI18n,
@@ -371,10 +368,10 @@ export function useWorkspaceWorkbenchShellRuntime({
   }, [
     appI18n,
     appCenterState.revision,
-    agentGuiProviderTargetsLoading,
+    agentGuiAgentsLoading,
     comingSoonAgentProviders,
     defaultAgentTargetId,
-    resolvedAgentGuiProviderTargets,
+    resolvedAgentGuiAgents,
     desktopPreferencesState.defaultAgentProvider,
     desktopPreferencesState.dockIconStyle,
     desktopPreferencesState.theme.appearance,
@@ -551,19 +548,20 @@ export function useWorkspaceWorkbenchShellRuntime({
 }
 
 function resolveDefaultAgentTargetId(input: {
+  agents?: readonly AgentGUIAgent[];
   defaultProvider?: string | null;
-  targets?: readonly AgentGUIProviderTarget[];
 }): string | null {
   const defaultProvider = input.defaultProvider?.trim() ?? "";
-  const targets = input.targets ?? [];
+  const agents = input.agents ?? [];
   return (
-    targets.find(
-      (target) =>
+    agents.find(
+      (agent) =>
         defaultProvider !== "" &&
-        target.provider === defaultProvider &&
-        target.disabled !== true
-    )?.targetId ??
-    targets.find((target) => target.disabled !== true)?.targetId ??
+        agent.provider === defaultProvider &&
+        agent.availability.status === "ready"
+    )?.agentTargetId ??
+    agents.find((agent) => agent.availability.status === "ready")
+      ?.agentTargetId ??
     null
   );
 }

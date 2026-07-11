@@ -72,8 +72,7 @@ export function consumeDesktopAgentGUIOpenSessionActivation({
       onActivationError?.({ agentSessionId: request.agentSessionId, error });
     });
   updateNodeState((current) => {
-    const currentAgentTargetId =
-      current.agentTargetId?.trim() || current.providerTargetId?.trim() || null;
+    const currentAgentTargetId = current.agentTargetId?.trim() || null;
     const currentAgentTargetProvider = currentAgentTargetId
       ? (resolveAgentTargetProvider?.(currentAgentTargetId) ?? null)
       : null;
@@ -85,9 +84,7 @@ export function consumeDesktopAgentGUIOpenSessionActivation({
         ...current,
         ...(shouldClearAgentTarget
           ? {
-              agentTargetId: null,
-              providerTargetId: null,
-              providerTargetRef: null
+              agentTargetId: null
             }
           : {}),
         lastActiveAgentSessionId: request.agentSessionId,

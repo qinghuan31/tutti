@@ -20,10 +20,11 @@ import type {
 } from "../../contexts/settings/domain/agentSettings";
 import type { WorkspaceLinkAction } from "../../actions/workspaceLinkActions";
 import type {
+  AgentGUIAgent,
+  AgentGUIAgentAvailabilityAction,
+  AgentGUIAllAgentsPresentation,
   AgentGUINodeData,
   AgentGUIProvider,
-  AgentGUIProviderRailAllPresentation,
-  AgentGUIProviderRailMode,
   AgentGUIProviderReadinessGate,
   AgentGUIProviderTarget,
   NodeFrame,
@@ -47,21 +48,26 @@ import type {
 } from "./controller/useAgentGUINodeController";
 import {
   AgentGUINodeView,
+  type AgentGUIAgentReadinessStateRenderer,
+  type AgentGUIAgentsEmptyRenderer,
+  type AgentGUIAgentUnavailableStateRenderer,
   type AgentGUIViewLabels,
   type AgentGUISidebarFooterContext,
-  type AgentGUIProviderRailEmptyRenderer,
   type AgentGUIProviderReadinessGateStateRenderer,
   type AgentGUIProviderUnavailableStateRenderer,
   type AgentMentionReferenceTargetResolver,
   type AgentWorkspaceReferenceInitialTargetResolver
 } from "./AgentGUINodeView";
+import {
+  normalizeAgentGUIAgents,
+  projectAgentGUIAgentsToInternalTargets
+} from "../../agents";
 import type { AgentGUIAccountMenuState } from "./accountMenuState";
 import {
   normalizeAgentGUIProviderIdentity,
   resolveAgentGUIDockConversationTitle,
   resolveAgentGUIProviderDisplayLabel
 } from "./model/agentGuiProviderIdentity";
-import { agentGUIProviderTargetRefsEqual } from "../../providerTargets";
 import {
   buildDockAgentProbeTooltipLines,
   findWorkspaceAgentProbeForDockProvider
@@ -268,39 +274,23 @@ export interface AgentGUINodeProps {
   ) => void;
   onAgentProviderLogin?: (provider: AgentProvider) => void;
   accountMenuState?: AgentGUIAccountMenuState | null;
-  providerTargets?: readonly AgentGUIProviderTarget[];
-  providerTargetsLoading?: boolean;
-  providerRailAllPresentation?: AgentGUIProviderRailAllPresentation | null;
+  agents?: readonly AgentGUIAgent[];
+  agentsLoading?: boolean;
+  allAgentsPresentation?: AgentGUIAllAgentsPresentation | null;
   /**
    * Controls whether AgentGUI adds local provider-default slash commands when
    * the runtime advertises none. Defaults to "provider-default".
    */
   slashCommandFallbackMode?: AgentComposerProps["slashCommandFallbackMode"];
-  /**
-   * Controls how the provider rail composes its list. "catalog" (default) adds
-   * the static local catalog + placeholders + coming-soon; "exact" renders only
-   * the provided targets and shows `renderProviderRailEmpty` when empty.
-   */
-  providerRailMode?: AgentGUIProviderRailMode;
-  /** Host-owned empty state for the provider rail in "exact" mode. */
-  renderProviderRailEmpty?: AgentGUIProviderRailEmptyRenderer;
-  /**
-   * Host-owned main-pane state for a selected provider target that is explicitly
-   * disabled. This does not replace install, login, checking, or retry gates.
-   */
-  renderProviderUnavailableState?: AgentGUIProviderUnavailableStateRenderer;
-  /**
-   * Host-owned main-pane state for provider readiness gates. Use this when a
-   * host has product-specific semantics for coming-soon, unavailable, checking,
-   * install, or login readiness states.
-   */
-  renderProviderReadinessGateState?: AgentGUIProviderReadinessGateStateRenderer;
+  renderAgentsEmpty?: AgentGUIAgentsEmptyRenderer;
+  renderAgentUnavailableState?: AgentGUIAgentUnavailableStateRenderer;
+  renderAgentReadinessState?: AgentGUIAgentReadinessStateRenderer;
+  onAgentAvailabilityAction?: (input: {
+    action: AgentGUIAgentAvailabilityAction;
+    agentTargetId: string;
+  }) => void;
   renderSidebarFooter?: (ctx: AgentGUISidebarFooterContext) => ReactNode;
-  comingSoonProviders?: readonly AgentGUIProvider[];
-  providerReadinessGates?: Partial<
-    Record<AgentGUIProvider, AgentGUIProviderReadinessGate | null>
-  > | null;
-  defaultProviderTargetId?: string | null;
+  defaultAgentTargetId?: string | null;
   onWorkspaceFileReferencesAdded?: (input: {
     provider: AgentProvider;
     references: readonly WorkspaceFileReference[];
@@ -555,11 +545,6 @@ function agentGuiStateEquals(
     left === right ||
     (left.provider === right.provider &&
       (left.agentTargetId ?? null) === (right.agentTargetId ?? null) &&
-      (left.providerTargetId ?? null) === (right.providerTargetId ?? null) &&
-      agentGUIProviderTargetRefsEqual(
-        left.providerTargetRef,
-        right.providerTargetRef
-      ) &&
       left.lastActiveAgentSessionId === right.lastActiveAgentSessionId &&
       (left.lastActiveConversationTitle ?? null) ===
         (right.lastActiveConversationTitle ?? null) &&
@@ -675,21 +660,17 @@ function areAgentGUINodePropsEqual(
     previous.onCapabilitySettingsRequest === next.onCapabilitySettingsRequest &&
     previous.onAgentProviderLogin === next.onAgentProviderLogin &&
     previous.accountMenuState === next.accountMenuState &&
-    previous.providerTargets === next.providerTargets &&
-    previous.providerTargetsLoading === next.providerTargetsLoading &&
-    previous.providerRailAllPresentation?.iconUrl ===
-      next.providerRailAllPresentation?.iconUrl &&
+    previous.agents === next.agents &&
+    previous.agentsLoading === next.agentsLoading &&
+    previous.allAgentsPresentation?.iconUrl ===
+      next.allAgentsPresentation?.iconUrl &&
     previous.slashCommandFallbackMode === next.slashCommandFallbackMode &&
     previous.renderSidebarFooter === next.renderSidebarFooter &&
-    previous.providerRailMode === next.providerRailMode &&
-    previous.renderProviderRailEmpty === next.renderProviderRailEmpty &&
-    previous.renderProviderUnavailableState ===
-      next.renderProviderUnavailableState &&
-    previous.renderProviderReadinessGateState ===
-      next.renderProviderReadinessGateState &&
-    previous.comingSoonProviders === next.comingSoonProviders &&
-    previous.providerReadinessGates === next.providerReadinessGates &&
-    previous.defaultProviderTargetId === next.defaultProviderTargetId &&
+    previous.renderAgentsEmpty === next.renderAgentsEmpty &&
+    previous.renderAgentUnavailableState === next.renderAgentUnavailableState &&
+    previous.renderAgentReadinessState === next.renderAgentReadinessState &&
+    previous.onAgentAvailabilityAction === next.onAgentAvailabilityAction &&
+    previous.defaultAgentTargetId === next.defaultAgentTargetId &&
     previous.onClose === next.onClose &&
     previous.onResize === next.onResize &&
     previous.onUpdateNode === next.onUpdateNode &&
@@ -745,18 +726,16 @@ export const AgentGUINode = memo(function AgentGUINode({
   onCapabilitySettingsRequest,
   onAgentProviderLogin,
   accountMenuState = null,
-  providerTargets,
-  providerTargetsLoading = false,
-  providerRailAllPresentation = null,
+  agents = [],
+  agentsLoading = false,
+  allAgentsPresentation = null,
   slashCommandFallbackMode = "provider-default",
-  providerRailMode = "catalog",
-  renderProviderRailEmpty,
-  renderProviderUnavailableState,
-  renderProviderReadinessGateState,
+  renderAgentsEmpty,
+  renderAgentUnavailableState,
+  renderAgentReadinessState,
+  onAgentAvailabilityAction,
   renderSidebarFooter,
-  comingSoonProviders,
-  providerReadinessGates = null,
-  defaultProviderTargetId = null,
+  defaultAgentTargetId = null,
   onWorkspaceFileReferencesAdded,
   onOpenConversationWindow,
   onClose,
@@ -796,6 +775,88 @@ export const AgentGUINode = memo(function AgentGUINode({
         : null,
     [i18n]
   );
+  const normalizedAgents = useMemo(
+    () => normalizeAgentGUIAgents(agents),
+    [agents]
+  );
+  const internalAgentTargets = useMemo(
+    () => projectAgentGUIAgentsToInternalTargets(normalizedAgents),
+    [normalizedAgents]
+  );
+  const agentByTargetId = useMemo(
+    () =>
+      new Map(
+        normalizedAgents.map((agent) => [agent.agentTargetId, agent] as const)
+      ),
+    [normalizedAgents]
+  );
+  const selectedDirectoryAgent = useMemo(() => {
+    const selectedAgentTargetId =
+      state.agentTargetId?.trim() || defaultAgentTargetId?.trim() || "";
+    return (
+      agentByTargetId.get(selectedAgentTargetId) ?? normalizedAgents[0] ?? null
+    );
+  }, [
+    agentByTargetId,
+    defaultAgentTargetId,
+    normalizedAgents,
+    state.agentTargetId
+  ]);
+  const internalProviderReadinessGates = useMemo<
+    Partial<Record<AgentGUIProvider, AgentGUIProviderReadinessGate | null>>
+  >(() => {
+    if (
+      !selectedDirectoryAgent ||
+      selectedDirectoryAgent.availability.status === "ready"
+    ) {
+      return {};
+    }
+    const agentTargetId = selectedDirectoryAgent.agentTargetId;
+    return {
+      [selectedDirectoryAgent.provider]: {
+        status: selectedDirectoryAgent.availability.status,
+        pendingAction:
+          selectedDirectoryAgent.availability.pendingAction ?? null,
+        onAction: (
+          _provider: AgentGUIProvider,
+          action: AgentGUIAgentAvailabilityAction
+        ) => {
+          onAgentAvailabilityAction?.({ agentTargetId, action });
+        }
+      }
+    };
+  }, [onAgentAvailabilityAction, selectedDirectoryAgent]);
+  const renderInternalAgentUnavailableState = useMemo<
+    AgentGUIProviderUnavailableStateRenderer | undefined
+  >(() => {
+    if (!renderAgentUnavailableState) {
+      return undefined;
+    }
+    return ({ target }) => {
+      const agentTargetId = target.agentTargetId?.trim() || target.targetId;
+      const agent = agentByTargetId.get(agentTargetId);
+      return agent ? renderAgentUnavailableState({ agent }) : null;
+    };
+  }, [agentByTargetId, renderAgentUnavailableState]);
+  const renderInternalAgentReadinessState = useMemo<
+    AgentGUIProviderReadinessGateStateRenderer | undefined
+  >(() => {
+    if (!renderAgentReadinessState) {
+      return undefined;
+    }
+    return ({ target, showAllProviders }) => {
+      const agentTargetId = target?.agentTargetId?.trim() || target?.targetId;
+      const agent = agentTargetId
+        ? agentByTargetId.get(agentTargetId)
+        : selectedDirectoryAgent;
+      return agent
+        ? renderAgentReadinessState({
+            agent,
+            showAllAgents: showAllProviders
+          })
+        : null;
+    };
+  }, [agentByTargetId, renderAgentReadinessState, selectedDirectoryAgent]);
   const handleLinkAction = useCallback(
     (action: WorkspaceLinkAction) => {
       const agentTargetId = state.agentTargetId?.trim() || null;
@@ -929,12 +990,10 @@ export const AgentGUINode = memo(function AgentGUINode({
     data: state,
     openSessionRequest,
     prefillPromptRequest,
-    providerTargets,
-    providerTargetsLoading,
-    providerRailMode,
-    comingSoonProviders,
-    providerReadinessGates,
-    defaultProviderTargetId,
+    providerTargets: internalAgentTargets,
+    providerTargetsLoading: agentsLoading,
+    providerReadinessGates: internalProviderReadinessGates,
+    defaultAgentTargetId: defaultAgentTargetId,
     previewMode,
     onDataChange: handleDataChange,
     onRememberComposerDefaults,
@@ -1220,6 +1279,7 @@ export const AgentGUINode = memo(function AgentGUINode({
       planImplementationSend: t("agentHost.agentGui.planImplementationSend"),
       planImplementationSkip: t("agentHost.agentGui.planImplementationSkip"),
       noRunningResponse: t("agentHost.agentGui.noRunningResponse"),
+      agentsEmpty: t("agentHost.agentGui.agentsEmpty"),
       empty: t("agentHost.agentGui.empty", { provider: displayProviderLabel }),
       homeSuggestions: buildAgentHomeSuggestions(
         t,
@@ -1919,10 +1979,10 @@ export const AgentGUINode = memo(function AgentGUINode({
           <AgentGUINodeView
             viewModel={viewModel}
             renderSidebarFooter={renderSidebarFooter}
-            renderProviderRailEmpty={renderProviderRailEmpty}
-            renderProviderUnavailableState={renderProviderUnavailableState}
-            renderProviderReadinessGateState={renderProviderReadinessGateState}
-            providerRailAllPresentation={providerRailAllPresentation}
+            renderProviderRailEmpty={renderAgentsEmpty}
+            renderProviderUnavailableState={renderInternalAgentUnavailableState}
+            renderProviderReadinessGateState={renderInternalAgentReadinessState}
+            providerRailAllPresentation={allAgentsPresentation}
             slashCommandFallbackMode={slashCommandFallbackMode}
             actions={viewActions}
             isActive={isActive}

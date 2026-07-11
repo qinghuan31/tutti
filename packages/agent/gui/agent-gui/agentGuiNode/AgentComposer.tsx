@@ -278,7 +278,7 @@ export interface AgentComposerProps {
   providerSelectReadonly?: boolean;
   onProviderSelect?: (input: {
     provider: AgentGUIProvider;
-    providerTargetId?: string | null;
+    agentTargetId?: string | null;
   }) => void;
   onHandoffConversation?: (target: AgentGUIProviderTarget) => void;
   canQueueWhileBusy: boolean;
@@ -2824,11 +2824,11 @@ export function AgentComposer({
     () => providerSwitchTargets.filter((target) => target.disabled !== true),
     [providerSwitchTargets]
   );
-  const selectedProviderTargetId =
+  const selectedAgentTargetId =
     selectedProviderTarget?.targetId ?? `local:${provider}`;
   const selectedProviderSwitchTarget =
     providerSwitchTargets.find(
-      (target) => target.targetId === selectedProviderTargetId
+      (target) => target.targetId === selectedAgentTargetId
     ) ??
     providerSwitchTargets.find((target) => target.provider === provider) ??
     selectedProviderTarget;
@@ -4186,7 +4186,7 @@ export function AgentComposer({
                     }
                     onProviderSelect?.({
                       provider: target.provider,
-                      providerTargetId: target.targetId
+                      agentTargetId: target.targetId
                     });
                   }}
                 >

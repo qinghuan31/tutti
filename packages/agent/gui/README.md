@@ -84,54 +84,59 @@ Run this boundary check after changing AgentGUI data flow:
 pnpm check:agent-activity-runtime-boundaries
 ```
 
-## Provider Targets
+## Agent Directory
 
-`provider` remains the real provider identity, such as `codex`,
-`claude-code`, or `nexight`. AgentGUI uses that identity for composer options,
-settings, icons, probes, status, and provider-specific UI policy.
-
-Hosts may pass `providerTargets` when a real provider has multiple launch
-targets. A target has display metadata plus an opaque `ref`:
+`AgentGUI` requires the host's `/agents` projection through its `agents` prop.
+The array is the complete UI directory and its order is authoritative. AgentGUI
+does not add provider catalog entries when the array is empty.
 
 ```ts
-export interface AgentGUIProviderTargetRef {
-  kind: string;
+export interface AgentGUIAgent {
+  agentTargetId: string;
+  name: string;
+  iconUrl: string;
+  description?: string | null;
+  owner?: {
+    name?: string | null;
+    avatarUrl?: string | null;
+  } | null;
+  availability: {
+    status:
+      | "ready"
+      | "checking"
+      | "coming_soon"
+      | "not_installed"
+      | "auth_required"
+      | "unavailable";
+    reason?: string | null;
+    pendingAction?: "install" | "login" | "refresh" | null;
+  };
   provider: AgentGUIProvider;
-  [key: string]: unknown;
-}
-
-export interface AgentGUIProviderTarget {
-  targetId: string;
-  provider: AgentGUIProvider;
-  ref: AgentGUIProviderTargetRef;
-  label: string;
-  description?: string;
-  ownerLabel?: string;
-  disabled?: boolean;
-  unavailableReason?: string;
 }
 ```
 
-AgentGUI does not interpret `ref.kind` and does not treat `targetId` or `ref`
-as authority. It displays `target.label`, keeps provider logic keyed by the
-real `target.provider`, and starts new sessions with the selected
-`agentTargetId`. Trusted host code must re-authenticate the current
-user/workspace and resolve any invocation plan before launching.
+`agentTargetId` is the sole entry identity used for selection, filtering,
+composer option lookup, persisted node state, and new-session launch. Two agents
+may share the same `provider` and remain distinct. `provider` is runtime metadata
+for provider-native execution, composer policy, probes, and capabilities; it
+must not be used to group, deduplicate, name, icon, or select agents.
 
-If `providerTargets` is omitted or empty, AgentGUI creates local targets such as
-`local:codex` and `local:claude-code` from the static provider catalog for
-display/backward compatibility. Those static catalog targets are not persisted
-or sent as session creation authority.
+Agent names and primary icons always come from `agents[].name` and
+`agents[].iconUrl`. `owner.avatarUrl` is rendered separately as an ownership
+badge. Invalid entries and duplicate `agentTargetId` values are discarded by
+`normalizeAgentGUIAgents`, with the first occurrence preserving host order.
 
-Hosts that need to brand the aggregate provider rail entry may pass
-`providerRailAllPresentation.iconUrl`. This only changes the `All` filter icon;
-single agent or target icons continue to come from `providerTargets[].iconUrl`.
+With one agent, AgentGUI hides the aggregate `All` entry and renders that agent
+directly. With multiple agents, it shows `All` plus the host-ordered agent rail
+and empty-home carousel. Hosts may customize the aggregate icon with
+`allAgentsPresentation.iconUrl`.
 
-Hosts that need custom main-pane presentation for a disabled selected target may
-pass `renderProviderUnavailableState`. AgentGUI calls this renderer only when
-the selected `providerTargets[]` entry has `disabled: true`.
+Use `agentsLoading` for directory hydration and `renderAgentsEmpty` for a
+host-specific loaded-empty state. Use `renderAgentUnavailableState` or
+`renderAgentReadinessState` for host-specific availability presentation, and
+handle install/login/refresh requests through `onAgentAvailabilityAction`.
 
-Hosts that need custom main-pane presentation for provider readiness gates may
-pass `renderProviderReadinessGateState`. AgentGUI calls this renderer for
-host-projected gates such as checking, install, login, coming-soon, and
-unavailable; when it is omitted, AgentGUI uses the built-in readiness pane.
+The old public `providerTargets`, `providerRailMode`, provider-target renderers,
+and `defaultProviderTargetId` contract is intentionally unsupported. Workbench
+state hydration performs a one-time read of legacy `providerTargetId` into
+`agentTargetId`; new state writes contain only `agentTargetId`.

@@ -187,7 +187,7 @@ function normalizeAgentWindowInput(input: DesktopHostOpenAgentWindowInput) {
     agentSessionID: input.agentSessionId?.trim() || null,
     agentTargetID: input.agentTargetId?.trim() || null,
     providerStatusSnapshot: input.providerStatusSnapshot ?? null,
-    providerTargets: input.providerTargets,
+    agents: input.agents,
     provider: input.provider?.trim() || null,
     workspaceID
   };

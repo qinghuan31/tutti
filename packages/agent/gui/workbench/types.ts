@@ -1,5 +1,3 @@
-import type { AgentGUIProviderTargetRef } from "../types";
-
 export type AgentGuiWorkbenchProvider =
   | "claude-code"
   | "codex"
@@ -53,10 +51,6 @@ export interface AgentGuiWorkbenchNodeState {
   /** @deprecated Conversation titles are derived from the active session id. */
   lastActiveConversationTitle?: string | null;
   provider: AgentGuiWorkbenchProvider;
-  /** @deprecated Use agentTargetId for selection restore. */
-  providerTargetId?: string | null;
-  /** @deprecated Provider target refs are resolved from the current target list. */
-  providerTargetRef?: AgentGUIProviderTargetRef | null;
 }
 
 export interface AgentGuiWorkbenchState {

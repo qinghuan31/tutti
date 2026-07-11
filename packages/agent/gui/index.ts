@@ -20,26 +20,15 @@ export {
 export { AgentGUI } from "./AgentGUI";
 export type { AgentGUIProps } from "./AgentGUI";
 export type { AgentGUIAccountMenuState } from "./agent-gui/agentGuiNode/accountMenuState";
-export {
-  agentGUIDefaultTargetProviders,
-  createLocalAgentGUIProviderTarget,
-  createLocalAgentGUIProviderTargets,
-  createSharedAgentGUIProviderTarget,
-  localAgentGUIAgentTargetId,
-  localAgentGUIProviderTargetId,
-  normalizeAgentGUIProviderTargets,
-  resolveAgentGUIProviderTarget
-} from "./providerTargets";
+export { normalizeAgentGUIAgents } from "./agents";
 export type {
-  AgentGUIProvider,
-  AgentGUIProviderRailAllPresentation,
-  AgentGUIProviderRailMode,
-  AgentGUIProviderReadinessGate,
-  AgentGUIProviderReadinessGateAction,
-  AgentGUIProviderReadinessGateStatus,
-  AgentGUIProviderTarget,
-  AgentGUIProviderTargetBadge,
-  AgentGUIProviderTargetRef
+  AgentGUIAgent,
+  AgentGUIAgentAvailability,
+  AgentGUIAgentAvailabilityAction,
+  AgentGUIAgentAvailabilityStatus,
+  AgentGUIAgentOwner,
+  AgentGUIAllAgentsPresentation,
+  AgentGUIProvider
 } from "./types";
 export {
   AgentGuiI18nProvider,
@@ -54,11 +43,11 @@ export {
 } from "./agent-gui/agentGuiNode/model/agentGuiRailLayout";
 export type { AgentSlashCommandFallbackMode } from "./agent-gui/agentGuiNode/model/agentSlashCommandProviderPolicy";
 export type {
-  AgentGUIProviderRailEmptyRenderer,
-  AgentGUIProviderReadinessGateStateContext,
-  AgentGUIProviderReadinessGateStateRenderer,
-  AgentGUIProviderUnavailableStateContext,
-  AgentGUIProviderUnavailableStateRenderer,
+  AgentGUIAgentReadinessStateContext,
+  AgentGUIAgentReadinessStateRenderer,
+  AgentGUIAgentsEmptyRenderer,
+  AgentGUIAgentUnavailableStateContext,
+  AgentGUIAgentUnavailableStateRenderer,
   AgentGUISidebarFooterContext,
   AgentGUISidebarFooterRenderer
 } from "./agent-gui/agentGuiNode/AgentGUINodeView";
