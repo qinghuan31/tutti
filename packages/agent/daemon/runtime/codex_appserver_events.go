@@ -1685,9 +1685,13 @@ func appServerUserInput(content []PromptContentBlock) []map[string]any {
 				"text": block.Text,
 			})
 		case "image":
+			imageURL := strings.TrimSpace(block.URL)
+			if imageURL == "" {
+				imageURL = "data:" + firstNonEmpty(block.MimeType, "image/png") + ";base64," + block.Data
+			}
 			out = append(out, map[string]any{
 				"type": "image",
-				"url":  "data:" + firstNonEmpty(block.MimeType, "image/png") + ";base64," + block.Data,
+				"url":  imageURL,
 			})
 		case "skill", "mention":
 			item := map[string]any{

@@ -848,6 +848,16 @@ persists the normalized `attachmentId`. The managed source path must live under
 the daemon state root's `agent-prompt-assets` directory, and the daemon must
 re-check the resolved source path, symlink target, file type, and size before
 copying it into the session attachment store.
+Shared callers may instead supply a URL-backed image block when they already
+uploaded the image. That source must be an absolute HTTPS URL without embedded
+userinfo and must retain a supported PNG, JPEG, or WebP MIME type. `data` and
+`url` are mutually exclusive; ambiguous blocks are rejected. URL-backed images
+bypass the prompt attachment store and owner-side hydration. Capable adapters
+forward the URL as a structured image source, while protocols without a URL
+image variant fail capability validation instead of downloading, converting to
+text, or silently dropping the block. Activity projection may retain safe image
+metadata such as attachment id, name, and MIME type, but must omit both base64
+data and the full URL because signed URLs are bearer credentials.
 Claude Code runtime options follow the same parity rule. The legacy ACP adapter
 and the Claude SDK adapter must derive system prompt append text, Tutti detail
 mode instructions, plan-mode instructions, plugin directory, custom model args,
@@ -1274,12 +1284,14 @@ existing queue if injected into the same context, but they must not enqueue,
 claim, drain, promote, edit, or delete queued prompts.
 
 Queued prompt previews must treat prompt image blocks as the same send contract
-used by the composer and runtime: an image may be inline `data` or a staged
-`path`. Do not cast queued images to data-only blocks or build thumbnail URLs
-from `image.data` without checking it. Path-backed queued prompt thumbnails
-should use the activity runtime prompt-asset reader when workspace/session
-context is available, and otherwise avoid rendering a broken image while
-keeping the queued content unchanged for sending.
+used by the composer and runtime: an image may be inline `data`, a staged
+`path`, or an HTTPS `url`. Do not cast queued images to data-only blocks or build
+thumbnail URLs from `image.data` without checking it. URL-backed queued images
+must preserve the structured URL until submission without copying it into
+activity state. Path-backed queued prompt thumbnails should use the activity
+runtime prompt-asset reader when workspace/session context is available, and
+otherwise avoid rendering a broken image while keeping the queued content
+unchanged for sending.
 
 ### Approval And Ask-User Prompts
 
