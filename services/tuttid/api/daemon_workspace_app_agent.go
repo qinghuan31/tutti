@@ -22,9 +22,11 @@ func (api DaemonAPI) GetWorkspaceAppAgentPreferences(
 			InvalidRequestErrorJSONResponse: *errResponse,
 		}, nil
 	}
-	if err := api.ensureWorkspaceAppInstalled(ctx, workspaceID, appID); err != nil {
+	workspaceAppVersion, err := api.ensureWorkspaceAppInstalled(ctx, workspaceID, appID)
+	if err != nil {
 		return writeGetWorkspaceAppAgentPreferencesError(err), nil
 	}
+	api.trackDeprecatedWorkspaceAppAgentAPI(ctx, "preferences/agent", appID, workspaceAppVersion)
 	if api.PreferencesService == nil {
 		return tuttigenerated.GetWorkspaceAppAgentPreferences503JSONResponse{
 			ServiceUnavailableErrorJSONResponse: serviceUnavailableError(
@@ -61,9 +63,11 @@ func (api DaemonAPI) GetWorkspaceAppAgentProviderStatuses(
 			InvalidRequestErrorJSONResponse: *errResponse,
 		}, nil
 	}
-	if err := api.ensureWorkspaceAppInstalled(ctx, workspaceID, appID); err != nil {
+	workspaceAppVersion, err := api.ensureWorkspaceAppInstalled(ctx, workspaceID, appID)
+	if err != nil {
 		return writeGetWorkspaceAppAgentProviderStatusesError(err), nil
 	}
+	api.trackDeprecatedWorkspaceAppAgentAPI(ctx, "agent-providers/status", appID, workspaceAppVersion)
 
 	providers, err := api.workspaceAppAgentStatusProviders(ctx, request.Params.Providers)
 	if err != nil {
@@ -151,9 +155,11 @@ func (api DaemonAPI) GetWorkspaceAppAgentProviderComposerOptions(
 			InvalidRequestErrorJSONResponse: *errResponse,
 		}, nil
 	}
-	if err := api.ensureWorkspaceAppInstalled(ctx, workspaceID, appID); err != nil {
+	workspaceAppVersion, err := api.ensureWorkspaceAppInstalled(ctx, workspaceID, appID)
+	if err != nil {
 		return writeGetWorkspaceAppAgentProviderComposerOptionsError(err), nil
 	}
+	api.trackDeprecatedWorkspaceAppAgentAPI(ctx, "agent-providers/{provider}/composer-options", appID, workspaceAppVersion)
 	requestedProviders := []tuttigenerated.WorkspaceAgentProvider{request.Provider}
 	visibleProviders, err := api.workspaceAppAgentStatusProviders(ctx, &requestedProviders)
 	if err != nil {
@@ -186,23 +192,23 @@ func (api DaemonAPI) GetWorkspaceAppAgentProviderComposerOptions(
 	return mapGetAgentProviderComposerOptionsToWorkspaceApp(response), nil
 }
 
-func (api DaemonAPI) ensureWorkspaceAppInstalled(ctx context.Context, workspaceID string, appID string) error {
+func (api DaemonAPI) ensureWorkspaceAppInstalled(ctx context.Context, workspaceID string, appID string) (string, error) {
 	if api.AppCenterService == nil {
-		return apierrors.ServiceUnavailable(
+		return "", apierrors.ServiceUnavailable(
 			"workspace_app_service_unavailable",
 			apierrors.WithDeveloperMessage("workspace app service is unavailable"),
 		)
 	}
 	apps, err := api.AppCenterService.List(ctx, workspaceID)
 	if err != nil {
-		return err
+		return "", err
 	}
 	for _, app := range apps {
 		if app.Package.AppID == appID && app.Installation != nil {
-			return nil
+			return app.Package.Version, nil
 		}
 	}
-	return workspacedata.ErrWorkspaceAppNotFound
+	return "", workspacedata.ErrWorkspaceAppNotFound
 }
 
 func writeGetWorkspaceAppAgentPreferencesError(err error) tuttigenerated.GetWorkspaceAppAgentPreferencesResponseObject {

@@ -1091,8 +1091,8 @@ func TestComposerOptionsCommandReturnsProviderOptions(t *testing.T) {
 	if sessions.composerInput.Locale != "zh-CN" || sessions.composerInput.Provider != "codex" || sessions.composerInput.Settings.Model != "gpt-5" || sessions.composerInput.Settings.PermissionModeID != "auto" || sessions.composerInput.Settings.ReasoningEffort != "high" {
 		t.Fatalf("composer input = %#v", sessions.composerInput)
 	}
-	if sessions.composerInput.IncludeCapabilityCatalog != nil {
-		t.Fatalf("include capability catalog = %#v, want nil default", *sessions.composerInput.IncludeCapabilityCatalog)
+	if sessions.composerInput.IncludeCapabilityCatalog == nil || *sessions.composerInput.IncludeCapabilityCatalog {
+		t.Fatalf("include capability catalog = %#v, want fixed false", sessions.composerInput.IncludeCapabilityCatalog)
 	}
 	if output.Value["provider"] != "codex" {
 		t.Fatalf("output = %#v", output.Value)

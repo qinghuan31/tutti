@@ -10,13 +10,12 @@ import (
 )
 
 type composerOptionsInput struct {
-	Provider                 string `cli:"provider" validate:"required"`
-	Cwd                      string `cli:"cwd"`
-	Locale                   string `cli:"locale"`
-	Model                    string `cli:"model"`
-	PermissionMode           string `cli:"permission-mode"`
-	ReasoningEffort          string `cli:"reasoning-effort"`
-	IncludeCapabilityCatalog *bool  `cli:"include-capability-catalog"`
+	Provider        string `cli:"provider" validate:"required"`
+	Cwd             string `cli:"cwd"`
+	Locale          string `cli:"locale"`
+	Model           string `cli:"model"`
+	PermissionMode  string `cli:"permission-mode"`
+	ReasoningEffort string `cli:"reasoning-effort"`
 }
 
 func (p Provider) newComposerOptionsCommand() cliservice.Command {
@@ -68,12 +67,15 @@ func (p Provider) runComposerOptions(ctx context.Context, invoke framework.Invok
 	if reasoningEffort == "" {
 		reasoningEffort = defaults.ReasoningEffort
 	}
+	// The app-facing composer facade does not return CapabilityCatalog. Keep
+	// discovery off here so a catalog scan is never paid for and discarded.
+	includeCapabilityCatalog := false
 	return p.sessions.GetComposerOptions(ctx, agentservice.ComposerOptionsInput{
 		Cwd:                      input.Cwd,
 		Locale:                   locale,
 		Provider:                 canonicalProvider,
 		WorkspaceID:              invoke.WorkspaceID,
-		IncludeCapabilityCatalog: input.IncludeCapabilityCatalog,
+		IncludeCapabilityCatalog: &includeCapabilityCatalog,
 		Settings: agentservice.ComposerSettings{
 			Model:            model,
 			PermissionModeID: permissionModeID,

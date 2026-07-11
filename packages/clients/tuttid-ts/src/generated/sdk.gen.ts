@@ -1120,7 +1120,7 @@ export const reloadLocalWorkspaceApp = <ThrowOnError extends boolean = false>(
 /**
  * Get workspace-app agent preference projection
  *
- * Read-only subset of desktop agent preferences for one workspace app runtime. Intended for workspace app server tokens; exposes default provider selection and developer-gated provider visibility only. Deprecated for Agent integrations: use `tutti --json agent providers` through `@tutti-os/agent-acp-kit/tutti`. This compatibility route remains available for one stable release window.
+ * Read-only subset of desktop agent preferences for one workspace app runtime. Intended for workspace app server tokens; exposes default provider selection and developer-gated provider visibility only. Deprecated for Agent integrations: use `tutti --json agent providers` through `@tutti-os/agent-acp-kit/tutti`. Removal is gated by the production-usage telemetry and release criteria in `docs/conventions/deprecated-workspace-app-agent-apis.md`.
  *
  *
  * @deprecated
@@ -1143,7 +1143,7 @@ export const getWorkspaceAppAgentPreferences = <
 /**
  * Get agent provider availability for one workspace app
  *
- * Workspace-app scoped alias of `GET /v1/agent-providers/status` for app server tokens. When `providers` is omitted, returns provider statuses for enabled daemon-owned Agent Targets visible to Agent GUI. When `providers` is supplied, it narrows that Agent Target set and cannot expose providers outside it. Deprecated for Agent integrations: use `tutti --json agent providers` through `@tutti-os/agent-acp-kit/tutti`. This compatibility route remains available for one stable release window.
+ * Workspace-app scoped alias of `GET /v1/agent-providers/status` for app server tokens. When `providers` is omitted, returns provider statuses for enabled daemon-owned Agent Targets visible to Agent GUI. When `providers` is supplied, it narrows that Agent Target set and cannot expose providers outside it. Deprecated for Agent integrations: use `tutti --json agent providers` through `@tutti-os/agent-acp-kit/tutti`. Removal is gated by the production-usage telemetry and release criteria in `docs/conventions/deprecated-workspace-app-agent-apis.md`.
  *
  *
  * @deprecated
@@ -1166,7 +1166,7 @@ export const getWorkspaceAppAgentProviderStatuses = <
 /**
  * Get agent provider composer options for one workspace app
  *
- * Workspace-app scoped alias of `POST /v1/agent-providers/{provider}/composer-options` for app server tokens. Deprecated for Agent integrations: use `tutti --json agent composer-options --provider <providerId>` through `@tutti-os/agent-acp-kit/tutti`. This compatibility route remains available for one stable release window.
+ * Workspace-app scoped alias of `POST /v1/agent-providers/{provider}/composer-options` for app server tokens. Deprecated for Agent integrations: use `tutti --json agent composer-options --provider <providerId>` through `@tutti-os/agent-acp-kit/tutti`. Removal is gated by the production-usage telemetry and release criteria in `docs/conventions/deprecated-workspace-app-agent-apis.md`.
  *
  *
  * @deprecated

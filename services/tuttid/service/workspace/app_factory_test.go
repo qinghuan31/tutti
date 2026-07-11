@@ -371,6 +371,8 @@ func TestAppFactoryServiceCreateUsesDraftDirAndReferenceContext(t *testing.T) {
 		"await createManagedAgentRunContextFromHeaders",
 		"browserUse",
 		"computerUse",
+		"do **not** install a tool",
+		"Omit the fields when the capability is unavailable",
 	} {
 		if !strings.Contains(agentACPReference, want) {
 			t.Fatalf("agent-acp-kit reference missing %q:\n%s", want, agentACPReference)
@@ -384,6 +386,8 @@ func TestAppFactoryServiceCreateUsesDraftDirAndReferenceContext(t *testing.T) {
 		"managedCredential &&",
 		"agent-providers/status",
 		"TUTTI_APP_SERVER_TOKEN",
+		"appPolicyAllowsBrowser",
+		"appPolicyAllowsComputer",
 	} {
 		if strings.Contains(agentACPReference, forbidden) {
 			t.Fatalf("agent-acp-kit reference contains obsolete guidance %q:\n%s", forbidden, agentACPReference)

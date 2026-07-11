@@ -95,11 +95,11 @@ func (p Provider) Commands() []cliservice.Command {
 		commands = append(commands,
 			p.newProvidersCommand(),
 			p.newComposerOptionsCommand(),
+			p.newSkillBundleCommand(),
 			p.newStartCommand(),
 		)
 	}
 	commands = append(commands,
-		p.newSkillBundleCommand(),
 		p.newProviderStartCommand(providerStartCommandSpec{
 			AppID:         codexAgentAppID,
 			AppName:       "Codex",
