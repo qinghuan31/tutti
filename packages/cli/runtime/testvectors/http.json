@@ -41,6 +41,11 @@
       "json": "{\"error\":{\"code\":\"invalid_request\",\"reason\":\"cli_command_not_found\",\"developerMessage\":\"cli command not found\"}}"
     },
     {
+      "name": "command-unavailable",
+      "statusCode": 404,
+      "json": "{\"error\":{\"code\":\"invalid_request\",\"reason\":\"cli_command_not_found\",\"developerMessage\":\"cli command not found\"}}"
+    },
+    {
       "name": "invalid-input",
       "statusCode": 400,
       "json": "{\"error\":{\"code\":\"invalid_request\",\"reason\":\"malformed_request\",\"developerMessage\":\"invalid cli command input\"}}"
@@ -54,6 +59,11 @@
       "name": "workspace-operation",
       "statusCode": 502,
       "json": "{\"error\":{\"code\":\"workspace_operation_failed\",\"reason\":\"workspace_operation_failed\",\"developerMessage\":\"app_cli_handler_bad_response: app handler bad response\"}}"
+    },
+    {
+      "name": "raw-workspace-operation",
+      "statusCode": 502,
+      "json": "{\"error\":{\"code\":\"workspace_operation_failed\",\"reason\":\"workspace_operation_failed\",\"developerMessage\":\"raw command failure\"}}"
     }
   ],
   "invokeDecodeCases": [
@@ -90,6 +100,13 @@
       "expectedStatusCode": 400,
       "expectedInvoked": false,
       "expectedReason": "malformed_request"
+    },
+    {
+      "name": "truncated-document",
+      "body": "{\"context\":",
+      "expectedStatusCode": 400,
+      "expectedInvoked": false,
+      "expectedReason": "empty_body"
     }
   ]
 }

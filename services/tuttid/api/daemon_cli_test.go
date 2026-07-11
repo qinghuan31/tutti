@@ -87,12 +87,16 @@ func sharedHTTPVectorError(name string) error {
 	switch name {
 	case "command-not-found":
 		return cliservice.ErrCommandNotFound
+	case "command-unavailable":
+		return cliservice.ErrCommandNotFound
 	case "invalid-input":
 		return cliservice.ErrInvalidInput
 	case "app-runtime-unavailable":
 		return cliservice.ServiceUnavailableError("app_cli_runtime_unavailable", errors.New("app runtime unavailable"))
 	case "workspace-operation":
 		return cliservice.WorkspaceOperationError("app_cli_handler_bad_response", errors.New("app handler bad response"))
+	case "raw-workspace-operation":
+		return errors.New("raw command failure")
 	default:
 		return errors.New("unknown shared error vector")
 	}
