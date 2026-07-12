@@ -124,7 +124,8 @@ On Windows the bundled daemon filename is `tuttid.exe`.
 Windows packages use an assisted NSIS installer. Users can choose the
 installation directory during setup and uninstall Tutti through Windows
 Installed Apps or the Start menu. Uninstalling preserves Tutti application
-data, including local workspaces and settings.
+data, including local workspaces and settings. When users choose a parent
+directory, the installer completes the target with a `Tutti` subdirectory.
 
 Expected release artifacts include:
 

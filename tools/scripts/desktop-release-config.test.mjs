@@ -40,6 +40,10 @@ const desktopBuildIconPath = new URL(
   "../../apps/desktop/build/icon.png",
   import.meta.url
 );
+const windowsInstallerIncludePath = new URL(
+  "../../apps/desktop/build/installer.nsh",
+  import.meta.url
+);
 
 test("desktop release workflow uses the published desktop package name", async () => {
   const packageJson = JSON.parse(await readFile(desktopPackagePath, "utf8"));
@@ -716,6 +720,18 @@ test("desktop windows installer allows choosing its install directory", async ()
   assert.equal(packageJson.build.nsis.oneClick, false);
   assert.equal(packageJson.build.nsis.allowToChangeInstallationDirectory, true);
   assert.equal(packageJson.build.nsis.deleteAppDataOnUninstall, false);
+});
+
+test("desktop windows installer completes a selected parent directory", async () => {
+  const packageJson = JSON.parse(await readFile(desktopPackagePath, "utf8"));
+  const installerInclude = await readFile(windowsInstallerIncludePath, "utf8");
+
+  assert.equal(packageJson.build.nsis.include, "build/installer.nsh");
+  assert.match(installerInclude, /MUI_PAGE_CUSTOMFUNCTION_LEAVE/);
+  assert.match(installerInclude, /GetWindowText/);
+  assert.match(installerInclude, /SetWindowText/);
+  assert.match(installerInclude, /Function un\.normalizeInstallDirectory/);
+  assert.match(installerInclude, /\$1\\\$\{APP_FILENAME\}/);
 });
 
 test("desktop windows packaging anchors electron-builder workspace detection to the repo root", async () => {
