@@ -129,7 +129,9 @@ func runDefaultInstallCommand(ctx context.Context, input InstallCommandInput) (I
 	}
 
 	var cmd *exec.Cmd
-	if runtime.GOOS == "windows" {
+	if program := strings.TrimSpace(input.Program); program != "" {
+		cmd = exec.CommandContext(ctx, program, input.Args...)
+	} else if runtime.GOOS == "windows" {
 		cmd = exec.CommandContext(ctx, resolveInstallerShell(), "/C", command)
 	} else {
 		cmd = exec.CommandContext(ctx, resolveInstallerShell(), "-lc", command)

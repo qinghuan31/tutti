@@ -107,6 +107,20 @@ func (s Service) runManagedNPMPackageInstaller(
 		commandArgs = append(commandArgs, "--include=optional")
 	}
 	command := joinShellCommand(commandArgs)
+	installInput := func(env []string) InstallCommandInput {
+		input := InstallCommandInput{
+			Command: command,
+			Env:     env,
+			OnStdout: func(output string) {
+				appendActiveActionStdout(ctx, provider, output)
+			},
+		}
+		if runtime.GOOS == "windows" {
+			input.Program = npmPath
+			input.Args = commandArgs[1:]
+		}
+		return input
+	}
 	// Pin a dedicated, tutti-owned npm cache instead of the user's global ~/.npm,
 	// which on some machines holds root-owned files that make every user-mode npm
 	// install fail with EACCES before any registry is hit.
@@ -124,13 +138,7 @@ func (s Service) runManagedNPMPackageInstaller(
 			NodeTarget: nodeTarget,
 		})
 		attemptCtx, cancel := context.WithTimeout(ctx, perRegistryInstallTimeout)
-		result, err = s.installCommand(attemptCtx, InstallCommandInput{
-			Command: command,
-			Env:     withAgentNPMRegistry(slices.Clone(baseEnv), registry),
-			OnStdout: func(output string) {
-				appendActiveActionStdout(ctx, provider, output)
-			},
-		})
+		result, err = s.installCommand(attemptCtx, installInput(withAgentNPMRegistry(slices.Clone(baseEnv), registry)))
 		cancel()
 		if err == nil && result.ExitCode == 0 {
 			setActiveAction(ctx, provider, ActiveAction{
@@ -154,13 +162,7 @@ func (s Service) runManagedNPMPackageInstaller(
 				Stdout:     result.Stdout,
 			})
 			attemptCtx, cancel = context.WithTimeout(ctx, perRegistryInstallTimeout)
-			result, err = s.installCommand(attemptCtx, InstallCommandInput{
-				Command: command,
-				Env:     withAgentNPMRegistry(slices.Clone(baseEnv), registry),
-				OnStdout: func(output string) {
-					appendActiveActionStdout(ctx, provider, output)
-				},
-			})
+			result, err = s.installCommand(attemptCtx, installInput(withAgentNPMRegistry(slices.Clone(baseEnv), registry)))
 			cancel()
 			if err == nil && result.ExitCode == 0 {
 				setActiveAction(ctx, provider, ActiveAction{
