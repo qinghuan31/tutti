@@ -223,6 +223,19 @@ No. Tutti works with your existing Claude, Codex, and other supported agent subs
 
 You can start with the Tutti Agent inside Tutti. Tutti Agent is free during Early Access. Usage-based billing may apply later.
 
+### How do I connect Tutti Agent?
+
+Open the **Agent** workspace, choose **Tutti Agent**, then click **Connect**.
+Tutti detects or installs the local `tutti-agent` command-line adapter for you.
+If it asks you to sign in, click **Sign in**, complete Tutti account login in
+your browser, then return to the app. The status changes to connected once the
+local adapter and account authorization are ready.
+
+This is not a server address or API-key setup flow. Tutti Agent runs locally
+through `tutti-agent app-server`; Tutti manages the local adapter and its
+account token. If connection fails, retry **Connect** after confirming the
+machine can reach the npm registry and the Tutti account login page.
+
 ### What's the difference between Tutti and Tutti · VM?
 
 Use Tutti · VM if you want to collaborate with teammates, work across multiple devices, or keep outputs in a shared cloud workspace.
