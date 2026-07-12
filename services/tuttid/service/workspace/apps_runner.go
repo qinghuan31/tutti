@@ -297,13 +297,25 @@ func appBootstrapCommand(
 	if runtime.GOOS == "windows" &&
 		strings.TrimSpace(input.RuntimeProfile) == "node-static" &&
 		strings.EqualFold(filepath.Ext(bootstrapPath), ".sh") {
-		entrypoint := filepath.Join(input.PackageDir, "server.mjs")
-		info, err := os.Stat(entrypoint)
-		if err == nil && !info.IsDir() && strings.TrimSpace(appRuntime.Node) != "" {
+		if entrypoint := windowsNodeAppEntrypoint(input.PackageDir); entrypoint != "" && strings.TrimSpace(appRuntime.Node) != "" {
 			return exec.Command(appRuntime.Node, entrypoint), nil
 		}
 	}
 	return exec.Command(bootstrapPath), nil
+}
+
+func windowsNodeAppEntrypoint(packageDir string) string {
+	for _, relativePath := range []string{
+		"server.mjs",
+		filepath.Join("server", "dist", "main.js"),
+	} {
+		entrypoint := filepath.Join(packageDir, relativePath)
+		info, err := os.Stat(entrypoint)
+		if err == nil && !info.IsDir() {
+			return entrypoint
+		}
+	}
+	return ""
 }
 
 func tuttiAPIBaseURLFromEnv() string {

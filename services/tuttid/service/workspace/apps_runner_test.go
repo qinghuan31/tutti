@@ -150,29 +150,39 @@ func TestAppBootstrapCommandUsesNodeForWindowsNodeStaticPackage(t *testing.T) {
 		t.Skip("Windows node-static bootstrap test")
 	}
 
-	packageDir := t.TempDir()
-	bootstrapPath := filepath.Join(packageDir, "bootstrap.sh")
-	entrypoint := filepath.Join(packageDir, "server.mjs")
-	if err := os.WriteFile(bootstrapPath, []byte("#!/bin/sh\n"), 0o644); err != nil {
-		t.Fatalf("WriteFile(bootstrap.sh) error = %v", err)
-	}
-	if err := os.WriteFile(entrypoint, []byte("console.log('ready');\n"), 0o644); err != nil {
-		t.Fatalf("WriteFile(server.mjs) error = %v", err)
-	}
+	for _, relativeEntrypoint := range []string{
+		"server.mjs",
+		filepath.Join("server", "dist", "main.js"),
+	} {
+		t.Run(relativeEntrypoint, func(t *testing.T) {
+			packageDir := t.TempDir()
+			bootstrapPath := filepath.Join(packageDir, "bootstrap.sh")
+			entrypoint := filepath.Join(packageDir, relativeEntrypoint)
+			if err := os.MkdirAll(filepath.Dir(entrypoint), 0o755); err != nil {
+				t.Fatalf("MkdirAll(entrypoint parent) error = %v", err)
+			}
+			if err := os.WriteFile(bootstrapPath, []byte("#!/bin/sh\n"), 0o644); err != nil {
+				t.Fatalf("WriteFile(bootstrap.sh) error = %v", err)
+			}
+			if err := os.WriteFile(entrypoint, []byte("console.log('ready');\n"), 0o644); err != nil {
+				t.Fatalf("WriteFile(entrypoint) error = %v", err)
+			}
 
-	command, err := appBootstrapCommand(
-		AppStartInput{PackageDir: packageDir, RuntimeProfile: "node-static"},
-		ResolvedAppRuntime{Node: `C:\\Program Files\\Tutti\\Tutti.exe`},
-		bootstrapPath,
-	)
-	if err != nil {
-		t.Fatalf("appBootstrapCommand() error = %v", err)
-	}
-	if command.Path != `C:\\Program Files\\Tutti\\Tutti.exe` {
-		t.Fatalf("Path = %q", command.Path)
-	}
-	if len(command.Args) != 2 || command.Args[1] != entrypoint {
-		t.Fatalf("Args = %#v, want Node entrypoint command", command.Args)
+			command, err := appBootstrapCommand(
+				AppStartInput{PackageDir: packageDir, RuntimeProfile: "node-static"},
+				ResolvedAppRuntime{Node: `C:\\Program Files\\Tutti\\Tutti.exe`},
+				bootstrapPath,
+			)
+			if err != nil {
+				t.Fatalf("appBootstrapCommand() error = %v", err)
+			}
+			if command.Path != `C:\\Program Files\\Tutti\\Tutti.exe` {
+				t.Fatalf("Path = %q", command.Path)
+			}
+			if len(command.Args) != 2 || command.Args[1] != entrypoint {
+				t.Fatalf("Args = %#v, want Node entrypoint command", command.Args)
+			}
+		})
 	}
 }
 

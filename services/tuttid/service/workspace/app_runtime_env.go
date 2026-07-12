@@ -28,7 +28,14 @@ func appRuntimeProfileForPackage(appPackage workspacebiz.AppPackage) string {
 }
 
 func appRuntimeProfileForManifest(manifest workspacebiz.AppManifest) string {
-	return strings.TrimSpace(manifest.Runtime.Profile)
+	profile := strings.TrimSpace(manifest.Runtime.Profile)
+	if profile != "" || runtime.GOOS != "windows" {
+		return profile
+	}
+	if strings.EqualFold(filepath.Ext(strings.TrimSpace(manifest.Runtime.Bootstrap)), ".sh") {
+		return workspaceAppNodeRuntimePreloadProfile
+	}
+	return ""
 }
 
 func appRuntimeProfileIsStandalone(profile string) bool {

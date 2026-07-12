@@ -132,6 +132,8 @@ import {
 
 const temporaryWorkspaceAppDockRetentionActionPrefix =
   "temporary-workspace-app-dock-retention:";
+const workspaceFilesSystemFileManagerActionId =
+  "workspace-files:open-system-file-manager";
 
 interface WorkspaceWorkbenchProps {
   agentWindowInput?: Omit<StandaloneAgentWindowProps, "workspace">;
@@ -336,43 +338,7 @@ function ReadyWorkspaceWorkbenchWithSession({
         });
         return;
       }
-      return hostInput.onDockEntryAction?.(request);
-    },
-    [
-      appCenterService,
-      hostInput.contributions,
-      hostInput.dockEntries,
-      hostInput.onDockEntryAction
-    ]
-  );
-  const contributions = useMemo(
-    () =>
-      hostInput.contributions?.map((contribution) =>
-        resolveTemporaryDockRetentionContribution({
-          appCenterService,
-          contribution,
-          retainedByEntryId: temporaryDockRetentionByEntryId
-        })
-      ),
-    [appCenterService, hostInput.contributions, temporaryDockRetentionByEntryId]
-  );
-  const dockEntries = useMemo(
-    () =>
-      hostInput.dockEntries?.map((entry) =>
-        resolveTemporaryDockRetentionEntry({
-          appCenterService,
-          entry,
-          retainedByEntryId: temporaryDockRetentionByEntryId
-        })
-      ),
-    [appCenterService, hostInput.dockEntries, temporaryDockRetentionByEntryId]
-  );
-  const onDockEntryClick = useCallback(
-    (request: Parameters<NonNullable<typeof hostInput.onDockEntryClick>>[0]) => {
-      if (
-        state.platform === "win32" &&
-        request.entryId === workspaceFilesNodeID
-      ) {
+      if (request.actionId === workspaceFilesSystemFileManagerActionId) {
         void openWorkspaceRootInSystemFileManager(
           runtime.workspaceFileManagerService,
           state.workspace.id
@@ -386,15 +352,56 @@ function ReadyWorkspaceWorkbenchWithSession({
         });
         return;
       }
-      return hostInput.onDockEntryClick?.(request);
+      return hostInput.onDockEntryAction?.(request);
     },
     [
-      hostInput.onDockEntryClick,
+      appCenterService,
+      hostInput.contributions,
+      hostInput.dockEntries,
+      hostInput.onDockEntryAction,
       runtime.workspaceFileManagerService,
-      state.platform,
       state.workspace.id
     ]
   );
+  const contributions = useMemo(
+    () =>
+      hostInput.contributions?.map((contribution) =>
+        resolveWindowsFilesDockContribution(
+          state.platform,
+          resolveTemporaryDockRetentionContribution({
+            appCenterService,
+            contribution,
+            retainedByEntryId: temporaryDockRetentionByEntryId
+          })
+        )
+      ),
+    [
+      appCenterService,
+      hostInput.contributions,
+      state.platform,
+      temporaryDockRetentionByEntryId
+    ]
+  );
+  const dockEntries = useMemo(
+    () =>
+      hostInput.dockEntries?.map((entry) =>
+        resolveWindowsFilesDockEntry(
+          state.platform,
+          resolveTemporaryDockRetentionEntry({
+            appCenterService,
+            entry,
+            retainedByEntryId: temporaryDockRetentionByEntryId
+          })
+        )
+      ),
+    [
+      appCenterService,
+      hostInput.dockEntries,
+      state.platform,
+      temporaryDockRetentionByEntryId
+    ]
+  );
+  const onDockEntryClick = hostInput.onDockEntryClick;
   const onWorkbenchHostHandleReady = useCallback(
     (host: WorkbenchHostHandle | null) => {
       setWorkbenchHost(host);
@@ -930,6 +937,34 @@ function resolveTemporaryDockRetentionContribution({
         retainedByEntryId
       })
     )
+  };
+}
+
+function resolveWindowsFilesDockContribution(
+  platform: NodeJS.Platform,
+  contribution: WorkbenchContribution
+): WorkbenchContribution {
+  if (!contribution.dockEntries?.length) {
+    return contribution;
+  }
+  return {
+    ...contribution,
+    dockEntries: contribution.dockEntries.map((entry) =>
+      resolveWindowsFilesDockEntry(platform, entry)
+    )
+  };
+}
+
+function resolveWindowsFilesDockEntry(
+  platform: NodeJS.Platform,
+  entry: WorkbenchHostDockEntry
+): WorkbenchHostDockEntry {
+  if (platform !== "win32" || entry.id !== workspaceFilesNodeID) {
+    return entry;
+  }
+  return {
+    ...entry,
+    clickActionId: workspaceFilesSystemFileManagerActionId
   };
 }
 
