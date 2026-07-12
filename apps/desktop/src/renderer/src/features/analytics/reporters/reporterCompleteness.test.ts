@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 import test from "node:test";
 
 const expectedAnalyticsEvents = [
@@ -90,7 +91,7 @@ const expectedAnalyticsEvents = [
 ] as const;
 
 test("renderer reporter directories match analytics spec events", () => {
-  const reportersDir = path.dirname(new URL(import.meta.url).pathname);
+  const reportersDir = path.dirname(fileURLToPath(import.meta.url));
   const expectedReporterDirectories = expectedAnalyticsEvents.map(
     toReporterDirectoryName
   );

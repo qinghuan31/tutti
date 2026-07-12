@@ -7,8 +7,14 @@ const scriptDirectory = dirname(fileURLToPath(import.meta.url));
 const workspaceRoot = join(scriptDirectory, "..", "..");
 const packageRoot = resolvePackageRoot();
 const tsconfigPath = join(packageRoot, "tsconfig.json");
-const tsgoCommand = process.platform === "win32" ? "tsgo.cmd" : "tsgo";
-const tsgoPath = join(workspaceRoot, "node_modules", ".bin", tsgoCommand);
+const tsgoEntrypoint = join(
+  workspaceRoot,
+  "node_modules",
+  "@typescript",
+  "native-preview",
+  "bin",
+  "tsgo.js"
+);
 const forwardedArgs = removePackageRootOption(process.argv.slice(2));
 
 if (!existsSync(tsconfigPath)) {
@@ -27,8 +33,9 @@ const tsbuildInfoPath = join(
 mkdirSync(tsbuildInfoDirectory, { recursive: true });
 
 const child = spawn(
-  tsgoPath,
+  process.execPath,
   [
+    tsgoEntrypoint,
     "--noEmit",
     "--incremental",
     "--tsBuildInfoFile",

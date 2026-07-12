@@ -453,10 +453,19 @@ export async function pickOpenWithApplication(
 
 export async function openFileWithOtherApplication(
   targetPath: string,
-  applicationPickerPrompt?: string
+  applicationPickerPrompt?: string,
+  options: { execFile?: ExecFileAsync } = {}
 ): Promise<void> {
   const normalizedTargetPath = path.resolve(targetPath);
   accessSync(normalizedTargetPath, constants.F_OK);
+
+  if (process.platform === "win32") {
+    await (options.execFile ?? execFileAsync)("rundll32.exe", [
+      "shell32.dll,OpenAs_RunDLL",
+      normalizedTargetPath
+    ]);
+    return;
+  }
 
   const applicationPath = await pickOpenWithApplication(
     applicationPickerPrompt

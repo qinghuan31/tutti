@@ -26,6 +26,13 @@
         "to": "bin"
       },
       {
+        "from": "build/python",
+        "to": "python",
+        "filter": [
+          "**/*"
+        ]
+      },
+      {
         "from": "build/browser-mcp",
         "to": "bin/browser-mcp",
         "filter": [

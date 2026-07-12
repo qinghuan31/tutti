@@ -45,7 +45,11 @@ test("ensureDesktopCliShim writes unix shim with state root", async () => {
   assert.match(content, /Tutti CLI shim/);
   assert.match(
     content,
-    /\/Applications\/Tutti\.app\/Contents\/Resources\/bin\/tutti/
+    new RegExp(
+      escapeRegExp(
+        join("/Applications/Tutti.app/Contents/Resources", "bin", "tutti")
+      )
+    )
   );
   assert.match(content, new RegExp(escapeRegExp(stateRootDir)));
 });

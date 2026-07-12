@@ -137,6 +137,45 @@ func TestDefaultResolverUsesDesktopNodeForWindowsNodeStaticProfile(t *testing.T)
 	}
 }
 
+func TestDefaultResolverUsesEmbeddedPythonForWindowsPythonStaticProfile(t *testing.T) {
+	if runtime.GOOS != "windows" {
+		t.Skip("Windows embedded Python fallback test")
+	}
+
+	root := t.TempDir()
+	resourcesDir := filepath.Join(root, "resources")
+	tuttidPath := filepath.Join(resourcesDir, "bin", "tuttid.exe")
+	pythonPath := filepath.Join(resourcesDir, "python", "python.exe")
+	for _, path := range []string{tuttidPath, pythonPath} {
+		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+			t.Fatalf("MkdirAll(%s) error = %v", path, err)
+		}
+		if err := os.WriteFile(path, []byte("stub"), 0o644); err != nil {
+			t.Fatalf("WriteFile(%s) error = %v", path, err)
+		}
+	}
+
+	resolver := DefaultResolver{
+		Environ: func() []string {
+			return []string{tuttiAppRuntimeCatalogEnv + "=", "PATH=C:\\Windows"}
+		},
+		Executable: func() (string, error) { return tuttidPath, nil },
+	}
+	resolved, err := resolver.ResolveProfile(context.Background(), PythonStaticProfile)
+	if err != nil {
+		t.Fatalf("ResolveProfile(python-static) error = %v", err)
+	}
+	if resolved.Python != pythonPath {
+		t.Fatalf("Python = %q, want %q", resolved.Python, pythonPath)
+	}
+	if EnvValue(resolved.EnvOverrides, "TUTTI_APP_PYTHON") != pythonPath {
+		t.Fatalf("TUTTI_APP_PYTHON = %q, want %q", EnvValue(resolved.EnvOverrides, "TUTTI_APP_PYTHON"), pythonPath)
+	}
+	if err := resolver.PreloadProfile(context.Background(), PythonStaticProfile); err != nil {
+		t.Fatalf("PreloadProfile(python-static) error = %v", err)
+	}
+}
+
 func TestDefaultResolverDownloadsRuntimeFromCatalog(t *testing.T) {
 	cacheRoot := t.TempDir()
 	pythonArtifactPath := createManagedRuntimeComponentArchiveForTest(t, "python")

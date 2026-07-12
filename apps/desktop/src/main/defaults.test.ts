@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { join } from "node:path";
 import test from "node:test";
 import {
   initializeDesktopEnvironment,
@@ -17,6 +18,7 @@ test("resolveDesktopDefaultsFromEnv uses generated development defaults", () => 
 
   try {
     process.env.HOME = homeDir;
+    process.env.USERPROFILE = homeDir;
     process.env.TUTTI_ENV = "development";
     delete process.env.TUTTI_STATE_DIR;
     delete process.env.TUTTI_LOG_DIR;
@@ -29,25 +31,28 @@ test("resolveDesktopDefaultsFromEnv uses generated development defaults", () => 
     const got = resolveDesktopDefaultsFromEnv();
 
     assert.equal(got.runtime.env, "development");
-    assert.equal(got.state.rootDir, `${homeDir}/.tutti-dev`);
-    assert.equal(got.state.logsDir, `${homeDir}/.tutti-dev/logs`);
-    assert.equal(got.state.runDir, `${homeDir}/.tutti-dev/run`);
-    assert.equal(got.state.tuttidDBPath, `${homeDir}/.tutti-dev/tuttid.db`);
+    assert.equal(got.state.rootDir, join(homeDir, ".tutti-dev"));
+    assert.equal(got.state.logsDir, join(homeDir, ".tutti-dev", "logs"));
+    assert.equal(got.state.runDir, join(homeDir, ".tutti-dev", "run"));
+    assert.equal(
+      got.state.tuttidDBPath,
+      join(homeDir, ".tutti-dev", "tuttid.db")
+    );
     assert.equal(
       got.state.tuttidListenerInfoPath,
-      `${homeDir}/.tutti-dev/run/tuttid.listener.json`
+      join(homeDir, ".tutti-dev", "run", "tuttid.listener.json")
     );
     assert.equal(
       got.state.tuttidLogPath,
-      `${homeDir}/.tutti-dev/logs/tuttid.log`
+      join(homeDir, ".tutti-dev", "logs", "tuttid.log")
     );
     assert.equal(
       got.state.desktopLogPath,
-      `${homeDir}/.tutti-dev/logs/tutti-desktop.log`
+      join(homeDir, ".tutti-dev", "logs", "tutti-desktop.log")
     );
     assert.equal(
       got.state.tuttidPIDPath,
-      `${homeDir}/.tutti-dev/run/tuttid.pid`
+      join(homeDir, ".tutti-dev", "run", "tuttid.pid")
     );
     assert.equal(got.transport.tcpAddr, "127.0.0.1:4545");
     assert.equal(got.logging.defaultLevel, "info");
@@ -75,8 +80,14 @@ test("resolveDesktopDefaultsFromEnv honors endpoint and log overrides", () => {
     assert.equal(got.transport.tcpAddr, "127.0.0.1:9999");
     assert.equal(got.state.tuttidListenerInfoPath, "/tmp/tuttid.listener.json");
     assert.equal(got.state.logsDir, "/tmp/tutti-logs");
-    assert.equal(got.state.tuttidLogPath, "/tmp/tutti-logs/tuttid.log");
-    assert.equal(got.state.desktopLogPath, "/tmp/tutti-logs/tutti-desktop.log");
+    assert.equal(
+      got.state.tuttidLogPath,
+      join("/tmp/tutti-logs", "tuttid.log")
+    );
+    assert.equal(
+      got.state.desktopLogPath,
+      join("/tmp/tutti-logs", "tutti-desktop.log")
+    );
   } finally {
     restoreEnv(previousEnv);
   }
@@ -143,7 +154,7 @@ test("resolveDesktopUserDataPath isolates development Electron storage", () => {
         appDataDir: "/tmp/app-data",
         appName: "Tutti"
       }),
-      "/tmp/app-data/Tutti-dev"
+      join("/tmp/app-data", "Tutti-dev")
     );
   } finally {
     restoreEnv(previousEnv);

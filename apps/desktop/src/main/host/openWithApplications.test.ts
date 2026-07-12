@@ -8,6 +8,7 @@ import {
   listOpenWithApplications,
   openFileWithApplication,
   openFileWithDefaultBrowser,
+  openFileWithOtherApplication,
   parseListOpenWithApplicationsLine,
   pickOpenWithApplication,
   readDefaultApplicationIconDataUrl,
@@ -22,6 +23,34 @@ test("pickOpenWithApplication returns null on non-macOS", async (t) => {
   }
 
   assert.equal(await pickOpenWithApplication(), null);
+});
+
+test("openFileWithOtherApplication opens the Windows system chooser", async (t) => {
+  if (process.platform !== "win32") {
+    t.skip("Windows only");
+    return;
+  }
+
+  const targetPath = path.join(
+    await mkdtemp(path.join(tmpdir(), "tutti-open-with-")),
+    "notes.txt"
+  );
+  await writeFile(targetPath, "hello", "utf8");
+  const calls: Array<{ args?: readonly string[]; file: string }> = [];
+
+  await openFileWithOtherApplication(targetPath, undefined, {
+    execFile: async (file, args) => {
+      calls.push({ args, file });
+      return { stderr: "", stdout: "" };
+    }
+  });
+
+  assert.deepEqual(calls, [
+    {
+      args: ["shell32.dll,OpenAs_RunDLL", path.resolve(targetPath)],
+      file: "rundll32.exe"
+    }
+  ]);
 });
 
 test("filterOpenWithApplications removes video players from text file handlers", async () => {

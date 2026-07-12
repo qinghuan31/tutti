@@ -25,9 +25,11 @@ const tuttiAppRuntimeCatalogEnv = "TUTTI_APP_RUNTIME_CATALOG"
 const appRuntimeCatalogSchemaVersion = "tutti.app.runtimes.v2"
 const appRuntimeBaselineProfile = "baseline"
 const appRuntimeNodeStaticProfile = "node-static"
+const appRuntimePythonStaticProfile = "python-static"
 const defaultTuttiAppRuntimeCatalogURL = "https://d1x7gb6wqsqmnm.cloudfront.net/tutti-app-runtimes/catalog.json"
 
 const NodeStaticProfile = appRuntimeNodeStaticProfile
+const PythonStaticProfile = appRuntimePythonStaticProfile
 
 const maxManagedAppRuntimeArtifactBytes int64 = 512 * 1024 * 1024
 const maxManagedAppRuntimeExpandedBytes int64 = 2 * 1024 * 1024 * 1024
@@ -99,7 +101,7 @@ func (r DefaultResolver) Resolve(ctx context.Context) (ResolvedRuntime, error) {
 func (r DefaultResolver) PreloadProfile(ctx context.Context, profile string) error {
 	err := r.ensureRuntimeProfile(ctx, r.runtimeRoot(), profile)
 	if err != nil {
-		if _, ok := r.windowsEmbeddedNodeRuntime(profile); ok {
+		if _, ok := r.windowsEmbeddedRuntime(profile); ok {
 			return nil
 		}
 	}
@@ -113,7 +115,7 @@ func (r DefaultResolver) ResolveProfile(ctx context.Context, profile string) (Re
 	}
 	root := r.runtimeRoot()
 	if err := r.ensureRuntimeProfile(ctx, root, profile); err != nil {
-		if fallback, ok := r.windowsEmbeddedNodeRuntime(profile); ok {
+		if fallback, ok := r.windowsEmbeddedRuntime(profile); ok {
 			return fallback, nil
 		}
 		return ResolvedRuntime{}, err
@@ -128,8 +130,8 @@ func (r DefaultResolver) ResolveProfile(ctx context.Context, profile string) (Re
 	return r.resolvedRuntimeForComponents(root, componentNames)
 }
 
-func (r DefaultResolver) windowsEmbeddedNodeRuntime(profile string) (ResolvedRuntime, bool) {
-	if runtime.GOOS != "windows" || strings.TrimSpace(profile) != appRuntimeNodeStaticProfile {
+func (r DefaultResolver) windowsEmbeddedRuntime(profile string) (ResolvedRuntime, bool) {
+	if runtime.GOOS != "windows" {
 		return ResolvedRuntime{}, false
 	}
 	executable, err := r.executable()
@@ -141,26 +143,45 @@ func (r DefaultResolver) windowsEmbeddedNodeRuntime(profile string) (ResolvedRun
 	if filepath.Base(binDir) != "bin" || filepath.Base(resourcesDir) != "resources" {
 		return ResolvedRuntime{}, false
 	}
-	desktopExecutable := filepath.Join(filepath.Dir(resourcesDir), "Tutti.exe")
-	if !isExecutableFile(desktopExecutable) {
+	profile = strings.TrimSpace(profile)
+	env := r.environ()
+	switch profile {
+	case appRuntimeNodeStaticProfile:
+		desktopExecutable := filepath.Join(filepath.Dir(resourcesDir), "Tutti.exe")
+		if !isExecutableFile(desktopExecutable) {
+			return ResolvedRuntime{}, false
+		}
+		pathValue := strings.Join(
+			append([]string{filepath.Dir(desktopExecutable)}, filepath.SplitList(envValue(env, pathEnvKey(env)))...),
+			string(os.PathListSeparator),
+		)
+		return ResolvedRuntime{
+			Root:    resourcesDir,
+			Node:    desktopExecutable,
+			BinDirs: []string{filepath.Dir(desktopExecutable)},
+			EnvOverrides: []string{
+				tuttiAppRuntimeRootEnv + "=" + resourcesDir,
+				"TUTTI_APP_NODE=" + desktopExecutable,
+				"ELECTRON_RUN_AS_NODE=1",
+				"PATH=" + pathValue,
+			},
+		}, true
+	case appRuntimePythonStaticProfile:
+		pythonExecutable := filepath.Join(resourcesDir, "python", "python.exe")
+		if !isExecutableFile(pythonExecutable) {
+			return ResolvedRuntime{}, false
+		}
+		return ResolvedRuntime{
+			Root:   resourcesDir,
+			Python: pythonExecutable,
+			EnvOverrides: []string{
+				tuttiAppRuntimeRootEnv + "=" + resourcesDir,
+				"TUTTI_APP_PYTHON=" + pythonExecutable,
+			},
+		}, true
+	default:
 		return ResolvedRuntime{}, false
 	}
-	env := r.environ()
-	pathValue := strings.Join(
-		append([]string{filepath.Dir(desktopExecutable)}, filepath.SplitList(envValue(env, pathEnvKey(env)))...),
-		string(os.PathListSeparator),
-	)
-	return ResolvedRuntime{
-		Root:    resourcesDir,
-		Node:    desktopExecutable,
-		BinDirs: []string{filepath.Dir(desktopExecutable)},
-		EnvOverrides: []string{
-			tuttiAppRuntimeRootEnv + "=" + resourcesDir,
-			"TUTTI_APP_NODE=" + desktopExecutable,
-			"ELECTRON_RUN_AS_NODE=1",
-			"PATH=" + pathValue,
-		},
-	}, true
 }
 
 func (r DefaultResolver) runtimeRoot() string {

@@ -127,7 +127,7 @@ async function readEventually(
   store: WorkspaceDockPreviewCacheStore,
   key: DesktopDockPreviewCacheKey
 ): Promise<string | null> {
-  for (let attempt = 0; attempt < 20; attempt += 1) {
+  for (let attempt = 0; attempt < 100; attempt += 1) {
     const value = await store.read(key);
     if (value) {
       return value;
@@ -139,6 +139,6 @@ async function readEventually(
 
 function waitForWriteQueue(): Promise<void> {
   return new Promise((resolve) => {
-    setTimeout(resolve, 5);
+    setTimeout(resolve, 10);
   });
 }

@@ -13,10 +13,14 @@ import (
 
 func (s *terminalRuntimeSession) foregroundProcess() (terminalForegroundProcess, bool) {
 	s.mu.Lock()
-	file := s.file
-	process := s.command.Process
+	terminalRuntime, ok := s.runtime.(*unixTerminalRuntime)
 	shell := s.shell
 	s.mu.Unlock()
+	if !ok {
+		return terminalForegroundProcess{}, false
+	}
+	file := terminalRuntime.file
+	process := terminalRuntime.command.Process
 
 	if file == nil || process == nil {
 		return terminalForegroundProcess{}, false

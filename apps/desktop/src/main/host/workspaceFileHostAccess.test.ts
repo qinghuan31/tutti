@@ -505,13 +505,20 @@ async function createWorkspaceRootWithFile(
 
 function installHomeDirectory(homeDirectory: string): () => void {
   const originalHome = process.env.HOME;
+  const originalUserProfile = process.env.USERPROFILE;
   process.env.HOME = homeDirectory;
+  process.env.USERPROFILE = homeDirectory;
 
   return () => {
     if (originalHome === undefined) {
       delete process.env.HOME;
-      return;
+    } else {
+      process.env.HOME = originalHome;
     }
-    process.env.HOME = originalHome;
+    if (originalUserProfile === undefined) {
+      delete process.env.USERPROFILE;
+    } else {
+      process.env.USERPROFILE = originalUserProfile;
+    }
   };
 }

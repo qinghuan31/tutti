@@ -636,12 +636,31 @@ export function isLikelyTuttidProcess(command: string): boolean {
     return false;
   }
 
-  return normalized
-    .split(/\s+/)
-    .some((part) => part.split("/").pop() === "tuttid");
+  return normalized.split(/\s+/).some((part) => {
+    const executable = part.split(/[\\/]/u).pop();
+    return executable === "tuttid" || executable === "tuttid.exe";
+  });
 }
 
 function readProcessCommand(pid: number): string {
+  if (process.platform === "win32") {
+    const result = spawnSync(
+      "tasklist",
+      ["/FI", `PID eq ${pid}`, "/FO", "CSV", "/NH"],
+      { encoding: "utf8", windowsHide: true }
+    );
+    if (result.status !== 0) {
+      return "";
+    }
+    return (
+      result.stdout
+        .trim()
+        .split(/\r?\n/u)[0]
+        ?.split(",")[0]
+        ?.replace(/^"|"$/gu, "") ?? ""
+    );
+  }
+
   const result = spawnSync(
     "ps",
     ["-p", String(pid), "-o", "comm=", "-o", "args="],

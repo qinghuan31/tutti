@@ -305,6 +305,13 @@ func appBootstrapCommand(
 			return exec.Command(appRuntime.Node, entrypoint), nil
 		}
 	}
+	if runtime.GOOS == "windows" &&
+		strings.TrimSpace(input.RuntimeProfile) == workspaceAppPythonRuntimePreloadProfile &&
+		strings.EqualFold(filepath.Ext(bootstrapPath), ".sh") {
+		if entrypoint := windowsPythonAppEntrypoint(input.PackageDir); entrypoint != "" && strings.TrimSpace(appRuntime.Python) != "" {
+			return exec.Command(appRuntime.Python, entrypoint), nil
+		}
+	}
 	return exec.Command(bootstrapPath), nil
 }
 
@@ -358,10 +365,28 @@ func windowsNodeAppEntrypoint(packageDir string) string {
 	return ""
 }
 
+func windowsPythonAppEntrypoint(packageDir string) string {
+	entrypoint := filepath.Join(packageDir, "server.py")
+	info, err := os.Stat(entrypoint)
+	if err != nil || info.IsDir() {
+		return ""
+	}
+	return entrypoint
+}
+
 func validateWindowsNodeAppPackage(packageRoot string, manifest workspacebiz.AppManifest) error {
 	if runtime.GOOS != "windows" ||
-		appRuntimeProfileForManifest(manifest) != workspaceAppNodeRuntimePreloadProfile ||
 		!strings.EqualFold(filepath.Ext(manifest.Runtime.Bootstrap), ".sh") {
+		return nil
+	}
+	profile := appRuntimeProfileForManifestAtPackageDir(manifest, packageRoot)
+	if profile == workspaceAppPythonRuntimePreloadProfile {
+		if windowsPythonAppEntrypoint(packageRoot) != "" {
+			return nil
+		}
+		return errors.New("Windows app package requires a supported Python entrypoint")
+	}
+	if profile != workspaceAppNodeRuntimePreloadProfile {
 		return nil
 	}
 	input := AppStartInput{

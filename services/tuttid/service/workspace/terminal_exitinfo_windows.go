@@ -8,6 +8,10 @@ import (
 )
 
 func describeTerminalExit(err error) (*int, *string) {
+	var terminalErr terminalExitError
+	if errors.As(err, &terminalErr) {
+		return &terminalErr.code, nil
+	}
 	var exitErr *exec.ExitError
 	if !errors.As(err, &exitErr) {
 		return nil, nil

@@ -252,6 +252,20 @@ func TestParseAppManifestJSONAcceptsRuntimeProfile(t *testing.T) {
 	}
 }
 
+func TestParseAppManifestJSONAcceptsPythonStaticRuntimeProfile(t *testing.T) {
+	t.Parallel()
+
+	manifest, _, err := ParseAppManifestJSON([]byte(
+		`{"schemaVersion":"tutti.app.manifest.v1","appId":"test-app","version":"0.1.0","name":"Test app","description":"Test app","icon":{"type":"asset","src":"icon.png"},"runtime":{"bootstrap":"bootstrap.sh","healthcheckPath":"/healthz","profile":"python-static"}}`,
+	))
+	if err != nil {
+		t.Fatalf("ParseAppManifestJSON() error = %v, want nil for python-static runtime.profile", err)
+	}
+	if manifest.Runtime.Profile != "python-static" {
+		t.Fatalf("Runtime.Profile = %q, want python-static", manifest.Runtime.Profile)
+	}
+}
+
 func TestParseAppManifestJSONAcceptsStandaloneRuntimeProfile(t *testing.T) {
 	t.Parallel()
 

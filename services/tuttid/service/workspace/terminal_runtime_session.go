@@ -1,21 +1,25 @@
 package workspace
 
 import (
+	"io"
 	"log/slog"
-	"os"
-	"os/exec"
 	"sync"
 	"time"
 )
 
+type terminalRuntime interface {
+	io.ReadWriteCloser
+	Kill() error
+	Resize(cols int, rows int) error
+	Wait() error
+}
+
 type terminalRuntimeSession struct {
 	mu           sync.Mutex
 	cols         int
-	command      *exec.Cmd
 	createdAt    time.Time
 	cwd          string
 	endedAt      *time.Time
-	file         *os.File
 	id           string
 	lastError    *string
 	output       string
@@ -23,6 +27,7 @@ type terminalRuntimeSession struct {
 	outputChars  int
 	profileID    *string
 	rows         int
+	runtime      terminalRuntime
 	seq          int64
 	shell        string
 	status       TerminalStatus
@@ -91,10 +96,10 @@ func (s *terminalRuntimeSession) write(data string) error {
 		s.mu.Unlock()
 		return ErrTerminalNotRunning
 	}
-	file := s.file
+	terminalRuntime := s.runtime
 	s.mu.Unlock()
 
-	_, err := file.Write([]byte(data))
+	_, err := terminalRuntime.Write([]byte(data))
 	return err
 }
 
@@ -227,7 +232,7 @@ func (s *terminalRuntimeSession) attachStream(input AttachTerminalInput) Termina
 func (s *terminalRuntimeSession) readLoop() {
 	buffer := make([]byte, 32*1024)
 	for {
-		n, err := s.file.Read(buffer)
+		n, err := s.runtime.Read(buffer)
 		if n > 0 {
 			s.appendOutput(string(buffer[:n]))
 		}
@@ -241,7 +246,7 @@ func (s *terminalRuntimeSession) readLoop() {
 }
 
 func (s *terminalRuntimeSession) waitLoop() {
-	err := s.command.Wait()
+	err := s.runtime.Wait()
 	s.mu.Lock()
 
 	if isEndedTerminalStatus(s.status) {

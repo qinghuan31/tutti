@@ -124,10 +124,9 @@ test("listDesktopWorkspaceAgentProbes maps Codex OAuth usage windows", async () 
 });
 
 test("listDesktopWorkspaceAgentProbes maps Claude Code OAuth usage windows", async () => {
-  const previousHome = process.env.HOME;
   const directory = await mkdtemp(join(tmpdir(), "tutti-claude-usage-"));
+  const restoreHome = installHomeDirectory(directory);
   try {
-    process.env.HOME = directory;
     await mkdir(join(directory, ".claude"), { recursive: true });
     await writeFile(
       join(directory, ".claude", ".credentials.json"),
@@ -202,26 +201,21 @@ test("listDesktopWorkspaceAgentProbes maps Claude Code OAuth usage windows", asy
       }
     ]);
   } finally {
-    if (previousHome === undefined) {
-      delete process.env.HOME;
-    } else {
-      process.env.HOME = previousHome;
-    }
+    restoreHome();
     setOutboundFetcherForTesting(null);
     await rm(directory, { force: true, recursive: true });
   }
 });
 
 test("listDesktopWorkspaceAgentProbes treats Claude custom API settings as available", async () => {
-  const previousHome = process.env.HOME;
   const previousClaudeConfigDir = process.env.CLAUDE_CONFIG_DIR;
   const previousAnthropicBaseUrl = process.env.ANTHROPIC_BASE_URL;
   const previousAnthropicAPIBaseUrl = process.env.ANTHROPIC_API_BASE_URL;
   const previousAnthropicAuthToken = process.env.ANTHROPIC_AUTH_TOKEN;
   const previousAnthropicAPIKey = process.env.ANTHROPIC_API_KEY;
   const directory = await mkdtemp(join(tmpdir(), "tutti-claude-custom-api-"));
+  const restoreHome = installHomeDirectory(directory);
   try {
-    process.env.HOME = directory;
     delete process.env.CLAUDE_CONFIG_DIR;
     delete process.env.ANTHROPIC_BASE_URL;
     delete process.env.ANTHROPIC_API_BASE_URL;
@@ -261,11 +255,7 @@ test("listDesktopWorkspaceAgentProbes treats Claude custom API settings as avail
     assert.equal(provider?.usage?.accountTier, "custom API");
     assert.deepEqual(provider?.usage?.quotas, []);
   } finally {
-    if (previousHome === undefined) {
-      delete process.env.HOME;
-    } else {
-      process.env.HOME = previousHome;
-    }
+    restoreHome();
     restoreOptionalEnv("CLAUDE_CONFIG_DIR", previousClaudeConfigDir);
     restoreOptionalEnv("ANTHROPIC_BASE_URL", previousAnthropicBaseUrl);
     restoreOptionalEnv("ANTHROPIC_API_BASE_URL", previousAnthropicAPIBaseUrl);
@@ -277,15 +267,14 @@ test("listDesktopWorkspaceAgentProbes treats Claude custom API settings as avail
 });
 
 test("listDesktopWorkspaceAgentProbes requires a Claude custom API token", async () => {
-  const previousHome = process.env.HOME;
   const previousClaudeConfigDir = process.env.CLAUDE_CONFIG_DIR;
   const previousAnthropicBaseUrl = process.env.ANTHROPIC_BASE_URL;
   const previousAnthropicAPIBaseUrl = process.env.ANTHROPIC_API_BASE_URL;
   const previousAnthropicAuthToken = process.env.ANTHROPIC_AUTH_TOKEN;
   const previousAnthropicAPIKey = process.env.ANTHROPIC_API_KEY;
   const directory = await mkdtemp(join(tmpdir(), "tutti-claude-custom-api-"));
+  const restoreHome = installHomeDirectory(directory);
   try {
-    process.env.HOME = directory;
     delete process.env.CLAUDE_CONFIG_DIR;
     delete process.env.ANTHROPIC_BASE_URL;
     delete process.env.ANTHROPIC_API_BASE_URL;
@@ -321,11 +310,7 @@ test("listDesktopWorkspaceAgentProbes requires a Claude custom API token", async
       }
     ]);
   } finally {
-    if (previousHome === undefined) {
-      delete process.env.HOME;
-    } else {
-      process.env.HOME = previousHome;
-    }
+    restoreHome();
     restoreOptionalEnv("CLAUDE_CONFIG_DIR", previousClaudeConfigDir);
     restoreOptionalEnv("ANTHROPIC_BASE_URL", previousAnthropicBaseUrl);
     restoreOptionalEnv("ANTHROPIC_API_BASE_URL", previousAnthropicAPIBaseUrl);
@@ -336,11 +321,10 @@ test("listDesktopWorkspaceAgentProbes requires a Claude custom API token", async
 });
 
 test("listDesktopWorkspaceAgentProbes coalesces rapid repeat usage probes", async () => {
-  const previousHome = process.env.HOME;
   const directory = await mkdtemp(join(tmpdir(), "tutti-claude-throttle-"));
+  const restoreHome = installHomeDirectory(directory);
   let fetchCount = 0;
   try {
-    process.env.HOME = directory;
     await mkdir(join(directory, ".claude"), { recursive: true });
     await writeFile(
       join(directory, ".claude", ".credentials.json"),
@@ -384,18 +368,17 @@ test("listDesktopWorkspaceAgentProbes coalesces rapid repeat usage probes", asyn
       first.providers[0]?.usage?.quotas
     );
   } finally {
-    restoreOptionalEnv("HOME", previousHome);
+    restoreHome();
     setOutboundFetcherForTesting(null);
     await rm(directory, { force: true, recursive: true });
   }
 });
 
 test("listDesktopWorkspaceAgentProbes stops re-hitting a rate-limited usage endpoint", async () => {
-  const previousHome = process.env.HOME;
   const directory = await mkdtemp(join(tmpdir(), "tutti-claude-429-"));
+  const restoreHome = installHomeDirectory(directory);
   let fetchCount = 0;
   try {
-    process.env.HOME = directory;
     await mkdir(join(directory, ".claude"), { recursive: true });
     await writeFile(
       join(directory, ".claude", ".credentials.json"),
@@ -428,7 +411,7 @@ test("listDesktopWorkspaceAgentProbes stops re-hitting a rate-limited usage endp
     assert.equal(first.providers[0]?.lastError?.code, "execution_failed");
     assert.match(first.providers[0]?.lastError?.message ?? "", /rate limited/i);
   } finally {
-    restoreOptionalEnv("HOME", previousHome);
+    restoreHome();
     setOutboundFetcherForTesting(null);
     await rm(directory, { force: true, recursive: true });
   }
@@ -456,6 +439,18 @@ function restoreOptionalEnv(key: string, value: string | undefined): void {
   } else {
     process.env[key] = value;
   }
+}
+
+function installHomeDirectory(homeDirectory: string): () => void {
+  const previousHome = process.env.HOME;
+  const previousUserProfile = process.env.USERPROFILE;
+  process.env.HOME = homeDirectory;
+  process.env.USERPROFILE = homeDirectory;
+
+  return () => {
+    restoreOptionalEnv("HOME", previousHome);
+    restoreOptionalEnv("USERPROFILE", previousUserProfile);
+  };
 }
 
 function fetchInputUrl(input: RequestInfo | URL): string {

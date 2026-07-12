@@ -315,6 +315,74 @@ func TestAppRunnerStartsAICanvasStylePackageOnWindows(t *testing.T) {
 	}
 }
 
+func TestAppRunnerStartsPythonStaticPackageOnWindows(t *testing.T) {
+	if runtime.GOOS != "windows" {
+		t.Skip("Windows Python runner integration test")
+	}
+	pythonPath, err := exec.LookPath("python")
+	if err != nil {
+		t.Skip("python is required for Windows Python runner integration test")
+	}
+
+	root := t.TempDir()
+	packageDir := filepath.Join(root, "package")
+	if err := os.MkdirAll(packageDir, 0o755); err != nil {
+		t.Fatalf("MkdirAll(package) error = %v", err)
+	}
+	for path, source := range map[string]string{
+		"bootstrap.sh": "#!/bin/sh\n",
+		"server.py": `import os
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+class Handler(BaseHTTPRequestHandler):
+    def do_GET(self):
+        self.send_response(200 if self.path == "/healthz" else 404)
+        self.end_headers()
+    def log_message(self, format, *args):
+        pass
+ThreadingHTTPServer(("127.0.0.1", int(os.environ["TUTTI_APP_PORT"])), Handler).serve_forever()
+`,
+	} {
+		if err := os.WriteFile(filepath.Join(packageDir, path), []byte(source), 0o644); err != nil {
+			t.Fatalf("WriteFile(%s) error = %v", path, err)
+		}
+	}
+
+	runner := &AppRunner{
+		HealthcheckTimeout: 10 * time.Second,
+		RuntimeResolver: staticAppRuntimeResolver{runtime: ResolvedAppRuntime{
+			Python:       pythonPath,
+			EnvOverrides: []string{"TUTTI_APP_PYTHON=" + pythonPath},
+		}},
+	}
+	state, err := runner.Start(context.Background(), AppStartInput{
+		WorkspaceID:     "ws-python-app",
+		WorkspaceName:   "Python app",
+		WorkspaceRoot:   root,
+		AppID:           "python-app",
+		PackageDir:      packageDir,
+		Bootstrap:       "bootstrap.sh",
+		HealthcheckPath: "/healthz",
+		RuntimeProfile:  workspaceAppPythonRuntimePreloadProfile,
+		RuntimeDir:      filepath.Join(root, "runtime"),
+		DataDir:         filepath.Join(root, "data"),
+		LogDir:          filepath.Join(root, "logs"),
+	})
+	if err != nil {
+		t.Fatalf("Start() error = %v", err)
+	}
+	if state.Status != workspacebiz.AppRuntimeStatusPreparing {
+		t.Fatalf("Start() status = %q, want preparing", state.Status)
+	}
+	waitForRunnerStatus(t, runner, "ws-python-app", "python-app", workspacebiz.AppRuntimeStatusRunning)
+	stopped, err := runner.Stop(context.Background(), "ws-python-app", "python-app")
+	if err != nil {
+		t.Fatalf("Stop() error = %v", err)
+	}
+	if stopped.Status != workspacebiz.AppRuntimeStatusIdle {
+		t.Fatalf("Stop() status = %q, want idle", stopped.Status)
+	}
+}
+
 type staticAppRuntimeResolver struct {
 	runtime ResolvedAppRuntime
 }

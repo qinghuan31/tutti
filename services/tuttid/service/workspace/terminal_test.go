@@ -51,6 +51,85 @@ func TestResolveTerminalShellInvocation(t *testing.T) {
 	}
 }
 
+func TestDefaultTerminalShellPathUsesCOMSPECOnWindows(t *testing.T) {
+	if runtime.GOOS != "windows" {
+		t.Skip("Windows shell selection test")
+	}
+	t.Setenv("COMSPEC", `C:\Windows\System32\cmd.exe`)
+
+	if shell := defaultShellPath(); shell != `C:\Windows\System32\cmd.exe` {
+		t.Fatalf("defaultShellPath() = %q", shell)
+	}
+}
+
+func TestTerminalServiceCreatesWindowsConPTYSession(t *testing.T) {
+	if runtime.GOOS != "windows" {
+		t.Skip("Windows ConPTY test")
+	}
+
+	t.Setenv("USERPROFILE", t.TempDir())
+	service := &TerminalService{}
+	initialInput := "echo tutti-terminal-windows\r\n"
+	session, err := service.Create(context.Background(), "ws-1", CreateTerminalInput{
+		InitialInput: &initialInput,
+	})
+	if err != nil {
+		t.Fatalf("Create() error = %v", err)
+	}
+	t.Cleanup(func() {
+		_, _ = service.Terminate(context.Background(), "ws-1", session.ID)
+	})
+
+	deadline := time.Now().Add(5 * time.Second)
+	for time.Now().Before(deadline) {
+		snapshot, snapshotErr := service.Snapshot(context.Background(), "ws-1", session.ID)
+		if snapshotErr != nil {
+			t.Fatalf("Snapshot() error = %v", snapshotErr)
+		}
+		if strings.Contains(snapshot.Data, "tutti-terminal-windows") {
+			break
+		}
+		time.Sleep(25 * time.Millisecond)
+	}
+
+	snapshot, err := service.Snapshot(context.Background(), "ws-1", session.ID)
+	if err != nil {
+		t.Fatalf("Snapshot() error = %v", err)
+	}
+	if !strings.Contains(snapshot.Data, "tutti-terminal-windows") {
+		t.Fatalf("snapshot data = %q, want Windows command output", snapshot.Data)
+	}
+
+	resized, err := service.Resize(context.Background(), "ws-1", session.ID, ResizeTerminalInput{
+		Cols: 120,
+		Rows: 40,
+	})
+	if err != nil {
+		t.Fatalf("Resize() error = %v", err)
+	}
+	if resized.Cols != 120 || resized.Rows != 40 {
+		t.Fatalf("resize = %dx%d, want 120x40", resized.Cols, resized.Rows)
+	}
+
+	if err := service.Write(context.Background(), "ws-1", session.ID, "exit /b 7\r\n"); err != nil {
+		t.Fatalf("Write(exit) error = %v", err)
+	}
+	for time.Now().Before(deadline) {
+		state, stateErr := service.Get(context.Background(), "ws-1", session.ID)
+		if stateErr != nil {
+			t.Fatalf("Get() error = %v", stateErr)
+		}
+		if state.Status == TerminalStatusFailed {
+			if state.LastError == nil || !strings.Contains(*state.LastError, "code 7") {
+				t.Fatalf("terminal error = %v, want exit code", state.LastError)
+			}
+			return
+		}
+		time.Sleep(25 * time.Millisecond)
+	}
+	t.Fatal("timed out waiting for Windows terminal exit")
+}
+
 func TestTerminalServiceCreatesLocalPTYAndSnapshotsOutput(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("Windows terminal support needs ConPTY-specific implementation")

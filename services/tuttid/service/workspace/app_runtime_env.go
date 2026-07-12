@@ -11,6 +11,7 @@ import (
 
 const tuttiAppRuntimeRootEnv = "TUTTI_APP_RUNTIME_ROOT"
 const workspaceAppNodeRuntimePreloadProfile = managedruntime.NodeStaticProfile
+const workspaceAppPythonRuntimePreloadProfile = managedruntime.PythonStaticProfile
 const workspaceAppStandaloneRuntimeProfile = "standalone"
 
 type AppRuntimeResolver = managedruntime.Resolver
@@ -24,15 +25,22 @@ func workspaceAppProcessEnv(overrides ...string) []string {
 }
 
 func appRuntimeProfileForPackage(appPackage workspacebiz.AppPackage) string {
-	return appRuntimeProfileForManifest(appPackage.Manifest)
+	return appRuntimeProfileForManifestAtPackageDir(appPackage.Manifest, appPackage.PackageDir)
 }
 
 func appRuntimeProfileForManifest(manifest workspacebiz.AppManifest) string {
+	return appRuntimeProfileForManifestAtPackageDir(manifest, "")
+}
+
+func appRuntimeProfileForManifestAtPackageDir(manifest workspacebiz.AppManifest, packageDir string) string {
 	profile := strings.TrimSpace(manifest.Runtime.Profile)
 	if profile != "" || runtime.GOOS != "windows" {
 		return profile
 	}
 	if strings.EqualFold(filepath.Ext(strings.TrimSpace(manifest.Runtime.Bootstrap)), ".sh") {
+		if windowsPythonAppEntrypoint(packageDir) != "" {
+			return workspaceAppPythonRuntimePreloadProfile
+		}
 		return workspaceAppNodeRuntimePreloadProfile
 	}
 	return ""

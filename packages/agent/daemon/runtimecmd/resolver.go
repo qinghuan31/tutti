@@ -132,6 +132,27 @@ func preferredExecutableDirs(env []string) []string {
 }
 
 func (r Resolver) fallbackExecutableDirs() []string {
+	if runtime.GOOS == "windows" {
+		env := r.environ()
+		dirs := []string{}
+		if appData := strings.TrimSpace(envValue(env, "APPDATA")); appData != "" {
+			dirs = append(dirs, filepath.Join(appData, "npm"))
+		}
+		if localAppData := strings.TrimSpace(envValue(env, "LOCALAPPDATA")); localAppData != "" {
+			dirs = append(dirs,
+				filepath.Join(localAppData, "pnpm"),
+				filepath.Join(localAppData, "Volta", "bin"),
+			)
+		}
+		home, err := r.homeDir()
+		if err == nil && strings.TrimSpace(home) != "" {
+			dirs = append(dirs,
+				filepath.Join(home, ".tutti", "bin"),
+				filepath.Join(home, ".opencode", "bin"),
+			)
+		}
+		return mergePathDirs(dirs)
+	}
 	dirs := []string{
 		"/opt/homebrew/bin",
 		"/usr/local/bin",
@@ -180,7 +201,13 @@ func (r Resolver) isExecutableFile(path string) bool {
 		return r.IsExecutableFile(path)
 	}
 	stat, err := os.Stat(path)
-	return err == nil && !stat.IsDir() && stat.Mode().Perm()&0111 != 0
+	if err != nil || stat.IsDir() {
+		return false
+	}
+	if runtime.GOOS == "windows" {
+		return true
+	}
+	return stat.Mode().Perm()&0111 != 0
 }
 
 func (r Resolver) lookPath(binaryName string) string {

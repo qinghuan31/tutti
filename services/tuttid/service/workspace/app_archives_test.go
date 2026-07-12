@@ -51,6 +51,35 @@ func TestValidateExtractedAppPackageRequiresSupportedWindowsNodeEntrypoint(t *te
 	}
 }
 
+func TestValidateExtractedAppPackageAcceptsWindowsPythonEntrypoint(t *testing.T) {
+	if runtime.GOOS != "windows" {
+		t.Skip("Windows package validation test")
+	}
+	packageRoot := t.TempDir()
+	manifest := workspacebiz.AppManifest{
+		AppID: "python-app",
+		Runtime: workspacebiz.AppManifestRuntime{
+			Bootstrap: "bootstrap.sh",
+		},
+	}
+	for path, data := range map[string]string{
+		"bootstrap.sh":   "#!/bin/sh\n",
+		"AGENTS.md":      "# App\n",
+		"server.py":      "print('ready')\n",
+		"tutti.app.json": "{}\n",
+	} {
+		if err := os.WriteFile(filepath.Join(packageRoot, path), []byte(data), 0o644); err != nil {
+			t.Fatalf("write %s: %v", path, err)
+		}
+	}
+	if profile := appRuntimeProfileForManifestAtPackageDir(manifest, packageRoot); profile != workspaceAppPythonRuntimePreloadProfile {
+		t.Fatalf("runtime profile = %q, want %q", profile, workspaceAppPythonRuntimePreloadProfile)
+	}
+	if err := validateExtractedAppPackage(packageRoot, manifest); err != nil {
+		t.Fatalf("validateExtractedAppPackage() error = %v", err)
+	}
+}
+
 func TestExtractAppPackageZipRejectsEntryOverExpandedSizeLimit(t *testing.T) {
 	t.Parallel()
 

@@ -40,6 +40,7 @@ replace github.com/tutti-os/tutti/packages/workspace/issues => ../../packages/wo
 
 require (
 	github.com/Shopify/sarama v1.34.1 // indirect
+	github.com/UserExistsError/conpty v0.1.4 // indirect
 	github.com/apapsch/go-jsonmerge/v2 v2.0.0 // indirect
 	github.com/davecgh/go-spew v1.1.2-0.20180830191138-d8f796af33cc // indirect
 	github.com/dprotaso/go-yit v0.0.0-20220510233725-9ba8df137936 // indirect

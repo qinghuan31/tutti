@@ -220,7 +220,7 @@ test("resolveManagedDaemonProcessEnv seeds the managed runtime cache root", () =
       sessionID: "session-1"
     });
     assert.equal(
-      got.TUTTI_APP_RUNTIME_CACHE_ROOT?.endsWith("/app-runtimes"),
+      got.TUTTI_APP_RUNTIME_CACHE_ROOT?.endsWith(join("app-runtimes")),
       true
     );
   } finally {
@@ -312,9 +312,12 @@ test("resolveLaunchSpec honors TUTTID_BIN override", () => {
 });
 
 test("isLikelyTuttidProcess only matches tuttid executables", () => {
-  assert.equal(isLikelyTuttidProcess("/tmp/tuttid"), true);
+  const binaryName = process.platform === "win32" ? "tuttid.exe" : "tuttid";
+  assert.equal(isLikelyTuttidProcess(join("/tmp", binaryName)), true);
   assert.equal(
-    isLikelyTuttidProcess(join(repoRoot, "apps/desktop/build/tuttid/tuttid")),
+    isLikelyTuttidProcess(
+      join(repoRoot, "apps/desktop/build/tuttid", binaryName)
+    ),
     true
   );
   assert.equal(isLikelyTuttidProcess("node tuttidManager.js"), false);

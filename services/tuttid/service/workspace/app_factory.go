@@ -583,7 +583,7 @@ func (s *AppFactoryService) validatePackage(ctx context.Context, workspaceID str
 		PackageDir:      draftPackageDir,
 		Bootstrap:       manifest.Runtime.Bootstrap,
 		HealthcheckPath: manifest.Runtime.HealthcheckPath,
-		RuntimeProfile:  appRuntimeProfileForManifest(manifest),
+		RuntimeProfile:  appRuntimeProfileForManifestAtPackageDir(manifest, draftPackageDir),
 		RuntimeDir:      job.RuntimeDir,
 		DataDir:         job.DataDir,
 		LogDir:          job.LogDir,

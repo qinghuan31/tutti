@@ -5,13 +5,11 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"sync"
 	"time"
 
-	"github.com/creack/pty"
 	"github.com/google/uuid"
 )
 
@@ -257,27 +255,19 @@ func (m *terminalSessionManager) create(workspaceID string, cwd string, input Cr
 	now := time.Now().UTC()
 	id := uuid.NewString()
 
-	cmd := exec.Command(shell, shellArgs...)
-	cmd.Dir = cwd
-	cmd.Env = terminalProcessEnv(cwd)
-
-	file, err := pty.StartWithSize(cmd, &pty.Winsize{
-		Cols: uint16(cols),
-		Rows: uint16(rows),
-	})
+	terminalRuntime, err := startTerminalRuntime(shell, shellArgs, cwd, terminalProcessEnv(cwd), cols, rows)
 	if err != nil {
 		return TerminalSession{}, fmt.Errorf("start terminal pty: %w", err)
 	}
 
 	session := &terminalRuntimeSession{
 		cols:        cols,
-		command:     cmd,
 		createdAt:   now,
 		cwd:         cwd,
-		file:        file,
 		id:          id,
 		profileID:   trimOptionalString(input.ProfileID),
 		rows:        rows,
+		runtime:     terminalRuntime,
 		shell:       shell,
 		status:      TerminalStatusRunning,
 		title:       filepath.Base(shell),
@@ -289,7 +279,7 @@ func (m *terminalSessionManager) create(workspaceID string, cwd string, input Cr
 	m.mu.Unlock()
 
 	if initialInput := strings.TrimRight(derefString(input.InitialInput), "\x00"); initialInput != "" {
-		_, _ = file.Write([]byte(initialInput))
+		_, _ = terminalRuntime.Write([]byte(initialInput))
 	}
 	go session.readLoop()
 	go session.waitLoop()
@@ -313,8 +303,8 @@ func (m *terminalSessionManager) terminate(workspaceID string, terminalID string
 
 	shouldBroadcastExit := false
 	session.mu.Lock()
-	if session.command.Process != nil && !isEndedTerminalStatus(session.status) {
-		_ = session.command.Process.Kill()
+	if !isEndedTerminalStatus(session.status) {
+		_ = session.runtime.Kill()
 		now := time.Now().UTC()
 		session.endedAt = &now
 		session.updatedAt = &now
@@ -322,7 +312,7 @@ func (m *terminalSessionManager) terminate(workspaceID string, terminalID string
 		shouldBroadcastExit = true
 	}
 	session.mu.Unlock()
-	_ = session.file.Close()
+	_ = session.runtime.Close()
 
 	if shouldBroadcastExit {
 		session.broadcast(TerminalStreamEvent{
@@ -347,10 +337,10 @@ func (m *terminalSessionManager) resize(workspaceID string, terminalID string, i
 	session.cols = cols
 	session.rows = rows
 	session.touchLocked()
-	file := session.file
+	terminalRuntime := session.runtime
 	session.mu.Unlock()
 
-	if err := pty.Setsize(file, &pty.Winsize{Cols: uint16(cols), Rows: uint16(rows)}); err != nil {
+	if err := terminalRuntime.Resize(cols, rows); err != nil {
 		return TerminalSession{}, fmt.Errorf("resize terminal pty: %w", err)
 	}
 	return session.snapshot(), nil

@@ -52,6 +52,9 @@ func resolveTerminalCwd(requested *string) (string, error) {
 
 func defaultShellPath() string {
 	if runtime.GOOS == "windows" {
+		if shell := strings.TrimSpace(os.Getenv("COMSPEC")); shell != "" {
+			return shell
+		}
 		return "cmd.exe"
 	}
 	if shell := strings.TrimSpace(os.Getenv("SHELL")); shell != "" {

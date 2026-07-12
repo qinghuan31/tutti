@@ -3,9 +3,50 @@ package runtimecmd
 import (
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 )
+
+func TestResolverFindsWindowsNpmFallback(t *testing.T) {
+	if runtime.GOOS != "windows" {
+		t.Skip("Windows executable resolver test")
+	}
+
+	appData := t.TempDir()
+	npmBinDir := filepath.Join(appData, "npm")
+	if err := os.MkdirAll(npmBinDir, 0o755); err != nil {
+		t.Fatalf("mkdir npm bin dir: %v", err)
+	}
+	binaryPath := filepath.Join(npmBinDir, "codex.cmd")
+	writeExecutable(t, binaryPath)
+
+	resolver := Resolver{
+		Environ: func() []string {
+			return []string{
+				"APPDATA=" + appData,
+				"LOCALAPPDATA=" + t.TempDir(),
+				"PATH=C:\\Windows\\System32",
+			}
+		},
+		HomeDir: func() (string, error) {
+			return t.TempDir(), nil
+		},
+		LookPath: func(string) (string, error) {
+			return "", os.ErrNotExist
+		},
+	}
+
+	env := resolver.Env(nil)
+	if got := resolver.Resolve("codex.cmd", env); got != binaryPath {
+		t.Fatalf("Resolve() = %q, want %q", got, binaryPath)
+	}
+	for _, dir := range filepath.SplitList(envValue(env, "PATH")) {
+		if dir == "/opt/homebrew/bin" || dir == "/usr/local/bin" {
+			t.Fatalf("PATH includes Unix fallback %q: %q", dir, envValue(env, "PATH"))
+		}
+	}
+}
 
 func TestResolverFindsKnownNodeGlobalBin(t *testing.T) {
 	home := t.TempDir()
