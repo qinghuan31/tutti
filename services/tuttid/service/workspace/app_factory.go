@@ -554,15 +554,8 @@ func (s *AppFactoryService) validatePackage(ctx context.Context, workspaceID str
 	}
 
 	bootstrapPath := filepath.Join(draftPackageDir, filepath.Clean(manifest.Runtime.Bootstrap))
-	info, err := os.Stat(bootstrapPath)
-	if err != nil {
-		return fmt.Errorf("stat runtime bootstrap: %w", err)
-	}
-	if info.IsDir() {
-		return errors.New("runtime bootstrap must be a file")
-	}
-	if info.Mode()&0o111 == 0 {
-		return errors.New("runtime bootstrap must be executable")
+	if err := validateAppFactoryBootstrap(bootstrapPath); err != nil {
+		return err
 	}
 
 	agentsData, err := readCleanAppFactoryAgentsFile(job)
@@ -620,6 +613,20 @@ func (s *AppFactoryService) validatePackage(ctx context.Context, workspaceID str
 		case <-time.After(100 * time.Millisecond):
 		}
 	}
+}
+
+func validateAppFactoryBootstrap(bootstrapPath string) error {
+	info, err := os.Stat(bootstrapPath)
+	if err != nil {
+		return fmt.Errorf("stat runtime bootstrap: %w", err)
+	}
+	if info.IsDir() {
+		return errors.New("runtime bootstrap must be a file")
+	}
+	if runtime.GOOS != "windows" && info.Mode()&0o111 == 0 {
+		return errors.New("runtime bootstrap must be executable")
+	}
+	return nil
 }
 
 func (s *AppFactoryService) failInterruptedAgentSession(ctx context.Context, job workspacebiz.AppFactoryJob) error {

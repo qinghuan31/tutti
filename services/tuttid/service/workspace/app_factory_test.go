@@ -6,6 +6,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strconv"
 	"strings"
 	"testing"
@@ -56,6 +57,21 @@ type factoryAgentMessageReaderStub struct {
 
 type workspaceRootResolverStub struct {
 	root workspacefiles.WorkspaceRoot
+}
+
+func TestValidateAppFactoryBootstrapRespectsPlatformExecutableSemantics(t *testing.T) {
+	bootstrapPath := filepath.Join(t.TempDir(), "bootstrap.sh")
+	if err := os.WriteFile(bootstrapPath, []byte("#!/bin/sh\nexit 0\n"), 0o644); err != nil {
+		t.Fatalf("write bootstrap: %v", err)
+	}
+
+	err := validateAppFactoryBootstrap(bootstrapPath)
+	if runtime.GOOS == "windows" && err != nil {
+		t.Fatalf("validateAppFactoryBootstrap() error = %v, want Windows to accept a non-POSIX-executable bootstrap", err)
+	}
+	if runtime.GOOS != "windows" && (err == nil || !strings.Contains(err.Error(), "must be executable")) {
+		t.Fatalf("validateAppFactoryBootstrap() error = %v, want executable requirement", err)
+	}
 }
 
 func (s *factoryAgentSessionStateReporterStub) ReportSessionState(_ context.Context, input agentsessionstore.ReportSessionStateInput) (agentsessionstore.ReportSessionStateReply, error) {
