@@ -29,7 +29,7 @@ Anyone interested is welcome to join our [Discord](https://discord.gg/UUemKEWtw6
 
 [Download Tutti · Local for macOS](https://tutti.sh/desktop/download?platform=macos&arch=universal&format=dmg)
 
-Windows support is coming soon.
+Windows installers can be built as `.exe` packages.
 
 <!-- TODO: waitlist link for Tutti · VM -->
 

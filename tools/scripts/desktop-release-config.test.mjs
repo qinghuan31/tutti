@@ -709,6 +709,15 @@ test("desktop packaging provides an application icon resource", async () => {
   await access(desktopBuildIconPath);
 });
 
+test("desktop windows installer allows choosing its install directory", async () => {
+  const packageJson = JSON.parse(await readFile(desktopPackagePath, "utf8"));
+
+  assert.deepEqual(packageJson.build.win.target, ["nsis"]);
+  assert.equal(packageJson.build.nsis.oneClick, false);
+  assert.equal(packageJson.build.nsis.allowToChangeInstallationDirectory, true);
+  assert.equal(packageJson.build.nsis.deleteAppDataOnUninstall, false);
+});
+
 test("desktop windows packaging anchors electron-builder workspace detection to the repo root", async () => {
   const buildScript = await readFile(buildScriptPath, "utf8");
 
