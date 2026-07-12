@@ -1,6 +1,10 @@
 package agentstatus
 
-import "github.com/tutti-os/tutti/services/tuttid/biz/agentprovider"
+import (
+	"runtime"
+
+	"github.com/tutti-os/tutti/services/tuttid/biz/agentprovider"
+)
 
 type Registry struct {
 	Specs []ProviderSpec
@@ -16,6 +20,7 @@ const (
 const DisabledReasonProviderTemporarilyUnsupported = "provider_temporarily_unsupported"
 const codexServiceTierOverride = `service_tier="fast"`
 const minTuttiAgentVersion = "0.0.2"
+const windowsTuttiAgentVersion = "0.0.1"
 
 type ProviderSpec struct {
 	Provider                     string
@@ -82,6 +87,7 @@ func (r Registry) Select(providers []string) ([]ProviderSpec, error) {
 }
 
 func DefaultRegistry() Registry {
+	tuttiAgentVersion := tuttiAgentPackageVersionForOS(runtime.GOOS)
 	specsByProvider := map[string]ProviderSpec{
 		agentprovider.ClaudeCode: {
 			Provider:          agentprovider.ClaudeCode,
@@ -121,11 +127,11 @@ func DefaultRegistry() Registry {
 			AdapterCommand:     []string{"tutti-agent", "app-server"},
 			AdapterPackage: AdapterPackageRequirement{
 				Name:    "@tutti-os/tutti-agent",
-				Version: minTuttiAgentVersion,
+				Version: tuttiAgentVersion,
 			},
 			AuthStatusCommand: []string{"login", "status"},
 			AuthMarkerPaths:   []string{"~/.tutti-agent/auth.json"},
-			Install:           tuttiAgentInstallerSpec(),
+			Install:           tuttiAgentInstallerSpec(tuttiAgentVersion),
 			LoginArgs:         []string{"login"},
 		},
 		agentprovider.Cursor: {
@@ -213,15 +219,22 @@ func codexCLIInstallerSpec() InstallerSpec {
 	}
 }
 
-func tuttiAgentInstallerSpec() InstallerSpec {
+func tuttiAgentInstallerSpec(version string) InstallerSpec {
 	return InstallerSpec{
 		Kind:           InstallerKindManagedNPMPackage,
-		DisplayCommand: "npm install -g @tutti-os/tutti-agent@" + minTuttiAgentVersion + " --include=optional",
+		DisplayCommand: "npm install -g @tutti-os/tutti-agent@" + version + " --include=optional",
 		ManagedNPM: &ManagedNPMPackageInstallerSpec{
 			PackageName:     "@tutti-os/tutti-agent",
-			PackageVersion:  minTuttiAgentVersion,
+			PackageVersion:  version,
 			BinaryName:      "tutti-agent",
 			IncludeOptional: true,
 		},
 	}
+}
+
+func tuttiAgentPackageVersionForOS(goos string) string {
+	if goos == "windows" {
+		return windowsTuttiAgentVersion
+	}
+	return minTuttiAgentVersion
 }

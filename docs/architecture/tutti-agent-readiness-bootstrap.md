@@ -48,6 +48,12 @@ npm install -g --prefix <managed-or-existing-prefix> \
 optional packages. The installer verifies the resulting launcher instead of
 trusting npm's exit status.
 
+On Windows, the provider uses `0.0.1`, because it is the latest published
+Tutti Agent package that includes the `win32-x64` and `win32-arm64` optional
+dependencies. Other platforms continue to require `0.0.2`. This compatibility
+floor must be removed when a later package version publishes matching Windows
+platform packages and passes the provider probe.
+
 Registry selection follows the shared agent npm registry policy:
 
 1. `TUTTI_AGENT_NPM_REGISTRY`, when set, pins one registry with no fallback;

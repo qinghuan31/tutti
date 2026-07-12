@@ -139,8 +139,9 @@ func TestDefaultRegistryUsesTuttiAgentManagedNPMInstaller(t *testing.T) {
 	if install.ManagedNPM.PackageName != "@tutti-os/tutti-agent" {
 		t.Fatalf("PackageName = %q, want @tutti-os/tutti-agent", install.ManagedNPM.PackageName)
 	}
-	if install.ManagedNPM.PackageVersion != minTuttiAgentVersion {
-		t.Fatalf("PackageVersion = %q, want %q", install.ManagedNPM.PackageVersion, minTuttiAgentVersion)
+	wantVersion := tuttiAgentPackageVersionForOS(runtime.GOOS)
+	if install.ManagedNPM.PackageVersion != wantVersion {
+		t.Fatalf("PackageVersion = %q, want %q", install.ManagedNPM.PackageVersion, wantVersion)
 	}
 	if install.ManagedNPM.BinaryName != "tutti-agent" {
 		t.Fatalf("BinaryName = %q, want tutti-agent", install.ManagedNPM.BinaryName)
@@ -148,8 +149,23 @@ func TestDefaultRegistryUsesTuttiAgentManagedNPMInstaller(t *testing.T) {
 	if !install.ManagedNPM.IncludeOptional {
 		t.Fatalf("IncludeOptional = false, want true")
 	}
-	if specs[0].AdapterPackage.Name != "@tutti-os/tutti-agent" || specs[0].AdapterPackage.Version != minTuttiAgentVersion {
-		t.Fatalf("AdapterPackage = %+v, want @tutti-os/tutti-agent >= %s", specs[0].AdapterPackage, minTuttiAgentVersion)
+	if specs[0].AdapterPackage.Name != "@tutti-os/tutti-agent" || specs[0].AdapterPackage.Version != wantVersion {
+		t.Fatalf("AdapterPackage = %+v, want @tutti-os/tutti-agent >= %s", specs[0].AdapterPackage, wantVersion)
+	}
+}
+
+func TestTuttiAgentPackageVersionForOS(t *testing.T) {
+	t.Parallel()
+
+	cases := map[string]string{
+		"darwin":  minTuttiAgentVersion,
+		"linux":   minTuttiAgentVersion,
+		"windows": windowsTuttiAgentVersion,
+	}
+	for goos, want := range cases {
+		if got := tuttiAgentPackageVersionForOS(goos); got != want {
+			t.Errorf("tuttiAgentPackageVersionForOS(%q) = %q, want %q", goos, got, want)
+		}
 	}
 }
 
@@ -157,8 +173,8 @@ func TestTuttiAgentAdapterVersionMismatchRequiresInstall(t *testing.T) {
 	home := t.TempDir()
 	packageDir := filepath.Join(home, "lib", "node_modules", "@tutti-os", "tutti-agent")
 	binPath := filepath.Join(packageDir, "bin", "tutti-agent")
-	writePackageManifest(t, packageDir, "@tutti-os/tutti-agent", "0.0.1")
-	writeExecutable(t, binPath, "#!/bin/sh\nif [ \"$1\" = \"--version\" ]; then echo 'tutti-agent 0.0.1'; exit 0; fi\nexit 0\n")
+	writePackageManifest(t, packageDir, "@tutti-os/tutti-agent", "0.0.0")
+	writeExecutable(t, binPath, "#!/bin/sh\nif [ \"$1\" = \"--version\" ]; then echo 'tutti-agent 0.0.0'; exit 0; fi\nexit 0\n")
 
 	service := probeTestService(home)
 	service.LookPath = func(name string) (string, error) {
@@ -182,11 +198,12 @@ func TestTuttiAgentAdapterVersionMismatchRequiresInstall(t *testing.T) {
 	if status.Availability.ReasonCode != "acp_adapter_version_mismatch" {
 		t.Fatalf("ReasonCode = %q, want acp_adapter_version_mismatch", status.Availability.ReasonCode)
 	}
-	if status.Adapter.Version != "0.0.1" {
-		t.Fatalf("Adapter.Version = %q, want 0.0.1", status.Adapter.Version)
+	if status.Adapter.Version != "0.0.0" {
+		t.Fatalf("Adapter.Version = %q, want 0.0.0", status.Adapter.Version)
 	}
-	if status.Adapter.RequiredVersion != minTuttiAgentVersion {
-		t.Fatalf("Adapter.RequiredVersion = %q, want %q", status.Adapter.RequiredVersion, minTuttiAgentVersion)
+	wantVersion := tuttiAgentPackageVersionForOS(runtime.GOOS)
+	if status.Adapter.RequiredVersion != wantVersion {
+		t.Fatalf("Adapter.RequiredVersion = %q, want %q", status.Adapter.RequiredVersion, wantVersion)
 	}
 	action := firstAction(t, status.Actions)
 	if action.ID != ActionInstall {
@@ -226,8 +243,9 @@ func TestTuttiAgentAdapterAboveMinimumVersionDoesNotRequireInstall(t *testing.T)
 	if status.Adapter.Version != "0.0.3" {
 		t.Fatalf("Adapter.Version = %q, want 0.0.3", status.Adapter.Version)
 	}
-	if status.Adapter.RequiredVersion != minTuttiAgentVersion {
-		t.Fatalf("Adapter.RequiredVersion = %q, want %q", status.Adapter.RequiredVersion, minTuttiAgentVersion)
+	wantVersion := tuttiAgentPackageVersionForOS(runtime.GOOS)
+	if status.Adapter.RequiredVersion != wantVersion {
+		t.Fatalf("Adapter.RequiredVersion = %q, want %q", status.Adapter.RequiredVersion, wantVersion)
 	}
 	action := firstAction(t, status.Actions)
 	if action.ID != ActionLogin {

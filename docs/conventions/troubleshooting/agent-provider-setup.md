@@ -184,6 +184,11 @@ file or directory`. If the CLI path exists but `codex app-server` cannot
   plus per-platform optional dependencies expressed as npm aliases. npm can
   complete the aggregate install even when a mirror has not synced the platform
   optional dependency version.
+- Windows compatibility:
+  Published `0.0.2` and `0.0.3` packages omit Windows optional dependencies.
+  Tutti therefore pins Windows to `0.0.1`, the latest package with published
+  `win32-x64` and `win32-arm64` binaries. Do not raise the Windows package
+  floor until the selected version publishes both platform packages.
 - Fix:
   Keep the package layout aligned with Codex and use registries that carry the
   platform optional dependency versions. The daemon default chain intentionally
