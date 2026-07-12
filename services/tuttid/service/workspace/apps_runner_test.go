@@ -9,6 +9,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
@@ -183,6 +184,73 @@ func TestAppBootstrapCommandUsesNodeForWindowsNodeStaticPackage(t *testing.T) {
 				t.Fatalf("Args = %#v, want Node entrypoint command", command.Args)
 			}
 		})
+	}
+}
+
+func TestAppBootstrapCommandSupervisesAICanvasProcessesOnWindows(t *testing.T) {
+	if runtime.GOOS != "windows" {
+		t.Skip("Windows AI Canvas bootstrap test")
+	}
+
+	packageDir := t.TempDir()
+	for _, relativePath := range []string{
+		"bootstrap.sh",
+		filepath.Join("server", "worker.js"),
+		filepath.Join("server", "server.js"),
+	} {
+		path := filepath.Join(packageDir, relativePath)
+		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+			t.Fatalf("MkdirAll(%s) error = %v", relativePath, err)
+		}
+		if err := os.WriteFile(path, []byte("console.log('ready');\n"), 0o644); err != nil {
+			t.Fatalf("WriteFile(%s) error = %v", relativePath, err)
+		}
+	}
+
+	command, err := appBootstrapCommand(
+		AppStartInput{
+			AppID:          "ai-media-canvas",
+			PackageDir:     packageDir,
+			RuntimeProfile: workspaceAppNodeRuntimePreloadProfile,
+		},
+		ResolvedAppRuntime{Node: `C:\\Program Files\\Tutti\\Tutti.exe`},
+		filepath.Join(packageDir, "bootstrap.sh"),
+	)
+	if err != nil {
+		t.Fatalf("appBootstrapCommand() error = %v", err)
+	}
+	if command.Path != `C:\\Program Files\\Tutti\\Tutti.exe` {
+		t.Fatalf("Path = %q", command.Path)
+	}
+	if len(command.Args) != 5 || command.Args[1] != "--eval" || command.Args[3] != filepath.Join(packageDir, "server", "worker.js") || command.Args[4] != filepath.Join(packageDir, "server", "server.js") {
+		t.Fatalf("Args = %#v, want supervised AI Canvas worker and server", command.Args)
+	}
+}
+
+func TestWindowsAppBootstrapEnvOverridesConfiguresAICanvas(t *testing.T) {
+	input := AppStartInput{
+		AppID:          "ai-media-canvas",
+		DataDir:        `C:\\Data`,
+		PackageDir:     `C:\\Package`,
+		RuntimeProfile: workspaceAppNodeRuntimePreloadProfile,
+		WorkspaceRoot:  `C:\\Workspace`,
+	}
+	overrides := windowsAppBootstrapEnvOverrides(input, 3042)
+	if runtime.GOOS != "windows" {
+		if len(overrides) != 0 {
+			t.Fatalf("overrides = %#v, want none outside Windows", overrides)
+		}
+		return
+	}
+	for _, expected := range []string{
+		"AIMC_SERVER_PORT=3042",
+		"AIMC_WEB_DIST=" + filepath.Join(input.PackageDir, "dist"),
+		"AIMC_DATA_ROOT=" + input.DataDir,
+		"AIMC_AGENT_FILES_ROOT=" + input.WorkspaceRoot,
+	} {
+		if !slices.Contains(overrides, expected) {
+			t.Fatalf("overrides = %#v, want %q", overrides, expected)
+		}
 	}
 }
 

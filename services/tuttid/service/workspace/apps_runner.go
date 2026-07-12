@@ -230,6 +230,7 @@ func (r *AppRunner) startProcess(ctx context.Context, key string, input AppStart
 		"TUTTI_APP_SERVER_TOKEN=" + appServerToken(input.WorkspaceID, input.AppID),
 		"TUTTI_CLI=" + tuttiCLIShim,
 	}
+	envOverrides = append(envOverrides, windowsAppBootstrapEnvOverrides(input, port)...)
 	envOverrides = append(envOverrides, appRuntime.EnvOverrides...)
 	envOverrides = append(envOverrides, appRuntimePathWithCLIShim(appRuntime, tuttiCLIShim))
 	command.Env = workspaceAppProcessEnv(envOverrides...)
@@ -297,11 +298,49 @@ func appBootstrapCommand(
 	if runtime.GOOS == "windows" &&
 		strings.TrimSpace(input.RuntimeProfile) == "node-static" &&
 		strings.EqualFold(filepath.Ext(bootstrapPath), ".sh") {
+		if workerPath, serverPath, ok := windowsAICanvasEntrypoints(input); ok && strings.TrimSpace(appRuntime.Node) != "" {
+			return exec.Command(appRuntime.Node, "--eval", windowsNodeProcessSupervisorScript, workerPath, serverPath), nil
+		}
 		if entrypoint := windowsNodeAppEntrypoint(input.PackageDir); entrypoint != "" && strings.TrimSpace(appRuntime.Node) != "" {
 			return exec.Command(appRuntime.Node, entrypoint), nil
 		}
 	}
 	return exec.Command(bootstrapPath), nil
+}
+
+const windowsNodeProcessSupervisorScript = `const {spawn}=require("node:child_process");const targets=process.argv.slice(1);let stopping=false;const children=targets.map((target)=>spawn(process.execPath,[target],{env:process.env,stdio:"inherit"}));const stop=(code)=>{if(stopping)return;stopping=true;for(const child of children){child.kill()}setTimeout(()=>process.exit(code),500).unref()};for(const child of children){child.on("error",()=>stop(1));child.on("exit",(code)=>stop(code??1))}process.on("SIGINT",()=>stop(143));process.on("SIGTERM",()=>stop(143));`
+
+func windowsAICanvasEntrypoints(input AppStartInput) (string, string, bool) {
+	if input.AppID != "ai-media-canvas" {
+		return "", "", false
+	}
+	workerPath := filepath.Join(input.PackageDir, "server", "worker.js")
+	serverPath := filepath.Join(input.PackageDir, "server", "server.js")
+	for _, path := range []string{workerPath, serverPath} {
+		info, err := os.Stat(path)
+		if err != nil || info.IsDir() {
+			return "", "", false
+		}
+	}
+	return workerPath, serverPath, true
+}
+
+func windowsAppBootstrapEnvOverrides(input AppStartInput, port int) []string {
+	if runtime.GOOS != "windows" || input.AppID != "ai-media-canvas" || input.RuntimeProfile != workspaceAppNodeRuntimePreloadProfile {
+		return nil
+	}
+	baseURL := "http://127.0.0.1:" + strconv.Itoa(port)
+	return []string{
+		"HOST=127.0.0.1",
+		"AIMC_SERVER_PORT=" + strconv.Itoa(port),
+		"AIMC_WEB_DIST=" + filepath.Join(input.PackageDir, "dist"),
+		"AIMC_DATA_ROOT=" + input.DataDir,
+		"AIMC_SKILLS_ROOT=" + filepath.Join(input.PackageDir, "skills"),
+		"AIMC_TOOLS_MCP_PATH=" + filepath.Join(input.PackageDir, "server", "tools-mcp.js"),
+		"AIMC_AGENT_FILES_ROOT=" + input.WorkspaceRoot,
+		"AIMC_WEB_ORIGIN=" + baseURL,
+		"AIMC_SERVER_BASE_URL=" + baseURL,
+	}
 }
 
 func windowsNodeAppEntrypoint(packageDir string) string {
