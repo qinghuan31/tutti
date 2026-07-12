@@ -123,6 +123,20 @@ component. If runtime requirements need to become more selective later, add a
 capability list such as runtime component requirements rather than restoring a
 single-kind manifest field.
 
+## Windows Node-Static Compatibility
+
+When the published runtime catalog has no Windows entry, packaged Windows
+desktop builds can run `node-static` apps with the bundled `Tutti.exe` Electron
+runtime in Node mode. This path is intentionally limited to packages that
+declare `runtime.profile: "node-static"`, provide `server.mjs`, and use the
+standard `bootstrap.sh` launcher. The runner invokes `server.mjs` directly and
+sets `ELECTRON_RUN_AS_NODE=1`.
+
+This compatibility path does not support the default Python-and-Node baseline,
+custom shell bootstraps, or standalone executables. It must not replace a
+published `windows-amd64` runtime catalog entry; Windows runtime artifacts
+remain the required long-term release path.
+
 ## Runtime Overrides
 
 Supported daemon overrides:

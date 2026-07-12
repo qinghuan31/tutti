@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 
 	workspacebiz "github.com/tutti-os/tutti/services/tuttid/biz/workspace"
@@ -166,7 +167,7 @@ func validateLocalAppPackage(packageDir string, manifest workspacebiz.AppManifes
 	if info.IsDir() {
 		return fmt.Errorf("%w: bootstrap %q must be a file", ErrLocalAppPackageInvalid, manifest.Runtime.Bootstrap)
 	}
-	if info.Mode()&0o111 == 0 {
+	if runtime.GOOS != "windows" && info.Mode()&0o111 == 0 {
 		return fmt.Errorf("%w: bootstrap %q must be executable", ErrLocalAppPackageInvalid, manifest.Runtime.Bootstrap)
 	}
 	return nil

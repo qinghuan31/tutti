@@ -104,6 +104,12 @@ export class WorkspaceFileManagerService implements IWorkspaceFileManagerService
     return this.dependencies.platformApi.os;
   }
 
+  async openWorkspaceRootInSystemFileManager(
+    workspaceID: string
+  ): Promise<void> {
+    await this.dependencies.hostFilesApi.openFile(workspaceID, "");
+  }
+
   getReferenceSourceAggregator(
     workspaceID: string,
     locale: DesktopLocale = getActiveLocale()

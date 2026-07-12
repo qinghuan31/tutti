@@ -98,6 +98,45 @@ func TestDefaultResolverAllowsEmptyCatalogOverride(t *testing.T) {
 	}
 }
 
+func TestDefaultResolverUsesDesktopNodeForWindowsNodeStaticProfile(t *testing.T) {
+	if runtime.GOOS != "windows" {
+		t.Skip("Windows desktop Node fallback test")
+	}
+
+	root := t.TempDir()
+	resourcesDir := filepath.Join(root, "resources")
+	tuttidPath := filepath.Join(resourcesDir, "bin", "tuttid.exe")
+	desktopPath := filepath.Join(root, "Tutti.exe")
+	for _, path := range []string{tuttidPath, desktopPath} {
+		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+			t.Fatalf("MkdirAll(%s) error = %v", path, err)
+		}
+		if err := os.WriteFile(path, []byte("stub"), 0o644); err != nil {
+			t.Fatalf("WriteFile(%s) error = %v", path, err)
+		}
+	}
+
+	resolver := DefaultResolver{
+		Environ: func() []string {
+			return []string{tuttiAppRuntimeCatalogEnv + "=", "PATH=C:\\Windows"}
+		},
+		Executable: func() (string, error) { return tuttidPath, nil },
+	}
+	resolved, err := resolver.ResolveProfile(context.Background(), NodeStaticProfile)
+	if err != nil {
+		t.Fatalf("ResolveProfile(node-static) error = %v", err)
+	}
+	if resolved.Node != desktopPath {
+		t.Fatalf("Node = %q, want %q", resolved.Node, desktopPath)
+	}
+	if EnvValue(resolved.EnvOverrides, "ELECTRON_RUN_AS_NODE") != "1" {
+		t.Fatalf("ELECTRON_RUN_AS_NODE = %q, want 1", EnvValue(resolved.EnvOverrides, "ELECTRON_RUN_AS_NODE"))
+	}
+	if err := resolver.PreloadProfile(context.Background(), NodeStaticProfile); err != nil {
+		t.Fatalf("PreloadProfile(node-static) error = %v", err)
+	}
+}
+
 func TestDefaultResolverDownloadsRuntimeFromCatalog(t *testing.T) {
 	cacheRoot := t.TempDir()
 	pythonArtifactPath := createManagedRuntimeComponentArchiveForTest(t, "python")

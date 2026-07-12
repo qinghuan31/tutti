@@ -198,7 +198,13 @@ func (r *AppRunner) startProcess(ctx context.Context, key string, input AppStart
 		bootstrap = "bootstrap.sh"
 	}
 	bootstrapPath := filepath.Join(input.PackageDir, filepath.Clean(bootstrap))
-	command := exec.Command(bootstrapPath)
+	command, err := appBootstrapCommand(input, appRuntime, bootstrapPath)
+	if err != nil {
+		_ = logFile.Close()
+		logAppRuntimeControl("workspace_app_runtime_start_failed", input, port, "startup", err)
+		r.setFailed(key, "startup", err)
+		return
+	}
 	prepareAppProcessCommand(command)
 	command.Dir = input.RuntimeDir
 	command.Stdout = logFile
@@ -281,6 +287,23 @@ func (r *AppRunner) startProcess(ctx context.Context, key string, input AppStart
 		StartedAtUnixMs: &startedAt,
 		PackageDir:      input.PackageDir,
 	})
+}
+
+func appBootstrapCommand(
+	input AppStartInput,
+	appRuntime ResolvedAppRuntime,
+	bootstrapPath string,
+) (*exec.Cmd, error) {
+	if runtime.GOOS == "windows" &&
+		strings.TrimSpace(input.RuntimeProfile) == "node-static" &&
+		strings.EqualFold(filepath.Ext(bootstrapPath), ".sh") {
+		entrypoint := filepath.Join(input.PackageDir, "server.mjs")
+		info, err := os.Stat(entrypoint)
+		if err == nil && !info.IsDir() && strings.TrimSpace(appRuntime.Node) != "" {
+			return exec.Command(appRuntime.Node, entrypoint), nil
+		}
+	}
+	return exec.Command(bootstrapPath), nil
 }
 
 func tuttiAPIBaseURLFromEnv() string {

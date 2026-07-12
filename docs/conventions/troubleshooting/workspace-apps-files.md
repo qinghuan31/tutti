@@ -2,6 +2,19 @@
 
 [Back to troubleshooting index](./README.md)
 
+### Windows App Center Cannot Install Node-Static Apps
+
+- Symptom:
+  A Windows desktop build reports that the managed runtime catalog has no
+  `windows-amd64` platform, or rejects `bootstrap.sh` as non-executable.
+- Fix:
+  Use a desktop build that includes the Windows node-static compatibility path.
+  It runs standard `node-static` packages through the bundled Electron Node
+  runtime and requires `server.mjs` beside `bootstrap.sh`.
+- Limits:
+  Packages that need Python, a custom shell bootstrap, or a standalone runtime
+  still require a published Windows runtime artifact and cannot use this path.
+
 ### App Factory job keeps loading after AgentGUI Stop
 
 - Symptom:

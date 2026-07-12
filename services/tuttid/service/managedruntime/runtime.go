@@ -56,6 +56,7 @@ type ResolvedRuntime struct {
 type DefaultResolver struct {
 	RuntimeRoot string
 	Environ     func() []string
+	Executable  func() (string, error)
 	HTTPClient  *http.Client
 }
 
@@ -96,7 +97,13 @@ func (r DefaultResolver) Resolve(ctx context.Context) (ResolvedRuntime, error) {
 }
 
 func (r DefaultResolver) PreloadProfile(ctx context.Context, profile string) error {
-	return r.ensureRuntimeProfile(ctx, r.runtimeRoot(), profile)
+	err := r.ensureRuntimeProfile(ctx, r.runtimeRoot(), profile)
+	if err != nil {
+		if _, ok := r.windowsEmbeddedNodeRuntime(profile); ok {
+			return nil
+		}
+	}
+	return err
 }
 
 func (r DefaultResolver) ResolveProfile(ctx context.Context, profile string) (ResolvedRuntime, error) {
@@ -106,6 +113,9 @@ func (r DefaultResolver) ResolveProfile(ctx context.Context, profile string) (Re
 	}
 	root := r.runtimeRoot()
 	if err := r.ensureRuntimeProfile(ctx, root, profile); err != nil {
+		if fallback, ok := r.windowsEmbeddedNodeRuntime(profile); ok {
+			return fallback, nil
+		}
 		return ResolvedRuntime{}, err
 	}
 	if profile == appRuntimeNodeStaticProfile {
@@ -116,6 +126,41 @@ func (r DefaultResolver) ResolveProfile(ctx context.Context, profile string) (Re
 		return ResolvedRuntime{}, err
 	}
 	return r.resolvedRuntimeForComponents(root, componentNames)
+}
+
+func (r DefaultResolver) windowsEmbeddedNodeRuntime(profile string) (ResolvedRuntime, bool) {
+	if runtime.GOOS != "windows" || strings.TrimSpace(profile) != appRuntimeNodeStaticProfile {
+		return ResolvedRuntime{}, false
+	}
+	executable, err := r.executable()
+	if err != nil {
+		return ResolvedRuntime{}, false
+	}
+	binDir := filepath.Dir(executable)
+	resourcesDir := filepath.Dir(binDir)
+	if filepath.Base(binDir) != "bin" || filepath.Base(resourcesDir) != "resources" {
+		return ResolvedRuntime{}, false
+	}
+	desktopExecutable := filepath.Join(filepath.Dir(resourcesDir), "Tutti.exe")
+	if !isExecutableFile(desktopExecutable) {
+		return ResolvedRuntime{}, false
+	}
+	env := r.environ()
+	pathValue := strings.Join(
+		append([]string{filepath.Dir(desktopExecutable)}, filepath.SplitList(envValue(env, pathEnvKey(env)))...),
+		string(os.PathListSeparator),
+	)
+	return ResolvedRuntime{
+		Root:    resourcesDir,
+		Node:    desktopExecutable,
+		BinDirs: []string{filepath.Dir(desktopExecutable)},
+		EnvOverrides: []string{
+			tuttiAppRuntimeRootEnv + "=" + resourcesDir,
+			"TUTTI_APP_NODE=" + desktopExecutable,
+			"ELECTRON_RUN_AS_NODE=1",
+			"PATH=" + pathValue,
+		},
+	}, true
 }
 
 func (r DefaultResolver) runtimeRoot() string {
@@ -631,6 +676,13 @@ func (r DefaultResolver) environ() []string {
 		return r.Environ()
 	}
 	return os.Environ()
+}
+
+func (r DefaultResolver) executable() (string, error) {
+	if r.Executable != nil {
+		return r.Executable()
+	}
+	return os.Executable()
 }
 
 func pythonBinaryName() string {

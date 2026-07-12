@@ -145,6 +145,37 @@ exec "$TUTTI_APP_PYTHON" "$TUTTI_APP_PACKAGE_DIR/server.py"
 	}
 }
 
+func TestAppBootstrapCommandUsesNodeForWindowsNodeStaticPackage(t *testing.T) {
+	if runtime.GOOS != "windows" {
+		t.Skip("Windows node-static bootstrap test")
+	}
+
+	packageDir := t.TempDir()
+	bootstrapPath := filepath.Join(packageDir, "bootstrap.sh")
+	entrypoint := filepath.Join(packageDir, "server.mjs")
+	if err := os.WriteFile(bootstrapPath, []byte("#!/bin/sh\n"), 0o644); err != nil {
+		t.Fatalf("WriteFile(bootstrap.sh) error = %v", err)
+	}
+	if err := os.WriteFile(entrypoint, []byte("console.log('ready');\n"), 0o644); err != nil {
+		t.Fatalf("WriteFile(server.mjs) error = %v", err)
+	}
+
+	command, err := appBootstrapCommand(
+		AppStartInput{PackageDir: packageDir, RuntimeProfile: "node-static"},
+		ResolvedAppRuntime{Node: `C:\\Program Files\\Tutti\\Tutti.exe`},
+		bootstrapPath,
+	)
+	if err != nil {
+		t.Fatalf("appBootstrapCommand() error = %v", err)
+	}
+	if command.Path != `C:\\Program Files\\Tutti\\Tutti.exe` {
+		t.Fatalf("Path = %q", command.Path)
+	}
+	if len(command.Args) != 2 || command.Args[1] != entrypoint {
+		t.Fatalf("Args = %#v, want Node entrypoint command", command.Args)
+	}
+}
+
 func TestAppRunnerStartsStandaloneAppWithoutResolvingManagedRuntime(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("bootstrap.sh runner test is POSIX-only")

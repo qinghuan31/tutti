@@ -368,9 +368,32 @@ function ReadyWorkspaceWorkbenchWithSession({
     [appCenterService, hostInput.dockEntries, temporaryDockRetentionByEntryId]
   );
   const onDockEntryClick = useCallback(
-    (request: Parameters<NonNullable<typeof hostInput.onDockEntryClick>>[0]) =>
-      hostInput.onDockEntryClick?.(request),
-    [hostInput.onDockEntryClick]
+    (request: Parameters<NonNullable<typeof hostInput.onDockEntryClick>>[0]) => {
+      if (
+        state.platform === "win32" &&
+        request.entryId === workspaceFilesNodeID
+      ) {
+        void openWorkspaceRootInSystemFileManager(
+          runtime.workspaceFileManagerService,
+          state.workspace.id
+        ).catch(() => {
+          Toast.Error(
+            translate("workspace.workbenchDesktop.filesLaunch.openFailedTitle"),
+            translate(
+              "workspace.workbenchDesktop.filesLaunch.openFailedDescription"
+            )
+          );
+        });
+        return;
+      }
+      return hostInput.onDockEntryClick?.(request);
+    },
+    [
+      hostInput.onDockEntryClick,
+      runtime.workspaceFileManagerService,
+      state.platform,
+      state.workspace.id
+    ]
   );
   const onWorkbenchHostHandleReady = useCallback(
     (host: WorkbenchHostHandle | null) => {
@@ -1089,6 +1112,21 @@ async function openWorkspaceFilesNode(
     }
   );
   return true;
+}
+
+function openWorkspaceRootInSystemFileManager(
+  workspaceFileManagerService: IWorkspaceFileManagerService,
+  workspaceID: string
+): Promise<void> {
+  const service = workspaceFileManagerService as IWorkspaceFileManagerService & {
+    openWorkspaceRootInSystemFileManager?: (
+      workspaceID: string
+    ) => Promise<void>;
+  };
+  if (!service.openWorkspaceRootInSystemFileManager) {
+    return Promise.reject(new Error("System file manager is unavailable."));
+  }
+  return service.openWorkspaceRootInSystemFileManager(workspaceID);
 }
 
 async function openGroupChatNode(

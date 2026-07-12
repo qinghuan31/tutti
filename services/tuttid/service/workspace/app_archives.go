@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"sync/atomic"
 	"time"
@@ -510,7 +511,7 @@ func validateExtractedAppPackage(packageRoot string, manifest workspacebiz.AppMa
 	if info.IsDir() {
 		return errors.New("runtime bootstrap must be a file")
 	}
-	if info.Mode()&0o111 == 0 {
+	if runtime.GOOS != "windows" && info.Mode()&0o111 == 0 {
 		return errors.New("runtime bootstrap must be executable")
 	}
 	agentsData, err := os.ReadFile(filepath.Join(packageRoot, "AGENTS.md"))
