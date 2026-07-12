@@ -1,0 +1,166 @@
+name: Windows Release
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Release version, such as 0.1.0, 0.1.0-rc.0, or 0.1.0-beta.0
+        required: true
+        type: string
+      target_ref:
+        description: Branch, tag, or commit to build; defaults to the selected workflow ref
+        required: false
+        type: string
+
+permissions:
+  contents: write
+
+concurrency:
+  group: windows-release-${{ github.event_name == 'push' && github.ref_name || inputs.version }}
+  cancel-in-progress: false
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+jobs:
+  resolve:
+    name: Resolve Release
+    runs-on: ubuntu-latest
+    outputs:
+      release_tag: ${{ steps.release.outputs.release_tag }}
+      target_ref: ${{ steps.release.outputs.target_ref }}
+
+    steps:
+      - name: Resolve release tag and target
+        id: release
+        shell: bash
+        env:
+          INPUT_TARGET_REF: ${{ inputs.target_ref }}
+          INPUT_VERSION: ${{ inputs.version }}
+        run: |
+          if [[ "${GITHUB_EVENT_NAME}" == "push" ]]; then
+            release_tag="${GITHUB_REF_NAME}"
+            target_ref="${GITHUB_SHA}"
+          else
+            version="${INPUT_VERSION#v}"
+            if ! [[ "${version}" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-((rc|beta)\.[0-9]+))?$ ]]; then
+              echo "version must be semver, optionally suffixed with -rc.N or -beta.N" >&2
+              exit 1
+            fi
+            release_tag="v${version}"
+            target_ref="${INPUT_TARGET_REF:-${GITHUB_SHA}}"
+          fi
+
+          echo "release_tag=${release_tag}" >> "${GITHUB_OUTPUT}"
+          echo "target_ref=${target_ref}" >> "${GITHUB_OUTPUT}"
+
+  build-windows:
+    name: Build Windows
+    needs: resolve
+    runs-on: windows-latest
+    outputs:
+      release_target: ${{ steps.commit.outputs.release_target }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ needs.resolve.outputs.target_ref }}
+          fetch-depth: 0
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v6
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version-file: .node-version
+          cache: pnpm
+          cache-dependency-path: pnpm-lock.yaml
+
+      - name: Setup Go
+        uses: actions/setup-go@v6
+        with:
+          go-version: "1.24.5"
+          cache-dependency-path: |
+            go.work
+            go.work.sum
+            apps/cli/go.mod
+            services/tuttid/go.mod
+            services/tuttid/go.sum
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build Windows installer
+        env:
+          TUTTI_DESKTOP_RELEASE_TAG: ${{ needs.resolve.outputs.release_tag }}
+        run: pnpm --filter @tutti-os/desktop build:win
+
+      - name: Record release target
+        id: commit
+        shell: bash
+        run: echo "release_target=$(git rev-parse HEAD)" >> "${GITHUB_OUTPUT}"
+
+      - name: Upload Windows release artifacts
+        uses: actions/upload-artifact@v7
+        with:
+          name: tutti-windows-release-assets
+          compression-level: 0
+          path: |
+            apps/desktop/dist/Tutti-*-win-x64.exe
+            apps/desktop/dist/Tutti-*-win-x64.exe.blockmap
+            apps/desktop/dist/*.yml
+          if-no-files-found: error
+          retention-days: 7
+
+  publish:
+    name: Publish GitHub Release
+    needs: [resolve, build-windows]
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ github.token }}
+      RELEASE_TAG: ${{ needs.resolve.outputs.release_tag }}
+      RELEASE_TARGET: ${{ needs.build-windows.outputs.release_target }}
+
+    steps:
+      - name: Checkout release scripts
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ env.RELEASE_TARGET }}
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version-file: .node-version
+
+      - name: Download Windows release artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: tutti-windows-release-assets
+          path: release-assets
+
+      - name: Generate checksums
+        run: node apps/desktop/scripts/generate-checksums.mjs release-assets
+
+      - name: Create or update GitHub release
+        shell: bash
+        run: |
+          prerelease_args=()
+          if [[ "${RELEASE_TAG}" == *-rc.* || "${RELEASE_TAG}" == *-beta.* ]]; then
+            prerelease_args+=(--prerelease)
+          fi
+
+          if gh release view "${RELEASE_TAG}" >/dev/null 2>&1; then
+            gh release upload "${RELEASE_TAG}" release-assets/* --clobber
+            exit 0
+          fi
+
+          gh release create "${RELEASE_TAG}" release-assets/* \
+            --target "${RELEASE_TARGET}" \
+            --title "Tutti ${RELEASE_TAG}" \
+            --generate-notes \
+            "${prerelease_args[@]}"

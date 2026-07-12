@@ -38,6 +38,18 @@ When the variable is missing or set to any other value, the workflow may be trig
 
 Use this switch when release infrastructure exists in the repository but should not publish artifacts yet.
 
+## Windows-Only Release Workflow
+
+Forks that only need Windows delivery should use
+`.github/workflows/windows-release.yml`. It builds the NSIS installer on
+`windows-latest`, generates `SHA256SUMS.txt`, and publishes the installer,
+blockmap, and updater metadata to a GitHub Release without requiring macOS
+signing, AWS, or Feishu credentials.
+
+Push a tag such as `v0.1.0` to trigger a release automatically. Alternatively,
+run **Windows Release** from the Actions tab and provide a semantic version;
+the optional target ref selects the commit to package.
+
 ## Release Workflow
 
 The release workflow file is `.github/workflows/desktop-release.yml`.
