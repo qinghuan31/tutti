@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"sync"
 	"time"
@@ -132,6 +133,10 @@ func RemoteCatalogEnvOverrideActive() bool {
 }
 
 func embeddedCatalog() []App {
+	if runtime.GOOS == "windows" {
+		return nil
+	}
+
 	minWidth := 520
 	minHeight := 640
 	return []App{

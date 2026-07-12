@@ -12,6 +12,8 @@ Current examples include:
 - `dev-gui.sh` for checking local prerequisites, preparing workspace
   dependencies, downloading and building the development `tuttid` binary, and
   launching the desktop GUI with `TUTTID_BIN`
+- `build-desktop-package.mjs` for Windows desktop packaging without a Bash dependency
+- `generate-builtin-apps.mjs` for routing builtin app packaging through the supported platform path
 - `setup-dev.mjs` for checking local developer prerequisites such as pinned lint tooling
 - `setup-dev.mjs --install=golangci-lint` for installing the pinned Go lint tool
 - `generate-defaults.mjs` for generating shared Go and desktop TypeScript defaults from `config/tutti.defaults.json`

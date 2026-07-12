@@ -11,6 +11,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"runtime"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -292,7 +293,12 @@ func TestCatalogReturnsEmbeddedCatalogWhenRemoteURLFails(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Catalog() error = %v", err)
 	}
-	if app := findCatalogAppForTest(apps, "tutti-onboarding"); app == nil {
+	app := findCatalogAppForTest(apps, "tutti-onboarding")
+	if runtime.GOOS == "windows" {
+		if app != nil {
+			t.Fatalf("Catalog() apps = %#v, want no embedded onboarding on windows", apps)
+		}
+	} else if app == nil {
 		t.Fatalf("Catalog() apps = %#v, want embedded onboarding", apps)
 	}
 
@@ -300,12 +306,21 @@ func TestCatalogReturnsEmbeddedCatalogWhenRemoteURLFails(t *testing.T) {
 	if snapshot.RemoteCatalog.LastError == "" {
 		t.Fatal("remote catalog last error is empty, want failure details")
 	}
-	if app := findCatalogAppForTest(snapshot.Apps, "tutti-onboarding"); app == nil {
+	app = findCatalogAppForTest(snapshot.Apps, "tutti-onboarding")
+	if runtime.GOOS == "windows" {
+		if app != nil {
+			t.Fatalf("failed snapshot apps = %#v, want no embedded onboarding on windows", snapshot.Apps)
+		}
+	} else if app == nil {
 		t.Fatalf("failed snapshot apps = %#v, want embedded onboarding", snapshot.Apps)
 	}
 }
 
 func TestEmbeddedOnboardingArchiveMatchesCatalog(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("embedded onboarding is disabled on windows")
+	}
+
 	app := findCatalogAppForTest(embeddedCatalog(), "tutti-onboarding")
 	if app == nil {
 		t.Fatal("embedded catalog missing tutti-onboarding")
@@ -378,6 +393,9 @@ func TestRemoteCatalogURLDefaultsToPublishedCatalog(t *testing.T) {
 func TestMergeCatalogsKeepsEmbeddedAppBeforeRemoteAppWithSameID(t *testing.T) {
 	embedded := embeddedCatalog()
 	if len(embedded) == 0 {
+		if runtime.GOOS == "windows" {
+			t.Skip("embedded onboarding is disabled on windows")
+		}
 		t.Fatal("embedded catalog is empty")
 	}
 	remoteManifest := embedded[0].Manifest

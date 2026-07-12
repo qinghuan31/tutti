@@ -7,15 +7,17 @@
 //
 // Keep BROWSER_MCP_VERSION in sync with browserMCPPinnedVersion in
 // packages/agent/runtimeprep/browseruse.go.
-import { execFileSync } from "node:child_process";
 import { existsSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { execFileSyncCommand } from "../../../tools/scripts/command-helpers.mjs";
 
 const BROWSER_MCP_VERSION = "1.2.0";
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const desktopDir = join(__dirname, "..");
+const repoRoot = join(desktopDir, "..", "..");
 const outDir = join(desktopDir, "build", "browser-mcp");
+const npmCacheDir = join(repoRoot, ".tmp", "npm-cache");
 const entryRelPath = join(
   "node_modules",
   "chrome-devtools-mcp",
@@ -48,10 +50,18 @@ writeFileSync(
 );
 
 log(`installing chrome-devtools-mcp@${BROWSER_MCP_VERSION} into ${outDir}`);
-execFileSync(
+execFileSyncCommand(
   "npm",
   ["install", "--omit=dev", "--no-audit", "--no-fund", "--ignore-scripts"],
-  { cwd: outDir, stdio: "inherit" }
+  {
+    cwd: outDir,
+    env: {
+      ...process.env,
+      NPM_CONFIG_CACHE: npmCacheDir,
+      npm_config_cache: npmCacheDir
+    },
+    stdio: "inherit"
+  }
 );
 
 const entry = join(outDir, entryRelPath);

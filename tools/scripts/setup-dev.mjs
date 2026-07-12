@@ -1,7 +1,7 @@
-import { spawnSync } from "node:child_process";
 import { existsSync, readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { spawnSyncCommand } from "./command-helpers.mjs";
 
 const scriptDirectory = dirname(fileURLToPath(import.meta.url));
 const workspaceRoot = join(scriptDirectory, "..", "..");
@@ -121,7 +121,7 @@ function checkNode() {
 }
 
 function checkPnpm() {
-  const result = spawnSync("pnpm", ["--version"], {
+  const result = spawnSyncCommand("pnpm", ["--version"], {
     cwd: workspaceRoot,
     encoding: "utf8"
   });
@@ -143,7 +143,7 @@ function checkPnpm() {
 }
 
 function checkGo() {
-  const result = spawnSync("go", ["version"], {
+  const result = spawnSyncCommand("go", ["version"], {
     cwd: workspaceRoot,
     encoding: "utf8"
   });
@@ -165,7 +165,7 @@ function checkGo() {
 }
 
 function checkGolangciLint() {
-  const result = spawnSync("golangci-lint", ["version"], {
+  const result = spawnSyncCommand("golangci-lint", ["version"], {
     cwd: workspaceRoot,
     encoding: "utf8"
   });
@@ -251,7 +251,7 @@ function parseGoVersionPrefix(goMod) {
 }
 
 function installGolangciLint() {
-  const goPathResult = spawnSync("go", ["env", "GOPATH"], {
+  const goPathResult = spawnSyncCommand("go", ["env", "GOPATH"], {
     cwd: workspaceRoot,
     encoding: "utf8"
   });
@@ -265,15 +265,20 @@ function installGolangciLint() {
 
   const goPath = goPathResult.stdout.trim();
   const installDir = join(goPath, "bin");
-  const command = `curl -sSfL https://golangci-lint.run/install.sh | sh -s -- -b "${installDir}" "${pinnedGolangciVersion}"`;
-
   console.log(
     `Installing golangci-lint ${pinnedGolangciVersion} to ${installDir}`
   );
-  const result = spawnSync("sh", ["-c", command], {
-    cwd: workspaceRoot,
-    stdio: "inherit"
-  });
+  const result = spawnSyncCommand(
+    "go",
+    [
+      "install",
+      `github.com/golangci/golangci-lint/cmd/golangci-lint@${pinnedGolangciVersion}`
+    ],
+    {
+      cwd: workspaceRoot,
+      stdio: "inherit"
+    }
+  );
 
   if (result.status !== 0) {
     process.exit(result.status ?? 1);

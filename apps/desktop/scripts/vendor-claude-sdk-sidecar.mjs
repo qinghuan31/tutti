@@ -2,7 +2,6 @@
 // Vendors the Claude SDK sidecar source and production dependencies into
 // apps/desktop/build/claude-sdk-sidecar so packaged desktop can launch it
 // without relying on repository sources.
-import { execFileSync } from "node:child_process";
 import { tmpdir } from "node:os";
 import {
   cpSync,
@@ -20,11 +19,13 @@ import {
   resolveDarwinClaudeNativePackageSpecs,
   verifyDarwinClaudeNativePackages
 } from "./claude-sdk-sidecar-packaging.mjs";
+import { execFileSyncCommand } from "../../../tools/scripts/command-helpers.mjs";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const desktopDir = join(__dirname, "..");
 const repoRoot = join(desktopDir, "..", "..");
 const sidecarDir = join(repoRoot, "packages", "agent", "claude-sdk-sidecar");
+const npmCacheDir = join(repoRoot, ".tmp", "npm-cache");
 const sourcePackage = JSON.parse(
   readFileSync(join(sidecarDir, "package.json"), "utf8")
 );
@@ -58,10 +59,18 @@ writeFileSync(
 );
 
 log(`installing production dependencies into ${outDir}`);
-execFileSync(
+execFileSyncCommand(
   "npm",
   ["install", "--omit=dev", "--no-audit", "--no-fund", "--ignore-scripts"],
-  { cwd: outDir, stdio: "inherit" }
+  {
+    cwd: outDir,
+    env: {
+      ...process.env,
+      NPM_CONFIG_CACHE: npmCacheDir,
+      npm_config_cache: npmCacheDir
+    },
+    stdio: "inherit"
+  }
 );
 
 if (includeDarwinNativePackages) {
@@ -84,12 +93,17 @@ if (includeDarwinNativePackages) {
   log(`vendoring macOS native packages: ${nativePackageSpecs.join(", ")}`);
   try {
     for (const [index, packageSpec] of nativePackageSpecs.entries()) {
-      const packOutput = execFileSync(
+      const packOutput = execFileSyncCommand(
         "npm",
         ["pack", packageSpec, "--json", "--pack-destination", stagingDir],
         {
           cwd: outDir,
           encoding: "utf8",
+          env: {
+            ...process.env,
+            NPM_CONFIG_CACHE: npmCacheDir,
+            npm_config_cache: npmCacheDir
+          },
           stdio: ["ignore", "pipe", "inherit"]
         }
       );
@@ -105,7 +119,7 @@ if (includeDarwinNativePackages) {
       const destination = join(outDir, "node_modules", packageName);
       rmSync(destination, { recursive: true, force: true });
       mkdirSync(destination, { recursive: true });
-      execFileSync(
+      execFileSyncCommand(
         "tar",
         [
           "-xzf",

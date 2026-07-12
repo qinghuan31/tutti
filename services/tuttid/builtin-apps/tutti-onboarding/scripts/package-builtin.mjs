@@ -15,6 +15,7 @@ import {
 } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { spawnCommand } from "../../../../../tools/scripts/command-helpers.mjs";
 
 const scriptPath = fileURLToPath(import.meta.url);
 const appDir = path.resolve(path.dirname(scriptPath), "..");
@@ -553,7 +554,7 @@ async function readJson(filePath) {
 
 async function run(command, args, options = {}) {
   await new Promise((resolve, reject) => {
-    const child = spawn(command, args, {
+    const child = spawnCommand(command, args, {
       cwd: options.cwd ?? appDir,
       env: options.env ?? process.env,
       shell: false,
