@@ -743,22 +743,36 @@ func (s Service) httpClient() *http.Client {
 }
 
 func joinShellCommand(parts []string) string {
+	return joinShellCommandForOS(parts, runtime.GOOS)
+}
+
+func joinShellCommandForOS(parts []string, goos string) string {
 	filtered := make([]string, 0, len(parts))
 	for _, part := range parts {
 		if strings.TrimSpace(part) == "" {
 			continue
 		}
-		filtered = append(filtered, shellQuote(part))
+		filtered = append(filtered, shellQuoteForOS(part, goos))
 	}
 	return strings.Join(filtered, " ")
 }
 
 func shellQuote(value string) string {
+	return shellQuoteForOS(value, runtime.GOOS)
+}
+
+func shellQuoteForOS(value string, goos string) string {
 	if value == "" {
+		if goos == "windows" {
+			return "\"\""
+		}
 		return "''"
 	}
 	if isSafeShellWord(value) {
 		return value
+	}
+	if goos == "windows" {
+		return "\"" + strings.ReplaceAll(value, "\"", "\\\"") + "\""
 	}
 	return "'" + strings.ReplaceAll(value, "'", `'"'"'`) + "'"
 }

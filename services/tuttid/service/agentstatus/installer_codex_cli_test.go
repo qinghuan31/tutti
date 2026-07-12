@@ -51,6 +51,24 @@ func TestCodexNPMPrefixFromPackageDir(t *testing.T) {
 	}
 }
 
+func TestJoinShellCommandForOSQuotesWindowsPathsForCmd(t *testing.T) {
+	t.Parallel()
+
+	command := joinShellCommandForOS([]string{
+		`C:\Program Files\nodejs\npm.cmd`,
+		"install",
+		"-g",
+		"--prefix",
+		`C:\Users\Jane Doe\.local`,
+		"@tutti-os/tutti-agent@0.0.2",
+	}, "windows")
+
+	want := `"C:\Program Files\nodejs\npm.cmd" install -g --prefix "C:\Users\Jane Doe\.local" @tutti-os/tutti-agent@0.0.2`
+	if command != want {
+		t.Fatalf("joinShellCommandForOS() = %q, want %q", command, want)
+	}
+}
+
 // TestRunCodexCLILatestInstallerRepairsInPlace verifies that when an existing
 // @openai/codex install is resolved but incomplete, the installer reinstalls
 // into the npm global prefix that already owns it (repair-in-place) rather than
