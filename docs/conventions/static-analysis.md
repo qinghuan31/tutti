@@ -35,6 +35,10 @@ Validation runners that spawn nested pnpm commands should read the root
 let runner-spawned lanes resolve a bare `pnpm` from `PATH`, because local
 package-manager shims can differ from the repository pin.
 
+On Windows, validation runners must use `tools/scripts/command-helpers.mjs`
+for Corepack, pnpm, npm, and npx invocations. These command-line shims require
+the Windows command shell when spawned from Node.
+
 ## TypeScript Baseline
 
 TypeScript linting uses Oxlint.

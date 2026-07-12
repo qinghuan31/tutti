@@ -1,4 +1,3 @@
-import { spawn } from "node:child_process";
 import {
   createWriteStream,
   existsSync,
@@ -8,6 +7,7 @@ import {
 } from "node:fs";
 import { join, relative } from "node:path";
 import { stripVTControlCharacters } from "node:util";
+import { spawnCommand } from "./command-helpers.mjs";
 
 export async function runValidationLanes({
   lanes,
@@ -115,7 +115,7 @@ function runLane({ index, lane, runDirectory, tailLines, workspaceRoot }) {
 
   return new Promise((resolve) => {
     let settled = false;
-    const child = spawn(lane.command[0], lane.command.slice(1), {
+    const child = spawnCommand(lane.command[0], lane.command.slice(1), {
       cwd: lane.cwd ?? workspaceRoot,
       env: process.env,
       stdio: ["ignore", "pipe", "pipe"]

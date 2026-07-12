@@ -1,7 +1,8 @@
 import { readdirSync, readFileSync, statSync } from "node:fs";
 import { relative, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 
-const workspaceRoot = resolve(new URL("../..", import.meta.url).pathname);
+const workspaceRoot = resolve(fileURLToPath(new URL("../..", import.meta.url)));
 const agentGuiRoot = resolve(workspaceRoot, "packages/agent/gui");
 
 const allowedFiles = new Set([
@@ -66,7 +67,7 @@ const forbiddenPatterns = [
 const violations = [];
 
 for (const filePath of walk(agentGuiRoot)) {
-  const relativePath = relative(workspaceRoot, filePath);
+  const relativePath = relative(workspaceRoot, filePath).replaceAll("\\", "/");
   if (!isScannedSourceFile(relativePath) || allowedFiles.has(relativePath)) {
     continue;
   }

@@ -1,4 +1,4 @@
-import { spawn, spawnSync } from "node:child_process";
+import { spawnSync } from "node:child_process";
 import {
   createWriteStream,
   existsSync,
@@ -8,6 +8,7 @@ import {
 } from "node:fs";
 import { dirname, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { spawnCommand } from "./command-helpers.mjs";
 import {
   buildGoLintLane,
   buildGoTestLane,
@@ -302,7 +303,7 @@ function runLane(lane, index, runDirectory) {
 
   return new Promise((resolve) => {
     const [command, ...args] = lane.command;
-    const child = spawn(command, args, {
+    const child = spawnCommand(command, args, {
       cwd: workspaceRoot,
       env: process.env,
       stdio: ["ignore", "pipe", "pipe"]

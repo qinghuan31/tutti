@@ -1,4 +1,3 @@
-import { spawn } from "node:child_process";
 import {
   createWriteStream,
   mkdirSync,
@@ -8,6 +7,7 @@ import {
 import readline from "node:readline";
 import { dirname, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { spawnCommand } from "./command-helpers.mjs";
 import {
   formatFailureExcerpt,
   formatSlowestLanes
@@ -139,7 +139,7 @@ function runTask(task, phase, runDirectory) {
 
   return new Promise((resolveResult) => {
     let settled = false;
-    const child = spawn(command, args, {
+    const child = spawnCommand(command, args, {
       cwd: workspaceRoot,
       stdio: ["ignore", "pipe", "pipe"]
     });
