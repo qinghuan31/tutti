@@ -2067,6 +2067,12 @@ func writeTestAppFactoryDraft(draftDir string, appID string, version string) err
 	if err := os.WriteFile(filepath.Join(packageDir, "bootstrap.sh"), []byte("#!/bin/sh\nsleep 1\n"), 0o755); err != nil {
 		return err
 	}
+	if err := os.MkdirAll(filepath.Join(packageDir, "server"), 0o755); err != nil {
+		return err
+	}
+	if err := os.WriteFile(filepath.Join(packageDir, "server", "server.js"), []byte("console.log('ready');\n"), 0o644); err != nil {
+		return err
+	}
 	return os.WriteFile(filepath.Join(packageDir, "AGENTS.md"), []byte("Test app package.\n"), 0o644)
 }
 

@@ -153,6 +153,7 @@ func TestAppBootstrapCommandUsesNodeForWindowsNodeStaticPackage(t *testing.T) {
 
 	for _, relativeEntrypoint := range []string{
 		"server.mjs",
+		filepath.Join("server", "server.js"),
 		filepath.Join("server", "dist", "main.js"),
 	} {
 		t.Run(relativeEntrypoint, func(t *testing.T) {
@@ -252,6 +253,82 @@ func TestWindowsAppBootstrapEnvOverridesConfiguresAICanvas(t *testing.T) {
 			t.Fatalf("overrides = %#v, want %q", overrides, expected)
 		}
 	}
+}
+
+func TestAppRunnerStartsAICanvasStylePackageOnWindows(t *testing.T) {
+	if runtime.GOOS != "windows" {
+		t.Skip("Windows AI Canvas runner integration test")
+	}
+	nodePath, err := exec.LookPath("node")
+	if err != nil {
+		t.Skip("node is required for AI Canvas runner integration test")
+	}
+
+	root := t.TempDir()
+	packageDir := filepath.Join(root, "package")
+	if err := os.MkdirAll(filepath.Join(packageDir, "server"), 0o755); err != nil {
+		t.Fatalf("MkdirAll(server) error = %v", err)
+	}
+	for path, source := range map[string]string{
+		"bootstrap.sh":                       "#!/bin/sh\n",
+		filepath.Join("server", "worker.js"): `setInterval(() => {}, 1000);`,
+		filepath.Join("server", "server.js"): `const http = require("node:http"); const port = Number(process.env.AIMC_SERVER_PORT); http.createServer((request, response) => { response.writeHead(request.url === "/api/health" ? 200 : 404); response.end(); }).listen(port, "127.0.0.1");`,
+	} {
+		if err := os.WriteFile(filepath.Join(packageDir, path), []byte(source), 0o644); err != nil {
+			t.Fatalf("WriteFile(%s) error = %v", path, err)
+		}
+	}
+
+	runner := &AppRunner{
+		HealthcheckTimeout: 10 * time.Second,
+		RuntimeResolver: staticAppRuntimeResolver{runtime: ResolvedAppRuntime{
+			Node:         nodePath,
+			EnvOverrides: []string{"TUTTI_APP_NODE=" + nodePath},
+		}},
+	}
+	state, err := runner.Start(context.Background(), AppStartInput{
+		WorkspaceID:     "ws-ai-canvas",
+		WorkspaceName:   "AI Canvas",
+		WorkspaceRoot:   root,
+		AppID:           "ai-media-canvas",
+		PackageDir:      packageDir,
+		Bootstrap:       "bootstrap.sh",
+		HealthcheckPath: "/api/health",
+		RuntimeProfile:  workspaceAppNodeRuntimePreloadProfile,
+		RuntimeDir:      filepath.Join(root, "runtime"),
+		DataDir:         filepath.Join(root, "data"),
+		LogDir:          filepath.Join(root, "logs"),
+	})
+	if err != nil {
+		t.Fatalf("Start() error = %v", err)
+	}
+	if state.Status != workspacebiz.AppRuntimeStatusPreparing {
+		t.Fatalf("Start() status = %q, want preparing", state.Status)
+	}
+	waitForRunnerStatus(t, runner, "ws-ai-canvas", "ai-media-canvas", workspacebiz.AppRuntimeStatusRunning)
+	stopped, err := runner.Stop(context.Background(), "ws-ai-canvas", "ai-media-canvas")
+	if err != nil {
+		t.Fatalf("Stop() error = %v", err)
+	}
+	if stopped.Status != workspacebiz.AppRuntimeStatusIdle {
+		t.Fatalf("Stop() status = %q, want idle", stopped.Status)
+	}
+}
+
+type staticAppRuntimeResolver struct {
+	runtime ResolvedAppRuntime
+}
+
+func (r staticAppRuntimeResolver) Resolve(context.Context) (ResolvedAppRuntime, error) {
+	return r.runtime, nil
+}
+
+func (r staticAppRuntimeResolver) PreloadProfile(context.Context, string) error {
+	return nil
+}
+
+func (r staticAppRuntimeResolver) ResolveProfile(context.Context, string) (ResolvedAppRuntime, error) {
+	return r.runtime, nil
 }
 
 func TestAppRunnerStartsStandaloneAppWithoutResolvingManagedRuntime(t *testing.T) {

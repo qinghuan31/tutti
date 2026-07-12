@@ -4210,7 +4210,8 @@ func createWorkspaceAppPackageForTest(t *testing.T, packageDir string, manifest 
   },
   "runtime": {
     "bootstrap": "` + manifest.Runtime.Bootstrap + `",
-    "healthcheckPath": "` + manifest.Runtime.HealthcheckPath + `"
+    "healthcheckPath": "` + manifest.Runtime.HealthcheckPath + `",
+    "profile": "` + manifest.Runtime.Profile + `"
   }
 }
 `)
@@ -4219,6 +4220,12 @@ func createWorkspaceAppPackageForTest(t *testing.T, packageDir string, manifest 
 	}
 	if err := os.WriteFile(filepath.Join(packageDir, "bootstrap.sh"), []byte("#!/bin/sh\nexit 0\n"), 0o755); err != nil {
 		t.Fatalf("write bootstrap: %v", err)
+	}
+	if err := os.MkdirAll(filepath.Join(packageDir, "server"), 0o755); err != nil {
+		t.Fatalf("create server directory: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(packageDir, "server", "server.js"), []byte("console.log('ready');\n"), 0o644); err != nil {
+		t.Fatalf("write server entrypoint: %v", err)
 	}
 	if strings.TrimSpace(manifest.Icon.Src) != "" {
 		if err := os.WriteFile(filepath.Join(packageDir, manifest.Icon.Src), []byte{0x89, 0x50, 0x4e, 0x47}, 0o644); err != nil {

@@ -8,11 +8,48 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"sync/atomic"
 	"testing"
 	"time"
+
+	workspacebiz "github.com/tutti-os/tutti/services/tuttid/biz/workspace"
 )
+
+func TestValidateExtractedAppPackageRequiresSupportedWindowsNodeEntrypoint(t *testing.T) {
+	if runtime.GOOS != "windows" {
+		t.Skip("Windows package validation test")
+	}
+	packageRoot := t.TempDir()
+	manifest := workspacebiz.AppManifest{
+		AppID: "unsupported-node-app",
+		Runtime: workspacebiz.AppManifestRuntime{
+			Bootstrap: "bootstrap.sh",
+		},
+	}
+	for path, data := range map[string]string{
+		"bootstrap.sh":   "#!/bin/sh\n",
+		"AGENTS.md":      "# App\n",
+		"tutti.app.json": "{}\n",
+	} {
+		if err := os.WriteFile(filepath.Join(packageRoot, path), []byte(data), 0o644); err != nil {
+			t.Fatalf("write %s: %v", path, err)
+		}
+	}
+	if err := validateExtractedAppPackage(packageRoot, manifest); err == nil || !strings.Contains(err.Error(), "supported Node entrypoint") {
+		t.Fatalf("validateExtractedAppPackage() error = %v, want Windows Node entrypoint error", err)
+	}
+	if err := os.MkdirAll(filepath.Join(packageRoot, "server"), 0o755); err != nil {
+		t.Fatalf("create server directory: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(packageRoot, "server", "server.js"), []byte("console.log('ready');\n"), 0o644); err != nil {
+		t.Fatalf("write server/server.js: %v", err)
+	}
+	if err := validateExtractedAppPackage(packageRoot, manifest); err != nil {
+		t.Fatalf("validateExtractedAppPackage() supported package error = %v", err)
+	}
+}
 
 func TestExtractAppPackageZipRejectsEntryOverExpandedSizeLimit(t *testing.T) {
 	t.Parallel()

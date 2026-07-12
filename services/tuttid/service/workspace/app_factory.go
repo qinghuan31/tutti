@@ -565,6 +565,9 @@ func (s *AppFactoryService) validatePackage(ctx context.Context, workspaceID str
 	if strings.TrimSpace(agentsData) == "" {
 		return errors.New("AGENTS.md must be non-empty")
 	}
+	if err := validateWindowsNodeAppPackage(draftPackageDir, manifest); err != nil {
+		return err
+	}
 
 	workspace, err := s.workspaceSummary(ctx, workspaceID)
 	if err != nil {
@@ -580,7 +583,7 @@ func (s *AppFactoryService) validatePackage(ctx context.Context, workspaceID str
 		PackageDir:      draftPackageDir,
 		Bootstrap:       manifest.Runtime.Bootstrap,
 		HealthcheckPath: manifest.Runtime.HealthcheckPath,
-		RuntimeProfile:  strings.TrimSpace(manifest.Runtime.Profile),
+		RuntimeProfile:  appRuntimeProfileForManifest(manifest),
 		RuntimeDir:      job.RuntimeDir,
 		DataDir:         job.DataDir,
 		LogDir:          job.LogDir,

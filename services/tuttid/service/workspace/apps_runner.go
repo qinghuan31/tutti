@@ -346,6 +346,7 @@ func windowsAppBootstrapEnvOverrides(input AppStartInput, port int) []string {
 func windowsNodeAppEntrypoint(packageDir string) string {
 	for _, relativePath := range []string{
 		"server.mjs",
+		filepath.Join("server", "server.js"),
 		filepath.Join("server", "dist", "main.js"),
 	} {
 		entrypoint := filepath.Join(packageDir, relativePath)
@@ -355,6 +356,22 @@ func windowsNodeAppEntrypoint(packageDir string) string {
 		}
 	}
 	return ""
+}
+
+func validateWindowsNodeAppPackage(packageRoot string, manifest workspacebiz.AppManifest) error {
+	if runtime.GOOS != "windows" ||
+		appRuntimeProfileForManifest(manifest) != workspaceAppNodeRuntimePreloadProfile ||
+		!strings.EqualFold(filepath.Ext(manifest.Runtime.Bootstrap), ".sh") {
+		return nil
+	}
+	input := AppStartInput{
+		AppID:      manifest.AppID,
+		PackageDir: packageRoot,
+	}
+	if _, _, ok := windowsAICanvasEntrypoints(input); ok || windowsNodeAppEntrypoint(packageRoot) != "" {
+		return nil
+	}
+	return errors.New("Windows app package requires a supported Node entrypoint")
 }
 
 func tuttiAPIBaseURLFromEnv() string {

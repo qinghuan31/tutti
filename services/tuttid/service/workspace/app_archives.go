@@ -514,6 +514,9 @@ func validateExtractedAppPackage(packageRoot string, manifest workspacebiz.AppMa
 	if runtime.GOOS != "windows" && info.Mode()&0o111 == 0 {
 		return errors.New("runtime bootstrap must be executable")
 	}
+	if err := validateWindowsNodeAppPackage(packageRoot, manifest); err != nil {
+		return err
+	}
 	agentsData, err := os.ReadFile(filepath.Join(packageRoot, "AGENTS.md"))
 	if err != nil {
 		return fmt.Errorf("read AGENTS.md: %w", err)
