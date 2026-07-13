@@ -56,8 +56,8 @@ without the full workspace desktop around it.
 It is responsible for:
 
 - loading the selected workspace's AgentGUI surface directly
-- using a frameless native window and the AgentGUI header controls instead of
-  platform-provided titlebar buttons
+- using a frameless native window and AgentGUI header controls on both macOS
+  and Windows so the red, yellow, and green controls stay visually consistent
 - preserving shared workspace, account, provider, project, and activity state
   through the same renderer services and `tuttid` APIs used by the workspace
   window
@@ -117,9 +117,15 @@ Current renderer shell mapping:
 - Agent-only window -> `view=agent&workspaceId=<id>`
 
 The renderer still shares one preload entry and one renderer bundle today. Separate window shells are resolved inside renderer bootstrap code rather than through fully separate apps.
-Agent-only windows also share host-window preload capabilities; their
-AgentGUI header close, minimize, and maximize controls call typed host window
-IPC instead of relying on native traffic lights.
+Agent-only windows also share host-window preload capabilities. Their AgentGUI
+header close, minimize, and fill controls call typed host window IPC instead of
+relying on platform titlebar buttons. The green control toggles fullscreen on
+macOS and maximize/restore on Windows.
+
+The primary Windows workspace window follows the same frameless rule. Its top
+workspace chrome renders the shared traffic-light control component, routes
+close through the existing workspace close guard, and calls the same typed host
+window IPC for minimize and maximize/restore.
 
 ## Workspace Close And Reload Behavior
 

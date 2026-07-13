@@ -202,12 +202,15 @@ information is not available yet`, but `ps` or `lsof` still shows an older
   compiled daemon child. Killing only the direct child can leave the compiled
   daemon alive. If the desktop also removes the listener info file before the
   next launch, the orphan can keep local state busy while the new managed daemon
-  never publishes runtime info within the startup timeout.
+  never publishes runtime info within the startup timeout. The same parent-only
+  termination bug affects detached Agent/provider subprocesses on Windows.
 - Fix:
   Prefer a prebuilt `apps/desktop/build/tuttid/tuttid` binary in development
   when present, kill managed daemon process groups during desktop shutdown,
   write and clear `tuttid.pid`, and inject `TUTTI_DESKTOP_PARENT_PID` so
-  `tuttid` can self-shutdown when its desktop parent disappears.
+  `tuttid` can self-shutdown when its desktop parent disappears. On Windows,
+  terminate the PID tree with `taskkill /T /F`; terminating only the parent PID
+  leaves detached children running.
 - Validation:
   Repeatedly quit and restart the desktop, then confirm there is at most one
   `tuttid` process and that `~/.tutti-dev/run/tuttid.pid`

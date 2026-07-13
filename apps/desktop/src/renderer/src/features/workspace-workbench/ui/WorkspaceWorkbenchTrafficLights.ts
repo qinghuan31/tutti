@@ -86,13 +86,10 @@ function WorkspaceWorkbenchTrafficLightButton({
       "aria-label": label,
       "aria-pressed": pressed,
       className: cn(
-        "relative -m-1 inline-flex size-5 shrink-0 cursor-pointer rounded-full border-0 bg-transparent p-0 opacity-[0.78] outline-none transition-opacity duration-150 before:absolute before:inset-1 before:rounded-full before:bg-[color-mix(in_srgb,var(--text-tertiary)_72%,transparent)] before:content-[''] group-hover/traffic-lights:opacity-100 group-focus-within/traffic-lights:opacity-100 focus-visible:ring-2 focus-visible:ring-[var(--accent)] focus-visible:ring-offset-1 focus-visible:ring-offset-[var(--background-panel)]",
-        tone === "close" &&
-          "group-hover/traffic-lights:before:bg-[#ff5f57] group-focus-within/traffic-lights:before:bg-[#ff5f57]",
-        tone === "minimize" &&
-          "group-hover/traffic-lights:before:bg-[#ffbd2e] group-focus-within/traffic-lights:before:bg-[#ffbd2e]",
-        tone === "maximize" &&
-          "group-hover/traffic-lights:before:bg-[#28c840] group-focus-within/traffic-lights:before:bg-[#28c840]"
+        "relative -m-1 inline-flex size-5 shrink-0 cursor-pointer rounded-full border-0 bg-transparent p-0 opacity-[0.88] outline-none transition-opacity duration-150 before:absolute before:inset-1 before:rounded-full before:content-[''] group-hover/traffic-lights:opacity-100 group-focus-within/traffic-lights:opacity-100 focus-visible:ring-2 focus-visible:ring-[var(--accent)] focus-visible:ring-offset-1 focus-visible:ring-offset-[var(--background-panel)]",
+        tone === "close" && "before:bg-[#ff5f57]",
+        tone === "minimize" && "before:bg-[#ffbd2e]",
+        tone === "maximize" && "before:bg-[#28c840]"
       ),
       "data-workspace-workbench-traffic-light": tone,
       type: "button",

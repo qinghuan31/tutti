@@ -682,17 +682,7 @@ function terminateProcessTree(
   if (!child.pid) {
     return;
   }
-
-  if (process.platform !== "win32") {
-    try {
-      process.kill(-child.pid, signal);
-      return;
-    } catch {
-      // Fall back to the direct child when the process group is already gone.
-    }
-  }
-
-  child.kill(signal);
+  signalProcessTree(child.pid, signal);
 }
 
 function waitForChildExit(
@@ -742,16 +732,19 @@ function isProcessRunning(pid: number): boolean {
   }
 }
 
-// signalProcessTree signals a stale tuttid pid recovered from disk (i.e. not
-// a ChildProcess we hold a handle to). A managed tuttid is always spawned
-// with `detached: true` (see ManagedTuttid.start), which makes it the leader
-// of its own process group, so signaling the negated pid reaches tuttid and
-// every subprocess it spawned (Codex app-server, Claude SDK sidecar, etc.)
-// in one shot. Without this, killing just the leader pid would leave any of
-// its live provider subprocesses orphaned: an OS process does not exit just
-// because its parent did, it is simply reparented and keeps running.
+// Managed tuttid processes are detached process-group leaders. POSIX can signal
+// that group by negated pid; Windows requires taskkill /T so detached provider
+// processes do not survive after their parent exits.
 export function signalProcessTree(pid: number, signal: NodeJS.Signals): void {
-  if (process.platform !== "win32") {
+  if (process.platform === "win32") {
+    const result = spawnSync("taskkill", ["/PID", String(pid), "/T", "/F"], {
+      stdio: "ignore",
+      windowsHide: true
+    });
+    if (result.status === 0) {
+      return;
+    }
+  } else {
     try {
       process.kill(-pid, signal);
       return;

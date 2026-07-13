@@ -119,6 +119,17 @@ func findAdapterPackageJSON(adapterPath string, packageName string) string {
 	if resolved, err := filepath.EvalSymlinks(resolvedPath); err == nil {
 		resolvedPath = resolved
 	}
+	if runtime.GOOS == "windows" {
+		candidate := filepath.Join(
+			filepath.Dir(resolvedPath),
+			"node_modules",
+			filepath.FromSlash(packageName),
+			"package.json",
+		)
+		if packageJSONHasName(candidate, packageName) {
+			return candidate
+		}
+	}
 	dir := filepath.Dir(resolvedPath)
 	for range 8 {
 		candidate := filepath.Join(dir, "package.json")

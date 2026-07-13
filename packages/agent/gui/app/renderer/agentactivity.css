@@ -4700,9 +4700,20 @@ aside.workspace-agents-status-panel
       2
   );
   border-radius: inherit;
-  background-color: color-mix(in srgb, var(--text-tertiary) 72%, transparent);
   content: "";
   transition: background-color 160ms ease;
+}
+
+.agent-gui-workbench-header__traffic-light[data-agent-gui-workbench-traffic-light="close"]::before {
+  background-color: #ff5f57;
+}
+
+.agent-gui-workbench-header__traffic-light[data-agent-gui-workbench-traffic-light="minimize"]::before {
+  background-color: #ffbd2e;
+}
+
+.agent-gui-workbench-header__traffic-light[data-agent-gui-workbench-traffic-light="maximize"]::before {
+  background-color: #28c840;
 }
 
 .agent-gui-workbench-header__traffic-light-icon {

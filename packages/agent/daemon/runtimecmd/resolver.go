@@ -61,9 +61,11 @@ func (r Resolver) Resolve(command string, env []string) string {
 		return command
 	}
 	for _, dir := range filepath.SplitList(envValue(env, pathEnvKey(env))) {
-		candidate := filepath.Join(dir, command)
-		if r.isExecutableFile(candidate) {
-			return candidate
+		for _, executableName := range executableNames(command) {
+			candidate := filepath.Join(dir, executableName)
+			if r.isExecutableFile(candidate) {
+				return candidate
+			}
 		}
 	}
 	return command
@@ -148,6 +150,7 @@ func (r Resolver) fallbackExecutableDirs() []string {
 		if err == nil && strings.TrimSpace(home) != "" {
 			dirs = append(dirs,
 				filepath.Join(home, ".tutti", "bin"),
+				filepath.Join(home, ".local"),
 				filepath.Join(home, ".opencode", "bin"),
 			)
 		}
@@ -180,6 +183,19 @@ func (r Resolver) fallbackExecutableDirs() []string {
 		homeDirs = append(homeDirs, fnmNodeBinDirs(filepath.Join(home, ".fnm"))...)
 	}
 	return append(homeDirs, dirs...)
+}
+
+func executableNames(command string) []string {
+	if runtime.GOOS != "windows" || filepath.Ext(command) != "" {
+		return []string{command}
+	}
+	return []string{
+		command + ".com",
+		command + ".exe",
+		command + ".bat",
+		command + ".cmd",
+		command,
+	}
 }
 
 func (r Resolver) environ() []string {

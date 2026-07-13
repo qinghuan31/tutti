@@ -26,6 +26,10 @@ import {
 import { installWorkspaceWindowDevelopmentReloadShortcut } from "./workspaceWindowReload.ts";
 import { resolvePackagedWorkspaceRendererIndexPath } from "./workspaceWindowPaths.ts";
 import { resolveCenteredWindowBounds } from "./workspaceWindowBounds.ts";
+import {
+  resolveWorkspaceWindowFrame,
+  type DesktopWorkspaceWindowKind
+} from "./workspaceWindowChrome.ts";
 
 export const workspaceAppBrowserPartitionPrefix = "persist:tutti-app:";
 
@@ -36,7 +40,7 @@ export interface CreateWorkspaceWindowOptions {
   preloadPath: string;
   rendererUrl?: string;
   theme: DesktopThemeState;
-  windowKind?: "agent" | "workspace";
+  windowKind?: DesktopWorkspaceWindowKind;
   workspaceAppPreloadPath?: string;
   workspaceID: string;
 }
@@ -71,12 +75,12 @@ export function createWorkspaceWindow(
       : null;
   const workspaceWindow = new BrowserWindow({
     backgroundColor: resolveDesktopWindowBackgroundColor(),
-    frame: windowKind === "agent" ? false : undefined,
-    // The agent window's green control is a native fullscreen toggle, and its
-    // frameless chrome draws custom traffic lights. Disabling native zoom stops
-    // macOS double-click-title-bar from zooming into an ambiguous "maximized"
-    // state that the custom restore icon can't reliably track.
-    ...(windowKind === "agent" ? { maximizable: false } : {}),
+    frame: resolveWorkspaceWindowFrame(process.platform, windowKind),
+    // The macOS agent window's green control is a fullscreen toggle. Disable
+    // native zoom there so the custom restore icon tracks one fill state.
+    ...(windowKind === "agent" && process.platform === "darwin"
+      ? { maximizable: false }
+      : {}),
     width: agentWindowBounds?.width ?? 1280,
     height: agentWindowBounds?.height ?? 840,
     minWidth: windowKind === "agent" ? agentWindowMinWidthPx : 960,
@@ -169,7 +173,7 @@ export function createWorkspaceWindow(
     workspaceWindows.delete(workspaceWindow);
   });
 
-  if (process.platform === "darwin") {
+  if (process.platform === "darwin" || process.platform === "win32") {
     let resizeLayoutTimer: ReturnType<typeof setTimeout> | null = null;
     const sendHostWindowLayout = () => {
       if (
@@ -180,7 +184,8 @@ export function createWorkspaceWindow(
       }
 
       workspaceWindow.webContents.send(desktopIpcChannels.host.window.layout, {
-        compactTitlebar: workspaceWindow.isFullScreen(),
+        compactTitlebar:
+          process.platform === "darwin" && workspaceWindow.isFullScreen(),
         maximized:
           workspaceWindow.isMaximized() || workspaceWindow.isFullScreen()
       });
@@ -203,34 +208,36 @@ export function createWorkspaceWindow(
     workspaceWindow.on("resize", scheduleHostWindowLayout);
     workspaceWindow.webContents.on("did-finish-load", sendHostWindowLayout);
 
-    const sendHostWindowMinimizeState = (minimized: boolean) => {
-      if (
-        workspaceWindow.isDestroyed() ||
-        workspaceWindow.webContents.isDestroyed()
-      ) {
-        return;
-      }
+    if (process.platform === "darwin") {
+      const sendHostWindowMinimizeState = (minimized: boolean) => {
+        if (
+          workspaceWindow.isDestroyed() ||
+          workspaceWindow.webContents.isDestroyed()
+        ) {
+          return;
+        }
 
-      workspaceWindow.webContents.send(
-        desktopIpcChannels.host.window.minimizeState,
-        { minimized }
-      );
-    };
+        workspaceWindow.webContents.send(
+          desktopIpcChannels.host.window.minimizeState,
+          { minimized }
+        );
+      };
 
-    workspaceWindow.on("minimize", () => sendHostWindowMinimizeState(true));
-    workspaceWindow.on("restore", () => sendHostWindowMinimizeState(false));
+      workspaceWindow.on("minimize", () => sendHostWindowMinimizeState(true));
+      workspaceWindow.on("restore", () => sendHostWindowMinimizeState(false));
 
-    // The renderer's first handling of this IPC message pays a one-time
-    // cold-start cost (lazy JS compilation, style recalculation, etc.),
-    // which is slow enough to miss the start of the real minimize
-    // animation. Replay it once, harmlessly, shortly after load so that
-    // path is already warm by the time the user actually minimizes.
-    workspaceWindow.webContents.once("did-finish-load", () => {
-      setTimeout(() => {
-        sendHostWindowMinimizeState(true);
-        setTimeout(() => sendHostWindowMinimizeState(false), 32);
-      }, 1_000);
-    });
+      // The renderer's first handling of this IPC message pays a one-time
+      // cold-start cost (lazy JS compilation, style recalculation, etc.),
+      // which is slow enough to miss the start of the real minimize
+      // animation. Replay it once, harmlessly, shortly after load so that
+      // path is already warm by the time the user actually minimizes.
+      workspaceWindow.webContents.once("did-finish-load", () => {
+        setTimeout(() => {
+          sendHostWindowMinimizeState(true);
+          setTimeout(() => sendHostWindowMinimizeState(false), 32);
+        }, 1_000);
+      });
+    }
   }
 
   return workspaceWindow;

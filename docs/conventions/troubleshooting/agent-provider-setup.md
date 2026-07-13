@@ -266,6 +266,41 @@ file or directory`. If the CLI path exists but `codex app-server` cannot
   [installer_codex_cli.go](../../../services/tuttid/service/agentstatus/installer_codex_cli.go)
   [runtime.go](../../../services/tuttid/service/managedruntime/runtime.go)
 
+### Windows npm install succeeds but the provider remains unavailable
+
+- Symptom:
+  Tutti Agent or another npm-installed provider reports a successful
+  `npm install -g --prefix <home>/.local ...`, but the follow-up probe still has
+  an empty `cliPath` and the UI reports `provider CLI is still unavailable after
+install`.
+- Quick checks:
+  Confirm `<home>/.local/<provider>.cmd` exists. On Windows, npm writes global
+  command shims at the prefix root rather than `<prefix>/bin`. A resolver that
+  searches only `~/.local/bin`, or checks only the extensionless command name,
+  will miss the installed `.cmd` shim.
+- Root cause:
+  The cross-platform fallback search path used the Unix npm global layout and
+  did not expand Windows executable suffixes before checking candidates. A
+  second provider-specific resolver can recreate the same bug even after the
+  install/status resolver is fixed; Tutti Agent token login previously kept a
+  separate `~/.local/bin/tutti-agent` search and missed the Windows npm shim.
+- Fix:
+  Include `~/.local` in Windows fallback executable directories and resolve
+  extensionless commands through `.com`, `.exe`, `.bat`, and `.cmd` candidates
+  before trying a raw extensionless file. Reuse `runtimecmd.Resolver` for
+  provider status, runtime launch, model lookup, and product-owned login/token
+  bootstrap instead of duplicating provider binary lookup rules.
+- Validation:
+  Resolve an extensionless provider name to a temporary
+  `~/.local/<provider>.cmd`, execute the resolved shim, then run the provider
+  status probe and confirm both CLI and adapter paths are populated. For Tutti
+  Agent, also run
+  `go test ./service/tuttiagent -run '^TestResolveTuttiAgentBinaryFindsWindowsNPMGlobalPrefixShim$' -count=1`.
+- References:
+  [resolver.go](../../../packages/agent/daemon/runtimecmd/resolver.go)
+  [installer_codex_cli.go](../../../services/tuttid/service/agentstatus/installer_codex_cli.go)
+  [service.go](../../../services/tuttid/service/tuttiagent/service.go)
+
 ### Codex ACP warns about user-level config as project-local config
 
 - Symptom:

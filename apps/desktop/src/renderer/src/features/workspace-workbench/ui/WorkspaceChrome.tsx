@@ -28,6 +28,7 @@ import type {
   WorkbenchHostNodeData,
   WorkbenchMissionControlMode
 } from "@tutti-os/workbench-surface";
+import type { DesktopHostWindowApi } from "@preload/types";
 import {
   AppWindowIcon,
   Button,
@@ -63,6 +64,7 @@ import { WorkspaceAccountMenu } from "./WorkspaceAccountMenu";
 import { WorkspaceFeedbackGroupPopover } from "./WorkspaceFeedbackGroupPopover";
 import { WorkspaceSettingsPanel } from "./WorkspaceSettingsPanel";
 import { useWorkspaceChromeState } from "./useWorkspaceChromeState";
+import { WorkspaceWorkbenchTrafficLights } from "./WorkspaceWorkbenchTrafficLights";
 import { useWorkspaceWorkbenchHostService } from "./useWorkspaceWorkbenchHostService";
 import { useWorkspaceSettingsService } from "./useWorkspaceSettingsService";
 import type { WorkspaceSettingsSectionID } from "../services/workspaceSettingsService.interface";
@@ -90,6 +92,7 @@ import type {
   WorkspaceWallpaperDisplayMode,
   WorkspaceWallpaperId
 } from "../services/workspaceWallpaper";
+import { createWorkspaceWorkbenchDesktopI18nRuntime } from "@shared/i18n";
 
 const MESSAGE_CENTER_SUMMARY_MESSAGE_LIMIT = 20;
 const MESSAGE_CENTER_SUMMARY_PREFETCH_ITEM_LIMIT = 12;
@@ -181,9 +184,11 @@ function createCoalescedWorkspaceAgentActivityListener(listener: () => void): {
 
 export function WorkspaceChrome({
   headerSlot,
+  hostWindowApi,
   missionControl,
   onSelectWallpaper,
   onSelectWallpaperDisplayMode,
+  onRequestWindowClose,
   platform,
   selectedWallpaperDisplayMode,
   selectedWallpaperID,
@@ -193,6 +198,7 @@ export function WorkspaceChrome({
   workspace
 }: {
   headerSlot?: React.ReactNode;
+  hostWindowApi: Pick<DesktopHostWindowApi, "minimize" | "toggleMaximize">;
   missionControl: {
     canOpen: boolean;
     close(): void;
@@ -208,6 +214,7 @@ export function WorkspaceChrome({
   onSelectWallpaperDisplayMode: (
     displayMode: WorkspaceWallpaperDisplayMode
   ) => void;
+  onRequestWindowClose: () => Promise<"approved" | "blocked">;
   platform: NodeJS.Platform;
   selectedWallpaperDisplayMode: WorkspaceWallpaperDisplayMode;
   selectedWallpaperID: WorkspaceWallpaperId;
@@ -218,6 +225,16 @@ export function WorkspaceChrome({
 }) {
   const isDarwin = platform === "darwin";
   const isWindows = platform === "win32";
+  const { i18n } = useTranslation();
+  const windowControlsI18n = useMemo(
+    () => createWorkspaceWorkbenchDesktopI18nRuntime(i18n),
+    [i18n]
+  );
+  const [isWindowMaximized, setIsWindowMaximized] = useState(
+    () =>
+      typeof document !== "undefined" &&
+      document.documentElement.dataset.tuttiWindowMaximized === "true"
+  );
   const chromeState = useWorkspaceChromeState({
     platform,
     workbenchController
@@ -241,6 +258,17 @@ export function WorkspaceChrome({
     },
     []
   );
+  useEffect(() => {
+    const handleLayout = (event: Event): void => {
+      const detail = (event as CustomEvent<{ maximized?: boolean }>).detail;
+      setIsWindowMaximized(detail?.maximized === true);
+    };
+    window.addEventListener("tutti-host-window-layout", handleLayout);
+    return () => {
+      window.removeEventListener("tutti-host-window-layout", handleLayout);
+    };
+  }, []);
+
   useEffect(() => {
     const openImportWizard = (): void => {
       openExternalAgentImport();
@@ -266,14 +294,29 @@ export function WorkspaceChrome({
             ? "[-webkit-app-region:no-drag]"
             : "[-webkit-app-region:drag]",
           "grid-cols-[max-content_minmax(0,1fr)_max-content]",
-          isDarwin && "pl-[var(--workspace-chrome-left-padding)]",
-          isWindows &&
-            "pr-[calc(100vw-env(titlebar-area-width,calc(100vw-138px))+10px)]"
+          isDarwin && "pl-[var(--workspace-chrome-left-padding)]"
         )}
         data-app-header="true"
         style={headerStyle}
       >
         <div className="flex items-center gap-2 [-webkit-app-region:no-drag]">
+          {isWindows && (
+            <WorkspaceWorkbenchTrafficLights
+              displayMode={isWindowMaximized ? "fullscreen" : "floating"}
+              i18n={windowControlsI18n}
+              windowActions={{
+                close: () => {
+                  void onRequestWindowClose();
+                },
+                minimize: () => {
+                  void hostWindowApi.minimize();
+                },
+                toggleDisplayMode: () => {
+                  void hostWindowApi.toggleMaximize();
+                }
+              }}
+            />
+          )}
           {isDarwin && !chromeState.useCompactTitlebar ? (
             <div
               aria-hidden="true"

@@ -128,12 +128,21 @@ single-kind manifest field.
 When the published runtime catalog has no Windows entry, packaged Windows
 desktop builds can run `node-static` apps with the bundled `Tutti.exe` Electron
 runtime in Node mode. This path is intentionally limited to packages that
-declare `runtime.profile: "node-static"`, provide `server.mjs`, and use the
-standard `bootstrap.sh` launcher. The runner invokes `server.mjs` directly and
-sets `ELECTRON_RUN_AS_NODE=1`.
+declare `runtime.profile: "node-static"`, use the standard `bootstrap.sh`
+launcher, and provide a supported Node entrypoint: `server.mjs`,
+`server/server.js`, or `server/dist/main.js`. AI Media Canvas uses its worker
+and server pair under `server/`. The runner invokes these entrypoints directly
+and sets `ELECTRON_RUN_AS_NODE=1`.
+
+Direct invocation bypasses shell-side `export` statements in `bootstrap.sh`.
+The Windows runner must therefore preserve the generic `HOST`, `PORT`, and
+`TUTTI_APP_*` contract and inject the catalog app aliases required by shipped
+packages. Tests must start each supported catalog shape on an allocated port
+and pass its declared health check; checking only the generated command is not
+sufficient.
 
 This compatibility path does not support the default Python-and-Node baseline,
-custom shell bootstraps, or standalone executables. It must not replace a
+arbitrary custom shell bootstraps, or standalone executables. It must not replace a
 published `windows-amd64` runtime catalog entry; Windows runtime artifacts
 remain the required long-term release path.
 

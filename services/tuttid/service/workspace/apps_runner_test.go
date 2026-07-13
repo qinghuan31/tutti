@@ -245,6 +245,7 @@ func TestWindowsAppBootstrapEnvOverridesConfiguresAICanvas(t *testing.T) {
 	}
 	for _, expected := range []string{
 		"AIMC_SERVER_PORT=3042",
+		"AIMC_APP_VERSION=" + filepath.Base(input.PackageDir),
 		"AIMC_WEB_DIST=" + filepath.Join(input.PackageDir, "dist"),
 		"AIMC_DATA_ROOT=" + input.DataDir,
 		"AIMC_AGENT_FILES_ROOT=" + input.WorkspaceRoot,
@@ -252,6 +253,56 @@ func TestWindowsAppBootstrapEnvOverridesConfiguresAICanvas(t *testing.T) {
 		if !slices.Contains(overrides, expected) {
 			t.Fatalf("overrides = %#v, want %q", overrides, expected)
 		}
+	}
+}
+
+func TestWindowsAppBootstrapEnvOverridesConfiguresCatalogNodeApps(t *testing.T) {
+	if runtime.GOOS != "windows" {
+		t.Skip("Windows catalog app bootstrap environment test")
+	}
+
+	tests := []struct {
+		appID    string
+		expected []string
+	}{
+		{
+			appID: "ai-slide",
+			expected: []string{
+				"HOST=127.0.0.1",
+				"PORT=3042",
+				"AI_SLIDE_APP_VERSION=0.1.25",
+				"AI_SLIDE_SERVER_URL=http://127.0.0.1:3042",
+			},
+		},
+		{
+			appID: "group-chat",
+			expected: []string{
+				"HOST=127.0.0.1",
+				"PORT=3042",
+				"GROUP_CHAT_APP_VERSION=0.1.25",
+				"GROUP_CHAT_SERVER_URL=http://127.0.0.1:3042",
+			},
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.appID, func(t *testing.T) {
+			input := AppStartInput{
+				AppID:          test.appID,
+				DataDir:        `C:\\Data`,
+				LogDir:         `C:\\Logs`,
+				PackageDir:     `C:\\Packages\\` + test.appID + `\\0.1.25`,
+				RuntimeDir:     `C:\\Runtime`,
+				RuntimeProfile: workspaceAppNodeRuntimePreloadProfile,
+				WorkspaceRoot:  `C:\\Workspace`,
+			}
+			overrides := windowsAppBootstrapEnvOverrides(input, 3042)
+			for _, expected := range test.expected {
+				if !slices.Contains(overrides, expected) {
+					t.Fatalf("overrides = %#v, want %q", overrides, expected)
+				}
+			}
+		})
 	}
 }
 
@@ -272,7 +323,7 @@ func TestAppRunnerStartsAICanvasStylePackageOnWindows(t *testing.T) {
 	for path, source := range map[string]string{
 		"bootstrap.sh":                       "#!/bin/sh\n",
 		filepath.Join("server", "worker.js"): `setInterval(() => {}, 1000);`,
-		filepath.Join("server", "server.js"): `const http = require("node:http"); const port = Number(process.env.AIMC_SERVER_PORT); http.createServer((request, response) => { response.writeHead(request.url === "/api/health" ? 200 : 404); response.end(); }).listen(port, "127.0.0.1");`,
+		filepath.Join("server", "server.js"): `const http = require("node:http"); const port = Number(process.env.AIMC_SERVER_PORT); if (!process.env.AIMC_APP_VERSION) process.exit(2); http.createServer((request, response) => { response.writeHead(request.url === "/api/health" ? 200 : 404); response.end(); }).listen(port, "127.0.0.1");`,
 	} {
 		if err := os.WriteFile(filepath.Join(packageDir, path), []byte(source), 0o644); err != nil {
 			t.Fatalf("WriteFile(%s) error = %v", path, err)
@@ -312,6 +363,89 @@ func TestAppRunnerStartsAICanvasStylePackageOnWindows(t *testing.T) {
 	}
 	if stopped.Status != workspacebiz.AppRuntimeStatusIdle {
 		t.Fatalf("Stop() status = %q, want idle", stopped.Status)
+	}
+}
+
+func TestAppRunnerStartsCatalogNodeStaticPackagesOnWindows(t *testing.T) {
+	if runtime.GOOS != "windows" {
+		t.Skip("Windows catalog node-static runner test")
+	}
+	nodePath, err := exec.LookPath("node")
+	if err != nil {
+		t.Skip("node is required for catalog runner integration test")
+	}
+
+	tests := []struct {
+		appID        string
+		serverURLEnv string
+		versionEnv   string
+	}{
+		{
+			appID:        "ai-slide",
+			serverURLEnv: "AI_SLIDE_SERVER_URL",
+			versionEnv:   "AI_SLIDE_APP_VERSION",
+		},
+		{
+			appID:        "group-chat",
+			serverURLEnv: "GROUP_CHAT_SERVER_URL",
+			versionEnv:   "GROUP_CHAT_APP_VERSION",
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.appID, func(t *testing.T) {
+			root := t.TempDir()
+			packageDir := filepath.Join(root, "packages", test.appID, "0.1.25")
+			serverDir := filepath.Join(packageDir, "server")
+			if err := os.MkdirAll(serverDir, 0o755); err != nil {
+				t.Fatalf("MkdirAll(server) error = %v", err)
+			}
+			if err := os.WriteFile(filepath.Join(packageDir, "bootstrap.sh"), []byte("#!/bin/sh\n"), 0o644); err != nil {
+				t.Fatalf("WriteFile(bootstrap.sh) error = %v", err)
+			}
+			serverSource := strings.NewReplacer(
+				"__VERSION_ENV__", test.versionEnv,
+				"__SERVER_URL_ENV__", test.serverURLEnv,
+			).Replace(`const http = require("node:http");
+const port = Number(process.env.PORT);
+if (!process.env.__VERSION_ENV__) process.exit(2);
+if (process.env.__SERVER_URL_ENV__ !== "http://127.0.0.1:" + port) process.exit(3);
+http.createServer((request, response) => {
+  response.writeHead(request.url === "/api/health" ? 200 : 404);
+  response.end();
+}).listen(port, "127.0.0.1");
+`)
+			if err := os.WriteFile(filepath.Join(serverDir, "server.js"), []byte(serverSource), 0o644); err != nil {
+				t.Fatalf("WriteFile(server.js) error = %v", err)
+			}
+
+			runner := &AppRunner{
+				HealthcheckTimeout: 10 * time.Second,
+				RuntimeResolver: staticAppRuntimeResolver{runtime: ResolvedAppRuntime{
+					Node:         nodePath,
+					EnvOverrides: []string{"TUTTI_APP_NODE=" + nodePath},
+				}},
+			}
+			if _, err := runner.Start(context.Background(), AppStartInput{
+				WorkspaceID:     "ws-catalog-app",
+				WorkspaceName:   "Catalog app",
+				WorkspaceRoot:   root,
+				AppID:           test.appID,
+				PackageDir:      packageDir,
+				Bootstrap:       "bootstrap.sh",
+				HealthcheckPath: "/api/health",
+				RuntimeProfile:  workspaceAppNodeRuntimePreloadProfile,
+				RuntimeDir:      filepath.Join(root, "runtime"),
+				DataDir:         filepath.Join(root, "data"),
+				LogDir:          filepath.Join(root, "logs"),
+			}); err != nil {
+				t.Fatalf("Start() error = %v", err)
+			}
+			waitForRunnerStatus(t, runner, "ws-catalog-app", test.appID, workspacebiz.AppRuntimeStatusRunning)
+			if _, err := runner.Stop(context.Background(), "ws-catalog-app", test.appID); err != nil {
+				t.Fatalf("Stop() error = %v", err)
+			}
+		})
 	}
 }
 

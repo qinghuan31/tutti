@@ -334,7 +334,7 @@ test("isLikelyTuttidProcess only matches tuttid executables", () => {
 // both in one shot instead of orphaning the grandchild.
 test("signalProcessTree kills the whole process group, not just the leader", async (t) => {
   if (process.platform === "win32") {
-    t.skip("process groups are POSIX-only; win32 falls back to a direct kill");
+    t.skip("POSIX process groups are covered separately from Windows taskkill");
     return;
   }
 
@@ -366,6 +366,52 @@ test("signalProcessTree kills the whole process group, not just the leader", asy
       "grandchild should be dead too, not left running as an orphan"
     );
   } finally {
+    if (isPidRunning(leaderPid)) {
+      process.kill(leaderPid, "SIGKILL");
+    }
+  }
+});
+
+test("signalProcessTree kills the Windows child process tree", async (t) => {
+  if (process.platform !== "win32") {
+    t.skip("Windows process trees use taskkill");
+    return;
+  }
+
+  const childScript = "setInterval(() => undefined, 1000)";
+  const leaderScript = [
+    'const { spawn } = require("node:child_process");',
+    `const child = spawn(process.execPath, ["-e", ${JSON.stringify(childScript)}], { detached: true, stdio: "ignore", windowsHide: true });`,
+    "child.unref();",
+    "process.stdout.write(`${child.pid}\\n`);",
+    "setInterval(() => undefined, 1000);"
+  ].join("\n");
+  const leader = spawn(process.execPath, ["-e", leaderScript], {
+    stdio: ["ignore", "pipe", "ignore"],
+    windowsHide: true
+  });
+  const leaderPid = leader.pid;
+  assert.ok(leaderPid, "expected the leader process to have a pid");
+  const childPid = await waitForReportedChildPid(leader, 2_000);
+  assert.ok(childPid, "expected the leader to report its child pid");
+
+  try {
+    signalProcessTree(leaderPid, "SIGKILL");
+
+    assert.equal(
+      await waitForPidGone(leaderPid, 2_000),
+      true,
+      "leader should be dead after signalProcessTree"
+    );
+    assert.equal(
+      await waitForPidGone(childPid, 2_000),
+      true,
+      "Windows child should be dead too, not left running as an orphan"
+    );
+  } finally {
+    if (isPidRunning(childPid)) {
+      process.kill(childPid, "SIGKILL");
+    }
     if (isPidRunning(leaderPid)) {
       process.kill(leaderPid, "SIGKILL");
     }
@@ -460,6 +506,33 @@ function isPidRunning(pid: number): boolean {
   } catch {
     return false;
   }
+}
+
+async function waitForReportedChildPid(
+  leader: ReturnType<typeof spawn>,
+  timeoutMs: number
+): Promise<number | null> {
+  return new Promise((resolvePromise) => {
+    let output = "";
+    const timeout = setTimeout(() => {
+      cleanup();
+      resolvePromise(null);
+    }, timeoutMs);
+    const onData = (chunk: Buffer | string) => {
+      output += chunk.toString();
+      const pid = Number.parseInt(output.trim(), 10);
+      if (!Number.isInteger(pid) || pid <= 0) {
+        return;
+      }
+      cleanup();
+      resolvePromise(pid);
+    };
+    const cleanup = () => {
+      clearTimeout(timeout);
+      leader.stdout?.off("data", onData);
+    };
+    leader.stdout?.on("data", onData);
+  });
 }
 
 function directChildPid(parentPid: number): number | null {

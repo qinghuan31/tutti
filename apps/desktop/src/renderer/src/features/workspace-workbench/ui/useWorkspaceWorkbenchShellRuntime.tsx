@@ -99,6 +99,7 @@ export interface WorkspaceWorkbenchShellRuntime {
   onMissionControlAdapterReady: (
     adapter: WorkbenchMissionControlAdapter<WorkbenchHostNodeData> | null
   ) => void;
+  requestWindowClose: () => Promise<"approved" | "blocked">;
   onWorkbenchHostHandleReady: (host: WorkbenchHostHandle | null) => void;
   selectWallpaper: (wallpaperId: WorkspaceWallpaperId) => void;
   selectWallpaperDisplayMode: (
@@ -513,6 +514,7 @@ export function useWorkspaceWorkbenchShellRuntime({
     minimizeAnimation: desktopPreferencesState.minimizeAnimation,
     onMissionControlAdapterReady:
       shellRuntimeController.missionControl.setAdapter,
+    requestWindowClose: () => shellRuntimeController.requestWindowClose(),
     onWorkbenchHostHandleReady: handleWorkbenchHostReady,
     selectWallpaper: shellRuntimeController.wallpaperSelection.selectWallpaper,
     selectWallpaperDisplayMode:

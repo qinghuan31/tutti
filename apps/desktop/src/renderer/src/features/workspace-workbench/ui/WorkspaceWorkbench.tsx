@@ -115,6 +115,7 @@ import type { WorkspaceWorkbenchHostSessionBinding } from "../services/workspace
 import { useWorkspaceOnboardingAutoOpen } from "./useWorkspaceOnboardingAutoOpen.ts";
 import { resolveWorkspaceWorkbenchLayoutConstraints } from "./workspaceWorkbenchLayoutConstraints.ts";
 import type { DesktopWorkspaceAppExternalHostApi } from "@preload/types";
+import type { DesktopHostWindowApi } from "@preload/types";
 import type { DesktopWorkspaceAppExternalRendererEvent } from "@shared/contracts/ipc";
 import type {
   TuttiExternalFileOpenInput,
@@ -139,6 +140,7 @@ interface WorkspaceWorkbenchProps {
   agentWindowInput?: Omit<StandaloneAgentWindowProps, "workspace">;
   enableWindowCloseGuard: boolean;
   headerSlot?: React.ReactNode;
+  hostWindowApi: Pick<DesktopHostWindowApi, "minimize" | "toggleMaximize">;
   routeView: string;
   workspaceAppExternalApi?: DesktopWorkspaceAppExternalHostApi;
   workspaceID: string | null;
@@ -147,6 +149,7 @@ export function WorkspaceWorkbench({
   agentWindowInput,
   enableWindowCloseGuard,
   headerSlot,
+  hostWindowApi,
   routeView,
   workspaceAppExternalApi,
   workspaceID
@@ -191,6 +194,7 @@ export function WorkspaceWorkbench({
     <ReadyWorkspaceWorkbench
       enableWindowCloseGuard={enableWindowCloseGuard}
       headerSlot={headerSlot}
+      hostWindowApi={hostWindowApi}
       state={{
         platform: state.platform,
         workspace: state.workspace
@@ -203,6 +207,7 @@ export function WorkspaceWorkbench({
 interface ReadyWorkspaceWorkbenchProps {
   enableWindowCloseGuard: boolean;
   headerSlot?: React.ReactNode;
+  hostWindowApi: Pick<DesktopHostWindowApi, "minimize" | "toggleMaximize">;
   state: {
     platform: NodeJS.Platform;
     workspace: WorkspaceSummary;
@@ -244,6 +249,7 @@ function ReadyWorkspaceWorkbench(props: ReadyWorkspaceWorkbenchProps) {
 function ReadyWorkspaceWorkbenchWithSession({
   enableWindowCloseGuard,
   headerSlot,
+  hostWindowApi,
   hostSession,
   state,
   workspaceAppExternalApi
@@ -833,10 +839,12 @@ function ReadyWorkspaceWorkbenchWithSession({
         renderTopChrome={(chromeContext) => (
           <WorkspaceChrome
             headerSlot={headerSlot}
+            hostWindowApi={hostWindowApi}
             launchNode={chromeContext.launchNode}
             missionControl={runtime.missionControl}
             onSelectWallpaper={runtime.selectWallpaper}
             onSelectWallpaperDisplayMode={runtime.selectWallpaperDisplayMode}
+            onRequestWindowClose={runtime.requestWindowClose}
             platform={state.platform}
             selectedWallpaperDisplayMode={runtime.selectedWallpaperDisplayMode}
             selectedWallpaperID={runtime.selectedWallpaperID}
@@ -1153,11 +1161,12 @@ function openWorkspaceRootInSystemFileManager(
   workspaceFileManagerService: IWorkspaceFileManagerService,
   workspaceID: string
 ): Promise<void> {
-  const service = workspaceFileManagerService as IWorkspaceFileManagerService & {
-    openWorkspaceRootInSystemFileManager?: (
-      workspaceID: string
-    ) => Promise<void>;
-  };
+  const service =
+    workspaceFileManagerService as IWorkspaceFileManagerService & {
+      openWorkspaceRootInSystemFileManager?: (
+        workspaceID: string
+      ) => Promise<void>;
+    };
   if (!service.openWorkspaceRootInSystemFileManager) {
     return Promise.reject(new Error("System file manager is unavailable."));
   }

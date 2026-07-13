@@ -333,20 +333,50 @@ func windowsAICanvasEntrypoints(input AppStartInput) (string, string, bool) {
 }
 
 func windowsAppBootstrapEnvOverrides(input AppStartInput, port int) []string {
-	if runtime.GOOS != "windows" || input.AppID != "ai-media-canvas" || input.RuntimeProfile != workspaceAppNodeRuntimePreloadProfile {
+	if runtime.GOOS != "windows" || input.RuntimeProfile != workspaceAppNodeRuntimePreloadProfile {
 		return nil
 	}
 	baseURL := "http://127.0.0.1:" + strconv.Itoa(port)
-	return []string{
+	version := filepath.Base(filepath.Clean(input.PackageDir))
+	common := []string{
 		"HOST=127.0.0.1",
-		"AIMC_SERVER_PORT=" + strconv.Itoa(port),
-		"AIMC_WEB_DIST=" + filepath.Join(input.PackageDir, "dist"),
-		"AIMC_DATA_ROOT=" + input.DataDir,
-		"AIMC_SKILLS_ROOT=" + filepath.Join(input.PackageDir, "skills"),
-		"AIMC_TOOLS_MCP_PATH=" + filepath.Join(input.PackageDir, "server", "tools-mcp.js"),
-		"AIMC_AGENT_FILES_ROOT=" + input.WorkspaceRoot,
-		"AIMC_WEB_ORIGIN=" + baseURL,
-		"AIMC_SERVER_BASE_URL=" + baseURL,
+		"PORT=" + strconv.Itoa(port),
+	}
+	switch input.AppID {
+	case "ai-media-canvas":
+		return append(common,
+			"AIMC_SERVER_PORT="+strconv.Itoa(port),
+			"AIMC_APP_VERSION="+version,
+			"AIMC_WEB_DIST="+filepath.Join(input.PackageDir, "dist"),
+			"AIMC_DATA_ROOT="+input.DataDir,
+			"AIMC_SKILLS_ROOT="+filepath.Join(input.PackageDir, "skills"),
+			"AIMC_TOOLS_MCP_PATH="+filepath.Join(input.PackageDir, "server", "tools-mcp.js"),
+			"AIMC_AGENT_FILES_ROOT="+input.WorkspaceRoot,
+			"AIMC_WEB_ORIGIN="+baseURL,
+			"AIMC_SERVER_BASE_URL="+baseURL,
+		)
+	case "ai-slide":
+		return append(common,
+			"AI_SLIDE_APP_VERSION="+version,
+			"AI_SLIDE_WEB_DIST="+filepath.Join(input.PackageDir, "dist"),
+			"AI_SLIDE_HOME="+input.DataDir,
+			"AI_SLIDE_RUNTIME_ROOT="+input.RuntimeDir,
+			"AI_SLIDE_LOG_ROOT="+input.LogDir,
+			"AI_SLIDE_WORKSPACE_ROOT="+input.WorkspaceRoot,
+			"AI_SLIDE_TEMPLATE_ROOT="+filepath.Join(input.PackageDir, "templates", "source"),
+			"AI_SLIDE_TEMPLATE_ASSET_ROOT="+filepath.Join(input.PackageDir, "templates", "generated", "templates"),
+			"AI_SLIDE_SERVER_URL="+baseURL,
+		)
+	case "group-chat":
+		return append(common,
+			"GROUP_CHAT_APP_VERSION="+version,
+			"GROUP_CHAT_WEB_DIST="+filepath.Join(input.PackageDir, "dist"),
+			"GROUP_CHAT_HOME="+input.DataDir,
+			"GROUP_CHAT_WORKSPACE_ROOT="+input.WorkspaceRoot,
+			"GROUP_CHAT_SERVER_URL="+baseURL,
+		)
+	default:
+		return common
 	}
 }
 

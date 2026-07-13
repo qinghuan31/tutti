@@ -3,7 +3,10 @@ import {
   type DesktopHostOpenAgentWindowInput,
   type DesktopHostWindowCapturePreviewInput
 } from "../../shared/contracts/ipc";
-import { createDesktopWindowAccess } from "../host/desktopWindowAccess";
+import {
+  createDesktopWindowAccess,
+  toggleDesktopWindowFillState
+} from "../host/desktopWindowAccess";
 import type { WorkspaceLaunch } from "../host/workspaceLaunch";
 import { getDesktopLogger } from "../logging";
 import { registerDesktopIpcHandler } from "./handle";
@@ -170,10 +173,7 @@ export function registerHostWindowIpc(deps: HostWindowIpcDependencies): void {
         return;
       }
 
-      // The standalone agent window's green control is a real (native)
-      // fullscreen toggle. Native maximize/zoom is disabled for this window
-      // (maximizable: false), so fullscreen is the only fill state to track.
-      ownerWindow.setFullScreen(!ownerWindow.isFullScreen());
+      toggleDesktopWindowFillState(ownerWindow, process.platform);
     }
   );
 }

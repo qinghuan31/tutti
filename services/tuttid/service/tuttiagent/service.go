@@ -17,6 +17,7 @@ import (
 	"time"
 
 	"github.com/tutti-os/tutti/packages/agent/daemon/httpx"
+	"github.com/tutti-os/tutti/packages/agent/daemon/runtimecmd"
 	runtimeprep "github.com/tutti-os/tutti/packages/agent/runtimeprep"
 	tuttitypes "github.com/tutti-os/tutti/services/tuttid/types"
 )
@@ -389,19 +390,16 @@ func runTuttiAgentTokenLogin(ctx context.Context, bundle tuttiAgentLLMTokenBundl
 }
 
 func resolveTuttiAgentBinary() (string, error) {
-	if path, err := exec.LookPath("tutti-agent"); err == nil {
+	pathValue := strings.Join(
+		[]string{filepath.Join(tuttitypes.DefaultStateDir(), "bin"), os.Getenv("PATH")},
+		string(os.PathListSeparator),
+	)
+	resolver := runtimecmd.Resolver{}
+	if path := resolver.ResolveBinary(
+		[]string{"tutti-agent"},
+		[]string{"PATH=" + pathValue},
+	); path != "" {
 		return path, nil
-	}
-	if userHome, err := os.UserHomeDir(); err == nil && strings.TrimSpace(userHome) != "" {
-		for _, candidate := range []string{
-			filepath.Join(tuttitypes.DefaultStateDir(), "bin", "tutti-agent"),
-			filepath.Join(userHome, "Library", "pnpm", "tutti-agent"),
-			filepath.Join(userHome, ".local", "bin", "tutti-agent"),
-		} {
-			if info, err := os.Stat(candidate); err == nil && !info.IsDir() {
-				return candidate, nil
-			}
-		}
 	}
 	return "", fmt.Errorf("tutti-agent binary not found")
 }

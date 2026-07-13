@@ -19,6 +19,26 @@ test("workspace chrome header releases the drag region while the message center 
   assert.match(source, /setOpen=\{setMessageCenterOpen\}/);
 });
 
+test("workspace chrome renders Windows host traffic lights with guarded close actions", () => {
+  assert.match(
+    source,
+    /isWindows\s*&&\s*\(\s*<WorkspaceWorkbenchTrafficLights/
+  );
+  assert.match(
+    source,
+    /displayMode=\{isWindowMaximized \? "fullscreen" : "floating"\}/
+  );
+  assert.match(source, /close:\s*\(\) => \{\s*void onRequestWindowClose\(\);/);
+  assert.match(
+    source,
+    /minimize:\s*\(\) => \{\s*void hostWindowApi\.minimize\(\);/
+  );
+  assert.match(
+    source,
+    /toggleDisplayMode:\s*\(\) => \{\s*void hostWindowApi\.toggleMaximize\(\);/
+  );
+});
+
 test("workspace chrome deck submit forwards to submitPlanDecision instead of branching on plan action", () => {
   // Must call submitPlanDecision with promptKind threaded from the panel
   assert.match(source, /workspaceAgentActivityService\.submitPlanDecision\(/);

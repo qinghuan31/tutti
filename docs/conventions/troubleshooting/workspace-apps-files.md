@@ -6,11 +6,26 @@
 
 - Symptom:
   A Windows desktop build reports that the managed runtime catalog has no
-  `windows-amd64` platform, or rejects `bootstrap.sh` as non-executable.
+  `windows-amd64` platform, rejects `bootstrap.sh` as non-executable, or starts
+  an installed app on its package-default port and then times out the Tutti
+  health check on the allocated port.
+- Quick checks:
+  Inspect the app installation's `logs/runtime.log`. If the server says it is
+  listening on a fixed port such as `8788` or `8791` while the startup
+  diagnostic shows another `port=`, the Windows direct-entrypoint path skipped
+  environment aliases that `bootstrap.sh` normally exports. For AI Media
+  Canvas, an `ENOENT` read of a parent `package.json` indicates
+  `AIMC_APP_VERSION` was not injected before the worker started.
 - Fix:
   Use a desktop build that includes the Windows node-static compatibility path.
-  It runs standard `node-static` packages through the bundled Electron Node
-  runtime and requires `server.mjs` beside `bootstrap.sh`.
+  It runs supported `node-static` entrypoints through the bundled Electron Node
+  runtime, injects the allocated `HOST`/`PORT`, and preserves shipped app
+  aliases such as `AIMC_SERVER_PORT`, `AI_SLIDE_SERVER_URL`, and
+  `GROUP_CHAT_SERVER_URL`.
+- Validation:
+  Run the Windows AppRunner tests that launch AI Media Canvas, AI Slide, and
+  Group Chat style fixtures and require their declared health checks to pass on
+  the allocated port.
 - Limits:
   Packages that need Python, a custom shell bootstrap, or a standalone runtime
   still require a published Windows runtime artifact and cannot use this path.

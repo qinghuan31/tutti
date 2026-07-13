@@ -2,6 +2,7 @@ package runtimecmd
 
 import (
 	"os"
+	"os/exec"
 	"path/filepath"
 	"runtime"
 	"strings"
@@ -45,6 +46,81 @@ func TestResolverFindsWindowsNpmFallback(t *testing.T) {
 		if dir == "/opt/homebrew/bin" || dir == "/usr/local/bin" {
 			t.Fatalf("PATH includes Unix fallback %q: %q", dir, envValue(env, "PATH"))
 		}
+	}
+}
+
+func TestResolverFindsWindowsNPMGlobalPrefixShim(t *testing.T) {
+	if runtime.GOOS != "windows" {
+		t.Skip("Windows npm global prefix resolver test")
+	}
+
+	home := t.TempDir()
+	globalPrefix := filepath.Join(home, ".local")
+	if err := os.MkdirAll(globalPrefix, 0o755); err != nil {
+		t.Fatalf("mkdir npm global prefix: %v", err)
+	}
+	shimPath := filepath.Join(globalPrefix, "tutti-agent.cmd")
+	writeExecutable(t, shimPath)
+
+	resolver := Resolver{
+		Environ: func() []string {
+			return []string{
+				"APPDATA=" + t.TempDir(),
+				"LOCALAPPDATA=" + t.TempDir(),
+				"PATH=C:\\Windows\\System32",
+			}
+		},
+		HomeDir: func() (string, error) {
+			return home, nil
+		},
+		LookPath: func(string) (string, error) {
+			return "", os.ErrNotExist
+		},
+	}
+
+	if got := resolver.ResolveBinary([]string{"tutti-agent"}, nil); got != shimPath {
+		t.Fatalf("ResolveBinary() = %q, want npm shim %q", got, shimPath)
+	}
+}
+
+func TestResolvedWindowsNPMGlobalPrefixShimExecutes(t *testing.T) {
+	if runtime.GOOS != "windows" {
+		t.Skip("Windows npm shim execution test")
+	}
+
+	home := t.TempDir()
+	globalPrefix := filepath.Join(home, ".local")
+	if err := os.MkdirAll(globalPrefix, 0o755); err != nil {
+		t.Fatalf("mkdir npm global prefix: %v", err)
+	}
+	shimPath := filepath.Join(globalPrefix, "tutti-agent.cmd")
+	if err := os.WriteFile(shimPath, []byte("@echo off\r\necho tutti-agent 0.0.1\r\n"), 0o644); err != nil {
+		t.Fatalf("write npm shim: %v", err)
+	}
+
+	resolver := Resolver{
+		Environ: func() []string {
+			return []string{
+				"APPDATA=" + t.TempDir(),
+				"LOCALAPPDATA=" + t.TempDir(),
+				"PATH=C:\\Windows\\System32",
+			}
+		},
+		HomeDir: func() (string, error) {
+			return home, nil
+		},
+		LookPath: func(string) (string, error) {
+			return "", os.ErrNotExist
+		},
+	}
+
+	resolved := resolver.ResolveBinary([]string{"tutti-agent"}, nil)
+	output, err := exec.Command(resolved, "--version").CombinedOutput()
+	if err != nil {
+		t.Fatalf("execute resolved npm shim: %v: %s", err, output)
+	}
+	if !strings.Contains(string(output), "tutti-agent 0.0.1") {
+		t.Fatalf("output = %q, want version", output)
 	}
 }
 
