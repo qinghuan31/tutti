@@ -2,6 +2,32 @@
 
 [Back to troubleshooting index](./README.md)
 
+### Windows release fails while preparing embedded Python
+
+- Symptom:
+  The `Windows Release` workflow fails in `Build Windows installer` during
+  `phase=prepare_embedded_python`. The log reports that `Get-FileHash` is not
+  recognized even though the Python archive downloaded successfully.
+- Quick checks:
+  Inspect the failed job log for `prepare_embedded_python status=failed` and
+  `CommandNotFoundException` referencing `Get-FileHash`. This distinguishes the
+  runner-shell compatibility failure from a download or checksum mismatch.
+- Root cause:
+  The packaging script invoked Windows PowerShell for download, checksum, and
+  extraction. GitHub's Windows runner can start a nested `powershell.exe`
+  environment where the `Get-FileHash` cmdlet is unavailable, so relying on
+  that cmdlet makes packaging depend on runner module discovery.
+- Fix:
+  Keep Windows PowerShell responsible for archive download and extraction, but
+  calculate SHA-256 with Node's built-in `crypto` module before extraction.
+  Do not replace the checksum with an unverified download path.
+- Validation:
+  Run `node --test ./tools/scripts/windows-release-workflow.test.mjs`, then run
+  `pnpm --filter @tutti-os/desktop build:win` from a clean Windows checkout.
+- References:
+  [build-desktop-package.mjs](../../../tools/scripts/build-desktop-package.mjs)
+  [windows-release-workflow.test.mjs](../../../tools/scripts/windows-release-workflow.test.mjs)
+
 ### Desktop stable release alias disappears or stays below a prerelease
 
 - Symptom:

@@ -6,6 +6,10 @@ const workflowPath = new URL(
   "../../.github/workflows/windows-release.yml",
   import.meta.url
 );
+const buildScriptPath = new URL(
+  "../../tools/scripts/build-desktop-package.mjs",
+  import.meta.url
+);
 
 test("windows release workflow builds and publishes NSIS installers", async () => {
   const workflow = (await readFile(workflowPath, "utf8")).replaceAll(
@@ -22,4 +26,12 @@ test("windows release workflow builds and publishes NSIS installers", async () =
   assert.match(workflow, /generate-checksums\.mjs release-assets/);
   assert.match(workflow, /gh release create/);
   assert.match(workflow, /contents:\s+write/);
+});
+
+test("Windows packaging hashes embedded Python without PowerShell cmdlets", async () => {
+  const buildScript = await readFile(buildScriptPath, "utf8");
+
+  assert.match(buildScript, /createHash\("sha256"\)/);
+  assert.match(buildScript, /Expand-Archive/);
+  assert.doesNotMatch(buildScript, /Get-FileHash/);
 });

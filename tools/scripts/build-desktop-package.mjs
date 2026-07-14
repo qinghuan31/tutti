@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import {
   existsSync,
   mkdirSync,
@@ -126,13 +127,8 @@ function prepareEmbeddedPython() {
   const command = [
     "$ErrorActionPreference = 'Stop'",
     "$archive = " + powershellLiteral(pythonArchivePath),
-    "$destination = " + powershellLiteral(pythonRuntimeDir),
     "$url = " + powershellLiteral(pythonRuntimeURL),
-    "$expectedHash = " + powershellLiteral(pythonRuntimeSHA256),
-    "Invoke-WebRequest -UseBasicParsing -Uri $url -OutFile $archive",
-    "$actualHash = (Get-FileHash -Algorithm SHA256 -LiteralPath $archive).Hash.ToLowerInvariant()",
-    "if ($actualHash -ne $expectedHash) { throw 'Embedded Python SHA-256 mismatch.' }",
-    "Expand-Archive -LiteralPath $archive -DestinationPath $destination -Force"
+    "Invoke-WebRequest -UseBasicParsing -Uri $url -OutFile $archive"
   ].join("; ");
   runChecked(
     "powershell.exe",
@@ -143,6 +139,30 @@ function prepareEmbeddedPython() {
       "Bypass",
       "-Command",
       command
+    ],
+    { cwd: workspaceRoot }
+  );
+  const actualHash = createHash("sha256")
+    .update(readFileSync(pythonArchivePath))
+    .digest("hex");
+  if (actualHash !== pythonRuntimeSHA256) {
+    throw new Error("Embedded Python SHA-256 mismatch.");
+  }
+  const extractCommand = [
+    "$ErrorActionPreference = 'Stop'",
+    "$archive = " + powershellLiteral(pythonArchivePath),
+    "$destination = " + powershellLiteral(pythonRuntimeDir),
+    "Expand-Archive -LiteralPath $archive -DestinationPath $destination -Force"
+  ].join("; ");
+  runChecked(
+    "powershell.exe",
+    [
+      "-NoProfile",
+      "-NonInteractive",
+      "-ExecutionPolicy",
+      "Bypass",
+      "-Command",
+      extractCommand
     ],
     { cwd: workspaceRoot }
   );
