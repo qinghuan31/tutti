@@ -307,7 +307,7 @@ func TestServicePutProviderPreservesOmittedAPIKeyAndClearsBlankAPIKey(t *testing
 	}
 }
 
-func TestServiceListProvidersReturnsEmptyModelArrayAndSavedAPIKey(t *testing.T) {
+func TestServiceListProvidersReturnsEmptyModelArrayAndRedactsSavedAPIKey(t *testing.T) {
 	ctx := context.Background()
 	store := newManagedCredentialsMemoryStore()
 	service := &Service{Store: store}
@@ -332,8 +332,11 @@ func TestServiceListProvidersReturnsEmptyModelArrayAndSavedAPIKey(t *testing.T) 
 	if len(providers[0].Models) != 0 {
 		t.Fatalf("provider Models length = %d, want 0", len(providers[0].Models))
 	}
-	if providers[0].APIKey != "agnes-secret" {
-		t.Fatalf("provider APIKey = %q, want saved key", providers[0].APIKey)
+	if providers[0].APIKey != "" {
+		t.Fatalf("provider APIKey = %q, want redacted key", providers[0].APIKey)
+	}
+	if !providers[0].HasAPIKey {
+		t.Fatal("provider HasAPIKey = false, want true")
 	}
 }
 

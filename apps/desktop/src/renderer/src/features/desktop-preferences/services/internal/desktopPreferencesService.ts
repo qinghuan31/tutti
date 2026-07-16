@@ -14,8 +14,6 @@ import {
   defaultDesktopDockPlacement,
   defaultDesktopFeatureFlags,
   defaultDesktopFileDefaultOpenersByExtension,
-  defaultDesktopEnableCursorAgent,
-  defaultDesktopEnableOpenCodeAgent,
   defaultDesktopMinimizeAnimation,
   defaultDesktopShowAppDeveloperSources,
   defaultDesktopSleepPreventionMode,
@@ -95,8 +93,6 @@ export class DesktopPreferencesService implements IDesktopPreferencesService {
       minimizeAnimation: defaultDesktopMinimizeAnimation,
       sleepPreventionMode: defaultDesktopSleepPreventionMode,
       showAppDeveloperSources: defaultDesktopShowAppDeveloperSources,
-      enableCursorAgent: defaultDesktopEnableCursorAgent,
-      enableOpenCodeAgent: defaultDesktopEnableOpenCodeAgent,
       theme: this.dependencies.initialTheme,
       updateChannel: defaultDesktopUpdateChannel,
       updatePolicy: defaultDesktopUpdatePolicy,
@@ -572,58 +568,6 @@ export class DesktopPreferencesService implements IDesktopPreferencesService {
     }
   }
 
-  async setEnableCursorAgent(enable: boolean): Promise<boolean> {
-    if (this.store.changingEnableCursorAgent === enable) {
-      return enable;
-    }
-
-    const previousEnable = this.store.enableCursorAgent;
-    this.store.changingEnableCursorAgent = enable;
-    this.store.enableCursorAgent = enable;
-    try {
-      const authoritativePreferences =
-        await this.dependencies.client.updateDesktopPreferences({
-          preferences: this.currentPreferences({
-            enableCursorAgent: enable
-          })
-        });
-      return authoritativePreferences.enableCursorAgent ?? false;
-    } catch (error) {
-      this.store.enableCursorAgent = previousEnable;
-      throw error;
-    } finally {
-      if (this.store.changingEnableCursorAgent === enable) {
-        this.store.changingEnableCursorAgent = null;
-      }
-    }
-  }
-
-  async setEnableOpenCodeAgent(enable: boolean): Promise<boolean> {
-    if (this.store.changingEnableOpenCodeAgent === enable) {
-      return enable;
-    }
-
-    const previousEnable = this.store.enableOpenCodeAgent;
-    this.store.changingEnableOpenCodeAgent = enable;
-    this.store.enableOpenCodeAgent = enable;
-    try {
-      const authoritativePreferences =
-        await this.dependencies.client.updateDesktopPreferences({
-          preferences: this.currentPreferences({
-            enableOpenCodeAgent: enable
-          })
-        });
-      return authoritativePreferences.enableOpenCodeAgent ?? false;
-    } catch (error) {
-      this.store.enableOpenCodeAgent = previousEnable;
-      throw error;
-    } finally {
-      if (this.store.changingEnableOpenCodeAgent === enable) {
-        this.store.changingEnableOpenCodeAgent = null;
-      }
-    }
-  }
-
   async setUpdatePolicy(
     policy: DesktopUpdatePolicy
   ): Promise<DesktopUpdatePolicy> {
@@ -808,8 +752,6 @@ export class DesktopPreferencesService implements IDesktopPreferencesService {
     minimizeAnimation?: DesktopMinimizeAnimation;
     sleepPreventionMode: DesktopSleepPreventionMode;
     showAppDeveloperSources?: boolean;
-    enableCursorAgent?: boolean;
-    enableOpenCodeAgent?: boolean;
     themeSource: DesktopThemeSource;
     updateChannel: DesktopUpdateChannel;
     updatePolicy: DesktopUpdatePolicy;
@@ -853,10 +795,6 @@ export class DesktopPreferencesService implements IDesktopPreferencesService {
     this.store.showAppDeveloperSources =
       preferences.showAppDeveloperSources ??
       defaultDesktopShowAppDeveloperSources;
-    this.store.enableCursorAgent =
-      preferences.enableCursorAgent ?? defaultDesktopEnableCursorAgent;
-    this.store.enableOpenCodeAgent =
-      preferences.enableOpenCodeAgent ?? defaultDesktopEnableOpenCodeAgent;
     this.applyTheme(this.dependencies.resolveTheme(preferences.themeSource));
     this.store.updateChannel = preferences.updateChannel;
     this.store.updatePolicy = preferences.updatePolicy;
@@ -893,8 +831,6 @@ export class DesktopPreferencesService implements IDesktopPreferencesService {
       minimizeAnimation: DesktopMinimizeAnimation;
       sleepPreventionMode: DesktopSleepPreventionMode;
       showAppDeveloperSources: boolean;
-      enableCursorAgent: boolean;
-      enableOpenCodeAgent: boolean;
       themeSource: DesktopThemeSource;
       updateChannel: DesktopUpdateChannel;
       updatePolicy: DesktopUpdatePolicy;
@@ -918,8 +854,6 @@ export class DesktopPreferencesService implements IDesktopPreferencesService {
     minimizeAnimation: DesktopMinimizeAnimation;
     sleepPreventionMode: DesktopSleepPreventionMode;
     showAppDeveloperSources: boolean;
-    enableCursorAgent: boolean;
-    enableOpenCodeAgent: boolean;
     themeSource: DesktopThemeSource;
     updateChannel: DesktopUpdateChannel;
     updatePolicy: DesktopUpdatePolicy;
@@ -976,10 +910,6 @@ export class DesktopPreferencesService implements IDesktopPreferencesService {
         overrides.sleepPreventionMode ?? this.store.sleepPreventionMode,
       showAppDeveloperSources:
         overrides.showAppDeveloperSources ?? this.store.showAppDeveloperSources,
-      enableCursorAgent:
-        overrides.enableCursorAgent ?? this.store.enableCursorAgent,
-      enableOpenCodeAgent:
-        overrides.enableOpenCodeAgent ?? this.store.enableOpenCodeAgent,
       themeSource: overrides.themeSource ?? this.store.theme.source,
       updateChannel: overrides.updateChannel ?? this.store.updateChannel,
       updatePolicy: overrides.updatePolicy ?? this.store.updatePolicy,

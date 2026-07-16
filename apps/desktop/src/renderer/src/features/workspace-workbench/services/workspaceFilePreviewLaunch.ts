@@ -46,7 +46,9 @@ export function isWorkspaceFilePreviewActivationTarget(
 
   const candidate = value as Partial<WorkspaceFileActivationTarget>;
   return (
-    (candidate.fileKind === "image" || candidate.fileKind === "text") &&
+    (candidate.fileKind === "image" ||
+      candidate.fileKind === "text" ||
+      candidate.fileKind === "video") &&
     typeof candidate.name === "string" &&
     candidate.name.trim().length > 0 &&
     typeof candidate.path === "string" &&

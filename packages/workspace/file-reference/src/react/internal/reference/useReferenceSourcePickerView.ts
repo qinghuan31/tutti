@@ -8,10 +8,12 @@ import type {
   SelectedReference,
   WorkspaceFileReference
 } from "../../../contracts/index.ts";
+import type { ReferenceProvenanceFilter } from "../../../contracts/referenceProvenance.ts";
 import {
   REFERENCE_FILTER_CATEGORIES,
   WORKSPACE_ROOT_GROUP_NODE_ID,
   nodeRefKey,
+  referenceProvenanceFilterIsActive,
   selectedReferenceToWorkspaceFileReference
 } from "../../../core/index.ts";
 import type { ReferenceSourceAggregator } from "../../../core/referenceSourceAggregator.ts";
@@ -127,6 +129,7 @@ export interface UseReferenceSourcePickerViewInput {
    * navigable 源的选中文件夹折叠成一个 bundle,其余仍作为单条文件。
    */
   onConfirmBundles?: (result: ReferenceGroupedSelection) => void;
+  provenanceFilter?: ReferenceProvenanceFilter | null;
 }
 
 /**
@@ -142,7 +145,8 @@ export function useReferenceSourcePickerView({
   onClose,
   onConfirm,
   isNodeSelectable,
-  onConfirmBundles
+  onConfirmBundles,
+  provenanceFilter = null
 }: UseReferenceSourcePickerViewInput) {
   const readSnapshot = useSnapshot as <T extends object>(store: T) => T;
   const scope = useMemo<ReferenceScope>(() => ({ workspaceId }), [workspaceId]);
@@ -277,9 +281,14 @@ export function useReferenceSourcePickerView({
   // 查询态 = 关键词或筛选任一非空(controller 已据此置 mode)。命中即平铺结果。
   const isQuery =
     activeTabState?.mode === "search" &&
-    (activeTabState.searchQuery.trim() !== "" || activeFilters.length > 0);
+    (activeTabState.searchQuery.trim() !== "" ||
+      activeFilters.length > 0 ||
+      referenceProvenanceFilterIsActive(provenanceFilter));
 
   const currentChildren = activeTabState?.childrenByKey[currentKey];
+  const contentError = isQuery
+    ? (activeTabState?.searchError ?? null)
+    : (currentChildren?.error ?? null);
 
   // 浏览态内容区:当前选中二级节点(currentNode,本地根时为 null → 源根)的子节点,
   // 递归就地展开成文件树。搜索态:扁平搜索结果。
@@ -288,8 +297,10 @@ export function useReferenceSourcePickerView({
     [currentChildren?.entries, sortNodes]
   );
   const searchResults = useMemo(
-    () => sortNodes(activeTabState?.searchEntries ?? []),
-    [activeTabState?.searchEntries, sortNodes]
+    // Browse arrangement is a presentation preference. Search results keep the
+    // source-owned relevance order regardless of that preference.
+    () => [...(activeTabState?.searchEntries ?? [])] as ReferenceNode[],
+    [activeTabState?.searchEntries]
   );
 
   // 每个源的左栏二级分组(左栏可多源同时展开,故按源全量计算):
@@ -388,8 +399,10 @@ export function useReferenceSourcePickerView({
   // 搜索进行中切换左栏分组(选中应用变化)时,把搜索限定范围同步给 controller 并重搜。
   // controller 内部仅在范围实际变化且处于搜索态时才重搜,浏览态/范围未变为 no-op。
   useEffect(() => {
+    if (!open) return;
+    controller.setProvenanceFilter(provenanceFilter, searchScopeNodeId);
     controller.setSearchScope(searchScopeNodeId);
-  }, [controller, searchScopeNodeId]);
+  }, [activeSourceId, controller, open, provenanceFilter, searchScopeNodeId]);
 
   const setActiveSource = useCallback(
     (sourceId: string) => {
@@ -692,7 +705,6 @@ export function useReferenceSourcePickerView({
             mtimeMs: node.mtimeMs ?? null,
             sizeBytes: loadedSizeBytes
           },
-          renderHtml: true,
           target: {
             fileKind: preview.kind,
             name: node.displayName,
@@ -782,6 +794,7 @@ export function useReferenceSourcePickerView({
     currentEntries,
     // 搜索态:扁平搜索结果。
     searchResults,
+    contentError,
     expandedKeys: activeTabState?.expandedKeys ?? {},
     childrenByKey: activeTabState?.childrenByKey ?? {},
     toggleNode: (node: ReferenceNode) => controller.toggleNode(node),

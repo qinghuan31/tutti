@@ -32,8 +32,6 @@ export interface DesktopPreferencesStoreState {
   changingMinimizeAnimation: DesktopMinimizeAnimation | null;
   changingSleepPreventionMode: DesktopSleepPreventionMode | null;
   changingShowAppDeveloperSources: boolean | null;
-  changingEnableCursorAgent: boolean | null;
-  changingEnableOpenCodeAgent: boolean | null;
   changingThemeSource: DesktopThemeSource | null;
   changingUpdateChannel: DesktopUpdateChannel | null;
   changingUpdatePolicy: DesktopUpdatePolicy | null;
@@ -53,8 +51,6 @@ export interface DesktopPreferencesStoreState {
   minimizeAnimation: DesktopMinimizeAnimation;
   sleepPreventionMode: DesktopSleepPreventionMode;
   showAppDeveloperSources: boolean;
-  enableCursorAgent: boolean;
-  enableOpenCodeAgent: boolean;
   theme: DesktopThemeState;
   updateChannel: DesktopUpdateChannel;
   updatePolicy: DesktopUpdatePolicy;
@@ -74,8 +70,6 @@ export interface DesktopPreferencesReadableStoreState {
   readonly changingMinimizeAnimation: DesktopMinimizeAnimation | null;
   readonly changingSleepPreventionMode: DesktopSleepPreventionMode | null;
   readonly changingShowAppDeveloperSources: boolean | null;
-  readonly changingEnableCursorAgent: boolean | null;
-  readonly changingEnableOpenCodeAgent: boolean | null;
   readonly changingThemeSource: DesktopThemeSource | null;
   readonly changingUpdateChannel: DesktopUpdateChannel | null;
   readonly changingUpdatePolicy: DesktopUpdatePolicy | null;
@@ -95,8 +89,6 @@ export interface DesktopPreferencesReadableStoreState {
   readonly minimizeAnimation: DesktopMinimizeAnimation;
   readonly sleepPreventionMode: DesktopSleepPreventionMode;
   readonly showAppDeveloperSources: boolean;
-  readonly enableCursorAgent: boolean;
-  readonly enableOpenCodeAgent: boolean;
   readonly theme: DesktopThemeState;
   readonly updateChannel: DesktopUpdateChannel;
   readonly updatePolicy: DesktopUpdatePolicy;

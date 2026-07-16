@@ -140,7 +140,7 @@ describe("AgentSessionChrome", () => {
     expect(onAuthLogin).toHaveBeenCalledTimes(1);
   });
 
-  it("shows full auth chrome messages in a tooltip without expandable layout state", async () => {
+  it("shows full auth chrome messages with a native title without expandable layout state", () => {
     const onRetryActivation = vi.fn();
     const message =
       "Codex ACP requires authentication in the runtime VM. Sync the Codex host credentials, then retry this session.";
@@ -174,20 +174,17 @@ describe("AgentSessionChrome", () => {
     expect(warningChrome).not.toBeNull();
     expect(warningChrome).not.toHaveAttribute("data-expandable");
     expect(warningChrome).not.toHaveAttribute("data-expanded");
-    expect(messageElement).not.toHaveAttribute("title");
+    expect(messageElement).toHaveAttribute("title", message);
     expect(
       screen.queryByTestId("agent-session-chrome-auth-expand-cue")
     ).toBeNull();
-
-    fireEvent.pointerMove(messageElement, { pointerType: "mouse" });
-    expect(await screen.findByRole("tooltip")).toHaveTextContent(message);
 
     fireEvent.click(screen.getByRole("button", { name: "Retry" }));
     expect(onRetryActivation).toHaveBeenCalledTimes(1);
     expect(warningChrome).not.toHaveAttribute("data-expanded");
   });
 
-  it("shows full recovery chrome messages in a tooltip without expandable layout state", async () => {
+  it("shows full recovery chrome messages with a native title without expandable layout state", () => {
     const message = "Something went wrong. Please try again.";
 
     render(
@@ -222,8 +219,7 @@ describe("AgentSessionChrome", () => {
     expect(recoveryChrome).not.toHaveAttribute("data-expandable");
     expect(recoveryChrome).not.toHaveAttribute("data-expanded");
 
-    fireEvent.pointerMove(messageElement, { pointerType: "mouse" });
-    expect(await screen.findByRole("tooltip")).toHaveTextContent(message);
+    expect(messageElement).toHaveAttribute("title", message);
     expect(recoveryChrome).not.toHaveAttribute("data-expanded");
   });
 
@@ -280,9 +276,8 @@ describe("AgentSessionChrome", () => {
           auth: null,
           approval: null,
           recovery: {
-            kind: "failed",
+            kind: "resume-unavailable",
             message: "This session is not recoverable on this machine.",
-            canRetry: false,
             followupAction: "continue-in-new-conversation"
           },
           rawState: null
@@ -319,7 +314,14 @@ describe("AgentSessionChrome", () => {
     expect(continueButton).toHaveAttribute("data-variant", "ghost");
     expect(continueButton).toHaveAttribute("data-size", "sm");
     expect(continueButton.className).toContain(
-      "agent-gui-chrome__danger-ghost-button"
+      "agent-gui-chrome__success-ghost-button"
+    );
+    expect(
+      continueButton.closest(".agent-gui-chrome__card")?.className
+    ).toContain("agent-gui-chrome__card--success");
+    expect(screen.queryByRole("alert")).toBeNull();
+    expect(screen.getByRole("status")).toBe(
+      continueButton.closest(".agent-gui-chrome__card")
     );
 
     fireEvent.click(continueButton);
@@ -327,7 +329,7 @@ describe("AgentSessionChrome", () => {
     expect(onContinueInNewConversation).toHaveBeenCalledTimes(1);
   });
 
-  it("uses the localized activating label for recovery chrome while reconnecting", async () => {
+  it("uses the localized activating label for recovery chrome while reconnecting", () => {
     const { container } = render(
       <AgentSessionChrome
         chrome={{
@@ -368,12 +370,59 @@ describe("AgentSessionChrome", () => {
       screen.queryByText("Reconnecting to the live agent session…")
     ).toBeNull();
 
-    fireEvent.pointerMove(screen.getByText("Connecting session"), {
-      pointerType: "mouse"
-    });
-    expect(await screen.findByRole("tooltip")).toHaveTextContent(
+    expect(screen.getByText("Connecting session").closest("p")).toHaveAttribute(
+      "title",
       "Connecting session..."
     );
+  });
+
+  it("mounts recovery chrome after an empty state without a composed tooltip ref", () => {
+    const props = {
+      isRespondingApproval: false,
+      onSubmitApprovalOption: vi.fn(),
+      onRetryActivation: vi.fn(),
+      onContinueInNewConversation: vi.fn(),
+      labels: {
+        approvalRequired: "Approval required",
+        authRequired: "Authentication required",
+        activatingSession: "Connecting session...",
+        retryActivation: "Retry",
+        continueInNewConversation: "Continue in new session"
+      }
+    };
+    const { rerender } = render(
+      <AgentSessionChrome
+        {...props}
+        chrome={{
+          auth: null,
+          approval: null,
+          recovery: null,
+          rawState: null
+        }}
+      />
+    );
+
+    rerender(
+      <AgentSessionChrome
+        {...props}
+        chrome={{
+          auth: null,
+          approval: null,
+          recovery: {
+            kind: "failed",
+            message: "Session creation failed.",
+            canRetry: true
+          },
+          rawState: null
+        }}
+      />
+    );
+
+    expect(screen.getByText("Session creation failed.")).toHaveAttribute(
+      "title",
+      "Session creation failed."
+    );
+    expect(screen.queryByRole("tooltip")).toBeNull();
   });
 
   it("replaces auth chrome with activating recovery chrome while connecting", () => {

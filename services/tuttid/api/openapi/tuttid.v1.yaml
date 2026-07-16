@@ -988,7 +988,7 @@ paths:
         Read-only subset of desktop agent preferences for one workspace app
         runtime. Intended for workspace app server tokens; exposes default
         provider selection and developer-gated provider visibility only. Deprecated
-        for Agent integrations: use `tutti --json agent providers` through
+        for Agent integrations: use the current agent catalog (`tutti --json agent list`) through
         `@tutti-os/agent-acp-kit/tutti`. Removal is gated by the production-usage
         telemetry and release criteria in
         `docs/conventions/deprecated-workspace-app-agent-apis.md`.
@@ -1027,7 +1027,8 @@ paths:
         for enabled daemon-owned Agent Targets visible to Agent GUI. When
         `providers` is supplied, it narrows that Agent Target set and cannot
         expose providers outside it. Deprecated for Agent integrations: use
-        `tutti --json agent providers` through `@tutti-os/agent-acp-kit/tutti`.
+        the current agent catalog (`tutti --json agent list`) through
+        `@tutti-os/agent-acp-kit/tutti`.
         Removal is gated by the production-usage telemetry and release criteria
         in `docs/conventions/deprecated-workspace-app-agent-apis.md`.
       parameters:
@@ -1043,6 +1044,12 @@ paths:
         - name: includeNetwork
           in: query
           required: false
+          schema:
+            type: boolean
+        - name: refresh
+          in: query
+          required: false
+          description: Bypass the daemon provider-readiness cache.
           schema:
             type: boolean
       responses:
@@ -1083,7 +1090,7 @@ paths:
         Workspace-app scoped alias of
         `POST /v1/agent-providers/{provider}/composer-options` for app server
         tokens. Deprecated for Agent integrations: use
-        `tutti --json agent composer-options --provider <providerId>` through
+        `tutti --json agent composer-options --agent-id <agentId>` through
         `@tutti-os/agent-acp-kit/tutti`. Removal is gated by the production-usage
         telemetry and release criteria in
         `docs/conventions/deprecated-workspace-app-agent-apis.md`.
@@ -1858,11 +1865,24 @@ paths:
         - agent-session
       summary: List agent sessions for one workspace
       parameters:
-        - name: searchQuery
+        - name: agentTargetId
           in: query
           required: false
           schema:
             type: string
+            minLength: 1
+        - name: searchQuery
+          in: query
+          required: false
+          description: Case-insensitive, whitespace-tokenized search over the session title only.
+          schema:
+            type: string
+        - name: cursor
+          in: query
+          required: false
+          schema:
+            type: string
+            minLength: 1
         - name: limit
           in: query
           required: false
@@ -1943,6 +1963,39 @@ paths:
           $ref: "#/components/responses/WorkspaceOperationError"
         "503":
           $ref: "#/components/responses/ServiceUnavailableError"
+  /v1/workspaces/{workspaceID}/agent-sessions/batch:
+    parameters:
+      - $ref: "#/components/parameters/WorkspaceID"
+    delete:
+      operationId: deleteWorkspaceAgentSessionsBatch
+      tags:
+        - agent-session
+      summary: Delete an exact snapshot of agent sessions for one workspace
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/DeleteWorkspaceAgentSessionsBatchRequest"
+      responses:
+        "200":
+          description: Workspace agent sessions deleted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DeleteWorkspaceAgentSessionsBatchResponse"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "400":
+          $ref: "#/components/responses/InvalidRequestError"
+        "404":
+          $ref: "#/components/responses/WorkspaceNotFoundError"
+        "405":
+          $ref: "#/components/responses/MethodNotAllowedError"
+        "502":
+          $ref: "#/components/responses/WorkspaceOperationError"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailableError"
   /v1/workspaces/{workspaceID}/agent-session-sections:
     parameters:
       - $ref: "#/components/parameters/WorkspaceID"
@@ -1985,44 +2038,6 @@ paths:
           $ref: "#/components/responses/WorkspaceOperationError"
         "503":
           $ref: "#/components/responses/ServiceUnavailableError"
-    delete:
-      operationId: deleteWorkspaceAgentSessionSection
-      tags:
-        - agent-session
-      summary: Delete all agent sessions in one rail section for one workspace
-      parameters:
-        - name: sectionKey
-          in: query
-          required: true
-          schema:
-            type: string
-            minLength: 1
-        - name: agentTargetId
-          in: query
-          required: false
-          description: Optional agent target filter applied before deletion.
-          schema:
-            type: string
-            minLength: 1
-      responses:
-        "200":
-          description: Workspace agent session section deleted
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/DeleteWorkspaceAgentSessionSectionResponse"
-        "401":
-          $ref: "#/components/responses/UnauthorizedError"
-        "400":
-          $ref: "#/components/responses/InvalidRequestError"
-        "404":
-          $ref: "#/components/responses/WorkspaceNotFoundError"
-        "405":
-          $ref: "#/components/responses/MethodNotAllowedError"
-        "502":
-          $ref: "#/components/responses/WorkspaceOperationError"
-        "503":
-          $ref: "#/components/responses/ServiceUnavailableError"
   /v1/workspaces/{workspaceID}/agent-session-sections/page:
     parameters:
       - $ref: "#/components/parameters/WorkspaceID"
@@ -2041,7 +2056,7 @@ paths:
         - name: cursor
           in: query
           required: false
-          description: Cursor for the next older page, encoded as updatedAtUnixMs|agentSessionId.
+          description: Cursor for the next older page, encoded as conversationSortTimeUnixMs|agentSessionId.
           schema:
             type: string
             minLength: 1
@@ -2078,14 +2093,14 @@ paths:
           $ref: "#/components/responses/WorkspaceOperationError"
         "503":
           $ref: "#/components/responses/ServiceUnavailableError"
-  /v1/workspaces/{workspaceID}/agent-session-sections/count:
+  /v1/workspaces/{workspaceID}/agent-session-sections/deletion-candidates:
     parameters:
       - $ref: "#/components/parameters/WorkspaceID"
     get:
-      operationId: countWorkspaceAgentSessionSection
+      operationId: listWorkspaceAgentSessionSectionDeletionCandidates
       tags:
         - agent-session
-      summary: Count agent sessions in one rail section for one workspace
+      summary: List the exact agent session deletion candidates in one rail section
       parameters:
         - name: sectionKey
           in: query
@@ -2096,17 +2111,24 @@ paths:
         - name: agentTargetId
           in: query
           required: false
-          description: Optional agent target filter applied before counting.
+          description: Optional agent target filter applied before selecting candidates.
           schema:
             type: string
             minLength: 1
+        - name: excludePinned
+          in: query
+          required: false
+          description: Exclude pinned sessions from the deletion candidate snapshot.
+          schema:
+            type: boolean
+            default: false
       responses:
         "200":
-          description: Workspace agent session section count
+          description: Workspace agent session section deletion candidates
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/WorkspaceAgentSessionSectionCountResponse"
+                $ref: "#/components/schemas/WorkspaceAgentSessionSectionDeletionCandidatesResponse"
         "401":
           $ref: "#/components/responses/UnauthorizedError"
         "400":
@@ -2126,7 +2148,7 @@ paths:
       operationId: scanWorkspaceExternalAgentSessionImports
       tags:
         - agent-session
-      summary: Scan external local agent session history that can be imported into one workspace
+      summary: Scan local agent history or a supported provider export that can be imported into one workspace
       requestBody:
         required: false
         content:
@@ -2159,7 +2181,7 @@ paths:
       operationId: importWorkspaceExternalAgentSessions
       tags:
         - agent-session
-      summary: Import selected external local agent session history into one workspace
+      summary: Import selected local agent history or provider-export conversations into one workspace
       requestBody:
         required: true
         content:
@@ -2309,6 +2331,12 @@ paths:
             wizard's network diagnostic sets this.
           schema:
             type: boolean
+        - name: refresh
+          in: query
+          required: false
+          description: Bypass the daemon provider-readiness cache.
+          schema:
+            type: boolean
       responses:
         "200":
           description: Agent provider status snapshot
@@ -2341,7 +2369,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/WorkspaceAgentSessionResponse"
+                $ref: "#/components/schemas/WorkspaceAgentSessionDetailResponse"
         "401":
           $ref: "#/components/responses/UnauthorizedError"
         "400":
@@ -2446,6 +2474,18 @@ paths:
           required: false
           schema:
             type: string
+        - in: query
+          name: agentTargetIds
+          required: false
+          description: Optional agent target filters applied before generated-file limiting.
+          style: form
+          explode: true
+          schema:
+            type: array
+            maxItems: 100
+            items:
+              type: string
+              minLength: 1
         - in: query
           name: limit
           required: false
@@ -2688,22 +2728,28 @@ paths:
           $ref: "#/components/responses/WorkspaceOperationError"
         "503":
           $ref: "#/components/responses/ServiceUnavailableError"
-  /v1/workspaces/{workspaceID}/agent-sessions/{agentSessionID}/cancel:
+  /v1/workspaces/{workspaceID}/agent-sessions/{agentSessionID}/turns/{turnID}/cancel:
     parameters:
       - $ref: "#/components/parameters/WorkspaceID"
       - $ref: "#/components/parameters/AgentSessionID"
+      - $ref: "#/components/parameters/AgentTurnID"
     post:
-      operationId: cancelWorkspaceAgentSession
+      operationId: cancelWorkspaceAgentTurn
       tags:
         - agent-session
-      summary: Cancel one workspace agent session
+      summary: Cancel one workspace agent turn
+      description: >-
+        Idempotent turn-scoped cancellation (protocol v2). Canceling a turn
+        that is already settled or unknown is a no-op success, not an error;
+        the race between a user stop request and natural turn settlement is
+        harmless at the protocol level.
       responses:
         "200":
-          description: Workspace agent session canceled
+          description: Workspace agent turn cancel result
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/WorkspaceAgentSessionCancelResponse"
+                $ref: "#/components/schemas/WorkspaceAgentTurnCancelResponse"
         "401":
           $ref: "#/components/responses/UnauthorizedError"
         "400":
@@ -2716,10 +2762,79 @@ paths:
           $ref: "#/components/responses/WorkspaceOperationError"
         "503":
           $ref: "#/components/responses/ServiceUnavailableError"
+  /v1/workspaces/{workspaceID}/agent-sessions/{agentSessionID}/turns/{turnID}/plan-decisions/{requestID}:
+    parameters:
+      - $ref: "#/components/parameters/WorkspaceID"
+      - $ref: "#/components/parameters/AgentSessionID"
+      - $ref: "#/components/parameters/AgentTurnID"
+      - $ref: "#/components/parameters/AgentPermissionRequestID"
+    post:
+      operationId: submitWorkspaceAgentPlanDecision
+      tags:
+        - agent-session
+      summary: Submit one durable workspace agent plan decision
+      description: >-
+        Prepares and advances an idempotent daemon-owned plan decision saga.
+        The workspace, session, turn, request, and idempotency key form the
+        strict operation scope. A retry with the same identity and payload
+        returns the existing operation; a mismatched payload is rejected.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SubmitWorkspaceAgentPlanDecisionRequest"
+      responses:
+        "200":
+          description: Durable plan decision operation state
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WorkspaceAgentPlanDecisionResponse"
+        "400":
+          $ref: "#/components/responses/InvalidRequestError"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "404":
+          $ref: "#/components/responses/WorkspaceNotFoundError"
+        "405":
+          $ref: "#/components/responses/MethodNotAllowedError"
+        "409":
+          description: The idempotency identity conflicts or the scoped plan turn is not currently decidable
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+        "502":
+          $ref: "#/components/responses/WorkspaceOperationError"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailableError"
   /v1/workspaces/{workspaceID}/agent-sessions/{agentSessionID}/goal:
     parameters:
       - $ref: "#/components/parameters/WorkspaceID"
       - $ref: "#/components/parameters/AgentSessionID"
+    get:
+      operationId: getWorkspaceAgentSessionGoal
+      tags:
+        - agent-session
+      summary: Get the durable desired and observed goal state
+      responses:
+        "200":
+          description: Workspace agent session goal state
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WorkspaceAgentSessionGoalStateResponse"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "404":
+          $ref: "#/components/responses/WorkspaceNotFoundError"
+        "405":
+          $ref: "#/components/responses/MethodNotAllowedError"
+        "502":
+          $ref: "#/components/responses/WorkspaceOperationError"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailableError"
     post:
       operationId: goalControlWorkspaceAgentSession
       tags:
@@ -2742,6 +2857,32 @@ paths:
           $ref: "#/components/responses/UnauthorizedError"
         "400":
           $ref: "#/components/responses/InvalidRequestError"
+        "404":
+          $ref: "#/components/responses/WorkspaceNotFoundError"
+        "405":
+          $ref: "#/components/responses/MethodNotAllowedError"
+        "502":
+          $ref: "#/components/responses/WorkspaceOperationError"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailableError"
+  /v1/workspaces/{workspaceID}/agent-sessions/{agentSessionID}/goal/reconcile:
+    parameters:
+      - $ref: "#/components/parameters/WorkspaceID"
+      - $ref: "#/components/parameters/AgentSessionID"
+    post:
+      operationId: reconcileWorkspaceAgentSessionGoal
+      tags:
+        - agent-session
+      summary: Reconcile the durable goal projection with provider evidence
+      responses:
+        "200":
+          description: Reconciled workspace agent session goal state
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WorkspaceAgentSessionGoalStateResponse"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
         "404":
           $ref: "#/components/responses/WorkspaceNotFoundError"
         "405":
@@ -2827,6 +2968,10 @@ paths:
       tags:
         - agent-session
       summary: Update one workspace agent session title
+      description: >-
+        Titles longer than 120 Unicode characters return `invalid_request` with
+        reason `workspace_agent_session_title_too_long` and
+        `params.maxCharacters` set to 120.
       requestBody:
         required: true
         content:
@@ -3807,6 +3952,13 @@ components:
       schema:
         type: string
         minLength: 1
+    AgentTurnID:
+      name: turnID
+      in: path
+      required: true
+      schema:
+        type: string
+        minLength: 1
     TerminalAfterSeq:
       name: afterSeq
       in: query
@@ -4365,6 +4517,10 @@ components:
           type: string
           description: Client source label such as cli. This is not an authorization boundary.
           minLength: 1
+        appId:
+          type: string
+          description: Calling workspace app id hint. Managed-model commands validate it against their grant binding.
+          nullable: true
         workspaceID:
           type: string
           nullable: true
@@ -4657,8 +4813,6 @@ components:
         - minimizeAnimation
         - sleepPreventionMode
         - showAppDeveloperSources
-        - enableCursorAgent
-        - enableOpenCodeAgent
         - themeSource
         - updateChannel
         - updatePolicy
@@ -4683,10 +4837,6 @@ components:
           $ref: "#/components/schemas/DesktopDockIconStyle"
         dockPlacement:
           $ref: "#/components/schemas/DesktopDockPlacement"
-        enableCursorAgent:
-          type: boolean
-        enableOpenCodeAgent:
-          type: boolean
         fileDefaultOpenersByExtension:
           $ref: "#/components/schemas/DesktopFileDefaultOpenersByExtension"
         featureFlags:
@@ -4770,6 +4920,11 @@ components:
         - codex
         - cursor
         - opencode
+      x-enum-varnames:
+        - DesktopDefaultAgentProviderClaudeCode
+        - DesktopDefaultAgentProviderCodex
+        - DesktopDefaultAgentProviderCursor
+        - DesktopDefaultAgentProviderOpencode
     DesktopAgentDockLayout:
       type: string
       enum:
@@ -4852,15 +5007,9 @@ components:
       additionalProperties: false
       required:
         - defaultAgentProvider
-        - enableCursorAgent
-        - enableOpenCodeAgent
       properties:
         defaultAgentProvider:
           $ref: "#/components/schemas/DesktopDefaultAgentProvider"
-        enableCursorAgent:
-          type: boolean
-        enableOpenCodeAgent:
-          type: boolean
     PutDesktopPreferencesRequest:
       type: object
       additionalProperties: false
@@ -4871,18 +5020,24 @@ components:
           $ref: "#/components/schemas/DesktopPreferences"
     AgentTargetProvider:
       type: string
-      enum:
-        - codex
-        - claude-code
-        - tutti-agent
-        - cursor
-        - opencode
+      minLength: 1
+      maxLength: 128
+      pattern: "^[a-z][a-z0-9._:-]*$"
     AgentTargetSource:
       type: string
       enum:
         - system
         - user
     AgentTargetLaunchRef:
+      oneOf:
+        - $ref: "#/components/schemas/AgentTargetBuiltinLocalLaunchRef"
+        - $ref: "#/components/schemas/AgentTargetExtensionLaunchRef"
+      discriminator:
+        propertyName: type
+        mapping:
+          builtin_local: "#/components/schemas/AgentTargetBuiltinLocalLaunchRef"
+          agent_extension: "#/components/schemas/AgentTargetExtensionLaunchRef"
+    AgentTargetBuiltinLocalLaunchRef:
       type: object
       additionalProperties: false
       required:
@@ -4892,9 +5047,27 @@ components:
         type:
           type: string
           enum:
-            - local_cli
+            - builtin_local
+          x-enum-varnames:
+            - AgentTargetBuiltinLocalLaunchRefTypeBuiltinLocal
         provider:
           $ref: "#/components/schemas/AgentTargetProvider"
+    AgentTargetExtensionLaunchRef:
+      type: object
+      additionalProperties: false
+      required:
+        - type
+        - extensionInstallationId
+      properties:
+        type:
+          type: string
+          enum:
+            - agent_extension
+          x-enum-varnames:
+            - AgentTargetExtensionLaunchRefTypeAgentExtension
+        extensionInstallationId:
+          type: string
+          minLength: 1
     AgentTarget:
       type: object
       additionalProperties: false
@@ -4911,6 +5084,8 @@ components:
       properties:
         id:
           type: string
+          maxLength: 128
+          pattern: "^[a-z0-9][a-z0-9._:-]{0,127}$"
         provider:
           $ref: "#/components/schemas/AgentTargetProvider"
         launchRef:
@@ -4919,6 +5094,16 @@ components:
           type: string
         iconKey:
           type: string
+          nullable: true
+        iconUrl:
+          type: string
+          nullable: true
+        heroImageUrl:
+          type: string
+          nullable: true
+        availability:
+          allOf:
+            - $ref: "#/components/schemas/AgentProviderAvailability"
           nullable: true
         enabled:
           type: boolean
@@ -5474,7 +5659,7 @@ components:
         createdAtUnixMs:
           type: integer
           format: int64
-          minimum: 0
+          minimum: 1
         installProgress:
           $ref: "#/components/schemas/WorkspaceAppInstallProgress"
           nullable: true
@@ -6159,24 +6344,9 @@ components:
           $ref: "#/components/schemas/WorkspaceTerminalCloseGuard"
     WorkspaceAgentProvider:
       type: string
-      enum:
-        - claude-code
-        - codex
-        - tutti-agent
-        - cursor
-        - nexight
-        - hermes
-        - openclaw
-        - opencode
-    WorkspaceAgentSessionStatus:
-      type: string
-      enum:
-        - created
-        - running
-        - waiting
-        - completed
-        - canceled
-        - failed
+      minLength: 1
+      maxLength: 128
+      pattern: "^[a-z][a-z0-9._:-]*$"
     AgentSessionComposerSettings:
       type: object
       additionalProperties: false
@@ -6318,6 +6488,7 @@ components:
         - runtimeContext
         - skills
         - capabilityCatalog
+        - behavior
       properties:
         provider:
           $ref: "#/components/schemas/WorkspaceAgentProvider"
@@ -6334,6 +6505,13 @@ components:
         runtimeContext:
           type: object
           additionalProperties: true
+        capabilities:
+          $ref: "#/components/schemas/WorkspaceAgentCapabilities"
+          description: >-
+            Typed provider capabilities available before a session exists.
+            Once a session is active, WorkspaceAgentSession.capabilities is
+            authoritative. Older daemons may omit this field during a rolling
+            desktop upgrade.
         skills:
           type: array
           items:
@@ -6342,6 +6520,67 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/AgentProviderCapabilityOption"
+        behavior:
+          $ref: "#/components/schemas/AgentProviderComposerBehavior"
+        slashCommandPolicy:
+          $ref: "#/components/schemas/AgentSlashCommandPolicy"
+    AgentProviderComposerBehavior:
+      type: object
+      additionalProperties: false
+      required:
+        - collapseModelOptionsToLatest
+        - modelOptionsAuthoritative
+        - refreshModelOptionsAfterSettings
+        - prewarmDraftSession
+        - planModeExclusiveWithPermissionMode
+      properties:
+        collapseModelOptionsToLatest:
+          type: boolean
+        modelOptionsAuthoritative:
+          type: boolean
+        refreshModelOptionsAfterSettings:
+          type: boolean
+        prewarmDraftSession:
+          type: boolean
+        planModeExclusiveWithPermissionMode:
+          type: boolean
+    AgentSlashCommandEffect:
+      type: string
+      enum:
+        - submitImmediate
+        - showReviewPicker
+        - activateGoalMode
+        - togglePlanMode
+        - showStatus
+        - toggleSpeed
+    AgentSlashCommandEffectDescriptor:
+      type: object
+      additionalProperties: false
+      required:
+        - command
+        - effect
+      properties:
+        command:
+          type: string
+        effect:
+          $ref: "#/components/schemas/AgentSlashCommandEffect"
+    AgentSlashCommandPolicy:
+      type: object
+      additionalProperties: false
+      required:
+        - fallbackCommands
+        - commandEffects
+      properties:
+        fallbackCommands:
+          type: array
+          items:
+            type: string
+        commandEffects:
+          type: array
+          items:
+            $ref: "#/components/schemas/AgentSlashCommandEffectDescriptor"
+        commandCatalogAuthoritative:
+          type: boolean
     AgentProviderSkillOption:
       type: object
       additionalProperties: false
@@ -6811,21 +7050,88 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/AgentProviderStatus"
+    WorkspaceAgentSessionKind:
+      type: string
+      description: >-
+        Root sessions are user-visible conversations. Child sessions are
+        provider-native agents reached through their immutable parent fields.
+      enum:
+        - root
+        - child
     WorkspaceAgentSession:
       type: object
       additionalProperties: false
       required:
         - id
+        - kind
+        - rootAgentSessionId
+        - rootTurnId
+        - parentAgentSessionId
+        - parentTurnId
+        - parentToolCallId
+        - agentTargetId
         - provider
+        - providerSessionId
         - cwd
-        - status
+        - railSectionKey
         - visible
-        - createdAt
-        - updatedAt
+        - settings
+        - permissionConfig
+        - resumable
+        - pinnedAtUnixMs
+        - title
+        - createdAtUnixMs
+        - updatedAtUnixMs
+        - endedAtUnixMs
+        - latestTurnInteractions
+        - activeTurnId
+        - activeTurn
+        - latestTurn
+        - pendingInteractions
+        - capabilities
+        - usage
+        - goal
+        - imported
       properties:
         id:
           type: string
           minLength: 1
+        kind:
+          $ref: "#/components/schemas/WorkspaceAgentSessionKind"
+        rootAgentSessionId:
+          type: string
+          nullable: true
+          minLength: 1
+          description: >-
+            Root session that owns this child session. Null when kind is root.
+        rootTurnId:
+          type: string
+          nullable: true
+          minLength: 1
+          description: >-
+            Root turn under which this child session was created. Null when
+            kind is root.
+        parentAgentSessionId:
+          type: string
+          nullable: true
+          minLength: 1
+          description: >-
+            Direct parent session that created this child session. Null when
+            kind is root.
+        parentTurnId:
+          type: string
+          nullable: true
+          minLength: 1
+          description: >-
+            Exact turn in the direct parent session that created this child
+            session. Null when kind is root.
+        parentToolCallId:
+          type: string
+          nullable: true
+          minLength: 1
+          description: >-
+            Delegation tool call in the parent turn that created this child
+            session. Null when kind is root.
         agentTargetId:
           type: string
           nullable: true
@@ -6838,21 +7144,83 @@ components:
         cwd:
           type: string
           nullable: true
-        status:
-          $ref: "#/components/schemas/WorkspaceAgentSessionStatus"
-        turnLifecycle:
-          $ref: "#/components/schemas/AgentActivityTurnLifecycle"
-        submitAvailability:
-          $ref: "#/components/schemas/AgentActivitySubmitAvailability"
+        railSectionKey:
+          type: string
+          minLength: 1
+          description: >-
+            Persisted conversation-rail membership key. Clients must use this
+            exact key for section placement and must not infer membership from
+            cwd or project paths.
+        activeTurnId:
+          type: string
+          nullable: true
+          description: >-
+            Protocol v2. The only turn reference kept on the session; null
+            when no turn is in flight.
+        activeTurn:
+          allOf:
+            - $ref: "#/components/schemas/WorkspaceAgentTurn"
+          nullable: true
+          description: >-
+            Protocol v2. Embedded snapshot of the active turn; null when no
+            turn is in flight.
+        latestTurn:
+          allOf:
+            - $ref: "#/components/schemas/WorkspaceAgentTurn"
+          nullable: true
+          description: >-
+            Protocol v2. Read-only embedded projection of the most recently
+            updated turn for this session, including settled turns. This is
+            an independent turn entity projection and is not session-owned
+            persistent state or a session reference.
+        latestTurnInteractions:
+          type: array
+          description: >-
+            Protocol v2. Read-only independent Interaction entity projections
+            for latestTurn, including pending, answered, and superseded
+            terminal states. These entities are not session-owned persistent
+            state.
+          items:
+            $ref: "#/components/schemas/WorkspaceAgentInteraction"
+        pendingInteractions:
+          type: array
+          description: >-
+            Protocol v2. Pending interactions (approvals, questions, plan
+            confirmations) for the active turn. Pending means present in this
+            collection with status pending; there is no tri-state null
+            protocol.
+          items:
+            $ref: "#/components/schemas/WorkspaceAgentInteraction"
+        capabilities:
+          allOf:
+            - $ref: "#/components/schemas/WorkspaceAgentCapabilities"
+          nullable: true
+          description: >-
+            Protocol v2. Daemon-issued capability descriptor; clients must
+            branch on capabilities, never on provider identity.
+        usage:
+          allOf:
+            - $ref: "#/components/schemas/WorkspaceAgentUsage"
+          nullable: true
+          description: >-
+            Protocol v2. Typed context-window and quota usage projected from
+            provider runtime state.
+        goal:
+          allOf:
+            - $ref: "#/components/schemas/WorkspaceAgentSessionGoal"
+          nullable: true
+          description: Protocol v2. Explicit field extracted from runtimeContext.
+        imported:
+          type: boolean
+          description: >-
+            Protocol v2. True when the session was imported from external
+            provider history. Explicit field extracted from runtimeContext.
         visible:
           type: boolean
         settings:
           $ref: "#/components/schemas/AgentSessionComposerSettings"
         permissionConfig:
           $ref: "#/components/schemas/PermissionConfig"
-        runtimeContext:
-          type: object
-          additionalProperties: true
         resumable:
           type: boolean
         pinnedAtUnixMs:
@@ -6863,20 +7231,22 @@ components:
         title:
           type: string
           nullable: true
-        createdAt:
-          type: string
-          format: date-time
-        updatedAt:
-          type: string
-          format: date-time
+        createdAtUnixMs:
+          type: integer
+          format: int64
+          minimum: 0
+          description: Protocol v2. Unix milliseconds replacement for createdAt.
+        updatedAtUnixMs:
+          type: integer
+          format: int64
+          minimum: 0
+          description: Protocol v2. Unix milliseconds replacement for updatedAt.
+        endedAtUnixMs:
+          type: integer
+          format: int64
           nullable: true
-        endedAt:
-          type: string
-          format: date-time
-          nullable: true
-        lastError:
-          type: string
-          nullable: true
+          minimum: 0
+          description: Protocol v2. Unix milliseconds replacement for endedAt.
     WorkspaceAgentSessionResponse:
       type: object
       additionalProperties: false
@@ -6885,18 +7255,446 @@ components:
       properties:
         session:
           $ref: "#/components/schemas/WorkspaceAgentSession"
-    WorkspaceAgentSessionCancelResponse:
+    WorkspaceAgentSessionDetailResponse:
       type: object
       additionalProperties: false
       required:
         - session
-        - cancel
+        - childSessions
+        - turns
       properties:
         session:
           $ref: "#/components/schemas/WorkspaceAgentSession"
-        cancel:
-          $ref: "#/components/schemas/WorkspaceAgentSessionCancelResult"
-    WorkspaceAgentSessionCancelResult:
+        childSessions:
+          type: array
+          description: >-
+            Flat collection of every nested child session below session.
+            Clients reconstruct the tree from the immutable parent fields.
+          items:
+            $ref: "#/components/schemas/WorkspaceAgentSession"
+        turns:
+          type: array
+          description: >-
+            Ordered durable turns owned by session. This detail-only collection
+            is the canonical source for turn-scoped history such as file changes;
+            clients must not reconstruct it from provider tool payloads.
+          items:
+            $ref: "#/components/schemas/WorkspaceAgentTurn"
+    SendWorkspaceAgentSessionInputResponse:
+      oneOf:
+        - $ref: "#/components/schemas/SendWorkspaceAgentSessionInputTurnResponse"
+        - $ref: "#/components/schemas/SendWorkspaceAgentSessionInputGoalControlResponse"
+      discriminator:
+        propertyName: kind
+        mapping:
+          turn: "#/components/schemas/SendWorkspaceAgentSessionInputTurnResponse"
+          goalControl: "#/components/schemas/SendWorkspaceAgentSessionInputGoalControlResponse"
+    SendWorkspaceAgentSessionInputTurnResponse:
+      type: object
+      additionalProperties: false
+      required:
+        - session
+        - kind
+        - turnId
+        - turn
+      properties:
+        session:
+          $ref: "#/components/schemas/WorkspaceAgentSession"
+        kind:
+          type: string
+          enum:
+            - turn
+          x-enum-varnames:
+            - SendWorkspaceAgentSessionInputTurnResponseKindTurn
+        turnId:
+          type: string
+          minLength: 1
+        turn:
+          $ref: "#/components/schemas/WorkspaceAgentTurn"
+          description: >-
+            Protocol v2. Durable snapshot of the exact turn accepted by this
+            submission; optimistic client intents reconcile against its turnId.
+    SendWorkspaceAgentSessionInputGoalControlResponse:
+      type: object
+      additionalProperties: false
+      required:
+        - session
+        - kind
+      properties:
+        session:
+          $ref: "#/components/schemas/WorkspaceAgentSession"
+        kind:
+          type: string
+          enum:
+            - goalControl
+          x-enum-varnames:
+            - SendWorkspaceAgentSessionInputGoalControlResponseKindGoalControl
+        operationId:
+          type: string
+          nullable: true
+          description: Durable GoalControlOperation identity when kind is goalControl.
+        goal:
+          allOf:
+            - $ref: "#/components/schemas/WorkspaceAgentSessionGoal"
+          nullable: true
+        goalState:
+          allOf:
+            - $ref: "#/components/schemas/WorkspaceAgentSessionGoalState"
+          nullable: true
+    WorkspaceAgentTurnPhase:
+      type: string
+      description: >-
+        Protocol v2 closed turn phase vocabulary. submitted -> running ->
+        waiting (interactions) -> settling -> settled.
+      enum:
+        - submitted
+        - running
+        - waiting
+        - settling
+        - settled
+    WorkspaceAgentTurnOutcome:
+      type: string
+      description: >-
+        Protocol v2 closed turn outcome vocabulary; only present once the
+        turn is settled. interrupted marks turns reconciled at daemon
+        startup after the provider process disappeared.
+      enum:
+        - completed
+        - failed
+        - canceled
+        - interrupted
+    WorkspaceAgentTurnError:
+      type: object
+      description: Protocol v2 turn-scoped error; never pollutes session state.
+      additionalProperties: false
+      required:
+        - message
+      properties:
+        message:
+          type: string
+          minLength: 1
+        code:
+          type: string
+    WorkspaceAgentCompletedCommand:
+      type: object
+      description: >-
+        Protocol v2 closed-enum replacement for AgentActivityCompletedCommand.
+      additionalProperties: false
+      required:
+        - kind
+        - status
+      properties:
+        kind:
+          type: string
+          enum:
+            - compact
+            - review
+            - undo
+            - goal
+        status:
+          type: string
+          enum:
+            - completed
+            - failed
+            - canceled
+    WorkspaceAgentTurn:
+      type: object
+      description: >-
+        Protocol v2 turn entity. One user-submission-driven execution:
+        submit, run, wait, settle. Owns phase, outcome, error, and file
+        changes; the session only keeps an activeTurnId reference.
+      additionalProperties: false
+      required:
+        - turnId
+        - agentSessionId
+        - phase
+        - origin
+        - outcome
+        - error
+        - fileChanges
+        - completedCommand
+        - startedAtUnixMs
+        - settledAtUnixMs
+        - updatedAtUnixMs
+      properties:
+        turnId:
+          type: string
+          minLength: 1
+        agentSessionId:
+          type: string
+          minLength: 1
+        phase:
+          $ref: "#/components/schemas/WorkspaceAgentTurnPhase"
+        origin:
+          type: string
+          description: Durable business provenance; steer is input on an existing turn and is never an origin.
+          enum:
+            - user_prompt
+            - goal_arm
+            - goal_continuation
+            - provider_initiated
+            - legacy_unknown
+        sourceGoalOperationId:
+          type: string
+          nullable: true
+          minLength: 1
+        sourceGoalRevision:
+          type: integer
+          format: int64
+          nullable: true
+          minimum: 0
+        sourceGoalRepairEpoch:
+          type: integer
+          format: int64
+          nullable: true
+          minimum: 0
+        outcome:
+          allOf:
+            - $ref: "#/components/schemas/WorkspaceAgentTurnOutcome"
+          nullable: true
+        error:
+          allOf:
+            - $ref: "#/components/schemas/WorkspaceAgentTurnError"
+          nullable: true
+        fileChanges:
+          type: object
+          additionalProperties: true
+          nullable: true
+        completedCommand:
+          allOf:
+            - $ref: "#/components/schemas/WorkspaceAgentCompletedCommand"
+          nullable: true
+        startedAtUnixMs:
+          type: integer
+          format: int64
+          minimum: 0
+        settledAtUnixMs:
+          type: integer
+          format: int64
+          nullable: true
+          minimum: 0
+        updatedAtUnixMs:
+          type: integer
+          format: int64
+          minimum: 0
+    WorkspaceAgentInteractionKind:
+      type: string
+      enum:
+        - approval
+        - question
+        - plan
+    WorkspaceAgentInteractionStatus:
+      type: string
+      enum:
+        - pending
+        - answered
+        - superseded
+    WorkspaceAgentInteraction:
+      type: object
+      description: >-
+        Protocol v2 interaction entity. An agent-initiated approval,
+        question, or plan confirmation raised during a turn. Pending means
+        present in a collection with status pending; replaces the tri-state
+        null pendingInteractive protocol.
+      additionalProperties: false
+      required:
+        - requestId
+        - agentSessionId
+        - turnId
+        - kind
+        - status
+        - toolName
+        - input
+        - output
+        - metadata
+        - createdAtUnixMs
+        - updatedAtUnixMs
+      properties:
+        requestId:
+          type: string
+          minLength: 1
+        agentSessionId:
+          type: string
+          minLength: 1
+        turnId:
+          type: string
+          minLength: 1
+        kind:
+          $ref: "#/components/schemas/WorkspaceAgentInteractionKind"
+        status:
+          $ref: "#/components/schemas/WorkspaceAgentInteractionStatus"
+        toolName:
+          type: string
+          nullable: true
+        input:
+          type: object
+          additionalProperties: true
+          nullable: true
+        output:
+          type: object
+          additionalProperties: true
+          nullable: true
+        metadata:
+          type: object
+          additionalProperties: true
+          nullable: true
+        createdAtUnixMs:
+          type: integer
+          format: int64
+          minimum: 0
+        updatedAtUnixMs:
+          type: integer
+          format: int64
+          minimum: 0
+    WorkspaceAgentCapabilities:
+      type: object
+      description: >-
+        Protocol v2 daemon-issued capability descriptor. Clients branch on
+        these booleans instead of provider identity. Field names mirror the
+        canonical capability keys in
+        packages/agent/daemon/runtime/capabilities.go.
+      additionalProperties: false
+      required:
+        - imageInput
+        - modelImageInputRequired
+        - skills
+        - compact
+        - tokenUsage
+        - rateLimits
+        - planMode
+        - interrupt
+        - activeTurnGuidance
+        - browserUse
+        - computerUse
+        - goalPause
+        - planImplementation
+        - permissionModeChangeDuringTurn
+        - permissionModeChangeDeferred
+        - review
+        - resumeRunningTurn
+      properties:
+        imageInput:
+          type: boolean
+        modelImageInputRequired:
+          type: boolean
+        skills:
+          type: boolean
+        compact:
+          type: boolean
+        tokenUsage:
+          type: boolean
+        rateLimits:
+          type: boolean
+        planMode:
+          type: boolean
+        interrupt:
+          type: boolean
+        activeTurnGuidance:
+          type: boolean
+          description: >-
+            The provider can accept a user prompt as guidance for the currently
+            running turn without canceling it or creating a normal next turn.
+        browserUse:
+          type: boolean
+        computerUse:
+          type: boolean
+        goalPause:
+          type: boolean
+        planImplementation:
+          type: boolean
+        permissionModeChangeDuringTurn:
+          type: boolean
+        permissionModeChangeDeferred:
+          type: boolean
+        review:
+          type: boolean
+        resumeRunningTurn:
+          type: boolean
+    WorkspaceAgentUsageContextWindow:
+      type: object
+      additionalProperties: false
+      required:
+        - usedTokens
+        - totalTokens
+      properties:
+        usedTokens:
+          type: integer
+          format: int64
+          minimum: 0
+        totalTokens:
+          type: integer
+          format: int64
+          minimum: 1
+    WorkspaceAgentUsageQuota:
+      type: object
+      additionalProperties: false
+      required:
+        - quotaType
+        - percentRemaining
+        - resetsAtUnixMs
+      properties:
+        quotaType:
+          type: string
+          minLength: 1
+        percentRemaining:
+          type: number
+          format: double
+          minimum: 0
+          maximum: 100
+        resetsAtUnixMs:
+          type: integer
+          format: int64
+          nullable: true
+          minimum: 0
+    WorkspaceAgentUsage:
+      type: object
+      additionalProperties: false
+      required:
+        - contextWindow
+        - quotas
+      properties:
+        contextWindow:
+          allOf:
+            - $ref: "#/components/schemas/WorkspaceAgentUsageContextWindow"
+          nullable: true
+        quotas:
+          type: array
+          items:
+            $ref: "#/components/schemas/WorkspaceAgentUsageQuota"
+    WorkspaceAgentSessionGoal:
+      type: object
+      description: Protocol v2 explicit field extracted from runtimeContext.
+      additionalProperties: false
+      required:
+        - objective
+        - status
+      properties:
+        objective:
+          type: string
+          minLength: 1
+        status:
+          type: string
+          enum:
+            - active
+            - paused
+            - blocked
+            - usageLimited
+            - budgetLimited
+            - complete
+        reason:
+          type: string
+        iterations:
+          type: integer
+          minimum: 0
+        durationMs:
+          type: integer
+          format: int64
+          minimum: 0
+        tokens:
+          type: integer
+          format: int64
+          minimum: 0
+    WorkspaceAgentTurnCancelResult:
       type: object
       additionalProperties: false
       required:
@@ -6907,73 +7705,24 @@ components:
           type: boolean
         reason:
           type: string
+          description: >-
+            turn_canceled reports an active turn was stopped. already_settled
+            and not_found are idempotent no-op successes, not errors.
           enum:
-            - active_turn_canceled
-            - no_active_turn
-            - stale_turn_reconciled
-    SendWorkspaceAgentSessionInputResponse:
+            - turn_canceled
+            - already_settled
+            - not_found
+    WorkspaceAgentTurnCancelResponse:
       type: object
       additionalProperties: false
       required:
-        - session
-        - turnId
-        - turnLifecycle
-        - submitAvailability
+        - cancel
       properties:
-        session:
-          $ref: "#/components/schemas/WorkspaceAgentSession"
-        turnId:
-          type: string
-          minLength: 1
-        turnLifecycle:
-          $ref: "#/components/schemas/AgentActivityTurnLifecycle"
-        submitAvailability:
-          $ref: "#/components/schemas/AgentActivitySubmitAvailability"
-    AgentActivityTurnLifecycle:
-      type: object
-      additionalProperties: false
-      required:
-        - activeTurnId
-        - phase
-      properties:
-        activeTurnId:
-          type: string
+        cancel:
+          $ref: "#/components/schemas/WorkspaceAgentTurnCancelResult"
+        turn:
+          $ref: "#/components/schemas/WorkspaceAgentTurn"
           nullable: true
-        phase:
-          type: string
-          minLength: 1
-        settling:
-          type: boolean
-        outcome:
-          type: string
-          nullable: true
-        completedCommand:
-          $ref: "#/components/schemas/AgentActivityCompletedCommand"
-          nullable: true
-    AgentActivityCompletedCommand:
-      type: object
-      additionalProperties: false
-      required:
-        - kind
-        - status
-      properties:
-        kind:
-          type: string
-          minLength: 1
-        status:
-          type: string
-          minLength: 1
-    AgentActivitySubmitAvailability:
-      type: object
-      additionalProperties: false
-      required:
-        - state
-      properties:
-        state:
-          type: string
-          minLength: 1
-        reason:
-          type: string
     AgentActivityMessageSemantics:
       type: object
       additionalProperties: false
@@ -6990,34 +7739,46 @@ components:
       type: object
       additionalProperties: false
       required:
-        - id
         - agentSessionId
         - messageId
+        - sequence
         - turnId
         - role
         - kind
         - occurredAtUnixMs
         - version
       properties:
-        id:
-          type: integer
-          format: int64
-          minimum: 0
         agentSessionId:
           type: string
           minLength: 1
         messageId:
           type: string
           minLength: 1
+        sequence:
+          type: integer
+          format: int64
+          minimum: 1
+          description: >-
+            Stable message presentation order assigned when the durable message
+            row is first created. Updating the same message does not change this
+            value; version remains the mutable snapshot change cursor.
         turnId:
           type: string
-          minLength: 1
+          nullable: true
+          description: >-
+            A non-empty turnId attaches a Turn-scoped message to a real
+            persisted Turn. Null is valid only when kind is session_audit;
+            empty strings are forbidden. Legacy stored turnless rows are read
+            as compatibility data and are never assigned a guessed Turn.
         role:
           type: string
           minLength: 1
         kind:
           type: string
           minLength: 1
+          description: >-
+            session_audit is the only session-scoped kind; every other kind is
+            Turn-scoped and requires a non-null turnId.
         status:
           type: string
         semantics:
@@ -7100,6 +7861,7 @@ components:
       required:
         - workspaceId
         - sessions
+        - hasMore
       properties:
         workspaceId:
           type: string
@@ -7108,12 +7870,19 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/WorkspaceAgentSession"
+        hasMore:
+          type: boolean
+        nextCursor:
+          type: string
+          minLength: 1
+          description: Cursor for the next older matching session page, encoded as conversationSortTimeUnixMs|agentSessionId.
     WorkspaceAgentSessionPage:
       type: object
       additionalProperties: false
       required:
         - sessions
         - hasMore
+        - totalCount
       properties:
         sessions:
           type: array
@@ -7121,6 +7890,10 @@ components:
             $ref: "#/components/schemas/WorkspaceAgentSession"
         hasMore:
           type: boolean
+        totalCount:
+          type: integer
+          minimum: 0
+          description: Total visible sessions in this page scope before cursor pagination.
         nextCursor:
           type: string
           description: Cursor for the next older page, encoded as pinnedAtUnixMs|agentSessionId for pinned pages.
@@ -7138,6 +7911,7 @@ components:
         - sectionKey
         - sessions
         - hasMore
+        - totalCount
       properties:
         kind:
           $ref: "#/components/schemas/WorkspaceAgentSessionSectionKind"
@@ -7152,9 +7926,13 @@ components:
             $ref: "#/components/schemas/WorkspaceAgentSession"
         hasMore:
           type: boolean
+        totalCount:
+          type: integer
+          minimum: 0
+          description: Total visible sessions in this section before cursor pagination.
         nextCursor:
           type: string
-          description: Cursor for the next older page, encoded as updatedAtUnixMs|agentSessionId.
+          description: Cursor for the next older page, encoded as conversationSortTimeUnixMs|agentSessionId.
           minLength: 1
     WorkspaceAgentSessionSectionsResponse:
       type: object
@@ -7201,6 +7979,12 @@ components:
       type: object
       additionalProperties: false
       properties:
+        archivePath:
+          type: string
+          minLength: 1
+          description: >-
+            Absolute path to a supported provider data-export ZIP archive.
+            When supplied, scan the archive instead of local CLI history.
         providers:
           type: array
           items:
@@ -7375,6 +8159,13 @@ components:
       required:
         - projects
       properties:
+        archivePath:
+          type: string
+          minLength: 1
+          description: >-
+            Absolute path to the same provider data-export ZIP archive used
+            for the preceding scan. The daemon revalidates and rereads the
+            archive before importing the selected conversations.
         projects:
           type: array
           minItems: 1
@@ -7420,13 +8211,14 @@ components:
       properties:
         removed:
           type: boolean
-    WorkspaceAgentSessionSectionCountResponse:
+    WorkspaceAgentSessionSectionDeletionCandidatesResponse:
       type: object
       additionalProperties: false
       required:
         - workspaceId
         - sectionKey
-        - count
+        - excludePinned
+        - sessionIds
       properties:
         workspaceId:
           type: string
@@ -7437,28 +8229,35 @@ components:
         agentTargetId:
           type: string
           minLength: 1
-        count:
-          type: integer
-          minimum: 0
-    DeleteWorkspaceAgentSessionSectionResponse:
+        excludePinned:
+          type: boolean
+        sessionIds:
+          type: array
+          uniqueItems: true
+          items:
+            type: string
+            minLength: 1
+    DeleteWorkspaceAgentSessionsBatchRequest:
       type: object
       additionalProperties: false
       required:
-        - workspaceId
-        - sectionKey
+        - sessionIds
+      properties:
+        sessionIds:
+          type: array
+          minItems: 1
+          uniqueItems: true
+          items:
+            type: string
+            minLength: 1
+    DeleteWorkspaceAgentSessionsBatchResponse:
+      type: object
+      additionalProperties: false
+      required:
         - removedMessages
         - removedSessions
         - removedSessionIds
       properties:
-        workspaceId:
-          type: string
-          minLength: 1
-        sectionKey:
-          type: string
-          minLength: 1
-        agentTargetId:
-          type: string
-          minLength: 1
         removedMessages:
           type: integer
           minimum: 0
@@ -7533,8 +8332,77 @@ components:
         session:
           $ref: "#/components/schemas/WorkspaceAgentSession"
         goal:
+          allOf:
+            - $ref: "#/components/schemas/WorkspaceAgentSessionGoal"
+          nullable: true
+        operationId:
+          type: string
+          nullable: true
+          description: Durable GoalControlOperation identity; null only for compatibility runtimes without a goal store.
+        state:
+          allOf:
+            - $ref: "#/components/schemas/WorkspaceAgentSessionGoalState"
+          nullable: true
+    WorkspaceAgentSessionGoalState:
+      type: object
+      additionalProperties: false
+      required:
+        - revision
+        - tombstoned
+        - syncStatus
+        - lastEvidence
+        - updatedAtUnixMs
+      properties:
+        desired:
+          allOf:
+            - $ref: "#/components/schemas/WorkspaceAgentSessionGoal"
+          nullable: true
+        observed:
+          allOf:
+            - $ref: "#/components/schemas/WorkspaceAgentSessionGoal"
+          nullable: true
+        revision:
+          type: integer
+          format: int64
+          minimum: 0
+        tombstoned:
+          type: boolean
+        syncStatus:
+          type: string
+          enum:
+            - pending
+            - applying
+            - synced
+            - diverged
+            - unknown
+            - failed
+        pendingOperationId:
+          type: string
+          nullable: true
+        lastEvidence:
           type: object
           additionalProperties: true
+        lastError:
+          type: string
+        observedAtUnixMs:
+          type: integer
+          format: int64
+          nullable: true
+        updatedAtUnixMs:
+          type: integer
+          format: int64
+          minimum: 0
+    WorkspaceAgentSessionGoalStateResponse:
+      type: object
+      additionalProperties: false
+      required:
+        - session
+        - state
+      properties:
+        session:
+          $ref: "#/components/schemas/WorkspaceAgentSession"
+        state:
+          $ref: "#/components/schemas/WorkspaceAgentSessionGoalState"
     CreateWorkspaceAgentSessionRequest:
       type: object
       additionalProperties: false
@@ -7542,6 +8410,7 @@ components:
         - agentSessionId
         - agentTargetId
         - initialContent
+        - clientSubmitId
       properties:
         agentSessionId:
           type: string
@@ -7551,9 +8420,11 @@ components:
           type: string
           minLength: 1
           description: Required target-first session launch authority. The daemon derives provider and providerTargetRef from the stored agent target launchRef and rejects mismatched provider values.
-        provider:
-          $ref: "#/components/schemas/WorkspaceAgentProvider"
-          description: Legacy provider hint. Optional when agentTargetId is present; when both are present, the daemon rejects mismatches with the target launchRef-derived provider. It does not authorize launches without agentTargetId.
+        clientSubmitId:
+          type: string
+          minLength: 1
+        submitDiagnostics:
+          $ref: "#/components/schemas/AgentSubmitDiagnostics"
         initialContent:
           type: array
           minItems: 1
@@ -7563,15 +8434,6 @@ components:
           type: string
           nullable: true
           description: Optional display-only text for the first turn (e.g. a folder bundle shown as one chip while initialContent carries the expanded files).
-        metadata:
-          type: object
-          additionalProperties: true
-          description: Optional client-provided diagnostic metadata for the first turn, such as submit trace ids. This metadata is not provider prompt content.
-        providerTargetRef:
-          type: object
-          nullable: true
-          additionalProperties: true
-          description: Deprecated opaque host-owned provider target reference. It is not launch authority; the daemon derives the trusted provider target ref from the stored agent target identified by agentTargetId.
         title:
           type: string
           nullable: true
@@ -7587,11 +8449,10 @@ components:
         reasoningEffort:
           type: string
           nullable: true
-        runtimeContext:
-          type: object
+        noProject:
+          type: boolean
           nullable: true
-          additionalProperties: true
-          description: Optional durable runtime context hints for session classification and provider startup.
+          description: Classifies a session that is intentionally not attached to a workspace project.
         speed:
           type: string
           nullable: true
@@ -7609,12 +8470,18 @@ components:
       additionalProperties: false
       required:
         - content
+        - clientSubmitId
       properties:
         content:
           type: array
           minItems: 1
           items:
             $ref: "#/components/schemas/AgentPromptContentBlock"
+        clientSubmitId:
+          type: string
+          minLength: 1
+        submitDiagnostics:
+          $ref: "#/components/schemas/AgentSubmitDiagnostics"
         displayPrompt:
           type: string
           nullable: true
@@ -7622,10 +8489,26 @@ components:
         guidance:
           type: boolean
           description: When true, send this input as guidance to the currently active turn instead of starting a new turn.
-        metadata:
-          type: object
-          additionalProperties: true
-          description: Optional client-provided diagnostic metadata, such as submit trace ids. This metadata is not provider prompt content.
+    AgentSubmitDiagnostics:
+      type: object
+      additionalProperties: false
+      properties:
+        submittedAtUnixMs:
+          type: integer
+          format: int64
+          minimum: 0
+        blockCount:
+          type: integer
+          minimum: 0
+        hasImage:
+          type: boolean
+        promptLength:
+          type: integer
+          minimum: 0
+        queued:
+          type: boolean
+        source:
+          type: string
     AgentPromptContentBlock:
       type: object
       additionalProperties: false
@@ -7731,6 +8614,8 @@ components:
       type: string
       enum:
         - not-git-repo
+        - invalid-patch
+        - patch-does-not-apply
     WorkspaceGitPatchSupportResponse:
       type: object
       additionalProperties: false
@@ -7882,7 +8767,12 @@ components:
     SubmitWorkspaceAgentInteractiveRequest:
       type: object
       additionalProperties: false
+      required:
+        - turnId
       properties:
+        turnId:
+          type: string
+          minLength: 1
         action:
           type: string
           nullable: true
@@ -7893,6 +8783,76 @@ components:
           type: object
           nullable: true
           additionalProperties: true
+    SubmitWorkspaceAgentPlanDecisionRequest:
+      type: object
+      additionalProperties: false
+      required:
+        - promptKind
+        - action
+        - idempotencyKey
+      properties:
+        promptKind:
+          type: string
+          enum:
+            - plan-implementation
+        action:
+          type: string
+          enum:
+            - implement
+        idempotencyKey:
+          type: string
+          minLength: 1
+    WorkspaceAgentPlanDecisionOperation:
+      type: object
+      additionalProperties: false
+      required:
+        - operationId
+        - workspaceId
+        - agentSessionId
+        - turnId
+        - requestId
+        - idempotencyKey
+        - status
+      properties:
+        operationId:
+          type: string
+          minLength: 1
+        workspaceId:
+          type: string
+          minLength: 1
+        agentSessionId:
+          type: string
+          minLength: 1
+        turnId:
+          type: string
+          minLength: 1
+        requestId:
+          type: string
+          minLength: 1
+        idempotencyKey:
+          type: string
+          minLength: 1
+        status:
+          type: string
+          enum:
+            - prepared
+            - leased
+            - completed
+            - failed
+        result:
+          type: string
+          nullable: true
+        error:
+          type: string
+          nullable: true
+    WorkspaceAgentPlanDecisionResponse:
+      type: object
+      additionalProperties: false
+      required:
+        - operation
+      properties:
+        operation:
+          $ref: "#/components/schemas/WorkspaceAgentPlanDecisionOperation"
     WorkspaceAgentSessionEventEnvelope:
       type: object
       additionalProperties: false

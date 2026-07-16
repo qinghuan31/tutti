@@ -5,9 +5,17 @@ import (
 	"fmt"
 	"strings"
 	"unicode/utf8"
+
+	"github.com/tutti-os/tutti/packages/agent/daemon/titletext"
 )
 
-const maxSessionTitleRunes = 120
+const MaxSessionTitleRunes = titletext.MaxSessionTitleRunes
+
+var ErrSessionTitleTooLong = fmt.Errorf(
+	"%w: title must be at most %d characters",
+	ErrInvalidArgument,
+	MaxSessionTitleRunes,
+)
 
 func (s *Service) UpdateTitle(ctx context.Context, workspaceID string, agentSessionID string, title string) (Session, error) {
 	workspaceID = strings.TrimSpace(workspaceID)
@@ -19,8 +27,8 @@ func (s *Service) UpdateTitle(ctx context.Context, workspaceID string, agentSess
 	if title == "" {
 		return Session{}, fmt.Errorf("%w: title is required", ErrInvalidArgument)
 	}
-	if utf8.RuneCountInString(title) > maxSessionTitleRunes {
-		return Session{}, fmt.Errorf("%w: title must be at most %d characters", ErrInvalidArgument, maxSessionTitleRunes)
+	if utf8.RuneCountInString(title) > MaxSessionTitleRunes {
+		return Session{}, ErrSessionTitleTooLong
 	}
 	updater, ok := s.SessionReader.(SessionTitleUpdater)
 	if !ok {

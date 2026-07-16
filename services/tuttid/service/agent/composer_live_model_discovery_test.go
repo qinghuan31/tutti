@@ -1,11 +1,64 @@
 package agent
 
 import (
+	"bytes"
 	"context"
-	"errors"
+	"log/slog"
+	"strings"
 	"testing"
 	"time"
+
+	"github.com/tutti-os/tutti/services/tuttid/biz/agenttarget"
 )
+
+func TestHiddenModelDiscoveryTriggeredLogIsInfoAndSanitized(t *testing.T) {
+	var output bytes.Buffer
+	previousLogger := slog.Default()
+	slog.SetDefault(slog.New(slog.NewTextHandler(&output, &slog.HandlerOptions{
+		Level: slog.LevelInfo,
+	})))
+	t.Cleanup(func() { slog.SetDefault(previousLogger) })
+
+	logHiddenModelDiscoveryTriggered("claude-code", "discovery-session-1")
+
+	logLine := output.String()
+	for _, expected := range []string{
+		"level=INFO",
+		"event=" + hiddenModelDiscoveryTriggeredEvent,
+		"provider=claude-code",
+		"agent_session_id=discovery-session-1",
+	} {
+		if !strings.Contains(logLine, expected) {
+			t.Fatalf("discovery trigger log %q does not contain %q", logLine, expected)
+		}
+	}
+	for _, sensitiveKey := range []string{"cwd=", "workspace_id=", "model=", "token="} {
+		if strings.Contains(logLine, sensitiveKey) {
+			t.Fatalf("discovery trigger log contains sensitive field %q: %q", sensitiveKey, logLine)
+		}
+	}
+}
+
+func TestClaudeModelCatalogDebugPayloadDropsSensitiveDiagnostics(t *testing.T) {
+	payload := claudeModelCatalogDebugPayload("discovery_uncached_failed", map[string]any{
+		"provider":          "claude-code",
+		"modelOptionCount":  3,
+		"cwd":               "/Users/private/repo",
+		"error":             "token sk-secret failed for account@example.com",
+		"modelOptionValues": []string{"private-model"},
+	})
+	if payload["provider"] != "claude-code" || payload["modelOptionCount"] != 3 {
+		t.Fatalf("safe fields missing: %#v", payload)
+	}
+	for _, key := range []string{"cwd", "error", "modelOptionValues"} {
+		if _, ok := payload[key]; ok {
+			t.Fatalf("sensitive field %q survived: %#v", key, payload)
+		}
+	}
+	if payload["errorClass"] != "discovery_failed" {
+		t.Fatalf("error class = %#v", payload["errorClass"])
+	}
+}
 
 // cursorModelRuntimeContext mirrors the configOptions a live cursor-agent
 // (2026.07) session advertises: parameterized model ids in {value, name}.
@@ -28,14 +81,14 @@ func cursorModelRuntimeContext() map[string]any {
 func TestLiveModelOptionsFromRunningSessionFiltersProvider(t *testing.T) {
 	t.Parallel()
 	runtime := newFakeRuntime()
-	runtime.sessions["claude-1"] = RuntimeSession{
+	runtime.sessions["claude-1"] = ProviderRuntimeSession{
 		ID: "claude-1", WorkspaceID: "ws-1", Provider: "claude-code",
 	}
-	runtime.sessions["cursor-1"] = RuntimeSession{
+	runtime.sessions["cursor-1"] = ProviderRuntimeSession{
 		ID: "cursor-1", WorkspaceID: "ws-1", Provider: "cursor",
 		RuntimeContext: cursorModelRuntimeContext(),
 	}
-	service := NewService(runtime)
+	service := newIsolatedAgentService(runtime)
 
 	options, hasSession := service.liveModelOptionsFromRunningSession("ws-1", "cursor")
 	if !hasSession || len(options) != 3 {
@@ -52,30 +105,51 @@ func TestLiveModelOptionsFromRunningSessionFiltersProvider(t *testing.T) {
 	}
 }
 
-func TestDiscoverLiveComposerModelsUncachedSkipsProbeForCursor(t *testing.T) {
-	t.Parallel()
+func TestGetComposerOptionsStartsHiddenProbeBeforeFirstCursorSession(t *testing.T) {
+	t.Setenv("TUTTI_STATE_DIR", t.TempDir())
 	runtime := newFakeRuntime()
-	service := NewService(runtime)
-
-	_, err := service.discoverLiveComposerModelsUncached(
-		context.Background(), "cursor", "ws-1", "", ComposerSettings{},
-	)
-	if !errors.Is(err, errLiveModelDiscoveryAlreadyAttempted) {
-		t.Fatalf("err = %v, want probe skipped for cursor", err)
+	runtime.startHook = func(input RuntimeStartInput, session ProviderRuntimeSession) ProviderRuntimeSession {
+		if input.Provider != "cursor" {
+			t.Fatalf("start provider = %q, want cursor", input.Provider)
+		}
+		if input.Visible == nil || *input.Visible {
+			t.Fatalf("visible = %#v, want hidden discovery session", input.Visible)
+		}
+		if input.RuntimeContext["hiddenLiveModelDiscovery"] != true {
+			t.Fatalf("runtime context = %#v, want hidden discovery marker", input.RuntimeContext)
+		}
+		session.RuntimeContext = cursorModelRuntimeContext()
+		return session
 	}
-	if len(runtime.startCalls) != 0 {
-		t.Fatalf("start calls = %#v, cursor discovery must never spawn a hidden session", runtime.startCalls)
+	service := newIsolatedAgentService(runtime)
+	service.AgentTargetStore = fakeAgentTargetStore{targets: defaultTestAgentTargets()}
+	service.LiveModelDiscoveryDeleteDelay = time.Hour
+
+	options, err := service.GetComposerOptions(context.Background(), ComposerOptionsInput{
+		AgentTargetID: agenttarget.IDLocalCursor,
+		Provider:      "cursor",
+		WorkspaceID:   "ws-1",
+		Cwd:           "/repo",
+	})
+	if err != nil {
+		t.Fatalf("GetComposerOptions: %v", err)
+	}
+	if len(runtime.startCalls) != 1 {
+		t.Fatalf("start calls = %#v, want one hidden cursor discovery session", runtime.startCalls)
+	}
+	if len(options.ModelConfig.Options) != 3 || options.ModelConfig.Options[0].Value != "default[]" {
+		t.Fatalf("model config = %#v, want live cursor model catalog", options.ModelConfig)
 	}
 }
 
 func TestGetComposerOptionsMergesLiveCursorModels(t *testing.T) {
 	t.Parallel()
 	runtime := newFakeRuntime()
-	runtime.sessions["cursor-1"] = RuntimeSession{
+	runtime.sessions["cursor-1"] = ProviderRuntimeSession{
 		ID: "cursor-1", WorkspaceID: "ws-1", Provider: "cursor",
 		RuntimeContext: cursorModelRuntimeContext(),
 	}
-	service := NewService(runtime)
+	service := newIsolatedAgentService(runtime)
 
 	options, err := service.GetComposerOptions(context.Background(), ComposerOptionsInput{
 		Provider:    "cursor",
@@ -104,19 +178,18 @@ func TestGetComposerOptionsMergesLiveCursorModels(t *testing.T) {
 
 // After a daemon restart the runtime session and the in-memory cache are both
 // gone; the model list a past cursor conversation persisted in its runtime
-// context must restore the picker instead of collapsing it to the single
-// selected model (Cursor has no probe session to re-discover with).
+// context must restore the picker without starting an unnecessary probe.
 func TestGetComposerOptionsRestoresCursorModelsFromPersistedSessions(t *testing.T) {
 	t.Parallel()
-	service := NewService(newFakeRuntime())
+	service := newIsolatedAgentService(newFakeRuntime())
 	service.SessionReader = fakeSessionReader{
 		sessions: map[string]PersistedSession{
 			"ws-1:cursor-old": {
-				ID:              "cursor-old",
-				WorkspaceID:     "ws-1",
-				Provider:        "cursor",
-				RuntimeContext:  cursorModelRuntimeContext(),
-				UpdatedAtUnixMS: 1000,
+				ID:                     "cursor-old",
+				WorkspaceID:            "ws-1",
+				Provider:               "cursor",
+				InternalRuntimeContext: cursorModelRuntimeContext(),
+				UpdatedAtUnixMS:        1000,
 			},
 		},
 	}
@@ -139,8 +212,8 @@ func TestGetComposerOptionsRestoresCursorModelsFromPersistedSessions(t *testing.
 	if options.ModelConfig.CurrentValue != "composer-2.5[fast=true]" {
 		t.Fatalf("model current value = %q", options.ModelConfig.CurrentValue)
 	}
-	if options.RuntimeContext["modelCatalogSource"] != "acp-live-discovery" {
-		t.Fatalf("modelCatalogSource = %#v, want acp-live-discovery", options.RuntimeContext["modelCatalogSource"])
+	if options.RuntimeContext["modelCatalogSource"] != runtimeLiveModelCatalogSource {
+		t.Fatalf("modelCatalogSource = %#v, want %s", options.RuntimeContext["modelCatalogSource"], runtimeLiveModelCatalogSource)
 	}
 	// The restored list must seed the cache so later fetches skip the scan.
 	if cached, ok := service.getLiveComposerModelOptions("cursor", "ws-1", "/repo", time.Now().UTC()); !ok || len(cached) != 3 {
@@ -163,7 +236,7 @@ func (r *countingSessionReader) ListSessions(workspaceID string) ([]PersistedSes
 
 func TestPersistedLiveModelFallbackMemoizesScanMisses(t *testing.T) {
 	t.Parallel()
-	service := NewService(newFakeRuntime())
+	service := newIsolatedAgentService(newFakeRuntime())
 	reader := &countingSessionReader{}
 	service.SessionReader = reader
 
@@ -183,7 +256,7 @@ func TestPersistedLiveModelFallbackMemoizesScanMisses(t *testing.T) {
 	reader.sessions = map[string]PersistedSession{
 		"ws-1:cursor-new": {
 			ID: "cursor-new", WorkspaceID: "ws-1", Provider: "cursor",
-			RuntimeContext: cursorModelRuntimeContext(), UpdatedAtUnixMS: 900,
+			InternalRuntimeContext: cursorModelRuntimeContext(), UpdatedAtUnixMS: 900,
 		},
 	}
 	options, ok := service.persistedLiveModelFallback("ws-1", "/repo", "cursor", now.Add(persistedLiveModelScanMissTTL+time.Minute))
@@ -197,7 +270,7 @@ func TestPersistedLiveModelFallbackMemoizesScanMisses(t *testing.T) {
 
 func TestLiveModelOptionsFromPersistedSessionsPicksNewestAndSkipsStale(t *testing.T) {
 	t.Parallel()
-	service := NewService(newFakeRuntime())
+	service := newIsolatedAgentService(newFakeRuntime())
 	oldContext := map[string]any{
 		"configOptions": []any{
 			map[string]any{
@@ -212,20 +285,20 @@ func TestLiveModelOptionsFromPersistedSessionsPicksNewestAndSkipsStale(t *testin
 		sessions: map[string]PersistedSession{
 			"ws-1:older": {
 				ID: "older", WorkspaceID: "ws-1", Provider: "cursor",
-				RuntimeContext: oldContext, UpdatedAtUnixMS: 500,
+				InternalRuntimeContext: oldContext, UpdatedAtUnixMS: 500,
 			},
 			"ws-1:newer": {
 				ID: "newer", WorkspaceID: "ws-1", Provider: "cursor",
-				RuntimeContext: cursorModelRuntimeContext(), UpdatedAtUnixMS: 900,
+				InternalRuntimeContext: cursorModelRuntimeContext(), UpdatedAtUnixMS: 900,
 			},
 			"ws-1:hidden": {
 				ID: "hidden", WorkspaceID: "ws-1", Provider: "cursor",
-				RuntimeContext:  map[string]any{"hiddenLiveModelDiscovery": true},
-				UpdatedAtUnixMS: 2000,
+				InternalRuntimeContext: map[string]any{"hiddenLiveModelDiscovery": true},
+				UpdatedAtUnixMS:        2000,
 			},
 			"ws-1:other-provider": {
 				ID: "other-provider", WorkspaceID: "ws-1", Provider: "claude-code",
-				RuntimeContext: oldContext, UpdatedAtUnixMS: 3000,
+				InternalRuntimeContext: oldContext, UpdatedAtUnixMS: 3000,
 			},
 		},
 	}
@@ -287,8 +360,8 @@ func TestMergeLiveModelsIntoComposerOptionsUpdatesRuntimeContext(t *testing.T) {
 	if !merged.ModelConfig.Configurable || len(merged.ModelConfig.Options) != 2 {
 		t.Fatalf("modelConfig = %#v", merged.ModelConfig)
 	}
-	if merged.RuntimeContext["modelCatalogSource"] != "acp-live-discovery" {
-		t.Fatalf("modelCatalogSource = %#v, want acp-live-discovery", merged.RuntimeContext["modelCatalogSource"])
+	if merged.RuntimeContext["modelCatalogSource"] != runtimeLiveModelCatalogSource {
+		t.Fatalf("modelCatalogSource = %#v, want %s", merged.RuntimeContext["modelCatalogSource"], runtimeLiveModelCatalogSource)
 	}
 	configOptions, ok := merged.RuntimeContext["configOptions"].([]map[string]any)
 	if !ok || len(configOptions) != 2 || configOptions[0]["id"] != "model" {

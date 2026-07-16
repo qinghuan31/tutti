@@ -1,11 +1,11 @@
 import { describe, expect, it } from "vitest";
-import type {
-  AgentHostWorkspaceAgentMessage,
-  AgentHostWorkspaceAgentSession,
-  AgentHostWorkspaceAgentSnapshot,
-  AgentHostWorkspaceAgentTimelineItem
-} from "../../../shared/contracts/dto";
-import type { WorkspaceAgentActivitySnapshot } from "../../../shared/workspaceAgentActivityTypes";
+import {
+  normalizeAgentActivitySession,
+  type AgentActivityMessage,
+  type AgentActivitySession,
+  type AgentActivitySnapshot
+} from "@tutti-os/agent-activity-core";
+import type { WorkspaceAgentActivityTimelineItem } from "../../../shared/workspaceAgentTimelineTypes";
 import {
   AGENT_GUI_RUNTIME_SESSION_ORIGIN,
   buildAgentGUIConversationDetail,
@@ -19,9 +19,6 @@ import {
   buildAgentGUITimelineRows,
   mergeAgentGUITimelineRows,
   selectAgentGUIConversationId,
-  selectPendingApproval,
-  selectPendingApprovalFromTimelineItems,
-  selectPendingInteractivePromptFromTimelineItems,
   resolveAgentGUIConversationProject,
   type AgentGUIConversationUserProject
 } from "./agentGuiConversationModel";
@@ -141,7 +138,9 @@ describe("agentGuiConversationModel", () => {
   it("builds no-project runtime sessions without parent project assignment", () => {
     const noProjectPath =
       "/Users/local/Documents/tutti/session-44444444-4444-4444-8444-444444444444";
-    const snapshot: AgentHostWorkspaceAgentSnapshot = {
+    const snapshot: AgentActivitySnapshot = {
+      workspaceId: "workspace-1",
+      sessionMessagesById: {},
       presences: [],
       sessions: [
         workspaceAgentSession({
@@ -171,27 +170,28 @@ describe("agentGuiConversationModel", () => {
   });
 
   it("keeps imported home-cwd sessions unassigned when external import marks no project", () => {
-    const snapshot: WorkspaceAgentActivitySnapshot = {
+    const snapshot: AgentActivitySnapshot = {
       workspaceId: "workspace-1",
+      sessionMessagesById: {},
       presences: [],
       sessions: [
-        {
+        normalizeAgentActivitySession({
+          ...{
+            activeTurnId: null,
+            latestTurnInteractions: [],
+            pendingInteractions: []
+          },
           workspaceId: "workspace-1",
           agentSessionId: "imported-home-session",
           provider: "codex",
           providerSessionId: "imported-home-session",
           cwd: "/Users/local",
           title: "Imported scratch",
-          status: "completed",
-          runtimeContext: {
-            imported: true,
-            externalImportNoProject: true
-          },
+          imported: true,
           createdAtUnixMs: 1,
           updatedAtUnixMs: 30
-        }
-      ],
-      sessionMessagesById: {}
+        })
+      ]
     };
 
     const summaries = buildAgentGUIConversationSummaries({
@@ -221,8 +221,10 @@ describe("agentGuiConversationModel", () => {
     ]);
   });
 
-  it("builds conversations only from runtime Codex sessions", () => {
-    const snapshot: AgentHostWorkspaceAgentSnapshot = {
+  it("treats every canonical Codex session as a runtime conversation", () => {
+    const snapshot: AgentActivitySnapshot = {
+      workspaceId: "workspace-1",
+      sessionMessagesById: {},
       presences: [],
       sessions: [
         workspaceAgentSession({
@@ -230,6 +232,7 @@ describe("agentGuiConversationModel", () => {
           provider: "codex",
           sessionOrigin: AGENT_GUI_RUNTIME_SESSION_ORIGIN,
           title: "Runtime Codex",
+          createdAtUnixMs: 1,
           updatedAtUnixMs: 30
         }),
         workspaceAgentSession({
@@ -237,6 +240,7 @@ describe("agentGuiConversationModel", () => {
           provider: "codex",
           sessionOrigin: "WORKSPACE_AGENT_SESSION_ORIGIN_UNKNOWN",
           title: "Unknown Origin Codex",
+          createdAtUnixMs: 2,
           updatedAtUnixMs: 40
         }),
         workspaceAgentSession({
@@ -253,6 +257,10 @@ describe("agentGuiConversationModel", () => {
       buildAgentGUIConversationSummaries({ snapshot, provider: "codex" })
     ).toEqual([
       expect.objectContaining({
+        id: "unknown-origin-codex",
+        title: "Unknown Origin Codex"
+      }),
+      expect.objectContaining({
         id: "runtime-codex",
         title: "Runtime Codex"
       })
@@ -260,24 +268,28 @@ describe("agentGuiConversationModel", () => {
   });
 
   it("treats core-native sessions without legacy sessionOrigin as runtime sessions", () => {
-    const snapshot: WorkspaceAgentActivitySnapshot = {
+    const snapshot: AgentActivitySnapshot = {
       workspaceId: "workspace-1",
+      sessionMessagesById: {},
       presences: [],
       sessions: [
-        {
+        normalizeAgentActivitySession({
+          ...{
+            activeTurnId: null,
+            latestTurnInteractions: [],
+            pendingInteractions: []
+          },
           workspaceId: "workspace-1",
           agentSessionId: "core-runtime-codex",
           provider: "codex",
           providerSessionId: "core-runtime-codex",
           cwd: "/workspace",
           title: "Core Runtime Codex",
-          status: "completed",
           lastEventUnixMs: 30,
           createdAtUnixMs: 1,
           updatedAtUnixMs: 30
-        }
-      ],
-      sessionMessagesById: {}
+        })
+      ]
     };
 
     expect(
@@ -291,7 +303,9 @@ describe("agentGuiConversationModel", () => {
   });
 
   it("orders runtime conversations by session sort time instead of message update time", () => {
-    const snapshot: AgentHostWorkspaceAgentSnapshot = {
+    const snapshot: AgentActivitySnapshot = {
+      workspaceId: "workspace-1",
+      sessionMessagesById: {},
       presences: [],
       sessions: [
         workspaceAgentSession({
@@ -343,7 +357,9 @@ describe("agentGuiConversationModel", () => {
   });
 
   it("indexes user project paths once when building conversation batches", () => {
-    const snapshot: AgentHostWorkspaceAgentSnapshot = {
+    const snapshot: AgentActivitySnapshot = {
+      workspaceId: "workspace-1",
+      sessionMessagesById: {},
       presences: [],
       sessions: [
         workspaceAgentSession({
@@ -449,7 +465,9 @@ describe("agentGuiConversationModel", () => {
   });
 
   it("keeps provider-specific runtime sessions separated for Nexight, Hermes, and OpenClaw Agent GUI", () => {
-    const snapshot: AgentHostWorkspaceAgentSnapshot = {
+    const snapshot: AgentActivitySnapshot = {
+      workspaceId: "workspace-1",
+      sessionMessagesById: {},
       presences: [],
       sessions: [
         workspaceAgentSession({
@@ -502,8 +520,10 @@ describe("agentGuiConversationModel", () => {
     ]);
   });
 
-  it("keeps runtime sessions whose provider can only be inferred from presence data", () => {
-    const snapshot: AgentHostWorkspaceAgentSnapshot = {
+  it("uses the canonical session provider instead of inferring it from presence", () => {
+    const snapshot: AgentActivitySnapshot = {
+      workspaceId: "workspace-1",
+      sessionMessagesById: {},
       presences: [
         {
           id: 11,
@@ -517,7 +537,7 @@ describe("agentGuiConversationModel", () => {
         workspaceAgentSession({
           agentSessionId: "presence-only-provider",
           presenceId: 11,
-          provider: undefined,
+          provider: "claude-code",
           sessionOrigin: AGENT_GUI_RUNTIME_SESSION_ORIGIN,
           title: "Recovered from presence",
           updatedAtUnixMs: 10
@@ -536,15 +556,17 @@ describe("agentGuiConversationModel", () => {
     ]);
   });
 
-  it("builds restored conversation titles from cached runtime timelines", () => {
-    const snapshot: AgentHostWorkspaceAgentSnapshot = {
+  it("uses canonical restored conversation titles with cached runtime timelines", () => {
+    const snapshot: AgentActivitySnapshot = {
+      workspaceId: "workspace-1",
+      sessionMessagesById: {},
       presences: [],
       sessions: [
         workspaceAgentSession({
           agentSessionId: "nexight-session",
           provider: "nexight",
           sessionOrigin: AGENT_GUI_RUNTIME_SESSION_ORIGIN,
-          title: "Nexight",
+          title: "AAA",
           updatedAtUnixMs: 30
         })
       ]
@@ -577,8 +599,37 @@ describe("agentGuiConversationModel", () => {
     ]);
   });
 
+  it("keeps an empty canonical session title as a localized fallback", () => {
+    const snapshot: AgentActivitySnapshot = {
+      workspaceId: "workspace-1",
+      sessionMessagesById: {},
+      presences: [],
+      sessions: [
+        workspaceAgentSession({
+          agentSessionId: "untitled-session",
+          provider: "codex",
+          sessionOrigin: AGENT_GUI_RUNTIME_SESSION_ORIGIN,
+          title: "",
+          updatedAtUnixMs: 10
+        })
+      ]
+    };
+
+    expect(
+      buildAgentGUIConversationSummaries({ snapshot, provider: "codex" })
+    ).toEqual([
+      expect.objectContaining({
+        id: "untitled-session",
+        title: "",
+        titleFallback: "untitled-conversation"
+      })
+    ]);
+  });
+
   it("keeps explicit runtime session titles when cached messages are loaded", () => {
-    const snapshot: AgentHostWorkspaceAgentSnapshot = {
+    const snapshot: AgentActivitySnapshot = {
+      workspaceId: "workspace-1",
+      sessionMessagesById: {},
       presences: [],
       sessions: [
         workspaceAgentSession({
@@ -622,7 +673,9 @@ describe("agentGuiConversationModel", () => {
   });
 
   it("keeps unknown-provider runtime sessions visible instead of dropping them", () => {
-    const snapshot: AgentHostWorkspaceAgentSnapshot = {
+    const snapshot: AgentActivitySnapshot = {
+      workspaceId: "workspace-1",
+      sessionMessagesById: {},
       presences: [],
       sessions: [
         workspaceAgentSession({
@@ -647,7 +700,9 @@ describe("agentGuiConversationModel", () => {
   });
 
   it("hides empty runtime placeholder sessions from Agent GUI conversation summaries", () => {
-    const snapshot: AgentHostWorkspaceAgentSnapshot = {
+    const snapshot: AgentActivitySnapshot = {
+      workspaceId: "workspace-1",
+      sessionMessagesById: {},
       presences: [],
       sessions: [
         workspaceAgentSession({
@@ -690,17 +745,23 @@ describe("agentGuiConversationModel", () => {
 
   it("preserves the session provider when a session has no explicit title", () => {
     expect(
-      conversationSummaryFromAgentSession({
-        workspaceId: "room-1",
-
-        agentSessionId: "session-hermes",
-        provider: "hermes",
-        providerSessionId: "provider-session-hermes",
-        cwd: "/workspace",
-        status: "ready",
-        createdAtUnixMs: 10,
-        updatedAtUnixMs: 20
-      })
+      conversationSummaryFromAgentSession(
+        normalizeAgentActivitySession({
+          ...{
+            activeTurnId: null,
+            latestTurnInteractions: [],
+            pendingInteractions: []
+          },
+          workspaceId: "room-1",
+          agentSessionId: "session-hermes",
+          provider: "hermes",
+          providerSessionId: "provider-session-hermes",
+          cwd: "/workspace",
+          title: "Current task",
+          createdAtUnixMs: 10,
+          updatedAtUnixMs: 20
+        })
+      )
     ).toEqual(
       expect.objectContaining({
         provider: "hermes",
@@ -948,7 +1009,14 @@ describe("agentGuiConversationModel", () => {
     const withRunningTurn = buildAgentGUIConversationVM({
       conversation: {
         ...conversationSource,
-        turnLifecycle: { activeTurnId: "turn-1", phase: "running" }
+        activeTurn: {
+          agentSessionId: "session-1",
+          origin: "user_prompt",
+          phase: "running",
+          startedAtUnixMs: 10,
+          turnId: "turn-1",
+          updatedAtUnixMs: 20
+        }
       },
       workspaceRoot: "/workspace",
       timelineItems: interimTimelineItems
@@ -1028,20 +1096,7 @@ describe("agentGuiConversationModel", () => {
       ]
     });
 
-    expect(conversation?.pendingApproval).toEqual(
-      expect.objectContaining({
-        requestId: "4a3caced-db7a-4a15-9e7a-4ebbf5d61616",
-        callId: "call_ySuHUYSLqzwC2DXTSZk2hNbk",
-        status: "waiting_approval",
-        options: [
-          expect.objectContaining({ id: "approved", label: "Yes, proceed" }),
-          expect.objectContaining({
-            id: "abort",
-            label: "No, and tell Codex what to do differently"
-          })
-        ]
-      })
-    );
+    expect(conversation && "pendingApproval" in conversation).toBe(false);
   });
 
   it("merges local and remote timeline rows without duplicating rows", () => {
@@ -1326,11 +1381,7 @@ describe("agentGuiConversationModel", () => {
         titleFallback: null,
         status: "working",
         cwd: "/workspace",
-        updatedAtUnixMs: 10,
-        syncState: {
-          agentSessionId: "claude-session-1",
-          status: "synced"
-        }
+        updatedAtUnixMs: 10
       },
       workspaceRoot: "/workspace"
     });
@@ -1343,7 +1394,6 @@ describe("agentGuiConversationModel", () => {
       })
     );
     expect(detail?.activity.status).toBe("working");
-    expect(detail?.session.effectiveStatus).toBe("working");
     expect(detail?.session.agentSessionId).toBe("claude-session-1");
     expect(detail?.session.providerSessionId).toBe("claude-session-1");
     expect(detail?.session.updatedAtUnixMs).toBe(10);
@@ -1378,279 +1428,34 @@ describe("agentGuiConversationModel", () => {
     expect(detail?.session.provider).toBe("claude-code");
   });
 
-  it("extracts ask-user interactive prompts from timeline items", () => {
-    expect(
-      selectPendingInteractivePromptFromTimelineItems([
-        {
-          id: 1,
-          workspaceId: "room-1",
-          agentSessionId: "session-1",
-          seq: 1,
-          eventId: "call-1",
-          actorType: "agent",
-          actorId: "codex",
-          itemType: "call.started",
-          role: "assistant",
-          callType: "interactive",
-          callId: "call-1",
-          name: "AskUserQuestion",
-          status: "waiting",
-          payload: {
-            requestId: "request-ask",
-            input: {
-              questions: [
-                {
-                  id: "scope",
-                  header: "Scope",
-                  question: "Which scope should we use?",
-                  options: [{ label: "Small", description: "Minimal change" }]
-                }
-              ]
-            }
-          },
-          occurredAtUnixMs: 10,
-          createdAtUnixMs: 10
-        }
-      ])
-    ).toEqual(
-      expect.objectContaining({
-        kind: "ask-user",
-        requestId: "request-ask"
-      })
-    );
-  });
-
-  it("treats waiting_input interactive timeline items as pending prompts", () => {
-    expect(
-      selectPendingInteractivePromptFromTimelineItems([
-        {
-          id: 1,
-          workspaceId: "room-1",
-          agentSessionId: "session-1",
-          seq: 1,
-          eventId: "call-1",
-          actorType: "agent",
-          actorId: "codex",
-          itemType: "call.started",
-          role: "assistant",
-          callType: "interactive",
-          callId: "call-1",
-          name: "ExitPlanMode",
-          status: "waiting_input",
-          payload: {
-            requestId: "request-exit",
-            input: {
-              plan: "# Plan"
-            }
-          },
-          occurredAtUnixMs: 10,
-          createdAtUnixMs: 10
-        }
-      ])
-    ).toEqual(
-      expect.objectContaining({
-        kind: "exit-plan",
-        requestId: "request-exit"
-      })
-    );
-  });
-
-  it("treats streaming AskUserQuestion timeline items as pending prompts", () => {
-    expect(
-      selectPendingInteractivePromptFromTimelineItems([
-        {
-          id: 1,
-          workspaceId: "room-1",
-          agentSessionId: "session-1",
-          seq: 1,
-          eventId: "call-1",
-          actorType: "agent",
-          actorId: "claude-code",
-          itemType: "call.started",
-          role: "assistant",
-          callType: "interactive",
-          callId: "call-1",
-          name: "AskUserQuestion",
-          status: "streaming",
-          payload: {
-            input: {
-              requestId: "request-ask",
-              questions: [
-                {
-                  header: "Color",
-                  question: "What's your favorite color?",
-                  options: [
-                    { label: "Blue", description: "The color of the sky" }
-                  ]
-                }
-              ],
-              toolName: "AskUserQuestion"
-            },
-            metadata: {
-              adapter: "claude-agent-sdk",
-              callType: "interactive",
-              interactiveKind: "ask-user",
-              toolName: "AskUserQuestion"
-            },
-            status: "streaming",
-            toolName: "AskUserQuestion"
-          },
-          occurredAtUnixMs: 10,
-          createdAtUnixMs: 10
-        }
-      ])
-    ).toEqual(
-      expect.objectContaining({
-        kind: "ask-user",
-        requestId: "request-ask"
-      })
-    );
-  });
-
-  it("treats switch-mode approval timeline items as exit-plan prompts", () => {
-    const item: AgentHostWorkspaceAgentTimelineItem = {
-      id: 1,
-      workspaceId: "room-1",
-      agentSessionId: "session-1",
-      seq: 1,
-      eventId: "call-1",
-      actorType: "agent",
-      actorId: "claude-code",
-      itemType: "call.started",
-      role: "assistant",
-      callType: "approval",
-      callId: "call-1",
-      name: "Approval",
-      status: "waiting_approval",
-      payload: {
-        input: {
-          requestId: "0",
-          toolCall: {
-            kind: "switch_mode",
-            title: "Ready to code?",
-            toolCallId: "call-1"
-          },
-          options: [
-            { kind: "allow_once", name: "Yes", optionId: "default" },
-            {
-              kind: "reject_once",
-              name: "No, keep planning",
-              optionId: "plan"
-            }
-          ]
-        }
-      },
-      occurredAtUnixMs: 10,
-      createdAtUnixMs: 10
-    };
-
-    expect(selectPendingApprovalFromTimelineItems([item])).toBeNull();
-    expect(selectPendingInteractivePromptFromTimelineItems([item])).toEqual(
-      expect.objectContaining({
-        kind: "exit-plan",
-        requestId: "0",
-        title: "Ready to code?"
-      })
-    );
-  });
-
-  it("selects the newest waiting approval from timeline item ordering instead of request id sort order", () => {
-    const approval = selectPendingApprovalFromTimelineItems([
-      {
+  it("keeps waiting transcript calls historical and non-actionable", () => {
+    const rows = buildAgentGUITimelineRows([
+      timelineItem({
         id: 1,
-        workspaceId: "room-1",
-        agentSessionId: "session-1",
+        eventId: "call-1",
         turnId: "turn-1",
-        seq: 10,
-        eventId: "approval-old",
-        actorType: "agent",
-        actorId: "codex",
-        itemType: "approval.requested",
-        callType: "approval",
-        callId: "approval-1",
-        name: "First approval",
-        status: "waiting_approval",
-        payload: {
-          input: {
-            requestId: "request-z",
-            options: [
-              { id: "allow_once", label: "Allow once", kind: "allow_once" }
-            ]
-          }
-        },
-        occurredAtUnixMs: 100,
-        createdAtUnixMs: 100
-      },
-      {
-        id: 2,
-        workspaceId: "room-1",
-        agentSessionId: "session-1",
-        turnId: "turn-2",
-        seq: 11,
-        eventId: "approval-new",
-        actorType: "agent",
-        actorId: "codex",
-        itemType: "approval.requested",
-        callType: "approval",
-        callId: "approval-2",
-        name: "Second approval",
-        status: "waiting_approval",
-        payload: {
-          input: {
-            requestId: "request-a",
-            options: [{ id: "deny", label: "Deny", kind: "deny" }]
-          }
-        },
-        occurredAtUnixMs: 200,
-        createdAtUnixMs: 200
-      }
-    ]);
-
-    expect(approval).toEqual(
-      expect.objectContaining({
-        requestId: "request-a",
-        callId: "approval-2",
-        title: "Second approval"
-      })
-    );
-  });
-
-  it("accepts durable awaiting_approval statuses when projecting pending approval chrome", () => {
-    const approval = selectPendingApprovalFromTimelineItems([
-      {
-        id: 1,
-        workspaceId: "room-1",
-        agentSessionId: "session-1",
-        turnId: "turn-1",
-        seq: 10,
-        eventId: "approval-durable",
-        actorType: "agent",
-        actorId: "codex",
-        itemType: "approval.requested",
+        itemType: "call",
         callType: "approval",
         callId: "approval-1",
         name: "Run command",
-        status: "awaiting_approval",
+        status: "waiting_approval",
         payload: {
           input: {
             requestId: "request-1",
-            options: [
-              { id: "allow_once", label: "Allow once", kind: "allow_once" }
-            ]
+            options: [{ optionId: "allow_once", label: "Allow once" }]
           }
         },
-        occurredAtUnixMs: 100,
-        createdAtUnixMs: 100
-      }
+        occurredAtUnixMs: 12
+      })
     ]);
 
-    expect(approval).toEqual(
+    expect(rows).toEqual([
       expect.objectContaining({
-        requestId: "request-1",
-        callId: "approval-1",
-        title: "Run command"
+        content: "Run command",
+        status: "waiting_approval"
       })
-    );
+    ]);
+    expect(rows[0]).not.toHaveProperty("approval");
   });
 
   it("replaces streaming message snapshots with the latest content for the same event id", () => {
@@ -1754,105 +1559,6 @@ describe("agentGuiConversationModel", () => {
     ]);
   });
 
-  it("builds pending approval rows from live timeline items", () => {
-    const rows = buildAgentGUITimelineRows([
-      timelineItem({
-        id: 1,
-        eventId: "approval-started",
-        turnId: "turn-1",
-        itemType: "call",
-        callType: "approval",
-        callId: "approval-1",
-        name: "Run command",
-        content: "Run command",
-        status: "waiting_approval",
-        payload: {
-          status: "waiting_approval",
-          input: {
-            requestId: "request-1",
-            options: [
-              {
-                optionId: "allow_once",
-                label: "Allow once",
-                kind: "allow_once"
-              }
-            ]
-          }
-        },
-        occurredAtUnixMs: 12
-      })
-    ]);
-
-    expect(selectPendingApproval(rows)).toEqual(
-      expect.objectContaining({
-        kind: "approval",
-        id: expect.any(String),
-        turnId: "turn-1",
-        requestId: "request-1",
-        callId: "approval-1",
-        title: "Run command",
-        status: "waiting_approval",
-        toolName: "Run command",
-        input: {
-          requestId: "request-1",
-          options: [
-            { optionId: "allow_once", label: "Allow once", kind: "allow_once" }
-          ]
-        },
-        options: [
-          { id: "allow_once", label: "Allow once", kind: "allow_once" }
-        ],
-        output: null,
-        occurredAtUnixMs: 12
-      })
-    );
-  });
-
-  it("clears pending approval when a resolved call snapshot arrives", () => {
-    const rows = buildAgentGUITimelineRows([
-      timelineItem({
-        id: 1,
-        eventId: "approval-started",
-        turnId: "turn-1",
-        itemType: "call",
-        callType: "approval",
-        callId: "approval-1",
-        name: "Run command",
-        content: "Run command",
-        status: "waiting_approval",
-        payload: {
-          status: "waiting_approval",
-          input: {
-            requestId: "request-1",
-            options: [{ optionId: "allow_once", label: "Allow once" }]
-          }
-        },
-        occurredAtUnixMs: 12
-      }),
-      timelineItem({
-        id: 2,
-        eventId: "approval-completed",
-        turnId: "turn-1",
-        itemType: "call",
-        callType: "approval",
-        callId: "approval-1",
-        name: "Run command",
-        content: "Run command",
-        status: "completed",
-        payload: {
-          status: "completed",
-          output: {
-            requestId: "request-1",
-            selectedId: "allow_once"
-          }
-        },
-        occurredAtUnixMs: 14
-      })
-    ]);
-
-    expect(selectPendingApproval(rows)).toBeNull();
-  });
-
   it("does not assemble assistant chunks in the renderer", () => {
     const rows = buildAgentGUITimelineRows([
       timelineItem({
@@ -1900,250 +1606,14 @@ describe("agentGuiConversationModel", () => {
 
     expect(items).toEqual([]);
   });
-
-  describe("sub-agent child-thread segregation", () => {
-    const conversation = {
-      id: "session-1",
-      provider: "codex" as const,
-      title: "Codex",
-      titleFallback: null,
-      status: "working" as const,
-      cwd: "/workspace",
-      updatedAtUnixMs: 400
-    };
-
-    const subAgentFixtures = () => ({
-      userItem: timelineItem({
-        id: 1,
-        eventId: "user-1",
-        turnId: "turn-1",
-        actorType: "user",
-        actorId: "user-1",
-        itemType: "message.user",
-        role: "user",
-        payload: { text: "Spawn a helper to inspect the repo." },
-        occurredAtUnixMs: 10
-      }),
-      spawnCardItem: timelineItem({
-        id: 2,
-        eventId: "spawn-1-started",
-        turnId: "turn-1",
-        itemType: "call.started",
-        callType: "tool",
-        callId: "spawn-1",
-        name: "spawnAgent",
-        status: "running",
-        payload: {
-          callId: "spawn-1",
-          name: "spawnAgent",
-          toolName: "Agent",
-          kind: "execute",
-          status: "running",
-          input: { task: "inspect the repository", agentName: "spawnAgent" }
-        },
-        occurredAtUnixMs: 20
-      }),
-      childTextItem: timelineItem({
-        id: 3,
-        eventId: "child-msg-1",
-        turnId: "child-turn-1",
-        itemType: "message.assistant",
-        role: "assistant",
-        payload: {
-          text: "Scanning the repository layout",
-          ownerThreadId: "child-thread-1",
-          ownerCallId: "spawn-1"
-        },
-        occurredAtUnixMs: 30
-      }),
-      childCallItem: timelineItem({
-        id: 4,
-        eventId: "child-call-1",
-        turnId: "child-turn-1",
-        itemType: "call.started",
-        callType: "tool",
-        callId: "child-call-1",
-        name: "Run command",
-        status: "running",
-        payload: {
-          callId: "child-call-1",
-          name: "Run command",
-          ownerThreadId: "child-thread-1",
-          ownerCallId: "spawn-1"
-        },
-        occurredAtUnixMs: 40
-      })
-    });
-
-    it("excludes child-thread rows of all kinds from the main conversation detail", () => {
-      const { userItem, spawnCardItem, childTextItem, childCallItem } =
-        subAgentFixtures();
-      const detail = buildAgentGUIConversationDetail({
-        timelineItems: [userItem, spawnCardItem, childTextItem, childCallItem],
-        conversation,
-        workspaceRoot: "/workspace"
-      });
-
-      const allMessages = (detail?.turns ?? []).flatMap((turn) =>
-        turn.agentMessages.map((message) => message.body)
-      );
-      const allToolCallIds = (detail?.turns ?? []).flatMap((turn) =>
-        turn.toolCalls.map((call) => call.id)
-      );
-
-      expect(allMessages).not.toContain("Scanning the repository layout");
-      expect(allToolCallIds).toEqual(["call:spawn-1"]);
-    });
-
-    it("hides child-thread rows even when no collab card has arrived yet", () => {
-      const { userItem, childTextItem, childCallItem } = subAgentFixtures();
-      const detail = buildAgentGUIConversationDetail({
-        timelineItems: [userItem, childTextItem, childCallItem],
-        conversation,
-        workspaceRoot: "/workspace"
-      });
-
-      const allBodies = (detail?.turns ?? []).flatMap((turn) => [
-        ...turn.agentMessages.map((message) => message.body),
-        ...turn.toolCalls.map((call) => call.name)
-      ]);
-
-      expect(allBodies).not.toContain("Scanning the repository layout");
-      expect(allBodies).not.toContain("Run command");
-    });
-
-    it("surfaces live sub-agent lanes on the collab spawn card", () => {
-      const { userItem, spawnCardItem, childTextItem, childCallItem } =
-        subAgentFixtures();
-      const projected = buildAgentGUIConversationVM({
-        timelineItems: [userItem, spawnCardItem, childTextItem, childCallItem],
-        conversation,
-        workspaceRoot: "/workspace"
-      });
-
-      const toolCalls = (projected?.rows ?? []).flatMap((row) =>
-        row.kind === "tool-group" ? row.calls : []
-      );
-      expect(toolCalls.map((call) => call.id)).toEqual(["call:spawn-1"]);
-
-      const spawnCall = toolCalls[0];
-      expect(spawnCall?.task?.subAgents).toEqual([
-        expect.objectContaining({
-          ownerThreadId: "child-thread-1",
-          status: "running",
-          latestActivity: "Run command",
-          latestActivityKind: "tool",
-          startedAtUnixMs: 30,
-          latestActivityAtUnixMs: 40
-        })
-      ]);
-
-      const groupEntries = (projected?.rows ?? []).flatMap((row) =>
-        row.kind === "tool-group" ? row.entries : []
-      );
-      const entryCall = groupEntries.find(
-        (entry) => entry.kind === "tool-call"
-      );
-      expect(
-        entryCall?.kind === "tool-call"
-          ? entryCall.call.task?.subAgents?.length
-          : 0
-      ).toBe(1);
-    });
-
-    it("keeps child rows hidden and lanes final after the spawn card completes", () => {
-      const { userItem, spawnCardItem, childTextItem, childCallItem } =
-        subAgentFixtures();
-      const spawnCompletedItem = timelineItem({
-        id: 5,
-        eventId: "spawn-1-completed",
-        turnId: "turn-1",
-        itemType: "call.completed",
-        callType: "tool",
-        callId: "spawn-1",
-        name: "spawnAgent",
-        status: "completed",
-        payload: {
-          callId: "spawn-1",
-          name: "spawnAgent",
-          toolName: "Agent",
-          kind: "execute",
-          status: "completed",
-          input: { task: "inspect the repository", agentName: "spawnAgent" },
-          output: {
-            result: { agent_id: "child-thread-1", status: "completed" }
-          }
-        },
-        occurredAtUnixMs: 50
-      });
-
-      const projected = buildAgentGUIConversationVM({
-        timelineItems: [
-          userItem,
-          spawnCardItem,
-          childTextItem,
-          childCallItem,
-          spawnCompletedItem
-        ],
-        conversation: { ...conversation, status: "ready" as const },
-        workspaceRoot: "/workspace"
-      });
-
-      const toolCalls = (projected?.rows ?? []).flatMap((row) =>
-        row.kind === "tool-group" ? row.calls : []
-      );
-      expect(toolCalls.map((call) => call.id)).toEqual(["call:spawn-1"]);
-      expect(toolCalls[0]?.task?.subAgents).toEqual([
-        expect.objectContaining({
-          ownerThreadId: "child-thread-1",
-          status: "completed"
-        })
-      ]);
-    });
-
-    it("does not attach lanes to unrelated tool calls", () => {
-      const { userItem, spawnCardItem, childTextItem } = subAgentFixtures();
-      const shellItem = timelineItem({
-        id: 6,
-        eventId: "shell-1-started",
-        turnId: "turn-1",
-        itemType: "call.started",
-        callType: "tool",
-        callId: "shell-1",
-        name: "Run command",
-        status: "running",
-        payload: {
-          callId: "shell-1",
-          name: "Run command",
-          toolName: "Bash",
-          input: { command: "ls" }
-        },
-        occurredAtUnixMs: 25
-      });
-
-      const projected = buildAgentGUIConversationVM({
-        timelineItems: [userItem, spawnCardItem, shellItem, childTextItem],
-        conversation,
-        workspaceRoot: "/workspace"
-      });
-
-      const toolCalls = (projected?.rows ?? []).flatMap((row) =>
-        row.kind === "tool-group" ? row.calls : []
-      );
-      const shellCall = toolCalls.find((call) => call.id === "call:shell-1");
-      const spawnCall = toolCalls.find((call) => call.id === "call:spawn-1");
-      expect(shellCall?.task?.subAgents ?? undefined).toBeUndefined();
-      expect(spawnCall?.task?.subAgents?.length).toBe(1);
-    });
-  });
 });
 
 function timelineItem(
-  overrides: Partial<AgentHostWorkspaceAgentTimelineItem> & {
+  overrides: Partial<WorkspaceAgentActivityTimelineItem> & {
     id: number;
     eventId: string;
   }
-): AgentHostWorkspaceAgentTimelineItem {
+): WorkspaceAgentActivityTimelineItem {
   return {
     workspaceId: "room-1",
     agentSessionId: "session-1",
@@ -2157,7 +1627,7 @@ function timelineItem(
 }
 
 function workspaceAgentMessage(
-  overrides: Partial<AgentHostWorkspaceAgentMessage> & {
+  overrides: Partial<AgentActivityMessage> & {
     id: number;
     eventId?: string;
     content?: string;
@@ -2165,10 +1635,9 @@ function workspaceAgentMessage(
     actorId?: string;
     itemType?: string;
   }
-): AgentHostWorkspaceAgentMessage {
+): AgentActivityMessage {
   const payload = overrides.payload ?? {};
   return {
-    id: overrides.id,
     agentSessionId: overrides.agentSessionId ?? "session-1",
     messageId:
       overrides.messageId ?? overrides.eventId ?? `message-${overrides.id}`,
@@ -2189,28 +1658,43 @@ function workspaceAgentMessage(
 }
 
 function workspaceAgentSession(
-  overrides: Partial<AgentHostWorkspaceAgentSession> & {
+  overrides: Partial<AgentActivitySession> & {
     sessionOrigin?: string;
+    lifecycleStatus?: string;
+    turnPhase?: string;
+    effectiveStatus?: string;
+    presenceId?: string | number;
+    id?: number;
     createdAtUnixMs?: number;
     updatedAtUnixMs?: number;
   }
-): AgentHostWorkspaceAgentSession {
-  return {
-    id: 1,
+): AgentActivitySession {
+  const {
+    effectiveStatus: _effectiveStatus,
+    id: _id,
+    lifecycleStatus: _lifecycleStatus,
+    presenceId: _presenceId,
+    sessionOrigin: _sessionOrigin,
+    turnPhase: _turnPhase,
+    ...canonical
+  } = overrides;
+  return normalizeAgentActivitySession({
+    ...{
+      activeTurnId: null,
+      latestTurnInteractions: [],
+      pendingInteractions: []
+    },
+    workspaceId: "workspace-1",
     agentSessionId: "session-1",
-    presenceId: 1,
     userId: "user-1",
     provider: "codex",
     providerSessionId: "provider-session-1",
-    sessionOrigin: AGENT_GUI_RUNTIME_SESSION_ORIGIN,
     cwd: "/workspace",
-    lifecycleStatus: "active",
-    turnPhase: "idle",
-    effectiveStatus: "ready",
+    title: "Codex",
     createdAtUnixMs: 1,
     updatedAtUnixMs: 1,
-    ...overrides
-  } as AgentHostWorkspaceAgentSession;
+    ...canonical
+  });
 }
 
 function userProject(id: string, path: string, label: string) {

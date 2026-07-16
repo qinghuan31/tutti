@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import type { CSSProperties } from "react";
 import type {
   TerminalNodeExternalState,
   TerminalPreviewChangeHandler,
@@ -141,6 +142,13 @@ export function TerminalSurface({
   return (
     <div
       className="workspace-terminal__surface-shell"
+      style={
+        theme.background
+          ? ({
+              "--workspace-terminal-background": theme.background
+            } as CSSProperties)
+          : undefined
+      }
       onKeyDownCapture={(event) => {
         if (!isTerminalFindShortcut(event)) {
           if (event.key === "Escape" && find.state.open) {

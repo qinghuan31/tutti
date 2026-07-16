@@ -430,6 +430,100 @@ test("load can restart after dispose without reusing the disposed lifecycle", as
   session.dispose();
 });
 
+test("late final save completion cannot replace a restarted lifecycle snapshot", async () => {
+  const lifecycleSnapshot = (lifecycle: string) =>
+    createWorkbenchSnapshotFromState(
+      {
+        nodeStack: [],
+        nodes: []
+      },
+      {
+        activeSpaceId: `space-${lifecycle}`,
+        metadata: {
+          workbenchHostInitialized: true
+        },
+        spaces: [
+          {
+            id: `space-${lifecycle}`,
+            name: lifecycle,
+            nodeIds: []
+          }
+        ]
+      }
+    );
+  let loadCount = 0;
+  let saveCount = 0;
+  let resolveFirstSave!: (
+    snapshot: ReturnType<typeof lifecycleSnapshot>
+  ) => void;
+  const firstSave = new Promise<ReturnType<typeof lifecycleSnapshot>>(
+    (resolve) => {
+      resolveFirstSave = resolve;
+    }
+  );
+  const savedSnapshots: Array<ReturnType<typeof lifecycleSnapshot>> = [];
+  const session = createWorkbenchHostSession({
+    nodes: [browserNodeDefinition],
+    snapshotRepository: {
+      async load() {
+        loadCount += 1;
+        return lifecycleSnapshot(loadCount === 1 ? "first" : "second");
+      },
+      save(_workspaceId, snapshot) {
+        saveCount += 1;
+        savedSnapshots.push(snapshot);
+        if (saveCount === 1) {
+          return firstSave;
+        }
+        return snapshot;
+      }
+    },
+    workspaceId: "workspace-1"
+  });
+
+  await session.load();
+  await session.launchNode({ reason: "dock", typeId: "browser" });
+  session.dispose();
+  assert.equal(saveCount, 1);
+
+  await session.load();
+  const firstSavedSnapshot = savedSnapshots[0];
+  assert.ok(firstSavedSnapshot);
+  resolveFirstSave(firstSavedSnapshot);
+  await Promise.resolve();
+
+  await session.launchNode({ reason: "dock", typeId: "browser" });
+  session.dispose();
+
+  const secondSavedSnapshot = savedSnapshots[1];
+  assert.ok(secondSavedSnapshot);
+  assert.equal(secondSavedSnapshot.activeSpaceId, "space-second");
+});
+
+test("a synchronous repository save failure does not escape session disposal", async () => {
+  const session = createWorkbenchHostSession({
+    nodes: [browserNodeDefinition],
+    snapshotRepository: {
+      async load() {
+        return createWorkbenchSnapshotFromState(
+          { nodeStack: [], nodes: [] },
+          { metadata: { workbenchHostInitialized: true } }
+        );
+      },
+      save() {
+        throw new Error("synchronous save failure");
+      }
+    },
+    workspaceId: "workspace-1"
+  });
+
+  await session.load();
+  await session.launchNode({ reason: "dock", typeId: "browser" });
+
+  assert.doesNotThrow(() => session.dispose());
+  await Promise.resolve();
+});
+
 test("queued launch from a disposed lifecycle does not run in a restarted load", async () => {
   let resolveFirstLoad!: (
     snapshot: ReturnType<typeof createWorkbenchSnapshotFromState>
@@ -1184,73 +1278,6 @@ test("collectWindowCloseEffects gathers effect contributors from live nodes", as
   session.dispose();
 });
 
-test("external snapshot node source is written as snapshot node state", async () => {
-  let savedSnapshot = createWorkbenchSnapshotFromState({
-    nodeStack: [],
-    nodes: []
-  });
-  let nodeState: unknown = null;
-  const listeners = new Set<() => void>();
-  const session = createWorkbenchHostSession({
-    externalStateSource: {
-      getNodeState() {
-        return null;
-      },
-      getSnapshotNodeState() {
-        return nodeState;
-      },
-      getWorkspaceState() {
-        return null;
-      },
-      subscribe(listener) {
-        listeners.add(listener);
-        return () => {
-          listeners.delete(listener);
-        };
-      }
-    },
-    nodes: [filesNodeDefinition],
-    snapshotRepository: {
-      async load() {
-        return createWorkbenchSnapshotFromState({
-          nodeStack: [],
-          nodes: []
-        });
-      },
-      async save(_workspaceId, snapshot) {
-        savedSnapshot = snapshot;
-        return snapshot;
-      }
-    },
-    workspaceId: "workspace-1"
-  });
-
-  await session.load();
-  nodeState = {
-    issueSearchQuery: "render",
-    taskListCollapsed: true
-  };
-  for (const listener of listeners) {
-    listener();
-  }
-
-  await new Promise((resolve) => globalThis.setTimeout(resolve, 450));
-
-  assert.deepEqual(
-    (
-      savedSnapshot.nodes[0]?.data as
-        | { snapshotNodeState?: unknown }
-        | undefined
-    )?.snapshotNodeState,
-    {
-      issueSearchQuery: "render",
-      taskListCollapsed: true
-    }
-  );
-
-  session.dispose();
-});
-
 test("activateNode delivers transient activation to an existing node", async () => {
   const session = createWorkbenchHostSession({
     nodes: [filesNodeDefinition],
@@ -1378,49 +1405,6 @@ test("activateNode can target singleton nodes by type id", async () => {
     sequence: 1,
     type: "refresh"
   });
-
-  session.dispose();
-});
-
-test("activateNode strips activation from persisted snapshots", async () => {
-  let savedSnapshot = createWorkbenchSnapshotFromState({
-    nodeStack: [],
-    nodes: []
-  });
-  const session = createWorkbenchHostSession({
-    nodes: [filesNodeDefinition],
-    snapshotRepository: {
-      async load() {
-        return createWorkbenchSnapshotFromState({
-          nodeStack: [],
-          nodes: []
-        });
-      },
-      async save(_workspaceId, snapshot) {
-        savedSnapshot = snapshot;
-        return snapshot;
-      }
-    },
-    workspaceId: "workspace-1"
-  });
-
-  await session.load();
-  session.activateNode(
-    { nodeId: "workspace-files" },
-    {
-      payload: {
-        path: "/workspace/demo.txt"
-      },
-      type: "reveal-file"
-    }
-  );
-
-  await new Promise((resolve) => globalThis.setTimeout(resolve, 450));
-
-  assert.equal(
-    "activation" in ((savedSnapshot.nodes[0]?.data as object) ?? {}),
-    false
-  );
 
   session.dispose();
 });

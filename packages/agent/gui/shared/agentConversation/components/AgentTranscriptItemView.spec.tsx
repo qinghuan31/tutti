@@ -10,6 +10,7 @@ import { getAgentEnvPanelStore } from "../../agentEnv/agentEnvPanelStore";
 import type { AgentActivityRuntime } from "../../../agentActivityRuntime";
 import { AgentMessageBlock } from "./AgentMessageBlock";
 import { AgentTranscriptItemView } from "./AgentTranscriptItemView";
+import type { AgentGeneratedImageRowVM } from "../contracts/agentGeneratedImageRowVM";
 import type { AgentMessageContentVM } from "../contracts/agentMessageRowVM";
 import type { AgentMessageRowVM } from "../contracts/agentMessageRowVM";
 import type { AgentToolCallVM } from "../contracts/agentToolCallVM";
@@ -72,6 +73,37 @@ vi.mock("./AgentToolGroupRow", () => ({
 }));
 
 describe("AgentTranscriptItemView render stability", () => {
+  it("renders a generated image artifact independently from tool-call expansion", () => {
+    const row: AgentGeneratedImageRowVM = {
+      kind: "generated-image",
+      id: "generated-image:call:image-1",
+      turnId: "turn-1",
+      sourceCallId: "call:image-1",
+      uri: "data:image/png;base64,aW1hZ2U=",
+      mimeType: "image/png",
+      prompt: "A friendly corgi",
+      occurredAtUnixMs: 1
+    };
+
+    render(
+      <AgentTranscriptItemView
+        workspaceRoot="/workspace/demo"
+        basePath="/workspace/demo"
+        row={row}
+        labels={transcriptLabels()}
+      />
+    );
+
+    expect(
+      screen.getByTestId("agent-generated-image-artifact")
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("img", {
+        name: "agentHost.agentTool.details.imagePreviewAlt"
+      })
+    ).toHaveAttribute("src", row.uri);
+  });
+
   it("keeps tool link handlers stable when an unchanged tool row is reprojected", () => {
     const onLinkAction = vi.fn();
     const labels = transcriptLabels();
@@ -127,6 +159,36 @@ describe("AgentTranscriptItemView render stability", () => {
     expect(mockState.markdownOnLinkClicks[1]).toBe(
       mockState.markdownOnLinkClicks[0]
     );
+  });
+
+  it("routes a clicked app artifact reference from a sent user message to the owning app", () => {
+    const onLinkAction = vi.fn();
+    render(
+      <AgentMessageBlock
+        workspaceRoot="/workspace/demo"
+        basePath="/workspace/demo"
+        row={userMessageRow({
+          kind: "message-content",
+          id: "user-app-reference-1",
+          turnId: "turn-1",
+          body: "[@AI Canvas](mention://workspace-reference/ai-canvas?source=app&workspaceId=workspace-1)",
+          occurredAtUnixMs: 1
+        })}
+        onLinkAction={onLinkAction}
+        thinkingLabel="Thought process"
+      />
+    );
+
+    mockState.markdownOnLinkClicks.at(-1)?.(
+      "mention://workspace-reference/ai-canvas?source=app&workspaceId=workspace-1"
+    );
+
+    expect(onLinkAction).toHaveBeenCalledWith({
+      type: "open-workspace-app",
+      workspaceId: "workspace-1",
+      appId: "ai-canvas",
+      source: "agent-markdown"
+    });
   });
 
   it("enables streaming markdown only for working assistant messages", () => {
@@ -318,6 +380,97 @@ describe("AgentTranscriptItemView render stability", () => {
     delete (window as { agentActivityRuntime?: unknown }).agentActivityRuntime;
   });
 
+  it("keeps a loaded optimistic image mounted when its durable attachment arrives", async () => {
+    const readPromptAsset = vi.fn(async () => ({
+      attachmentId: "prompt-asset-1",
+      data: "b3B0aW1pc3RpYw==",
+      mimeType: "image/png" as const,
+      name: "screen.png",
+      path: "/prompt-assets/screen.png"
+    }));
+    const readSessionAttachment = vi.fn(async () => ({
+      attachmentId: "attachment-1",
+      data: "ZHVyYWJsZQ==",
+      mimeType: "image/png" as const,
+      name: "screen.png"
+    }));
+    Object.defineProperty(window, "agentActivityRuntime", {
+      configurable: true,
+      value: {
+        readPromptAsset,
+        readSessionAttachment
+      } as Partial<AgentActivityRuntime>
+    });
+    const stableImageId = "client-submit:user:submit-1:image:0";
+    const optimisticMessage: AgentMessageContentVM = {
+      kind: "message-content",
+      id: "client-submit:user:submit-1:images:0",
+      turnId: "turn-1",
+      body: "",
+      presentationKind: "content",
+      contentKind: "image-grid",
+      images: [
+        {
+          id: stableImageId,
+          workspaceId: "room-1",
+          agentSessionId: "session-1",
+          mimeType: "image/png",
+          name: "screen.png",
+          path: "/prompt-assets/screen.png"
+        }
+      ],
+      occurredAtUnixMs: 1
+    };
+    const durableMessage: AgentMessageContentVM = {
+      ...optimisticMessage,
+      images: [
+        {
+          id: stableImageId,
+          workspaceId: "room-1",
+          agentSessionId: "session-1",
+          attachmentId: "attachment-1",
+          mimeType: "image/png",
+          name: "screen.png"
+        }
+      ],
+      occurredAtUnixMs: 2
+    };
+    const { rerender } = render(
+      <AgentMessageBlock
+        workspaceRoot="/workspace/demo"
+        basePath="/workspace/demo"
+        row={userMessageRow(optimisticMessage)}
+        thinkingLabel="Thought process"
+      />
+    );
+
+    const optimisticImage = await screen.findByRole("img", {
+      name: "screen.png"
+    });
+    expect(optimisticImage).toHaveAttribute(
+      "src",
+      "data:image/png;base64,b3B0aW1pc3RpYw=="
+    );
+
+    rerender(
+      <AgentMessageBlock
+        workspaceRoot="/workspace/demo"
+        basePath="/workspace/demo"
+        row={userMessageRow(durableMessage)}
+        thinkingLabel="Thought process"
+      />
+    );
+
+    expect(screen.getByRole("img", { name: "screen.png" })).toBe(
+      optimisticImage
+    );
+    expect(screen.queryByTestId("agent-gui-message-image-loading")).toBeNull();
+    expect(readPromptAsset).toHaveBeenCalledTimes(1);
+    expect(readSessionAttachment).not.toHaveBeenCalled();
+
+    delete (window as { agentActivityRuntime?: unknown }).agentActivityRuntime;
+  });
+
   it("renders a user prompt image directly from its remote HTTPS URL", () => {
     const readPromptAsset = vi.fn();
     Object.defineProperty(window, "agentActivityRuntime", {
@@ -504,6 +657,43 @@ describe("AgentTranscriptItemView render stability", () => {
     ).toBeNull();
   });
 
+  it.each([
+    [
+      "plan_implementation_pending_confirmation",
+      "agentHost.agentGui.systemNoticePlanImplementationPendingConfirmation"
+    ],
+    [
+      "plan_implementation_completed",
+      "agentHost.agentGui.systemNoticePlanImplementationCompleted"
+    ]
+  ])(
+    "renders semantic plan notice %s without transport text",
+    (noticeKind, key) => {
+      const { getByText } = render(
+        <AgentMessageBlock
+          workspaceRoot="/workspace/demo"
+          basePath="/workspace/demo"
+          row={assistantMessageRow({
+            kind: "message-content",
+            id: `assistant-${noticeKind}`,
+            turnId: "turn-1",
+            body: "",
+            occurredAtUnixMs: 1,
+            systemNotice: {
+              noticeKind,
+              severity: "info",
+              title: null,
+              detail: null,
+              retryable: false
+            }
+          })}
+          thinkingLabel="Thought process"
+        />
+      );
+      expect(getByText(key)).toBeTruthy();
+    }
+  );
+
   it("renders transport fallback notices with the localized label", () => {
     const { getByRole, getByText } = render(
       <AgentMessageBlock
@@ -578,6 +768,8 @@ describe("AgentTranscriptItemView render stability", () => {
           systemNotice: {
             noticeKind: "system_notice",
             severity: null,
+            command: "compact",
+            commandStatus: "completed",
             title: "Context compacted.",
             detail: "",
             retryable: null
@@ -614,6 +806,8 @@ describe("AgentTranscriptItemView render stability", () => {
             systemNotice: {
               noticeKind: "system_notice",
               severity: null,
+              command: "compact",
+              commandStatus: "running",
               title: "Compacting context.",
               detail: "",
               retryable: null
@@ -639,7 +833,7 @@ describe("AgentTranscriptItemView render stability", () => {
     }
   });
 
-  it("renders interrupted compaction notices as a static divider", () => {
+  it("renders interrupted compaction notices with a wrapping detail below the divider", () => {
     const { getByRole, getByText } = render(
       <AgentMessageBlock
         workspaceRoot="/workspace/demo"
@@ -653,8 +847,10 @@ describe("AgentTranscriptItemView render stability", () => {
           systemNotice: {
             noticeKind: "system_notice",
             severity: null,
-            title: "Context compaction interrupted.",
-            detail: "",
+            command: "compact",
+            commandStatus: "failed",
+            title: "Provider compact failure",
+            detail: "Not enough messages to compact.",
             retryable: null
           }
         })}
@@ -664,9 +860,46 @@ describe("AgentTranscriptItemView render stability", () => {
 
     const notice = getByRole("status");
     expect(notice.querySelectorAll('span[aria-hidden="true"]')).toHaveLength(2);
+    expect(notice.textContent).toContain(
+      "agentHost.agentGui.contextCompactionInterrupted"
+    );
+    expect(notice.textContent).toContain("Not enough messages to compact.");
+    const detail = getByText("Not enough messages to compact.");
+    expect(detail.className).toContain("break-words");
+    expect(detail.className).not.toContain("whitespace-nowrap");
+  });
+
+  it("does not let a legacy title override canonical compact status", () => {
+    const { getByText, queryByText } = render(
+      <AgentMessageBlock
+        workspaceRoot="/workspace/demo"
+        basePath="/workspace/demo"
+        row={assistantMessageRow({
+          kind: "message-content",
+          id: "assistant-notice-conflicting-compaction",
+          turnId: "turn-1",
+          body: "Context compacted.",
+          occurredAtUnixMs: 1,
+          systemNotice: {
+            noticeKind: "system_notice",
+            severity: null,
+            command: "compact",
+            commandStatus: "failed",
+            title: "Context compacted.",
+            detail: "",
+            retryable: null
+          }
+        })}
+        thinkingLabel="Thought process"
+      />
+    );
+
     expect(
       getByText("agentHost.agentGui.contextCompactionInterrupted")
     ).toBeTruthy();
+    expect(
+      queryByText("agentHost.agentGui.contextCompactionCompleted")
+    ).toBeNull();
   });
 
   it("renders plan-tagged assistant messages as a dedicated plan card", () => {
@@ -705,8 +938,15 @@ function transcriptLabels() {
   };
 }
 
+type TestAgentMessageContentVM = Omit<
+  AgentMessageContentVM,
+  "presentationKind"
+> & {
+  presentationKind?: AgentMessageContentVM["presentationKind"];
+};
+
 function assistantMessageRow(
-  message: AgentMessageContentVM = {
+  message: TestAgentMessageContentVM = {
     kind: "message-content",
     id: "assistant-1",
     turnId: "turn-1",
@@ -719,30 +959,43 @@ function assistantMessageRow(
     id: "message-row-1",
     turnId: "turn-1",
     speaker: "assistant",
-    messages: [message],
+    messages: [withDefaultPresentationKind(message)],
     thinking: [],
     occurredAtUnixMs: 1
   };
 }
 
-function userMessageRow(message?: AgentMessageContentVM): AgentMessageRowVM {
+function userMessageRow(
+  message?: TestAgentMessageContentVM
+): AgentMessageRowVM {
   return {
     kind: "message",
     id: "message-row-user-1",
     turnId: "turn-1",
     speaker: "user",
     messages: [
-      message ?? {
-        kind: "message-content",
-        id: "user-1",
-        turnId: "turn-1",
-        body: "User asks for a fix",
-        copyText: "User asks for a fix",
-        occurredAtUnixMs: 1
-      }
+      withDefaultPresentationKind(
+        message ?? {
+          kind: "message-content",
+          id: "user-1",
+          turnId: "turn-1",
+          body: "User asks for a fix",
+          copyText: "User asks for a fix",
+          occurredAtUnixMs: 1
+        }
+      )
     ],
     thinking: [],
     occurredAtUnixMs: 1
+  };
+}
+
+function withDefaultPresentationKind(
+  message: TestAgentMessageContentVM
+): AgentMessageContentVM {
+  return {
+    ...message,
+    presentationKind: message.presentationKind ?? "content"
   };
 }
 
@@ -766,6 +1019,7 @@ function claudeCodeAuthErrorMessage(): AgentMessageContentVM {
     id: "assistant-auth-1",
     turnId: "turn-1",
     body: "Claude Code needs authentication.",
+    presentationKind: "content",
     occurredAtUnixMs: 1,
     visibleError: {
       code: "auth_required",

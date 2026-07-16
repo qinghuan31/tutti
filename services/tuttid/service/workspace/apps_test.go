@@ -1534,6 +1534,7 @@ func TestAppCenterServiceStartEnabledRefreshesPreferredCatalogChannel(t *testing
 	fetcher := newBlockingArtifactFetcher()
 	close(fetcher.release)
 	refreshedURLs := make([]string, 0, 1)
+	refreshedHosts := make([]builtinapps.CatalogHost, 0, 1)
 	service := AppCenterService{
 		Store:           store,
 		WorkspaceStore:  &catalogStoreStub{getWorkspace: workspacebiz.Summary{ID: "ws-1", Name: "Workspace"}},
@@ -1545,8 +1546,11 @@ func TestAppCenterServiceStartEnabledRefreshesPreferredCatalogChannel(t *testing
 				AppCatalogChannel: "staging",
 			},
 		},
-		RemoteCatalogRefresher: func(_ context.Context, catalogURL string) (builtinapps.CatalogSnapshot, error) {
+		HostTuttiVersion:      "0.12.0",
+		HostTuttiCapabilities: []string{"managed-model-cli-v1"},
+		RemoteCatalogRefresher: func(_ context.Context, catalogURL string, host builtinapps.CatalogHost) (builtinapps.CatalogSnapshot, error) {
 			refreshedURLs = append(refreshedURLs, catalogURL)
+			refreshedHosts = append(refreshedHosts, host)
 			return builtinapps.CatalogSnapshot{
 				Apps: []builtinapps.App{
 					{
@@ -1580,6 +1584,9 @@ func TestAppCenterServiceStartEnabledRefreshesPreferredCatalogChannel(t *testing
 	}
 	if len(refreshedURLs) != 1 || refreshedURLs[0] != builtinapps.StagingRemoteCatalogURL {
 		t.Fatalf("refreshed catalog URLs = %#v, want %#v", refreshedURLs, []string{builtinapps.StagingRemoteCatalogURL})
+	}
+	if len(refreshedHosts) != 1 || refreshedHosts[0].TuttiVersion != "0.12.0" || len(refreshedHosts[0].Capabilities) != 1 || refreshedHosts[0].Capabilities[0] != "managed-model-cli-v1" {
+		t.Fatalf("refreshed catalog hosts = %#v", refreshedHosts)
 	}
 	app := findWorkspaceAppForTest(apps, "large-builtin")
 	if app == nil || !app.UpdateAvailable || app.AvailableVersion == nil || *app.AvailableVersion != "1.1.0" {
@@ -1642,7 +1649,7 @@ func TestAppCenterServiceStartEnabledFallsBackToCachedCatalogWhenRefreshFails(t 
 		WorkspaceStore: &catalogStoreStub{getWorkspace: workspacebiz.Summary{ID: "ws-1", Name: "Workspace"}},
 		Runner:         runner,
 		StateDir:       t.TempDir(),
-		RemoteCatalogRefresher: func(context.Context, string) (builtinapps.CatalogSnapshot, error) {
+		RemoteCatalogRefresher: func(context.Context, string, builtinapps.CatalogHost) (builtinapps.CatalogSnapshot, error) {
 			refreshCalls += 1
 			return builtinapps.CatalogSnapshot{}, errors.New("catalog unavailable")
 		},

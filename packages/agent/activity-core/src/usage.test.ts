@@ -4,11 +4,11 @@ import { resolveAgentActivityUsage } from "./usage.ts";
 
 test("resolves context window usage with percent", () => {
   const usage = resolveAgentActivityUsage({
-    sessionRuntimeContext: {
-      usage: {
-        contextWindow: { usedTokens: 50_000, totalTokens: 200_000 },
-        quotas: [{ quotaType: "session", percentRemaining: 75 }]
-      }
+    sessionUsage: {
+      contextWindow: { usedTokens: 50_000, totalTokens: 200_000 },
+      quotas: [
+        { quotaType: "session", percentRemaining: 75, resetsAtUnixMs: null }
+      ]
     }
   });
   assert.deepEqual(usage, {
@@ -23,8 +23,9 @@ test("returns null without usable context window", () => {
   assert.equal(resolveAgentActivityUsage({}), null);
   assert.equal(
     resolveAgentActivityUsage({
-      sessionRuntimeContext: {
-        usage: { contextWindow: { usedTokens: 1, totalTokens: 0 } }
+      sessionUsage: {
+        contextWindow: { usedTokens: 1, totalTokens: 0 },
+        quotas: []
       }
     }),
     null
@@ -33,10 +34,36 @@ test("returns null without usable context window", () => {
 
 test("quotas-only usage still resolves with null percent", () => {
   const usage = resolveAgentActivityUsage({
-    sessionRuntimeContext: {
-      usage: { quotas: [{ quotaType: "weekly", percentRemaining: 90 }] }
+    sessionUsage: {
+      contextWindow: null,
+      quotas: [
+        { quotaType: "weekly", percentRemaining: 90, resetsAtUnixMs: null }
+      ]
     }
   });
   assert.equal(usage?.percentUsed, null);
   assert.equal(usage?.quotas.length, 1);
+});
+
+test("normalizes quota data at the activity boundary", () => {
+  const usage = resolveAgentActivityUsage({
+    sessionUsage: {
+      contextWindow: null,
+      quotas: [
+        {
+          quotaType: " session ",
+          percentRemaining: 42,
+          resetsAtUnixMs: 1000
+        },
+        { quotaType: "unknown", percentRemaining: 90, resetsAtUnixMs: null }
+      ]
+    }
+  });
+  assert.deepEqual(usage?.quotas, [
+    {
+      quotaType: "session",
+      percentRemaining: 42,
+      resetsAtUnixMs: 1000
+    }
+  ]);
 });

@@ -29,6 +29,8 @@ interface WorkspaceFileManagerPaneProps {
     requestID: string;
   } | null;
   restoredState?: WorkspaceFileManagerPersistedState | null;
+  showInternalOpenWithActions?: boolean;
+  showPreviewPanel?: boolean;
   workspaceID: string;
 }
 
@@ -36,6 +38,8 @@ export function WorkspaceFileManagerPane({
   className,
   revealIntent = null,
   restoredState = null,
+  showInternalOpenWithActions = true,
+  showPreviewPanel = true,
   workspaceID
 }: WorkspaceFileManagerPaneProps) {
   const { i18n: appI18n, locale } = useTranslation();
@@ -169,6 +173,8 @@ export function WorkspaceFileManagerPane({
       resolveEntryIconUrl={resolveEntryIconUrl}
       renderExternalLocationContent={renderExternalLocationContent}
       session={session}
+      showInternalOpenWithActions={showInternalOpenWithActions}
+      showPreviewPanel={showPreviewPanel}
       surface="embedded"
     />
   );
@@ -203,6 +209,7 @@ const workspaceFileReferenceLocaleKeyByPickerKey: Record<string, string> = {
   "referencePicker.loadMoreGroups":
     "agentHost.agentGui.referencePicker.loadMoreGroups",
   "referencePicker.loading": "agentHost.agentGui.referencePicker.loading",
+  "referencePicker.loadError": "agentHost.agentGui.referencePicker.loadError",
   "referencePicker.previewBinary":
     "agentHost.agentGui.referencePicker.previewBinary",
   "referencePicker.previewDecodeFailed":

@@ -1,7 +1,6 @@
 import {
-  useEffect,
+  Component,
   useLayoutEffect,
-  useMemo,
   useRef,
   useState,
   type CSSProperties,
@@ -13,15 +12,23 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
-  DropdownMenuTrigger
+  DropdownMenuTrigger,
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+  useTextOverflow
 } from "@tutti-os/ui-system";
+import { extractPlainTextFromContent } from "@tutti-os/ui-rich-text";
 import {
   AgentMessageMarkdown,
   type AgentMessageMarkdownWorkspaceAppIcon
 } from "../../shared/AgentMessageMarkdown";
-import { useOptionalAgentActivityRuntime } from "../../agentActivityRuntime";
 import type { AgentPromptContentBlock } from "../../shared/contracts/dto/agentSession";
-import type { AgentGUIQueuedPromptVM } from "./model/agentGuiNodeTypes";
+import type {
+  AgentGUIQueueStatus,
+  AgentGUIQueuedPromptVM
+} from "./model/agentGuiNodeTypes";
 import {
   agentPromptContentDisplayText,
   agentPromptContentImageBlocks
@@ -34,9 +41,20 @@ import {
   CanvasNodeTrashLinedIcon
 } from "../shared/canvasNodeChromeIcons";
 import styles from "./AgentGUINode.styles";
+import {
+  QueuedPromptImageLoadOwner,
+  queuedPromptImageHasSafeRemoteUrl,
+  queuedPromptImageLoadRequestIdentity
+} from "./queuedPromptImageLoadOwner";
+import {
+  useOptionalAgentActivityRuntime,
+  type AgentActivityRuntime
+} from "../../agentActivityRuntime";
 
 const EMPTY_WORKSPACE_APP_ICONS: readonly AgentMessageMarkdownWorkspaceAppIcon[] =
   [];
+const QUEUED_PROMPT_OVERFLOW_DESCENDANTS =
+  '[data-workspace-agent-markdown="true"], .tsh-agent-object-token__main';
 
 type QueuedPromptImageBlock = AgentPromptContentBlock & {
   type: "image";
@@ -48,10 +66,12 @@ type QueuedPromptImageBlock = AgentPromptContentBlock & {
 };
 
 interface AgentQueuedPromptPanelProps {
+  queueStatus?: AgentGUIQueueStatus;
   queuedPrompts: readonly AgentGUIQueuedPromptVM[];
   drainingQueuedPromptId: string | null;
   labels: {
     queuedLabel: string;
+    queuePausedByUserLabel: string;
     sendQueuedPromptNext: string;
     editQueuedPrompt: string;
     deleteQueuedPrompt: string;
@@ -83,21 +103,10 @@ function queuedPromptImageDataUrl(
   return data.startsWith("data:") ? data : `data:${mimeType};base64,${data}`;
 }
 
-function queuedPromptImageHasSafeRemoteUrl(
+function queuedPromptImageImmediateSource(
   image: QueuedPromptImageBlock
-): boolean {
-  const value = image.url?.trim() ?? "";
-  try {
-    const url = new URL(value);
-    return (
-      url.protocol === "https:" &&
-      Boolean(url.hostname) &&
-      !url.username &&
-      !url.password
-    );
-  } catch {
-    return false;
-  }
+): string | null {
+  return queuedPromptImageDataUrl(image);
 }
 
 function queuedPromptImageKey(
@@ -110,88 +119,124 @@ function queuedPromptImageKey(
     index,
     image.attachmentId?.trim() ?? "",
     image.path?.trim() ?? "",
+    image.url?.trim() ?? "",
+    image.data?.trim() ?? "",
     image.name?.trim() ?? "",
     image.mimeType
   ].join(":");
 }
 
-function useQueuedPromptImageSources(input: {
+interface AgentQueuedPromptImageProps {
   agentSessionId?: string | null;
-  images: readonly {
-    image: QueuedPromptImageBlock;
-    key: string;
-  }[];
+  image: QueuedPromptImageBlock;
+  imageKey: string;
+  runtime: AgentActivityRuntime | null;
   workspaceId?: string | null;
-}): ReadonlyMap<string, string> {
-  const runtime = useOptionalAgentActivityRuntime();
-  const [sources, setSources] = useState<Map<string, string>>(() => new Map());
-  const workspaceId = input.workspaceId?.trim() ?? "";
-  const agentSessionId = input.agentSessionId?.trim() ?? "";
-  const missingImages = useMemo(
-    () =>
-      input.images.filter(({ image, key }) => {
-        const attachmentId = image.attachmentId?.trim() ?? "";
-        const path = image.path?.trim() ?? "";
-        return (
-          !queuedPromptImageDataUrl(image) &&
-          !queuedPromptImageHasSafeRemoteUrl(image) &&
-          !sources.has(key) &&
-          Boolean(attachmentId || path) &&
-          Boolean(workspaceId)
-        );
-      }),
-    [input.images, sources, workspaceId]
-  );
+}
 
-  useEffect(() => {
+interface AgentQueuedPromptImageState {
+  requestIdentity: string;
+  source: string | null;
+}
+
+class AgentQueuedPromptImage extends Component<
+  AgentQueuedPromptImageProps,
+  AgentQueuedPromptImageState
+> {
+  private loadOwner: QueuedPromptImageLoadOwner | null = null;
+
+  state: AgentQueuedPromptImageState = {
+    requestIdentity: "",
+    source: null
+  };
+
+  componentDidMount(): void {
+    this.syncLoadOwner();
+  }
+
+  componentDidUpdate(previousProps: AgentQueuedPromptImageProps): void {
     if (
-      (!runtime?.readSessionAttachment && !runtime?.readPromptAsset) ||
-      missingImages.length === 0
+      previousProps.runtime !== this.props.runtime ||
+      this.requestIdentity(previousProps) !== this.requestIdentity(this.props)
     ) {
+      this.syncLoadOwner();
+    }
+  }
+
+  componentWillUnmount(): void {
+    this.loadOwner?.dispose();
+    this.loadOwner = null;
+  }
+
+  render(): React.JSX.Element | null {
+    const source =
+      queuedPromptImageImmediateSource(this.props.image) ??
+      (this.state.requestIdentity === this.requestIdentity(this.props)
+        ? this.state.source
+        : null);
+
+    return source ? (
+      <ZoomableImage
+        alt={this.props.image.name?.trim() || ""}
+        className={styles.composerQueuedPromptImage}
+        draggable={false}
+        src={source}
+        wrapElement="span"
+      />
+    ) : null;
+  }
+
+  private requestIdentity(props: AgentQueuedPromptImageProps): string {
+    return queuedPromptImageLoadRequestIdentity({
+      agentSessionId: props.agentSessionId?.trim() ?? "",
+      attachmentId: props.image.attachmentId?.trim() ?? "",
+      imageKey: props.imageKey,
+      mimeType: props.image.mimeType,
+      name: props.image.name?.trim() ?? "",
+      path: props.image.path?.trim() ?? "",
+      remoteUrl: props.image.url?.trim() ?? "",
+      workspaceId: props.workspaceId?.trim() ?? ""
+    });
+  }
+
+  private syncLoadOwner(): void {
+    this.loadOwner?.dispose();
+    this.loadOwner = null;
+    const { image, runtime } = this.props;
+    const workspaceId = this.props.workspaceId?.trim() ?? "";
+    const agentSessionId = this.props.agentSessionId?.trim() ?? "";
+    const attachmentId = image.attachmentId?.trim() ?? "";
+    const path = image.path?.trim() ?? "";
+    const remoteUrl = image.url?.trim() ?? "";
+    const requestIdentity = this.requestIdentity(this.props);
+    if (
+      queuedPromptImageImmediateSource(image) ||
+      !runtime ||
+      !workspaceId ||
+      (!attachmentId && !path) ||
+      queuedPromptImageHasSafeRemoteUrl(remoteUrl) ||
+      (!runtime.readSessionAttachment && !runtime.readPromptAsset)
+    ) {
+      this.setState({ requestIdentity, source: null });
       return;
     }
-    let canceled = false;
-    for (const { image, key } of missingImages) {
-      const attachmentId = image.attachmentId?.trim() ?? "";
-      const path = image.path?.trim() ?? "";
-      const readImage = attachmentId
-        ? runtime.readSessionAttachment?.({
-            workspaceId,
-            agentSessionId,
-            attachmentId
-          })
-        : runtime.readPromptAsset?.({
-            workspaceId,
-            agentSessionId,
-            mimeType: image.mimeType,
-            name: image.name,
-            path
-          });
-      if (!readImage) {
-        continue;
-      }
-      void readImage
-        .then((asset) => {
-          if (canceled) {
-            return;
-          }
-          setSources((current) => {
-            if (current.has(key)) {
-              return current;
-            }
-            const next = new Map(current);
-            next.set(key, `data:${asset.mimeType};base64,${asset.data}`);
-            return next;
-          });
-        })
-        .catch(() => {});
-    }
-    return () => {
-      canceled = true;
-    };
-  }, [agentSessionId, missingImages, runtime, workspaceId]);
-
-  return sources;
+    this.setState({ requestIdentity, source: null });
+    this.loadOwner = new QueuedPromptImageLoadOwner(
+      {
+        agentSessionId,
+        attachmentId,
+        imageKey: this.props.imageKey,
+        mimeType: image.mimeType,
+        name: image.name?.trim() ?? "",
+        path,
+        remoteUrl,
+        runtime,
+        workspaceId
+      },
+      (source) => this.setState({ requestIdentity, source })
+    );
+    this.loadOwner.start();
+  }
 }
 
 /**
@@ -210,7 +255,7 @@ function queuedPromptDisplayText(queuedPrompt: AgentGUIQueuedPromptVM): string {
 function queuedPromptTitle(queuedPrompt: AgentGUIQueuedPromptVM): string {
   const prompt = queuedPromptDisplayText(queuedPrompt);
   if (prompt) {
-    return prompt;
+    return extractPlainTextFromContent(prompt);
   }
   return queuedPromptImages(queuedPrompt)
     .map((image) => image.name?.trim() ?? "")
@@ -218,7 +263,65 @@ function queuedPromptTitle(queuedPrompt: AgentGUIQueuedPromptVM): string {
     .join(", ");
 }
 
+interface AgentQueuedPromptTextProps {
+  displayText: string;
+  measurementRef?: React.RefObject<HTMLDivElement | null>;
+  onLinkClick?: (href: string) => void;
+  title: string;
+  workspaceAppIcons: readonly AgentMessageMarkdownWorkspaceAppIcon[];
+}
+
+function AgentQueuedPromptText({
+  displayText,
+  measurementRef,
+  onLinkClick,
+  title,
+  workspaceAppIcons
+}: AgentQueuedPromptTextProps): React.JSX.Element {
+  const { ref: overflowRef, overflowing } = useTextOverflow<HTMLDivElement>(
+    displayText,
+    QUEUED_PROMPT_OVERFLOW_DESCENDANTS
+  );
+  const content = (
+    <div
+      ref={(element) => {
+        overflowRef.current = element;
+        if (measurementRef) measurementRef.current = element;
+      }}
+      className={styles.composerQueuedPromptText}
+      data-overflowing={overflowing ? "true" : "false"}
+      onClick={(event) => {
+        if (event.target instanceof Element && event.target.closest("a")) {
+          event.stopPropagation();
+        }
+      }}
+    >
+      <AgentMessageMarkdown
+        content={displayText}
+        className="agent-gui-node__composer-queued-prompt-markdown"
+        inline
+        onLinkClick={onLinkClick}
+        previewMode
+        workspaceAppIcons={workspaceAppIcons}
+      />
+    </div>
+  );
+  return (
+    <TooltipProvider delayDuration={200}>
+      <Tooltip>
+        <TooltipTrigger asChild>{content}</TooltipTrigger>
+        {overflowing && title ? (
+          <TooltipContent className="max-w-[min(520px,calc(100vw-32px))] whitespace-pre-wrap text-left [overflow-wrap:anywhere]">
+            {title}
+          </TooltipContent>
+        ) : null}
+      </Tooltip>
+    </TooltipProvider>
+  );
+}
+
 export function AgentQueuedPromptPanel({
+  queueStatus = "active",
   queuedPrompts,
   drainingQueuedPromptId,
   labels,
@@ -231,6 +334,7 @@ export function AgentQueuedPromptPanel({
   workspaceAppIcons = EMPTY_WORKSPACE_APP_ICONS
 }: AgentQueuedPromptPanelProps): React.JSX.Element {
   "use memo";
+  const runtime = useOptionalAgentActivityRuntime();
   const [isExpanded, setIsExpanded] = useState(false);
   const singlePromptTextRef = useRef<HTMLDivElement | null>(null);
   const queuedPromptListRef = useRef<HTMLDivElement | null>(null);
@@ -238,23 +342,6 @@ export function AgentQueuedPromptPanel({
   const [isSinglePromptOverflowing, setIsSinglePromptOverflowing] =
     useState(false);
   const [expandedListMaxHeightPx, setExpandedListMaxHeightPx] = useState(280);
-  const queuedPromptImageEntries = useMemo(
-    () =>
-      queuedPrompts.flatMap((queuedPrompt) =>
-        queuedPromptImages(queuedPrompt)
-          .slice(0, 3)
-          .map((image, index) => ({
-            image,
-            key: queuedPromptImageKey(queuedPrompt, image, index)
-          }))
-      ),
-    [queuedPrompts]
-  );
-  const queuedPromptImageSources = useQueuedPromptImageSources({
-    agentSessionId,
-    images: queuedPromptImageEntries,
-    workspaceId
-  });
   const singlePromptHasImages =
     queuedPrompts.length === 1 &&
     queuedPromptImages(queuedPrompts[0]!).length > 0;
@@ -371,6 +458,7 @@ export function AgentQueuedPromptPanel({
       className={styles.composerQueuedPromptPanel}
       data-expanded={isExpanded ? "true" : "false"}
       data-expandable={canExpand ? "true" : "false"}
+      data-queue-status={queueStatus}
       style={panelStyle}
       tabIndex={canExpand ? 0 : -1}
       onClick={toggleExpanded}
@@ -378,7 +466,9 @@ export function AgentQueuedPromptPanel({
     >
       <div className={styles.composerQueuedPromptHeader}>
         <span className={styles.composerQueuedPromptLabel}>
-          {labels.queuedLabel}
+          {queueStatus === "paused_by_user"
+            ? labels.queuePausedByUserLabel
+            : labels.queuedLabel}
         </span>
         <span className={styles.composerQueuedPromptCount}>
           {queuedPrompts.length}
@@ -410,32 +500,19 @@ export function AgentQueuedPromptPanel({
               data-draining={isDraining ? "true" : "false"}
             >
               <div className={styles.composerQueuedPromptMain}>
-                <div className={styles.composerQueuedPromptBody} title={title}>
+                <div className={styles.composerQueuedPromptBody}>
                   {displayText ? (
-                    <div
-                      ref={
+                    <AgentQueuedPromptText
+                      displayText={displayText}
+                      measurementRef={
                         queuedPrompts.length === 1
                           ? singlePromptTextRef
                           : undefined
                       }
-                      className={styles.composerQueuedPromptText}
-                      onClick={(event) => {
-                        if (
-                          event.target instanceof Element &&
-                          event.target.closest("a")
-                        ) {
-                          event.stopPropagation();
-                        }
-                      }}
-                    >
-                      <AgentMessageMarkdown
-                        content={displayText}
-                        className="agent-gui-node__composer-queued-prompt-markdown"
-                        inline
-                        onLinkClick={onLinkClick}
-                        workspaceAppIcons={workspaceAppIcons}
-                      />
-                    </div>
+                      onLinkClick={onLinkClick}
+                      title={title}
+                      workspaceAppIcons={workspaceAppIcons}
+                    />
                   ) : null}
                   {images.length > 0 ? (
                     <div className={styles.composerQueuedPromptImages}>
@@ -445,20 +522,14 @@ export function AgentQueuedPromptPanel({
                           image,
                           index
                         );
-                        const src =
-                          queuedPromptImageSources.get(imageKey) ??
-                          queuedPromptImageDataUrl(image);
-                        if (!src) {
-                          return null;
-                        }
                         return (
-                          <ZoomableImage
+                          <AgentQueuedPromptImage
                             key={imageKey}
-                            alt={image.name?.trim() || ""}
-                            className={styles.composerQueuedPromptImage}
-                            draggable={false}
-                            src={src}
-                            wrapElement="span"
+                            agentSessionId={agentSessionId}
+                            image={image}
+                            imageKey={imageKey}
+                            runtime={runtime}
+                            workspaceId={workspaceId}
                           />
                         );
                       })}
@@ -467,53 +538,74 @@ export function AgentQueuedPromptPanel({
                 </div>
               </div>
               <div className={styles.composerQueuedPromptActions}>
-                <CanvasNodeGhostIconButton
-                  aria-label={labels.sendQueuedPromptNext}
-                  disabled={isDraining}
-                  onClick={() => onSendQueuedPromptNext(queuedPrompt.id)}
-                >
-                  <CanvasNodeGuideLinedIcon aria-hidden="true" />
-                </CanvasNodeGhostIconButton>
-                <CanvasNodeGhostIconButton
-                  aria-label={labels.deleteQueuedPrompt}
-                  disabled={isDraining}
-                  onClick={() => onRemoveQueuedPrompt(queuedPrompt.id)}
-                >
-                  <CanvasNodeTrashLinedIcon aria-hidden="true" />
-                </CanvasNodeGhostIconButton>
-                <DropdownMenu>
-                  <DropdownMenuTrigger asChild>
-                    <CanvasNodeGhostIconButton
-                      aria-label={labels.queuedPromptMoreActions}
-                      disabled={isDraining}
-                      stopsEventPropagation={false}
-                      onClick={(event) => event.stopPropagation()}
+                <TooltipProvider delayDuration={200}>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <CanvasNodeGhostIconButton
+                        aria-label={labels.sendQueuedPromptNext}
+                        disabled={isDraining}
+                        onClick={() => onSendQueuedPromptNext(queuedPrompt.id)}
+                      >
+                        <CanvasNodeGuideLinedIcon aria-hidden="true" />
+                      </CanvasNodeGhostIconButton>
+                    </TooltipTrigger>
+                    <TooltipContent>
+                      {labels.sendQueuedPromptNext}
+                    </TooltipContent>
+                  </Tooltip>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <CanvasNodeGhostIconButton
+                        aria-label={labels.deleteQueuedPrompt}
+                        disabled={isDraining}
+                        onClick={() => onRemoveQueuedPrompt(queuedPrompt.id)}
+                      >
+                        <CanvasNodeTrashLinedIcon aria-hidden="true" />
+                      </CanvasNodeGhostIconButton>
+                    </TooltipTrigger>
+                    <TooltipContent>{labels.deleteQueuedPrompt}</TooltipContent>
+                  </Tooltip>
+                  <DropdownMenu>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <DropdownMenuTrigger asChild>
+                          <CanvasNodeGhostIconButton
+                            aria-label={labels.queuedPromptMoreActions}
+                            disabled={isDraining}
+                            stopsEventPropagation={false}
+                            onClick={(event) => event.stopPropagation()}
+                          >
+                            <CanvasNodeMoreLinedIcon aria-hidden="true" />
+                          </CanvasNodeGhostIconButton>
+                        </DropdownMenuTrigger>
+                      </TooltipTrigger>
+                      <TooltipContent>
+                        {labels.queuedPromptMoreActions}
+                      </TooltipContent>
+                    </Tooltip>
+                    <DropdownMenuContent
+                      align="end"
+                      className={styles.composerMenuContent}
+                      sideOffset={8}
                     >
-                      <CanvasNodeMoreLinedIcon aria-hidden="true" />
-                    </CanvasNodeGhostIconButton>
-                  </DropdownMenuTrigger>
-                  <DropdownMenuContent
-                    align="end"
-                    className={styles.composerMenuContent}
-                    sideOffset={8}
-                  >
-                    <DropdownMenuItem
-                      className={styles.composerMenuItem}
-                      disabled={isDraining}
-                      onPointerDown={(event) => {
-                        handleEditQueuedPromptPointerDown(
-                          event,
-                          queuedPrompt.id
-                        );
-                      }}
-                      onSelect={() => {
-                        handleEditQueuedPromptSelect(queuedPrompt.id);
-                      }}
-                    >
-                      <span>{labels.editQueuedPrompt}</span>
-                    </DropdownMenuItem>
-                  </DropdownMenuContent>
-                </DropdownMenu>
+                      <DropdownMenuItem
+                        className={styles.composerMenuItem}
+                        disabled={isDraining}
+                        onPointerDown={(event) => {
+                          handleEditQueuedPromptPointerDown(
+                            event,
+                            queuedPrompt.id
+                          );
+                        }}
+                        onSelect={() => {
+                          handleEditQueuedPromptSelect(queuedPrompt.id);
+                        }}
+                      >
+                        <span>{labels.editQueuedPrompt}</span>
+                      </DropdownMenuItem>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+                </TooltipProvider>
               </div>
             </div>
           );

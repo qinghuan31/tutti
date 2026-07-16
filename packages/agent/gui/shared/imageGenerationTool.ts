@@ -3,6 +3,7 @@ interface ImageGenerationProbe {
   displayName?: string | null;
   content?: unknown;
   outputContent?: unknown;
+  outputSavedPath?: unknown;
   inputPrompt?: unknown;
   payloadInputPrompt?: unknown;
 }
@@ -78,7 +79,8 @@ export function extractImageGenerationPreview(
 
   return {
     prompt,
-    imageUri: imageEntry?.uri ?? null,
+    imageUri:
+      firstString(imageEntry?.uri, stringValue(probe.outputSavedPath)) ?? null,
     mimeType: imageEntry?.mimeType ?? null
   };
 }

@@ -39,6 +39,7 @@ type ProviderLaunchPrepareInput = agentruntime.ProviderLaunchPrepareInput
 type ProviderLaunchPrepareResult = agentruntime.ProviderLaunchPrepareResult
 type ProviderLaunchPreparer = agentruntime.ProviderLaunchPreparer
 type ProviderLaunchPreparerAdapter = agentruntime.ProviderLaunchPreparerAdapter
+type AdapterResolver = agentruntime.AdapterResolver
 
 type Config struct {
 	Reporter                ActivityReporter
@@ -46,6 +47,7 @@ type Config struct {
 	HostMetadata            HostMetadata
 	ProviderCommandResolver ProviderCommandResolver
 	ProviderLaunchPreparer  ProviderLaunchPreparer
+	AdapterResolver         AdapterResolver
 	Adapters                []Adapter
 	LiveSessionReaper       LiveSessionReaperConfig
 }
@@ -82,6 +84,7 @@ func NewRuntime(config Config) (*Runtime, error) {
 				HostMetadata:            config.HostMetadata,
 				ProviderCommandResolver: config.ProviderCommandResolver,
 				ProviderLaunchPreparer:  config.ProviderLaunchPreparer,
+				AdapterResolver:         config.AdapterResolver,
 			},
 		)
 	}
@@ -124,9 +127,10 @@ func (r *Runtime) Close() {
 	})
 }
 
-// closeAllLiveSessions force-terminates every live provider process (Codex
-// app-server, Claude Code SDK sidecar, other ACP subprocess adapters) before
-// the daemon process exits. A spawned subprocess is not killed automatically
+// closeAllLiveSessions force-terminates every live provider process, including
+// Codex app-server, the Claude Code SDK sidecar, and subprocess adapters for
+// providers that use ACP,
+// before the daemon process exits. A spawned subprocess is not killed automatically
 // just because tuttid exits — it is reparented to init and keeps running —
 // so without this step, every daemon shutdown (or a desktop-parent-monitor
 // triggered shutdown after the host app disappears) would orphan any

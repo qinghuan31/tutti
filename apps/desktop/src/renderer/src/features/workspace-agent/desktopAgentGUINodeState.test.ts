@@ -4,7 +4,6 @@ import {
   areDesktopAgentGUIWorkbenchStatesEqual,
   createDesktopAgentGUINodeStateSource,
   createDefaultDesktopAgentGUINodeState,
-  desktopAgentGUIProviderFromInstanceId,
   migrateLegacyDesktopAgentGUIWorkbenchState,
   normalizeDesktopAgentGUINodeState,
   normalizeDesktopAgentGUIWorkbenchState,
@@ -16,7 +15,7 @@ import {
   withDesktopAgentGUIProviderComposerDefaults
 } from "./ui/desktopAgentGUIWorkbenchStateHelpers.ts";
 
-test("desktop agent gui node state preserves supported providers and falls back to codex", () => {
+test("desktop agent gui node state preserves open valid providers", () => {
   assert.equal(
     normalizeDesktopAgentGUINodeState({
       provider: "claude-code"
@@ -27,7 +26,7 @@ test("desktop agent gui node state preserves supported providers and falls back 
     normalizeDesktopAgentGUINodeState({
       provider: "unsupported"
     } as unknown as Partial<DesktopAgentGUINodeState>).provider,
-    "codex"
+    "unsupported"
   );
 });
 
@@ -45,8 +44,7 @@ test("desktop agent gui workbench state only preserves whitelisted data", () => 
     agentTargetId: "daemon-hermes",
     conversationRailCollapsed: true,
     conversationRailWidthPx: null,
-    lastActiveAgentSessionId: "session-1",
-    lastActiveConversationTitle: "A title"
+    lastActiveAgentSessionId: "session-1"
   });
 });
 
@@ -59,15 +57,13 @@ test("desktop agent gui workbench projection preserves rail state and permission
       conversationRailCollapsed: true,
       conversationRailWidthPx: 360.4,
       agentTargetId: "daemon-hermes",
-      lastActiveAgentSessionId: "session-1",
-      lastActiveConversationTitle: "A title"
+      lastActiveAgentSessionId: "session-1"
     }),
     {
       agentTargetId: "daemon-hermes",
       conversationRailCollapsed: true,
       conversationRailWidthPx: 360,
-      lastActiveAgentSessionId: "session-1",
-      lastActiveConversationTitle: "A title"
+      lastActiveAgentSessionId: "session-1"
     }
   );
 });
@@ -207,7 +203,7 @@ test("desktop agent gui target state resolves composer defaults from the target 
       [],
       "codex"
     ),
-    "claude-code"
+    "codex"
   );
 });
 
@@ -262,22 +258,6 @@ test("desktop agent gui node state ignores removed legacy composer defaults", ()
       ...createDefaultDesktopAgentGUINodeState("hermes"),
       lastActiveAgentSessionId: "session-1"
     }
-  );
-});
-
-test("desktop agent gui provider derives from workbench instance id", () => {
-  assert.equal(desktopAgentGUIProviderFromInstanceId("agent-gui"), "codex");
-  assert.equal(
-    desktopAgentGUIProviderFromInstanceId("agent-gui:claude-code"),
-    "claude-code"
-  );
-  assert.equal(
-    desktopAgentGUIProviderFromInstanceId("agent-gui:hermes:panel:abc"),
-    "hermes"
-  );
-  assert.equal(
-    desktopAgentGUIProviderFromInstanceId("agent-gui:unsupported"),
-    "codex"
   );
 });
 

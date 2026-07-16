@@ -19,6 +19,11 @@ export type {
   CreateAgentGuiWorkbenchContributionInput
 } from "./contribution.ts";
 export {
+  agentGuiWorkbenchConversationIdentitiesEqual,
+  resolveAgentGuiWorkbenchConversationIdentity
+} from "./conversationIdentity.ts";
+export type { AgentGuiWorkbenchConversationIdentity } from "./conversationIdentity.ts";
+export {
   agentGuiWorkbenchComingSoonProviders,
   agentGuiWorkbenchDefaultDockProviders,
   agentGuiWorkbenchDockSuppressedProviders,
@@ -34,19 +39,20 @@ export {
 export {
   agentGuiWorkbenchDockEntryId,
   agentGuiWorkbenchDockIdentityFromIdentifier,
-  agentGuiWorkbenchInstanceId,
-  agentGuiWorkbenchProviderFromIdentifier,
   agentGuiWorkbenchProviderFromLaunchRequest,
   agentGuiWorkbenchTypeId,
   agentGuiWorkbenchUnifiedDockEntryId,
   createAgentGuiWorkbenchDraftLaunchRequest,
   createAgentGuiWorkbenchInstanceId,
   createAgentGuiWorkbenchLaunchDescriptor,
-  createAgentGuiWorkbenchSessionLaunchRequest
+  createAgentGuiWorkbenchSessionLaunchRequest,
+  resolveAgentGuiWorkbenchLaunchDockEntryId
 } from "./launch.ts";
-export type { AgentGuiWorkbenchLaunchDescriptor } from "./launch.ts";
+export type {
+  AgentGuiWorkbenchLaunchDescriptor,
+  AgentGuiWorkbenchReusePolicy
+} from "./launch.ts";
 export {
-  agentGuiWorkbenchProviderFromInstanceId,
   areAgentGuiWorkbenchNodeStatesEqual,
   areAgentGuiWorkbenchStatesEqual,
   createAgentGuiWorkbenchNodeStateSource,
@@ -61,13 +67,12 @@ export {
   type AgentGuiWorkbenchHeaderProps
 } from "./header.ts";
 export {
-  formatAgentGuiConversationPlainTitle,
-  formatAgentGuiSessionPlainTitle,
+  resolveAgentGuiWorkbenchHeaderTitle,
   resolveAgentGuiWorkbenchSessionTitle
 } from "./sessionTitle.ts";
 export type {
-  AgentGuiSessionTitleFormatOptions,
   AgentGuiWorkbenchSessionTitleResult,
+  ResolveAgentGuiWorkbenchHeaderTitleInput,
   ResolveAgentGuiWorkbenchSessionTitleInput
 } from "./sessionTitle.ts";
 export {

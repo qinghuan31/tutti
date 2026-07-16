@@ -27,6 +27,7 @@ function promptItem(
     },
     lastAgentMessageSummary: "",
     lastAgentMessageAtUnixMs: 1,
+    pendingInteractionTarget: null,
     needsAttentionKind: null,
     needsAttentionSummary: null,
     sortTimeUnixMs: 1,
@@ -60,7 +61,7 @@ function renderDeck(
     <TooltipProvider>
       <WorkspaceAgentMessageCenterAttentionDeck
         items={items}
-        submittingPromptKey={null}
+        isPromptSubmitting={() => false}
         onSubmitPrompt={vi.fn()}
         onOpenChat={vi.fn()}
         {...props}
@@ -172,7 +173,7 @@ describe("WorkspaceAgentMessageCenterAttentionDeck cooldown", () => {
       <TooltipProvider>
         <WorkspaceAgentMessageCenterAttentionDeck
           items={[promptItem({ agentSessionId: "first" })]}
-          submittingPromptKey={null}
+          isPromptSubmitting={() => false}
           onSubmitPrompt={vi.fn()}
           onOpenChat={vi.fn()}
         />
@@ -188,7 +189,7 @@ describe("WorkspaceAgentMessageCenterAttentionDeck cooldown", () => {
       <TooltipProvider>
         <WorkspaceAgentMessageCenterAttentionDeck
           items={[promptItem({ agentSessionId: "first" })]}
-          submittingPromptKey={null}
+          isPromptSubmitting={() => false}
           onSubmitPrompt={vi.fn()}
           onOpenChat={vi.fn()}
         />
@@ -203,7 +204,7 @@ describe("WorkspaceAgentMessageCenterAttentionDeck cooldown", () => {
             promptItem({ agentSessionId: "second" }),
             promptItem({ agentSessionId: "first" })
           ]}
-          submittingPromptKey={null}
+          isPromptSubmitting={() => false}
           onSubmitPrompt={vi.fn()}
           onOpenChat={vi.fn()}
         />
@@ -233,7 +234,7 @@ describe("WorkspaceAgentMessageCenterAttentionDeck transitions", () => {
             promptItem({ agentSessionId: "top" }),
             promptItem({ agentSessionId: "next" })
           ]}
-          submittingPromptKey={null}
+          isPromptSubmitting={() => false}
           onSubmitPrompt={vi.fn()}
           onOpenChat={vi.fn()}
         />
@@ -245,7 +246,7 @@ describe("WorkspaceAgentMessageCenterAttentionDeck transitions", () => {
       <TooltipProvider>
         <WorkspaceAgentMessageCenterAttentionDeck
           items={[promptItem({ agentSessionId: "next" })]}
-          submittingPromptKey={null}
+          isPromptSubmitting={() => false}
           onSubmitPrompt={vi.fn()}
           onOpenChat={vi.fn()}
         />

@@ -182,8 +182,36 @@ export function createDesktopAgentHostApi({
       setTheme: async () => {}
     },
     workspace: {
-      applyGitPatch: async (payload: AgentHostApplyWorkspaceGitPatchInput) =>
-        tuttidClient.applyWorkspaceGitPatch(workspaceId, payload),
+      applyGitPatch: async (payload: AgentHostApplyWorkspaceGitPatchInput) => {
+        logAgentGitPatchDiagnostic(runtimeApi, workspaceId, "requested", {
+          cwd: payload.cwd,
+          revert: payload.revert ?? false,
+          atomic: payload.atomic ?? false,
+          target: payload.target ?? "unstaged",
+          allowBinary: payload.allowBinary ?? false,
+          diffBytes: new TextEncoder().encode(payload.diff).byteLength
+        });
+        try {
+          const result = await tuttidClient.applyWorkspaceGitPatch(
+            workspaceId,
+            payload
+          );
+          logAgentGitPatchDiagnostic(runtimeApi, workspaceId, "completed", {
+            status: result.status,
+            errorCode: result.errorCode ?? null,
+            appliedPaths: result.appliedPaths,
+            skippedPaths: result.skippedPaths,
+            conflictedPaths: result.conflictedPaths,
+            stderr: result.execOutput?.stderr ?? ""
+          });
+          return result;
+        } catch (error) {
+          logAgentGitPatchDiagnostic(runtimeApi, workspaceId, "failed", {
+            error: error instanceof Error ? error.message : String(error)
+          });
+          throw error;
+        }
+      },
       resolveGitPatchSupport: async (payload: { cwd: string }) =>
         tuttidClient.resolveWorkspaceGitPatchSupport(workspaceId, payload.cwd),
       copyPath: async (payload: { path: string }) => {
@@ -234,6 +262,24 @@ export function createDesktopAgentHostApi({
   return api;
 }
 
+function logAgentGitPatchDiagnostic(
+  runtimeApi: DesktopRuntimeApi,
+  workspaceId: string,
+  phase: "requested" | "completed" | "failed",
+  payload: Record<string, unknown>
+): void {
+  void runtimeApi
+    .logTerminalDiagnostic({
+      details: {
+        payload: JSON.stringify({ phase, ...payload })
+      },
+      event: "agent.git_patch.trace",
+      level: phase === "failed" ? "warn" : "info",
+      workspaceId
+    })
+    .catch(() => {});
+}
+
 function toAgentHostUserProject(
   project: WorkspaceUserProject
 ): AgentHostUserProjectCompat {
@@ -241,7 +287,7 @@ function toAgentHostUserProject(
   return lastUsedAtUnixMs == null ? rest : { ...rest, lastUsedAtUnixMs };
 }
 
-function readDesktopWorkspaceAgentReadState(
+export function readDesktopWorkspaceAgentReadState(
   input: ReadWorkspaceAgentReadStateInput
 ): Promise<WorkspaceAgentReadStateSnapshot> {
   const storage = resolveLocalStorage();
@@ -259,7 +305,7 @@ function readDesktopWorkspaceAgentReadState(
   }
 }
 
-function writeDesktopWorkspaceAgentReadState(
+export function writeDesktopWorkspaceAgentReadState(
   input: WriteWorkspaceAgentReadStateInput
 ): Promise<PersistWriteResult> {
   const storage = resolveLocalStorage();

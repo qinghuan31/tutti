@@ -14,6 +14,7 @@ import {
 import { UnderlineTabs } from "@tutti-os/ui-system/components";
 import { cn } from "@tutti-os/ui-system/utils";
 import { flattenMentionPaletteEntries } from "./mentionPaletteEntries.ts";
+import { mentionPaletteExpandLabel } from "./mentionPaletteModel.ts";
 import { MentionPaletteScrollbar } from "./mentionPaletteScrollbar.tsx";
 import type {
   MentionPaletteGroup,
@@ -122,6 +123,7 @@ export function MentionPalette<TItem>(
     onMoveSelection,
     onNavigateHierarchy,
     renderListFooter,
+    headerActions,
     loadingBanner,
     scrollHighlightedIntoViewCentered = false,
     theme: themeProp
@@ -266,20 +268,25 @@ export function MentionPalette<TItem>(
     <div
       className={mentionPaletteRootClassName(theme)}
       style={paletteMaxHeightStyle}
-      role="listbox"
-      aria-label={labels.listbox ?? labels.tabHint}
     >
       <div className={cn(theme.classNames.header, paletteStyles.header)}>
-        <UnderlineTabs
-          tabs={state.categories.map((category) => ({
-            value: category.id,
-            label: category.label
-          }))}
-          value={state.filter}
-          onValueChange={isBrowse ? onSelectCategory : onSelectFilter}
-          className={theme.classNames.tabs}
-          preventMouseDownDefault
-        />
+        <div className="rich-text-at-mention-palette__tabs-layout">
+          <UnderlineTabs
+            tabs={state.categories.map((category) => ({
+              value: category.id,
+              label: category.label
+            }))}
+            value={state.filter}
+            onValueChange={isBrowse ? onSelectCategory : onSelectFilter}
+            className={theme.classNames.tabs}
+            preventMouseDownDefault
+          />
+        </div>
+        {headerActions ? (
+          <div className="rich-text-at-mention-palette__header-actions">
+            {headerActions}
+          </div>
+        ) : null}
         {showLoadingBanner ? loadingBanner : null}
       </div>
       <div className={paletteStyles.scrollShell}>
@@ -289,6 +296,8 @@ export function MentionPalette<TItem>(
             theme.classNames.scrollRegion,
             paletteStyles.scrollBody
           )}
+          role="listbox"
+          aria-label={labels.listbox ?? labels.tabHint}
         >
           {body}
         </div>
@@ -456,6 +465,8 @@ function MentionPaletteGroups<TItem>({
                   }
                   type="button"
                   className={paletteStyles.expandButton}
+                  disabled={group.expandStatus === "loading"}
+                  aria-busy={group.expandStatus === "loading" || undefined}
                   data-highlighted={
                     `expand:${group.id}` === highlightedKey ? "" : undefined
                   }
@@ -465,10 +476,13 @@ function MentionPaletteGroups<TItem>({
                     }
                   }}
                   onMouseDown={(event) => event.preventDefault()}
-                  onClick={() => onExpandGroup(group.id)}
+                  onClick={() => {
+                    if (group.expandStatus !== "loading") {
+                      onExpandGroup(group.id);
+                    }
+                  }}
                 >
-                  {group.expandLabel ??
-                    `+${Math.max(0, group.totalCount - group.visibleCount)}`}
+                  {mentionPaletteExpandLabel(group)}
                 </button>
               ) : null}
             </div>
@@ -561,7 +575,7 @@ function MentionPaletteHint({
       aria-label={ariaLabel}
       data-testid={testId}
     >
-      <span className={classNames.hintItem}>
+      <span className={classNames.hintItem} data-tooltip={cycleFilterLabel}>
         <span className={classNames.shortcutGroup}>
           <button
             className={cn(classNames.shortcut, classNames.shortcutButton)}
@@ -611,7 +625,10 @@ function MentionPaletteHint({
           <span className={classNames.hintSeparator} aria-hidden="true">
             ｜
           </span>
-          <span className={classNames.hintItem}>
+          <span
+            className={classNames.hintItem}
+            data-tooltip={navigateHierarchyLabel}
+          >
             <span className={classNames.shortcutGroup}>
               <button
                 className={cn(
@@ -647,7 +664,7 @@ function MentionPaletteHint({
       <span className={classNames.hintSeparator} aria-hidden="true">
         ｜
       </span>
-      <span className={classNames.hintItem}>
+      <span className={classNames.hintItem} data-tooltip={moveSelectionLabel}>
         <span className={classNames.shortcutGroup}>
           <button
             className={cn(

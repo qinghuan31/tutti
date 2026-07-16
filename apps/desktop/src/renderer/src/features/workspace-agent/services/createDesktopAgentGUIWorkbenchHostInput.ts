@@ -1,6 +1,5 @@
 import type {
   AgentActivityRuntime,
-  AgentQueuedPromptRuntime,
   AgentGUIProps,
   AgentHostInputApi
 } from "@tutti-os/agent-gui";
@@ -38,40 +37,49 @@ import {
 } from "../../workspace-file-manager/services/desktopWorkspaceFileLocations.ts";
 import { createDesktopAgentHostApi } from "./createDesktopAgentHostApi.ts";
 import { createAgentChatReadyTracker } from "./internal/agentChatReadyAnalytics.ts";
+import {
+  createAgentGUIEngagementEventSink,
+  type AgentGUIAnalyticsSurface
+} from "./internal/agentGUIEngagementAnalytics.ts";
 import { createAgentWorkspaceFileReferenceTracker } from "./internal/agentWorkspaceFileReferenceAnalytics.ts";
 import { getDesktopAgentActivityRuntimeServices } from "./internal/desktopAgentActivityRuntimeServices.ts";
 import type { IWorkspaceAgentActivityService } from "./workspaceAgentActivityService.interface";
 import type { IWorkspaceUserProjectService } from "../../workspace-user-project/index.ts";
 import { translate } from "../../../i18n/appRuntime.ts";
+import { createDesktopAgentGeneratedFileMentionProvider } from "./internal/createDesktopAgentGeneratedFileMentionProvider.ts";
 
 export interface DesktopAgentGUIWorkbenchHostInput {
   agentActivityRuntime: AgentActivityRuntime;
-  agentQueuedPromptRuntime: AgentQueuedPromptRuntime;
   agentHostApi: AgentHostInputApi;
   contextMentionProviders: NonNullable<
-    AgentGUIProps["contextMentionProviders"]
+    AgentGUIProps["hostCapabilities"]["contextMentionProviders"]
   >;
   trackAgentProviderChatReady: (input: { provider: string }) => Promise<void>;
+  createAgentGUIEngagementEventSink: (
+    surface: AgentGUIAnalyticsSurface
+  ) => NonNullable<AgentGUIProps["hostActions"]["onEngagementEvent"]>;
   trackWorkspaceFileReferences: (input: {
     provider?: string | null;
     references: readonly WorkspaceFileReference[];
   }) => Promise<void>;
   workspaceFileReferenceAdapter: NonNullable<
-    AgentGUIProps["workspaceFileReferenceAdapter"]
+    AgentGUIProps["workspace"]["fileReferenceAdapter"]
   >;
   resolveDroppedFileReferences: NonNullable<
-    AgentGUIProps["resolveDroppedFileReferences"]
+    AgentGUIProps["workspace"]["resolveDroppedFileReferences"]
   >;
-  onRequestGitBranches: NonNullable<AgentGUIProps["onRequestGitBranches"]>;
+  onRequestGitBranches: NonNullable<
+    AgentGUIProps["workspace"]["onRequestGitBranches"]
+  >;
   referenceSourceAggregator: ReferenceSourceAggregator;
   resolveWorkspaceReferenceEntryIconUrl: NonNullable<
-    AgentGUIProps["resolveWorkspaceReferenceEntryIconUrl"]
+    AgentGUIProps["workspace"]["resolveReferenceEntryIconUrl"]
   >;
   resolveMentionReferenceTarget: NonNullable<
-    AgentGUIProps["resolveMentionReferenceTarget"]
+    AgentGUIProps["workspace"]["resolveMentionReferenceTarget"]
   >;
   resolveWorkspaceReferenceInitialTarget: NonNullable<
-    AgentGUIProps["resolveWorkspaceReferenceInitialTarget"]
+    AgentGUIProps["workspace"]["resolveReferenceInitialTarget"]
   >;
 }
 
@@ -81,7 +89,7 @@ export interface CreateDesktopAgentGUIWorkbenchHostInputInput {
   tuttidClient: TuttidClient;
   platformApi: Pick<
     DesktopPlatformApi,
-    "homeDirectory" | "os" | "resolveDroppedEntries" | "resolveDroppedPaths"
+    "homeDirectory" | "os" | "resolveDroppedEntries"
   >;
   reporterNow?: () => number;
   reporterService?: Pick<IReporterService, "trackEvents">;
@@ -92,6 +100,7 @@ export interface CreateDesktopAgentGUIWorkbenchHostInputInput {
     IWorkspaceFileManagerService,
     "openCanvasFilePreview" | "resolveEntryIconUrl"
   >;
+  workspaceFilePreviewMode?: "canvas" | "system-default";
   workspaceUserProjectService?: IWorkspaceUserProjectService;
   workspaceId: string;
 }
@@ -107,6 +116,7 @@ export function createDesktopAgentGUIWorkbenchHostInput({
   runtimeApi,
   workspaceAgentActivityService,
   workspaceFileManagerService,
+  workspaceFilePreviewMode = "canvas",
   workspaceUserProjectService,
   workspaceId
 }: CreateDesktopAgentGUIWorkbenchHostInputInput): DesktopAgentGUIWorkbenchHostInput {
@@ -121,30 +131,15 @@ export function createDesktopAgentGUIWorkbenchHostInput({
       workspaceUserProjectService,
       workspaceId
     });
-  const warmupOpenclawGateway = resolvedAgentHostApi.runtime
-    ?.warmupOpenclawGateway
-    ? (
-        input?: Parameters<
-          NonNullable<AgentActivityRuntime["warmupOpenclawGateway"]>
-        >[0]
-      ) =>
-        resolvedAgentHostApi.runtime?.warmupOpenclawGateway?.(
-          input
-        ) as ReturnType<
-          NonNullable<AgentActivityRuntime["warmupOpenclawGateway"]>
-        >
-    : undefined;
-  const { agentActivityRuntime, agentQueuedPromptRuntime } =
-    getDesktopAgentActivityRuntimeServices({
-      hostFilesApi,
-      reporterNow,
-      reporterService,
-      runtimeApi,
-      warmupOpenclawGateway,
-      workspaceAgentActivityService,
-      workspaceId,
-      workspaceUserProjectService
-    });
+  const { agentActivityRuntime } = getDesktopAgentActivityRuntimeServices({
+    hostFilesApi,
+    reporterNow,
+    reporterService,
+    runtimeApi,
+    workspaceAgentActivityService,
+    workspaceId,
+    workspaceUserProjectService
+  });
   const workspaceFileReferenceTracker =
     createAgentWorkspaceFileReferenceTracker({
       reporterNow,
@@ -157,13 +152,14 @@ export function createDesktopAgentGUIWorkbenchHostInput({
   const workspaceFileReferenceAdapter =
     createDesktopWorkspaceFileReferenceAdapter({
       hostFilesApi,
-      openCanvasFilePreview: workspaceFileManagerService
-        ? (target, workspaceId) =>
-            workspaceFileManagerService.openCanvasFilePreview(
-              workspaceId,
-              target
-            )
-        : undefined,
+      openCanvasFilePreview:
+        workspaceFilePreviewMode === "canvas" && workspaceFileManagerService
+          ? (target, workspaceId) =>
+              workspaceFileManagerService.openCanvasFilePreview(
+                workspaceId,
+                target
+              )
+          : undefined,
       tuttidClient,
       workspaceId
     });
@@ -171,6 +167,11 @@ export function createDesktopAgentGUIWorkbenchHostInput({
     getCurrentDesktopWorkspaceFileLocationSections({
       homeDirectory: platformApi.homeDirectory,
       workspaceUserProjectService
+    });
+  const agentGeneratedFileMentionProvider =
+    createDesktopAgentGeneratedFileMentionProvider({
+      agentActivityRuntime,
+      workspaceId
     });
   // 多源引用聚合:项目快捷入口 + 本地文件 + 应用产物 + 任务产物。
   // 非本地源的 open/preview 复用本地 adapter 同一条 host 链路。
@@ -184,7 +185,32 @@ export function createDesktopAgentGUIWorkbenchHostInput({
         projectLabel: translate(
           "workspace.referenceSources.projectSourceLabel"
         ),
-        projectOrder: -1
+        projectOrder: -1,
+        searchByProvenance: async (scope, searchInput) => {
+          const items = await agentGeneratedFileMentionProvider.query({
+            abortSignal: searchInput.signal,
+            context: {
+              metadata: {
+                referenceProvenanceFilter: searchInput.provenanceFilter,
+                workspaceId: scope.workspaceId
+              }
+            },
+            keyword: searchInput.query,
+            trigger: "@"
+          });
+          return items.flatMap((item): WorkspaceFileReference[] => {
+            const insert =
+              agentGeneratedFileMentionProvider.toInsertResult(item);
+            if (insert.kind !== "markdown-link") return [];
+            return [
+              {
+                displayName: insert.label,
+                kind: insert.href.endsWith("/") ? "folder" : "file",
+                path: insert.href
+              }
+            ];
+          });
+        }
       }),
       createAppArtifactReferenceSource({
         tuttidClient,
@@ -201,20 +227,22 @@ export function createDesktopAgentGUIWorkbenchHostInput({
     ])
   );
   const resolveDroppedFileReferences: NonNullable<
-    AgentGUIProps["resolveDroppedFileReferences"]
+    AgentGUIProps["workspace"]["resolveDroppedFileReferences"]
   > = (files) => {
-    const droppedPaths = platformApi.resolveDroppedPaths([...files]);
+    const droppedEntries = platformApi.resolveDroppedEntries([...files]);
     return files.flatMap((file, index): WorkspaceFileReference[] => {
-      const hostPath = droppedPaths[index]?.trim() ?? "";
-      if (!hostPath) {
+      const droppedEntry = droppedEntries[index];
+      const path = droppedEntry?.path.trim() ?? "";
+      if (!path) {
         return [];
       }
-      const displayName = file.name.trim() || hostPath.split(/[\\/]/).at(-1);
+      const kind = droppedEntry?.kind === "folder" ? "folder" : "file";
+      const displayName = file.name.trim() || path.split(/[\\/]/).at(-1);
       return [
         {
-          path: hostPath,
-          hostPath,
-          kind: "file",
+          path,
+          ...(kind === "file" ? { hostPath: path } : {}),
+          kind,
           ...(displayName ? { displayName } : {}),
           sourceId: "host-local-file"
         }
@@ -223,7 +251,6 @@ export function createDesktopAgentGUIWorkbenchHostInput({
   };
   return {
     agentActivityRuntime,
-    agentQueuedPromptRuntime,
     agentHostApi: resolvedAgentHostApi,
     contextMentionProviders: richTextAtService
       .getProviders({
@@ -240,6 +267,12 @@ export function createDesktopAgentGUIWorkbenchHostInput({
       })
       .map(richTextTriggerProviderToContextMentionProvider),
     trackAgentProviderChatReady: (input) => chatReadyTracker.track(input),
+    createAgentGUIEngagementEventSink: (surface) =>
+      createAgentGUIEngagementEventSink({
+        reporterNow,
+        reporterService,
+        surface
+      }),
     trackWorkspaceFileReferences: (input) =>
       workspaceFileReferenceTracker.track(input),
     workspaceFileReferenceAdapter,
@@ -271,7 +304,7 @@ export function createDesktopAgentGUIWorkbenchHostInput({
 }
 
 const resolveWorkspaceReferenceInitialTarget: NonNullable<
-  AgentGUIProps["resolveWorkspaceReferenceInitialTarget"]
+  AgentGUIProps["workspace"]["resolveReferenceInitialTarget"]
 > = ({ activeConversation, composerSelectedProjectPath, userProjects }) => {
   const activeConversationProject = findUserProjectByIdentity(
     userProjects,

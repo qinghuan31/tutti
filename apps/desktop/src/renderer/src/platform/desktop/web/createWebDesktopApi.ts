@@ -329,6 +329,9 @@ function createWebHostApi(): DesktopHostApi {
       resolveCloseRequest() {
         return undefined;
       },
+      resizeContentWidth() {
+        return Promise.reject(electronDebugRequired("resizeContentWidth"));
+      },
       toggleMaximize() {
         return Promise.reject(electronDebugRequired("toggleMaximize"));
       }
@@ -354,6 +357,13 @@ function createWebHostApi(): DesktopHostApi {
       },
       openWorkspaceAppFolder() {
         return Promise.reject(electronDebugRequired("openWorkspaceAppFolder"));
+      },
+      replaceWorkspaceWindow({ mode, workspaceId }) {
+        const url = new URL(window.location.href);
+        url.searchParams.set("view", mode === "agent" ? "agent" : "workspace");
+        url.searchParams.set("workspaceId", workspaceId);
+        window.location.assign(url.toString());
+        return Promise.resolve();
       },
       showWorkspace(workspaceID) {
         const url = new URL(window.location.href);

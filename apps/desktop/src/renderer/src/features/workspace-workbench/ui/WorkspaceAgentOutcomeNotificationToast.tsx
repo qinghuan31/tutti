@@ -1,13 +1,12 @@
 import { managedAgentRoundedIconUrl } from "@tutti-os/agent-gui/agent-message-center";
 import { Button, CloseIcon, StatusDot, toast } from "@tutti-os/ui-system";
-import {
-  normalizeDesktopAgentGUIProvider,
-  requestWorkspaceAgentGuiLaunch
-} from "@renderer/features/workspace-agent";
+import { normalizeDesktopAgentGUIProvider } from "@renderer/features/workspace-agent/desktopAgentGUINodeState.ts";
+import { requestWorkspaceAgentGuiLaunch } from "@renderer/features/workspace-agent/services/workspaceAgentGuiLaunchCoordinator.ts";
 import type {
   WorkspaceAgentOutcomeForegroundNotification,
   WorkspaceAgentOutcomeForegroundNotificationPresenter
 } from "../services/workspaceAgentOutcomeNotification";
+import { workspaceAgentOutcomeNotificationKey } from "../services/workspaceAgentOutcomeNotification";
 
 const WORKSPACE_AGENT_OUTCOME_TOAST_DURATION = 6000;
 const workspaceAgentDecisionToastClassName = "workspace-agent-decision-toast";
@@ -40,7 +39,8 @@ export function createWorkspaceAgentOutcomeForegroundNotificationPresenter(): Wo
         ),
         {
           className: workspaceAgentDecisionToastClassName,
-          duration: WORKSPACE_AGENT_OUTCOME_TOAST_DURATION
+          duration: WORKSPACE_AGENT_OUTCOME_TOAST_DURATION,
+          id: workspaceAgentOutcomeNotificationKey(notification)
         }
       );
     }

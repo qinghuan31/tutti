@@ -1,4 +1,3 @@
-//revive:disable:file-length-limit
 package agentruntime
 
 import (
@@ -7,14 +6,12 @@ import (
 	"strings"
 
 	activityshared "github.com/tutti-os/tutti/packages/agent/daemon/activity/events"
-	"github.com/tutti-os/tutti/packages/agent/daemon/internal/titletext"
 )
 
 func acpModeValue(update map[string]any) string {
 	return firstNonEmpty(
 		// `currentModeId` is the ACP-canonical field on a current_mode_update
-		// notification (claude-code/codex send the mode there); the rest are
-		// tolerated fallbacks for other shapes.
+		// notification; the rest are tolerated fallbacks for other shapes.
 		asString(update["currentModeId"]),
 		asString(update["current_mode_id"]),
 		asString(update["mode"]),
@@ -125,6 +122,28 @@ func agentSessionCommandNames(commands []AgentSessionCommand) []string {
 		}
 	}
 	return names
+}
+
+func agentSessionCommandsRuntimeContext(commands []AgentSessionCommand) []map[string]any {
+	if len(commands) == 0 {
+		return []map[string]any{}
+	}
+	result := make([]map[string]any, 0, len(commands))
+	for _, command := range commands {
+		name := strings.TrimSpace(command.Name)
+		if name == "" {
+			continue
+		}
+		value := map[string]any{"name": name}
+		if description := strings.TrimSpace(command.Description); description != "" {
+			value["description"] = description
+		}
+		if inputHint := strings.TrimSpace(command.InputHint); inputHint != "" {
+			value["inputHint"] = inputHint
+		}
+		result = append(result, value)
+	}
+	return result
 }
 
 func acpConfigValues(update map[string]any) map[string]any {
@@ -380,6 +399,8 @@ func acpSystemNoticeEvent(session Session, turnID string, update map[string]any,
 	copyStringPayload(payload, notice, "title")
 	copyStringPayload(payload, notice, "detail")
 	copyStringPayload(payload, notice, "code")
+	copyStringPayload(payload, notice, "noticeCommand")
+	copyStringPayload(payload, notice, "noticeCommandStatus")
 	// A caller-provided messageId lets related notices (e.g. compaction
 	// started/completed) share one transcript row instead of stacking.
 	copyStringPayload(payload, notice, "messageId")
@@ -524,58 +545,6 @@ func acpNoticeTitle(noticeKind string, detail string) string {
 	}
 }
 
-func acpSessionTitleEvent(session Session, update map[string]any) (activityshared.Event, bool) {
-	title := titletext.Normalize(firstNonEmpty(
-		asString(update["title"]),
-		asString(update["name"]),
-		asString(update["summary"]),
-	))
-	if title == "" || title == strings.TrimSpace(session.Title) {
-		return activityshared.Event{}, false
-	}
-	return newSessionTitleActivityEvent(session, title), true
-}
-
-func acpConfigOptionsUpdatedEvent(session Session, update map[string]any) (activityshared.Event, bool) {
-	ctx, ok := activityEventContext(session, newID(), "")
-	if !ok {
-		return activityshared.Event{}, false
-	}
-	event := activityshared.NewSessionUpdated(ctx, "")
-	metadata := map[string]any{
-		"acpSessionUpdate": "config_option_update",
-	}
-	if key := asString(update["key"]); key != "" {
-		metadata["configOptionKey"] = key
-	}
-	event.Payload.Metadata = metadata
-	return event, true
-}
-
-func acpUsageUpdatedEvent(session Session) (activityshared.Event, bool) {
-	ctx, ok := activityEventContext(session, newID(), "")
-	if !ok {
-		return activityshared.Event{}, false
-	}
-	event := activityshared.NewSessionUpdated(ctx, "")
-	event.Payload.Metadata = map[string]any{
-		"acpSessionUpdate": "usage_update",
-	}
-	return event, true
-}
-
-func acpGoalUpdatedEvent(session Session, updateType string) (activityshared.Event, bool) {
-	ctx, ok := activityEventContext(session, newID(), "")
-	if !ok {
-		return activityshared.Event{}, false
-	}
-	event := activityshared.NewSessionUpdated(ctx, "")
-	event.Payload.Metadata = map[string]any{
-		"acpSessionUpdate": strings.TrimSpace(updateType),
-	}
-	return event, true
-}
-
 func acpCurrentModeUpdatedEvent(session Session, modeID string) (activityshared.Event, bool) {
 	ctx, ok := activityEventContext(session, newID(), "")
 	if !ok {
@@ -587,8 +556,8 @@ func acpCurrentModeUpdatedEvent(session Session, modeID string) (activityshared.
 	}
 	event := activityshared.NewSessionUpdated(ctx, "")
 	event.Payload.Metadata = map[string]any{
-		"acpSessionUpdate": "current_mode_update",
-		"acpModeId":        modeID,
+		"sessionUpdateKind": "current_mode_update",
+		"acpModeId":         modeID,
 	}
 	return event, true
 }
@@ -598,7 +567,7 @@ func hasACPCurrentModeUpdatedEvent(events []activityshared.Event) bool {
 		if event.Type != activityshared.EventSessionUpdated {
 			continue
 		}
-		if strings.TrimSpace(asString(event.Payload.Metadata["acpSessionUpdate"])) != "current_mode_update" {
+		if normalizedSessionUpdateKind(event.Payload.Metadata) != "current_mode_update" {
 			continue
 		}
 		return true
@@ -611,37 +580,6 @@ func newSessionTitleActivityEvent(session Session, title string) activityshared.
 	if !ok {
 		return activityshared.Event{}
 	}
-	ctx.Title = titletext.Normalize(title)
+	ctx.Title = strings.TrimSpace(title)
 	return activityshared.NewSessionTitleUpdated(ctx)
-}
-
-func fallbackACPFamilySessionTitle(currentTitle string, prompt string, fallbackTitles ...string) string {
-	if !shouldUseFallbackACPTitle(currentTitle, fallbackTitles...) {
-		return ""
-	}
-	return promptTitleSnippet(prompt)
-}
-
-func shouldUseFallbackACPTitle(title string, fallbackTitles ...string) bool {
-	normalizedTitle := strings.ToLower(strings.TrimSpace(title))
-	for _, fallbackTitle := range fallbackTitles {
-		if normalizedTitle == strings.ToLower(strings.TrimSpace(fallbackTitle)) {
-			return true
-		}
-	}
-	return false
-}
-
-func promptTitleSnippet(prompt string) string {
-	fields := strings.Fields(titletext.Normalize(prompt))
-	if len(fields) == 0 {
-		return ""
-	}
-	title := strings.Join(fields, " ")
-	const maxRunes = 160
-	runes := []rune(title)
-	if len(runes) <= maxRunes {
-		return title
-	}
-	return strings.TrimSpace(string(runes[:maxRunes])) + "..."
 }

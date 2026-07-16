@@ -1,12 +1,88 @@
 import { describe, expect, it } from "vitest";
-import type {
-  AgentHostWorkspaceAgentMessage,
-  AgentHostWorkspaceAgentSession
-} from "../../contracts/dto";
+import {
+  normalizeAgentActivitySession,
+  type AgentActivityMessage,
+  type AgentActivitySession
+} from "@tutti-os/agent-activity-core";
 import type { WorkspaceAgentActivityCard } from "../../workspaceAgentActivityListViewModel";
 import { projectWorkspaceAgentMessagesToConversationVM } from "./workspaceAgentMessageProjection";
 
 describe("projectWorkspaceAgentMessagesToConversationVM", () => {
+  it("prefers canonical browser element prompt content over a lossy provider echo", () => {
+    const prompt =
+      "[@a](mention://browser-element/browser-element%3A1?path=%2Ftmp%2Fa.txt&tag=a&workspaceId=workspace-1) " +
+      "[@div](mention://browser-element/browser-element%3A2?path=%2Ftmp%2Fdiv.txt&tag=div&workspaceId=workspace-1) " +
+      "这里说的什么";
+    const conversation = projectWorkspaceAgentMessagesToConversationVM({
+      activity: activity(),
+      session: session(),
+      workspaceRoot: "/workspace/demo",
+      messages: [
+        message({
+          messageId: "user-browser-elements",
+          version: 1,
+          role: "user",
+          kind: "text",
+          payload: {
+            text: "@<a> @<div> 这里说的什么",
+            content: [{ type: "text", text: prompt }]
+          }
+        })
+      ]
+    });
+
+    const userRow = conversation.rows.find(
+      (row) => row.kind === "message" && row.speaker === "user"
+    );
+    expect(userRow?.kind === "message" ? userRow.messages[0]?.body : null).toBe(
+      prompt
+    );
+  });
+
+  it("renders the browser element display prompt instead of staged snapshot files", () => {
+    const displayPrompt =
+      "[@a](mention://browser-element/browser-element%3A1?path=%2Ftmp%2Fa.txt&tag=a&workspaceId=workspace-1) " +
+      "[@div](mention://browser-element/browser-element%3A2?path=%2Ftmp%2Fdiv.txt&tag=div&workspaceId=workspace-1) 22222222";
+    const conversation = projectWorkspaceAgentMessagesToConversationVM({
+      activity: activity(),
+      session: session(),
+      workspaceRoot: "/workspace/demo",
+      messages: [
+        message({
+          messageId: "user-browser-element-files",
+          version: 1,
+          role: "user",
+          kind: "text",
+          payload: {
+            displayPrompt,
+            text: "pasted-text-1.txt",
+            content: [
+              {
+                type: "file",
+                kind: "pasted-text",
+                name: "pasted-text-1.txt",
+                path: "/tmp/a.txt"
+              },
+              {
+                type: "file",
+                kind: "pasted-text",
+                name: "pasted-text-2.txt",
+                path: "/tmp/div.txt"
+              }
+            ]
+          }
+        })
+      ]
+    });
+
+    const userRow = conversation.rows.find(
+      (row) => row.kind === "message" && row.speaker === "user"
+    );
+    expect(userRow?.kind === "message" ? userRow.messages[0]?.body : null).toBe(
+      displayPrompt
+    );
+  });
+
   it("sorts message rows by stable message version instead of source-local ids", () => {
     const conversation = projectWorkspaceAgentMessagesToConversationVM({
       activity: activity(),
@@ -15,7 +91,6 @@ describe("projectWorkspaceAgentMessagesToConversationVM", () => {
       messages: [
         message({
           messageId: "assistant-1",
-          id: 20,
           version: 2,
           role: "assistant",
           kind: "text",
@@ -23,7 +98,6 @@ describe("projectWorkspaceAgentMessagesToConversationVM", () => {
         }),
         message({
           messageId: "user-1",
-          id: 30,
           version: 1,
           role: "user",
           kind: "text",
@@ -48,11 +122,10 @@ describe("projectWorkspaceAgentMessagesToConversationVM", () => {
   it("keeps status panel order aligned with stream order when snapshot ids differ", () => {
     const conversation = projectWorkspaceAgentMessagesToConversationVM({
       activity: activity(),
-      session: session({ status: "working", effectiveStatus: "working" }),
+      session: session({ effectiveStatus: "working" }),
       messages: [
         message({
           messageId: "assistant-intro",
-          id: 10,
           version: 1,
           role: "assistant",
           kind: "text",
@@ -60,7 +133,6 @@ describe("projectWorkspaceAgentMessagesToConversationVM", () => {
         }),
         message({
           messageId: "reasoning-1",
-          id: 11,
           version: 5,
           role: "assistant",
           kind: "reasoning",
@@ -69,7 +141,6 @@ describe("projectWorkspaceAgentMessagesToConversationVM", () => {
         }),
         message({
           messageId: "tool-1",
-          id: 12,
           version: 2,
           role: "assistant",
           kind: "tool_call",
@@ -78,7 +149,6 @@ describe("projectWorkspaceAgentMessagesToConversationVM", () => {
         }),
         message({
           messageId: "tool-2",
-          id: 13,
           version: 3,
           role: "assistant",
           kind: "tool_call",
@@ -87,7 +157,6 @@ describe("projectWorkspaceAgentMessagesToConversationVM", () => {
         }),
         message({
           messageId: "tool-3",
-          id: 14,
           version: 4,
           role: "assistant",
           kind: "tool_call",
@@ -112,8 +181,7 @@ describe("projectWorkspaceAgentMessagesToConversationVM", () => {
       })
     ).toEqual([
       "I will inspect the repo.",
-      "List,Read file",
-      "读取网页",
+      "List,Read file,读取网页",
       "Thinking after the active tool update."
     ]);
   });
@@ -125,7 +193,6 @@ describe("projectWorkspaceAgentMessagesToConversationVM", () => {
       messages: [
         message({
           messageId: "user-1",
-          id: 1,
           version: 1,
           role: "user",
           kind: "text",
@@ -135,7 +202,6 @@ describe("projectWorkspaceAgentMessagesToConversationVM", () => {
         }),
         message({
           messageId: "toolcall:search-1",
-          id: 2,
           version: 4,
           role: "assistant",
           kind: "tool_call",
@@ -152,7 +218,6 @@ describe("projectWorkspaceAgentMessagesToConversationVM", () => {
         }),
         message({
           messageId: "assistant-final",
-          id: 3,
           version: 3,
           role: "assistant",
           kind: "text",
@@ -180,6 +245,55 @@ describe("projectWorkspaceAgentMessagesToConversationVM", () => {
     ]);
   });
 
+  it("keeps a streaming assistant message before a later tool call by durable sequence", () => {
+    const conversation = projectWorkspaceAgentMessagesToConversationVM({
+      activity: activity(),
+      session: session(),
+      messages: [
+        message({
+          messageId: "assistant-intro",
+          sequence: 2,
+          version: 8,
+          role: "assistant",
+          kind: "text",
+          status: "completed",
+          payload: { text: "I will start the agents." },
+          createdAtUnixMs: 100,
+          occurredAtUnixMs: 201
+        }),
+        message({
+          messageId: "tool-1",
+          sequence: 3,
+          version: 11,
+          role: "assistant",
+          kind: "tool_call",
+          status: "completed",
+          payload: {
+            callId: "task-1",
+            title: "Task",
+            toolName: "Task"
+          },
+          createdAtUnixMs: 202,
+          startedAtUnixMs: 200,
+          occurredAtUnixMs: 300,
+          completedAtUnixMs: 300
+        })
+      ]
+    });
+
+    expect(
+      conversation.rows.map((row) => {
+        if (row.kind === "message") {
+          return `assistant:${row.messages[0]?.body}`;
+        }
+        if (row.kind === "tool-group") {
+          return `tool:${row.calls[0]?.toolName}`;
+        }
+        return row.kind;
+      })
+    ).toEqual(["assistant:I will start the agents.", "tool:Agent"]);
+  });
+
   it("projects text, reasoning, errors, and unknown kinds conservatively", () => {
     const conversation = projectWorkspaceAgentMessagesToConversationVM({
       activity: activity(),
@@ -187,28 +301,24 @@ describe("projectWorkspaceAgentMessagesToConversationVM", () => {
       messages: [
         message({
           messageId: "user-1",
-          id: 1,
           role: "user",
           kind: "text",
           payload: { text: "Inspect this" }
         }),
         message({
           messageId: "thinking-1",
-          id: 2,
           role: "assistant",
           kind: "reasoning",
           payload: { text: "Need to inspect first." }
         }),
         message({
           messageId: "assistant-1",
-          id: 3,
           role: "assistant",
           kind: "text",
           payload: { text: "I found the issue." }
         }),
         message({
           messageId: "error-1",
-          id: 4,
           role: "assistant",
           kind: "error",
           status: "failed",
@@ -216,7 +326,6 @@ describe("projectWorkspaceAgentMessagesToConversationVM", () => {
         }),
         message({
           messageId: "unknown-1",
-          id: 5,
           role: "assistant",
           kind: "provider_notice",
           payload: { title: "Provider notice", text: "Notice text" }
@@ -238,13 +347,74 @@ describe("projectWorkspaceAgentMessagesToConversationVM", () => {
       "assistant",
       "assistant"
     ]);
-    expect(messageRows[1]?.thinking[0]?.body).toBe("Need to inspect first.");
+    expect(
+      messageRows.flatMap((row) => row.thinking.map((item) => item.body))
+    ).toContain("Need to inspect first.");
     expect(
       messageRows.flatMap((row) => row.messages.map((item) => item.body))
     ).toContain("Agent failed\n\nConfig invalid");
     expect(
       messageRows.flatMap((row) => row.messages.map((item) => item.body))
     ).toContain("Provider notice\n\nNotice text");
+  });
+
+  it("keeps turnless session audits in chronological conversation order", () => {
+    const conversation = projectWorkspaceAgentMessagesToConversationVM({
+      activity: activity(),
+      session: session({
+        effectiveStatus: "completed",
+        turnPhase: "completed"
+      }),
+      messages: [
+        message({
+          messageId: "goal-control:first",
+          version: 1,
+          turnId: undefined,
+          role: "user",
+          kind: "session_audit",
+          payload: { text: "/goal first" },
+          occurredAtUnixMs: 100
+        }),
+        message({
+          messageId: "assistant-first",
+          version: 2,
+          turnId: "goal-turn-1",
+          role: "assistant",
+          kind: "text",
+          payload: { text: "First goal result" },
+          occurredAtUnixMs: 200
+        }),
+        message({
+          messageId: "goal-control:second",
+          version: 3,
+          turnId: undefined,
+          role: "user",
+          kind: "session_audit",
+          payload: { text: "/goal second" },
+          occurredAtUnixMs: 300
+        }),
+        message({
+          messageId: "assistant-second",
+          version: 4,
+          turnId: "goal-turn-2",
+          role: "assistant",
+          kind: "text",
+          payload: { text: "Second goal result" },
+          occurredAtUnixMs: 400
+        })
+      ]
+    });
+
+    expect(
+      conversation.rows
+        .filter((row) => row.kind === "message")
+        .map((row) => `${row.speaker}:${row.messages[0]?.body}`)
+    ).toEqual([
+      "user:/goal first",
+      "assistant:First goal result",
+      "user:/goal second",
+      "assistant:Second goal result"
+    ]);
   });
 
   it("projects only the latest text snapshot for a stable message id", () => {
@@ -255,7 +425,6 @@ describe("projectWorkspaceAgentMessagesToConversationVM", () => {
       messages: [
         message({
           messageId: "assistant-stream-1",
-          id: 1,
           version: 1,
           role: "assistant",
           kind: "text",
@@ -434,21 +603,7 @@ describe("projectWorkspaceAgentMessagesToConversationVM", () => {
       ]
     });
 
-    expect(conversation.pendingInteractivePrompt).toEqual({
-      kind: "ask-user",
-      requestId: "request-ask",
-      title: "Ask User Question",
-      questions: [
-        {
-          id: "favorite-color",
-          header: "Color",
-          question: "What's your favorite color?",
-          options: [{ label: "Green", description: "Pick green" }],
-          multiSelect: false,
-          answer: null
-        }
-      ]
-    });
+    expect("pendingInteractivePrompt" in conversation).toBe(false);
   });
 
   it("does not use opaque call ids as tool names", () => {
@@ -579,6 +734,275 @@ describe("projectWorkspaceAgentMessagesToConversationVM", () => {
     );
   });
 
+  it("renders an image-only optimistic prompt without synthetic text", () => {
+    const conversation = projectWorkspaceAgentMessagesToConversationVM({
+      activity: activity(),
+      session: session(),
+      workspaceRoot: "/workspace/demo",
+      messages: [
+        message({
+          messageId: "client-submit:user:submit-image-1",
+          id: 0,
+          role: "user",
+          kind: "text",
+          payload: {
+            __agentGuiOptimisticPrompt: true,
+            clientSubmitId: "submit-image-1",
+            text: "",
+            content: [
+              {
+                type: "image",
+                mimeType: "image/png",
+                path: "/prompt-assets/screen.png",
+                name: "screen.png"
+              }
+            ]
+          }
+        })
+      ]
+    });
+
+    const userRow = conversation.rows.find(
+      (row) => row.kind === "message" && row.speaker === "user"
+    );
+
+    expect(userRow?.kind === "message" ? userRow.messages : null).toEqual([
+      expect.objectContaining({
+        body: "",
+        contentKind: "image-grid",
+        images: [
+          expect.objectContaining({
+            id: "client-submit:user:submit-image-1:image:0",
+            mimeType: "image/png",
+            name: "screen.png",
+            path: "/prompt-assets/screen.png"
+          })
+        ]
+      })
+    ]);
+
+    const durableConversation = projectWorkspaceAgentMessagesToConversationVM({
+      activity: activity(),
+      session: session(),
+      workspaceRoot: "/workspace/demo",
+      messages: [
+        message({
+          messageId: "client-submit:user:submit-image-1",
+          id: 1,
+          version: 1,
+          role: "user",
+          kind: "text",
+          payload: {
+            clientSubmitId: "submit-image-1",
+            text: "[Image]",
+            content: [
+              {
+                type: "image",
+                mimeType: "image/png",
+                attachmentId: "attachment-1",
+                name: "screen.png"
+              }
+            ]
+          }
+        })
+      ]
+    });
+    const durableUserRow = durableConversation.rows.find(
+      (row) => row.kind === "message" && row.speaker === "user"
+    );
+
+    expect(
+      durableUserRow?.kind === "message"
+        ? durableUserRow.messages[0]?.images?.[0]
+        : null
+    ).toMatchObject({
+      id: "client-submit:user:submit-image-1:image:0",
+      attachmentId: "attachment-1"
+    });
+  });
+
+  it("projects legacy compact text as a semantic notice and removes only its matching echo", () => {
+    const conversation = projectWorkspaceAgentMessagesToConversationVM({
+      activity: activity(),
+      session: session(),
+      workspaceRoot: "/workspace/demo",
+      messages: [
+        message({
+          messageId: "compact-1",
+          version: 1,
+          status: "failed",
+          payload: {
+            source: "compact",
+            text: "Compacting failed: Not enough messages to compact."
+          }
+        }),
+        message({
+          messageId: "assistant-echo",
+          version: 2,
+          payload: { text: "Not enough messages to compact." }
+        }),
+        message({
+          messageId: "assistant-guidance",
+          version: 3,
+          payload: { text: "Add more messages and try again." }
+        })
+      ]
+    });
+
+    const assistantRows = conversation.rows.filter(
+      (
+        row
+      ): row is Extract<
+        (typeof conversation.rows)[number],
+        { kind: "message" }
+      > => row.kind === "message" && row.speaker === "assistant"
+    );
+
+    expect(assistantRows).toHaveLength(2);
+    expect(assistantRows[0]?.messages[0]?.systemNotice).toEqual({
+      noticeKind: "system_notice",
+      severity: null,
+      source: "compact",
+      command: "compact",
+      commandStatus: "failed",
+      title: "Context compaction interrupted.",
+      detail: "Not enough messages to compact.",
+      retryable: null
+    });
+    expect(assistantRows[0]?.messages[0]?.presentationKind).toBe(
+      "turn-boundary"
+    );
+    expect(assistantRows[1]?.messages[0]?.body).toBe(
+      "Add more messages and try again."
+    );
+  });
+
+  it("preserves matching assistant guidance after canceled compaction", () => {
+    const conversation = projectWorkspaceAgentMessagesToConversationVM({
+      activity: activity(),
+      session: session(),
+      workspaceRoot: "/workspace/demo",
+      messages: [
+        message({
+          messageId: "compact-canceled",
+          version: 1,
+          status: "canceled",
+          semantics: {
+            noticeCommand: "compact",
+            noticeCommandStatus: "canceled"
+          },
+          payload: {
+            kind: "agent_system_notice",
+            noticeKind: "system_notice",
+            title: "Context compaction interrupted.",
+            detail: "Try again after adding more context.",
+            text: "Context compaction interrupted."
+          }
+        }),
+        message({
+          messageId: "assistant-guidance",
+          version: 2,
+          payload: { text: "Try again after adding more context." }
+        })
+      ]
+    });
+
+    const assistantRows = conversation.rows.filter(
+      (
+        row
+      ): row is Extract<
+        (typeof conversation.rows)[number],
+        { kind: "message" }
+      > => row.kind === "message" && row.speaker === "assistant"
+    );
+
+    expect(assistantRows).toHaveLength(2);
+    expect(assistantRows[0]?.messages[0]?.systemNotice).toEqual(
+      expect.objectContaining({
+        command: "compact",
+        commandStatus: "canceled"
+      })
+    );
+    expect(assistantRows[1]?.messages[0]?.body).toBe(
+      "Try again after adding more context."
+    );
+  });
+
+  it("normalizes persisted Codex compaction notices before presentation", () => {
+    const conversation = projectWorkspaceAgentMessagesToConversationVM({
+      activity: activity(),
+      session: session(),
+      workspaceRoot: "/workspace/demo",
+      messages: [
+        message({
+          messageId: "compaction:turn-compact",
+          turnId: "turn-compact",
+          version: 1,
+          status: "completed",
+          payload: {
+            kind: "agent_system_notice",
+            noticeKind: "system_notice",
+            source: "runtime",
+            title: "Context compacted.",
+            text: "Context compacted."
+          }
+        })
+      ]
+    });
+
+    const compactMessage = conversation.rows.flatMap((row) =>
+      row.kind === "message" ? row.messages : []
+    )[0];
+    expect(compactMessage?.systemNotice).toEqual(
+      expect.objectContaining({
+        command: "compact",
+        commandStatus: "completed"
+      })
+    );
+    expect(compactMessage?.presentationKind).toBe("turn-boundary");
+  });
+
+  it("prefers canonical message semantics over duplicated notice payload fields", () => {
+    const conversation = projectWorkspaceAgentMessagesToConversationVM({
+      activity: activity(),
+      session: session({ effectiveStatus: "working" }),
+      workspaceRoot: "/workspace/demo",
+      messages: [
+        message({
+          messageId: "compact-running",
+          version: 1,
+          status: "working",
+          semantics: {
+            noticeCommand: "compact",
+            noticeCommandStatus: "running"
+          },
+          payload: {
+            kind: "agent_system_notice",
+            noticeKind: "system_notice",
+            noticeCommand: "review",
+            noticeCommandStatus: "completed",
+            title: "Compacting context.",
+            text: "Compacting context."
+          }
+        })
+      ]
+    });
+
+    const compactMessage = conversation.rows.flatMap((row) =>
+      row.kind === "message" ? row.messages : []
+    )[0];
+    expect(compactMessage?.systemNotice).toEqual(
+      expect.objectContaining({
+        command: "compact",
+        commandStatus: "running"
+      })
+    );
+    expect(compactMessage?.presentationKind).toBe("specific-progress");
+    expect(conversation.rows.some((row) => row.kind === "processing")).toBe(
+      false
+    );
+  });
+
   it("renders displayPrompt instead of rich content text while preserving prompt images", () => {
     const conversation = projectWorkspaceAgentMessagesToConversationVM({
       activity: activity(),
@@ -647,41 +1071,67 @@ function activity(
 }
 
 function session(
-  overrides: Partial<AgentHostWorkspaceAgentSession> = {}
-): AgentHostWorkspaceAgentSession {
-  return {
-    id: 1,
+  overrides: Partial<AgentActivitySession> & {
+    effectiveStatus?: string;
+    turnPhase?: string;
+  } = {}
+): AgentActivitySession {
+  const { effectiveStatus, turnPhase, ...canonical } = overrides;
+  const phase = turnPhase ?? effectiveStatus;
+  const hasActiveTurn =
+    phase === "submitted" ||
+    phase === "running" ||
+    phase === "working" ||
+    phase === "waiting" ||
+    phase === "settling";
+  return normalizeAgentActivitySession({
+    ...{
+      activeTurnId: null,
+      latestTurnInteractions: [],
+      pendingInteractions: []
+    },
+    workspaceId: "workspace-1",
     agentSessionId: "session-1",
-    presenceId: 1,
     userId: "user-1",
     provider: "codex",
     providerSessionId: "provider-session-1",
-    sessionOrigin: "WORKSPACE_AGENT_SESSION_ORIGIN_RUNTIME",
     cwd: "/workspace/demo",
-    lifecycleStatus: "active",
-    turnPhase: "completed",
-    effectiveStatus: "completed",
     title: "Codex",
     createdAtUnixMs: 1,
     updatedAtUnixMs: 10,
-    ...overrides
-  };
+    ...(hasActiveTurn
+      ? {
+          activeTurn: {
+            agentSessionId: "session-1",
+            outcome: null,
+            origin: "user_prompt",
+            phase: phase === "working" ? "running" : phase,
+            settledAtUnixMs: null,
+            startedAtUnixMs: 1,
+            turnId: "turn-1",
+            updatedAtUnixMs: 10
+          },
+          activeTurnId: "turn-1"
+        }
+      : {}),
+    ...canonical
+  });
 }
 
 function message(
-  overrides: Partial<AgentHostWorkspaceAgentMessage>
-): AgentHostWorkspaceAgentMessage {
-  const id = overrides.id ?? 1;
+  overrides: Partial<AgentActivityMessage> & { id?: number }
+): AgentActivityMessage {
+  const { id: _legacyStorageId, ...canonical } = overrides;
+  const version = overrides.version ?? 1;
   return {
-    id,
     agentSessionId: "session-1",
     messageId: "message-1",
-    version: overrides.version ?? id,
+    version,
     turnId: "turn-1",
     role: "assistant",
     kind: "text",
     payload: {},
     occurredAtUnixMs: 1,
-    ...overrides
+    ...canonical
   };
 }

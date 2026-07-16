@@ -21,70 +21,31 @@ type AgentGuiWorkbenchLaunchRequestInput = Pick<
 
 export const agentGuiWorkbenchTypeId = "agent-gui";
 
-const agentGuiWorkbenchDockEntryPrefix = "agent-gui:";
 const agentGuiWorkbenchUnifiedDockEntryIdValue = "agent-gui:unified";
 const agentGuiWorkbenchDockPopupNewWindowLaunchSource = "dock-popup-new-window";
 let agentGuiWorkbenchInstanceSequence = 0;
 
-export type AgentGuiWorkbenchDockIdentity =
-  | {
-      kind: "legacyProvider";
-      provider: AgentGuiWorkbenchProvider;
-    }
-  | {
-      kind: "unifiedAggregate";
-    };
+export interface AgentGuiWorkbenchDockIdentity {
+  kind: "unifiedAggregate";
+}
 
+/**
+ * @deprecated AgentGUI has one canonical Dock entry. Use
+ * {@link agentGuiWorkbenchUnifiedDockEntryId} instead.
+ */
 export function agentGuiWorkbenchDockEntryId(
-  provider: AgentGuiWorkbenchProvider
+  _provider: AgentGuiWorkbenchProvider
 ): string {
-  return provider === "codex"
-    ? agentGuiWorkbenchTypeId
-    : `${agentGuiWorkbenchDockEntryPrefix}${provider}`;
+  return agentGuiWorkbenchUnifiedDockEntryId();
 }
 
 export function agentGuiWorkbenchUnifiedDockEntryId(): string {
   return agentGuiWorkbenchUnifiedDockEntryIdValue;
 }
 
-export function agentGuiWorkbenchInstanceId(
-  provider: AgentGuiWorkbenchProvider
-): string {
-  return `${agentGuiWorkbenchDockEntryPrefix}${provider}`;
-}
-
-export function createAgentGuiWorkbenchInstanceId(input: {
-  agentSessionId?: string | null;
-  agentTargetId?: string | null;
-  provider: AgentGuiWorkbenchProvider;
-}): string {
-  const prefix = agentGuiWorkbenchInstanceId(input.provider);
-  const agentSessionId = input.agentSessionId?.trim();
-  if (agentSessionId) {
-    return `${prefix}:session:${encodeAgentGuiWorkbenchInstanceSegment(
-      agentSessionId
-    )}`;
-  }
-  const agentTargetId = input.agentTargetId?.trim();
-  if (agentTargetId) {
-    return `${prefix}:target:${encodeAgentGuiWorkbenchInstanceSegment(
-      agentTargetId
-    )}`;
-  }
-
+export function createAgentGuiWorkbenchInstanceId(): string {
   agentGuiWorkbenchInstanceSequence += 1;
-  return [
-    prefix,
-    "panel",
-    `${Date.now().toString(36)}-${agentGuiWorkbenchInstanceSequence.toString(36)}`
-  ].join(":");
-}
-
-export function agentGuiWorkbenchProviderFromIdentifier(
-  value: string | null | undefined
-): AgentGuiWorkbenchProvider | null {
-  const identity = agentGuiWorkbenchDockIdentityFromIdentifier(value);
-  return identity?.kind === "legacyProvider" ? identity.provider : null;
+  return `agent-gui:instance:${Date.now().toString(36)}-${agentGuiWorkbenchInstanceSequence.toString(36)}`;
 }
 
 export function agentGuiWorkbenchDockIdentityFromIdentifier(
@@ -97,18 +58,7 @@ export function agentGuiWorkbenchDockIdentityFromIdentifier(
   if (normalized === agentGuiWorkbenchUnifiedDockEntryId()) {
     return { kind: "unifiedAggregate" };
   }
-  if (normalized === agentGuiWorkbenchTypeId) {
-    return { kind: "legacyProvider", provider: "codex" };
-  }
-  if (!normalized.startsWith(agentGuiWorkbenchDockEntryPrefix)) {
-    return null;
-  }
-  const provider = normalized
-    .slice(agentGuiWorkbenchDockEntryPrefix.length)
-    .split(":", 1)[0];
-  return isAgentGuiWorkbenchProvider(provider)
-    ? { kind: "legacyProvider", provider }
-    : null;
+  return null;
 }
 
 export function agentGuiWorkbenchProviderFromLaunchRequest(
@@ -123,11 +73,7 @@ export function agentGuiWorkbenchProviderFromLaunchRequest(
   if (isAgentGuiWorkbenchProvider(payloadProvider)) {
     return payloadProvider;
   }
-  return (
-    agentGuiWorkbenchProviderFromIdentifier(request.dockEntryId) ??
-    agentGuiWorkbenchProviderFromIdentifier(request.typeId) ??
-    "codex"
-  );
+  throw new Error("agent_gui_workbench.launch_provider_required");
 }
 
 export function createAgentGuiWorkbenchSessionLaunchRequest(input: {
@@ -138,7 +84,7 @@ export function createAgentGuiWorkbenchSessionLaunchRequest(input: {
 }) {
   const provider = normalizeAgentGuiWorkbenchProvider(input.provider);
   return {
-    dockEntryId: agentGuiWorkbenchDockEntryId(provider),
+    dockEntryId: agentGuiWorkbenchUnifiedDockEntryId(),
     payload: {
       ...(input.agentTargetId?.trim()
         ? { agentTargetId: input.agentTargetId.trim() }
@@ -165,7 +111,7 @@ export function createAgentGuiWorkbenchDraftLaunchRequest(input: {
     input.userProjectPath
   );
   return {
-    dockEntryId: agentGuiWorkbenchDockEntryId(provider),
+    dockEntryId: agentGuiWorkbenchUnifiedDockEntryId(),
     payload: {
       draftPrompt: input.draftPrompt,
       provider,
@@ -198,19 +144,20 @@ export interface AgentGuiWorkbenchLaunchDescriptor {
   instanceId: string;
   openInNewWindow: boolean;
   provider: AgentGuiWorkbenchProvider;
-  reuseDockEntryNode: boolean;
-  reuseExistingSessionNode: boolean;
+  reusePolicy: AgentGuiWorkbenchReusePolicy;
   targetAgentSessionId: string | null;
 }
+
+export type AgentGuiWorkbenchReusePolicy =
+  | { kind: "dock-entry" }
+  | { agentSessionId: string; kind: "current-session" }
+  | { kind: "none" };
 
 export function createAgentGuiWorkbenchLaunchDescriptor(
   request: AgentGuiWorkbenchLaunchRequestInput
 ): AgentGuiWorkbenchLaunchDescriptor {
   const provider = agentGuiWorkbenchProviderFromLaunchRequest(request);
-  const dockEntryId = resolveAgentGuiWorkbenchLaunchDockEntryId({
-    provider,
-    requestedDockEntryId: request.dockEntryId
-  });
+  const dockEntryId = agentGuiWorkbenchUnifiedDockEntryId();
   const prefillPrompt = prefillPromptFromLaunchPayload(request.payload);
   if (prefillPrompt) {
     const openInNewWindow = openInNewWindowFromLaunchPayload(request.payload);
@@ -220,34 +167,17 @@ export function createAgentGuiWorkbenchLaunchDescriptor(
         type: agentGuiWorkbenchPrefillPromptActivationType
       },
       dockEntryId,
-      instanceId: createAgentGuiWorkbenchInstanceId({
-        agentTargetId: openInNewWindow
-          ? null
-          : agentTargetIdFromLaunchPayload(request.payload),
-        provider
-      }),
+      instanceId: createAgentGuiWorkbenchInstanceId(),
       openInNewWindow,
       provider,
-      reuseDockEntryNode:
-        !openInNewWindow &&
-        shouldReuseAgentGuiWorkbenchDockEntryNode({
-          dockEntryId,
-          launchKind: "prefill"
-        }),
-      reuseExistingSessionNode: !openInNewWindow,
+      reusePolicy: { kind: "none" },
       targetAgentSessionId: null
     };
   }
 
   const targetAgentSessionId = agentSessionIdFromLaunchPayload(request.payload);
   const openInNewWindow = openInNewWindowFromLaunchRequest(request);
-  const instanceId = createAgentGuiWorkbenchInstanceId({
-    agentSessionId: null,
-    agentTargetId: openInNewWindow
-      ? null
-      : agentTargetIdFromLaunchPayload(request.payload),
-    provider
-  });
+  const instanceId = createAgentGuiWorkbenchInstanceId();
 
   return {
     activation: targetAgentSessionId
@@ -262,48 +192,24 @@ export function createAgentGuiWorkbenchLaunchDescriptor(
     instanceId,
     openInNewWindow,
     provider,
-    reuseDockEntryNode:
-      !openInNewWindow &&
-      shouldReuseAgentGuiWorkbenchDockEntryNode({
-        dockEntryId,
-        launchKind: targetAgentSessionId ? "session" : "empty"
-      }),
-    reuseExistingSessionNode: !openInNewWindow,
+    reusePolicy: openInNewWindow
+      ? { kind: "none" }
+      : targetAgentSessionId
+        ? { agentSessionId: targetAgentSessionId, kind: "current-session" }
+        : { kind: "dock-entry" },
     targetAgentSessionId
   };
 }
 
-export function resolveAgentGuiWorkbenchLaunchDockEntryId(input: {
+/**
+ * @deprecated AgentGUI launch results always use the unified Dock entry. Use
+ * {@link agentGuiWorkbenchUnifiedDockEntryId} instead.
+ */
+export function resolveAgentGuiWorkbenchLaunchDockEntryId(_input: {
   provider: AgentGuiWorkbenchProvider;
   requestedDockEntryId?: string | null;
 }): string {
-  const requestedIdentity = agentGuiWorkbenchDockIdentityFromIdentifier(
-    input.requestedDockEntryId
-  );
-  if (requestedIdentity?.kind === "unifiedAggregate") {
-    return agentGuiWorkbenchUnifiedDockEntryId();
-  }
-  return agentGuiWorkbenchDockEntryId(input.provider);
-}
-
-export function shouldReuseAgentGuiWorkbenchDockEntryNode(input: {
-  dockEntryId: string;
-  launchKind: "empty" | "prefill" | "session";
-}): boolean {
-  if (input.launchKind === "empty") {
-    return true;
-  }
-  if (input.launchKind === "session") {
-    return false;
-  }
-  return (
-    agentGuiWorkbenchDockIdentityFromIdentifier(input.dockEntryId)?.kind !==
-    "unifiedAggregate"
-  );
-}
-
-function encodeAgentGuiWorkbenchInstanceSegment(value: string): string {
-  return encodeURIComponent(value.trim());
+  return agentGuiWorkbenchUnifiedDockEntryId();
 }
 
 function prefillPromptFromLaunchPayload(

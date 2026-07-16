@@ -18,6 +18,7 @@ export type AgentRunErrorCode =
   | "provider_config_timeout"
   | "provider_stream_disconnected"
   | "provider_concurrency_limit"
+  | "insufficient_credits"
   | "quota_or_rate_limit"
   | "process_exited"
   | "provider_error"
@@ -35,8 +36,10 @@ export interface AgentErrorPresentation {
    * case no call-to-action is shown (showing one would misrepresent reality).
    */
   focus: AgentEnvPanelFocus | null;
-  /** i18n key for the remediation button. Only meaningful when `focus` is set. */
+  /** i18n key for the remediation button. */
   actionKey: string | null;
+  /** External remediation destination, when the action is account-level. */
+  externalUrl?: string | null;
 }
 
 const NO_CTA = { focus: null, actionKey: null } as const;
@@ -95,6 +98,12 @@ const PRESENTATIONS: Record<AgentRunErrorCode, AgentErrorPresentation> = {
     messageKey: "agentHost.agentGui.visibleErrorConcurrencyLimit",
     ...NO_CTA
   },
+  insufficient_credits: {
+    messageKey: "agentHost.agentGui.visibleErrorInsufficientCredits",
+    focus: null,
+    actionKey: "agentHost.agentGui.visibleErrorActionViewPlans",
+    externalUrl: "https://tutti.sh/profile/plan"
+  },
   quota_or_rate_limit: {
     messageKey: "agentHost.agentGui.visibleErrorQuotaOrRateLimit",
     ...NO_CTA
@@ -150,6 +159,10 @@ const FAILED_MESSAGE_CODE_MARKERS: ReadonlyArray<
   [
     "network_error",
     ["enotfound", "econnrefused", "econnreset", "getaddrinfo", "socket hang up"]
+  ],
+  [
+    "quota_or_rate_limit",
+    ["upgrade your plan to continue", "add a payment method to continue"]
   ]
 ];
 
@@ -174,4 +187,52 @@ export function classifyFailedAgentMessage(
     }
   }
   return null;
+}
+
+const COMPLETED_AUTH_MESSAGE_MAX_LENGTH = 160;
+const COMPLETED_AUTH_MESSAGE_PATTERN =
+  /^not logged in\s*(?:[·•:—-]|\.)?\s*please run\s+\/login[.!]?$/i;
+
+/**
+ * Resolves a plain assistant message that should be recovered into a visible
+ * error card. Failed messages keep the provider-agnostic fallback above.
+ *
+ * Claude Code demonstrates why completed messages need a narrow exception: its
+ * SDK can return the standalone "Not logged in · Please run /login" notice
+ * together with a successful result. Match the provider-owned output shape,
+ * rather than branching on provider identity, and keep it short and
+ * whole-message anchored so normal answers are not reclassified.
+ */
+export function classifyRecoverableAgentMessage(input: {
+  body: string | null | undefined;
+  statusKind: string | null | undefined;
+}): AgentRunErrorCode | null {
+  if (input.statusKind === "failed") {
+    return classifyFailedAgentMessage(input.body);
+  }
+  if (
+    input.statusKind !== "completed" ||
+    !input.body ||
+    input.body.length > COMPLETED_AUTH_MESSAGE_MAX_LENGTH
+  ) {
+    return null;
+  }
+  return COMPLETED_AUTH_MESSAGE_PATTERN.test(input.body.trim())
+    ? "auth_required"
+    : null;
+}
+
+/** True when detail text is a provider plan/payment gate (not a generic quota). */
+export function isProviderPlanLimitMessage(
+  detail: string | null | undefined
+): boolean {
+  const normalized = detail?.trim().toLowerCase() ?? "";
+  if (!normalized) {
+    return false;
+  }
+  const markers =
+    FAILED_MESSAGE_CODE_MARKERS.find(
+      ([code]) => code === "quota_or_rate_limit"
+    )?.[1] ?? [];
+  return markers.some((marker) => normalized.includes(marker));
 }

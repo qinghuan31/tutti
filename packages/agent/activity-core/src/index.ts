@@ -1,26 +1,26 @@
 export type { AgentActivityAdapter } from "./adapter.ts";
 export {
+  normalizeAgentActivitySession,
+  type AgentActivitySessionInput
+} from "./sessionNormalization.ts";
+export {
   AGENT_CAPABILITY_KEYS,
+  hasAgentCapability,
   resolveAgentActivityCapability,
   type AgentActivityCapabilityInput,
   type AgentCapabilityKey
 } from "./capabilities.ts";
 export {
-  cloneAgentActivitySnapshot,
-  createAgentActivityController,
-  createEmptyAgentActivitySnapshot,
-  setAgentActivityStoreDiagnosticSink,
-  type AgentActivityController,
-  type AgentActivityLoadComposerOptionsControllerInput,
-  type AgentActivitySnapshotListener,
-  type CreateAgentActivityControllerInput
-} from "./controller.ts";
+  createAgentActivitySnapshotProjector,
+  createEmptyAgentActivitySnapshot
+} from "./engine/agentActivitySnapshot.projector.ts";
 export {
   cloneAgentActivityMessage,
   compareAgentActivityMessages,
   latestAgentActivityMessageVersion,
   mergeAgentActivityMessages
 } from "./merge.ts";
+export { parseInlineActivityMessages } from "./inlineActivityMessages.ts";
 export {
   loadAllAgentSessionMessages,
   type AgentActivityMessagePageLike,
@@ -28,46 +28,224 @@ export {
   type LoadAllAgentSessionMessagesResult
 } from "./pagination.ts";
 export {
-  deriveSubmitAvailability,
-  DERIVED_SUBMIT_BLOCK_REASONS,
-  isLiveTurnLifecyclePhase,
-  resolveSubmitAvailability,
-  isWaitingTurnLifecyclePhase,
-  LIVE_TURN_LIFECYCLE_PHASES,
   normalizeAgentActivityDisplayStatus,
-  runtimeContextHasLiveBackgroundAgents,
-  type DerivedSubmitAvailability,
-  type DeriveSubmitAvailabilityInput,
-  type ResolveSubmitAvailabilityInput,
-  resolveLatestAgentActivityMessageDisplayStatus,
+  selectCanonicalAgentActivitySessions,
+  selectRootAgentActivitySessions,
   selectNeedsAttentionCount,
-  selectNeedsAttentionItems,
-  selectSessionDisplayStatuses
+  selectNeedsAttentionItems
 } from "./selectors.ts";
 export {
   resolveAgentActivityUsage,
   type AgentActivityUsage,
   type AgentActivityUsageInput
 } from "./usage.ts";
+export {
+  createAgentSessionEngine,
+  ENGINE_INTENT_BATCH_DELAY_MS,
+  type CreateAgentSessionEngineInput
+} from "./engine/createAgentSessionEngine.ts";
 export type {
+  EngineDiagnosticEvent,
+  EngineDiagnosticSink
+} from "./engine/diagnostics.ts";
+export type {
+  AgentSessionEngine,
+  AgentSessionEngineIdentity,
+  AgentSessionEngineListener,
+  AgentSessionEngineState,
+  EngineClock,
+  EngineCommand,
+  EngineCommandOutcome,
+  EngineCommandPort,
+  EngineConnectionStatus,
+  EngineDispatchOptions,
+  EngineDomainReducer,
+  EngineExternalCommand,
+  EngineIntent,
+  EngineInternalCommand,
+  EngineReducerResult,
+  EngineRuntimeState,
+  EngineScheduledTask,
+  EngineScheduler
+} from "./engine/types.ts";
+export { AGENT_SESSION_ENGINE_LOCAL_ORIGIN } from "./engine/types.ts";
+export { selectWorkspaceReconcileState } from "./engine/engineRuntime.selectors.ts";
+export {
+  selectAttentionReadState,
+  selectSessionAttention
+} from "./engine/attentionReadState.selectors.ts";
+export {
+  selectSessionMessages,
+  selectSessionMessagesById
+} from "./engine/sessionMessages.selectors.ts";
+export type { SessionMessagesState } from "./engine/sessionMessages.types.ts";
+export {
+  selectComposerOptions,
+  selectComposerOptionsLoadStatus
+} from "./engine/composerOptions.selectors.ts";
+export type {
+  ComposerOptionsIntent,
+  ComposerOptionsCommand,
+  ComposerOptionsState
+} from "./engine/composerOptions.types.ts";
+export type {
+  AttentionCompletionKind,
+  AttentionReadCommand,
+  AttentionReadIntent,
+  AttentionReadRecord,
+  AttentionReadState
+} from "./engine/attentionReadState.types.ts";
+export {
+  selectEngineActiveTurn,
+  selectEngineCancelState,
+  selectEngineCancelPending,
+  selectEngineHasPendingInteractions,
+  selectEngineInteractionsForSession,
+  selectEngineInteraction,
+  selectEngineInteractionResponse,
+  selectEngineInteractionResponseError,
+  selectEngineLatestTurn,
+  selectEnginePendingInteractions,
+  selectEngineSession,
+  selectEngineSessionDeleted,
+  selectEngineSessionIsRespondingToInteraction,
+  selectEngineSessionSettingsUpdate,
+  selectEngineSessionError,
+  selectEngineSessionOperation,
+  selectEngineSubmitAvailability,
+  selectEngineTurnsForSession,
+  selectEngineTurn,
+  selectRootAgentSessionIdsWithPendingInteractions,
+  selectWorkspaceAgentConsumerCounts,
+  selectWorkspaceAgentConsumerSession,
+  selectWorkspaceAgentConsumerSessions,
+  selectWorkspaceAgentRootConversationSessions
+} from "./engine/sessionLifecycle.selectors.ts";
+export {
+  selectEngineSessionDetailHydrated,
+  selectEngineSessionDetailLoading,
+  selectEngineSessionReconcile
+} from "./engine/sessionReconcile.selectors.ts";
+export {
+  canonicalInteractionKey,
+  canonicalTurnKey
+} from "./engine/sessionEntityKeys.ts";
+export type {
+  WorkspaceAgentConsumerCounts,
+  WorkspaceAgentConsumerSession
+} from "./engine/sessionLifecycle.selectors.ts";
+export type {
+  CanonicalAgentSession,
+  InteractionRespondCommand,
+  InteractionResponseState,
+  InteractionResponseStatus,
+  SessionCancelState,
+  SessionCancelStatus,
+  SessionOperationState,
+  SessionSettingsUpdateState,
+  SessionSettingsUpdateStatus,
+  SessionLifecycleState,
+  TurnCancelCommand
+} from "./engine/sessionLifecycle.types.ts";
+export type {
+  PlanDecisionIntent,
+  PlanDecisionRecord,
+  PlanDecisionState,
+  PlanDecisionStatus,
+  PlanSubmitDecisionCommand
+} from "./engine/planDecision.types.ts";
+export {
+  selectPlanDecisionForTurn,
+  selectPlanTurnDismissed
+} from "./engine/planDecision.selectors.ts";
+export { selectEngineAvailableCommands } from "./engine/sessionCommands.selectors.ts";
+export type {
+  AgentSessionAvailableCommand,
+  SessionCommandsIntent,
+  SessionCommandsState
+} from "./engine/sessionCommands.types.ts";
+export {
+  selectEngineHasQueuedPrompts,
+  selectEngineHasVisibleQueuedSubmit,
+  selectEnginePromptQueueError,
+  selectEnginePromptQueue,
+  selectEngineQueuedPrompt,
+  selectEngineQueuedPrompts
+} from "./engine/promptQueue.selectors.ts";
+export type {
+  EngineQueuedPrompt,
+  PromptQueueInFlightCommand,
+  PromptQueueRecord,
+  PromptQueueSendCommand,
+  PromptQueueState,
+  PromptQueueSuspendReason
+} from "./engine/promptQueue.types.ts";
+export type {
+  ActivityMessagesReceivedIntent,
+  PendingActivationIntentRecord,
+  PendingActivationStatus,
+  PendingIntentsIntent,
+  PendingIntentsState,
+  PendingSubmitIntentRecord,
+  PendingSubmitStatus,
+  SessionActivateCommand,
+  SessionActivationDismissedIntent,
+  SessionActivationFailureClearedIntent,
+  SessionActivationFailureRecordedIntent,
+  SessionActivationRequestedIntent,
+  SessionActivationSettingsPatchedIntent,
+  SessionUnactivateCommand,
+  SessionUnactivationRequestedIntent,
+  SubmitCanceledIntent,
+  SubmitDismissedIntent,
+  SubmitRequestedIntent
+} from "./engine/pendingIntents.types.ts";
+export { isPendingActivationViable } from "./engine/pendingIntents.types.ts";
+export {
+  pendingSubmitRecordListsEqual,
+  selectPendingActivationByRequestId,
+  selectPendingActivations,
+  sessionActivationPresentationMapsEqual,
+  selectLatestActivationForSession,
+  selectLatestPendingSubmitForSession,
+  selectPendingSubmitsForSession,
+  selectSessionActivationPresentations,
+  selectSessionHasUnconfirmedSubmit,
+  selectSessionIsSubmitting
+} from "./engine/pendingIntents.selectors.ts";
+export type { SessionActivationPresentation } from "./engine/pendingIntents.selectors.ts";
+export type {
+  SessionActivityObservedIntent,
+  SessionReconcileCommand,
+  SessionReconcileIntent,
+  SessionReconcileRecord,
+  SessionReconcileRequestedIntent,
+  SessionReconcileScope,
+  SessionReconcileState
+} from "./engine/sessionReconcile.types.ts";
+export type {
+  AgentActivityActivateSessionResult,
+  AgentActivityActivationMode,
+  AgentActivityActivationStatus,
   AgentActivityDisplayStatus,
-  AgentActivityCancelReason,
-  AgentActivityCancelSessionInput,
-  AgentActivityCancelSessionResult,
+  AgentActivityCancelTurnInput,
   AgentActivityGoalControlAction,
   AgentActivityGoalControlInput,
   AgentActivityGoalControlResult,
   AgentActivityComposerCapabilityOption,
+  AgentActivityComposerBehavior,
   AgentActivityComposerOptions,
   AgentActivityComposerPermissionConfig,
   AgentActivityComposerPermissionModeOption,
   AgentActivityComposerSettingOption,
   AgentActivityComposerSettings,
+  AgentActivityComposerOptionsLoadStatus,
+  AgentActivitySlashCommandEffect,
+  AgentActivitySlashCommandPolicy,
   AgentActivityComposerSkillOption,
   AgentActivityCreateSessionInput,
   AgentActivityDeleteSessionInput,
   AgentActivityDeleteSessionResult,
-  AgentActivityCompletedCommand,
   AgentActivityMessage,
   AgentActivityMessageSemantics,
   AgentActivityLoadComposerOptionsInput,
@@ -80,15 +258,28 @@ export type {
   AgentPromptContentBlock,
   AgentActivitySendInput,
   AgentActivitySendInputResult,
-  AgentActivityStatePatch,
   AgentActivitySession,
+  AgentActivitySessionCapabilities,
+  AgentActivitySessionGoal,
+  AgentActivitySessionPermissionConfig,
+  AgentActivitySessionSettings,
+  AgentActivitySessionKind,
   AgentActivitySessionEventEnvelope,
   AgentActivitySessionList,
-  AgentActivitySessionStatus,
-  AgentActivitySubmitAvailability,
   AgentActivitySubmitInteractiveInput,
+  AgentActivitySubmitInteractiveResult,
   AgentActivitySnapshot,
-  AgentActivityTurnLifecycle,
+  AgentActivitySnapshotListener,
+  AgentActivitySubmitDiagnostics,
+  AgentActivitySubmitSettingsPatch,
+  AgentActivityTurn,
+  AgentActivityTurnOrigin,
+  AgentActivityTurnCancelResponse,
+  AgentActivityInteraction,
   AgentActivityUpdatedApplyResult,
   AgentActivityUpdatedEvent
 } from "./types.ts";
+export {
+  workspaceAgentSessionLastError,
+  workspaceAgentSessionStatus
+} from "./workspaceAgentSessionProjection.ts";

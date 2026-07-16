@@ -3,15 +3,8 @@ import type {
   WorkbenchHostExternalStateLookupInput,
   WorkbenchHostExternalStateSource
 } from "@tutti-os/workbench-surface";
+export { resolveWorkspaceBrowserSearchUrl } from "../workspaceBrowserSearch.ts";
 import { workspaceBrowserNodeID } from "./workspaceWorkbenchComposition.ts";
-
-const browserNodeSearchBaseUrl = "https://www.google.com/search";
-
-export function resolveWorkspaceBrowserSearchUrl(query: string): string {
-  const searchUrl = new URL(browserNodeSearchBaseUrl);
-  searchUrl.searchParams.set("q", query);
-  return searchUrl.toString();
-}
 
 export interface WorkspaceBrowserNodeExternalState {
   title: string | null;
@@ -21,6 +14,10 @@ export interface WorkspaceBrowserNodeExternalState {
 export function createWorkspaceBrowserNodeExternalStateSource(input: {
   runtimeStore: {
     getSnapshot(): Record<string, BrowserNodeRuntimeState | undefined>;
+    subscribe(listener: () => void): () => void;
+  };
+  tabsStore: {
+    getActiveNodeId(surfaceNodeId: string): string;
     subscribe(listener: () => void): () => void;
   };
 }): WorkbenchHostExternalStateSource<
@@ -34,7 +31,7 @@ export function createWorkspaceBrowserNodeExternalStateSource(input: {
       }
       return readWorkspaceBrowserRuntimeNodeState(
         input.runtimeStore.getSnapshot(),
-        request.nodeId
+        input.tabsStore.getActiveNodeId(request.nodeId)
       );
     },
     getSnapshotNodeState(request) {
@@ -43,14 +40,19 @@ export function createWorkspaceBrowserNodeExternalStateSource(input: {
       }
       return readWorkspaceBrowserRuntimeNodeState(
         input.runtimeStore.getSnapshot(),
-        request.nodeId
+        input.tabsStore.getActiveNodeId(request.nodeId)
       );
     },
     getWorkspaceState() {
       return null;
     },
     subscribe(listener) {
-      return input.runtimeStore.subscribe(listener);
+      const unsubscribeRuntime = input.runtimeStore.subscribe(listener);
+      const unsubscribeTabs = input.tabsStore.subscribe(listener);
+      return () => {
+        unsubscribeRuntime();
+        unsubscribeTabs();
+      };
     }
   };
 }

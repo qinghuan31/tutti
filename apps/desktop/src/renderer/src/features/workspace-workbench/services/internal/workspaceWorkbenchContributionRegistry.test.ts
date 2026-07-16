@@ -1,11 +1,9 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
-import { resolveWorkbenchCapabilityRegistry } from "./workbenchCapabilityRegistry.ts";
-import type {
-  WorkbenchCapabilityFactoryDescriptor,
-  WorkbenchProductProfile
-} from "./workbenchProductProfile.ts";
+import { resolveWorkbenchCapabilityRegistry } from "@tutti-os/workbench-host";
+import type { WorkbenchCapabilityFactoryDescriptor } from "@tutti-os/workbench-host";
+import type { WorkbenchProductProfile } from "./workbenchProductProfile.ts";
 
 test("workbench contribution registry sorts factories and skips unavailable entries", () => {
   const registry = resolveWorkbenchCapabilityRegistry(
@@ -231,9 +229,21 @@ test("default desktop contribution adapters keep current contribution, node, and
   );
   assert.match(
     agentGuiPackageSource,
+    /dockEntries: buildAgentGuiDockEntries\(\{/
+  );
+
+  const agentGuiDockSource = readFileSync(
+    new URL(
+      "../../../../../../../../../packages/agent/gui/workbench/contributionDock.tsx",
+      import.meta.url
+    ),
+    "utf8"
+  );
+  assert.match(
+    agentGuiDockSource,
     /id: agentGuiWorkbenchUnifiedDockEntryId\(\)/
   );
-  assert.match(agentGuiPackageSource, /order: input\.order/);
+  assert.match(agentGuiDockSource, /order: input\.order/);
   assert.match(agentGuiPackageSource, /typeId: agentGuiWorkbenchTypeId/);
 });
 

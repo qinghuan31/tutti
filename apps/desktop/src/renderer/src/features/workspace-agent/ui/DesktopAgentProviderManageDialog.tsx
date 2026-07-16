@@ -6,7 +6,7 @@ import {
   useState,
   useSyncExternalStore
 } from "react";
-import { agentGuiDockIconUrls } from "@tutti-os/agent-gui";
+import { agentGuiDockIconUrls } from "@tutti-os/agent-gui/dock-icons";
 import type { WorkspaceAgentProvider } from "@tutti-os/client-tuttid-ts";
 import {
   Button,
@@ -21,7 +21,6 @@ import {
   TooltipTrigger
 } from "@tutti-os/ui-system";
 import type { DesktopI18nKey } from "@shared/i18n";
-import { useDesktopPreferencesService } from "@renderer/features/desktop-preferences";
 import { useTranslation, type TranslateFn } from "@renderer/i18n";
 import { cn } from "@renderer/lib/format";
 import { useAccountService } from "../../workspace-workbench/ui/useAccountService.ts";
@@ -37,6 +36,7 @@ import {
   type DesktopAgentProviderManageRowAction,
   type DesktopAgentProviderManageRowStatus
 } from "./desktopAgentProviderManageDialogModel.ts";
+import { isDesktopAgentAccountLoginAction } from "./desktopAgentAccountLoginAction.ts";
 
 interface DesktopAgentProviderManageDialogProps {
   agentProviderStatusService: IAgentProviderStatusService;
@@ -93,18 +93,6 @@ export function DesktopAgentProviderManageDialog({
 }: DesktopAgentProviderManageDialogProps) {
   const { t } = useTranslation();
   const { service: accountService } = useAccountService();
-  const { state: desktopPreferencesState } = useDesktopPreferencesService();
-  const hiddenProviders = useMemo<ReadonlySet<WorkspaceAgentProvider>>(
-    () =>
-      new Set<WorkspaceAgentProvider>([
-        ...(desktopPreferencesState.enableCursorAgent ? [] : ["cursor"]),
-        ...(desktopPreferencesState.enableOpenCodeAgent ? [] : ["opencode"])
-      ] as WorkspaceAgentProvider[]),
-    [
-      desktopPreferencesState.enableCursorAgent,
-      desktopPreferencesState.enableOpenCodeAgent
-    ]
-  );
   const rowElementsRef = useRef(
     new Map<WorkspaceAgentProvider, HTMLDivElement>()
   );
@@ -124,12 +112,11 @@ export function DesktopAgentProviderManageDialog({
   const rows = useMemo(
     () =>
       projectDesktopAgentProviderManageRows({
-        hiddenProviders,
         isLoading: snapshot.isLoading,
         pendingActions,
         statuses: snapshot.statuses
       }),
-    [hiddenProviders, pendingActions, snapshot.isLoading, snapshot.statuses]
+    [pendingActions, snapshot.isLoading, snapshot.statuses]
   );
 
   useEffect(() => {
@@ -205,7 +192,12 @@ export function DesktopAgentProviderManageDialog({
       }
 
       try {
-        if (row.provider === "tutti-agent" && row.primaryActionId === "login") {
+        if (
+          row.primaryActionId === "login" &&
+          isDesktopAgentAccountLoginAction(
+            agentProviderStatusService.getStatus(row.provider)
+          )
+        ) {
           await accountService.startLogin();
         } else {
           await agentProviderStatusService.runAction(
@@ -334,7 +326,15 @@ function DesktopAgentProviderManageRowView({
           src={agentGuiDockIconUrls[row.provider]}
         />
         <span className="truncate text-[14px] font-semibold text-[var(--text-primary)]">
-          {t(providerLabelKeys[row.provider])}
+          {(providerLabelKeys as Partial<Record<string, DesktopI18nKey>>)[
+            row.provider
+          ]
+            ? t(
+                (providerLabelKeys as Partial<Record<string, DesktopI18nKey>>)[
+                  row.provider
+                ]!
+              )
+            : row.provider}
         </span>
       </div>
       <div className="flex min-w-0 items-center gap-2" role="cell">

@@ -159,7 +159,9 @@ function enrichAgentSessionInsertResult(
   const agentName = provider || insertResult.mention.label.trim();
   const status = presentation.status?.trim() ?? "";
   const statusView = status ? resolvers.resolveStatusView(status) : null;
-  const agentIconUrl = resolvers.resolveAgentIconUrl(provider || agentName);
+  const agentIconUrl =
+    presentation.iconUrl?.trim() ||
+    resolvers.resolveAgentIconUrl(provider || agentName);
   return {
     ...insertResult,
     mention: {

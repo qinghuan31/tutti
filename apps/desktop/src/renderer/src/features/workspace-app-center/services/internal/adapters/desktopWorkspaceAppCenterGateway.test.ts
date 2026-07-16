@@ -17,6 +17,8 @@ import {
   type WorkspaceAppLike
 } from "./desktopWorkspaceAppCenterGateway.ts";
 import { WorkspaceAppCenterService } from "../workspaceAppCenterService.ts";
+import { WorkspaceAppSurfaceHost } from "../workspaceAppSurfaceHost.ts";
+import type { WorkspaceAppSurfacePresenter } from "../../workspaceAppSurfaceHost.interface.ts";
 
 test("Workspace App Center gateway exposes launch URLs only for running apps", () => {
   const snapshot = normalizeWorkspaceAppCenterSnapshot(
@@ -584,11 +586,13 @@ test("Workspace App Center service refreshes stuck startup state after timeout",
     hostFilesApi: createFakeHostFilesApi(),
     hostWorkspaceApi: {
       async openWorkspaceAppFolder() {}
-    }
-  });
-  service.setWorkspaceAppLauncher(async ({ appId }) => {
-    launchedAppId = appId;
-    return true;
+    },
+    surfaceHost: createSurfaceHost({
+      presentPrepared({ appId }) {
+        launchedAppId = appId;
+        return true;
+      }
+    })
   });
 
   await service.refresh("workspace-1");
@@ -644,11 +648,13 @@ test("Workspace App Center service marks startup failed when timeout refresh is 
     hostFilesApi: createFakeHostFilesApi(),
     hostWorkspaceApi: {
       async openWorkspaceAppFolder() {}
-    }
-  });
-  service.setWorkspaceAppLauncher(async ({ appId }) => {
-    launchedAppId = appId;
-    return true;
+    },
+    surfaceHost: createSurfaceHost({
+      presentPrepared({ appId }) {
+        launchedAppId = appId;
+        return true;
+      }
+    })
   });
 
   await service.refresh("workspace-1");
@@ -930,14 +936,16 @@ test("Workspace App Center service does not launch deleted apps", async () => {
     hostFilesApi: createFakeHostFilesApi(),
     hostWorkspaceApi: {
       async openWorkspaceAppFolder() {}
-    }
-  });
-  service.setWorkspaceAppLauncher(async () => {
-    launchCalls += 1;
-    return true;
-  });
-  service.setWorkspaceAppViewCloser(({ appId }) => {
-    closedApps.push(appId);
+    },
+    surfaceHost: createSurfaceHost({
+      close({ appId }) {
+        closedApps.push(appId);
+      },
+      presentPrepared() {
+        launchCalls += 1;
+        return true;
+      }
+    })
   });
 
   await service.refresh("workspace-1");
@@ -1020,10 +1028,12 @@ test("Workspace App Center service closes uninstalled app views", async () => {
     hostFilesApi: createFakeHostFilesApi(),
     hostWorkspaceApi: {
       async openWorkspaceAppFolder() {}
-    }
-  });
-  service.setWorkspaceAppViewCloser(({ appId }) => {
-    closedApps.push(appId);
+    },
+    surfaceHost: createSurfaceHost({
+      close({ appId }) {
+        closedApps.push(appId);
+      }
+    })
   });
 
   await service.refresh("workspace-1");
@@ -1065,14 +1075,16 @@ test("Workspace App Center service closes stale app view before restart and open
     hostFilesApi: createFakeHostFilesApi(),
     hostWorkspaceApi: {
       async openWorkspaceAppFolder() {}
-    }
-  });
-  service.setWorkspaceAppViewCloser(({ appId }) => {
-    calls.push(`close:${appId}`);
-  });
-  service.setWorkspaceAppLauncher(async ({ appId, prepared }) => {
-    calls.push(`launch:${appId}:${String(prepared)}`);
-    return true;
+    },
+    surfaceHost: createSurfaceHost({
+      close({ appId }) {
+        calls.push(`close:${appId}`);
+      },
+      presentPrepared({ appId, prepared }) {
+        calls.push(`launch:${appId}:${String(prepared)}`);
+        return true;
+      }
+    })
   });
 
   await service.refresh("workspace-1");
@@ -1130,11 +1142,14 @@ test("Workspace App Center service launches already-running apps without restart
     hostFilesApi: createFakeHostFilesApi(),
     hostWorkspaceApi: {
       async openWorkspaceAppFolder() {}
-    }
-  });
-  service.setWorkspaceAppLauncher(async (input) => {
-    launchCalls.push(input);
-    return true;
+    },
+    surfaceHost: createSurfaceHost({
+      presentPrepared(input) {
+        const { attempt: _attempt, ...launch } = input;
+        launchCalls.push(launch);
+        return true;
+      }
+    })
   });
 
   await service.refresh("workspace-1");
@@ -1202,11 +1217,14 @@ test("Workspace App Center service starts non-running apps before launching them
     hostFilesApi: createFakeHostFilesApi(),
     hostWorkspaceApi: {
       async openWorkspaceAppFolder() {}
-    }
-  });
-  service.setWorkspaceAppLauncher(async (input) => {
-    launchCalls.push(input);
-    return true;
+    },
+    surfaceHost: createSurfaceHost({
+      presentPrepared(input) {
+        const { attempt: _attempt, ...launch } = input;
+        launchCalls.push(launch);
+        return true;
+      }
+    })
   });
 
   await service.refresh("workspace-1");
@@ -1533,6 +1551,21 @@ async function settle(): Promise<void> {
   for (let index = 0; index < 10; index += 1) {
     await Promise.resolve();
   }
+}
+
+function createSurfaceHost(
+  overrides: Partial<WorkspaceAppSurfacePresenter>
+): WorkspaceAppSurfaceHost {
+  const host = new WorkspaceAppSurfaceHost();
+  host.registerPresenter({
+    beginOpen() {},
+    close() {},
+    isOpen: () => false,
+    presentPrepared: () => false,
+    rollbackOpen() {},
+    ...overrides
+  });
+  return host;
 }
 
 async function waitFor(predicate: () => boolean): Promise<void> {

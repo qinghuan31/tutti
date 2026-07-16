@@ -13,9 +13,11 @@ import type {
   AppReferenceSearchRequest,
   AppReferenceSearchResponse,
   AgentProviderStatusListResponse,
-  CancelWorkspaceAgentSessionResponse,
+  WorkspaceAgentTurnCancelResponse,
   ClearWorkspaceAgentSessionsResponse,
   GoalControlWorkspaceAgentSessionResponse,
+  GetWorkspaceAgentSessionGoalResponse,
+  ReconcileWorkspaceAgentSessionGoalResponse,
   WorkspaceAgentSessionGoalControlRequest,
   CliCapabilitiesResponse,
   AgentSessionComposerSettings,
@@ -32,7 +34,8 @@ import type {
   CreateWorkspaceAppFactoryJobRequest,
   CreateWorkspaceTerminalRequest,
   DeleteWorkspaceAgentSessionResponse,
-  DeleteWorkspaceAgentSessionSectionResponse,
+  DeleteWorkspaceAgentSessionsBatchRequest,
+  DeleteWorkspaceAgentSessionsBatchResponse,
   DeleteIssueManagerContextRefResponse,
   DeleteIssueManagerIssueResponse,
   DeleteIssueManagerTaskResponse,
@@ -82,6 +85,7 @@ import type {
   ReloadLocalWorkspaceAppRequest,
   ResizeWorkspaceTerminalRequest,
   SendWorkspaceAgentSessionInputResponse,
+  SubmitWorkspaceAgentPlanDecisionRequest,
   SendWorkspaceAgentSessionInputRequest,
   SubmitWorkspaceAgentInteractiveRequest,
   TrackEvent,
@@ -99,13 +103,15 @@ import type {
   WriteWorkspaceFileTextRequest,
   WorkbenchSnapshot,
   WorkspaceAgentSession,
+  WorkspaceAgentSessionDetailResponse,
+  WorkspaceAgentPlanDecisionResponse,
   WorkspaceAgentProvider,
   WorkspaceAgentSessionAttachmentResponse,
   WorkspaceAgentGeneratedFileListResponse,
   WorkspaceAgentSessionGitBranchesResponse,
   WorkspaceGitPatchSupportResponse,
   WorkspaceAgentSessionPageResponse,
-  WorkspaceAgentSessionSectionCountResponse,
+  WorkspaceAgentSessionSectionDeletionCandidatesResponse,
   WorkspaceAgentSessionSectionPageResponse,
   WorkspaceAgentSessionSectionsResponse,
   WorkspaceAgentSessionMessagesResponse,
@@ -262,14 +268,11 @@ export interface TuttidClient {
     workspaceID: string,
     agentSessionID: string
   ): Promise<DeleteWorkspaceAgentSessionResponse>;
-  deleteWorkspaceAgentSessionSection(
+  deleteWorkspaceAgentSessionsBatch(
     workspaceID: string,
-    request: {
-      sectionKey: string;
-      agentTargetId?: string;
-    },
+    request: DeleteWorkspaceAgentSessionsBatchRequest,
     requestOptions?: TuttidRequestOptions
-  ): Promise<DeleteWorkspaceAgentSessionSectionResponse>;
+  ): Promise<DeleteWorkspaceAgentSessionsBatchResponse>;
   clearWorkspaceAgentSessions(
     workspaceID: string
   ): Promise<ClearWorkspaceAgentSessionsResponse>;
@@ -292,7 +295,7 @@ export interface TuttidClient {
   getWorkspaceAgentSession(
     workspaceID: string,
     agentSessionID: string
-  ): Promise<WorkspaceAgentSession>;
+  ): Promise<WorkspaceAgentSessionDetailResponse>;
   getAgentProviderComposerOptions(
     provider: WorkspaceAgentProvider,
     request?: GetAgentProviderComposerOptionsRequest,
@@ -306,6 +309,8 @@ export interface TuttidClient {
      * agent-env wizard's network diagnostic sets this.
      */
     includeNetwork?: boolean;
+    /** Bypass the daemon provider-readiness cache. */
+    refresh?: boolean;
   }): Promise<AgentProviderStatusListResponse>;
   probeAgentProvider(
     provider: WorkspaceAgentProvider
@@ -472,10 +477,12 @@ export interface TuttidClient {
       searchQuery?: string;
       statusFilter?: IssueManagerStatus | "all";
       topicId: string;
-    }
+    },
+    requestOptions?: TuttidRequestOptions
   ): Promise<IssueManagerIssueListResponse>;
   listWorkspaceIssueTopics(
-    workspaceID: string
+    workspaceID: string,
+    requestOptions?: TuttidRequestOptions
   ): Promise<IssueManagerTopicListResponse>;
   listWorkspaceIssueTaskRuns(
     workspaceID: string,
@@ -502,6 +509,8 @@ export interface TuttidClient {
   listWorkspaceAgentSessions(
     workspaceID: string,
     request?: {
+      agentTargetId?: string;
+      cursor?: string;
       limit?: number;
       searchQuery?: string;
     },
@@ -525,14 +534,15 @@ export interface TuttidClient {
     },
     requestOptions?: TuttidRequestOptions
   ): Promise<WorkspaceAgentSessionSectionPageResponse>;
-  countWorkspaceAgentSessionSection(
+  listWorkspaceAgentSessionSectionDeletionCandidates(
     workspaceID: string,
     request: {
       sectionKey: string;
       agentTargetId?: string;
+      excludePinned?: boolean;
     },
     requestOptions?: TuttidRequestOptions
-  ): Promise<WorkspaceAgentSessionSectionCountResponse>;
+  ): Promise<WorkspaceAgentSessionSectionDeletionCandidatesResponse>;
   listWorkspaceAgentPinnedSessionPage(
     workspaceID: string,
     request?: {
@@ -545,6 +555,7 @@ export interface TuttidClient {
   listWorkspaceAgentGeneratedFiles(
     workspaceID: string,
     request?: {
+      agentTargetIds?: string[];
       limit?: number;
       query?: string;
       sessionCwd?: string;
@@ -643,24 +654,36 @@ export interface TuttidClient {
     terminalID: string,
     request: ResizeWorkspaceTerminalRequest
   ): Promise<WorkspaceTerminalSession>;
-  cancelWorkspaceAgentSession(
+  cancelWorkspaceAgentTurn(
     workspaceID: string,
-    agentSessionID: string
-  ): Promise<WorkspaceAgentSession>;
-  cancelWorkspaceAgentSessionWithResult(
-    workspaceID: string,
-    agentSessionID: string
-  ): Promise<CancelWorkspaceAgentSessionResponse>;
+    agentSessionID: string,
+    turnID: string
+  ): Promise<WorkspaceAgentTurnCancelResponse>;
   goalControlWorkspaceAgentSession(
     workspaceID: string,
     agentSessionID: string,
     request: WorkspaceAgentSessionGoalControlRequest
   ): Promise<GoalControlWorkspaceAgentSessionResponse>;
+  getWorkspaceAgentSessionGoal(
+    workspaceID: string,
+    agentSessionID: string
+  ): Promise<GetWorkspaceAgentSessionGoalResponse>;
+  reconcileWorkspaceAgentSessionGoal(
+    workspaceID: string,
+    agentSessionID: string
+  ): Promise<ReconcileWorkspaceAgentSessionGoalResponse>;
   sendWorkspaceAgentSessionInput(
     workspaceID: string,
     agentSessionID: string,
     request: SendWorkspaceAgentSessionInputRequest
   ): Promise<SendWorkspaceAgentSessionInputResponse>;
+  submitWorkspaceAgentPlanDecision(
+    workspaceID: string,
+    agentSessionID: string,
+    turnID: string,
+    requestID: string,
+    request: SubmitWorkspaceAgentPlanDecisionRequest
+  ): Promise<WorkspaceAgentPlanDecisionResponse>;
   readWorkspaceAgentSessionAttachment(
     workspaceID: string,
     agentSessionID: string,

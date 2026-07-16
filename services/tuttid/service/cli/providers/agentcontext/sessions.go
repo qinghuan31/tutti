@@ -15,7 +15,9 @@ import (
 var sessionColumns = []cliservice.TableColumn{
 	{Key: "id", Label: "ID"},
 	{Key: "provider", Label: "Provider"},
-	{Key: "status", Label: "Status"},
+	{Key: "activeTurnId", Label: "Active Turn"},
+	{Key: "latestTurnPhase", Label: "Latest Phase"},
+	{Key: "latestTurnOutcome", Label: "Latest Outcome"},
 	{Key: "title", Label: "Title"},
 }
 
@@ -204,9 +206,7 @@ func (p Provider) runWait(ctx context.Context, invoke framework.InvokeContext, i
 	if err != nil {
 		return nil, err
 	}
-	return waitCommandResult{
-		Result: result,
-	}, nil
+	return waitCommandResult{Result: result}, nil
 }
 
 func (p Provider) runTurnResources(ctx context.Context, invoke framework.InvokeContext, input turnResourcesInput) (any, error) {
@@ -267,6 +267,7 @@ func waitJSONValue(result any) map[string]any {
 		"agentSessionId": waited.Result.Session.ID,
 		"session":        sessionSummaryValue(waited.Result.Session),
 		"latestVersion":  waited.Result.LatestVersion,
+		"effectiveAfter": waited.Result.EffectiveAfter,
 		"timedOut":       waited.Result.TimedOut,
 		"reason":         string(waited.Result.Reason),
 	}
@@ -306,11 +307,19 @@ func sessionRows(sessions []agentservice.Session) []map[string]any {
 		if session.Title != nil {
 			title = *session.Title
 		}
+		latestTurnPhase := ""
+		latestTurnOutcome := ""
+		if session.LatestTurn != nil {
+			latestTurnPhase = session.LatestTurn.Phase
+			latestTurnOutcome = session.LatestTurn.Outcome
+		}
 		rows = append(rows, map[string]any{
-			"id":       session.ID,
-			"provider": session.Provider,
-			"status":   session.Status,
-			"title":    strings.TrimSpace(title),
+			"id":                session.ID,
+			"provider":          session.Provider,
+			"activeTurnId":      strings.TrimSpace(session.ActiveTurnID),
+			"latestTurnPhase":   latestTurnPhase,
+			"latestTurnOutcome": latestTurnOutcome,
+			"title":             strings.TrimSpace(title),
 		})
 	}
 	return rows

@@ -35,10 +35,13 @@ type GeneratedFileList struct {
 }
 
 type ListGeneratedFilesInput struct {
-	Query      string
-	SessionCwd string
-	Limit      int
+	Query          string
+	SessionCwd     string
+	AgentTargetIDs []string
+	Limit          int
 }
+
+const MaxGeneratedFileAgentTargetFilters = 100
 
 type MessageReader interface {
 	ListSessionMessages(
@@ -58,7 +61,6 @@ func (s *Service) ListMessages(
 	agentSessionID string,
 	input ListMessagesInput,
 ) (SessionMessagesPage, error) {
-	_ = ctx
 	workspaceID = strings.TrimSpace(workspaceID)
 	agentSessionID = strings.TrimSpace(agentSessionID)
 	if workspaceID == "" || agentSessionID == "" {
@@ -101,7 +103,11 @@ func (s *Service) ListMessages(
 		}
 	}
 
-	if !s.sessionExists(workspaceID, agentSessionID) {
+	exists, err := s.sessionExists(ctx, workspaceID, agentSessionID)
+	if err != nil {
+		return SessionMessagesPage{}, err
+	}
+	if !exists {
 		return SessionMessagesPage{}, ErrSessionNotFound
 	}
 	return emptySessionMessagesPage(agentSessionID, input), nil
@@ -123,6 +129,13 @@ func (s *Service) ListGeneratedFiles(
 	if input.Limit > 100 {
 		input.Limit = 100
 	}
+	agentTargetIDs := uniqueNonEmptyStrings(input.AgentTargetIDs)
+	if input.AgentTargetIDs != nil && len(agentTargetIDs) == 0 {
+		return GeneratedFileList{}, ErrInvalidArgument
+	}
+	if len(agentTargetIDs) > MaxGeneratedFileAgentTargetFilters {
+		return GeneratedFileList{}, ErrInvalidArgument
+	}
 	reader, ok := s.MessageReader.(GeneratedFileReader)
 	if !ok || reader == nil {
 		return GeneratedFileList{
@@ -131,10 +144,11 @@ func (s *Service) ListGeneratedFiles(
 		}, nil
 	}
 	files, ok := reader.ListWorkspaceGeneratedFiles(agentactivitybiz.ListWorkspaceGeneratedFilesInput{
-		WorkspaceID: workspaceID,
-		Query:       strings.TrimSpace(input.Query),
-		SessionCwd:  strings.TrimSpace(input.SessionCwd),
-		Limit:       input.Limit,
+		WorkspaceID:    workspaceID,
+		Query:          strings.TrimSpace(input.Query),
+		SessionCwd:     strings.TrimSpace(input.SessionCwd),
+		AgentTargetIDs: agentTargetIDs,
+		Limit:          input.Limit,
 	})
 	if !ok {
 		return GeneratedFileList{
@@ -147,20 +161,45 @@ func (s *Service) ListGeneratedFiles(
 	return files, nil
 }
 
-func (s *Service) sessionExists(workspaceID string, agentSessionID string) bool {
+func uniqueNonEmptyStrings(values []string) []string {
+	result := make([]string, 0, len(values))
+	seen := make(map[string]struct{}, len(values))
+	for _, raw := range values {
+		value := strings.TrimSpace(raw)
+		if value == "" {
+			continue
+		}
+		if _, ok := seen[value]; ok {
+			continue
+		}
+		seen[value] = struct{}{}
+		result = append(result, value)
+	}
+	return result
+}
+
+func (s *Service) sessionExists(ctx context.Context, workspaceID string, agentSessionID string) (bool, error) {
 	workspaceID = strings.TrimSpace(workspaceID)
 	agentSessionID = strings.TrimSpace(agentSessionID)
 	if workspaceID == "" || agentSessionID == "" {
-		return false
-	}
-	if _, ok := s.controller().Session(workspaceID, agentSessionID); ok {
-		return true
+		return false, nil
 	}
 	if s.SessionReader == nil {
-		return false
+		_, ok := s.controller().Session(workspaceID, agentSessionID)
+		return ok, nil
+	}
+	deleted, err := s.SessionReader.SessionDeleted(ctx, workspaceID, agentSessionID)
+	if err != nil {
+		return false, err
+	}
+	if deleted {
+		return false, nil
+	}
+	if _, ok := s.controller().Session(workspaceID, agentSessionID); ok {
+		return true, nil
 	}
 	_, ok := s.SessionReader.GetSession(workspaceID, agentSessionID)
-	return ok
+	return ok, nil
 }
 
 func emptySessionMessagesPage(agentSessionID string, input ListMessagesInput) SessionMessagesPage {

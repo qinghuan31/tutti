@@ -1,7 +1,9 @@
 import type {
-  WorkspaceAgentActivitySession,
-  WorkspaceAgentActivityTimelineItem
-} from "./workspaceAgentActivityTypes";
+  AgentActivityMessageSemantics,
+  AgentActivitySession,
+  AgentActivityTurn
+} from "@tutti-os/agent-activity-core";
+import type { WorkspaceAgentActivityTimelineItem } from "./workspaceAgentTimelineTypes";
 import type { WorkspaceAgentActivityCard } from "./workspaceAgentActivityListViewModel";
 import type { ToolCallStatusKind } from "./workspaceAgentToolCallDisplay";
 import { buildCanonicalWorkspaceAgentDetailView } from "./workspaceAgentTimelineCanonical";
@@ -25,6 +27,8 @@ export interface WorkspaceAgentSessionDetailMessage {
     noticeKind: string | null;
     severity: string | null;
     source?: string | null;
+    command?: AgentActivityMessageSemantics["noticeCommand"] | null;
+    commandStatus?: AgentActivityMessageSemantics["noticeCommandStatus"] | null;
     title: string | null;
     detail: string | null;
     retryable: boolean | null;
@@ -98,16 +102,18 @@ export interface WorkspaceAgentSessionDetailTurn {
 
 export interface WorkspaceAgentSessionDetailViewModel {
   activity: WorkspaceAgentActivityCard;
-  session: WorkspaceAgentActivitySession;
+  session: AgentActivitySession;
   cwd: string;
   workspaceRoot: string | null;
   turns: WorkspaceAgentSessionDetailTurn[];
+  sessionTurns?: readonly AgentActivityTurn[];
   showProcessingIndicator?: boolean;
 }
 
 export interface BuildWorkspaceAgentSessionDetailInput {
   activity: WorkspaceAgentActivityCard;
-  session: WorkspaceAgentActivitySession;
+  session: AgentActivitySession;
+  sessionTurns?: readonly AgentActivityTurn[];
   timelineItems: WorkspaceAgentActivityTimelineItem[];
   workspaceRoot?: string | null;
 }

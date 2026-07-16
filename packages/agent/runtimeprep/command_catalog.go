@@ -30,8 +30,9 @@ type CommandCapability struct {
 }
 
 type CommandContext struct {
-	Source      string
-	WorkspaceID string
+	Source                string
+	WorkspaceID           string
+	SkipCapabilityFilters bool
 }
 
 type CommandCatalog interface {
@@ -44,8 +45,9 @@ func commandGuideFromCatalog(ctx context.Context, catalog CommandCatalog, worksp
 		return fallbackCommandGuide(cliName)
 	}
 	return commandGuideFromCapabilities(cliName, catalog.Capabilities(ctx, CommandContext{
-		Source:      "agent-runtime",
-		WorkspaceID: strings.TrimSpace(workspaceID),
+		Source:                "agent-runtime",
+		WorkspaceID:           strings.TrimSpace(workspaceID),
+		SkipCapabilityFilters: true,
 	}))
 }
 
@@ -100,6 +102,10 @@ func runtimeCommandFromCapability(cliName string, capability CommandCapability) 
 	if id == "agent-context.agent.skill-bundle" || id == "agent-context.agent.tutti-cli-skill-bundle" {
 		return runtimeCommand{}, false
 	}
+	if legacyAgentCompatibilityCommand(id, capability.Path) {
+		return runtimeCommand{}, false
+	}
+	capability.InputSchema = agentFacingInputSchema(id, capability.InputSchema)
 	if capability.Source.Kind != CommandSourceApp &&
 		id != "workspace-apps.app.open" &&
 		!strings.HasPrefix(id, "issue-manager.") &&
@@ -134,7 +140,7 @@ func runtimeCommandFromCapability(cliName string, capability CommandCapability) 
 		if description != "" {
 			description += " "
 		}
-		description += "Omit --model unless the user explicitly requested a model; tuttid uses the target provider default."
+		description += "Omit --model unless the user explicitly requested a model; tuttid uses the selected agent's configured/default model."
 	}
 	if agentCommandAcceptsImageInput(id, capability.InputSchema) {
 		if description != "" {
@@ -162,6 +168,50 @@ func runtimeCommandFromCapability(cliName string, capability CommandCapability) 
 		InputDetails: inputDetailsForCommand(id, capability.InputSchema),
 		Rank:         commandRank(id),
 	}, true
+}
+
+func legacyAgentCompatibilityCommand(id string, path []string) bool {
+	switch strings.TrimSpace(id) {
+	case "agent-context.agent.providers", "agent-context.codex.start", "agent-context.claude.start":
+		return true
+	}
+	joined := commandPath(path)
+	return joined == "agent providers" || joined == "codex start" || joined == "claude start"
+}
+
+func agentFacingInputSchema(id string, schema map[string]any) map[string]any {
+	switch strings.TrimSpace(id) {
+	case "agent-context.agent.start", "agent-context.agent.composer-options":
+	default:
+		return schema
+	}
+	projected := make(map[string]any, len(schema))
+	for key, value := range schema {
+		projected[key] = value
+	}
+	properties := mapSchemaValue(schema["properties"])
+	projectedProperties := make(map[string]any, len(properties))
+	for key, value := range properties {
+		if key != "provider" {
+			projectedProperties[key] = value
+		}
+	}
+	projected["properties"] = projectedProperties
+	required := stringSliceSchemaValue(schema["required"])
+	if !containsSchemaString(required, "agent-id") {
+		required = append(required, "agent-id")
+	}
+	projected["required"] = required
+	return projected
+}
+
+func containsSchemaString(values []string, target string) bool {
+	for _, value := range values {
+		if strings.TrimSpace(value) == target {
+			return true
+		}
+	}
+	return false
 }
 
 func appCapabilityIsOpenCommand(capability CommandCapability) bool {
@@ -216,7 +266,7 @@ func requiredInputHintFromNames(required []string) string {
 
 func agentLauncherCommandUsesDefaultModel(id string) bool {
 	switch strings.TrimSpace(id) {
-	case "agent-context.codex.start", "agent-context.claude.start", "agent-context.tutti-agent.start":
+	case "agent-context.agent.start":
 		return true
 	default:
 		return false
@@ -317,7 +367,7 @@ func asSchemaString(value any) string {
 
 func agentCommandAcceptsImageInput(id string, schema map[string]any) bool {
 	switch strings.TrimSpace(id) {
-	case "agent-context.agent.start", "agent-context.codex.start", "agent-context.claude.start", "agent-context.tutti-agent.start", "agent-context.agent.send":
+	case "agent-context.agent.start", "agent-context.agent.send":
 	default:
 		return false
 	}
@@ -407,6 +457,10 @@ func commandRank(id string) int {
 		return 90
 	case "issue-manager.issue.task.run.complete":
 		return 100
+	case "agent-context.agent.list":
+		return 105
+	case "agent-context.agent.start":
+		return 107
 	case "agent-context.agent.sessions":
 		return 110
 	case "agent-context.agent.wait":
@@ -439,10 +493,9 @@ func fallbackCommandGuide(cliName string) string {
 		fmt.Sprintf("- Complete an issue run: `%s issue run complete --issue-id <issue-id> --run-id <run-id> --status completed --summary <summary> --outputs '[{\"path\":\"<artifact-path>\"}]' --json` - Execution mode only; do not use for breakdown-only work.", cliName),
 		fmt.Sprintf("- Create an issue task run: `%s issue task run create --issue-id <issue-id> --task-id <task-id> --agent-target-id <agent-target-id> --json` - Execution mode only; the CLI binds the current AgentGUI session from runtime context. Do not use for breakdown-only work.", cliName),
 		fmt.Sprintf("- Complete an issue task run: `%s issue task run complete --issue-id <issue-id> --task-id <task-id> --run-id <run-id> --status completed --summary <summary> --outputs '[{\"path\":\"<artifact-path>\"}]' --json` - Execution mode only; do not use for breakdown-only work.", cliName),
+		fmt.Sprintf("- List available agents: `%s agent list --json` - Use this current catalog before starting an agent; do not assume a fixed provider set.", cliName),
+		fmt.Sprintf("- Start an agent session: `%s agent start --agent-id <agent-id> --prompt <prompt> --json` - Add `--show` to request AgentGUI activation. Omit --model unless the user explicitly requested a model; tuttid uses the selected agent's configured/default model. Pass --image <path> multiple times to include local PNG, JPEG, or WebP image context.", cliName),
 		fmt.Sprintf("- List agent sessions: `%s agent sessions`", cliName),
-		fmt.Sprintf("- Start a Codex agent session: `%s codex start --prompt <prompt> --json` - Add `--show` to request AgentGUI activation. Omit --model unless the user explicitly requested a model; tuttid uses the target provider default. Pass --image <path> multiple times to include local PNG, JPEG, or WebP image context.", cliName),
-		fmt.Sprintf("- Start a Claude Code agent session: `%s claude start --prompt <prompt> --json` - Add `--show` to request AgentGUI activation. Omit --model unless the user explicitly requested a model; tuttid uses the target provider default. Pass --image <path> multiple times to include local PNG, JPEG, or WebP image context.", cliName),
-		fmt.Sprintf("- Start a Tutti Agent session: `%s tutti-agent start --prompt <prompt> --json` - Add `--show` to request AgentGUI activation. Omit --model unless the user explicitly requested a model; tuttid uses the target provider default. Pass --image <path> multiple times to include local PNG, JPEG, or WebP image context.", cliName),
 		fmt.Sprintf("- Wait for the next agent stop point without fetching execution messages: `%s agent wait --session-id <session-id> --json` - Use this after `agent start` or `agent send`; use `agent session-summary` when you need the full compact session context.", cliName),
 		fmt.Sprintf("- Get agent session summary: `%s agent session-summary --session-id <session-id> --json`", cliName),
 		fmt.Sprintf("- Get resources from one agent turn: `%s agent turn-resources --session-id <session-id> --turn-id <turn-id> --json`", cliName),

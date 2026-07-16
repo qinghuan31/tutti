@@ -6,6 +6,11 @@ import type {
 } from "../theme/index.ts";
 import type { AgentGUIProvider, AgentGUIAgent } from "@tutti-os/agent-gui";
 import type { DesktopAgentProviderStatusSnapshot } from "./ipc.ts";
+import type {
+  DesktopAgentDirectorySnapshot,
+  DesktopAgentDirectoryStatus,
+  DesktopAgentTargetPresentation
+} from "./agentDirectory.ts";
 
 export type DesktopWindowIntent =
   | {
@@ -15,10 +20,13 @@ export type DesktopWindowIntent =
   | {
       agentSessionID?: string | null;
       agentTargetID?: string | null;
+      agentDirectorySnapshot?: DesktopAgentDirectorySnapshot;
+      autoSubmit?: boolean;
+      draftPrompt?: string | null;
       providerStatusSnapshot?: DesktopAgentProviderStatusSnapshot;
-      agents?: readonly AgentGUIAgent[];
       kind: "agent";
       provider?: string | null;
+      userProjectPath?: string | null;
       workspaceID: string;
     }
   | {
@@ -28,6 +36,7 @@ export type DesktopWindowIntent =
 export interface DesktopWindowIntentSearchOptions {
   dockPlacement?: DesktopDockPlacement;
   locale?: DesktopLocale;
+  reportPredefinePageview?: boolean;
   themeAppearance?: DesktopThemeAppearance;
   themeSource?: DesktopThemeSource;
 }
@@ -42,24 +51,36 @@ export function createWorkspaceWindowIntent(
 }
 
 export function createAgentWindowIntent(input: {
+  agentDirectorySnapshot?: DesktopAgentDirectorySnapshot | null;
   agentSessionID?: string | null;
   agentTargetID?: string | null;
+  autoSubmit?: boolean;
+  draftPrompt?: string | null;
   providerStatusSnapshot?: DesktopAgentProviderStatusSnapshot | null;
-  agents?: readonly AgentGUIAgent[];
   provider?: string | null;
+  userProjectPath?: string | null;
   workspaceID: string;
 }): DesktopWindowIntent {
-  const agents = normalizeAgentWindowAgents(input.agents);
+  const agentDirectorySnapshot = normalizeAgentDirectorySnapshot(
+    input.agentDirectorySnapshot
+  );
   const providerStatusSnapshot = normalizeAgentProviderStatusSnapshot(
     input.providerStatusSnapshot
   );
   return {
     agentSessionID: input.agentSessionID?.trim() || null,
     agentTargetID: input.agentTargetID?.trim() || null,
+    ...(agentDirectorySnapshot ? { agentDirectorySnapshot } : {}),
+    ...(input.autoSubmit === true ? { autoSubmit: true } : {}),
+    ...(input.draftPrompt?.trim()
+      ? { draftPrompt: input.draftPrompt.trim() }
+      : {}),
     ...(providerStatusSnapshot ? { providerStatusSnapshot } : {}),
-    ...(agents !== undefined ? { agents } : {}),
     kind: "agent",
     provider: input.provider?.trim() || null,
+    ...(input.userProjectPath?.trim()
+      ? { userProjectPath: input.userProjectPath.trim() }
+      : {}),
     workspaceID: input.workspaceID
   };
 }
@@ -75,6 +96,12 @@ export function encodeDesktopWindowIntent(
   }
   if (options.dockPlacement) {
     params.set("dockPlacement", options.dockPlacement);
+  }
+  if (typeof options.reportPredefinePageview === "boolean") {
+    params.set(
+      "reportPredefinePageview",
+      options.reportPredefinePageview ? "1" : "0"
+    );
   }
   if (options.themeSource) {
     params.set("themeSource", options.themeSource);
@@ -92,11 +119,23 @@ export function encodeDesktopWindowIntent(
     if (intent.agentTargetID) {
       params.set("agentTargetId", intent.agentTargetID);
     }
+    if (intent.draftPrompt) {
+      params.set("draftPrompt", intent.draftPrompt);
+    }
+    if (intent.autoSubmit) {
+      params.set("autoSubmit", "1");
+    }
     if (intent.provider) {
       params.set("provider", intent.provider);
     }
-    if (intent.agents !== undefined) {
-      params.set("agents", JSON.stringify(intent.agents));
+    if (intent.userProjectPath) {
+      params.set("userProjectPath", intent.userProjectPath);
+    }
+    if (intent.agentDirectorySnapshot) {
+      params.set(
+        "agentDirectorySnapshot",
+        JSON.stringify(intent.agentDirectorySnapshot)
+      );
     }
     if (intent.providerStatusSnapshot) {
       params.set(
@@ -145,18 +184,158 @@ export function resolveDesktopWindowIntent(
 
   if (view === "agent") {
     return createAgentWindowIntent({
+      agentDirectorySnapshot: parseAgentDirectorySnapshot(
+        params.get("agentDirectorySnapshot")
+      ),
       agentSessionID: params.get("agentSessionId"),
       agentTargetID: params.get("agentTargetId"),
+      autoSubmit: params.get("autoSubmit") === "1",
+      draftPrompt: params.get("draftPrompt"),
       providerStatusSnapshot: parseAgentProviderStatusSnapshot(
         params.get("agentProviderStatusSnapshot")
       ),
-      agents: parseAgentWindowAgents(params.get("agents")),
       provider: params.get("provider"),
+      userProjectPath: params.get("userProjectPath"),
       workspaceID
     });
   }
 
   return createWorkspaceWindowIntent(workspaceID);
+}
+
+function parseAgentDirectorySnapshot(
+  encodedSnapshot: string | null
+): DesktopAgentDirectorySnapshot | undefined {
+  if (!encodedSnapshot) {
+    return undefined;
+  }
+  try {
+    return normalizeAgentDirectorySnapshot(JSON.parse(encodedSnapshot));
+  } catch {
+    return undefined;
+  }
+}
+
+function normalizeAgentDirectorySnapshot(
+  value: unknown
+): DesktopAgentDirectorySnapshot | undefined {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return undefined;
+  }
+  const snapshot = value as Partial<DesktopAgentDirectorySnapshot>;
+  if (
+    !Array.isArray(snapshot.agents) ||
+    !Array.isArray(snapshot.agentTargets)
+  ) {
+    return undefined;
+  }
+  const status = normalizeAgentDirectoryStatus(snapshot.status);
+  const capturedAtUnixMs = normalizeCapturedAtUnixMs(snapshot.capturedAtUnixMs);
+  if (!status || capturedAtUnixMs === undefined) {
+    return undefined;
+  }
+  return {
+    agents: normalizeAgentWindowAgents(snapshot.agents) ?? [],
+    agentTargets: snapshot.agentTargets.flatMap(normalizeAgentTarget),
+    capturedAtUnixMs,
+    error: readTrimmedString(snapshot.error),
+    status
+  };
+}
+
+function normalizeAgentDirectoryStatus(
+  value: unknown
+): DesktopAgentDirectoryStatus | null {
+  return value === "idle" ||
+    value === "loading" ||
+    value === "ready" ||
+    value === "error"
+    ? value
+    : null;
+}
+
+function normalizeCapturedAtUnixMs(value: unknown): number | null | undefined {
+  if (value === null) {
+    return null;
+  }
+  return typeof value === "number" && Number.isFinite(value) && value >= 0
+    ? value
+    : undefined;
+}
+
+function normalizeAgentTarget(
+  value: unknown
+): DesktopAgentTargetPresentation[] {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return [];
+  }
+  const target = value as Partial<DesktopAgentTargetPresentation>;
+  const agentTargetId = readTrimmedString(target.agentTargetId);
+  const name = readTrimmedString(target.name);
+  const provider = readTrimmedString(target.provider);
+  const launchRefType = readTrimmedString(target.launchRefType);
+  const source = readTrimmedString(target.source);
+  if (
+    !agentTargetId ||
+    !name ||
+    !provider ||
+    !launchRefType ||
+    !source ||
+    typeof target.enabled !== "boolean" ||
+    !isFiniteNumber(target.createdAtUnixMs) ||
+    !isFiniteNumber(target.sortOrder) ||
+    !isFiniteNumber(target.updatedAtUnixMs)
+  ) {
+    return [];
+  }
+  return [
+    {
+      agentTargetId,
+      createdAtUnixMs: target.createdAtUnixMs,
+      enabled: target.enabled,
+      iconKey: readTrimmedString(target.iconKey),
+      iconUrl: typeof target.iconUrl === "string" ? target.iconUrl : "",
+      availability: readAgentAvailability(target.availability),
+      launchRefType:
+        launchRefType as DesktopAgentTargetPresentation["launchRefType"],
+      name,
+      provider: provider as DesktopAgentTargetPresentation["provider"],
+      sortOrder: target.sortOrder,
+      source: source as DesktopAgentTargetPresentation["source"],
+      updatedAtUnixMs: target.updatedAtUnixMs
+    }
+  ];
+}
+
+function readAgentAvailability(value: unknown): AgentGUIAgent["availability"] {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return { status: "unavailable" };
+  }
+  const availability = value as Partial<AgentGUIAgent["availability"]>;
+  const status = readTrimmedString(availability.status);
+  if (
+    status !== "ready" &&
+    status !== "coming_soon" &&
+    status !== "not_installed" &&
+    status !== "auth_required" &&
+    status !== "unavailable"
+  ) {
+    return { status: "unavailable" };
+  }
+  return {
+    status,
+    reason: readTrimmedString(availability.reason),
+    pendingAction:
+      availability.pendingAction === "install" ||
+      availability.pendingAction === "login" ||
+      availability.pendingAction === "refresh"
+        ? availability.pendingAction
+        : null
+  };
+}
+
+function isFiniteNumber(value: unknown): value is number {
+  return typeof value === "number" && Number.isFinite(value);
 }
 
 function normalizeAgentWindowAgents(
@@ -239,23 +418,6 @@ function normalizeAgentWindowAvailability(
 
 function readTrimmedString(value: unknown): string | null {
   return typeof value === "string" && value.trim() ? value.trim() : null;
-}
-
-function parseAgentWindowAgents(
-  value: string | null
-): AgentGUIAgent[] | undefined {
-  if (!value) {
-    return undefined;
-  }
-  try {
-    const parsed = JSON.parse(value);
-    if (!Array.isArray(parsed)) {
-      return undefined;
-    }
-    return normalizeAgentWindowAgents(parsed as readonly AgentGUIAgent[]);
-  } catch {
-    return undefined;
-  }
 }
 
 function parseAgentProviderStatusSnapshot(

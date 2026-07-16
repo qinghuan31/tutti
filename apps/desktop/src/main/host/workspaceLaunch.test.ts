@@ -227,7 +227,7 @@ function createTransportClient(
     async deleteWorkspaceAgentSession() {
       throw new Error("not used");
     },
-    async deleteWorkspaceAgentSessionSection() {
+    async deleteWorkspaceAgentSessionsBatch() {
       throw new Error("not used");
     },
     async updateWorkspaceAgentSessionTitle() {
@@ -423,11 +423,11 @@ function createTransportClient(
       return { terminals: [], workspaceId: workspaceID };
     },
     async listWorkspaceAgentSessions(workspaceID) {
-      return { sessions: [], workspaceId: workspaceID };
+      return { hasMore: false, sessions: [], workspaceId: workspaceID };
     },
     async listWorkspaceAgentSessionSections(workspaceID) {
       return {
-        pinned: { hasMore: false, sessions: [] },
+        pinned: { hasMore: false, sessions: [], totalCount: 0 },
         sections: [],
         workspaceId: workspaceID
       };
@@ -435,7 +435,7 @@ function createTransportClient(
     async listWorkspaceAgentSessionSectionPage() {
       throw new Error("not used");
     },
-    async countWorkspaceAgentSessionSection() {
+    async listWorkspaceAgentSessionSectionDeletionCandidates() {
       throw new Error("not used");
     },
     async listWorkspaceAgentPinnedSessionPage() {
@@ -485,16 +485,22 @@ function createTransportClient(
     async resizeWorkspaceTerminal() {
       throw new Error("not used");
     },
-    async cancelWorkspaceAgentSession() {
-      throw new Error("not used");
-    },
-    async cancelWorkspaceAgentSessionWithResult() {
+    async cancelWorkspaceAgentTurn() {
       throw new Error("not used");
     },
     async goalControlWorkspaceAgentSession() {
       throw new Error("not used");
     },
+    async getWorkspaceAgentSessionGoal() {
+      throw new Error("not used");
+    },
+    async reconcileWorkspaceAgentSessionGoal() {
+      throw new Error("not used");
+    },
     async sendWorkspaceAgentSessionInput() {
+      throw new Error("not used");
+    },
+    async submitWorkspaceAgentPlanDecision() {
       throw new Error("not used");
     },
     async readWorkspaceAgentSessionAttachment() {
@@ -722,6 +728,27 @@ test("workspace launch waits for replacement workspace window before closing own
   assert.equal(ownerWindowClosed, true);
 });
 
+test("workspace launch replacement uses the requested native window kind", async () => {
+  const events: string[] = [];
+  const ownerWindow: WorkspaceLaunchOwnerWindow = {
+    close() {
+      events.push("owner:closed");
+    }
+  };
+  const launch = createWorkspaceLaunch({
+    adapters: createAdapters({
+      async showWorkspaceWindow(workspaceID, options) {
+        events.push(`${workspaceID}:${options?.windowKind}`);
+      }
+    }),
+    tuttidClient: createTransportClient()
+  });
+
+  await launch.replaceWorkspaceWindow(ownerWindow, "ws-alpha", "agent");
+
+  assert.deepEqual(events, ["ws-alpha:agent", "owner:closed"]);
+});
+
 test("workspace launch prefers destroying owner windows after workspace handoff", async () => {
   const events: string[] = [];
 
@@ -746,6 +773,31 @@ test("workspace launch prefers destroying owner windows after workspace handoff"
   await launch.showWorkspace(ownerWindow, "ws-destroy");
 
   assert.deepEqual(events, ["workspace:ws-destroy", "owner:destroyed"]);
+});
+
+test("workspace launch keeps a reused durable workspace owner open", async () => {
+  const events: string[] = [];
+  const ownerWindow: WorkspaceLaunchOwnerWindow = {
+    close() {
+      events.push("owner:closed");
+    },
+    destroy() {
+      events.push("owner:destroyed");
+    }
+  };
+  const launch = createWorkspaceLaunch({
+    adapters: createAdapters({
+      async showWorkspaceWindow(workspaceID) {
+        events.push(`workspace:${workspaceID}:reused`);
+        return ownerWindow;
+      }
+    }),
+    tuttidClient: createTransportClient()
+  });
+
+  await launch.showWorkspace(ownerWindow, "ws-existing-owner");
+
+  assert.deepEqual(events, ["workspace:ws-existing-owner:reused"]);
 });
 
 test("workspace launch keeps owner open when replacement workspace window fails", async () => {

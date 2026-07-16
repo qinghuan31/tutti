@@ -34,8 +34,6 @@ test("createDesktopHostPreferencesState initializes missing preferences with dar
             minimizeAnimation: "scale",
             sleepPreventionMode: "never",
             showAppDeveloperSources: false,
-            enableCursorAgent: false,
-            enableOpenCodeAgent: false,
             themeSource: "system",
             updateChannel: "stable",
             updatePolicy: "prompt"
@@ -76,8 +74,6 @@ test("createDesktopHostPreferencesState initializes missing preferences with dar
         minimizeAnimation: "genie",
         sleepPreventionMode: "never",
         showAppDeveloperSources: false,
-        enableCursorAgent: false,
-        enableOpenCodeAgent: false,
         themeSource: "dark",
         updateChannel: "stable",
         updatePolicy: "prompt"
@@ -122,8 +118,6 @@ test("createDesktopHostPreferencesState defaults missing rc package preferences 
             minimizeAnimation: "scale",
             sleepPreventionMode: "never",
             showAppDeveloperSources: false,
-            enableCursorAgent: false,
-            enableOpenCodeAgent: false,
             themeSource: "system",
             updateChannel: "stable",
             updatePolicy: "prompt"
@@ -171,8 +165,6 @@ test("createDesktopHostPreferencesState keeps missing beta package preferences o
             minimizeAnimation: "scale",
             sleepPreventionMode: "never",
             showAppDeveloperSources: false,
-            enableCursorAgent: false,
-            enableOpenCodeAgent: false,
             themeSource: "system",
             updateChannel: "rc",
             updatePolicy: "prompt"
@@ -219,8 +211,6 @@ test("createDesktopHostPreferencesState keeps initialized theme preferences", as
             minimizeAnimation: "scale",
             sleepPreventionMode: "never",
             showAppDeveloperSources: false,
-            enableCursorAgent: false,
-            enableOpenCodeAgent: false,
             themeSource: "system",
             updateChannel: "stable",
             updatePolicy: "prompt"
@@ -273,8 +263,6 @@ test("createDesktopHostPreferencesState keeps initialized stable update channel"
             minimizeAnimation: "scale",
             sleepPreventionMode: "never",
             showAppDeveloperSources: false,
-            enableCursorAgent: false,
-            enableOpenCodeAgent: false,
             themeSource: "dark",
             updateChannel: "stable",
             updatePolicy: "prompt"
@@ -324,8 +312,6 @@ test("createDesktopHostPreferencesState migrates the old rc default update chann
             minimizeAnimation: "scale",
             sleepPreventionMode: "never",
             showAppDeveloperSources: false,
-            enableCursorAgent: false,
-            enableOpenCodeAgent: false,
             themeSource: "dark",
             updateChannel: "rc",
             updatePolicy: "prompt"
@@ -388,8 +374,6 @@ test("createDesktopHostPreferencesState preserves initialized rc channel on rc p
             minimizeAnimation: "scale",
             sleepPreventionMode: "never",
             showAppDeveloperSources: false,
-            enableCursorAgent: false,
-            enableOpenCodeAgent: false,
             themeSource: "dark",
             updateChannel: "rc",
             updatePolicy: "prompt"
@@ -446,8 +430,6 @@ test("createDesktopHostPreferencesState preserves rc after the stable default mi
             minimizeAnimation: "scale",
             sleepPreventionMode: "never",
             showAppDeveloperSources: false,
-            enableCursorAgent: false,
-            enableOpenCodeAgent: false,
             themeSource: "dark",
             updateChannel: "rc",
             updatePolicy: "prompt"
@@ -490,8 +472,6 @@ test("createDesktopHostPreferencesState notifies subscribers after sync changes"
             minimizeAnimation: "scale",
             sleepPreventionMode: "never",
             showAppDeveloperSources: false,
-            enableCursorAgent: false,
-            enableOpenCodeAgent: false,
             themeSource: "system",
             updateChannel: "stable",
             updatePolicy: "prompt"

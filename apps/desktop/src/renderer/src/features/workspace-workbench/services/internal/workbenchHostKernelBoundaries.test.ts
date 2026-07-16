@@ -1,17 +1,30 @@
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import test from "node:test";
 
-const neutralKernelFiles = [
-  "workbenchCapabilityRegistry.ts",
-  "workbenchHostCoordinator.ts",
+const productHostContractFiles = [
   "workbenchHostPorts.ts",
-  "workbenchHostSession.ts",
   "workbenchProductProfile.ts"
 ] as const;
 
-test("private workbench host kernel has no product, DI, or React runtime imports", () => {
-  for (const file of neutralKernelFiles) {
+const removedPrivateKernelFiles = [
+  "workbenchCapabilityRegistry.ts",
+  "workbenchHostCoordinator.ts",
+  "workbenchHostSession.ts"
+] as const;
+
+test("desktop has no private host-kernel compatibility paths", () => {
+  for (const file of removedPrivateKernelFiles) {
+    assert.equal(
+      existsSync(new URL(`./${file}`, import.meta.url)),
+      false,
+      file
+    );
+  }
+});
+
+test("desktop product host contracts have no DI or React runtime imports", () => {
+  for (const file of productHostContractFiles) {
     const source = readFileSync(new URL(`./${file}`, import.meta.url), "utf8");
 
     assert.doesNotMatch(
@@ -27,8 +40,8 @@ test("private workbench host kernel has no product, DI, or React runtime imports
   }
 });
 
-test("private workbench host kernel depends on surface contracts type-only", () => {
-  for (const file of neutralKernelFiles) {
+test("desktop product host contracts depend on surface contracts type-only", () => {
+  for (const file of productHostContractFiles) {
     const source = readFileSync(new URL(`./${file}`, import.meta.url), "utf8");
     const surfaceImports = source.match(
       /^import(?: type)?[^;]+from "@tutti-os\/workbench-surface";/gm

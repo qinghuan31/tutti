@@ -86,17 +86,68 @@ func TestCreateSessionInputFromPersistedPreservesBrowserUse(t *testing.T) {
 	}
 }
 
+func TestCreateSessionInputFromPersistedPreservesCatalogReasoningEffort(t *testing.T) {
+	input := createSessionInputFromPersisted(PersistedSession{
+		ID:       "session-1",
+		Provider: "codex",
+		Settings: ComposerSettings{
+			Model:           "gpt-catalog",
+			ReasoningEffort: "minimal",
+		},
+	})
+	if input.ReasoningEffort == nil || *input.ReasoningEffort != "minimal" {
+		t.Fatalf("ReasoningEffort = %#v, want minimal", input.ReasoningEffort)
+	}
+}
+
+func TestCreateSessionInputFromPersistedNormalizesLegacyReasoningEffort(t *testing.T) {
+	input := createSessionInputFromPersisted(PersistedSession{
+		ID:       "session-1",
+		Provider: "claude-code",
+		Settings: ComposerSettings{ReasoningEffort: "minimal"},
+	})
+	if input.ReasoningEffort == nil || *input.ReasoningEffort != "high" {
+		t.Fatalf("ReasoningEffort = %#v, want high", input.ReasoningEffort)
+	}
+}
+
+func TestCreateSessionInputFromPersistedPreservesOpenCodeModelReasoningEffort(t *testing.T) {
+	input := createSessionInputFromPersisted(PersistedSession{
+		ID:       "session-1",
+		Provider: "opencode",
+		Settings: ComposerSettings{ReasoningEffort: "none"},
+	})
+	if input.ReasoningEffort == nil || *input.ReasoningEffort != "none" {
+		t.Fatalf("ReasoningEffort = %#v, want none", input.ReasoningEffort)
+	}
+}
+
 func TestCreateSessionInputFromPersistedCarriesExternalRolloutSourcePath(t *testing.T) {
 	input := createSessionInputFromPersisted(PersistedSession{
 		ID:       "session-1",
 		Provider: "codex",
-		RuntimeContext: map[string]any{
+		InternalRuntimeContext: map[string]any{
 			"imported":           true,
 			"externalSourcePath": "/home/user/.codex/sessions/2026/07/04/rollout-abc.jsonl",
 		},
 	})
 	if input.ExternalRolloutSourcePath != "/home/user/.codex/sessions/2026/07/04/rollout-abc.jsonl" {
 		t.Fatalf("ExternalRolloutSourcePath = %q, want imported source path preserved", input.ExternalRolloutSourcePath)
+	}
+}
+
+func TestCreateSessionInputFromPersistedDoesNotTreatClaudeExportAsRollout(t *testing.T) {
+	input := createSessionInputFromPersisted(PersistedSession{
+		ID:       "session-1",
+		Provider: "claude-code",
+		InternalRuntimeContext: map[string]any{
+			"imported":                      true,
+			"externalImportResumeSupported": false,
+			"externalSourcePath":            "/home/user/Downloads/claude-export.zip",
+		},
+	})
+	if input.ExternalRolloutSourcePath != "" {
+		t.Fatalf("ExternalRolloutSourcePath = %q, want archive path excluded from provider resume", input.ExternalRolloutSourcePath)
 	}
 }
 

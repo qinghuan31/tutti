@@ -15,6 +15,7 @@ import {
   type DesktopHostWindowLayoutPayload,
   type DesktopHostWindowMinimizeStatePayload
 } from "../../shared/contracts/ipc";
+import { shouldExposeWorkspaceSurfaceApis } from "./workspaceSurfacePreload";
 
 const desktopApi: DesktopApi = {
   computerUse: createComputerUseDesktopApi(),
@@ -27,7 +28,7 @@ const desktopApi: DesktopApi = {
   wallpaper: createWallpaperDesktopApi()
 };
 
-if (isWorkspaceWindowPreload()) {
+if (shouldExposeWorkspaceSurfaceApis(globalThis.location.search)) {
   desktopApi.browser = createBrowserDesktopApi();
   desktopApi.workspaceAppExternal = createWorkspaceAppExternalDesktopApi();
 }
@@ -73,9 +74,3 @@ ipcRenderer.on(
 );
 
 contextBridge.exposeInMainWorld("tutti", desktopApi);
-
-function isWorkspaceWindowPreload(): boolean {
-  return (
-    new URLSearchParams(globalThis.location.search).get("view") === "workspace"
-  );
-}

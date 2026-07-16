@@ -9,7 +9,9 @@ Specs are not the source of truth for behavior that has already landed. When a
 spec completes, update the current document that owns the result and delete the
 dated plan.
 
-There are currently two active specs:
+There are currently four active specs:
 
 - [Agent Provider Status Read/Detect Split](./2026-06-28-agent-status-read-detect-split-design.md): pending review.
-- [Workbench Host Kernel: Phase 0 To Stable](./2026-07-11-workbench-host-kernel-phase-0-to-stable.md): pending architecture and implementation approval.
+- [Agent Extension Package Design](./2026-07-14-agent-extension-package-design.md): pending architecture and implementation approval.
+- [Provider-Native Subagents](./2026-07-15-provider-native-subagents.md): accepted architecture, implementation in progress.
+- [Agent Goal Control Design](./2026-07-15-agent-goal-control-design.md): implemented, pending final review and merge.

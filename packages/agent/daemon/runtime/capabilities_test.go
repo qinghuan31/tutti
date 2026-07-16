@@ -1,7 +1,6 @@
 package agentruntime
 
 import (
-	"context"
 	"testing"
 )
 
@@ -15,6 +14,7 @@ func TestCodexAppServerCapabilitiesUseSharedVocabulary(t *testing.T) {
 		CapabilityTokenUsage,
 		CapabilityRateLimits,
 		CapabilityInterrupt,
+		CapabilityActiveTurnGuidance,
 	} {
 		if !containsString(capabilities, want) {
 			t.Fatalf("codex capabilities = %v, missing %q", capabilities, want)
@@ -30,16 +30,6 @@ func TestCodexAppServerCapabilitiesUseSharedVocabulary(t *testing.T) {
 
 func TestStandardACPCapabilitiesByProvider(t *testing.T) {
 	t.Parallel()
-	claude := standardACPCapabilities(ProviderClaudeCode, true, acpLiveStateSnapshot{})
-	for _, want := range []string{
-		CapabilityImageInput, CapabilitySkills, CapabilityCompact,
-		CapabilityTokenUsage, CapabilityRateLimits, CapabilityPlanMode, CapabilityInterrupt,
-	} {
-		if !containsString(claude, want) {
-			t.Fatalf("claude capabilities = %v, missing %q", claude, want)
-		}
-	}
-
 	opencode := standardACPCapabilities(ProviderOpenCode, true, acpLiveStateSnapshot{})
 	for _, want := range []string{
 		CapabilityImageInput, CapabilityPlanMode, CapabilityInterrupt,
@@ -50,6 +40,9 @@ func TestStandardACPCapabilitiesByProvider(t *testing.T) {
 	}
 	if containsString(opencode, CapabilityCompact) || containsString(opencode, "review") {
 		t.Fatalf("opencode capabilities = %v, must not advertise command capabilities without provider commands", opencode)
+	}
+	if containsString(opencode, CapabilityActiveTurnGuidance) {
+		t.Fatalf("opencode capabilities = %v, must use cancel-then-send instead of native guidance", opencode)
 	}
 	opencodeWithReview := standardACPCapabilities(ProviderOpenCode, false, acpLiveStateSnapshot{
 		availableCommands: []AgentSessionCommand{{Name: "compact"}, {Name: "review"}},
@@ -67,6 +60,9 @@ func TestStandardACPCapabilitiesByProvider(t *testing.T) {
 	}
 	if containsString(cursor, CapabilitySkills) {
 		t.Fatalf("cursor capabilities too permissive: %v", cursor)
+	}
+	if containsString(cursor, CapabilityActiveTurnGuidance) {
+		t.Fatalf("cursor capabilities = %v, must use cancel-then-send instead of native guidance", cursor)
 	}
 
 	// 其他 ACP provider：保守派生——interrupt 恆有；imageInput 跟隨 promptImage；
@@ -87,23 +83,5 @@ func TestStandardACPCapabilitiesByProvider(t *testing.T) {
 	})
 	if !containsString(withCompact, CapabilityCompact) || !containsString(withCompact, CapabilityImageInput) {
 		t.Fatalf("derived capabilities = %v, want compact+imageInput", withCompact)
-	}
-}
-
-func TestClaudeCodeSessionStateReportsCapabilities(t *testing.T) {
-	t.Parallel()
-
-	transport := newStandardACPTransport("Claude Agent", "claude-session-1")
-	adapter := NewClaudeCodeAdapter(transport)
-	session := standardTestSession(ProviderClaudeCode)
-	if _, err := adapter.Start(context.Background(), session); err != nil {
-		t.Fatalf("Start: %v", err)
-	}
-	session.ProviderSessionID = "claude-session-1"
-
-	snapshot := adapter.SessionState(session)
-	capabilities, _ := snapshot.RuntimeContext["capabilities"].([]string)
-	if !containsString(capabilities, CapabilityPlanMode) || !containsString(capabilities, CapabilityInterrupt) {
-		t.Fatalf("claude session capabilities = %v", capabilities)
 	}
 }

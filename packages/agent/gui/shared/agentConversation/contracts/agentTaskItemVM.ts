@@ -19,7 +19,8 @@ export interface AgentTaskSubAgentActivityVM {
 }
 
 export interface AgentTaskSubAgentVM {
-  ownerThreadId: string;
+  childSessionId: string;
+  parentToolCallId: string;
   status: AgentTaskSubAgentStatus;
   // The sub-agent's own identity: its child thread name when known (daemon
   // forwards child thread/name/updated as a subAgentName marker). Null until
@@ -42,6 +43,7 @@ export interface AgentTaskSubAgentVM {
   startedAtUnixMs: number | null;
   latestActivityAtUnixMs: number | null;
   terminalAtUnixMs: number | null;
+  childSessions: readonly AgentTaskSubAgentVM[];
 }
 
 export interface AgentTaskStepVM {

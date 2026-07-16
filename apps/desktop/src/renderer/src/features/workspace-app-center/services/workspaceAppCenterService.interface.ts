@@ -93,23 +93,6 @@ export interface IWorkspaceAppCenterService {
     state: Partial<WorkspaceAppCenterViewState>;
     workspaceId: string;
   }): void;
-  setWorkspaceAppLauncher(
-    launcher:
-      | ((input: {
-          appId: string;
-          intent?: TuttiExternalWorkspaceOpenRouteIntent;
-          prepared: boolean;
-          prevStatus?: WorkspaceAppCenterApp["runtimeStatus"];
-          workspaceId: string;
-        }) => Promise<boolean>)
-      | null
-  ): void;
-  setWorkspaceAppViewCloser(
-    closer: ((input: { appId: string; workspaceId: string }) => void) | null
-  ): void;
-  setWorkspaceAppViewOpenChecker(
-    checker: ((input: { appId: string; workspaceId: string }) => boolean) | null
-  ): void;
   startWorkspacePolling(workspaceId: string): () => void;
   subscribe(listener: () => void): () => void;
   uninstallApp(input: { appId: string; workspaceId: string }): Promise<void>;

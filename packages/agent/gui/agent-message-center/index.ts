@@ -1,7 +1,5 @@
-export {
-  MessageCenterGroupHeading,
-  WorkspaceAgentMessageCenterPanel
-} from "./WorkspaceAgentMessageCenterPanel";
+export { WorkspaceAgentMessageCenterPanel } from "./WorkspaceAgentMessageCenterPanel";
+export { MessageCenterGroupHeading } from "./WorkspaceAgentMessageCenterGroupHeading";
 export {
   buildWorkspaceAgentInteractivePromptLabels,
   MessageCenterIdentityAvatarMark,
@@ -32,9 +30,14 @@ export { approvalOptionDisplayLabel } from "../shared/agentConversation/approval
 export {
   PLAN_IMPLEMENTATION_ACTION_IMPLEMENT,
   PLAN_IMPLEMENTATION_PROMPT
-} from "../shared/agentConversation/planImplementation";
+} from "../shared/agentConversation/planImplementationPresentation";
+export { dispatchAgentPlanPromptAction } from "../shared/agentConversation/agentPlanPromptDispatch";
+export { useEngineSelector } from "../shared/engine/useEngineSelector";
 export type { PromptToolDetail } from "../shared/agentConversation/promptToolDetails";
-export type { WorkspaceAgentMessageCenterPanelProps } from "./WorkspaceAgentMessageCenterPanel";
+export type {
+  WorkspaceAgentMessageCenterPanelProps,
+  WorkspaceAgentMessageCenterPanelPresentation
+} from "./WorkspaceAgentMessageCenterPanel";
 export type {
   MessageCenterStatusTone,
   WorkspaceAgentMessageCenterCardProps
@@ -44,12 +47,30 @@ export type {
   WorkspaceAgentMessageCenterAttentionDeckRenderCardInput
 } from "./WorkspaceAgentMessageCenterAttentionDeck";
 export {
-  buildWorkspaceAgentMessageCenterModel,
   isInteractiveMessageCenterItem,
   isWaitingMessageCenterItem,
   selectMessageCenterAttentionDeckItems
 } from "./workspaceAgentMessageCenterModel";
+export {
+  buildWorkspaceAgentMessageCenterModelFromEngine,
+  selectWorkspaceAgentMessageCenterPresentation,
+  workspaceAgentMessageCenterPromptStatus,
+  workspaceAgentMessageCenterPresentationEqual
+} from "./workspaceAgentMessageCenterEngineModel";
+export type {
+  WorkspaceAgentMessageCenterPresentation,
+  WorkspaceAgentMessageCenterPromptStatus
+} from "./workspaceAgentMessageCenterEngineModel";
 export { stabilizeWorkspaceAgentMessageCenterModel } from "./workspaceAgentMessageCenterModelStability";
+export {
+  selectWorkspaceAgentConsumerCounts,
+  selectWorkspaceAgentConsumerSession,
+  selectWorkspaceAgentConsumerSessions
+} from "./workspaceAgentConsumerSelectors";
+export type {
+  WorkspaceAgentConsumerCounts,
+  WorkspaceAgentConsumerSession
+} from "./workspaceAgentConsumerSelectors";
 export {
   buildMessageCenterProviderOptions,
   buildMessageCenterStatusOptions,
@@ -77,8 +98,10 @@ export type {
 } from "./workspaceAgentMessageCenterDigest";
 export type {
   BuildWorkspaceAgentMessageCenterOptions,
+  WorkspaceAgentMessageCenterAgentPresentation,
   WorkspaceAgentMessageCenterCounts,
   WorkspaceAgentMessageCenterIdentity,
+  WorkspaceAgentMessageCenterInteractionTarget,
   WorkspaceAgentMessageCenterItem,
   WorkspaceAgentMessageCenterModel
 } from "./workspaceAgentMessageCenterModel";

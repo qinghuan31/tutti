@@ -3,6 +3,7 @@ package preferences
 import (
 	"strings"
 
+	"github.com/tutti-os/tutti/packages/agent/daemon/providerregistry"
 	agentproviderbiz "github.com/tutti-os/tutti/services/tuttid/biz/agentprovider"
 )
 
@@ -16,7 +17,6 @@ const (
 	DefaultDesktopAppCatalogChannel           = "production"
 	DefaultDesktopAgentDockLayout             = DesktopAgentDockLayoutUnified
 	DefaultDesktopAgentConversationDetailMode = DesktopAgentConversationDetailModeCoding
-	DefaultDesktopDefaultAgentProvider        = agentproviderbiz.Codex
 	DefaultDesktopDockIconStyle               = "default"
 	DefaultDesktopDockPlacement               = "bottom"
 	DefaultDesktopBrowserUseConnectionMode    = "isolated"
@@ -24,14 +24,30 @@ const (
 	DefaultDesktopMinimizeAnimation           = "scale"
 	DefaultDesktopSleepPreventionMode         = "never"
 	DefaultDesktopShowAppDeveloperSources     = false
-	DefaultDesktopEnableCursorAgent           = false
-	DefaultDesktopEnableOpenCodeAgent         = false
 	DefaultDesktopThemeSource                 = "dark"
 	DefaultDesktopUpdateChannel               = "rc"
 	DefaultDesktopUpdatePolicy                = "prompt"
 	DefaultDesktopWindowSnappingEnabled       = false
 	DefaultDesktopWindowSnappingShortcut      = "commandArrows"
 )
+
+var DefaultDesktopDefaultAgentProvider = defaultDesktopAgentProvider()
+
+func defaultDesktopAgentProvider() string {
+	selected := ""
+	selectedPriority := int(^uint(0) >> 1)
+	for _, descriptor := range providerregistry.Migrated() {
+		priority := descriptor.Desktop.DefaultProviderPriority
+		if priority > 0 && priority < selectedPriority {
+			selected = descriptor.Identity.ID
+			selectedPriority = priority
+		}
+	}
+	if selected == "" {
+		panic("provider registry has no desktop default agent provider")
+	}
+	return selected
+}
 
 type DesktopPreferences struct {
 	AgentComposerDefaultsByProvider             map[string]AgentComposerDefaults
@@ -44,8 +60,6 @@ type DesktopPreferences struct {
 	DefaultAgentProvider                        string
 	DockIconStyle                               string
 	DockPlacement                               string
-	EnableCursorAgent                           bool
-	EnableOpenCodeAgent                         bool
 	FeatureFlags                                map[string]bool
 	FileDefaultOpenersByExtension               map[string]string
 	Initialized                                 bool
@@ -99,8 +113,6 @@ func DefaultDesktopPreferences() DesktopPreferences {
 		DefaultAgentProvider:                        DefaultDesktopDefaultAgentProvider,
 		DockIconStyle:                               DefaultDesktopDockIconStyle,
 		DockPlacement:                               DefaultDesktopDockPlacement,
-		EnableCursorAgent:                           DefaultDesktopEnableCursorAgent,
-		EnableOpenCodeAgent:                         DefaultDesktopEnableOpenCodeAgent,
 		FeatureFlags:                                map[string]bool{},
 		FileDefaultOpenersByExtension: map[string]string{
 			"htm":   "appBrowser",
@@ -157,12 +169,8 @@ func IsDesktopAgentConversationDetailMode(value string) bool {
 }
 
 func IsDesktopDefaultAgentProvider(value string) bool {
-	switch strings.TrimSpace(value) {
-	case agentproviderbiz.ClaudeCode, agentproviderbiz.Codex, agentproviderbiz.Cursor, agentproviderbiz.OpenCode:
-		return true
-	default:
-		return false
-	}
+	descriptor, ok := providerregistry.Find(value)
+	return ok && descriptor.Desktop.DefaultProviderEligible
 }
 
 func IsDesktopAppCatalogChannel(value string) bool {

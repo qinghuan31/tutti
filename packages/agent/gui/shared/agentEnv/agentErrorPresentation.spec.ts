@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import {
   classifyFailedAgentMessage,
+  classifyRecoverableAgentMessage,
+  isProviderPlanLimitMessage,
   resolveAgentErrorPresentation
 } from "./agentErrorPresentation";
 
@@ -30,6 +32,57 @@ describe("classifyFailedAgentMessage", () => {
     expect(classifyFailedAgentMessage("request timed out")).toBeNull();
     expect(classifyFailedAgentMessage("here is your answer")).toBeNull();
     expect(classifyFailedAgentMessage(null)).toBeNull();
+  });
+
+  it("recovers Cursor plan-limit copy into the quota bucket", () => {
+    expect(classifyFailedAgentMessage("Upgrade your plan to continue")).toBe(
+      "quota_or_rate_limit"
+    );
+    expect(classifyFailedAgentMessage("Add a payment method to continue")).toBe(
+      "quota_or_rate_limit"
+    );
+  });
+});
+
+describe("classifyRecoverableAgentMessage", () => {
+  it("recovers the standalone Claude Code login notice even when SDK marks it completed", () => {
+    expect(
+      classifyRecoverableAgentMessage({
+        body: "Not logged in · Please run /login",
+        statusKind: "completed"
+      })
+    ).toBe("auth_required");
+  });
+
+  it("does not reinterpret other completed messages", () => {
+    expect(
+      classifyRecoverableAgentMessage({
+        body: "Authentication is configured and the request completed.",
+        statusKind: "completed"
+      })
+    ).toBeNull();
+  });
+
+  it("does not reinterpret a normal Claude answer that discusses the notice", () => {
+    expect(
+      classifyRecoverableAgentMessage({
+        body: 'The message "Not logged in · Please run /login" means authentication is required.',
+        statusKind: "completed"
+      })
+    ).toBeNull();
+  });
+});
+
+describe("isProviderPlanLimitMessage", () => {
+  it("matches Cursor plan/payment gate copy only", () => {
+    expect(isProviderPlanLimitMessage("Upgrade your plan to continue")).toBe(
+      true
+    );
+    expect(isProviderPlanLimitMessage("Add a payment method to continue")).toBe(
+      true
+    );
+    expect(isProviderPlanLimitMessage("rate limit exceeded")).toBe(false);
+    expect(isProviderPlanLimitMessage("")).toBe(false);
   });
 });
 
@@ -80,6 +133,16 @@ describe("resolveAgentErrorPresentation", () => {
       expect(presentation?.actionKey, code).toBeNull();
       expect(presentation?.messageKey, code).toBeTruthy();
     }
+  });
+
+  it("routes insufficient Tutti credits to the subscription plans page", () => {
+    const presentation = resolveAgentErrorPresentation("insufficient_credits");
+    expect(presentation).toMatchObject({
+      messageKey: "agentHost.agentGui.visibleErrorInsufficientCredits",
+      focus: null,
+      actionKey: "agentHost.agentGui.visibleErrorActionViewPlans",
+      externalUrl: "https://tutti.sh/profile/plan"
+    });
   });
 
   it("offers a self-detect escape hatch for ambiguous hard failures", () => {

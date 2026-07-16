@@ -40,16 +40,9 @@ export type AgentConversationPromptVM =
       title: string;
     };
 
-export type AgentConversationPendingInteractivePromptVM = Exclude<
-  AgentConversationPromptVM,
-  AgentApprovalItemVM
->;
-
 export interface AgentConversationVM {
   activity: WorkspaceAgentActivityCard;
   workspaceRoot: string | null;
   sourceDetail: WorkspaceAgentSessionDetailViewModel;
   rows: AgentTranscriptRowVM[];
-  pendingApproval: AgentApprovalItemVM | null;
-  pendingInteractivePrompt: AgentConversationPendingInteractivePromptVM | null;
 }

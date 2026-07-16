@@ -129,6 +129,9 @@ jobs:
               for (const appId of Object.keys(catalog.compatibility?.apps ?? {})) {
                 appIds.add(appId);
               }
+              for (const appId of Object.keys(catalog.compatibility?.capabilityApps ?? {})) {
+                appIds.add(appId);
+              }
               for (const appId of [...appIds].filter(Boolean).map((value) => value.trim()).filter(Boolean).sort()) {
                 console.log(appId);
               }

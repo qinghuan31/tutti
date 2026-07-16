@@ -9,7 +9,8 @@ export const en = {
     selectFolder: "Select folder",
     unknownError: "Unknown error",
     unreachable: "unreachable",
-    workspace: "workspace"
+    workspace: "workspace",
+    zipArchive: "ZIP Archive"
   },
   dashboard: {
     chooseWorkspaceTitle: "Choose a workspace",
@@ -51,11 +52,11 @@ export const en = {
     availableTitle: "Update to New Version",
     badge: "update",
     checkingTitle: "Checking for updates",
-    downloadAction: "Update",
+    downloadAction: "Upgrade",
     downloadedTitle: "Ready to install",
     downloadingTitle: "Downloading {{percent}}",
     errorTitle: "Unable to check for updates",
-    restartAction: "Install",
+    restartAction: "Restart & install",
     retryAction: "Retry"
   },
   desktop: {
@@ -138,14 +139,37 @@ export const en = {
       switchWorkspaceUnavailable: "Unable to load workspaces right now."
     },
     agentGui: {
-      collapseConversationRail: "Collapse session list",
-      expandConversationRail: "Expand session list",
+      collapseConversationRail: "Hide sidebar",
+      expandConversationRail: "Show sidebar",
       fallbackAgentLabel: "Agent",
       newConversation: "New session",
-      openDetachedWindow: "Open in detached window",
+      openNewWindow: "Open new window",
+      untitledConversation: "Untitled conversation",
       openSessionUnavailableDescription:
         "This agent session no longer exists or cannot be opened.",
-      openSessionUnavailableTitle: "Session unavailable"
+      openSessionUnavailableTitle: "Session unavailable",
+      browserElementContext: {
+        cancel: "Cancel element selection",
+        failed: "Unable to add this page element to the Agent input",
+        select: "Select page element"
+      },
+      toolSidebar: {
+        apps: "Apps",
+        browser: "Browser",
+        close: "Close",
+        closeRightPanel: "Close right panel",
+        expandPanel: "Expand panel",
+        files: "Files",
+        messages: "Messages",
+        newTab: "New panel tab",
+        openRightPanel: "Open right panel",
+        resizeSidebar: "Resize tool sidebar",
+        shrinkPanel: "Shrink panel",
+        tasks: "Tasks",
+        terminal: "Terminal",
+        tool: "Tool",
+        unavailable: "{{tool}} is not available in the Agent window yet."
+      }
     },
     accountMenu: {
       title: "Tutti Agent",
@@ -297,8 +321,27 @@ export const en = {
       triggerAria: "Join feedback group"
     },
     externalImport: {
+      archiveEmpty:
+        "No supported conversations were found in this Claude export",
+      archiveGroupLabel: "Claude chats",
+      archiveOptionDescription:
+        "Choose the ZIP file downloaded from Claude's data export",
+      archiveOptionTitle: "Import Claude export data",
+      archivePickFailed: "We couldn't open the Claude export file picker.",
+      archiveResult:
+        "Imported {{sessions}} conversations and {{messages}} messages from the Claude export",
+      archiveScanFailed:
+        "This ZIP could not be read as a supported Claude data export.",
+      archiveScanning: "Reading Claude export conversations...",
+      archiveSearchPlaceholder: "Search Claude conversations",
+      archiveSelectionReady:
+        "Claude export scan complete. {{count}} conversations are ready to review.",
+      archiveSelectDescription:
+        "Search and check the Claude conversations to import",
       back: "Back",
-      description: "Import local Codex and Claude Code conversation history",
+      chooseArchive: "Choose ZIP",
+      description:
+        "Import local Codex and Claude Code history or a Claude data export",
       done: "Done",
       empty: "No local Codex or Claude Code project history was found",
       errors: "Skipped items",
@@ -334,6 +377,8 @@ export const en = {
       promptTitle: "Import existing AI chats",
       result:
         "Imported {{sessions}} sessions and {{messages}} messages from {{projects}} projects",
+      resultSkipped:
+        "Skipped {{count}} conversations that were empty or unsupported",
       scan: "Scan",
       scanFailed: "We couldn't scan external agent history right now.",
       scanning: "Scanning local agent history...",
@@ -341,8 +386,8 @@ export const en = {
       selectImportOption: "Select {{label}}",
       settingsAction: "Import",
       settingsDescription:
-        "Bring recent local Codex and Claude Code conversation history into this workspace",
-      settingsLabel: "Import AI chats",
+        "Bring local Codex and Claude Code history or Claude export conversations into Tutti",
+      settingsLabel: "Import session history",
       title: "Import from AI apps"
     },
     analyticsDebug: {
@@ -355,7 +400,8 @@ export const en = {
       title: "Analytics events"
     },
     appCenter: {
-      dockLabel: "App Center"
+      backToApps: "Back to apps",
+      dockLabel: "Apps"
     },
     info: {
       idDescription: "Stable identifier for preload and daemon coordination.",
@@ -466,8 +512,20 @@ export const en = {
         wallpaperUploading: "Uploading..."
       },
       general: {
+        workspaceUiModeLabel: "Window interaction mode",
+        workspaceUiModeOptions: {
+          agentTitle: "Standalone Agent window mode",
+          agentBadge: "Beta",
+          agentDescription:
+            "Launch directly into a standalone Agent window, with files, tools, and more opening in the right-side panel",
+          osTitle: "Immersive OS mode",
+          osDescription:
+            "Keep the immersive desktop experience, including multiple windows, the Dock, Launchpad, and more"
+        },
+        workspaceUiModeSaveFailed:
+          "We couldn't update the startup interface right now.",
         defaultAgentProviderDescription:
-          "Used for new app factory jobs, issue tasks, and workspace apps that ask for the host default",
+          "Used when a task or workspace app does not specify a provider",
         defaultAgentProviderLabel: "Default provider",
         defaultAgentProviderSaveFailed:
           "We couldn't update the default provider right now.",
@@ -602,7 +660,7 @@ export const en = {
         computerUseWizardDoneBody:
           "Computer use is ready — the agent can now operate your desktop.",
         browserUseConnectionModeDescription:
-          "Choose which browser the agent controls when it runs web tasks — the Chrome on your computer, or a separate browser Tutti launches for it.",
+          "Choose which browser the agent controls when it runs web tasks",
         browserUseConnectionModeLabel: "Browser connection",
         browserUseConnectionModeOptions: {
           autoConnect: "Reuse my Chrome",
@@ -708,7 +766,7 @@ export const en = {
           loadFailed: "We couldn't load model providers.",
           modelId: "Model ID",
           modelIdPlaceholder: "model-id",
-          models: "Models",
+          models: "{{provider}} models",
           presetLabels: {
             agnes: "Agnes",
             anthropicClaude: "Anthropic (Claude)",
@@ -751,18 +809,6 @@ export const en = {
           "We couldn't clear conversation history right now.",
         daemonLogLabel: "Daemon log",
         desktopLogLabel: "Desktop log",
-        enableCursorAgentDescription:
-          "Show the Cursor agent across the app. Off by default while Cursor support is in preview.",
-        // i18n-check-ignore: Provider brand name.
-        enableCursorAgentLabel: "Enable Cursor agent",
-        enableCursorAgentSaveFailed:
-          "We couldn't update the Cursor agent setting right now.",
-        enableOpenCodeAgentDescription:
-          "Show the OpenCode agent across the app. Off by default while OpenCode support is in preview.",
-        // i18n-check-ignore: Provider brand name.
-        enableOpenCodeAgentLabel: "Enable OpenCode agent",
-        enableOpenCodeAgentSaveFailed:
-          "We couldn't update the OpenCode agent setting right now.",
         exportLogs: "Export logs",
         exportLogsDialogTitle: "Export Logs",
         exportLogsFileType: "Zip Archive",
@@ -802,6 +848,9 @@ export const en = {
         releaseChannelDescription:
           "Choose stable release updates, or opt in to preview builds for internal verification.",
         releaseChannelLabel: "Release channel",
+        referenceProvenanceFilterDescription:
+          "Enable Agent source filtering in Agent conversation reference pickers.",
+        referenceProvenanceFilterLabel: "Agent source filter",
         releaseChannelOptions: {
           rc: "Preview",
           stable: "Stable"
@@ -856,7 +905,7 @@ export const en = {
       },
       nodes: {
         agent: "Agent",
-        appCenter: "App Center",
+        appCenter: "Apps",
         appWebview: "Workspace app",
         browser: "Browser",
         files: "Files",
@@ -878,8 +927,8 @@ export const en = {
       },
       filesLaunch: {
         openFailedDescription:
-          "This session's original working directory could no longer be found on this computer.",
-        openFailedTitle: "Couldn't open folder"
+          "The referenced file or folder could not be found at its original location.",
+        openFailedTitle: "File or folder no longer exists"
       },
       agentProviders: {
         checking: "Checking local CLI status...",
@@ -1012,7 +1061,7 @@ export const en = {
     workspace_operation_failed: {
       default: "We couldn't finish that workspace action right now.",
       acp_adapter_version_mismatch:
-        "Claude Code's local adapter is unavailable or version-mismatched. Reconnect Claude Code from the dock, then try again."
+        "The local agent adapter is unavailable or version-mismatched. Reconnect the agent from the dock, then try again."
     }
   }
 } as const;

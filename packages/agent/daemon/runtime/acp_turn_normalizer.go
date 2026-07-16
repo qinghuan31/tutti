@@ -3,6 +3,7 @@ package agentruntime
 import (
 	"sort"
 	"strings"
+	"sync"
 
 	activityshared "github.com/tutti-os/tutti/packages/agent/daemon/activity/events"
 )
@@ -13,53 +14,80 @@ type pendingToolCallSnapshot struct {
 }
 
 type acpTurnNormalizer struct {
-	assistantMessageID         string
-	assistantContent           strings.Builder
-	assistantSegmentCompleted  bool
-	thinkingMessageID          string
-	thinkingContent            strings.Builder
-	thinkingSegmentCompleted   bool
-	thinkingMessageKind        string
-	toolItemIDs                map[string]string
-	toolCallsSeen              map[string]bool
-	pendingToolCalls           map[string]pendingToolCallSnapshot
-	pendingCompactionMessageID string
-	suppressAssistantOutput    bool
+	assistantMessageID        string
+	assistantContent          strings.Builder
+	assistantSegmentCompleted bool
+	thinkingMessageID         string
+	thinkingContent           strings.Builder
+	thinkingSegmentCompleted  bool
+	thinkingMessageKind       string
+	toolItemIDs               map[string]string
+	toolCallsSeen             map[string]bool
+	pendingToolCalls          map[string]pendingToolCallSnapshot
+	fileChanges               map[string]any
+	compactionMu              sync.Mutex
+	compactionMessageID       string
+	compactionTerminalStatus  string
+	suppressAssistantOutput   bool
 }
 
-// TrackCompactionNotice remembers the in-flight compaction banner so a turn
-// that dies mid-compaction settles the banner instead of leaving a live
-// "Compacting context." row ticking in the transcript forever.
-func (n *acpTurnNormalizer) TrackCompactionNotice(messageID string, completed bool) {
-	if n == nil {
-		return
+// StartCompactionNotice atomically claims the compaction lifecycle's stable
+// message id. The bool reports whether the caller should publish the running
+// notice; repeated provider starts reuse the id without emitting another row.
+func (n *acpTurnNormalizer) StartCompactionNotice(messageID string) (string, bool) {
+	messageID = strings.TrimSpace(messageID)
+	if n == nil || messageID == "" {
+		return messageID, false
 	}
-	if completed {
-		n.pendingCompactionMessageID = ""
-		return
+	n.compactionMu.Lock()
+	defer n.compactionMu.Unlock()
+	if n.compactionMessageID != "" {
+		return n.compactionMessageID, false
 	}
-	n.pendingCompactionMessageID = strings.TrimSpace(messageID)
+	n.compactionMessageID = messageID
+	return messageID, true
+}
+
+// CompleteCompactionNotice selects the provider-reported completed terminal.
+// Terminal selection is first-write-wins: a late completion after a locally
+// synthesized failed/canceled terminal is ignored.
+func (n *acpTurnNormalizer) CompleteCompactionNotice(messageID string) (string, bool) {
+	messageID = strings.TrimSpace(messageID)
+	if n == nil || messageID == "" {
+		return messageID, false
+	}
+	n.compactionMu.Lock()
+	defer n.compactionMu.Unlock()
+	if n.compactionMessageID == "" {
+		n.compactionMessageID = messageID
+	}
+	if n.compactionTerminalStatus != "" {
+		return n.compactionMessageID, false
+	}
+	n.compactionTerminalStatus = "completed"
+	return n.compactionMessageID, true
 }
 
 // settlePendingCompactionEvents replaces a still-in-progress compaction banner
 // in place (same messageId) when the turn ends without the compaction item
 // completing.
-func (n *acpTurnNormalizer) settlePendingCompactionEvents(session Session, turnID string, title string) []activityshared.Event {
-	if n == nil || n.pendingCompactionMessageID == "" {
+func (n *acpTurnNormalizer) settlePendingCompactionEvents(
+	session Session,
+	turnID string,
+	status string,
+) []activityshared.Event {
+	if n == nil {
 		return nil
 	}
-	messageID := n.pendingCompactionMessageID
-	n.pendingCompactionMessageID = ""
-	event, ok := acpSystemNoticeEvent(session, turnID, map[string]any{
-		"kind":       "agent_system_notice",
-		"noticeKind": "system_notice",
-		"title":      title,
-		"messageId":  messageID,
-	}, "system_notice", true)
-	if !ok {
+	n.compactionMu.Lock()
+	if n.compactionMessageID == "" || n.compactionTerminalStatus != "" {
+		n.compactionMu.Unlock()
 		return nil
 	}
-	return []activityshared.Event{event}
+	messageID := n.compactionMessageID
+	n.compactionTerminalStatus = status
+	n.compactionMu.Unlock()
+	return []activityshared.Event{appServerCompactionNoticeEvent(session, turnID, messageID, status)}
 }
 
 // SetThinkingPresentation tags thinking snapshots with an optional messageKind
@@ -133,6 +161,16 @@ func (n *acpTurnNormalizer) CurrentAssistantText() string {
 		return ""
 	}
 	return n.assistantContent.String()
+}
+
+// SeenToolCallCount returns how many distinct tool calls this turn has
+// observed. Auto-continue uses it (with CurrentAssistantText) to decide
+// whether the failed attempt made useful progress.
+func (n *acpTurnNormalizer) SeenToolCallCount() int {
+	if n == nil {
+		return 0
+	}
+	return len(n.toolCallsSeen)
 }
 
 func (n *acpTurnNormalizer) ApplyAssistantFinalText(finalText string) {
@@ -306,8 +344,9 @@ func (n *acpTurnNormalizer) FinishCompleted(session Session, turnID string) []ac
 	// failed/rejected state instead of an indefinite "running"/"queued" one.
 	events = append(events, n.terminalToolCallEvents(session, turnID, messageStreamStateFailed, "turn_completed_without_call_result")...)
 	// A turn that completed normally implies the compaction it ran finished;
-	// no-op in the usual flow because item/completed already cleared the id.
-	events = append(events, n.settlePendingCompactionEvents(session, turnID, appServerContextCompactedTitle)...)
+	// no-op in the usual flow because item/completed already selected the
+	// lifecycle terminal state.
+	events = append(events, n.settlePendingCompactionEvents(session, turnID, "completed")...)
 	return events
 }
 
@@ -325,7 +364,7 @@ func (n *acpTurnNormalizer) ToolCallEvents(session Session, turnID string, updat
 		if !ok {
 			return nil, false
 		}
-		return []activityshared.Event{event}, true
+		return appendTurnFileChangesEvent(nil, []activityshared.Event{event}, event), true
 	}
 	eventID := n.toolItemID(update)
 	if eventID == "" {
@@ -338,6 +377,7 @@ func (n *acpTurnNormalizer) ToolCallEvents(session Session, turnID string, updat
 	n.trackToolCallEvent(event)
 	events := n.Finish(session, turnID, messageStreamStateCompleted)
 	events = append(events, event)
+	events = appendTurnFileChangesEvent(n, events, event)
 	return events, true
 }
 
@@ -350,6 +390,7 @@ func (n *acpTurnNormalizer) StandardToolCallEvent(session Session, turnID string
 	if eventID == "" {
 		return activityshared.Event{}, false
 	}
+	update = n.standardToolUpdateWithStableIdentity(eventID, update)
 	event, ok := standardACPToolCallEventWithID(session, eventID, turnID, updateType, update)
 	if !ok {
 		return activityshared.Event{}, false
@@ -362,13 +403,30 @@ func (n *acpTurnNormalizer) StandardToolCallEvent(session Session, turnID string
 	return event, true
 }
 
+func (n *acpTurnNormalizer) standardToolUpdateWithStableIdentity(eventID string, update map[string]any) map[string]any {
+	if n == nil || strings.TrimSpace(eventID) == "" {
+		return update
+	}
+	pending, ok := n.pendingToolCalls[eventID]
+	if !ok {
+		return update
+	}
+	toolName := strings.TrimSpace(asString(pending.payload["toolName"]))
+	if toolName == "" {
+		return update
+	}
+	result := clonePayload(update)
+	result["toolName"] = toolName
+	return result
+}
+
 func (n *acpTurnNormalizer) StandardToolCallEvents(session Session, turnID string, updateType string, update map[string]any) ([]activityshared.Event, bool) {
 	if n == nil {
 		event, ok := standardACPToolCallEvent(session, turnID, updateType, update)
 		if !ok {
 			return nil, false
 		}
-		return appendTurnFileChangesEvent(session, turnID, []activityshared.Event{event}, event), true
+		return appendTurnFileChangesEvent(nil, []activityshared.Event{event}, event), true
 	}
 	event, ok := n.StandardToolCallEvent(session, turnID, updateType, update)
 	if !ok {
@@ -376,13 +434,12 @@ func (n *acpTurnNormalizer) StandardToolCallEvents(session Session, turnID strin
 	}
 	events := n.Finish(session, turnID, messageStreamStateCompleted)
 	events = append(events, event)
-	events = appendTurnFileChangesEvent(session, turnID, events, event)
+	events = appendTurnFileChangesEvent(n, events, event)
 	return events, true
 }
 
 func appendTurnFileChangesEvent(
-	session Session,
-	turnID string,
+	normalizer *acpTurnNormalizer,
 	events []activityshared.Event,
 	event activityshared.Event,
 ) []activityshared.Event {
@@ -393,9 +450,28 @@ func appendTurnFileChangesEvent(
 	if fileChanges == nil {
 		return events
 	}
-	return append(events, newTurnActivityEvent(session, EventTurnUpdated, turnID, SessionStatusWorking, "", "", map[string]any{
-		"fileChanges": fileChanges,
-	}))
+	if normalizer != nil {
+		normalizer.fileChanges = mergeCanonicalFileChanges(normalizer.fileChanges, fileChanges)
+		fileChanges = clonePayload(normalizer.fileChanges)
+	}
+	ctx := activityshared.EventContext{
+		EventID:              newID(),
+		Provider:             event.Provider,
+		ProviderSessionID:    event.ProviderSessionID,
+		AgentSessionID:       event.AgentSessionID,
+		SessionKind:          event.SessionKind,
+		RootAgentSessionID:   event.RootAgentSessionID,
+		RootTurnID:           event.RootTurnID,
+		ParentAgentSessionID: event.ParentAgentSessionID,
+		ParentTurnID:         event.ParentTurnID,
+		ParentToolCallID:     event.ParentToolCallID,
+		TurnID:               event.Payload.TurnID,
+		CWD:                  event.Payload.CWD,
+		OccurredAtUnixMS:     nextEventUnixMS(),
+	}
+	updated := activityshared.NewTurnUpdated(ctx, event.Payload.TurnID, activityshared.TurnPhaseWorking)
+	updated.Payload.Metadata = map[string]any{"fileChanges": fileChanges}
+	return append(events, updated)
 }
 
 func (n *acpTurnNormalizer) toolItemID(update map[string]any) string {
@@ -414,6 +490,35 @@ func (n *acpTurnNormalizer) toolItemID(update map[string]any) string {
 	return id
 }
 
+// KnownToolCallInput returns the last recorded normalized input for a raw ACP
+// toolCallId, if the normalizer has already seen a `tool_call`/`tool_call_update`
+// for it in this turn. Some ACP providers (Cursor) omit `rawInput` on the
+// `toolCall` embedded in `session/request_permission`, repeating only
+// `toolCallId`/`title`/`kind`; the earlier tool_call notification for the same
+// id is the only place the command/path/query detail exists. Later empty
+// `tool_call_update` snapshots merge into that prior input instead of replacing
+// it, so this lookup still sees the original detail. This lookup does not
+// create a new id mapping, so it must not be used before the tool_call it
+// targets has actually streamed.
+func (n *acpTurnNormalizer) KnownToolCallInput(rawToolCallID string) map[string]any {
+	if n == nil {
+		return nil
+	}
+	rawToolCallID = strings.TrimSpace(rawToolCallID)
+	if rawToolCallID == "" || n.toolItemIDs == nil {
+		return nil
+	}
+	eventID, ok := n.toolItemIDs[rawToolCallID]
+	if !ok {
+		return nil
+	}
+	pending, ok := n.pendingToolCalls[eventID]
+	if !ok {
+		return nil
+	}
+	return payloadMap(pending.payload, "input")
+}
+
 func (n *acpTurnNormalizer) trackToolCallEvent(event activityshared.Event) {
 	if n == nil || strings.TrimSpace(event.EventID) == "" {
 		return
@@ -423,9 +528,17 @@ func (n *acpTurnNormalizer) trackToolCallEvent(event activityshared.Event) {
 		if n.pendingToolCalls == nil {
 			n.pendingToolCalls = make(map[string]pendingToolCallSnapshot)
 		}
+		incoming := clonePayload(event.Payload.Metadata)
+		if previous, ok := n.pendingToolCalls[event.EventID]; ok {
+			// Cursor often streams tool_call with rawInput, then a later
+			// tool_call_update that repeats only title/kind/status (no input).
+			// Replacing the snapshot wholesale dropped command/path/query and
+			// left session/request_permission with nothing to backfill.
+			incoming = mergePendingToolCallPayload(previous.payload, incoming)
+		}
 		n.pendingToolCalls[event.EventID] = pendingToolCallSnapshot{
 			eventID: event.EventID,
-			payload: clonePayload(event.Payload.Metadata),
+			payload: incoming,
 		}
 	case activityshared.EventCallCompleted, activityshared.EventCallFailed:
 		delete(n.pendingToolCalls, event.EventID)
@@ -460,12 +573,37 @@ func mergePendingToolCallPayload(started map[string]any, completed map[string]an
 	}
 	for key, value := range completed {
 		if key == "input" {
-			if len(payloadMap(merged, "input")) == 0 {
-				merged[key] = clonePayloadValue(value)
+			if mergedInput := mergePendingToolCallInput(
+				payloadMap(merged, "input"),
+				payloadObject(value),
+			); len(mergedInput) > 0 {
+				merged[key] = mergedInput
 			}
 			continue
 		}
+		if payloadValueIsEmpty(value) {
+			continue
+		}
 		merged[key] = clonePayloadValue(value)
+	}
+	return merged
+}
+
+// mergePendingToolCallInput keeps earlier structured fields (command/path/query)
+// when a later ACP tool_call_update omits or only partially repeats input.
+func mergePendingToolCallInput(base map[string]any, incoming map[string]any) map[string]any {
+	merged := clonePayload(base)
+	if merged == nil {
+		merged = map[string]any{}
+	}
+	for key, value := range incoming {
+		if payloadValueIsEmpty(value) {
+			continue
+		}
+		merged[key] = clonePayloadValue(value)
+	}
+	if len(merged) == 0 {
+		return nil
 	}
 	return merged
 }
@@ -475,18 +613,38 @@ func normalizeMergedACPToolPayload(payload map[string]any) {
 		return
 	}
 	input := payloadMap(payload, "input")
+	output := payloadMap(payload, "output")
 	kind := firstNonEmpty(
 		asString(payload["kind"]),
 		asString(input["kind"]),
 		asString(payloadMap(payload, "acp")["kind"]),
 	)
+	callID := asString(payload["callId"])
+	priorToolName := strings.TrimSpace(asString(payload["toolName"]))
 	name := firstNonEmpty(
 		asString(input["title"]),
-		asString(payload["name"]),
-		asString(payload["toolName"]),
-		asString(payload["callId"]),
+		asString(payload["title"]),
 	)
-	if toolName := acpToolName(asString(payload["callId"]), name, kind, input); toolName != "" {
+	if candidate := strings.TrimSpace(asString(payload["name"])); candidate != "" && !isOpaqueCallIdentifierString(candidate, callID) {
+		if name == "" {
+			name = candidate
+		}
+	}
+	if name == "" && priorToolName != "" && !isOpaqueCallIdentifierString(priorToolName, callID) {
+		name = priorToolName
+	}
+	toolName := acpToolNameWithOutput(callID, name, kind, input, output)
+	if toolName == "" {
+		toolName = priorToolName
+	}
+	// Prefer a stable prior identity when re-derivation collapses to a generic
+	// Tool/Bash label but we already knew a more specific Cursor tool name.
+	if priorToolName != "" && priorToolName != "Tool" && priorToolName != "Bash" &&
+		(toolName == "" || toolName == "Tool" || toolName == "Bash") &&
+		acpToolNameLooksSpecific(priorToolName) {
+		toolName = priorToolName
+	}
+	if toolName != "" {
 		payload["toolName"] = toolName
 		payload["name"] = toolName
 	}
@@ -496,8 +654,17 @@ func normalizeMergedACPToolPayload(payload map[string]any) {
 	if strings.TrimSpace(asString(payload["callType"])) == "" && strings.TrimSpace(kind) != "" {
 		payload["callType"] = kind
 	}
-	if fileChanges := fileChangesFromACPToolPayload(payload); fileChanges != nil {
+	if fileChanges := canonicalFileChangesFromToolPayload(payload); fileChanges != nil {
 		payload["fileChanges"] = fileChanges
+	}
+}
+
+func acpToolNameLooksSpecific(toolName string) bool {
+	switch strings.TrimSpace(toolName) {
+	case "Glob", "Grep", "Read", "Write", "Edit", "WebSearch", "WebFetch", "TodoWrite", "Agent", "Think":
+		return true
+	default:
+		return false
 	}
 }
 
@@ -510,7 +677,7 @@ func (n *acpTurnNormalizer) finishTerminal(
 ) []activityshared.Event {
 	events := n.Finish(session, turnID, streamState)
 	events = append(events, n.terminalToolCallEvents(session, turnID, toolStatus, reason)...)
-	events = append(events, n.settlePendingCompactionEvents(session, turnID, appServerCompactionInterruptedTitle)...)
+	events = append(events, n.settlePendingCompactionEvents(session, turnID, toolStatus)...)
 	return events
 }
 

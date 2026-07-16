@@ -26,6 +26,8 @@ vi.mock("../../i18n/index", async () => {
       "暂无已打开或 Agent 生成的文件，继续输入文件名可搜索本机文件",
     "agentHost.agentGui.contextPickerBrowseSessionHint":
       "输入内容以搜索我发起的 Agent 会话",
+    "agentHost.agentGui.contextPickerLoadMoreLoading": "正在加载",
+    "agentHost.agentGui.contextPickerLoadMoreRetry": "加载失败，重试",
     "agentHost.agentGui.mentionGroupOpenedFiles": "我打开的文件",
     "agentHost.agentGui.mentionGroupAgentGeneratedFiles": "Agent 生成的文件",
     "agentHost.agentGui.mentionAgentGeneratedFolderBack": "返回",
@@ -412,6 +414,17 @@ describe("AgentFileMentionPalette", () => {
       "rich-text-at-mention-row",
       "rich-text-at-mention-row--session"
     );
+    const sessionParticipant = sessionRow?.querySelector(
+      ".rich-text-at-mention-row__session-participant"
+    );
+    expect(sessionParticipant?.parentElement).toHaveClass(
+      "rich-text-at-mention-row__entity-text",
+      "rich-text-at-mention-row__session-title"
+    );
+    expect(sessionParticipant).toHaveClass(
+      "rich-text-at-mention-row__entity-name",
+      "rich-text-at-mention-row__session-participant"
+    );
     expect(statusTags[0]).toHaveClass("rich-text-at-mention-status");
     const userAvatarImage = selectedOption.querySelector(
       '[data-agent-mention-user-avatar="true"] img'
@@ -495,6 +508,61 @@ describe("AgentFileMentionPalette", () => {
       "src",
       expect.stringContaining("codex-rounded")
     );
+  });
+
+  it("uses the target-projected icon for extension sessions", () => {
+    const state: AgentMentionSearchState = {
+      status: "ready",
+      query: "",
+      mode: "browse",
+      filter: "session",
+      categories: [],
+      groups: [
+        {
+          id: "my_sessions",
+          items: [
+            {
+              kind: "session",
+              href: "mention://agent-session/session-1?workspaceId=room-1",
+              workspaceId: "room-1",
+              targetId: "session-1",
+              name: "Gemini CLI hi",
+              title: "hi",
+              scope: "my_sessions",
+              initiatorName: "local",
+              agentName: "Gemini CLI",
+              agentIconUrl: "data:image/svg+xml;base64,gemini"
+            }
+          ],
+          totalCount: 1,
+          visibleCount: 1,
+          hasMore: false
+        }
+      ],
+      error: null
+    };
+
+    render(
+      <AgentFileMentionPalette
+        state={state}
+        highlightedKey="my_sessions:session:session-1"
+        label="mention palette"
+        loadingLabel="loading"
+        emptyLabel="empty"
+        errorLabel="error"
+        tabHintLabel="hint"
+        maxHeightPx={320}
+        onHighlightChange={vi.fn()}
+        onSelectItem={vi.fn()}
+        onSelectCategory={vi.fn()}
+        onSelectFilter={vi.fn()}
+        onExpandGroup={vi.fn()}
+      />
+    );
+
+    expect(
+      document.querySelector('[data-agent-mention-agent-avatar="true"] img')
+    ).toHaveAttribute("src", "data:image/svg+xml;base64,gemini");
   });
 
   it("keeps long issue titles truncated inside the palette row", () => {
@@ -871,9 +939,11 @@ describe("AgentFileMentionPalette", () => {
       />
     );
 
-    expect(screen.getByRole("listbox")).toHaveClass(
-      "rich-text-at-mention-palette__shell"
-    );
+    const listbox = screen.getByRole("listbox");
+    expect(listbox).toHaveClass("rich-text-at-mention-palette__scroll-body");
+    expect(
+      listbox.closest(".rich-text-at-mention-palette__shell")
+    ).not.toBeNull();
     expect(
       screen.queryByTestId("agent-gui-mention-palette-scrollbar")
     ).toBeNull();
@@ -1107,11 +1177,22 @@ describe("AgentFileMentionPalette", () => {
       .getByText("agentGuiNode")
       .closest('[data-agent-file-mention="true"]');
     const enterButton = screen.getByRole("button", { name: "进入文件夹" });
+    const fileCount = folderRow?.querySelector(
+      ".rich-text-at-mention-row__file-count"
+    );
 
     expect(folderRow).toHaveAttribute(
       "data-agent-mention-navigation",
       "agent-generated-folder"
     );
+    expect(fileCount).not.toBeNull();
+    if (!fileCount) {
+      throw new Error("Expected the generated-folder file count");
+    }
+    expect(
+      fileCount.compareDocumentPosition(enterButton) &
+        Node.DOCUMENT_POSITION_FOLLOWING
+    ).toBeTruthy();
     expect(enterButton).toHaveAttribute(
       "data-agent-mention-navigate-into",
       "true"
@@ -1250,6 +1331,78 @@ describe("AgentFileMentionPalette", () => {
     );
   });
 
+  it("renders provenance catalog labels for session groups", () => {
+    const session = (
+      targetId: string,
+      agentTargetId: string,
+      title: string
+    ): AgentContextMentionItem => ({
+      kind: "session",
+      href: `mention://agent-session/${targetId}?workspaceId=room-1`,
+      workspaceId: "room-1",
+      targetId,
+      agentTargetId,
+      name: title,
+      title,
+      scope: "my_sessions",
+      initiatorName: "User",
+      agentName: "Codex"
+    });
+    const state: AgentMentionSearchState = {
+      status: "ready",
+      query: "",
+      mode: "browse",
+      filter: "session",
+      categories: [],
+      groups: [
+        {
+          id: "agent:codex-main",
+          label: "Me · Codex",
+          items: [session("session-local", "codex-main", "Local build")],
+          totalCount: 1,
+          visibleCount: 1,
+          hasMore: false
+        },
+        {
+          id: "agent:shared-agent%3Ashared-codex",
+          label: "Lin · Codex",
+          items: [
+            session(
+              "session-shared",
+              "shared-agent:shared-codex",
+              "Shared build"
+            )
+          ],
+          totalCount: 1,
+          visibleCount: 1,
+          hasMore: false
+        }
+      ],
+      error: null
+    };
+
+    render(
+      <AgentFileMentionPalette
+        state={state}
+        highlightedKey={null}
+        label="mention palette"
+        loadingLabel="loading"
+        emptyLabel="empty"
+        errorLabel="error"
+        tabHintLabel="hint"
+        maxHeightPx={320}
+        onHighlightChange={vi.fn()}
+        onSelectItem={vi.fn()}
+        onSelectCategory={vi.fn()}
+        onSelectFilter={vi.fn()}
+        onExpandGroup={vi.fn()}
+      />
+    );
+
+    expect(screen.getByText("Me · Codex")).toBeVisible();
+    expect(screen.getByText("Lin · Codex")).toBeVisible();
+  });
+
   it("hides a duplicate group heading when the active filter has one matching group", () => {
     const state: AgentMentionSearchState = {
       status: "ready",
@@ -1271,10 +1424,19 @@ describe("AgentFileMentionPalette", () => {
               iconUrl: "data:image/png;base64,automation",
               description:
                 "Schedule and review recurring automation runs for this workspace."
+            },
+            {
+              kind: "workspace-app",
+              href: "mention://workspace-app/tasks?workspaceId=room-1",
+              workspaceId: "room-1",
+              targetId: "tasks",
+              appId: "tasks",
+              name: "任务管理",
+              description: "管理工作区任务和运行记录。"
             }
           ],
-          totalCount: 1,
-          visibleCount: 1,
+          totalCount: 2,
+          visibleCount: 2,
           hasMore: false
         }
       ],
@@ -1309,20 +1471,34 @@ describe("AgentFileMentionPalette", () => {
     ).toHaveClass("rich-text-at-mention-app-icon");
     expect(
       screen.getByText(
-        "Schedule and review recurring automation runs for this workspace."
+        "Schedule and review recurring automation runs for this workspace"
       )
     ).toBeVisible();
     expect(screen.getByText("Automation").parentElement).toHaveClass(
+      "rich-text-at-mention-row__entity-text",
       "rich-text-at-mention-row__app-text"
     );
     expect(screen.getByText("Automation")).toHaveClass(
+      "rich-text-at-mention-row__entity-name",
       "rich-text-at-mention-row__app-name"
     );
     expect(
       screen.getByText(
-        "Schedule and review recurring automation runs for this workspace."
+        "Schedule and review recurring automation runs for this workspace"
       )
     ).toHaveClass("rich-text-at-mention-row__app-description");
+    expect(
+      screen.getByText(
+        "Schedule and review recurring automation runs for this workspace"
+      )
+    ).toHaveClass("rich-text-at-mention-row__entity-description");
+    expect(
+      screen.queryByText(
+        "Schedule and review recurring automation runs for this workspace."
+      )
+    ).toBeNull();
+    expect(screen.getByText("管理工作区任务和运行记录")).toBeVisible();
+    expect(screen.queryByText("管理工作区任务和运行记录。")).toBeNull();
     expect(screen.queryByText("automation")).toBeNull();
     expect(
       document.querySelector("section")?.textContent?.match(/\bApps\b/g) ?? []
@@ -1434,6 +1610,10 @@ describe("AgentFileMentionPalette", () => {
     );
 
     const hint = screen.getByTestId("agent-gui-mention-palette-hint");
+    expect(within(hint).getByText("切换分类").parentElement).toHaveAttribute(
+      "data-tooltip",
+      "切换分类"
+    );
 
     fireEvent.click(within(hint).getByRole("button", { name: "Tab 切换分类" }));
     fireEvent.click(within(hint).getByRole("button", { name: "↑ 切换选中" }));
@@ -1449,5 +1629,71 @@ describe("AgentFileMentionPalette", () => {
       2,
       "opened_files:file:/workspace/assets/demo.png"
     );
+  });
+
+  it("renders dynamic task topic labels and isolated load-more states", () => {
+    const onExpandGroup = vi.fn();
+    const baseGroup = {
+      id: "issue-topic:topic%2Fone",
+      label: "Pinned topic",
+      items: [
+        {
+          kind: "workspace-issue" as const,
+          href: "mention://workspace-issue/issue-1?workspaceId=room-1&topicId=topic%2Fone",
+          workspaceId: "room-1",
+          targetId: "issue-1",
+          name: "Fix pagination",
+          title: "Fix pagination",
+          status: "running"
+        }
+      ],
+      totalCount: 11,
+      visibleCount: 1,
+      hasMore: true
+    };
+    const state: AgentMentionSearchState = {
+      status: "ready",
+      query: "",
+      mode: "browse",
+      filter: "issue",
+      categories: [],
+      groups: [{ ...baseGroup, expandStatus: "loading" }],
+      error: null
+    };
+    const props = {
+      highlightedKey: "expand:issue-topic:topic%2Fone",
+      label: "mention palette",
+      loadingLabel: "loading",
+      emptyLabel: "empty",
+      errorLabel: "error",
+      tabHintLabel: "hint",
+      maxHeightPx: 320,
+      onHighlightChange: vi.fn(),
+      onSelectItem: vi.fn(),
+      onSelectCategory: vi.fn(),
+      onSelectFilter: vi.fn(),
+      onExpandGroup
+    };
+    const { rerender } = render(
+      <AgentFileMentionPalette {...props} state={state} />
+    );
+
+    expect(screen.getByText("Pinned topic")).toBeVisible();
+    expect(screen.getByRole("button", { name: "正在加载" })).toBeDisabled();
+    expect(screen.getByText("Fix pagination")).toBeVisible();
+
+    rerender(
+      <AgentFileMentionPalette
+        {...props}
+        state={{
+          ...state,
+          groups: [{ ...baseGroup, expandStatus: "error" }]
+        }}
+      />
+    );
+    const retry = screen.getByRole("button", { name: "加载失败，重试" });
+    expect(retry).toBeEnabled();
+    fireEvent.click(retry);
+    expect(onExpandGroup).toHaveBeenCalledWith("issue-topic:topic%2Fone");
   });
 });

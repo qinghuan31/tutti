@@ -16,6 +16,7 @@ import {
   resetAgentCustomMentionKindsForTests
 } from "../../../shared/agentCustomMentionKinds";
 import { createRichTextMentionHref } from "@tutti-os/ui-rich-text/core";
+import { managedAgentRoundedIconUrl } from "../../../shared/managedAgentIcons";
 
 const placeholderSchema = new Schema({
   nodes: {
@@ -93,11 +94,10 @@ describe("parseAgentMentionMarkdown", () => {
   });
 
   it("accepts generic session mention hrefs", () => {
-    expect(
-      parseAgentMentionMarkdown(
-        "[@Session](mention://agent-session/session-1?agentTargetId=local%3Aclaude-code&workspaceId=workspace-1)"
-      )
-    ).toMatchObject({
+    const parsed = parseAgentMentionMarkdown(
+      "[@Session](mention://agent-session/session-1?agentTargetId=local%3Aclaude-code&workspaceId=workspace-1)"
+    );
+    expect(parsed).toMatchObject({
       item: {
         kind: "session",
         workspaceId: "workspace-1",
@@ -106,6 +106,19 @@ describe("parseAgentMentionMarkdown", () => {
         name: "Session"
       }
     });
+    expect(mentionItemToAttrs(parsed!.item).iconUrl).toBe(
+      managedAgentRoundedIconUrl("claude-code")
+    );
+  });
+
+  it("derives the Cursor icon for a pasted local session mention", () => {
+    const parsed = parseAgentMentionMarkdown(
+      "[@Cursor session](mention://agent-session/session-1?agentTargetId=local%3Acursor&workspaceId=workspace-1)"
+    );
+
+    expect(mentionItemToAttrs(parsed!.item).iconUrl).toBe(
+      managedAgentRoundedIconUrl("cursor")
+    );
   });
 
   it("parses registered custom mention kinds into custom items", () => {
@@ -167,6 +180,32 @@ describe("parseAgentMentionMarkdown", () => {
       expect(formatAgentMentionMarkdown(parsed!)).toContain(
         "mention://external-note/note-a"
       );
+    } finally {
+      resetAgentCustomMentionKindsForTests();
+    }
+  });
+
+  it("keeps the canonical custom mention label when chip presentation changes it", () => {
+    registerAgentCustomMentionKind({
+      kind: "browser-element",
+      present: (mention) => ({ name: `<${mention.label}>` })
+    });
+    try {
+      const prompt =
+        "[@a](mention://browser-element/browser-element:1?path=%2Ftmp%2Fa.txt&tag=a&workspaceId=workspace-1)";
+      const parsed = parseAgentMentionMarkdown(prompt);
+
+      expect(parsed?.item).toMatchObject({
+        kind: "custom",
+        name: "<a>",
+        sourceLabel: "a"
+      });
+      expect(formatAgentMentionMarkdown(parsed!.item)).toBe(prompt);
+      expect(
+        formatAgentMentionMarkdown(
+          attrsToMentionItem(mentionItemToAttrs(parsed!.item))
+        )
+      ).toBe(prompt);
     } finally {
       resetAgentCustomMentionKindsForTests();
     }
@@ -284,6 +323,29 @@ describe("attrsToMentionItem", () => {
       workspaceId: "workspace-1",
       targetId: "session-1",
       agentTargetId: "local:claude-code"
+    });
+  });
+
+  it("preserves an explicit session agent icon through attrs", () => {
+    const item = attrsToMentionItem(
+      mentionItemToAttrs({
+        kind: "session",
+        href: "mention://agent-session/session-1?agentTargetId=shared-agent%3Acursor&workspaceId=workspace-1",
+        workspaceId: "workspace-1",
+        targetId: "session-1",
+        agentTargetId: "shared-agent:cursor",
+        name: "Session",
+        title: "Session",
+        scope: "collab_sessions",
+        initiatorName: "",
+        agentName: "Cursor",
+        agentIconUrl: "tutti://agent/cursor.svg"
+      })
+    );
+
+    expect(item).toMatchObject({
+      kind: "session",
+      agentIconUrl: "tutti://agent/cursor.svg"
     });
   });
 
@@ -448,7 +510,7 @@ describe("agent session mention links", () => {
         workspaceId: "room-1",
         targetId: "session-1",
         agentTargetId: "local:claude-code",
-        name: "Session 1",
+        name: "Taylor & Claude Code Session 1",
         title: "Session 1",
         scope: "my_sessions",
         initiatorName: "Taylor",

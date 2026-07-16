@@ -15,7 +15,6 @@ import {
   DrawerContent,
   DrawerDescription,
   DrawerTitle,
-  StatusDot,
   TooltipProvider
 } from "@tutti-os/ui-system";
 import type { I18nRuntime } from "@tutti-os/ui-i18n-runtime";
@@ -35,15 +34,12 @@ import {
 import { WorkspaceAgentMessageCenterAttentionDeck } from "./WorkspaceAgentMessageCenterAttentionDeck";
 import { MessageCenterViewMenu } from "./WorkspaceAgentMessageCenterViewControls";
 import {
-  MessageCenterIdentityAvatarMark,
-  MessageCenterIdentityLabel,
-  messageCenterStatusToneClass,
   resolveMessageCenterNotificationAction,
   WorkspaceAgentMessageCenterStack,
   WorkspaceAgentMessageCenterCard,
-  type MessageCenterStatusTone,
   type WorkspaceAgentMessageCenterCardProps
 } from "./WorkspaceAgentMessageCenterCard";
+import { MessageCenterGroupHeading } from "./WorkspaceAgentMessageCenterGroupHeading";
 import {
   buildMessageCenterProviderOptions,
   buildMessageCenterStatusOptions,
@@ -70,6 +66,10 @@ export type { WorkspaceAgentMessageCenterCardProps } from "./WorkspaceAgentMessa
 const MESSAGE_CENTER_TOOLTIP_DELAY_MS = 300;
 const MESSAGE_CENTER_STACK_EAGER_SUMMARY_COUNT = 8;
 
+export type WorkspaceAgentMessageCenterPanelPresentation =
+  | "drawer"
+  | "embedded";
+
 type WorkspaceAgentMessageCenterPromptInput = Parameters<
   WorkspaceAgentMessageCenterCardProps["onSubmitPrompt"]
 >[0];
@@ -81,6 +81,7 @@ export interface WorkspaceAgentMessageCenterPanelProps {
   model: WorkspaceAgentMessageCenterModel;
   highlightedItemId?: string | null;
   portalContainer?: HTMLElement | null;
+  presentation?: WorkspaceAgentMessageCenterPanelPresentation;
   onClose: () => void;
   onHighlightedItemSettled?: (itemId: string) => void;
   onLinkAction?: (action: WorkspaceLinkAction) => void;
@@ -89,6 +90,9 @@ export interface WorkspaceAgentMessageCenterPanelProps {
     provider: string;
   }) => void;
   onOpenChat: (input: { agentSessionId: string; provider: string }) => void;
+  promptStatus?: (
+    item: WorkspaceAgentMessageCenterItem
+  ) => "idle" | "responding" | "unknown" | "failed";
   onSubmitPrompt: (input: {
     action?: string;
     agentSessionId: string;
@@ -96,6 +100,7 @@ export interface WorkspaceAgentMessageCenterPanelProps {
     payload?: Record<string, unknown>;
     promptKind?: string;
     requestId: string;
+    turnId?: string;
   }) => Promise<void> | void;
 }
 
@@ -107,11 +112,13 @@ export const WorkspaceAgentMessageCenterPanel = memo(
     model,
     highlightedItemId = null,
     portalContainer = null,
+    presentation = "drawer",
     onClose,
     onHighlightedItemSettled,
     onLinkAction,
     onNotificationActioned,
     onOpenChat,
+    promptStatus = () => "idle",
     onSubmitPrompt
   }: WorkspaceAgentMessageCenterPanelProps): JSX.Element | null {
     "use memo";
@@ -125,11 +132,13 @@ export const WorkspaceAgentMessageCenterPanel = memo(
           model={model}
           highlightedItemId={highlightedItemId}
           portalContainer={portalContainer}
+          presentation={presentation}
           onClose={onClose}
           onHighlightedItemSettled={onHighlightedItemSettled}
           onLinkAction={onLinkAction}
           onNotificationActioned={onNotificationActioned}
           onOpenChat={onOpenChat}
+          promptStatus={promptStatus}
           onSubmitPrompt={onSubmitPrompt}
         />
       </AgentGuiI18nProvider>
@@ -142,11 +151,13 @@ function WorkspaceAgentMessageCenterPanelContent({
   model,
   highlightedItemId = null,
   portalContainer = null,
+  presentation = "drawer",
   onClose,
   onHighlightedItemSettled,
   onLinkAction,
   onNotificationActioned,
   onOpenChat,
+  promptStatus = () => "idle",
   onSubmitPrompt
 }: Omit<
   WorkspaceAgentMessageCenterPanelProps,
@@ -174,9 +185,6 @@ function WorkspaceAgentMessageCenterPanelContent({
   }, [groupBy, statusFilters, providerFilters]);
   const [expandedStackIds, setExpandedStackIds] = useState<Set<string>>(
     () => new Set()
-  );
-  const [submittingPromptKey, setSubmittingPromptKey] = useState<string | null>(
-    null
   );
   const itemNodesRef = useRef<Map<string, HTMLElement>>(new Map());
   const lastScrolledHighlightedItemIdRef = useRef<string | null>(null);
@@ -289,29 +297,25 @@ function WorkspaceAgentMessageCenterPanelContent({
         requestId: string;
       }
     ) => {
-      const promptKey = `${item.agentSessionId}:${input.requestId}`;
-      setSubmittingPromptKey(promptKey);
-      try {
-        const notificationAction = resolveMessageCenterNotificationAction(
-          item,
-          input
-        );
-        if (notificationAction) {
-          onNotificationActioned?.({
-            action: notificationAction,
-            provider: item.provider
-          });
-        }
-        await onSubmitPrompt({
-          ...input,
-          agentSessionId: item.agentSessionId,
-          promptKind: item.pendingPrompt?.kind
+      const notificationAction = resolveMessageCenterNotificationAction(
+        item,
+        input
+      );
+      if (notificationAction) {
+        onNotificationActioned?.({
+          action: notificationAction,
+          provider: item.provider
         });
-      } finally {
-        setSubmittingPromptKey((current) =>
-          current === promptKey ? null : current
-        );
       }
+      await onSubmitPrompt({
+        ...input,
+        agentSessionId:
+          item.pendingInteractionTarget?.agentSessionId ?? item.agentSessionId,
+        ...(item.pendingInteractionTarget
+          ? { turnId: item.pendingInteractionTarget.turnId }
+          : {}),
+        promptKind: item.pendingPrompt?.kind
+      });
     },
     [onNotificationActioned, onSubmitPrompt]
   );
@@ -480,8 +484,8 @@ function WorkspaceAgentMessageCenterPanelContent({
           highlighted={highlighted}
           item={item}
           isSubmitting={
-            submittingPromptKey ===
-            `${item.agentSessionId}:${item.pendingPrompt?.requestId}`
+            promptStatus(item) === "responding" ||
+            promptStatus(item) === "unknown"
           }
           lazySummary={
             stackedIndex !== undefined &&
@@ -514,11 +518,142 @@ function WorkspaceAgentMessageCenterPanelContent({
       highlightedItemId,
       onLinkAction,
       onOpenChat,
+      promptStatus,
       setItemNode,
-      submitPrompt,
-      submittingPromptKey
+      submitPrompt
     ]
   );
+
+  const panelContents = (
+    <TooltipProvider delayDuration={MESSAGE_CENTER_TOOLTIP_DELAY_MS}>
+      <div className="flex-none border-b border-[var(--border-1)] px-3.5 pt-3 pb-3">
+        <div className="flex min-w-0 items-center justify-between gap-3">
+          {presentation === "drawer" ? (
+            <div className="min-w-0">
+              <DrawerTitle className="truncate text-[13px] font-semibold leading-5 text-[var(--text-primary)]">
+                {t("agentHost.workspaceAgentMessageCenterTitle")}
+              </DrawerTitle>
+              <DrawerDescription className="truncate text-[11px] leading-4 text-[var(--text-tertiary)]">
+                {headerSummary}
+              </DrawerDescription>
+            </div>
+          ) : (
+            <p className="min-w-0 truncate text-[11px] leading-4 text-[var(--text-tertiary)]">
+              {headerSummary}
+            </p>
+          )}
+          <MessageCenterViewMenu
+            filtersActive={hasActiveFilters}
+            groupBy={groupBy}
+            providerFilters={providerFilters}
+            providerOptions={providerOptions}
+            statusFilters={statusFilters}
+            statusOptions={statusOptions}
+            onClearFilters={clearFilters}
+            onGroupByChange={setGroupBy}
+            onProviderToggle={toggleProviderFilter}
+            onStatusToggle={toggleStatusFilter}
+          />
+        </div>
+      </div>
+
+      <AgentVerticalScrollArea
+        className="min-h-0 flex-1"
+        viewportClassName="flex h-full w-full flex-col px-3.5 pt-4 pb-4"
+        scrollbarClassName="top-4 bottom-4"
+        syncKey={scrollSyncKey}
+      >
+        {deckItems.length > 0 || listItems.length > 0 ? (
+          <div className="flex w-full min-w-0 flex-col gap-4">
+            {deckItems.length > 0 ? (
+              <WorkspaceAgentMessageCenterAttentionDeck
+                items={deckItems}
+                highlightedItemId={highlightedItemId}
+                isPromptSubmitting={(item) =>
+                  promptStatus(item) === "responding" ||
+                  promptStatus(item) === "unknown"
+                }
+                registerNode={setItemNode}
+                onLinkAction={onLinkAction}
+                onOpenChat={onOpenChat}
+                onSubmitPrompt={(item, input) => void submitPrompt(item, input)}
+              />
+            ) : null}
+            {itemGroupStacks.map((group) => (
+              <section
+                key={group.id}
+                className="flex min-w-0 flex-col gap-2.5"
+                aria-label={`${group.label} ${group.items.length}`}
+              >
+                <div className="flex min-w-0 items-center justify-between gap-3 px-0.5">
+                  <MessageCenterGroupHeading group={group} />
+                </div>
+                {(() => {
+                  return group.stacks.map((stack) => {
+                    const firstItem = stack.items[0];
+                    if (!firstItem) {
+                      return null;
+                    }
+                    if (stack.items.length === 1) {
+                      return renderMessageCenterCard(firstItem);
+                    }
+                    const stackId = messageCenterStackRenderId(
+                      group.id,
+                      stack.id
+                    );
+                    return (
+                      <MessageCenterStack
+                        key={stackId}
+                        expanded={expandedStackIds.has(stackId)}
+                        groupId={stackId}
+                        highlightedItemId={highlightedItemId}
+                        items={stack.items}
+                        renderCard={renderMessageCenterCard}
+                        onCollapse={collapseStack}
+                        onExpand={expandStack}
+                      />
+                    );
+                  });
+                })()}
+              </section>
+            ))}
+          </div>
+        ) : model.items.length > 0 ? (
+          <div className="flex min-h-0 flex-1 flex-col items-center justify-center gap-2.5 px-6 py-8 text-center text-[13px] text-[var(--text-tertiary)]">
+            <span>
+              {t("agentHost.workspaceAgentMessageCenterFilteredEmpty")}
+            </span>
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              className="border border-[var(--line-2)] bg-[var(--background-fronted)] text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
+              onClick={clearFilters}
+            >
+              {t("agentHost.workspaceAgentMessageCenterClearFilters")}
+            </Button>
+          </div>
+        ) : (
+          <div className="flex min-h-0 flex-1 items-center justify-center px-6 py-8 text-center text-[13px] text-[var(--text-tertiary)]">
+            {t("agentHost.workspaceAgentMessageCenterEmpty")}
+          </div>
+        )}
+      </AgentVerticalScrollArea>
+    </TooltipProvider>
+  );
+
+  if (presentation === "embedded") {
+    return (
+      <section
+        aria-label={t("agentHost.workspaceAgentMessageCenterTitle")}
+        className="t-modal nodrag flex h-full min-h-0 w-full flex-col overflow-hidden bg-[var(--background-panel)] text-[var(--text-primary)] [-webkit-app-region:no-drag]"
+        data-presentation="embedded"
+        data-testid="workspace-agent-message-center"
+      >
+        {panelContents}
+      </section>
+    );
+  }
 
   return (
     <Drawer
@@ -536,119 +671,13 @@ function WorkspaceAgentMessageCenterPanelContent({
           "t-modal nodrag min-h-0 w-[min(440px,calc(100vw-16px))] max-w-none overflow-hidden rounded-none border-y-0 border-r-0 bg-[var(--background-panel)] text-[var(--text-primary)] shadow-side-panel data-[vaul-drawer-direction=right]:rounded-none",
           "[-webkit-app-region:no-drag]"
         )}
+        data-presentation="drawer"
         data-testid="workspace-agent-message-center"
         portalContainer={portalContainer ?? undefined}
         showOverlay={false}
         aria-label={t("agentHost.workspaceAgentMessageCenterTitle")}
       >
-        <TooltipProvider delayDuration={MESSAGE_CENTER_TOOLTIP_DELAY_MS}>
-          <div className="flex-none border-b border-[var(--border-1)] px-3.5 pt-3 pb-3">
-            <div className="flex min-w-0 items-center justify-between gap-3">
-              <div className="min-w-0">
-                <DrawerTitle className="truncate text-[13px] font-semibold leading-5 text-[var(--text-primary)]">
-                  {t("agentHost.workspaceAgentMessageCenterTitle")}
-                </DrawerTitle>
-                <DrawerDescription className="truncate text-[11px] leading-4 text-[var(--text-tertiary)]">
-                  {headerSummary}
-                </DrawerDescription>
-              </div>
-              <MessageCenterViewMenu
-                filtersActive={hasActiveFilters}
-                groupBy={groupBy}
-                providerFilters={providerFilters}
-                providerOptions={providerOptions}
-                statusFilters={statusFilters}
-                statusOptions={statusOptions}
-                onClearFilters={clearFilters}
-                onGroupByChange={setGroupBy}
-                onProviderToggle={toggleProviderFilter}
-                onStatusToggle={toggleStatusFilter}
-              />
-            </div>
-          </div>
-
-          <AgentVerticalScrollArea
-            className="min-h-0 flex-1"
-            viewportClassName="flex h-full w-full flex-col px-3.5 pt-4 pb-4"
-            scrollbarClassName="top-4 bottom-4"
-            syncKey={scrollSyncKey}
-          >
-            {deckItems.length > 0 || listItems.length > 0 ? (
-              <div className="flex w-full min-w-0 flex-col gap-4">
-                {deckItems.length > 0 ? (
-                  <WorkspaceAgentMessageCenterAttentionDeck
-                    items={deckItems}
-                    highlightedItemId={highlightedItemId}
-                    submittingPromptKey={submittingPromptKey}
-                    registerNode={setItemNode}
-                    onLinkAction={onLinkAction}
-                    onOpenChat={onOpenChat}
-                    onSubmitPrompt={(item, input) =>
-                      void submitPrompt(item, input)
-                    }
-                  />
-                ) : null}
-                {itemGroupStacks.map((group) => (
-                  <section
-                    key={group.id}
-                    className="flex min-w-0 flex-col gap-2.5"
-                    aria-label={`${group.label} ${group.items.length}`}
-                  >
-                    <div className="flex min-w-0 items-center justify-between gap-3 px-0.5">
-                      <MessageCenterGroupHeading group={group} />
-                    </div>
-                    {(() => {
-                      return group.stacks.map((stack) => {
-                        const firstItem = stack.items[0];
-                        if (!firstItem) {
-                          return null;
-                        }
-                        if (stack.items.length === 1) {
-                          return renderMessageCenterCard(firstItem);
-                        }
-                        const stackId = messageCenterStackRenderId(
-                          group.id,
-                          stack.id
-                        );
-                        return (
-                          <MessageCenterStack
-                            key={stackId}
-                            expanded={expandedStackIds.has(stackId)}
-                            groupId={stackId}
-                            highlightedItemId={highlightedItemId}
-                            items={stack.items}
-                            renderCard={renderMessageCenterCard}
-                            onCollapse={collapseStack}
-                            onExpand={expandStack}
-                          />
-                        );
-                      });
-                    })()}
-                  </section>
-                ))}
-              </div>
-            ) : model.items.length > 0 ? (
-              <div className="flex min-h-0 flex-1 flex-col items-center justify-center gap-2.5 px-6 py-8 text-center text-[13px] text-[var(--text-tertiary)]">
-                <span>
-                  {t("agentHost.workspaceAgentMessageCenterFilteredEmpty")}
-                </span>
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="sm"
-                  className="border border-[var(--line-2)] bg-[var(--background-fronted)] text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
-                  onClick={clearFilters}
-                >
-                  {t("agentHost.workspaceAgentMessageCenterClearFilters")}
-                </Button>
-              </div>
-            ) : (
-              <div className="flex min-h-0 flex-1 items-center justify-center px-6 py-8 text-center text-[13px] text-[var(--text-tertiary)]">
-                {t("agentHost.workspaceAgentMessageCenterEmpty")}
-              </div>
-            )}
-          </AgentVerticalScrollArea>
-        </TooltipProvider>
+        {panelContents}
       </DrawerContent>
     </Drawer>
   );
@@ -705,83 +734,3 @@ const MessageCenterRenderedCard = memo(function MessageCenterRenderedCard({
     />
   );
 });
-
-export function MessageCenterGroupHeading({
-  group
-}: {
-  group: ReturnType<typeof groupMessageCenterItems>[number];
-}): JSX.Element {
-  "use memo";
-  const statusSignal = messageCenterGroupStatusSignal(group.id);
-
-  if (group.provider) {
-    return (
-      <h3
-        aria-label={`${group.label} · ${group.items.length}`}
-        className="flex min-w-0 items-center gap-1.5 text-[11px] font-normal leading-4 text-[var(--text-tertiary)]"
-        title={`${group.label} · ${group.items.length}`}
-      >
-        {group.identity ? (
-          <MessageCenterIdentityLabel
-            identity={group.identity}
-            provider={group.provider}
-          />
-        ) : (
-          <span className="inline-flex min-w-0 items-center gap-1.5">
-            <MessageCenterIdentityAvatarMark
-              identity={null}
-              provider={group.provider}
-              userId={group.userId ?? null}
-            />
-            <span className="min-w-0 truncate">{group.label}</span>
-          </span>
-        )}
-        <span className="shrink-0">· {group.items.length}</span>
-      </h3>
-    );
-  }
-
-  return (
-    <h3
-      className={cn(
-        "flex min-w-0 items-center gap-1.5 text-[11px] font-normal leading-4",
-        statusSignal
-          ? messageCenterStatusToneClass(statusSignal.tone)
-          : "text-[var(--text-tertiary)]"
-      )}
-      title={`${group.label} · ${group.items.length}`}
-    >
-      {statusSignal ? (
-        <StatusDot
-          tone={statusSignal.tone}
-          pulse={statusSignal.pulse}
-          size="sm"
-          title={group.label}
-        />
-      ) : null}
-      <span className="min-w-0 truncate">
-        {group.label} · {group.items.length}
-      </span>
-    </h3>
-  );
-}
-
-function messageCenterGroupStatusSignal(groupId: string): {
-  pulse: boolean;
-  tone: Exclude<MessageCenterStatusTone, "neutral">;
-} | null {
-  switch (groupId) {
-    case "needs-attention":
-    case "waiting":
-      return { pulse: true, tone: "amber" };
-    case "working":
-      return { pulse: true, tone: "blue" };
-    case "failed":
-      return { pulse: false, tone: "red" };
-    case "recently-completed":
-    case "completed":
-      return { pulse: false, tone: "green" };
-    default:
-      return null;
-  }
-}

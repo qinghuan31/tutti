@@ -48,6 +48,15 @@ export interface AgentCustomMentionKindDefinition {
     mention: AgentCustomMentionIdentity,
     href: string
   ): AgentCustomMentionPresentation | null;
+  /**
+   * Materializes this mention into provider-visible prompt text immediately
+   * before the runtime send boundary. The canonical mention remains the
+   * display prompt used by the composer and conversation timeline.
+   */
+  materializePromptText?(
+    mention: AgentCustomMentionIdentity,
+    href: string
+  ): string | null;
   /** 自定义 chip 渲染;缺省用包内通用双行卡(name + summary)。 */
   renderChip?(context: AgentCustomMentionChipContext): ReactNode;
   /** 点击是否上抛 open-custom-mention 链接动作;缺省 false(chip 只展示)。 */

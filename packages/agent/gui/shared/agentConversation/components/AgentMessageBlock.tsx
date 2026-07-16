@@ -2,20 +2,15 @@ import {
   Fragment,
   useCallback,
   useEffect,
-  useMemo,
   useState,
   type JSX,
   type ReactNode
 } from "react";
-import { ChevronRight, LoaderCircle } from "lucide-react";
 import { CheckIcon, CopyIcon } from "@tutti-os/ui-system/icons";
-import { Button } from "../../../app/renderer/components/ui/button";
 import { formatAgentMessageTimestamp } from "../../../app/renderer/shell/utils/format";
 import { AgentPlanCard } from "./AgentPlanCard";
 import { translate } from "../../../i18n/index";
 import { useOptionalAgentHostApi } from "../../../agentActivityHost";
-import { getOptionalAgentActivityRuntime } from "../../../agentActivityRuntime";
-import { ZoomableImage } from "../../../app/renderer/components/ZoomableImage";
 import type { WorkspaceLinkAction } from "../../../contexts/workspace/presentation/renderer/actions/workspaceLinkActions";
 import {
   AgentMessageMarkdown,
@@ -23,33 +18,29 @@ import {
 } from "../../AgentMessageMarkdown";
 import { AgentRichTextReadonly } from "../../AgentRichTextReadonly";
 import { resolveAgentConversationLinkAction } from "../actions/agentConversationLinkActions";
-import { workspaceAgentProviderLabel } from "../../workspaceAgentProviderLabel";
-import { openAgentEnvPanel } from "../../agentEnv/agentEnvPanelStore";
-import {
-  classifyFailedAgentMessage,
-  resolveAgentErrorPresentation
-} from "../../agentEnv/agentErrorPresentation";
 import type { AgentGUIProviderSkillOption } from "../../../agent-gui/agentGuiNode/model/agentGuiNodeTypes";
 import type {
   AgentMessageContentVM,
-  AgentMessageImageVM,
   AgentMessageRowVM
 } from "../contracts/agentMessageRowVM";
-import { CollapsibleReveal } from "./CollapsibleReveal";
+import { AgentMessageDetailsDisclosure } from "./AgentMessageDetailsDisclosure";
+import {
+  AgentVisibleErrorMessage,
+  recoverVisibleErrorFromMessage
+} from "./AgentVisibleErrorMessage";
 import { AgentThinkingDisclosure } from "./AgentThinkingDisclosure";
 import { RawTimelineJsonDisclosure } from "./RawTimelineJsonDisclosure";
 import styles from "../../../agent-gui/agentGuiNode/AgentGUIConversation.styles";
 import { CanvasNodeGhostIconButton } from "../../../contexts/workspace/presentation/renderer/components/shared/CanvasNodeGhostIconButton";
+import { AgentUserImageGrid } from "./AgentMessageImages";
 
 const MESSAGE_COPY_FEEDBACK_MS = 1400;
-const CONTEXT_COMPACTION_NOTICE_TITLE = "Context compacted.";
-const CONTEXT_COMPACTION_IN_PROGRESS_TITLE = "Compacting context.";
-const CONTEXT_COMPACTION_INTERRUPTED_TITLE = "Context compaction interrupted.";
 const TRANSPORT_RETRY_PROGRESS_PATTERN =
   /\b(reconnect(?:ing)?(?:\s*(?:\.\.\.|…|[.。]+|:|-))?\s*\(?\d+\s*\/\s*\d+\)?)/i;
-const SYSTEM_NOTICE_WARNING_CLASS_NAME =
-  "border-[color-mix(in_srgb,var(--state-warning)_14%,transparent)] bg-[color-mix(in_srgb,var(--background-fronted)_100%,var(--state-warning)_6%)]";
-const SYSTEM_NOTICE_ERROR_CLASS_NAME =
+// All system-notice banners use the light-red danger surface. Yellow/warning
+// surfaces are banned for notice boxes — see "Badges And Status" in
+// docs/conventions/desktop-visual-language.md.
+const SYSTEM_NOTICE_CLASS_NAME =
   "border-[var(--on-danger-hover)] bg-[var(--on-danger)]";
 
 interface AgentMessageBlockProps {
@@ -155,12 +146,12 @@ export function AgentMessageBlock({
               label={rawTimelineJsonLabel}
             />
           ) : null;
-        // Recover a structured error card from a failed message that the provider
-        // reported as plain text (e.g. a dropped-login 401), so it still gets the
-        // wizard call-to-action instead of a dead red message.
+        // Recover a structured error card from a terminal message that the
+        // provider reported as plain text, including Claude SDK's completed
+        // standalone login notice.
         const recoveredError =
-          !isUser && !message.visibleError && message.statusKind === "failed"
-            ? recoverVisibleErrorFromFailedMessage(message, provider)
+          !isUser && !message.visibleError
+            ? recoverVisibleErrorFromMessage(message, provider)
             : null;
         const content =
           isUser && message.contentKind === "image-grid" ? (
@@ -178,11 +169,13 @@ export function AgentMessageBlock({
             <AgentVisibleErrorMessage
               message={message}
               onAuthLogin={onAuthLogin}
+              onExternalLink={handleLinkClick}
             />
           ) : recoveredError ? (
             <AgentVisibleErrorMessage
               message={recoveredError}
               onAuthLogin={onAuthLogin}
+              onExternalLink={handleLinkClick}
             />
           ) : message.systemNotice ? (
             <AgentSystemNoticeMessage message={message} />
@@ -206,7 +199,6 @@ export function AgentMessageBlock({
                 source: "agent-markdown"
               }}
               workspaceAppIcons={workspaceAppIcons}
-              deferLongContentRender
               enableImageZoom
               previewMode={previewMode}
               streaming={message.statusKind === "working"}
@@ -328,175 +320,6 @@ function AgentMessageCopyButton({
   );
 }
 
-function AgentUserImageGrid({
-  message
-}: {
-  message: AgentMessageContentVM;
-}): JSX.Element {
-  "use memo";
-  const images = message.images ?? [];
-  const { loadingIds, sources: loadedImages } =
-    useAgentMessageImageSources(images);
-  const columnCount = Math.min(Math.max(images.length, 1), 4);
-  const thumbnailWidth = images.length === 1 ? "160px" : "80px";
-  return (
-    <div
-      className={styles.userImageGrid}
-      style={{
-        gridTemplateColumns: `repeat(${columnCount}, ${thumbnailWidth})`
-      }}
-    >
-      {images.map((image) => {
-        const src = loadedImages.get(image.id) ?? imageSource(image);
-        const loading = !src && loadingIds.has(image.id);
-        return (
-          <div key={image.id} className={styles.userImageThumbnail}>
-            {src ? (
-              <ZoomableImage
-                src={src}
-                alt={image.name?.trim() || "image"}
-                className="block max-h-20 w-full rounded-[7px] object-contain"
-                draggable={false}
-                downloadName={image.name?.trim() || "image.png"}
-              />
-            ) : loading ? (
-              <div
-                className="flex h-20 w-full items-center justify-center bg-[color-mix(in_srgb,var(--text-primary)_6%,transparent)]"
-                data-testid="agent-gui-message-image-loading"
-              >
-                <LoaderCircle
-                  aria-hidden="true"
-                  className="size-5 animate-spin text-[color-mix(in_srgb,var(--text-primary)_45%,transparent)]"
-                  strokeWidth={2}
-                />
-              </div>
-            ) : (
-              <div className="h-20 w-full animate-pulse bg-[color-mix(in_srgb,var(--text-primary)_8%,transparent)]" />
-            )}
-          </div>
-        );
-      })}
-    </div>
-  );
-}
-
-function useAgentMessageImageSources(images: readonly AgentMessageImageVM[]): {
-  loadingIds: ReadonlySet<string>;
-  sources: ReadonlyMap<string, string>;
-} {
-  const runtime = getOptionalAgentActivityRuntime();
-  const [sources, setSources] = useState<Map<string, string>>(() => new Map());
-  const [loadingIds, setLoadingIds] = useState<Set<string>>(() => new Set());
-  const missingImages = useMemo(
-    () =>
-      images.filter(
-        (image) =>
-          !imageSource(image) &&
-          !sources.has(image.id) &&
-          image.workspaceId &&
-          image.agentSessionId &&
-          (image.attachmentId || image.path)
-      ),
-    [images, sources]
-  );
-
-  useEffect(() => {
-    if (
-      (!runtime?.readSessionAttachment && !runtime?.readPromptAsset) ||
-      missingImages.length === 0
-    ) {
-      return;
-    }
-    let canceled = false;
-    for (const image of missingImages) {
-      const readImage = image.attachmentId
-        ? runtime.readSessionAttachment?.({
-            workspaceId: image.workspaceId ?? "",
-            agentSessionId: image.agentSessionId,
-            attachmentId: image.attachmentId ?? ""
-          })
-        : runtime.readPromptAsset?.({
-            workspaceId: image.workspaceId ?? "",
-            agentSessionId: image.agentSessionId,
-            mimeType: image.mimeType,
-            name: image.name,
-            path: image.path
-          });
-      if (!readImage) {
-        continue;
-      }
-      setLoadingIds((current) => {
-        if (current.has(image.id)) {
-          return current;
-        }
-        const next = new Set(current);
-        next.add(image.id);
-        return next;
-      });
-      void readImage
-        .then((attachment) => {
-          if (canceled) {
-            return;
-          }
-          setSources((current) => {
-            if (current.has(image.id)) {
-              return current;
-            }
-            const next = new Map(current);
-            next.set(
-              image.id,
-              `data:${attachment.mimeType};base64,${attachment.data}`
-            );
-            return next;
-          });
-        })
-        .catch(() => {})
-        .finally(() => {
-          if (canceled) {
-            return;
-          }
-          setLoadingIds((current) => {
-            if (!current.has(image.id)) {
-              return current;
-            }
-            const next = new Set(current);
-            next.delete(image.id);
-            return next;
-          });
-        });
-    }
-    return () => {
-      canceled = true;
-    };
-  }, [missingImages, runtime]);
-
-  return { loadingIds, sources };
-}
-
-function imageSource(image: AgentMessageImageVM): string | null {
-  const remoteUrl = image.url?.trim() ?? "";
-  if (remoteUrl) {
-    try {
-      const parsed = new URL(remoteUrl);
-      if (
-        parsed.protocol === "https:" &&
-        !parsed.username &&
-        !parsed.password
-      ) {
-        return parsed.toString();
-      }
-    } catch {
-      return null;
-    }
-  }
-  const data = image.data?.trim() ?? "";
-  const mimeType = image.mimeType.trim();
-  if (!data || !mimeType) {
-    return null;
-  }
-  return data.startsWith("data:") ? data : `data:${mimeType};base64,${data}`;
-}
-
 function AgentSystemNoticeMessage({
   message
 }: {
@@ -517,33 +340,33 @@ function AgentSystemNoticeMessage({
       </div>
     );
   }
-  if (isContextCompactionProgressNotice(message, title)) {
+  if (isContextCompactionProgressNotice(message)) {
     return (
       <ContextCompactionProgressDivider
         startedAtUnixMs={message.occurredAtUnixMs}
       />
     );
   }
-  if (isContextCompactionNotice(message, title)) {
+  if (isContextCompactionNotice(message)) {
     return (
       <ContextCompactionDivider
         text={translate("agentHost.agentGui.contextCompactionCompleted")}
       />
     );
   }
-  if (isContextCompactionInterruptedNotice(message, title)) {
+  if (isContextCompactionInterruptedNotice(message)) {
     return (
       <ContextCompactionDivider
         text={translate("agentHost.agentGui.contextCompactionInterrupted")}
+        detail={detail || null}
       />
     );
   }
   const isStatusNotice = systemNoticeIsStatus(message);
-  const noticeToneClassName = systemNoticeToneClassName(message);
   return (
     <section
       role={isStatusNotice ? "status" : undefined}
-      className={`box-border w-full min-w-0 rounded-[8px] border p-3 text-[13px] leading-5 text-[var(--text-primary)] ${noticeToneClassName}`}
+      className={`box-border w-full min-w-0 rounded-[8px] border p-3 text-[13px] leading-5 text-[var(--text-primary)] ${SYSTEM_NOTICE_CLASS_NAME}`}
     >
       <div className="min-w-0">
         <div className="font-medium text-[var(--text-primary)]">{title}</div>
@@ -553,21 +376,6 @@ function AgentSystemNoticeMessage({
       </div>
     </section>
   );
-}
-
-function systemNoticeToneClassName(message: AgentMessageContentVM): string {
-  const notice = message.systemNotice;
-  if (
-    notice?.severity === "error" ||
-    notice?.noticeKind === "transport_fallback" ||
-    isTransportFallbackNotice(message)
-  ) {
-    return SYSTEM_NOTICE_ERROR_CLASS_NAME;
-  }
-  if (notice?.severity === "warning") {
-    return SYSTEM_NOTICE_WARNING_CLASS_NAME;
-  }
-  return SYSTEM_NOTICE_WARNING_CLASS_NAME;
 }
 
 function systemNoticeIsStatus(message: AgentMessageContentVM): boolean {
@@ -614,58 +422,57 @@ function transportRetryProgressText(value: string): string | null {
   return match?.[1]?.replace(/\s+/g, " ").trim() || null;
 }
 
-function isContextCompactionNotice(
-  message: AgentMessageContentVM,
-  title: string
-): boolean {
+function isContextCompactionNotice(message: AgentMessageContentVM): boolean {
   const notice = message.systemNotice;
-  return (
-    notice?.noticeKind === "system_notice" &&
-    (notice.detail?.trim() ?? "") === "" &&
-    title.trim() === CONTEXT_COMPACTION_NOTICE_TITLE
-  );
+  return notice?.command === "compact" && notice.commandStatus === "completed";
 }
 
 function isContextCompactionProgressNotice(
-  message: AgentMessageContentVM,
-  title: string
+  message: AgentMessageContentVM
 ): boolean {
   const notice = message.systemNotice;
-  return (
-    notice?.noticeKind === "system_notice" &&
-    (notice.detail?.trim() ?? "") === "" &&
-    title.trim() === CONTEXT_COMPACTION_IN_PROGRESS_TITLE
-  );
+  return notice?.command === "compact" && notice.commandStatus === "running";
 }
 
 function isContextCompactionInterruptedNotice(
-  message: AgentMessageContentVM,
-  title: string
+  message: AgentMessageContentVM
 ): boolean {
   const notice = message.systemNotice;
   return (
-    notice?.noticeKind === "system_notice" &&
-    (notice.detail?.trim() ?? "") === "" &&
-    title.trim() === CONTEXT_COMPACTION_INTERRUPTED_TITLE
+    notice?.command === "compact" &&
+    (notice.commandStatus === "failed" || notice.commandStatus === "canceled")
   );
 }
 
-function ContextCompactionDivider({ text }: { text: string }): JSX.Element {
+function ContextCompactionDivider({
+  text,
+  detail = null
+}: {
+  text: string;
+  detail?: string | null;
+}): JSX.Element {
   "use memo";
   return (
     <div
       role="status"
-      className="box-border flex w-full min-w-0 items-center gap-3 py-2 text-[12px] leading-4 text-[var(--text-secondary)]"
+      className="box-border w-full min-w-0 py-2 text-[12px] leading-4 text-[var(--text-secondary)]"
     >
-      <span
-        aria-hidden="true"
-        className="h-px min-w-4 flex-1 bg-[var(--line-1)]"
-      />
-      <span className="shrink-0 whitespace-nowrap">{text}</span>
-      <span
-        aria-hidden="true"
-        className="h-px min-w-4 flex-1 bg-[var(--line-1)]"
-      />
+      <div className="flex min-w-0 items-center gap-3">
+        <span
+          aria-hidden="true"
+          className="h-px min-w-4 flex-1 bg-[var(--line-1)]"
+        />
+        <span className="shrink-0 whitespace-nowrap">{text}</span>
+        <span
+          aria-hidden="true"
+          className="h-px min-w-4 flex-1 bg-[var(--line-1)]"
+        />
+      </div>
+      {detail ? (
+        <div className="mt-1 min-w-0 whitespace-pre-wrap break-words text-center leading-5">
+          {detail}
+        </div>
+      ) : null}
     </div>
   );
 }
@@ -740,7 +547,6 @@ function AgentPlanCardMessage({
           source: "agent-markdown"
         }}
         workspaceAppIcons={workspaceAppIcons}
-        deferLongContentRender
         enableImageZoom
         previewMode={previewMode}
       />
@@ -755,6 +561,14 @@ function systemNoticeTitle(message: AgentMessageContentVM): string {
       return translate("agentHost.agentGui.systemNoticeTransportRetry");
     case "transport_fallback":
       return translate("agentHost.agentGui.systemNoticeTransportFallback");
+    case "plan_implementation_pending_confirmation":
+      return translate(
+        "agentHost.agentGui.systemNoticePlanImplementationPendingConfirmation"
+      );
+    case "plan_implementation_completed":
+      return translate(
+        "agentHost.agentGui.systemNoticePlanImplementationCompleted"
+      );
     case "warning":
       return (
         notice.title || translate("agentHost.agentGui.systemNoticeWarning")
@@ -766,183 +580,4 @@ function systemNoticeTitle(message: AgentMessageContentVM): string {
         translate("agentHost.agentGui.systemNoticeDefault")
       );
   }
-}
-
-// Builds a synthetic visibleError from a plain failed message whose text is a
-// recognizable env failure, so it renders as the structured remediation card.
-function recoverVisibleErrorFromFailedMessage(
-  message: AgentMessageContentVM,
-  provider: string | null | undefined
-): AgentMessageContentVM | null {
-  const code = classifyFailedAgentMessage(message.body);
-  if (!code) {
-    return null;
-  }
-  return {
-    ...message,
-    visibleError: {
-      code,
-      phase: null,
-      provider: provider ?? null,
-      detail: message.body,
-      retryable: null
-    }
-  };
-}
-
-function AgentVisibleErrorMessage({
-  message
-}: {
-  message: AgentMessageContentVM;
-  onAuthLogin?: (provider?: string | null) => void;
-}): JSX.Element {
-  "use memo";
-  const error = message.visibleError;
-  const detail = error?.detail?.trim() ?? "";
-
-  // One card for every run-failure code. The presentation (keyed on the codes
-  // the daemon actually emits — see agentErrorPresentation) supplies a granular,
-  // provider-aware message and, when the failure is something the env wizard can
-  // detect or repair, a single deep-linking call-to-action. Transient/server-side
-  // failures resolve to no focus, so no (misleading) wizard button is shown.
-  const providerLabel = workspaceAgentProviderLabel(
-    error?.provider ?? "unknown"
-  );
-  const presentation = resolveAgentErrorPresentation(error?.code);
-  const headline = presentation?.messageKey
-    ? translate(presentation.messageKey, { provider: providerLabel })
-    : visibleErrorTitle(message);
-  const focus = presentation?.focus ?? null;
-  const actionKey = presentation?.actionKey ?? null;
-  const hint = visibleErrorHint(message);
-  return (
-    <section
-      role="alert"
-      className="box-border w-full min-w-0 rounded-[8px] border border-[var(--on-danger-hover)] bg-[var(--on-danger)] p-3 text-[13px] leading-5 text-[var(--state-danger)]"
-    >
-      <div className="flex min-w-0 items-start gap-3">
-        <div className="min-w-0 flex-1">
-          <div className="font-medium text-[var(--text-primary)]">
-            {headline}
-          </div>
-          {hint ? (
-            <div className="mt-1 text-[11px] text-[var(--text-secondary)]">
-              {hint}
-            </div>
-          ) : null}
-          {detail ? (
-            <AgentMessageDetailsDisclosure
-              detail={detail}
-              className="mt-1"
-              label={translate("agentHost.agentGui.visibleErrorRawDetails")}
-            />
-          ) : null}
-        </div>
-        {focus && actionKey ? (
-          <Button
-            type="button"
-            variant="ghost"
-            size="sm"
-            className="mt-0.5 shrink-0"
-            onClick={() =>
-              openAgentEnvPanel({
-                provider: error?.provider ?? "codex",
-                focus
-              })
-            }
-          >
-            {translate(actionKey)}
-          </Button>
-        ) : null}
-      </div>
-    </section>
-  );
-}
-
-function AgentMessageDetailsDisclosure({
-  detail,
-  className = "",
-  label
-}: {
-  detail: string;
-  className?: string;
-  label?: string;
-}): JSX.Element {
-  "use memo";
-  const [expanded, setExpanded] = useState(false);
-  return (
-    <div className={`${className} text-[11px] text-[var(--state-danger)]`}>
-      <button
-        type="button"
-        className="inline-flex w-fit max-w-full min-w-0 cursor-pointer select-none items-center gap-1.5 border-0 bg-transparent p-0 text-left font-[inherit] text-[inherit] transition-colors duration-150 hover:text-[var(--state-danger-hover)]"
-        aria-expanded={expanded}
-        onClick={() => setExpanded((value) => !value)}
-      >
-        {label ?? translate("agentHost.agentGui.visibleErrorDetails")}
-        <ChevronRight
-          size={12}
-          strokeWidth={2.2}
-          aria-hidden="true"
-          className="shrink-0 text-[var(--state-danger)]"
-          style={{
-            transform: expanded ? "rotate(90deg)" : "rotate(0deg)",
-            transformOrigin: "center",
-            transition: "transform 200ms cubic-bezier(0.22, 1.18, 0.36, 1)",
-            willChange: "transform"
-          }}
-        />
-      </button>
-      <CollapsibleReveal expanded={expanded} preMountOnIdle>
-        <pre className="mt-2 max-h-[220px] overflow-auto whitespace-pre-wrap break-words rounded-[6px] bg-[var(--on-danger)] px-3 py-2 font-[var(--tsh-font-mono)] text-[11px] leading-5 text-[var(--state-danger)]">
-          {detail}
-        </pre>
-      </CollapsibleReveal>
-    </div>
-  );
-}
-
-function visibleErrorTitle(message: AgentMessageContentVM): string {
-  const error = message.visibleError;
-  const provider = workspaceAgentProviderLabel(error?.provider ?? "unknown");
-  switch (error?.code) {
-    case "auth_required":
-      return translate("agentHost.agentGui.visibleErrorAuthRequired", {
-        provider
-      });
-    case "request_timed_out":
-      return translate("agentHost.agentGui.visibleErrorRequestTimedOut", {
-        provider
-      });
-    case "runtime_unavailable":
-      return translate("agentHost.agentGui.visibleErrorRuntimeUnavailable", {
-        provider
-      });
-    case "quota_or_rate_limit":
-      return translate("agentHost.agentGui.visibleErrorQuotaOrRateLimit", {
-        provider
-      });
-    default:
-      if (error?.phase === "start") {
-        return translate("agentHost.agentGui.visibleErrorStartFailed", {
-          provider
-        });
-      }
-      return (
-        message.body ||
-        translate("agentHost.agentGui.visibleErrorRequestFailed", { provider })
-      );
-  }
-}
-
-function visibleErrorHint(message: AgentMessageContentVM): string | null {
-  const error = message.visibleError;
-  if (error?.code !== "auth_required") {
-    return null;
-  }
-  return translate(
-    "agentHost.agentGui.visibleErrorAuthRequiredLocalAgentHint",
-    {
-      provider: workspaceAgentProviderLabel(error.provider ?? "unknown")
-    }
-  );
 }

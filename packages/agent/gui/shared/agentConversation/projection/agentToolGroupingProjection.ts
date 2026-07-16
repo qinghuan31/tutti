@@ -1,34 +1,11 @@
-import type {
-  WorkspaceAgentSessionDetailMessage,
-  WorkspaceAgentSessionDetailThinking,
-  WorkspaceAgentSessionDetailTurn
-} from "../../workspaceAgentSessionDetailViewModel";
-import type {
-  AgentMessageContentVM,
-  AgentThinkingContentVM
-} from "../contracts/agentMessageRowVM";
 import type { AgentToolCallVM } from "../contracts/agentToolCallVM";
 import type {
   AgentToolGroupEntryVM,
   AgentToolGroupRowVM
 } from "../contracts/agentToolGroupRowVM";
-import { projectAgentToolCall } from "./agentToolProjection";
+import type { AgentTurnSequenceItemVM } from "./agentTurnSequenceProjection";
 
 const AVOID_GROUPING_EDITS = false;
-
-export type AgentTurnSequenceItemVM =
-  | {
-      kind: "assistant-message";
-      message: AgentMessageContentVM;
-    }
-  | {
-      kind: "thinking";
-      thinking: AgentThinkingContentVM;
-    }
-  | {
-      kind: "tool-call";
-      call: AgentToolCallVM;
-    };
 
 export interface AgentComputedToolGroupVM {
   startIndex: number;
@@ -43,68 +20,17 @@ export interface AgentComputedToolGroupInfoVM {
   suppressedIndices: Set<number>;
 }
 
-export function buildAgentTurnSequenceItems(
-  turn: WorkspaceAgentSessionDetailTurn
-): AgentTurnSequenceItemVM[] {
-  const items = turn.rawAgentItems ?? turn.agentItems;
-  const out: AgentTurnSequenceItemVM[] = [];
-  items.forEach((item) => {
-    if (item.kind === "message") {
-      out.push({
-        kind: "assistant-message",
-        message: projectMessage(item.message, turn.id)
-      });
-      return;
-    }
-    if (item.kind === "thinking") {
-      out.push({
-        kind: "thinking",
-        thinking: projectThinking(item.thinking, turn.id)
-      });
-      return;
-    }
-    const sourceEntries =
-      item.groupEntries ??
-      item.toolCalls.map((call) => ({ kind: "tool-call", call }) as const);
-    sourceEntries.forEach((entry) => {
-      if (entry.kind === "thinking") {
-        out.push({
-          kind: "thinking",
-          thinking: projectThinking(entry.thinking, turn.id)
-        });
-        return;
-      }
-      out.push({
-        kind: "tool-call",
-        call: projectAgentToolCall(entry.call)
-      });
-    });
-  });
-  return out;
-}
-
 export function computeAgentToolGroups(
   sequence: readonly AgentTurnSequenceItemVM[],
   {
-    allowTrailingFinalization,
     avoidGroupingEdits = AVOID_GROUPING_EDITS
   }: {
-    allowTrailingFinalization: boolean;
     avoidGroupingEdits?: boolean;
   }
 ): AgentComputedToolGroupInfoVM {
   const groups = new Map<number, AgentComputedToolGroupVM>();
   const groupedIndices = new Set<number>();
-  // Nothing is hidden anymore. While a session streams a burst of sequential
-  // tool calls (e.g. Codex), the trailing run whose newest tool is still active
-  // is rendered as individual, always-visible rows instead of grouping or
-  // collapsing it. Grouping that run while the tail tool kept changing was what
-  // made the transcript flicker between "one tool" and "many" as the burst
-  // advanced. Items before the active trailing run still group as usual.
   const suppressedIndices = new Set<number>();
-  const splitFromIndex = allowTrailingFinalization
-    ? -1
-    : findActiveTailRunStartIndex(sequence);
 
   let currentCalls: AgentToolCallVM[] = [];
   let currentEntries: AgentToolGroupEntryVM[] = [];
@@ -115,7 +41,7 @@ export function computeAgentToolGroups(
 
   const finalizeGroup = () => {
     if (
-      currentCalls.length >= 2 &&
+      currentCalls.length >= 1 &&
       startIndex >= 0 &&
       currentIndices.length > 0
     ) {
@@ -141,20 +67,8 @@ export function computeAgentToolGroups(
     if (!item) {
       continue;
     }
-    // Once we reach the still-streaming trailing run, stop grouping: close any
-    // open group and let every remaining item fall through to its own visible
-    // row so the live view only ever appends.
-    if (splitFromIndex >= 0 && index >= splitFromIndex) {
-      finalizeGroup();
-      continue;
-    }
     if (item.kind === "tool-call" && isGroupableToolCall(item.call)) {
       if (avoidGroupingEdits && isEditBoundaryToolCall(item.call)) {
-        finalizeGroup();
-        startIndex = index;
-        currentCalls = [item.call];
-        currentEntries = [{ kind: "tool-call", call: item.call }];
-        currentIndices = [index];
         finalizeGroup();
         continue;
       }
@@ -186,9 +100,7 @@ export function computeAgentToolGroups(
     finalizeGroup();
   }
 
-  if (allowTrailingFinalization) {
-    finalizeGroup();
-  }
+  finalizeGroup();
 
   return {
     groups,
@@ -199,13 +111,16 @@ export function computeAgentToolGroups(
 
 export function projectAgentToolGroupRowFromGroup(
   turnId: string,
-  group: AgentComputedToolGroupVM
+  group: AgentComputedToolGroupVM,
+  agentSessionId?: string
 ): AgentToolGroupRowVM {
   const firstCallId = group.calls[0]?.id ?? "unknown";
   return {
     kind: "tool-group",
     id: `tool-group:${turnId}:${group.calls.map((call) => call.id).join("+")}`,
-    expansionKey: `tool-group:${turnId}:${firstCallId}`,
+    expansionKey: ["tool-group", agentSessionId, turnId, firstCallId]
+      .filter(Boolean)
+      .join(":"),
     turnId,
     grouped: true,
     calls: group.calls,
@@ -235,113 +150,7 @@ export function projectAgentSingleToolRow(
   };
 }
 
-function projectMessage(
-  message: WorkspaceAgentSessionDetailMessage,
-  turnId: string
-): AgentMessageContentVM {
-  const projected: AgentMessageContentVM = {
-    kind: "message-content",
-    id: message.id,
-    turnId: message.turnId ?? turnId,
-    body: message.body,
-    statusKind: message.statusKind ?? null,
-    occurredAtUnixMs: message.occurredAtUnixMs ?? null,
-    visibleError: message.visibleError ?? null,
-    systemNotice: message.systemNotice ?? null
-  };
-  if (message.sourceTimelineItems) {
-    projected.sourceTimelineItems = message.sourceTimelineItems;
-    // Codex plan-mode proposals arrive tagged by the daemon and render as a
-    // dedicated plan card instead of a regular assistant bubble.
-    if (
-      message.sourceTimelineItems.some(
-        (item) => item.payload?.messageKind === "plan"
-      )
-    ) {
-      projected.contentKind = "plan";
-    }
-  }
-  return projected;
-}
-
-function projectThinking(
-  thinking: WorkspaceAgentSessionDetailThinking,
-  turnId: string
-): AgentThinkingContentVM {
-  const projected: AgentThinkingContentVM = {
-    kind: "thinking-content",
-    id: thinking.id,
-    turnId: thinking.turnId ?? turnId,
-    body: thinking.body,
-    statusKind: thinking.statusKind ?? null,
-    occurredAtUnixMs: thinking.occurredAtUnixMs ?? null
-  };
-  if (thinking.sourceTimelineItems) {
-    projected.sourceTimelineItems = thinking.sourceTimelineItems;
-  }
-  return projected;
-}
-
 function isGroupableToolCall(call: AgentToolCallVM): boolean {
-  if (call.statusKind === "working" || call.statusKind === "waiting") {
-    return false;
-  }
-  switch (call.rendererKind) {
-    case "approval":
-    case "ask-user":
-    case "plan-enter":
-    case "plan-exit":
-    case "task":
-      return false;
-    default:
-      return true;
-  }
-}
-
-/**
- * Index where the still-streaming trailing tool run begins, or -1 when there
- * is none. The run is the contiguous block of tool calls at the end of the
- * sequence whose newest (tail) tool is still active. Returning its start lets
- * the projection keep that whole run as individual, always-visible rows while
- * the burst is in flight, instead of grouping (and previously hiding) it.
- */
-function findActiveTailRunStartIndex(
-  sequence: readonly AgentTurnSequenceItemVM[]
-): number {
-  let tailIndex = -1;
-  for (let index = sequence.length - 1; index >= 0; index -= 1) {
-    const item = sequence[index];
-    if (!item) {
-      continue;
-    }
-    tailIndex = index;
-    break;
-  }
-  const tailItem = tailIndex >= 0 ? sequence[tailIndex] : undefined;
-  if (tailItem?.kind !== "tool-call" || !isActiveTailTool(tailItem.call)) {
-    return -1;
-  }
-  let startIndex = tailIndex;
-  for (let index = tailIndex - 1; index >= 0; index -= 1) {
-    const item = sequence[index];
-    if (!item) {
-      continue;
-    }
-    if (item.kind !== "tool-call") {
-      break;
-    }
-    startIndex = index;
-  }
-  return startIndex;
-}
-
-function isActiveTailTool(call: AgentToolCallVM): boolean {
-  // Only an actively running tail tool keeps its trailing run in the live,
-  // ungrouped state. Once the latest tail tool has finished, the run finalizes
-  // and groups like any other completed run.
-  if (call.statusKind !== "working" && call.statusKind !== "waiting") {
-    return false;
-  }
   switch (call.rendererKind) {
     case "approval":
     case "ask-user":

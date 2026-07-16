@@ -11,7 +11,7 @@ import { IAgentProviderStatusService } from "./agentProviderStatusService.interf
 import type { AgentProviderTerminalCommandRunner } from "./agentProviderStatusService.interface";
 import { bindDesktopManagedAgentProviderVisibilityRefresh } from "./internal/desktopAgentProviderVisibilityRefresh.ts";
 import { DesktopAgentProviderStatusService } from "./internal/desktopAgentProviderStatusService";
-import { startTuttiAgentInstallBootstrap } from "./internal/tuttiAgentInstallBootstrap.ts";
+import { startManagedAgentInstallBootstraps } from "./internal/tuttiAgentInstallBootstrap.ts";
 import { DesktopAgentsService } from "./internal/desktopAgentsService";
 import { WorkspaceAgentActivityService } from "./internal/workspaceAgentActivityService";
 import { WorkspaceAgentPromptSessionService } from "./internal/workspaceAgentPromptSessionService";
@@ -23,7 +23,7 @@ export interface WorkspaceAgentServiceRegistrationInput {
   eventStreamClient?: TuttidEventStreamClient;
   hostFilesApi: Pick<
     DesktopHostFilesApi,
-    "createUserDocumentsProjectDirectory"
+    "createUserDocumentsProjectDirectory" | "selectAppArchive"
   >;
   tuttidClient: TuttidClient;
   reporterService?: Pick<IReporterService, "trackEvents">;
@@ -32,8 +32,10 @@ export interface WorkspaceAgentServiceRegistrationInput {
     DesktopRuntimeApi,
     "logRendererDiagnostic" | "logTerminalDiagnostic"
   >;
-  resolveAgentIconUrl?: (provider: string) => string;
-  isAgentTargetProviderGated?: (provider: string) => boolean;
+  resolveAgentTargetIconUrl?: (identity: {
+    iconKey: string | null;
+    provider: string;
+  }) => string;
   terminalCommandRunner: AgentProviderTerminalCommandRunner;
   workspaceUserProjectService?: IWorkspaceUserProjectService;
 }
@@ -42,6 +44,7 @@ export interface WorkspaceAgentServiceRegistrationResult {
   agentsService: IAgentsService;
   agentProviderStatusService: IAgentProviderStatusService;
   workspaceAgentActivityService: IWorkspaceAgentActivityService;
+  dispose(): void;
 }
 
 export function registerWorkspaceAgentServices(
@@ -61,11 +64,13 @@ export function registerWorkspaceAgentServices(
     IAgentProviderStatusService,
     agentProviderStatusService
   );
-  bindDesktopManagedAgentProviderVisibilityRefresh(agentProviderStatusService);
-  startTuttiAgentInstallBootstrap(agentProviderStatusService);
+  const disposeManagedAgentProviderVisibilityRefresh =
+    bindDesktopManagedAgentProviderVisibilityRefresh(
+      agentProviderStatusService
+    );
+  startManagedAgentInstallBootstraps(agentProviderStatusService);
   const agentsService = new DesktopAgentsService({
-    resolveAgentIconUrl: input.resolveAgentIconUrl,
-    isAgentTargetProviderGated: input.isAgentTargetProviderGated,
+    resolveAgentTargetIconUrl: input.resolveAgentTargetIconUrl,
     tuttidClient: input.tuttidClient
   });
   registry.registerInstance(IAgentsService, agentsService);
@@ -88,6 +93,9 @@ export function registerWorkspaceAgentServices(
   return {
     agentsService,
     agentProviderStatusService,
-    workspaceAgentActivityService
+    workspaceAgentActivityService,
+    dispose() {
+      disposeManagedAgentProviderVisibilityRefresh();
+    }
   };
 }

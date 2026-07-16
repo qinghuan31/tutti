@@ -23,9 +23,13 @@ import { getActiveLocale } from "../../../../i18n/runtime.ts";
 import { createDesktopWorkspaceFileManagerAdapter } from "./desktopWorkspaceFileManagerAdapter.ts";
 import type {
   IWorkspaceFileManagerService,
-  WorkspaceFileManagerCanvasPreviewLauncher,
   WorkspaceFileManagerSession
 } from "../workspaceFileManagerService.interface";
+import {
+  IWorkspaceFilePreviewSurfaceHost,
+  type IWorkspaceFilePreviewSurfaceHost as WorkspaceFilePreviewSurfaceHost
+} from "../workspaceFilePreviewSurfaceHost.interface.ts";
+import { WorkspaceFilePreviewSurfaceHost as DefaultWorkspaceFilePreviewSurfaceHost } from "./workspaceFilePreviewSurfaceHost.ts";
 import type { TuttidClient } from "@tutti-os/client-tuttid-ts";
 import type { DesktopLocale } from "@shared/i18n";
 import {
@@ -67,11 +71,8 @@ export interface WorkspaceFileManagerServiceDependencies {
 
 export class WorkspaceFileManagerService implements IWorkspaceFileManagerService {
   readonly _serviceBrand = undefined;
-  private readonly canvasFilePreviewLaunchers = new Map<
-    string,
-    WorkspaceFileManagerCanvasPreviewLauncher
-  >();
   private readonly dependencies: WorkspaceFileManagerServiceDependencies;
+  private readonly filePreviewSurfaceHost: WorkspaceFilePreviewSurfaceHost;
   private readonly listeners = new Map<string, Set<() => void>>();
   private readonly i18nRuntimeByWorkspace = new Map<
     string,
@@ -88,16 +89,32 @@ export class WorkspaceFileManagerService implements IWorkspaceFileManagerService
   >();
   private readonly sharedService = createWorkspaceFileManagerService();
   private readonly sessions = new Map<string, WorkspaceFileManagerSession>();
+  private readonly unsubscribeUserProjects: () => void;
 
   constructor(
     dependencies: WorkspaceFileManagerServiceDependencies,
-    notifications: NotificationService = noopNotifications
+    notifications: NotificationService = noopNotifications,
+    filePreviewSurfaceHost: WorkspaceFilePreviewSurfaceHost = new DefaultWorkspaceFilePreviewSurfaceHost()
   ) {
     this.dependencies = dependencies;
+    this.filePreviewSurfaceHost = filePreviewSurfaceHost;
     this.notifications = notifications;
-    dependencies.workspaceUserProjectService?.subscribe(() => {
-      void this.refreshAllSessionLocations();
-    });
+    this.unsubscribeUserProjects =
+      dependencies.workspaceUserProjectService?.subscribe(() => {
+        void this.refreshAllSessionLocations();
+      }) ?? (() => {});
+  }
+
+  dispose(): void {
+    this.unsubscribeUserProjects();
+    for (const session of this.sessions.values()) {
+      session.dispose();
+    }
+    this.sessions.clear();
+    this.listeners.clear();
+    this.i18nRuntimeByWorkspace.clear();
+    this.locationRefreshSnapshotByWorkspace.clear();
+    this.referenceSourceAggregators.clear();
   }
 
   get hostOs(): NodeJS.Platform {
@@ -233,6 +250,10 @@ export class WorkspaceFileManagerService implements IWorkspaceFileManagerService
         },
         getActiveLocale,
         {
+          getUnsupportedFallbackNotification: (workspaceID) =>
+            this.filePreviewSurfaceHost.getUnsupportedFallbackNotification(
+              workspaceID
+            ),
           openCanvasPreview: (target, workspaceID) =>
             this.openCanvasPreview(workspaceID, target)
         }
@@ -279,23 +300,10 @@ export class WorkspaceFileManagerService implements IWorkspaceFileManagerService
 
   async openCanvasFilePreview(
     workspaceID: string,
-    target: Parameters<WorkspaceFileManagerCanvasPreviewLauncher>[0]
+    target: Parameters<WorkspaceFilePreviewSurfaceHost["present"]>[1]
   ): Promise<boolean> {
-    return (
-      (await this.canvasFilePreviewLaunchers.get(workspaceID)?.(target)) ===
-      true
-    );
-  }
-
-  setCanvasFilePreviewLauncher(
-    workspaceID: string,
-    launcher: WorkspaceFileManagerCanvasPreviewLauncher | null
-  ): void {
-    if (!launcher) {
-      this.canvasFilePreviewLaunchers.delete(workspaceID);
-      return;
-    }
-    this.canvasFilePreviewLaunchers.set(workspaceID, launcher);
+    return (await this.filePreviewSurfaceHost.present(workspaceID, target))
+      .presented;
   }
 
   subscribe(workspaceID: string, listener: () => void): () => void {
@@ -360,9 +368,9 @@ export class WorkspaceFileManagerService implements IWorkspaceFileManagerService
 
   private async openCanvasPreview(
     workspaceID: string,
-    target: Parameters<WorkspaceFileManagerCanvasPreviewLauncher>[0]
-  ): Promise<boolean> {
-    return this.openCanvasFilePreview(workspaceID, target);
+    target: Parameters<WorkspaceFilePreviewSurfaceHost["present"]>[1]
+  ): ReturnType<WorkspaceFilePreviewSurfaceHost["present"]> {
+    return this.filePreviewSurfaceHost.present(workspaceID, target);
   }
 
   private async loadReferenceLocationSections(
@@ -547,6 +555,7 @@ function referenceNodeToLocation(
 
 // Avoid decorator syntax so the renderer Babel pass can parse this file.
 INotificationService(WorkspaceFileManagerService, undefined, 1);
+IWorkspaceFilePreviewSurfaceHost(WorkspaceFileManagerService, undefined, 2);
 
 const noopNotifications: NotificationService = {
   _serviceBrand: undefined,

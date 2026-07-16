@@ -46,25 +46,7 @@ func (s Service) List(ctx context.Context) ([]userprojectbiz.Project, error) {
 	if s.Store == nil {
 		return nil, errors.New("user project store is not configured")
 	}
-	projects, err := s.Store.ListUserProjects(ctx)
-	if err != nil {
-		return nil, err
-	}
-	result := make([]userprojectbiz.Project, 0, len(projects))
-	for _, project := range projects {
-		available, prune := projectDirectoryStatus(project.Path)
-		if available {
-			result = append(result, project)
-			continue
-		}
-		if !prune {
-			continue
-		}
-		if err := s.Store.DeleteUserProject(ctx, project.ID); err != nil {
-			return nil, fmt.Errorf("prune unavailable user project: %w", err)
-		}
-	}
-	return result, nil
+	return s.Store.ListUserProjects(ctx)
 }
 
 func (Service) CheckPath(_ context.Context, input CheckPathInput) (PathCheck, error) {
@@ -148,17 +130,6 @@ func normalizeDirectoryPath(path string) (string, error) {
 		absolute = evaluated
 	}
 	return absolute, nil
-}
-
-func projectDirectoryStatus(path string) (available bool, prune bool) {
-	info, err := os.Stat(strings.TrimSpace(path))
-	if err != nil {
-		return false, os.IsNotExist(err)
-	}
-	if !info.IsDir() {
-		return false, true
-	}
-	return true, false
 }
 
 func projectID(path string) string {

@@ -26,6 +26,18 @@ type ControllerOptions struct {
 	HostMetadata            HostMetadata
 	ProviderCommandResolver ProviderCommandResolver
 	ProviderLaunchPreparer  ProviderLaunchPreparer
+	AdapterResolver         AdapterResolver
+}
+
+type AdapterResolveInput struct {
+	Provider          string
+	AgentTargetID     string
+	CWD               string
+	ProviderTargetRef map[string]any
+}
+
+type AdapterResolver interface {
+	ResolveAdapter(context.Context, AdapterResolveInput) (Adapter, error)
 }
 
 type ProviderCommand struct {

@@ -32,5 +32,27 @@ export const generatedDefaults = {
     channel: "sg",
     channelDomain: "https://gator.uba.ap-southeast-1.volces.com",
     appVersion: "0.0.0"
+  },
+  agentExtensions: {
+    sources: [
+      {
+        key: "gemini",
+        releaseIndexUrl:
+          "https://d1x7gb6wqsqmnm.cloudfront.net/tutti-agent-releases/agents/gemini/versions.json",
+        signingKeyId: "tutti-gemini-release-v1",
+        signingPublicKey:
+          "-----BEGIN PUBLIC KEY-----\nMCowBQYDK2VwAyEAXKvHPk/lWXqeK3Q1cg6vaOFfhqmXm3jcNgECsZ9XT/g=\n-----END PUBLIC KEY-----\n",
+        enabled: false
+      },
+      {
+        key: "codebuddy",
+        releaseIndexUrl:
+          "https://d1x7gb6wqsqmnm.cloudfront.net/tutti-agent-releases/agents/codebuddy/versions.json",
+        signingKeyId: "tutti-codebuddy-release-v1",
+        signingPublicKey:
+          "-----BEGIN PUBLIC KEY-----\nMCowBQYDK2VwAyEAfzdtf41+SN0hrZqK0JX2pdDluCwpUbn1HPDoz4D7OxA=\n-----END PUBLIC KEY-----\n",
+        enabled: false
+      }
+    ]
   }
 } as const;

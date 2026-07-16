@@ -21,7 +21,7 @@ const require = createRequire(import.meta.url);
 const { JSDOM } = require("jsdom") as JsdomModule;
 const ts = require("typescript") as TypeScriptModule;
 
-test("reference source picker renders folder nodes without the workspace folder fallback image", async () => {
+test("reference source picker renders shared folder icons and content errors", async () => {
   const moduleDir = dirname(fileURLToPath(import.meta.url));
   const tempDir = mkdtempSync(join(moduleDir, ".render-test-"));
   const previousWindow = globalThis.window;
@@ -80,6 +80,59 @@ test("reference source picker renders folder nodes without the workspace folder 
         'img[src*="workspace-folder-fallback"]'
       ),
       null
+    );
+
+    (
+      globalThis as { __referenceSourcePickerView?: unknown }
+    ).__referenceSourcePickerView = {
+      ...createFolderOnlyView(folderNode),
+      contentError: new Error("reference endpoint unavailable"),
+      currentEntries: []
+    };
+    await act(async () => {
+      root?.render(
+        createElement(ReferenceSourcePicker, {
+          aggregator: {},
+          copy: createCopy(),
+          onClose() {},
+          onConfirm() {},
+          open: true,
+          workspaceId: "workspace-reference-content-error-test"
+        } as unknown as ReferenceSourcePickerProps)
+      );
+    });
+
+    assert.equal(
+      dom.window.document.querySelector('[role="alert"]')?.textContent,
+      "referencePicker.loadError"
+    );
+
+    (
+      globalThis as { __referenceSourcePickerView?: unknown }
+    ).__referenceSourcePickerView = {
+      ...createFolderOnlyView(folderNode),
+      contentError: new Error("load more failed")
+    };
+    await act(async () => {
+      root?.render(
+        createElement(ReferenceSourcePicker, {
+          aggregator: {},
+          copy: createCopy(),
+          onClose() {},
+          onConfirm() {},
+          open: true,
+          workspaceId: "workspace-reference-inline-error-test"
+        } as unknown as ReferenceSourcePickerProps)
+      );
+    });
+
+    assert.match(
+      dom.window.document.body.textContent ?? "",
+      /Workspace folder/
+    );
+    assert.equal(
+      dom.window.document.querySelector('[role="alert"]')?.textContent,
+      "referencePicker.loadError"
     );
   } finally {
     if (root) {
@@ -197,6 +250,9 @@ function buildReferenceSourcePickerRenderModule(tempDir: string): string {
       import { createElement } from "react";
       export function AddLinedIcon(props = {}) {
         return createElement("svg", { ...props, "data-icon": "add-lined" });
+      }
+      export function WarningLinedIcon(props = {}) {
+        return createElement("svg", { ...props, "data-icon": "warning-lined" });
       }
     `
   );
@@ -335,8 +391,8 @@ function buildReferenceSourcePickerRenderModule(tempDir: string): string {
       } from "${uiSystemUrl}";`
     )
     .replace(
-      /import \{ AddLinedIcon \} from "@tutti-os\/ui-system\/icons";/,
-      `import { AddLinedIcon } from "${iconsUrl}";`
+      /import \{\s*AddLinedIcon,\s*WarningLinedIcon\s*\} from "@tutti-os\/ui-system\/icons";/,
+      `import { AddLinedIcon, WarningLinedIcon } from "${iconsUrl}";`
     )
     .replace(
       /import \{\s*WorkspaceFilePreviewSurface[\s\S]*?\} from "@tutti-os\/workspace-file-preview\/react";/,
@@ -401,6 +457,7 @@ function createFolderOnlyView(node: ReferenceNode) {
     capabilities: { filterable: false },
     childrenByKey: {},
     confirm: async () => {},
+    contentError: null,
     currentEntries: [node],
     expandedKeys: {},
     filterCategories: [],

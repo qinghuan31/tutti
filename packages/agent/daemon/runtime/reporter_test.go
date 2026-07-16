@@ -344,8 +344,6 @@ func TestReportActivityInputProjectsRuntimeMessagesToMessageUpdates(t *testing.T
 		"messageId":   "thinking-message-1",
 		"streamState": messageStreamStateCompleted,
 	})
-	thinkingEvent.OwnerThreadID = "child-thread-1"
-	thinkingEvent.OwnerCallID = "spawn-call-1"
 	thinkingEvent.OccurredAtUnixMS = 103
 
 	report := reportActivityInput(session, []activityshared.Event{userEvent, assistantEvent, thinkingEvent})
@@ -384,9 +382,7 @@ func TestReportActivityInputProjectsRuntimeMessagesToMessageUpdates(t *testing.T
 		thinking.Role != "assistant" ||
 		thinking.Kind != "reasoning" ||
 		thinking.Payload["content"] != "checking files" ||
-		thinking.Payload["source"] != "runtime" ||
-		thinking.Payload["ownerThreadId"] != "child-thread-1" ||
-		thinking.Payload["ownerCallId"] != "spawn-call-1" {
+		thinking.Payload["source"] != "runtime" {
 		t.Fatalf("thinking message update = %#v", thinking)
 	}
 }
@@ -471,7 +467,7 @@ func TestReportActivityInputForwardsMessageKindToPayload(t *testing.T) {
 	}
 }
 
-func TestReportActivityInputForwardsSubAgentMarkerFieldsToPayload(t *testing.T) {
+func TestReportActivityInputDoesNotProjectLegacySubAgentMarkers(t *testing.T) {
 	t.Parallel()
 
 	session := reportTestSession()
@@ -485,7 +481,6 @@ func TestReportActivityInputForwardsSubAgentMarkerFieldsToPayload(t *testing.T) 
 		"detail":                  "user requested",
 		"ownerThreadId":           "child-1",
 	})
-	marker.OwnerThreadID = "child-1"
 	marker.OccurredAtUnixMS = 120
 
 	report := reportActivityInput(session, []activityshared.Event{marker})
@@ -493,13 +488,8 @@ func TestReportActivityInputForwardsSubAgentMarkerFieldsToPayload(t *testing.T) 
 		t.Fatalf("message updates = %#v, want one marker update", report.MessageUpdates)
 	}
 	payload := report.MessageUpdates[0].Payload
-	// The GUI settles lane status/identity from these fields; the reporter
-	// must not strip them (observed live: markers stored without
-	// subAgentLifecycleStatus left lanes running forever).
-	if payload["subAgentLifecycleStatus"] != "canceled" ||
-		payload["subAgentName"] != "Repo smell analyst" ||
-		payload["detail"] != "user requested" {
-		t.Fatalf("marker payload = %#v, want sub-agent fields forwarded", payload)
+	if payload["subAgentLifecycleStatus"] != nil || payload["subAgentName"] != nil || payload["ownerThreadId"] != nil {
+		t.Fatalf("marker payload = %#v, want legacy child projection fields discarded", payload)
 	}
 }
 
@@ -594,6 +584,100 @@ func TestReportActivityInputProjectsRuntimeCallsToStableMessageUpdates(t *testin
 		completeUpdate.Payload["name"] != "Read" ||
 		completeUpdate.Payload["output"].(map[string]any)["text"] != "hello" {
 		t.Fatalf("completed call update = %#v", completeUpdate)
+	}
+}
+
+func TestReportActivityInputPersistsCanonicalTurnFileChanges(t *testing.T) {
+	t.Parallel()
+
+	session := reportTestSession()
+	session.Provider = ProviderCursor
+	fileChanges := map[string]any{
+		"files": []any{
+			map[string]any{
+				"path":      "/workspace/obsolete.txt",
+				"change":    "deleted",
+				"oldString": "obsolete\n",
+				"newString": "",
+			},
+		},
+	}
+	completed := newTurnActivityEventWithID(session, "call-event-delete", EventCallCompleted, "turn-delete", messageStreamStateCompleted, "", "Write", map[string]any{
+		"callId":      "delete-1",
+		"callType":    "tool",
+		"name":        "Write",
+		"toolName":    "Write",
+		"fileChanges": fileChanges,
+		"output": map[string]any{
+			"filePath":  "/workspace/obsolete.txt",
+			"oldString": "obsolete\n",
+		},
+	})
+	completed.OccurredAtUnixMS = 301
+	turnUpdated := newTurnActivityEvent(session, EventTurnUpdated, "turn-delete", SessionStatusWorking, "", "", map[string]any{
+		"fileChanges": fileChanges,
+	})
+	turnUpdated.OccurredAtUnixMS = 302
+
+	report := reportActivityInput(session, []activityshared.Event{completed, turnUpdated})
+	if len(report.MessageUpdates) != 1 {
+		t.Fatalf("message updates = %#v, want one completed tool update", report.MessageUpdates)
+	}
+	payload := report.MessageUpdates[0].Payload
+	files := payloadArray(payloadMap(payload, "fileChanges")["files"])
+	if len(files) != 1 || files[0]["change"] != "deleted" {
+		t.Fatalf("tool payload = %#v, want canonical deleted file changes", payload)
+	}
+	if len(report.StatePatches) != 1 || report.StatePatches[0].Turn == nil {
+		t.Fatalf("state patches = %#v, want turn file-change patch", report.StatePatches)
+	}
+	turnFiles := payloadArray(report.StatePatches[0].Turn.FileChanges["files"])
+	if len(turnFiles) != 1 || turnFiles[0]["change"] != "deleted" {
+		t.Fatalf("turn patch = %#v, want canonical deleted file changes", report.StatePatches[0].Turn)
+	}
+}
+
+func TestReportActivityInputProjectsOnlyExplicitInteractionTransitions(t *testing.T) {
+	t.Parallel()
+
+	session := reportTestSession()
+	pending := &pendingInteractiveRequest{
+		requestID: "request-1",
+		turnID:    "turn-1",
+		callID:    "call-1",
+		callType:  "interactive",
+		kind:      "ask-user",
+		toolName:  "AskUserQuestion",
+		input: map[string]any{
+			"questions": []any{map[string]any{"id": "scope", "question": "Scope?"}},
+		},
+	}
+	callStarted := newTurnActivityEventWithID(session, "call-1", EventCallStarted, "turn-1", "waiting_input", "", "AskUserQuestion", map[string]any{
+		"callId": "call-1", "callType": "interactive", "toolName": "AskUserQuestion",
+		"input": pending.input,
+	})
+
+	withoutTransition := reportActivityInput(session, []activityshared.Event{callStarted})
+	for _, patch := range withoutTransition.StatePatches {
+		if patch.InteractionTransition != nil {
+			t.Fatalf("call.started derived interaction transition = %#v", patch.InteractionTransition)
+		}
+	}
+
+	requested := normalizedInteractionRequestedEvent(session, "turn-1", pending)
+	report := reportActivityInput(session, []activityshared.Event{callStarted, requested})
+	if len(report.StatePatches) != 1 || report.StatePatches[0].InteractionTransition == nil {
+		t.Fatalf("state patches = %#v, want one explicit interaction transition", report.StatePatches)
+	}
+	transition := report.StatePatches[0].InteractionTransition
+	if transition.RequestID != "request-1" || transition.TurnID != "turn-1" ||
+		transition.Kind != "question" || transition.Status != "pending" ||
+		transition.ToolName != "AskUserQuestion" {
+		t.Fatalf("interaction transition = %#v", transition)
+	}
+	turn := report.StatePatches[0].Turn
+	if turn == nil || turn.TurnID != "turn-1" || turn.Phase != "waiting" || turn.Origin != "provider_initiated" || turn.ActiveTurnID == nil || *turn.ActiveTurnID != "turn-1" {
+		t.Fatalf("provider-initiated turn = %#v, want explicit atomic turn creation", turn)
 	}
 }
 
@@ -965,6 +1049,34 @@ func TestSummarizeReportActivityInputForLog(t *testing.T) {
 	}
 }
 
+func TestSummarizeReportActivityInputForLogIncludesProviderAndRuntimeTurnLifecycle(t *testing.T) {
+	t.Parallel()
+
+	activeTurnID := "root-turn-1"
+	report := agentsessionstore.ReportActivityInput{
+		StatePatches: []agentsessionstore.WorkspaceAgentStatePatch{{
+			AgentSessionID: "session-1",
+			TurnLifecycle: &agentsessionstore.WorkspaceAgentTurnLifecycle{
+				ActiveTurnID: &activeTurnID,
+				Phase:        "waiting",
+			},
+			RootProviderTurn: &agentsessionstore.WorkspaceAgentRootProviderTurnTransition{
+				RootTurnID:     "root-turn-1",
+				ProviderTurnID: "provider-turn-2",
+				Phase:          agentsessionstore.RootProviderTurnPhaseCompleted,
+				Outcome:        "completed",
+			},
+		}},
+	}
+
+	_, statePatches := SummarizeReportActivityInputForLog(report)
+	if len(statePatches) != 1 ||
+		!strings.Contains(statePatches[0], "turnLifecycle=root-turn-1/waiting") ||
+		!strings.Contains(statePatches[0], "rootProviderTurn=root-turn-1/provider-turn-2/completed/completed") {
+		t.Fatalf("state patch summary = %#v, want runtime and root provider lifecycle", statePatches)
+	}
+}
+
 func TestSummarizeReportActivityInputForLogIncludesFailedCallDiagnostics(t *testing.T) {
 	t.Parallel()
 
@@ -1320,4 +1432,15 @@ func mixedMessageUpdateReportInput() agentsessionstore.ReportActivityInput {
 
 func ptrReportActivityReply(reply agentsessionstore.ReportActivityReply) *agentsessionstore.ReportActivityReply {
 	return &reply
+}
+
+func TestExplicitTurnLifecycleProjectionUsesDescriptorCatalog(t *testing.T) {
+	for _, provider := range []string{" CODEX ", ProviderClaudeCode, ProviderOpenCode, ProviderTuttiAgent} {
+		if !providerUsesExplicitTurnLifecyclePatch(provider) {
+			t.Fatalf("provider %q did not enable explicit turn lifecycle projection", provider)
+		}
+	}
+	if providerUsesExplicitTurnLifecyclePatch("unmigrated-provider") {
+		t.Fatal("unknown unmigrated provider unexpectedly enabled explicit turn lifecycle projection")
+	}
 }

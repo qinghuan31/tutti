@@ -59,37 +59,37 @@ func writeListWorkspaceAgentSessionSectionPageError(err error) tuttigenerated.Li
 	}
 }
 
-func writeCountWorkspaceAgentSessionSectionError(err error) tuttigenerated.CountWorkspaceAgentSessionSectionResponseObject {
+func writeListWorkspaceAgentSessionSectionDeletionCandidatesError(err error) tuttigenerated.ListWorkspaceAgentSessionSectionDeletionCandidatesResponseObject {
 	protocolErr := apierrors.Classify(err)
 	switch protocolErr.Code {
 	case tuttigenerated.WorkspaceNotFound:
-		return tuttigenerated.CountWorkspaceAgentSessionSection404JSONResponse{
+		return tuttigenerated.ListWorkspaceAgentSessionSectionDeletionCandidates404JSONResponse{
 			WorkspaceNotFoundErrorJSONResponse: workspaceNotFoundError(protocolErr),
 		}
 	case tuttigenerated.InvalidRequest:
-		return tuttigenerated.CountWorkspaceAgentSessionSection400JSONResponse{
+		return tuttigenerated.ListWorkspaceAgentSessionSectionDeletionCandidates400JSONResponse{
 			InvalidRequestErrorJSONResponse: invalidRequestError(protocolErr),
 		}
 	default:
-		return tuttigenerated.CountWorkspaceAgentSessionSection502JSONResponse{
+		return tuttigenerated.ListWorkspaceAgentSessionSectionDeletionCandidates502JSONResponse{
 			WorkspaceOperationErrorJSONResponse: workspaceOperationError(protocolErr),
 		}
 	}
 }
 
-func writeDeleteWorkspaceAgentSessionSectionError(err error) tuttigenerated.DeleteWorkspaceAgentSessionSectionResponseObject {
+func writeDeleteWorkspaceAgentSessionsBatchError(err error) tuttigenerated.DeleteWorkspaceAgentSessionsBatchResponseObject {
 	protocolErr := apierrors.Classify(err)
 	switch protocolErr.Code {
 	case tuttigenerated.WorkspaceNotFound:
-		return tuttigenerated.DeleteWorkspaceAgentSessionSection404JSONResponse{
+		return tuttigenerated.DeleteWorkspaceAgentSessionsBatch404JSONResponse{
 			WorkspaceNotFoundErrorJSONResponse: workspaceNotFoundError(protocolErr),
 		}
 	case tuttigenerated.InvalidRequest:
-		return tuttigenerated.DeleteWorkspaceAgentSessionSection400JSONResponse{
+		return tuttigenerated.DeleteWorkspaceAgentSessionsBatch400JSONResponse{
 			InvalidRequestErrorJSONResponse: invalidRequestError(protocolErr),
 		}
 	default:
-		return tuttigenerated.DeleteWorkspaceAgentSessionSection502JSONResponse{
+		return tuttigenerated.DeleteWorkspaceAgentSessionsBatch502JSONResponse{
 			WorkspaceOperationErrorJSONResponse: workspaceOperationError(protocolErr),
 		}
 	}
@@ -248,24 +248,6 @@ func writeListWorkspaceAgentSessionMessagesError(err error) tuttigenerated.ListW
 		}
 	default:
 		return tuttigenerated.ListWorkspaceAgentSessionMessages502JSONResponse{
-			WorkspaceOperationErrorJSONResponse: workspaceOperationError(protocolErr),
-		}
-	}
-}
-
-func writeCancelWorkspaceAgentSessionError(err error) tuttigenerated.CancelWorkspaceAgentSessionResponseObject {
-	protocolErr := apierrors.Classify(err)
-	switch protocolErr.Code {
-	case tuttigenerated.WorkspaceNotFound:
-		return tuttigenerated.CancelWorkspaceAgentSession404JSONResponse{
-			WorkspaceNotFoundErrorJSONResponse: workspaceNotFoundError(protocolErr),
-		}
-	case tuttigenerated.InvalidRequest:
-		return tuttigenerated.CancelWorkspaceAgentSession400JSONResponse{
-			InvalidRequestErrorJSONResponse: invalidRequestError(protocolErr),
-		}
-	default:
-		return tuttigenerated.CancelWorkspaceAgentSession502JSONResponse{
 			WorkspaceOperationErrorJSONResponse: workspaceOperationError(protocolErr),
 		}
 	}

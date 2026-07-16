@@ -103,7 +103,7 @@
 .tsh-zoom-dialog[data-rmiz-modal] {
   position: fixed;
   inset: 0;
-  z-index: 100300;
+  z-index: var(--z-dialog);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -134,6 +134,22 @@
 
 .tsh-zoom-dialog [data-rmiz-modal-overlay="hidden"] {
   background: rgb(0 0 0 / 0%);
+}
+
+.tsh-zoom-dialog[data-closing="true"] {
+  animation: tsh-zoom-dialog-close 180ms ease-out forwards;
+}
+
+@keyframes tsh-zoom-dialog-close {
+  to {
+    opacity: 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .tsh-zoom-dialog[data-closing="true"] {
+    animation-duration: 1ms;
+  }
 }
 
 .tsh-zoom-dialog [data-rmiz-btn-unzoom] {
@@ -604,6 +620,7 @@
 
   .agent-gui-chrome__card--warning,
   .agent-gui-chrome__card--danger,
+  .agent-gui-chrome__card--success,
   .agent-gui-chrome__card--muted,
   .agent-gui-chrome__card--connecting {
     animation: none !important;
@@ -1680,10 +1697,6 @@ aside.workspace-agents-status-panel
   font-weight: 600;
 }
 
-.workspace-agents-status-panel__detail-tool-count-status {
-  font-weight: 400;
-}
-
 .workspace-agents-status-panel__detail-tool-count svg {
   flex: 0 0 auto;
 }
@@ -2564,11 +2577,74 @@ aside.workspace-agents-status-panel
   --agent-mention-file-icon-size: 16px;
 }
 
+@container (max-width: 520px) {
+  .agent-gui-node__mention-palette .rich-text-at-mention-palette__shell {
+    overflow: visible;
+  }
+
+  .agent-gui-node__mention-palette-hint {
+    gap: 4px;
+    padding-inline: 8px;
+  }
+
+  .agent-gui-node__mention-palette-hint-item {
+    position: relative;
+  }
+
+  .agent-gui-node__mention-palette-hint-item > span:last-child {
+    display: none;
+  }
+
+  .agent-gui-node__mention-palette-hint-item::after {
+    position: absolute;
+    bottom: calc(100% + 6px);
+    left: 50%;
+    z-index: 20;
+    width: max-content;
+    max-width: min(240px, calc(100cqw - 16px));
+    padding: 5px 8px;
+    border: 1px solid var(--line-2, var(--tutti-line-2));
+    border-radius: 6px;
+    background: var(--background-fronted, var(--background-panel));
+    box-shadow: 0 6px 18px rgb(0 0 0 / 18%);
+    color: var(--text-primary);
+    content: attr(data-tooltip);
+    font-size: 11px;
+    font-weight: 500;
+    line-height: 16px;
+    opacity: 0;
+    pointer-events: none;
+    transform: translateX(-50%) translateY(2px);
+    transition:
+      opacity 120ms ease,
+      transform 120ms ease;
+    white-space: normal;
+  }
+
+  .agent-gui-node__mention-palette-hint-item:hover::after,
+  .agent-gui-node__mention-palette-hint-item:focus-within::after {
+    opacity: 1;
+    transform: translateX(-50%) translateY(0);
+  }
+
+  .agent-gui-node__mention-palette-hint-item:last-child::after {
+    right: 0;
+    left: auto;
+    transform: translateY(2px);
+  }
+
+  .agent-gui-node__mention-palette-hint-item:last-child:hover::after,
+  .agent-gui-node__mention-palette-hint-item:last-child:focus-within::after {
+    transform: translateY(0);
+  }
+}
+
 .agent-gui-node__mention-palette .rich-text-at-mention-palette__row-button,
 .agent-gui-node__mention-palette .rich-text-at-mention-palette__expand-button {
   min-height: 28px;
   padding-top: 4px;
   padding-bottom: 4px;
+  padding-right: 4px;
 }
 
 .agent-gui-node__mention-palette
@@ -2750,6 +2826,7 @@ aside.workspace-agents-status-panel
 
 .agent-gui-chrome__card--warning,
 .agent-gui-chrome__card--danger,
+.agent-gui-chrome__card--success,
 .agent-gui-chrome__card--muted,
 .agent-gui-chrome__card--connecting {
   --agent-gui-chrome-card-spring: cubic-bezier(0.22, 1.18, 0.36, 1);
@@ -2915,6 +2992,58 @@ aside.workspace-agents-status-panel
   color: var(--status-danger-hover, var(--state-danger-hover));
 }
 
+.agent-gui-chrome__card--success {
+  /* --state-success alone reads ~2:1 against the light-theme card wash;
+     mixing toward --text-primary keeps the hue while adapting the contrast
+     in both themes (45% keeps 13px text past the 4.5:1 target). Borders and
+     backgrounds stay on the raw token. */
+  --agent-gui-chrome-success-foreground: color-mix(
+    in srgb,
+    var(--state-success) 45%,
+    var(--text-primary)
+  );
+
+  border-color: color-mix(in srgb, var(--state-success) 28%, transparent);
+  border-bottom: 0;
+  border-top-left-radius: 8px;
+  border-top-right-radius: 8px;
+  border-bottom-right-radius: 0;
+  border-bottom-left-radius: 0;
+  background: color-mix(
+    in srgb,
+    var(--state-success) 10%,
+    var(--background-fronted)
+  );
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  min-height: 36px;
+  padding: 6px 16px;
+  cursor: default;
+}
+
+.agent-gui-chrome__card--success .agent-gui-chrome__icon,
+.agent-gui-chrome__card--success .agent-gui-chrome__message {
+  color: var(--agent-gui-chrome-success-foreground, var(--state-success));
+}
+
+.agent-gui-chrome__success-ghost-button {
+  background: transparent;
+  color: var(--agent-gui-chrome-success-foreground, var(--state-success));
+  font-size: 13px;
+  font-weight: 400;
+}
+
+.agent-gui-chrome__success-ghost-button:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--state-success) 14%, transparent);
+}
+
+.agent-gui-chrome__success-ghost-button:focus-visible {
+  border-color: var(--state-success);
+  color: var(--agent-gui-chrome-success-foreground, var(--state-success));
+  box-shadow: 0 0 0 2px
+    color-mix(in srgb, var(--state-success) 25%, transparent);
+}
+
 .agent-gui-chrome__danger-ghost-button:focus-visible {
   border-color: var(--status-danger, var(--state-danger));
   color: var(--status-danger, var(--state-danger));
@@ -2958,6 +3087,8 @@ aside.workspace-agents-status-panel
 .agent-gui-chrome__card--warning
   .agent-gui-chrome__message:not(.agent-gui-chrome__notice-message),
 .agent-gui-chrome__card--danger
+  .agent-gui-chrome__message:not(.agent-gui-chrome__notice-message),
+.agent-gui-chrome__card--success
   .agent-gui-chrome__message:not(.agent-gui-chrome__notice-message),
 .agent-gui-chrome__card--muted
   .agent-gui-chrome__message:not(.agent-gui-chrome__notice-message),
@@ -3211,6 +3342,11 @@ aside.workspace-agents-status-panel
   gap: 12px;
 }
 
+.agent-gui-conversation__interactive-prompt-lead-content {
+  display: grid;
+  gap: 4px;
+}
+
 .agent-gui-conversation__interactive-prompt-lead {
   color: var(--text-primary);
   font-size: 15px;
@@ -3392,8 +3528,15 @@ aside.workspace-agents-status-panel
 .agent-gui-conversation__interactive-feedback-composer {
   position: relative;
   display: block;
+  box-sizing: border-box;
   width: 100%;
   min-width: 0;
+  min-height: 80px;
+  overflow: hidden;
+  border: 1px solid var(--line-2);
+  border-radius: 7px;
+  background: var(--background-fronted);
+  padding-bottom: 44px;
 }
 
 .agent-gui-conversation__interactive-prompt-textarea {
@@ -3413,17 +3556,18 @@ aside.workspace-agents-status-panel
 
 .agent-gui-conversation__interactive-feedback-composer
   .agent-gui-conversation__interactive-prompt-textarea {
+  display: block;
   box-sizing: border-box;
   min-width: 0;
-  min-height: 42px;
+  min-height: 36px;
   max-height: 132px;
-  border: 1px solid var(--line-2);
-  border-radius: 7px;
-  background: var(--background-fronted);
+  border: 0;
+  border-radius: 0;
+  background: transparent;
   color: var(--text-primary);
   font-size: 13px;
   line-height: 1.45;
-  padding: 9px 48px 42px 10px;
+  padding: 9px 10px;
   resize: vertical;
 }
 
@@ -3434,14 +3578,14 @@ aside.workspace-agents-status-panel
 
 .agent-gui-conversation__interactive-feedback-send-button {
   position: absolute;
-  right: 8px;
-  bottom: 8px;
+  right: 12px;
+  bottom: 12px;
   display: grid;
   place-items: center;
-  width: 30px;
-  min-width: 30px;
-  height: 30px;
-  min-height: 30px;
+  width: 28px;
+  min-width: 28px;
+  height: 28px;
+  min-height: 28px;
   border: 0;
   border-radius: 999px;
   background: var(--text-primary);
@@ -3472,6 +3616,9 @@ aside.workspace-agents-status-panel
 .agent-gui-conversation__interactive-feedback-send-button
   .agent-gui-conversation__interactive-option-spinner {
   position: static;
+  top: auto;
+  right: auto;
+  transform: none;
 }
 
 .agent-gui-conversation__interactive-prompt-footer {
@@ -3789,6 +3936,14 @@ aside.workspace-agents-status-panel
 }
 
 .workspace-agents-status-panel__detail-user-message
+  .agent-rich-text-mention-node {
+  /* Avoid a percentage max-width feeding the mention's untruncated intrinsic
+     width back into the fit-content message bubble. The nested pill still
+     shrinks against this wrapper when the available line is narrower. */
+  max-width: var(--agent-mention-max-width, 16rem);
+}
+
+.workspace-agents-status-panel__detail-user-message
   .tsh-agent-object-token--file {
   --agent-mention-file-icon-size: 16px;
 }
@@ -4102,7 +4257,7 @@ aside.workspace-agents-status-panel
   .tsh-agent-object-token__main {
   padding: 0 6px;
   border-radius: 6px;
-  background: var(--tutti-purple-bg);
+  background: transparent;
 }
 
 [data-agent-mention-kind="skill"].tsh-agent-object-token--entity.ProseMirror-selectednode
@@ -4140,17 +4295,22 @@ aside.workspace-agents-status-panel
   -webkit-mask-size: 16px 16px;
 }
 
-.tsh-agent-object-token--entity .tsh-agent-object-token__summary {
-  color: inherit;
-}
-
 .agent-gui-node__composer-textarea .agent-rich-text-mention-node {
   display: inline-flex;
   align-items: center;
+  top: 1px;
   height: 24px;
   min-height: 24px;
   line-height: 24px;
   vertical-align: middle;
+}
+
+.agent-gui-node__composer-textarea
+  .agent-rich-text-mention-node[data-agent-custom-mention="true"] {
+  top: 0;
+  height: auto;
+  min-height: 0;
+  line-height: inherit;
 }
 
 .agent-gui-node__composer-textarea
@@ -4170,7 +4330,7 @@ aside.workspace-agents-status-panel
   padding-left: 4px;
   border-radius: 4px;
   line-height: 24px;
-  transform: none;
+  transform: translateY(1px);
   transition: background-color 140ms ease-in-out;
   vertical-align: middle;
 }
@@ -4179,6 +4339,32 @@ aside.workspace-agents-status-panel
   .agent-rich-text-mention-node
   [data-slot="mention-pill"] {
   height: 24px;
+}
+
+.agent-gui-node__composer-textarea
+  [data-agent-mention-kind="skill"].tsh-agent-object-token--entity,
+.agent-gui-node__composer-textarea
+  [data-agent-mention-kind="capability"].tsh-agent-object-token--entity {
+  top: 1px;
+  height: 24px;
+  min-height: 24px;
+  box-sizing: border-box;
+  line-height: 24px;
+  vertical-align: middle;
+}
+
+.agent-gui-node__composer-textarea
+  [data-agent-mention-kind="skill"].tsh-agent-object-token--entity
+  .tsh-agent-object-token__main,
+.agent-gui-node__composer-textarea
+  [data-agent-mention-kind="capability"].tsh-agent-object-token--entity
+  .tsh-agent-object-token__main {
+  height: 24px;
+  box-sizing: border-box;
+  border-radius: 4px;
+  font-size: 13px;
+  line-height: 24px;
+  transform: translateY(-2px);
 }
 
 .agent-gui-node__composer-textarea
@@ -4399,6 +4585,20 @@ aside.workspace-agents-status-panel
   )
   .workbench-window__header:active {
   cursor: grabbing !important;
+}
+
+.workbench-window:has(
+    .agent-gui-workbench-header[data-agent-gui-standalone-window-header="true"]
+  )
+  .workbench-window__header {
+  z-index: calc(var(--z-panel) + 1);
+}
+
+.workbench-window:has(
+    .agent-gui-workbench-header[data-agent-gui-standalone-window-header="true"]
+  )
+  .agent-gui-workbench-header::after {
+  display: none;
 }
 
 .workbench-window:has([data-agent-gui-workbench-header="true"])
@@ -4624,16 +4824,46 @@ aside.workspace-agents-status-panel
 .agent-gui-workbench-header[data-agent-gui-workbench-header-collapsed="true"]
   .agent-gui-workbench-header__primary {
   grid-column: 1 / -1;
-  width: min(100%, 720px);
+  width: 100%;
   background: transparent;
+}
+
+/*
+ * The standalone window's tool actions belong to native-window chrome, so
+ * collapsing the conversation rail must not pull them into the 720px content
+ * cap. Let the primary row span the window and keep the same trailing inset as
+ * the expanded detail row.
+ */
+.agent-gui-workbench-header[data-agent-gui-standalone-window-header="true"][data-agent-gui-workbench-header-collapsed="true"]
+  .agent-gui-workbench-header__primary {
+  width: 100%;
+}
+
+.agent-gui-workbench-header[data-agent-gui-standalone-window-header="true"]
+  .agent-gui-workbench-header__secondary-accessory {
+  padding-right: 0;
+}
+
+/* Keep the standalone tool header on the same right edge as its body panel.
+   The body panel is right-anchored independently of the Agent header's rail
+   grid; leaving this accessory in the grid makes its left edge drift when the
+   panel expands to the available width. */
+.agent-gui-workbench-header[data-agent-gui-standalone-window-header="true"]
+  .agent-gui-workbench-header__secondary-accessory:has(
+    [data-standalone-agent-tool-sidebar-header="true"]
+  ) {
+  position: absolute;
+  top: 0;
+  right: 0;
+  margin-left: 0;
 }
 
 /*
  * In the collapsed empty state there is no session title to anchor the control
  * cluster, so the detached-window button's margin-left:auto would strand the
- * icons (in the middle of the 720px content cap, or at the far window edge).
- * Drop the auto push so the controls sit as a compact group right after the
- * traffic lights instead.
+ * icons at the far window edge. Drop the auto push so those window controls sit
+ * as a compact group right after the traffic lights instead. Secondary tool
+ * actions retain their own right alignment across the full header width.
  */
 .agent-gui-workbench-header[data-agent-gui-workbench-header-collapsed="true"][data-agent-gui-workbench-header-has-session="false"]
   .agent-gui-workbench-header__detached-window {
@@ -4763,6 +4993,40 @@ aside.workspace-agents-status-panel
   gap: 8px;
 }
 
+.agent-gui-workbench-header__primary-accessory {
+  display: inline-flex;
+  min-width: 0;
+  flex: 0 0 auto;
+  align-items: center;
+  -webkit-app-region: no-drag;
+}
+
+.agent-gui-workbench-header__detail {
+  display: flex;
+  width: 100%;
+  height: 100%;
+  min-width: 0;
+  align-items: center;
+}
+
+.agent-gui-workbench-header__secondary-accessory {
+  display: inline-flex;
+  min-width: 0;
+  flex: 0 0 auto;
+  align-items: center;
+  margin-left: auto;
+  padding-right: var(--agent-gui-workbench-header-padding-x);
+  pointer-events: auto;
+  -webkit-app-region: no-drag;
+}
+
+/* The collapsed primary row already supplies the header's right inset. Avoid
+   stacking the accessory inset when actions move out of the detail column. */
+.agent-gui-workbench-header[data-agent-gui-workbench-header-collapsed="true"]
+  .agent-gui-workbench-header__secondary-accessory {
+  padding-right: 0;
+}
+
 .agent-gui-workbench-header__agent-name,
 .agent-gui-workbench-header__session-title,
 .agent-gui-workbench-header__detail-title {
@@ -4781,6 +5045,77 @@ aside.workspace-agents-status-panel
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+/* Mention typography and icons use the same 24px row as the plain title, so
+   the whole rich title can share the Agent icon's vertical center directly. */
+.agent-gui-workbench-header__rich-title {
+  display: block;
+  width: 0;
+  min-width: 0;
+  height: 24px;
+  flex: 1 1 0;
+  overflow: hidden;
+}
+
+.agent-gui-workbench-header__rich-title > div,
+.agent-gui-workbench-header__rich-title .ProseMirror {
+  display: block;
+  width: 100%;
+  min-width: 0;
+  height: 24px;
+  margin: 0;
+  overflow: visible;
+}
+
+.agent-gui-workbench-header__rich-title p {
+  display: flex;
+  width: max-content;
+  min-width: 100%;
+  max-width: none;
+  height: 24px;
+  align-items: center;
+  margin: 0;
+  overflow: visible;
+  overflow-wrap: normal;
+  line-height: 24px;
+  white-space: nowrap;
+  word-break: normal;
+}
+
+.agent-gui-workbench-header__rich-title .agent-rich-text-mention-node,
+.agent-gui-workbench-header__rich-title .tsh-agent-object-token--file,
+.agent-gui-workbench-header__rich-title .tsh-agent-object-token--entity,
+.agent-gui-workbench-header__rich-title [data-slot="mention-pill"] {
+  top: 0;
+  align-items: center;
+  transform: none;
+  vertical-align: middle;
+}
+
+.agent-gui-workbench-header__rich-title
+  .agent-rich-text-mention-node[data-agent-custom-mention="true"] {
+  display: inline-flex;
+  max-width: min(100%, var(--agent-mention-max-width, 20rem));
+  height: 24px;
+  align-items: center;
+  margin-right: 4px;
+  transform: translateY(-1.5px);
+  vertical-align: middle;
+}
+
+.agent-gui-workbench-header__rich-title .tsh-agent-object-token--file {
+  height: 24px;
+  min-height: 24px;
+  padding-top: 0;
+  padding-bottom: 0;
+  line-height: 24px;
+}
+
+.agent-gui-workbench-header__rich-title
+  .tsh-agent-object-token--file
+  .tsh-agent-object-token__main {
+  transform: translateY(-1.25px);
 }
 
 .agent-gui-workbench-header__agent-name {
@@ -4821,12 +5156,31 @@ aside.workspace-agents-status-panel
 .agent-gui-workbench-header__detail-title {
   display: flex;
   height: 100%;
+  flex: 1 1 auto;
   max-width: min(100%, var(--agent-gui-workbench-header-title-max-width));
   min-width: 0;
   align-items: center;
   gap: 8px;
   padding: 0 20px;
   pointer-events: none;
+}
+
+.workbench-window:has(
+    .agent-gui-workbench-header[data-agent-gui-standalone-window-header="true"]
+  )
+  .agent-gui-workbench-header__session-title,
+.workbench-window:has(
+    .agent-gui-workbench-header[data-agent-gui-standalone-window-header="true"]
+  )
+  .agent-gui-workbench-header__detail-title {
+  box-sizing: border-box;
+  width: auto;
+  max-width: calc(
+    100% - var(--agent-gui-tool-sidebar-layout-width, 0px) - 16px
+  );
+  flex: 1 1 0;
+  min-width: 0;
+  overflow: hidden;
 }
 
 .agent-gui-workbench-header[data-agent-gui-standalone-window-header="true"]
@@ -4895,7 +5249,8 @@ aside.workspace-agents-status-panel
 
 .agent-gui-workbench-header__detached-window
   + .agent-gui-workbench-header__rail-toggle {
-  margin-left: 0;
+  /* The primary row gap is 12px; keep this icon pair at a net 8px. */
+  margin-left: -4px;
 }
 
 .workbench-window:has([data-workbench-node-render-error="true"])
@@ -5842,17 +6197,14 @@ button.agent-gui-node__conversation-section-toggle:hover
 
 .agent-gui-node__conversation-list-skeleton-rib {
   height: 12px;
-  transform-origin: left center;
 }
 
 .agent-gui-node__conversation-list-skeleton-rib-primary {
   width: 78%;
-  transform: rotate(1deg);
 }
 
 .agent-gui-node__conversation-list-skeleton-rib-secondary {
   width: 52%;
-  transform: rotate(-1deg);
   opacity: 0.72;
 }
 
@@ -6086,6 +6438,21 @@ button.agent-gui-node__conversation-section-toggle:hover
     no-repeat;
   -webkit-mask: var(--agent-gui-conversation-provider-icon-url) center / contain
     no-repeat;
+}
+
+.agent-gui-node__conversation-title-mention-icon {
+  display: inline-flex;
+  width: 14px;
+  height: 14px;
+  flex: 0 0 14px;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-primary);
+}
+
+.agent-gui-node__conversation-title-mention-icon > svg {
+  width: 14px;
+  height: 14px;
 }
 
 .agent-gui-node__conversation-actions
@@ -6393,7 +6760,7 @@ button.agent-gui-node__conversation-section-toggle:hover
 .agent-gui-message-locator__track-segment {
   position: absolute;
   top: var(--agent-message-locator-segment-position);
-  left: 50%;
+  left: calc(var(--agent-message-locator-hit-size) / 2);
   width: 1px;
   height: 8px;
   transform: translate(-50%, -50%);
@@ -6644,7 +7011,7 @@ button.agent-gui-node__conversation-section-toggle:hover
 
 .agent-gui-node__timeline-centered {
   display: flex;
-  align-items: center;
+  align-items: stretch;
   justify-content: center;
 }
 
@@ -6953,41 +7320,6 @@ button.agent-gui-node__conversation-section-toggle:hover
   outline: none;
 }
 
-.agent-gui-node__provider-setup-notice {
-  position: absolute;
-  top: 56px;
-  left: 50%;
-  transform: translateX(-50%);
-  z-index: 2;
-  box-sizing: border-box;
-  width: max-content;
-  max-width: min(calc(100% - (var(--agent-gui-detail-padding-x) * 2)), 420px);
-  margin: 0;
-  /* The pill sizes to its content (width: max-content), so the action button's
-     margin-left:auto has no free space to absorb and the message text would butt
-     directly against "Set up". Space the message and action explicitly. */
-  column-gap: 6px;
-  pointer-events: none;
-}
-
-.agent-gui-node__detail-header + .agent-gui-node__provider-setup-notice {
-  top: calc(64px + 16px);
-}
-
-.agent-gui-node__provider-setup-notice-action {
-  flex: 0 0 auto;
-  margin-left: auto;
-  border: 0;
-  padding: 0;
-  background: transparent;
-  color: currentColor;
-  font: inherit;
-  text-decoration: underline;
-  cursor: pointer;
-  pointer-events: auto;
-  -webkit-app-region: no-drag;
-}
-
 .agent-gui-node__layout [data-slot="status-dot"],
 [data-testid="workspace-agent-message-center"] [data-slot="status-dot"] {
   --agent-gui-status-dot-color: var(
@@ -7232,10 +7564,14 @@ button.agent-gui-node__conversation-section-toggle:hover
   background: var(--agent-gui-accent-bg);
 }
 
+/* In dock layout a growing draft overhangs upward past the composer's top
+   edge (the dock only reserves the collapsed input height in flow), so the
+   floating panels anchored at bottom: 100% must be lifted by that overhang
+   (--agent-gui-composer-input-overflow) or the grown input covers them. */
 .agent-gui-node__composer-floating-prompt {
   position: absolute;
   right: 12px;
-  bottom: calc(100% + 8px);
+  bottom: calc(100% + 8px + var(--agent-gui-composer-input-overflow, 0px));
   left: 12px;
   z-index: 5;
 }
@@ -7243,7 +7579,7 @@ button.agent-gui-node__conversation-section-toggle:hover
 .agent-gui-node__composer-floating-prompt--queued {
   z-index: 1;
   right: 24px;
-  bottom: 100%;
+  bottom: calc(100% + var(--agent-gui-composer-input-overflow, 0px));
   left: 24px;
 }
 
@@ -7254,7 +7590,7 @@ button.agent-gui-node__conversation-section-toggle:hover
   isolation: isolate;
   z-index: 2;
   min-width: 0;
-  padding: 12px;
+  padding: 8px;
   border: 1px solid var(--agent-gui-border-subtle);
   border-radius: 12px;
   background: var(--agent-gui-surface-raised);
@@ -7262,8 +7598,27 @@ button.agent-gui-node__conversation-section-toggle:hover
   transition: box-shadow 140ms ease;
 }
 
+.agent-gui-node__composer-hero-prompt-input-area {
+  box-sizing: border-box;
+  width: calc(100% - 8px);
+  margin-inline: 4px;
+}
+
+.agent-gui-node__composer[data-layout="dock"] {
+  /* Opaque backdrop for the footer strip: the timeline can slide beneath the
+     dock, and a transparent footer would show message rows behind the
+     toolbar controls. */
+  background: var(--agent-gui-session-flow-background);
+}
+
 .agent-gui-node__composer[data-layout="dock"]
   .agent-gui-node__composer-input-shell {
+  /* Reserve only the collapsed input height (56px, keep in sync with
+     DOCK_COMPOSER_INPUT_MIN_HEIGHT) in the layout flow. A growing draft
+     (long paste, attachments) expands the text box upward over the
+     conversation instead of enlarging the dock and pushing the message
+     stream up. */
+  grid-template-rows: 56px auto;
   gap: 6px;
   padding: 0;
   border: 0;
@@ -7274,12 +7629,16 @@ button.agent-gui-node__conversation-section-toggle:hover
 .agent-gui-node__composer[data-layout="dock"]
   .agent-gui-node__composer-prompt-input-area {
   display: grid;
+  /* Keep the input shadow above the following footer row. Both rows otherwise
+     share z-index: 1, so the later-painted footer visually clips the shadow. */
+  z-index: 2;
   grid-template-rows: minmax(0, 1fr);
   box-sizing: border-box;
   height: var(--agent-gui-composer-input-height, 56px);
   min-height: 56px;
   max-height: var(--agent-gui-composer-input-max-height, 110px);
   align-items: end;
+  align-self: end;
   overflow: hidden;
   padding: 0 12px;
   border: 1px solid var(--line-2);
@@ -7334,7 +7693,7 @@ button.agent-gui-node__conversation-section-toggle:hover
   min-height: 54px;
   max-height: 118px;
   min-width: 0;
-  padding: 12px 0;
+  padding: 0 0 12px;
 }
 
 .agent-gui-node__composer[data-layout="dock"]
@@ -7347,7 +7706,9 @@ button.agent-gui-node__conversation-section-toggle:hover
 }
 
 .agent-gui-node__composer[data-layout="dock"]
-  .agent-gui-node__composer-send-button {
+  .agent-gui-node__composer-send-button,
+.agent-gui-node__composer[data-layout="dock"]
+  .agent-gui-node__composer-stop-button {
   align-self: end;
 }
 
@@ -7706,6 +8067,8 @@ html[data-theme="light"] [data-message-center-item-id].agent-gui-edge-glow {
 
 .agent-gui-node__composer-queued-prompt-list {
   display: grid;
+  width: 100%;
+  min-width: 0;
   gap: 0;
   max-height: 36px;
   overflow: hidden;
@@ -7716,6 +8079,7 @@ html[data-theme="light"] [data-message-center-item-id].agent-gui-edge-glow {
 
 .agent-gui-node__composer-queued-prompt-panel {
   display: grid;
+  min-width: 0;
   gap: 4px;
   position: relative;
   z-index: 1;
@@ -7748,6 +8112,7 @@ html[data-theme="light"] [data-message-center-item-id].agent-gui-edge-glow {
 }
 
 .agent-gui-node__composer-queued-prompt-expand-cue {
+  display: block;
   flex: 0 0 auto;
   color: var(--agent-gui-accent-strong);
   opacity: 0;
@@ -7778,6 +8143,9 @@ html[data-theme="light"] [data-message-center-item-id].agent-gui-edge-glow {
 
 .agent-gui-node__composer-queued-prompt-row {
   display: grid;
+  box-sizing: border-box;
+  width: 100%;
+  min-width: 0;
   grid-template-columns: minmax(0, 1fr) auto;
   gap: 8px;
   align-items: center;
@@ -7790,13 +8158,16 @@ html[data-theme="light"] [data-message-center-item-id].agent-gui-edge-glow {
 
 .agent-gui-node__composer-queued-prompt-main {
   display: block;
+  width: 100%;
   min-width: 0;
 }
 
 .agent-gui-node__composer-queued-prompt-body {
   display: flex;
+  width: 100%;
   align-items: center;
   min-width: 0;
+  overflow: hidden;
   gap: 6px;
 }
 
@@ -7820,10 +8191,17 @@ html[data-theme="light"] [data-message-center-item-id].agent-gui-edge-glow {
 }
 
 .agent-gui-node__composer-queued-prompt-label {
+  min-width: 0;
   font-size: 13px;
   font-weight: 600;
   color: var(--agent-gui-accent-strong);
   line-height: 20px;
+}
+
+.agent-gui-node__composer-queued-prompt-panel[data-queue-status="paused_by_user"]
+  .agent-gui-node__composer-queued-prompt-label {
+  overflow-wrap: anywhere;
+  white-space: normal;
 }
 
 .agent-gui-node__composer-queued-prompt-count {
@@ -7836,32 +8214,52 @@ html[data-theme="light"] [data-message-center-item-id].agent-gui-edge-glow {
 }
 
 .agent-gui-node__composer-queued-prompt-text {
+  position: relative;
+  width: 0;
+  max-width: 100%;
+  flex: 1 1 0;
   min-width: 0;
   margin: 0;
   color: var(--agent-gui-text-secondary, var(--text-secondary));
   font-size: 13px;
   line-height: 28px;
   overflow: hidden;
-  text-overflow: ellipsis;
+  text-overflow: clip;
   word-break: break-word;
   white-space: nowrap;
 }
 
+.agent-gui-node__composer-queued-prompt-text[data-overflowing="true"]::after {
+  content: "…";
+  position: absolute;
+  top: 0;
+  right: 0;
+  width: 28px;
+  height: 28px;
+  background: linear-gradient(90deg, transparent, var(--background-panel) 52%);
+  color: var(--agent-gui-text-secondary, var(--text-secondary));
+  line-height: 28px;
+  text-align: right;
+  pointer-events: none;
+}
+
 .agent-gui-node__composer-queued-prompt-markdown {
   display: block;
+  width: 100%;
   min-width: 0;
   max-width: 100%;
   color: inherit;
   font-size: inherit;
   line-height: inherit;
   overflow: hidden;
-  text-overflow: ellipsis;
+  text-overflow: clip;
   white-space: nowrap;
 }
 
 .agent-gui-node__composer-queued-prompt-markdown
   [data-workspace-agent-markdown-shell="true"] {
   display: block;
+  width: 100%;
   min-width: 0;
   max-width: 100%;
   overflow: hidden;
@@ -7872,18 +8270,49 @@ html[data-theme="light"] [data-message-center-item-id].agent-gui-edge-glow {
   [data-workspace-agent-markdown="true"] {
   display: block;
   overflow: hidden;
-  text-overflow: ellipsis;
+  text-overflow: clip;
   white-space: nowrap;
 }
 
-.agent-gui-node__composer-queued-prompt-markdown p {
+/* Queued rows are single-line previews. Flatten every markdown block
+   (lists, code blocks, quotes, headings) to plain inline text — including
+   their box styling from the markdown renderer — so the row's nowrap +
+   overflow: hidden + "…" overlay can truncate instead of the blocks
+   stacking extra lines. Scoped under the text wrapper to outrank the
+   renderer's own [&_ol]/[&_pre]-style utilities. */
+.agent-gui-node__composer-queued-prompt-text
+  .agent-gui-node__composer-queued-prompt-markdown
+  :is(p, ul, ol, li, blockquote, pre, h1, h2, h3, h4, h5, h6) {
   display: inline;
   margin: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  font-size: inherit;
+  font-weight: inherit;
+  line-height: inherit;
+  white-space: nowrap;
+}
+
+.agent-gui-node__composer-queued-prompt-text
+  .agent-gui-node__composer-queued-prompt-markdown
+  pre
+  code {
+  white-space: nowrap;
+}
+
+/* Media, tables, rules, and explicit line breaks cannot collapse into one
+   text line — drop them from the preview entirely. */
+.agent-gui-node__composer-queued-prompt-text
+  .agent-gui-node__composer-queued-prompt-markdown
+  :is(img, video, table, hr, br, input) {
+  display: none;
 }
 
 .agent-gui-node__composer-queued-prompt-markdown
   [data-agent-file-mention="true"] {
-  max-width: 100%;
+  width: max-content;
+  max-width: min(100%, var(--agent-mention-max-width, 16rem));
   color: inherit;
   vertical-align: baseline;
 }
@@ -7892,20 +8321,20 @@ html[data-theme="light"] [data-message-center-item-id].agent-gui-edge-glow {
   [data-agent-file-mention="true"].tsh-agent-object-token--entity {
   color: inherit;
   top: 3px;
+  max-width: min(100%, var(--agent-mention-max-width, 16rem));
   min-height: 24px;
   padding: 2px 4px;
   border: 1px solid transparent;
   border-radius: 4px;
   line-height: 20px;
-  transition:
-    background-color 140ms ease-in-out,
-    border-color 140ms ease-in-out;
+  transition: none;
 }
 
 .agent-gui-node__composer-queued-prompt-markdown
-  [data-agent-file-mention="true"].tsh-agent-object-token--entity:hover {
+  [data-agent-file-mention="true"].tsh-agent-object-token:hover {
   border-color: transparent;
-  background: color-mix(in srgb, var(--text-primary) 10%, transparent);
+  background: transparent;
+  text-decoration: none;
 }
 
 .agent-gui-node__composer-queued-prompt-markdown
@@ -7916,9 +8345,6 @@ html[data-theme="light"] [data-message-center-item-id].agent-gui-edge-glow {
 .agent-gui-node__composer-queued-prompt-markdown
   [data-agent-file-mention="true"]
   .tsh-agent-object-token__kind,
-.agent-gui-node__composer-queued-prompt-markdown
-  [data-agent-file-mention="true"]
-  .tsh-agent-object-token__summary,
 .agent-gui-node__composer-queued-prompt-markdown
   [data-agent-file-mention="true"]
   [data-agent-mention-app-icon="true"] {
@@ -7946,7 +8372,7 @@ html[data-theme="light"] [data-message-center-item-id].agent-gui-edge-glow {
 .agent-gui-node__composer-queued-prompt-panel[data-expanded="true"]
   .agent-gui-node__composer-queued-prompt-text {
   overflow: hidden;
-  text-overflow: ellipsis;
+  text-overflow: clip;
   white-space: nowrap;
 }
 
@@ -7959,12 +8385,14 @@ html[data-theme="light"] [data-message-center-item-id].agent-gui-edge-glow {
   .agent-gui-node__composer-queued-prompt-markdown
   [data-workspace-agent-markdown="true"] {
   overflow: hidden;
-  text-overflow: ellipsis;
+  text-overflow: clip;
   white-space: nowrap;
 }
 
 .agent-gui-node__composer-queued-prompt-actions {
   display: inline-flex;
+  justify-self: end;
+  flex: 0 0 auto;
   align-items: center;
   gap: 4px;
 }
@@ -7973,7 +8401,7 @@ html[data-theme="light"] [data-message-center-item-id].agent-gui-edge-glow {
   color: var(--text-secondary);
 }
 
-.agent-gui-node__composer textarea,
+.agent-gui-node__composer-prompt-input-area textarea,
 .agent-gui-node__composer-textarea {
   --agent-gui-composer-text-line-height: 24px;
   --agent-gui-composer-text-max-visible-lines: 3.5;
@@ -8000,7 +8428,9 @@ html[data-theme="light"] [data-message-center-item-id].agent-gui-edge-glow {
   -ms-overflow-style: auto;
 }
 
-.agent-gui-node__composer[data-layout="dock"] textarea,
+.agent-gui-node__composer[data-layout="dock"]
+  .agent-gui-node__composer-prompt-input-area
+  textarea,
 .agent-gui-node__composer[data-layout="dock"]
   .agent-gui-node__composer-textarea {
   display: block;
@@ -8010,6 +8440,7 @@ html[data-theme="light"] [data-message-center-item-id].agent-gui-edge-glow {
   overflow-x: hidden;
   overflow-y: auto;
   overflow-wrap: anywhere;
+  padding-top: 12px;
   scrollbar-gutter: stable;
   /* Keep the scrollbar persistently visible (not hover/focus-only) once the
      draft overflows the visible viewport: a long pasted/dictated block of
@@ -8026,9 +8457,12 @@ html[data-theme="light"] [data-message-center-item-id].agent-gui-edge-glow {
   .agent-gui-node__composer-prompt-input-area[data-has-draft-images="true"]
   .agent-gui-node__composer-textarea {
   max-height: var(--agent-gui-composer-text-viewport-height);
+  padding-top: 0;
 }
 
-.agent-gui-node__composer[data-layout="dock"] textarea::-webkit-scrollbar,
+.agent-gui-node__composer[data-layout="dock"]
+  .agent-gui-node__composer-prompt-input-area
+  textarea::-webkit-scrollbar,
 .agent-gui-node__composer[data-layout="dock"]
   .agent-gui-node__composer-textarea::-webkit-scrollbar {
   display: block;
@@ -8036,21 +8470,21 @@ html[data-theme="light"] [data-message-center-item-id].agent-gui-edge-glow {
   height: 4px;
 }
 
-.agent-gui-node__composer textarea::-webkit-scrollbar,
+.agent-gui-node__composer-prompt-input-area textarea::-webkit-scrollbar,
 .agent-gui-node__composer-textarea::-webkit-scrollbar {
   display: block;
   width: 4px;
   height: 4px;
 }
 
-.agent-gui-node__composer textarea::-webkit-scrollbar-track,
-.agent-gui-node__composer textarea::-webkit-scrollbar-corner,
+.agent-gui-node__composer-prompt-input-area textarea::-webkit-scrollbar-track,
+.agent-gui-node__composer-prompt-input-area textarea::-webkit-scrollbar-corner,
 .agent-gui-node__composer-textarea::-webkit-scrollbar-track,
 .agent-gui-node__composer-textarea::-webkit-scrollbar-corner {
   background: transparent;
 }
 
-.agent-gui-node__composer textarea::-webkit-scrollbar-thumb,
+.agent-gui-node__composer-prompt-input-area textarea::-webkit-scrollbar-thumb,
 .agent-gui-node__composer-textarea::-webkit-scrollbar-thumb {
   border-radius: 999px;
   background: var(--transparency-hover);
@@ -8078,7 +8512,7 @@ html[data-theme="light"] [data-message-center-item-id].agent-gui-edge-glow {
   margin: 0;
   font-size: 13px;
   line-height: 24px;
-  min-height: 1.4em;
+  min-height: 0;
 }
 
 .agent-gui-node__composer[data-layout="dock"]
@@ -8087,7 +8521,7 @@ html[data-theme="light"] [data-message-center-item-id].agent-gui-edge-glow {
   display: block;
   width: auto;
   min-width: 0;
-  min-height: 24px;
+  min-height: 0;
   overflow: visible;
   overflow-wrap: anywhere;
   text-overflow: clip;
@@ -8107,6 +8541,19 @@ html[data-theme="light"] [data-message-center-item-id].agent-gui-edge-glow {
   p:empty:not(.agent-rich-text-placeholder-node) {
   min-height: 0;
   line-height: 0;
+}
+
+.agent-gui-node__composer-textarea
+  p:not(.agent-rich-text-placeholder-node):not(:empty) {
+  position: relative;
+  top: 0;
+  line-height: 20px;
+}
+
+.agent-gui-node__composer-textarea
+  p:not(.agent-rich-text-placeholder-node):not(:empty)
+  .agent-rich-text-mention-node {
+  transform: translateY(-2px);
 }
 
 .agent-gui-node__composer-textarea
@@ -8133,7 +8580,7 @@ html[data-theme="light"] [data-message-center-item-id].agent-gui-edge-glow {
   white-space: nowrap;
 }
 
-.agent-gui-node__composer textarea::placeholder,
+.agent-gui-node__composer-prompt-input-area textarea::placeholder,
 .agent-gui-node__composer-textarea::placeholder {
   color: var(--agent-gui-text-tertiary);
   line-height: 24px;
@@ -8178,12 +8625,12 @@ html[data-theme="light"] [data-message-center-item-id].agent-gui-edge-glow {
   align-items: center;
   justify-content: space-between;
   gap: 8px;
-  padding: 2px 12px;
+  padding: 2px 8px;
 }
 
 .agent-gui-node__composer-input-group-hero
   .agent-gui-node__composer-project-row {
-  padding: 2px 12px;
+  padding: 2px 8px;
 }
 
 .agent-gui-node__composer-project-row .agent-gui-node__composer-menu-trigger {
@@ -8409,7 +8856,16 @@ html[data-theme="light"] [data-message-center-item-id].agent-gui-edge-glow {
 }
 
 .agent-gui-node__composer[data-layout="dock"] .agent-gui-node__composer-footer {
-  padding: 0 2px;
+  position: relative;
+  /* The base rule's width: 100% keeps the parent's content width, so the
+     negative margins only shift the row left instead of widening it: the
+     right edge falls 24px short of the composer edge and strands the model
+     dropdown far from the send button above. width: auto lets
+     justify-self: stretch + the negative margins span the full row. */
+  width: auto;
+  margin: 0 -12px -12px;
+  padding: 0 14px 12px;
+  background: var(--agent-gui-session-flow-background);
 }
 
 .agent-gui-node__composer-footer-left,
@@ -8467,6 +8923,14 @@ html[data-theme="light"] [data-message-center-item-id].agent-gui-edge-glow {
 .agent-gui-node__composer-menu-item > span:last-child > span {
   width: 100%;
   min-width: 0;
+}
+
+.agent-gui-node__composer-menu-trigger[data-agent-plan-mode-badge="true"] {
+  color: var(--state-warning);
+}
+
+.agent-gui-node__composer-menu-trigger[data-agent-goal-badge="true"] {
+  color: var(--tutti-purple);
 }
 
 .agent-gui-node__composer-menu-trigger:hover:not(:disabled) {
@@ -8600,6 +9064,12 @@ html[data-theme="light"] [data-message-center-item-id].agent-gui-edge-glow {
   line-height: 1.2;
 }
 
+.agent-gui-node__composer-menu-item[data-disabled] {
+  cursor: not-allowed;
+  color: var(--text-disabled);
+  opacity: 0.5;
+}
+
 .agent-gui-node__composer-menu-content[data-agent-composer-settings-layout="model-primary"]
   .agent-gui-node__composer-menu-item,
 .agent-gui-node__composer-menu-content[data-agent-composer-settings-layout="model-submenu"]
@@ -8685,7 +9155,7 @@ html[data-theme="light"] [data-message-center-item-id].agent-gui-edge-glow {
   flex: 1 1 auto;
   flex-direction: column;
   align-items: center;
-  padding: 2px 0 12px;
+  padding: 2px 0 16px;
   overflow-x: hidden;
   overflow-y: auto;
   mask-image: linear-gradient(
@@ -8712,8 +9182,29 @@ html[data-theme="light"] [data-message-center-item-id].agent-gui-edge-glow {
   align-items: center;
   justify-content: center;
   gap: 8px;
-  padding: 0 0 12px;
+  padding: 0;
   -webkit-app-region: no-drag;
+}
+
+.agent-gui-node__provider-rail-config-footer {
+  padding-bottom: 4px;
+}
+
+.agent-gui-node__provider-rail-config-footer:last-child {
+  padding-bottom: 12px;
+}
+
+.agent-gui-node__provider-rail-sidebar-footer {
+  padding-bottom: 0;
+}
+
+.agent-gui-node__provider-rail-sidebar-footer:last-child {
+  padding-bottom: 12px;
+}
+
+.agent-gui-node__provider-rail-sidebar-footer
+  + .agent-gui-node__provider-rail-config-footer {
+  margin-top: 8px;
 }
 
 .agent-gui-node__provider-rail-config-button {
@@ -8852,6 +9343,9 @@ html[data-theme="light"] [data-message-center-item-id].agent-gui-edge-glow {
 }
 
 .agent-gui-node__provider-rail-avatar {
+  --agent-gui-avatar-badge-offset: -4px;
+  --agent-gui-avatar-badge-size: 16px;
+
   position: relative;
   box-sizing: border-box;
   display: grid;
@@ -8873,6 +9367,19 @@ html[data-theme="light"] [data-message-center-item-id].agent-gui-edge-glow {
 .agent-gui-node__provider-rail-tile:not([data-selected="true"])
   .agent-gui-node__provider-rail-avatar {
   opacity: 0.38;
+}
+
+/* "Beta" tag straddling the selected icon's bottom border: its centerline sits
+   on the selected-state stroke, horizontally centered on the icon. */
+.agent-gui-node__provider-rail-beta-badge {
+  position: absolute;
+  top: calc(100% - 1px);
+  left: 50%;
+  transform: translate(-50%, -50%);
+  z-index: 2;
+  width: 26px;
+  height: auto;
+  pointer-events: none;
 }
 
 .agent-gui-node__provider-rail-tile:hover:not(:disabled)
@@ -8905,23 +9412,34 @@ html[data-theme="light"] [data-message-center-item-id].agent-gui-edge-glow {
   object-fit: contain;
 }
 
-.agent-gui-node__provider-rail-badge {
+.agent-gui-node__agent-avatar {
+  position: relative;
+}
+
+.agent-gui-node__agent-avatar-image {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+
+.agent-gui-node__agent-avatar-badge {
   position: absolute;
-  right: -4px;
-  bottom: -4px;
+  right: var(--agent-gui-avatar-badge-offset, -4px);
+  bottom: var(--agent-gui-avatar-badge-offset, -4px);
   box-sizing: border-box;
   display: grid;
-  width: 16px;
-  height: 16px;
+  width: var(--agent-gui-avatar-badge-size, 16px);
+  height: var(--agent-gui-avatar-badge-size, 16px);
   place-items: center;
   overflow: hidden;
-  border: 1px solid #fff;
+  border: 1px solid var(--background-fronted);
   border-radius: 999px;
-  background: #fff;
+  background: var(--background-fronted);
   pointer-events: none;
 }
 
-.agent-gui-node__provider-rail-badge-image {
+.agent-gui-node__agent-avatar-badge-image {
   width: 100%;
   height: 100%;
   object-fit: cover;
@@ -8939,6 +9457,114 @@ html[data-theme="light"] [data-message-center-item-id].agent-gui-edge-glow {
   animation: agent-gui-provider-target-loading 1.2s ease-in-out infinite;
 }
 
+.agent-gui-provider-manager-tile[data-dragging="true"] {
+  opacity: 0.45;
+}
+
+.agent-gui-provider-manager-drop-zone {
+  transition:
+    background-color 140ms ease,
+    box-shadow 140ms ease;
+}
+
+.agent-gui-provider-manager-drop-zone[data-drop-active="true"] {
+  background: color-mix(
+    in srgb,
+    var(--brand-primary, var(--tutti-purple)) 7%,
+    transparent
+  );
+  box-shadow: inset 0 0 0 1px
+    color-mix(
+      in srgb,
+      var(--brand-primary, var(--tutti-purple)) 42%,
+      transparent
+    );
+}
+
+.agent-gui-provider-manager-drop-zone[data-drop-blocked="true"] {
+  background: color-mix(in srgb, var(--state-danger) 6%, transparent);
+  box-shadow: inset 0 0 0 1px
+    color-mix(in srgb, var(--state-danger) 28%, transparent);
+}
+
+.agent-gui-provider-manager-tile
+  > :not(.agent-gui-provider-manager-drop-indicator) {
+  transition: translate 140ms ease;
+}
+
+.agent-gui-provider-manager-tile[data-drag-over="before"]
+  > :not(.agent-gui-provider-manager-drop-indicator) {
+  translate: 8px 0;
+}
+
+.agent-gui-provider-manager-tile[data-drag-over="after"]
+  > :not(.agent-gui-provider-manager-drop-indicator) {
+  translate: -8px 0;
+}
+
+.agent-gui-provider-manager-drop-indicator {
+  position: absolute;
+  top: 4px;
+  bottom: 4px;
+  width: 2px;
+  border-radius: 999px;
+  background: var(--brand-primary, var(--tutti-purple));
+  pointer-events: none;
+}
+
+.agent-gui-provider-manager-drop-indicator[data-position="before"] {
+  left: -9px;
+}
+
+.agent-gui-provider-manager-drop-indicator[data-position="after"] {
+  right: -9px;
+}
+
+.agent-gui-provider-manager-tile[data-long-press="true"] {
+  animation: agent-gui-provider-manager-long-press 550ms linear;
+}
+
+.agent-gui-provider-manager-tile[data-editing="true"] {
+  transform-origin: 50% 42%;
+  animation: agent-gui-provider-manager-wiggle 180ms ease-in-out infinite
+    alternate;
+}
+
+.agent-gui-provider-manager-tile[data-editing="true"]:nth-child(2n) {
+  animation-delay: -90ms;
+  animation-direction: alternate-reverse;
+}
+
+.agent-gui-provider-manager-tile[data-editing="true"][data-drag-active="true"] {
+  animation: none;
+}
+
+@keyframes agent-gui-provider-manager-wiggle {
+  0% {
+    transform: rotate(-1.2deg) translateY(0);
+  }
+
+  100% {
+    transform: rotate(1.2deg) translateY(-0.5px);
+  }
+}
+
+@keyframes agent-gui-provider-manager-long-press {
+  from {
+    scale: 1;
+  }
+
+  to {
+    scale: 1;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .agent-gui-provider-manager-tile[data-editing="true"] {
+    animation: none;
+  }
+}
+
 @keyframes agent-gui-provider-target-loading {
   0% {
     background-position: 100% 0;
@@ -8950,6 +9576,10 @@ html[data-theme="light"] [data-message-center-item-id].agent-gui-edge-glow {
 }
 
 .agent-gui-node__empty-hero {
+  /* Center one shared frame instead of each state's intrinsic content height.
+     Wrapped titles, composer controls, and readiness actions then grow down. */
+  --agent-gui-empty-hero-anchor-block-size: 398px;
+
   display: flex;
   width: 100%;
   min-height: 100%;
@@ -8963,6 +9593,9 @@ html[data-theme="light"] [data-message-center-item-id].agent-gui-edge-glow {
 
   display: grid;
   width: min(820px, 100%);
+  min-width: 0;
+  block-size: var(--agent-gui-empty-hero-anchor-block-size);
+  align-content: start;
   gap: var(--agent-gui-empty-hero-gap);
   justify-items: center;
 }
@@ -8978,12 +9611,63 @@ html[data-theme="light"] [data-message-center-item-id].agent-gui-edge-glow {
    slot; keep it centered in the hero column. */
 .agent-gui-node__empty-hero-icon-slot:has(
   > .agent-gui-node__empty-hero-carousel
-) {
+),
+.agent-gui-node__empty-hero-icon-slot[data-carousel-placeholder="true"] {
   width: min(400px, 100%);
-  height: auto;
+  min-width: 320px;
+  height: 112px;
+}
+
+.agent-gui-node__empty-hero-carousel-stage {
+  position: relative;
+  top: -24px;
+  width: 100%;
+  min-height: 100%;
+}
+
+.agent-gui-node__empty-hero-carousel-layer {
+  position: absolute;
+  z-index: 1;
+
+  --agent-gui-hero-carousel-scale: 0.8;
+
+  /* The stage measures the body's placeholder slot and pins the layer to it;
+     the calc()/50% fallbacks remain only as the first-paint estimate. */
+  top: var(--agent-gui-hero-carousel-slot-top, calc(50% - 210px));
+  left: var(--agent-gui-hero-carousel-slot-left, 50%);
+  width: round(nearest, min(400px, calc(100% - 64px)), 1px);
+  min-width: 320px;
+  transform: translateX(-50%) scale(var(--agent-gui-hero-carousel-scale));
+  transform-origin: center center;
+}
+
+@media (max-height: 639px) {
+  .agent-gui-node__empty-hero-carousel-layer {
+    --agent-gui-hero-carousel-scale: 0.64;
+    top: calc(
+      var(--agent-gui-hero-carousel-slot-top, calc(50% - 210px)) - 16px
+    );
+  }
+}
+
+.agent-gui-node__empty-hero-carousel-placeholder {
+  width: min(400px, 100%);
+  min-width: 320px;
+  height: 112px;
+  flex: 0 0 auto;
+}
+
+/* Keep the overlayed carousel interactive while the ready/gated body below it
+   changes independently. */
+.agent-gui-node__empty-hero-carousel-layer
+  > .agent-gui-node__empty-hero-carousel {
+  pointer-events: auto;
 }
 
 .agent-gui-node__empty-hero-icon-effect {
+  --agent-gui-avatar-badge-offset: -5px;
+  --agent-gui-avatar-badge-size: 18px;
+
   display: block;
   width: 48px;
   height: 48px;
@@ -8992,65 +9676,8 @@ html[data-theme="light"] [data-message-center-item-id].agent-gui-edge-glow {
     both;
 }
 
-.agent-gui-node__empty-hero-icon-rail {
-  display: flex;
-  width: min(216px, 44vw);
-  height: 64px;
-  align-items: center;
-  overflow: hidden;
-  object-fit: unset;
-}
-
-.agent-gui-node__empty-hero-icon-rail-scroller {
-  display: flex;
-  width: 100%;
-  min-width: 0;
-  align-items: center;
-  gap: 12px;
-  overflow-x: auto;
-  overflow-y: hidden;
-  padding: 8px 20px;
-  overscroll-behavior-x: contain;
-  scrollbar-width: none;
-  scroll-snap-type: x proximity;
-  mask-image: linear-gradient(
-    90deg,
-    transparent 0,
-    #000 24px,
-    #000 calc(100% - 24px),
-    transparent 100%
-  );
-}
-
-.agent-gui-node__empty-hero-icon-rail-scroller::-webkit-scrollbar {
-  display: none;
-}
-
-.agent-gui-node__empty-hero-icon-rail-item {
-  display: grid;
-  width: 48px;
-  height: 48px;
-  flex: 0 0 48px;
-  place-items: center;
-  scroll-snap-align: center;
-  transition:
-    opacity 140ms ease,
-    transform 140ms ease;
-}
-
-.agent-gui-node__empty-hero-icon-rail-item:hover {
-  transform: translateY(-1px);
-}
-
-.agent-gui-node__empty-hero-icon-rail-item > img {
-  display: block;
-  width: 48px;
-  height: 48px;
-  object-fit: contain;
-}
-
 /* Empty-hero agent carousel ("All" tab): a three.js ring of same-sized agent
-   tiles (see agentGuiHeroCarouselScene.ts). Tiles farther around the ring
+   records (see agentGuiHeroCarouselScene.ts). Records farther around the ring
    genuinely shrink and fade with perspective; visuals live on the canvas,
    while visually-hidden buttons keep the switcher reachable by keyboard,
    screen readers, and DOM tests. */
@@ -9062,6 +9689,268 @@ html[data-theme="light"] [data-message-center-item-id].agent-gui-edge-glow {
   touch-action: pan-y;
   animation: agent-gui-empty-hero-enter 260ms cubic-bezier(0.16, 1, 0.3, 1) 40ms
     both;
+}
+
+/* Reference VinylPlayer structure, scaled from 440px to the 112px hero slot. */
+.agent-gui-vinyl-player {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  z-index: 2;
+  width: 440px;
+  height: 440px;
+  overflow: visible;
+  border-radius: 40px;
+  background: transparent;
+  pointer-events: none;
+  transform: translate(-50%, -50%) scale(0.25);
+  transform-origin: center;
+}
+
+.agent-gui-vinyl-player__chassis {
+  position: absolute;
+  top: 12px;
+  left: 0;
+  z-index: 0;
+  width: 440px;
+  height: 416px;
+  object-fit: fill;
+  pointer-events: none;
+}
+
+/* "Beta" wordmark SVG tucked into the turntable's bottom-right corner, tilted
+   30° to the left. The player renders at 0.25 (root) × 0.8 (hero layer) = 0.2
+   on screen, so the artwork is counter-scaled to net a readable on-screen size;
+   position lengths stay in the 440px local space (× 0.2 on screen). */
+.agent-gui-vinyl-player__beta {
+  position: absolute;
+  top: 380px;
+  left: 372px;
+  z-index: 3;
+  width: 113px;
+  height: auto;
+  pointer-events: none;
+  transform: translate(-50%, -50%) rotate(-30deg) scale(1.9);
+  transform-origin: center;
+  animation: agent-gui-vinyl-player-beta-slap 420ms
+    cubic-bezier(0.34, 1.56, 0.64, 1) both;
+}
+
+/* Sticker "slap": drops in oversized and transparent, then snaps down to size
+   with a slight overshoot so it lands like a decal being pressed on. Keep the
+   translate/rotate in every keyframe since transform is a single property. */
+@keyframes agent-gui-vinyl-player-beta-slap {
+  0% {
+    opacity: 0;
+    transform: translate(-50%, -50%) rotate(-30deg) scale(4.2);
+  }
+
+  60% {
+    opacity: 1;
+    transform: translate(-50%, -50%) rotate(-30deg) scale(1.7);
+  }
+
+  100% {
+    opacity: 1;
+    transform: translate(-50%, -50%) rotate(-30deg) scale(1.9);
+  }
+}
+
+.agent-gui-vinyl-player__indicator {
+  position: absolute;
+  top: 32px;
+  left: 32px;
+  display: grid;
+  width: 26px;
+  height: 26px;
+  place-items: center;
+  border: 1px solid #c0c2c4;
+  border-radius: 50%;
+  background: #9ea0a3;
+  box-shadow:
+    0 2px 4px rgb(0 0 0 / 10%),
+    inset 0 1px 2px rgb(255 255 255 / 80%);
+  display: none;
+}
+
+.agent-gui-vinyl-player__indicator-light {
+  display: flex;
+  width: 20px;
+  height: 20px;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  border: 1px solid #384a3c;
+  border-radius: 50%;
+  background: #4b6652;
+  box-shadow: inset 0 2px 6px rgb(0 0 0 / 40%);
+}
+
+.agent-gui-vinyl-player__indicator-light--playing {
+  border-color: #86f0a6;
+  background: #5edb84;
+  box-shadow:
+    0 0 12px rgb(74 222 128 / 70%),
+    inset 0 1px 4px rgb(255 255 255 / 60%);
+}
+
+.agent-gui-vinyl-player__indicator-light > span {
+  width: 1px;
+  height: 8px;
+  background: rgb(255 255 255 / 80%);
+}
+
+.agent-gui-vinyl-player__platter {
+  position: absolute;
+  top: 29px;
+  left: 24px;
+  display: grid;
+  width: 370px;
+  height: 370px;
+  place-items: center;
+  border-radius: 50%;
+  background: transparent;
+  box-shadow: none;
+}
+
+.agent-gui-vinyl-player__platter-inner {
+  display: grid;
+  width: 340px;
+  height: 340px;
+  place-items: center;
+  border-radius: 50%;
+  background: transparent;
+  box-shadow: none;
+}
+
+.agent-gui-vinyl-player__record {
+  position: relative;
+  display: grid;
+  width: 326px;
+  height: 326px;
+  place-items: center;
+  overflow: hidden;
+  border-radius: 50%;
+  background:
+    repeating-radial-gradient(
+      circle at center,
+      rgb(255 255 255 / 9%) 0 2px,
+      rgb(0 0 0 / 0%) 2px 8px
+    ),
+    #111;
+  box-shadow: 0 4px 15px rgb(0 0 0 / 60%);
+}
+
+.agent-gui-vinyl-player__groove,
+.agent-gui-vinyl-player__reflection,
+.agent-gui-vinyl-player__label,
+.agent-gui-vinyl-player__hole {
+  position: absolute;
+  border-radius: 50%;
+}
+
+.agent-gui-vinyl-player__groove {
+  border: 2px solid rgb(255 255 255 / 12%);
+}
+
+.agent-gui-vinyl-player__reflection {
+  inset: 0;
+  background: conic-gradient(
+    from 0deg,
+    transparent 0deg,
+    rgb(255 255 255 / 15%) 45deg,
+    transparent 90deg,
+    transparent 180deg,
+    rgb(255 255 255 / 15%) 225deg,
+    transparent 270deg
+  );
+  mix-blend-mode: screen;
+  opacity: 0.35;
+}
+
+.agent-gui-vinyl-player__label {
+  display: grid;
+  width: 144px;
+  height: 144px;
+  place-items: center;
+  overflow: hidden;
+  background: #2a2a2a;
+  box-shadow: inset 0 0 12px rgb(0 0 0 / 60%);
+}
+
+.agent-gui-vinyl-player__label > img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.agent-gui-vinyl-player__tonearm {
+  position: absolute;
+  top: -20px;
+  right: 14px;
+  z-index: 4;
+  width: 140px;
+  height: 400px;
+  object-fit: contain;
+  pointer-events: none;
+  transform: rotate(15deg);
+  transform-origin: 50% 8%;
+}
+
+.agent-gui-vinyl-player__hole {
+  width: 12px;
+  height: 12px;
+  border: 0.5px solid #717171;
+  background: #e0e2e5;
+  box-shadow: inset 0 1px 4px rgb(0 0 0 / 80%);
+}
+
+.agent-gui-vinyl-player__power-control {
+  position: absolute;
+  bottom: 32px;
+  left: 32px;
+  display: none;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+}
+
+.agent-gui-vinyl-player__lever {
+  display: block;
+  width: 16px;
+  height: 44px;
+  border: 1px solid #111;
+  border-radius: 10px;
+  background: linear-gradient(90deg, #1a1a1a, #3a3a3a, #1a1a1a);
+  box-shadow: 4px 2px 8px rgb(0 0 0 / 40%);
+  transform-origin: bottom;
+}
+
+.agent-gui-vinyl-player__power-label {
+  color: #3f4144;
+  font-size: 10px;
+  font-weight: 700;
+}
+
+.agent-gui-vinyl-player__tone-control {
+  position: absolute;
+  right: 32px;
+  bottom: 32px;
+  display: none;
+  align-items: center;
+  gap: 12px;
+  color: #65676b;
+  font-size: 10px;
+  font-weight: 700;
+}
+
+.agent-gui-vinyl-player__tone-control > span:first-child {
+  width: 30px;
+  height: 52px;
+  border: 1px solid #a0a2a4;
+  border-radius: 6px;
+  background: linear-gradient(#b0b2b5, #ced0d3);
+  box-shadow: inset 0 2px 5px rgb(0 0 0 / 30%);
 }
 
 .agent-gui-node__empty-hero-carousel:has(:focus-visible) {
@@ -9076,20 +9965,21 @@ html[data-theme="light"] [data-message-center-item-id].agent-gui-edge-glow {
   opacity: 0;
   transition: opacity 120ms ease-out;
 
-  /* Fade-out mask: a horizontal band dissolves tiles toward the stage sides
-     (the fully-transparent stops sit where the outermost tiles ride, not at
-     the canvas edges), intersected with a vertical band so tiles sinking
-     down the wheel melt away instead of being cut by the canvas bottom. */
+  /* Fade-out mask: the horizontal fade runs edge to edge so there is no dead
+     band beside the integer-aligned canvas buffer. The vertical band melts
+     tiles sinking down the wheel instead of clipping them at the bottom. */
   mask-image:
     linear-gradient(
       90deg,
-      transparent 12%,
-      #000 36%,
-      #000 64%,
-      transparent 88%
+      transparent 0%,
+      #000 20%,
+      #000 80%,
+      transparent 100%
     ),
-    linear-gradient(180deg, #000 0%, #000 70%, transparent 96%);
+    linear-gradient(180deg, #000 0%, #000 70%, transparent 100%);
   mask-composite: intersect;
+  mask-size: 100% 100%;
+  mask-position: center;
 }
 
 .agent-gui-node__empty-hero-carousel[data-icons-ready="true"]
@@ -9113,7 +10003,7 @@ html[data-theme="light"] [data-message-center-item-id].agent-gui-edge-glow {
   margin: 0;
   text-align: center;
   color: var(--text-primary);
-  font-size: 28px;
+  font-size: 24px;
   line-height: 1.3;
   font-weight: 500;
   animation: agent-gui-empty-hero-enter 280ms cubic-bezier(0.16, 1, 0.3, 1)
@@ -9133,7 +10023,9 @@ html[data-theme="light"] [data-message-center-item-id].agent-gui-edge-glow {
 
 /* Gate gap is 8px; add 16px so the icon-to-title spacing is 24px. */
 .agent-gui-node__empty-provider-gate > .agent-gui-node__empty-hero-icon-effect,
-.agent-gui-node__empty-provider-gate > .agent-gui-node__empty-hero-carousel {
+.agent-gui-node__empty-provider-gate > .agent-gui-node__empty-hero-carousel,
+.agent-gui-node__empty-provider-gate
+  > .agent-gui-node__empty-hero-carousel-placeholder {
   margin-bottom: 16px;
 }
 
@@ -9250,7 +10142,7 @@ html[data-theme="light"] [data-message-center-item-id].agent-gui-edge-glow {
   padding: 6px 14px;
   color: var(--text-secondary);
   font: inherit;
-  font-size: 13px;
+  font-size: 11px;
   line-height: 1.2;
   cursor: pointer;
   transition:
@@ -9272,8 +10164,8 @@ html[data-theme="light"] [data-message-center-item-id].agent-gui-edge-glow {
 }
 
 .agent-gui-node__empty-hero-suggestions-chip-icon {
-  width: 15px;
-  height: 15px;
+  width: 14px;
+  height: 14px;
   flex: 0 0 auto;
   opacity: 0.8;
 }
@@ -9667,7 +10559,7 @@ html[data-theme="light"] [data-message-center-item-id].agent-gui-edge-glow {
 }
 
 .workspace-agents-status-panel__detail-subagent-name {
-  color: var(--tutti-text-primary, rgba(0, 0, 0, 0.85));
+  color: var(--text-primary);
   margin-left: 4px;
 }
 

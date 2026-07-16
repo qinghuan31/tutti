@@ -15,6 +15,9 @@ export interface MentionPaletteGroup<TItem> {
   totalCount: number;
   visibleCount: number;
   hasMore: boolean;
+  expandStatus?: "idle" | "loading" | "error";
+  expandLoadingLabel?: string;
+  expandErrorLabel?: string;
   emptyLabel?: string;
   /**
    * Optional precomputed label for the "show more" expand control. When omitted
@@ -146,6 +149,8 @@ export interface MentionPaletteProps<TItem> {
   onNavigateHierarchy?: (delta: 1 | -1) => void;
   /** Rendered after the groups, before the keyboard hint bar. */
   renderListFooter?: () => ReactNode;
+  /** Optional controlled actions rendered at the trailing edge of the tab header. */
+  headerActions?: ReactNode;
   /**
    * Rendered inside the header, directly under the category tabs, while results
    * are refreshing in-place (i.e. existing results stay visible). Consumers that

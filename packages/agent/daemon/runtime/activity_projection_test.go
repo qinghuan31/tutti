@@ -7,6 +7,76 @@ import (
 	activityshared "github.com/tutti-os/tutti/packages/agent/daemon/activity/events"
 )
 
+func TestExtensionProviderProjectsTurnLifecycleEvents(t *testing.T) {
+	t.Parallel()
+
+	session := reportTestSession()
+	session.Provider = "acp:gemini"
+	started := newTurnActivityEvent(session, EventTurnStarted, "turn-1", SessionStatusWorking, "", "", nil)
+	failed := newTurnActivityEvent(session, EventTurnFailed, "turn-1", SessionStatusFailed, "", "", map[string]any{
+		"error": "quota exceeded",
+	})
+
+	if started.Type != activityshared.EventTurnStarted {
+		t.Fatalf("extension turn started event = %#v, want %q", started, activityshared.EventTurnStarted)
+	}
+	if failed.Type != activityshared.EventTurnFailed {
+		t.Fatalf("extension turn failed event = %#v, want %q", failed, activityshared.EventTurnFailed)
+	}
+	if started.Provider != activityshared.Provider("acp:gemini") || failed.Provider != activityshared.Provider("acp:gemini") {
+		t.Fatalf("extension event providers = %q, %q; want acp:gemini", started.Provider, failed.Provider)
+	}
+}
+
+func TestEventSourceCarriesStableSessionIncarnation(t *testing.T) {
+	source := eventSourceFromSession(Session{Provider: "codex", AgentSessionID: "session", CreatedAtUnixMS: 4242})
+	if source.SessionCreatedAtUnixMS != 4242 {
+		t.Fatalf("session incarnation = %d", source.SessionCreatedAtUnixMS)
+	}
+}
+
+func TestSessionAuditProjectsSeparatelyFromTurnMessages(t *testing.T) {
+	t.Parallel()
+	session := reportTestSession()
+	audit := newSessionAuditEventWithID(session, "goal-control:op-1", RoleUser, "/goal clear", map[string]any{"goalControl": true})
+	report := reportActivityInput(session, []activityshared.Event{audit})
+	if len(report.SessionAudits) != 1 || len(report.MessageUpdates) != 0 || len(report.StatePatches) != 0 {
+		t.Fatalf("report = %#v, want one standalone audit", report)
+	}
+	if report.SessionAudits[0].AuditID != "goal-control:op-1" || report.SessionAudits[0].Payload["goalControl"] != true {
+		t.Fatalf("audit = %#v", report.SessionAudits[0])
+	}
+	stream := ProjectActivityEventsToStreamEvents(session, []activityshared.Event{audit})
+	if len(stream) != 1 || stream[0].EventType != StreamEventSessionAudit {
+		t.Fatalf("stream events = %#v", stream)
+	}
+}
+
+func TestGoalReconcileRequiredProjectsOnlyToInternalControlReport(t *testing.T) {
+	t.Parallel()
+	session := reportTestSession()
+	ctx, ok := activityEventContext(session, "goal-reconcile:req-1", "")
+	if !ok {
+		t.Fatal("activity event context unavailable")
+	}
+	event := activityshared.NewGoalReconcileRequired(ctx, map[string]any{
+		"requestId": "req-1", "providerTurnId": "provider-turn-old", "fenceMode": "operation",
+		"expectedGoalOperationId": "goal-op-2", "expectedGoalRevision": int64(2),
+		"expectedGoalRepairEpoch": int64(1), "quiesceSucceeded": true,
+	})
+	report := reportActivityInput(session, []activityshared.Event{event})
+	if len(report.GoalReconcileRequests) != 1 || len(report.SessionAudits) != 0 || len(report.MessageUpdates) != 0 || len(report.StatePatches) != 0 {
+		t.Fatalf("internal reconcile report = %#v", report)
+	}
+	request := report.GoalReconcileRequests[0]
+	if request.RequestID != "req-1" || request.ExpectedOperationID != "goal-op-2" || request.ExpectedRevision != 2 || request.ExpectedRepairEpoch != 1 || !request.QuiesceSucceeded {
+		t.Fatalf("internal reconcile request = %#v", request)
+	}
+	if stream := ProjectActivityEventsToStreamEvents(session, []activityshared.Event{event}); len(stream) != 0 {
+		t.Fatalf("internal reconcile evidence leaked to realtime stream: %#v", stream)
+	}
+}
+
 func TestReportableActivityEventsReportsOnlyCompletedAssistantSnapshots(t *testing.T) {
 	t.Parallel()
 
@@ -44,6 +114,36 @@ func TestReportableActivityEventsReportsOnlyCompletedAssistantSnapshots(t *testi
 	}
 	if events[1].Payload.Metadata["streamState"] != messageStreamStateCompleted {
 		t.Fatalf("activity metadata streamState = %#v, want completed", events[1].Payload.Metadata)
+	}
+}
+
+func TestReportableActivityEventsIncludesRootProviderTurnLifecycle(t *testing.T) {
+	t.Parallel()
+
+	session := reportTestSession()
+	ctx, ok := activityEventContext(session, "root-provider-turn", "root-turn-1")
+	if !ok {
+		t.Fatal("activityEventContext() returned !ok")
+	}
+	events := ReportableActivityEvents([]activityshared.Event{
+		activityshared.NewRootProviderTurnStarted(ctx, "root-turn-1", "provider-turn-1"),
+		activityshared.NewRootProviderTurnCompleted(ctx, "root-turn-1", "provider-turn-1", activityshared.TurnOutcomeCompleted),
+	})
+
+	if len(events) != 2 {
+		t.Fatalf("activity events = %#v, want root provider start and completion", events)
+	}
+	report := reportActivityInput(session, events)
+	if len(report.StatePatches) != 2 {
+		t.Fatalf("state patches = %#v, want root provider start and completion", report.StatePatches)
+	}
+	started := report.StatePatches[0].RootProviderTurn
+	if started == nil || started.RootTurnID != "root-turn-1" || started.ProviderTurnID != "provider-turn-1" || started.Phase != agentsessionstore.RootProviderTurnPhaseRunning {
+		t.Fatalf("started root provider turn = %#v, want running transition", started)
+	}
+	completed := report.StatePatches[1].RootProviderTurn
+	if completed == nil || completed.RootTurnID != "root-turn-1" || completed.ProviderTurnID != "provider-turn-1" || completed.Phase != agentsessionstore.RootProviderTurnPhaseCompleted || completed.Outcome != string(activityshared.TurnOutcomeCompleted) {
+		t.Fatalf("completed root provider turn = %#v, want completed transition", completed)
 	}
 }
 

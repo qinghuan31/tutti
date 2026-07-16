@@ -15,8 +15,36 @@ func tuttiCLIPolicy(input PrepareInput) string {
 	return tuttiRuntimePolicy(input)
 }
 
-func hostAppContextPolicy() string {
-	return strings.TrimSpace(renderProviderSkillTemplate("policy_templates/host-app-context.md", nil))
+func hostAppContextPolicy(input PrepareInput) string {
+	return strings.TrimSpace(renderProviderSkillTemplate(
+		"policy_templates/host-app-context.md",
+		map[string]string{
+			"{{GENERATED_IMAGE_OUTPUT_POLICY}}": generatedImageOutputPolicy(input.Provider),
+		},
+	))
+}
+
+func generatedImageOutputPolicy(provider string) string {
+	if providerSupportsNativeGeneratedImageArtifacts(provider) {
+		return strings.Join([]string{
+			"- Native image generation results are rendered directly from `imageGeneration` tool output as generated-image artifacts.",
+			"- After successful native image generation, do not repeat generated images as Markdown image tags, links, or plain-text paths in the final response.",
+			"- Use Markdown image tags only for images that were not already delivered as native generated-image artifacts.",
+		}, "\n")
+	}
+	return strings.Join([]string{
+		"- Generated/edited image output: final response must include Markdown image tag.",
+		"- Multiple final images: one Markdown image tag each.",
+	}, "\n")
+}
+
+func providerSupportsNativeGeneratedImageArtifacts(provider string) bool {
+	switch strings.ToLower(strings.TrimSpace(provider)) {
+	case "codex", "tutti-agent":
+		return true
+	default:
+		return false
+	}
 }
 
 func tuttiRuntimePolicy(input PrepareInput) string {
@@ -102,7 +130,7 @@ func providerSpecificMentionRouting(provider string) string {
 
 Claude Code mention routing:
 
-- Claude Code skill names may be namespaced. Injected $tutti-cli, $issue-manager, $workspace-app, and $reference may appear as ` + "`tutti-cli:tutti-cli`" + `, ` + "`tutti-cli:issue-manager`" + `, ` + "`tutti-cli:workspace-app`" + `, and ` + "`tutti-cli:reference`" + `; treat visible provider names as authoritative.
+- Claude Code skill names may be namespaced. Injected $tutti-cli, $tutti-handoff, $issue-manager, $workspace-app, and $reference may appear as ` + "`tutti-cli:tutti-cli`" + `, ` + "`tutti-cli:tutti-handoff`" + `, ` + "`tutti-cli:issue-manager`" + `, ` + "`tutti-cli:workspace-app`" + `, and ` + "`tutti-cli:reference`" + `; treat visible provider names as authoritative.
 - Claude Code skill listings can omit descriptions for project or plugin skills. When a Tutti skill name appears without a description, this runtime policy is still authoritative for what the skill does and when to use it.
 - Before calling the Claude Code ` + "`Skill`" + ` tool, choose the exact visible skill name for the matching injected Tutti skill. Use a plain skill name such as ` + "`workspace-app`" + ` only if that exact name is visible; if the visible name is namespaced, call that exact name, for example ` + "`Skill(skill=\"tutti-cli:workspace-app\")`" + `. Do not call a plain skill name that is not visible. Do not pass arguments to Skill; the skill reads the mention URI from the current user turn.
 - When falling back to files, read the materialized ` + "`SKILL.md`" + ` that corresponds to the injected Tutti skill in the provider's visible skill listing or plugin metadata. Do not guess a directory from the plain skill slug; materialized directories may be suffixed to avoid collisions with user skills.
@@ -110,7 +138,8 @@ Claude Code mention routing:
 - If the current user turn contains ` + "`mention://workspace-app/<appId>?workspaceId=...`" + `, first use $workspace-app. Call the exact visible Skill tool when available and successful; if no exact visible Skill tool is available or it fails, fall back to that materialized skill file before any Bash, WebFetch, browser, MCP lookup, file search, or raw CLI commands.
 - If the current user turn contains ` + "`mention://workspace-reference/<id>?source=...&workspaceId=...`" + `, first use $reference. Call the exact visible Skill tool when available and successful; if no exact visible Skill tool is available or it fails, fall back to that materialized skill file before any Bash, WebFetch, browser, MCP lookup, file search, or raw CLI commands.
 - If the current user turn contains ` + "`mention://agent-session/<sessionId>?workspaceId=...`" + `, first use $tutti-cli. Call the exact visible Skill tool when available and successful; if no exact visible Skill tool is available or it fails, fall back to that materialized skill file before any Bash, WebFetch, browser, MCP lookup, file search, or raw CLI commands.
-- If the current user turn contains ` + "`mention://agent-target/<targetId>?workspaceId=...`" + `, first use $tutti-cli. Call the exact visible Skill tool when available and successful; if no exact visible Skill tool is available or it fails, fall back to that materialized skill file before any Bash, WebFetch, browser, MCP lookup, file search, or raw CLI commands. Choose ` + "`agent`" + `, ` + "`codex`" + `, ` + "`claude`" + `, or ` + "`tutti-agent`" + ` CLI workflow from the user's prompt; this is not launch-only.`)
+- If the current user turn contains ` + "`mention://agent-target/<targetId>?workspaceId=...`" + `, first use $tutti-handoff. Call the exact visible Skill tool when available and successful; if no exact visible Skill tool is available or it fails, fall back to that materialized skill file before any Bash, WebFetch, browser, MCP lookup, file search, or raw CLI commands. Follow the handoff skill's current-catalog workflow; do not infer provider-specific commands or assume a fixed agent catalog.
+- For an agent-target mention, when the injected namespaced skill is visible, call ` + "`Skill(skill=\"tutti-cli:tutti-handoff\")`" + ` directly. Do not use ` + "`ToolSearch`" + ` to select Claude Code's native ` + "`SendMessage`" + `, and never pass a Tutti agent target id such as ` + "`local:opencode`" + ` to native ` + "`SendMessage`" + `; those recipient ids belong to Claude Code background agents, not Tutti agent targets.`)
 	default:
 		return ""
 	}
@@ -123,7 +152,7 @@ func providerSpecificExecutionEnvironment(provider string, cliCommand string) st
 		return "- Codex: `" + command + "` needs localhost/IPC. When running `" + command + "` from a sandboxed exec tool, set `sandbox_permissions=require_escalated`. If `" + command + "` reports `daemon is not reachable from this agent execution environment`, rerun once with `sandbox_permissions=require_escalated`.\n"
 	case "claude", "claude-code":
 		return "- Claude Code `Monitor` tool is disabled. Poll async Tutti jobs with one bounded shell/script.\n- Claude Code: run `" + command + "` only from a shell environment that can reach localhost/IPC. If the provider runtime cannot reach the local Tutti daemon, report that limitation; do not invent Codex `sandbox_permissions`.\n"
-	case "cursor", "cursor-agent", "hermes", "hermes-agent", "nexight", "tutti", "openclaw", "open-claw", "opencode", "open-code":
+	case "cursor", "cursor-agent", "hermes", "hermes-agent", "nexight", "tutti", "openclaw", "open-claw", "opencode", "open-code", "tutti-agent":
 		return "- This provider must run `" + command + "` from an execution environment with localhost/IPC access. If the daemon is unreachable from the provider runtime, report that limitation instead of retrying with provider-specific sandbox flags.\n"
 	default:
 		return ""
@@ -219,17 +248,17 @@ func commandGuideScopeSummaries(guide string, cliName string) []commandScopeSumm
 }
 
 func commandScopeDescription(scope string, info *commandScopeInfo) string {
+	const codexCommandScope = "codex"
+
 	switch strings.TrimSpace(scope) {
 	case "agent":
-		return "agent sessions, waits, summaries, turn resources, active peers."
+		return "agent discovery, launches, sessions, waits, summaries, turn resources, active peers."
 	case "app":
 		return "open/show installed app windows only when explicitly requested."
 	case "browser":
 		return "daemon-owned browser automation."
-	case "claude":
-		return "start/manage Claude Code agent sessions."
-	case "codex":
-		return "start/manage Codex agent sessions."
+	case "claude", codexCommandScope, "tutti-agent":
+		return "legacy provider-specific commands."
 	case "computer":
 		return "daemon-owned macOS desktop automation."
 	case "issue":

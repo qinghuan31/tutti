@@ -6,7 +6,6 @@ import (
 	"errors"
 	"fmt"
 	"path/filepath"
-	"slices"
 	"strings"
 	"testing"
 
@@ -104,7 +103,7 @@ func openTestStore(t testing.TB, opts Options) *Store {
 	return store
 }
 
-func TestStoreFreshMigrateCreatesTablesWithoutHostForeignKeys(t *testing.T) {
+func TestStoreFreshMigrateCreatesSessionTurnReferenceWithoutHostForeignKey(t *testing.T) {
 	t.Parallel()
 
 	store := openTestStore(t, testOptions(&staticProjectPaths{}))
@@ -115,11 +114,22 @@ func TestStoreFreshMigrateCreatesTablesWithoutHostForeignKeys(t *testing.T) {
 		t.Fatalf("foreign_key_list error = %v", err)
 	}
 	defer rows.Close()
-	if rows.Next() {
-		t.Fatal("workspace_agent_sessions has foreign keys, want none")
+	hasTurnsFK := false
+	hasHostFK := false
+	for rows.Next() {
+		var id, seq int
+		var table, from, to, onUpdate, onDelete, match string
+		if err := rows.Scan(&id, &seq, &table, &from, &to, &onUpdate, &onDelete, &match); err != nil {
+			t.Fatalf("scan foreign_key_list: %v", err)
+		}
+		hasTurnsFK = hasTurnsFK || table == "workspace_agent_turns"
+		hasHostFK = hasHostFK || table == "workspaces"
 	}
 	if err := rows.Err(); err != nil {
 		t.Fatalf("iterate foreign_key_list: %v", err)
+	}
+	if !hasTurnsFK || hasHostFK {
+		t.Fatalf("session foreign keys turns=%v host=%v, want exact turn reference without host coupling", hasTurnsFK, hasHostFK)
 	}
 
 	targets, err := store.ListAgentTargets(ctx)
@@ -131,57 +141,69 @@ func TestStoreFreshMigrateCreatesTablesWithoutHostForeignKeys(t *testing.T) {
 	}
 }
 
-func TestStoreMigrateCreatesPinnedPaginationIndex(t *testing.T) {
+func TestStoreMigrateRefreshesOnlySystemSeedTargets(t *testing.T) {
 	t.Parallel()
 
 	store := openTestStore(t, testOptions(&staticProjectPaths{}))
 	ctx := context.Background()
-
-	rows, err := store.db.QueryContext(ctx, `PRAGMA index_xinfo(idx_workspace_agent_sessions_pinned_page)`)
-	if err != nil {
-		t.Fatalf("index_xinfo error = %v", err)
+	if _, err := store.db.ExecContext(ctx, `
+UPDATE agent_targets
+SET provider = 'stale-provider', launch_ref_json = '{}', name = 'Stale Codex',
+    icon_key = 'stale', enabled = 0, sort_order = 999, created_at_ms = 7, updated_at_ms = 8
+WHERE id = ?;
+`, testTargetIDCodex); err != nil {
+		t.Fatalf("seed stale system target: %v", err)
 	}
-	defer rows.Close()
-
-	type indexedColumn struct {
-		name string
-		desc int
-	}
-	var columns []indexedColumn
-	for rows.Next() {
-		var (
-			seqno int
-			cid   int
-			name  sql.NullString
-			desc  int
-			coll  sql.NullString
-			key   int
-		)
-		if err := rows.Scan(&seqno, &cid, &name, &desc, &coll, &key); err != nil {
-			t.Fatalf("scan index_xinfo: %v", err)
-		}
-		if key == 0 {
-			continue
-		}
-		columns = append(columns, indexedColumn{name: name.String, desc: desc})
-	}
-	if err := rows.Err(); err != nil {
-		t.Fatalf("iterate index_xinfo: %v", err)
+	if _, err := store.db.ExecContext(ctx, `
+UPDATE agent_targets
+SET provider = 'custom-provider', launch_ref_json = '{"custom":true}', name = 'Custom',
+    icon_key = 'custom', enabled = 0, source = 'user', sort_order = 777,
+    created_at_ms = 9, updated_at_ms = 10
+WHERE id = ?;
+`, testTargetIDClaude); err != nil {
+		t.Fatalf("seed custom target: %v", err)
 	}
 
-	want := []indexedColumn{
-		{name: "workspace_id", desc: 0},
-		{name: "deleted_at_unix_ms", desc: 0},
-		{name: "pinned_at_unix_ms", desc: 1},
-		{name: "agent_session_id", desc: 0},
+	if err := store.Migrate(ctx); err != nil {
+		t.Fatalf("Migrate() error = %v", err)
 	}
-	if len(columns) != len(want) {
-		t.Fatalf("pinned pagination index columns = %+v, want %+v", columns, want)
+
+	var codex Target
+	if err := store.db.QueryRowContext(ctx, `
+SELECT id, provider, launch_ref_json, name, icon_key, enabled, source, sort_order, created_at_ms, updated_at_ms
+FROM agent_targets WHERE id = ?
+`, testTargetIDCodex).Scan(&codex.ID, &codex.Provider, &codex.LaunchRefJSON, &codex.Name, &codex.IconKey, &codex.Enabled, &codex.Source, &codex.SortOrder, &codex.CreatedAtUnixMS, &codex.UpdatedAtUnixMS); err != nil {
+		t.Fatalf("query refreshed codex target: %v", err)
 	}
-	for i := range want {
-		if columns[i] != want[i] {
-			t.Fatalf("pinned pagination index column[%d] = %+v, want %+v", i, columns[i], want[i])
-		}
+	if codex.Provider != "codex" || codex.LaunchRefJSON != `{"type":"local_cli","provider":"codex"}` ||
+		codex.Name != "Codex" || codex.IconKey != "codex" || !codex.Enabled || codex.SortOrder != 10 {
+		t.Fatalf("refreshed system target = %#v", codex)
+	}
+	if codex.CreatedAtUnixMS != 7 || codex.Source != systemTargetSource || codex.UpdatedAtUnixMS == 8 {
+		t.Fatalf("system target preserved fields/timestamp = %#v", codex)
+	}
+	refreshedAt := codex.UpdatedAtUnixMS
+	if err := store.seedSystemAgentTargets(ctx, refreshedAt+1000); err != nil {
+		t.Fatalf("seed unchanged system targets: %v", err)
+	}
+	if err := store.db.QueryRowContext(ctx, `SELECT updated_at_ms FROM agent_targets WHERE id = ?`, testTargetIDCodex).Scan(&codex.UpdatedAtUnixMS); err != nil {
+		t.Fatalf("query unchanged codex target: %v", err)
+	}
+	if codex.UpdatedAtUnixMS != refreshedAt {
+		t.Fatalf("unchanged system target updated_at_ms = %d, want %d", codex.UpdatedAtUnixMS, refreshedAt)
+	}
+
+	var custom Target
+	if err := store.db.QueryRowContext(ctx, `
+SELECT id, provider, launch_ref_json, name, icon_key, enabled, source, sort_order, created_at_ms, updated_at_ms
+FROM agent_targets WHERE id = ?
+`, testTargetIDClaude).Scan(&custom.ID, &custom.Provider, &custom.LaunchRefJSON, &custom.Name, &custom.IconKey, &custom.Enabled, &custom.Source, &custom.SortOrder, &custom.CreatedAtUnixMS, &custom.UpdatedAtUnixMS); err != nil {
+		t.Fatalf("query custom target: %v", err)
+	}
+	if custom.Provider != "custom-provider" || custom.LaunchRefJSON != `{"custom":true}` || custom.Name != "Custom" ||
+		custom.IconKey != "custom" || custom.Enabled || custom.Source != "user" || custom.SortOrder != 777 ||
+		custom.CreatedAtUnixMS != 9 || custom.UpdatedAtUnixMS != 10 {
+		t.Fatalf("custom target was overwritten = %#v", custom)
 	}
 }
 
@@ -199,7 +221,7 @@ func TestStoreReportAndListSessionLifecycle(t *testing.T) {
 		Provider:          "codex",
 		ProviderSessionID: "provider-1",
 		Cwd:               "/workspace",
-		Title:             "hello",
+		Title:             "@renderer.js",
 		Status:            "running",
 		OccurredAtUnixMS:  100,
 	})
@@ -211,6 +233,15 @@ func TestStoreReportAndListSessionLifecycle(t *testing.T) {
 	}
 	if state.Session.UserID != "user-1" {
 		t.Fatalf("state session user id = %q", state.Session.UserID)
+	}
+	if state.Session.Title != "@renderer.js" {
+		t.Fatalf("state session title = %q, want canonical title", state.Session.Title)
+	}
+	if _, accepted, err := store.RecordTurnTransition(ctx, TurnTransition{
+		WorkspaceID: "ws-1", AgentSessionID: "session-1", TurnID: "turn-1",
+		Phase: TurnPhaseRunning, OccurredAtUnixMS: 105,
+	}); err != nil || !accepted {
+		t.Fatalf("RecordTurnTransition accepted=%v error=%v", accepted, err)
 	}
 
 	first, err := store.ReportSessionMessages(ctx, SessionMessageReport{
@@ -272,9 +303,19 @@ func TestStoreReportAndListSessionLifecycle(t *testing.T) {
 		t.Fatalf("UpdateSessionPinned() = %#v ok=%v error=%v", pinned, ok, err)
 	}
 
-	renamed, ok, err := store.UpdateSessionTitle(ctx, "ws-1", "session-1", "  Renamed session  ")
-	if err != nil || !ok || renamed.Title != "Renamed session" || renamed.UpdatedAtUnixMS < pinned.UpdatedAtUnixMS {
+	renamed, ok, err := store.UpdateSessionTitle(ctx, "ws-1", "session-1", " final ")
+	if err != nil || !ok || renamed.Title != "final" || renamed.UpdatedAtUnixMS < pinned.UpdatedAtUnixMS {
 		t.Fatalf("UpdateSessionTitle() = %#v ok=%v error=%v", renamed, ok, err)
+	}
+
+	updatedSettings, ok, err := store.UpdateSessionSettings(ctx, "ws-1", "session-1", "gpt-5.4", map[string]any{
+		"model":            "gpt-5.4",
+		"permissionModeId": "full-access",
+	})
+	if err != nil || !ok || updatedSettings.Model != "gpt-5.4" ||
+		updatedSettings.Settings["permissionModeId"] != "full-access" ||
+		updatedSettings.UpdatedAtUnixMS < renamed.UpdatedAtUnixMS {
+		t.Fatalf("UpdateSessionSettings() = %#v ok=%v error=%v", updatedSettings, ok, err)
 	}
 
 	blankRenamed, ok, err := store.UpdateSessionTitle(ctx, "ws-1", "session-1", "   ")
@@ -282,7 +323,7 @@ func TestStoreReportAndListSessionLifecycle(t *testing.T) {
 		t.Fatalf("UpdateSessionTitle(blank) = %#v ok=%v error=%v, want no update", blankRenamed, ok, err)
 	}
 	sessionAfterBlankTitle, ok, err := store.GetSession(ctx, "ws-1", "session-1")
-	if err != nil || !ok || sessionAfterBlankTitle.Title != "Renamed session" {
+	if err != nil || !ok || sessionAfterBlankTitle.Title != "final" {
 		t.Fatalf("GetSession() after blank title = %#v ok=%v error=%v", sessionAfterBlankTitle, ok, err)
 	}
 
@@ -300,6 +341,186 @@ func TestStoreReportAndListSessionLifecycle(t *testing.T) {
 	}
 	if result.RemovedSessions != 1 || result.RemovedMessages != 1 {
 		t.Fatalf("ClearSessions() = %#v, want tombstoned rows hard-deleted", result)
+	}
+}
+
+func TestStoreMessageVersionsAreSnapshotCursorsAndMayHaveGaps(t *testing.T) {
+	t.Parallel()
+
+	store := openTestStore(t, testOptions(&staticProjectPaths{}))
+	ctx := context.Background()
+	if _, err := store.ReportSessionState(ctx, SessionStateReport{
+		WorkspaceID: "ws-1", AgentSessionID: "session-1", Origin: "runtime",
+		Provider: "codex", ProviderSessionID: "provider-1", Status: "running", OccurredAtUnixMS: 100,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if _, accepted, err := store.RecordTurnTransition(ctx, TurnTransition{
+		WorkspaceID: "ws-1", AgentSessionID: "session-1", TurnID: "turn-1",
+		Phase: TurnPhaseSubmitted, OccurredAtUnixMS: 101,
+	}); err != nil || !accepted {
+		t.Fatalf("RecordTurnTransition() accepted=%v error=%v", accepted, err)
+	}
+	for _, report := range []SessionMessageReport{
+		{WorkspaceID: "ws-1", AgentSessionID: "session-1", Messages: []MessageUpdate{{
+			MessageID: "message-a", TurnID: "turn-1", Role: "user", Kind: "text", Status: "completed", Payload: map[string]any{"text": "a"},
+		}}},
+		{WorkspaceID: "ws-1", AgentSessionID: "session-1", Messages: []MessageUpdate{{
+			MessageID: "message-b", TurnID: "turn-1", Role: "assistant", Kind: "text", Status: "running", Payload: map[string]any{"text": "b"},
+		}}},
+		{WorkspaceID: "ws-1", AgentSessionID: "session-1", Messages: []MessageUpdate{{
+			MessageID: "message-b", Status: "completed", ContentDelta: " done",
+		}}},
+	} {
+		if result, err := store.ReportSessionMessages(ctx, report); err != nil || result.AcceptedCount != 1 {
+			t.Fatalf("ReportSessionMessages() result=%#v error=%v", result, err)
+		}
+	}
+
+	page, ok, err := store.ListSessionMessages(ctx, ListSessionMessagesInput{WorkspaceID: "ws-1", AgentSessionID: "session-1", Limit: 10})
+	if err != nil || !ok || page.LatestVersion != 3 || len(page.Messages) != 2 {
+		t.Fatalf("ListSessionMessages() page=%#v ok=%v error=%v", page, ok, err)
+	}
+	if page.Messages[0].MessageID != "message-a" || page.Messages[0].Version != 1 || page.Messages[1].MessageID != "message-b" || page.Messages[1].Version != 3 {
+		t.Fatalf("current message snapshot versions=%#v, want message-a@1 and message-b@3", page.Messages)
+	}
+	incremental, ok, err := store.ListSessionMessages(ctx, ListSessionMessagesInput{WorkspaceID: "ws-1", AgentSessionID: "session-1", AfterVersion: 1, Limit: 10})
+	if err != nil || !ok || len(incremental.Messages) != 1 || incremental.Messages[0].MessageID != "message-b" || incremental.LatestVersion != 3 {
+		t.Fatalf("incremental page=%#v ok=%v error=%v", incremental, ok, err)
+	}
+
+	rejected, err := store.ReportSessionMessages(ctx, SessionMessageReport{WorkspaceID: "ws-1", AgentSessionID: "session-1", Messages: []MessageUpdate{{
+		MessageID: "message-a", TurnID: "turn-2", Status: "completed",
+	}}})
+	if err != nil || rejected.AcceptedCount != 0 {
+		t.Fatalf("rejected update result=%#v error=%v", rejected, err)
+	}
+	session, ok, err := store.GetSession(ctx, "ws-1", "session-1")
+	if err != nil || !ok || session.MessageVersion != 3 {
+		t.Fatalf("session after rejected update=%#v ok=%v error=%v", session, ok, err)
+	}
+}
+
+func TestSessionAuditIsTurnlessAndDoesNotChangeActiveTurn(t *testing.T) {
+	t.Parallel()
+	store := openTestStore(t, testOptions(&staticProjectPaths{}))
+	ctx := context.Background()
+	if _, err := store.ReportSessionState(ctx, SessionStateReport{
+		WorkspaceID: "ws-audit", AgentSessionID: "session-audit", Origin: "runtime", Provider: "codex",
+		Status: "running", CurrentPhase: "working", OccurredAtUnixMS: 100,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if _, accepted, err := store.RecordTurnTransition(ctx, TurnTransition{
+		WorkspaceID: "ws-audit", AgentSessionID: "session-audit", TurnID: "turn-active",
+		Phase: TurnPhaseRunning, Origin: TurnOriginUserPrompt, OccurredAtUnixMS: 101,
+	}); err != nil || !accepted {
+		t.Fatalf("RecordTurnTransition() accepted=%v error=%v", accepted, err)
+	}
+	result, err := store.ReportSessionMessages(ctx, SessionMessageReport{
+		WorkspaceID: "ws-audit", AgentSessionID: "session-audit", Origin: "runtime", Provider: "codex",
+		Messages: []MessageUpdate{{MessageID: "goal-control:op-1", Role: "user", Kind: "session_audit", Status: "completed", Payload: map[string]any{"text": "/goal clear"}, OccurredAtUnixMS: 102}},
+	})
+	if err != nil || result.AcceptedCount != 1 || result.Messages[0].TurnID != "" {
+		t.Fatalf("audit result=%#v error=%v", result, err)
+	}
+	turn, ok, err := store.GetTurn(ctx, "ws-audit", "session-audit", "turn-active")
+	if err != nil || !ok || turn.Phase != TurnPhaseRunning {
+		t.Fatalf("active turn=%#v ok=%v error=%v", turn, ok, err)
+	}
+	for _, invalid := range []MessageUpdate{
+		{MessageID: "ordinary-empty", Role: "assistant", Kind: "text", OccurredAtUnixMS: 103},
+		{MessageID: "audit-with-turn", TurnID: "turn-active", Role: "user", Kind: "session_audit", OccurredAtUnixMS: 104},
+	} {
+		if _, err := store.ReportSessionMessages(ctx, SessionMessageReport{WorkspaceID: "ws-audit", AgentSessionID: "session-audit", Origin: "runtime", Messages: []MessageUpdate{invalid}}); err == nil {
+			t.Fatalf("ReportSessionMessages(%s) error=nil", invalid.MessageID)
+		}
+	}
+}
+
+func TestHistoricalImportCompatibilityCannotBeForgedByOrigin(t *testing.T) {
+	t.Parallel()
+	store := openTestStore(t, testOptions(&staticProjectPaths{}))
+	ctx := context.Background()
+	input := SessionMessageReport{
+		WorkspaceID: "ws-import-boundary", AgentSessionID: "session-import", Origin: "WORKSPACE_AGENT_SESSION_ORIGIN_IMPORTED",
+		Messages: []MessageUpdate{{MessageID: "legacy", Role: "assistant", Kind: "text", OccurredAtUnixMS: 10}},
+	}
+	if _, err := store.ReportSessionMessages(ctx, input); err == nil {
+		t.Fatal("import origin alone bypassed Turn invariant")
+	}
+	input.HistoricalImport = true
+	result, err := store.ReportSessionMessages(ctx, input)
+	if err != nil || result.AcceptedCount != 1 || result.Messages[0].TurnID != "" {
+		t.Fatalf("historical import result=%#v error=%v", result, err)
+	}
+}
+
+func TestStoreMessageSemanticsRoundTrip(t *testing.T) {
+	t.Parallel()
+	store := openTestStore(t, testOptions(&staticProjectPaths{}))
+	ctx := context.Background()
+	if _, err := store.ReportSessionState(ctx, SessionStateReport{WorkspaceID: "ws-semantics", AgentSessionID: "session-semantics", Provider: "codex", OccurredAtUnixMS: 1}); err != nil {
+		t.Fatal(err)
+	}
+	if _, accepted, err := store.RecordTurnTransition(ctx, TurnTransition{WorkspaceID: "ws-semantics", AgentSessionID: "session-semantics", TurnID: "turn-1", Phase: TurnPhaseRunning, OccurredAtUnixMS: 2}); err != nil || !accepted {
+		t.Fatalf("turn accepted=%v err=%v", accepted, err)
+	}
+	semantics := &MessageSemantics{UserVisibleAssistantResponse: true, TurnSettling: true, NoticeCommand: "compact", NoticeCommandStatus: "running"}
+	if _, err := store.ReportSessionMessages(ctx, SessionMessageReport{WorkspaceID: "ws-semantics", AgentSessionID: "session-semantics", Messages: []MessageUpdate{{MessageID: "message-1", TurnID: "turn-1", Role: "assistant", Kind: "text", Semantics: semantics, OccurredAtUnixMS: 3}}}); err != nil {
+		t.Fatal(err)
+	}
+	page, ok, err := store.ListSessionMessages(ctx, ListSessionMessagesInput{WorkspaceID: "ws-semantics", AgentSessionID: "session-semantics", Limit: 10})
+	if err != nil || !ok || len(page.Messages) != 1 || page.Messages[0].Semantics == nil || !page.Messages[0].Semantics.UserVisibleAssistantResponse || page.Messages[0].Semantics.NoticeCommand != "compact" {
+		t.Fatalf("message semantics page=%#v ok=%v err=%v", page, ok, err)
+	}
+}
+
+func TestReportActivityStateRejectsTurnForDeletedSession(t *testing.T) {
+	t.Parallel()
+	store := openTestStore(t, testOptions(&staticProjectPaths{}))
+	ctx := context.Background()
+	if _, err := store.ReportSessionState(ctx, SessionStateReport{WorkspaceID: "ws-deleted-activity", AgentSessionID: "session-deleted-activity", Provider: "codex", OccurredAtUnixMS: 1}); err != nil {
+		t.Fatal(err)
+	}
+	if removed, err := store.DeleteSession(ctx, "ws-deleted-activity", "session-deleted-activity"); err != nil || !removed {
+		t.Fatalf("DeleteSession removed=%v err=%v", removed, err)
+	}
+	result, err := store.ReportActivityState(ctx, ActivityStateReport{
+		Session: SessionStateReport{WorkspaceID: "ws-deleted-activity", AgentSessionID: "session-deleted-activity", Provider: "codex", OccurredAtUnixMS: 2},
+		Turn:    &TurnTransition{WorkspaceID: "ws-deleted-activity", AgentSessionID: "session-deleted-activity", TurnID: "late-turn", Phase: TurnPhaseSettled, Outcome: TurnOutcomeCompleted, OccurredAtUnixMS: 2},
+	})
+	if err != nil || result.State.Accepted || result.TurnAccepted {
+		t.Fatalf("late activity result=%#v err=%v", result, err)
+	}
+	if _, found, err := store.GetTurn(ctx, "ws-deleted-activity", "session-deleted-activity", "late-turn"); err != nil || found {
+		t.Fatalf("late turn found=%v err=%v", found, err)
+	}
+}
+
+func TestStoreRejectsMessageReferencingUnknownTurn(t *testing.T) {
+	t.Parallel()
+
+	store := openTestStore(t, testOptions(&staticProjectPaths{}))
+	ctx := context.Background()
+	if _, err := store.ReportSessionState(ctx, SessionStateReport{
+		WorkspaceID: "ws-1", AgentSessionID: "session-1", Origin: "runtime",
+		Provider: "codex", ProviderSessionID: "provider-1", Status: "running", OccurredAtUnixMS: 100,
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	_, err := store.ReportSessionMessages(ctx, SessionMessageReport{
+		WorkspaceID: "ws-1", AgentSessionID: "session-1", Messages: []MessageUpdate{{
+			MessageID: "message-1", TurnID: "missing-turn", Role: "user", Kind: "text",
+			Status: "completed", Payload: map[string]any{"text": "/goal clear"}, OccurredAtUnixMS: 110,
+		}},
+	})
+	if err == nil || !strings.Contains(err.Error(), `references unknown turn "missing-turn"`) {
+		t.Fatalf("ReportSessionMessages() error=%v, want unknown-turn rejection", err)
+	}
+	if _, ok, err := store.GetTurn(ctx, "ws-1", "session-1", "missing-turn"); err != nil || ok {
+		t.Fatalf("GetTurn(missing-turn) ok=%v error=%v, want no manufactured turn", ok, err)
 	}
 }
 
@@ -352,6 +573,159 @@ func TestStoreClearSessionsTxJoinsCallerTransaction(t *testing.T) {
 	}
 	if _, ok, err := store.GetSession(ctx, "ws-tx", "session-1"); err != nil || ok {
 		t.Fatalf("GetSession() after commit ok=%v error=%v, want cleared", ok, err)
+	}
+}
+
+func TestStoreClearSessionsDeletesGoalSagaWithForeignKeysDisabledAndSessionIDReuseStartsClean(t *testing.T) {
+	t.Parallel()
+	store := openTestStore(t, testOptions(&staticProjectPaths{}))
+	ctx := context.Background()
+	if _, err := store.ReportSessionState(ctx, SessionStateReport{
+		WorkspaceID: "ws-clear-goal", AgentSessionID: "session-reused", Provider: "codex", OccurredAtUnixMS: 10,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if _, state, created, err := store.PrepareGoalControlOperation(ctx, GoalControlOperationPrepare{
+		OperationID: "old-goal-op", WorkspaceID: "ws-clear-goal", AgentSessionID: "session-reused",
+		Action: "set", Objective: "old objective", OccurredAtUnixMS: 20,
+	}); err != nil || !created || state.Revision != 1 {
+		t.Fatalf("prepare old goal state=%#v created=%v error=%v", state, created, err)
+	}
+	if _, err := store.db.ExecContext(ctx, `PRAGMA foreign_keys = OFF`); err != nil {
+		t.Fatalf("disable foreign keys: %v", err)
+	}
+	seedRuntimeDeletionSaga(t, store, "ws-clear-goal", "session-reused")
+	result, err := store.ClearSessions(ctx, "ws-clear-goal")
+	if err != nil || result.RemovedSessions != 1 {
+		t.Fatalf("ClearSessions() result=%#v error=%v", result, err)
+	}
+	for _, table := range []string{"workspace_agent_runtime_operation_events", "workspace_agent_runtime_operations", "workspace_agent_goal_control_operations", "workspace_agent_session_goals"} {
+		var count int
+		if err := store.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM `+table+` WHERE workspace_id = ?`, "ws-clear-goal").Scan(&count); err != nil || count != 0 {
+			t.Fatalf("%s count=%d error=%v, want empty", table, count, err)
+		}
+	}
+	if _, err := store.ReportSessionState(ctx, SessionStateReport{
+		WorkspaceID: "ws-clear-goal", AgentSessionID: "session-reused", Provider: "codex", OccurredAtUnixMS: 30,
+	}); err != nil {
+		t.Fatalf("recreate session: %v", err)
+	}
+	if state, found, err := store.GetSessionGoalState(ctx, "ws-clear-goal", "session-reused"); err != nil || found {
+		t.Fatalf("recreated goal state=%#v found=%v error=%v, want absent", state, found, err)
+	}
+	if _, state, created, err := store.PrepareGoalControlOperation(ctx, GoalControlOperationPrepare{
+		OperationID: "new-goal-op", WorkspaceID: "ws-clear-goal", AgentSessionID: "session-reused",
+		Action: "set", Objective: "new objective", OccurredAtUnixMS: 40,
+	}); err != nil || !created || state.Revision != 1 {
+		t.Fatalf("prepare recreated goal state=%#v created=%v error=%v, want revision 1", state, created, err)
+	}
+	seedInteractionTurn(t, store, "ws-clear-goal", "session-reused", "turn-prepared", 50)
+	if _, result, err := store.UpsertInteraction(ctx, InteractionUpsert{
+		WorkspaceID: "ws-clear-goal", AgentSessionID: "session-reused", TurnID: "turn-prepared",
+		RequestID: "request-reused", Kind: InteractionKindQuestion, Status: InteractionStatusPending, OccurredAtUnixMS: 51,
+	}); err != nil || result != InteractionTransitionApplied {
+		t.Fatalf("recreate interaction result=%v error=%v", result, err)
+	}
+	if _, created, err := store.PrepareRuntimeOperation(ctx, RuntimeOperationPrepare{
+		OperationID: "new-runtime-op", WorkspaceID: "ws-clear-goal", AgentSessionID: "session-reused",
+		Kind: RuntimeOperationKindInteractiveResponse, TurnID: "turn-prepared", RequestID: "request-reused", OccurredAtMS: 52,
+	}); err != nil || !created {
+		t.Fatalf("prepare recreated runtime operation created=%v error=%v", created, err)
+	}
+	claimable, err := store.ListClaimableRuntimeOperations(ctx, ListClaimableRuntimeOperationsInput{WorkspaceID: "ws-clear-goal", NowUnixMS: 100, Limit: 10})
+	if err != nil || len(claimable) != 1 || claimable[0].OperationID != "new-runtime-op" {
+		t.Fatalf("claimable after recreation=%#v error=%v", claimable, err)
+	}
+}
+
+func TestStoreSessionDeleteVariantsExplicitlyDeleteGoalSagaWithForeignKeysDisabled(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct {
+		name   string
+		remove func(context.Context, *Store) error
+	}{
+		{name: "single", remove: func(ctx context.Context, store *Store) error {
+			_, err := store.DeleteSession(ctx, "ws-delete-goal", "session-1")
+			return err
+		}},
+		{name: "batch", remove: func(ctx context.Context, store *Store) error {
+			_, err := store.DeleteSessionsBatch(ctx, DeleteSessionsBatchInput{WorkspaceID: "ws-delete-goal", SessionIDs: []string{"session-1"}})
+			return err
+		}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			store := openTestStore(t, testOptions(&staticProjectPaths{}))
+			ctx := context.Background()
+			if _, err := store.ReportSessionState(ctx, SessionStateReport{
+				WorkspaceID: "ws-delete-goal", AgentSessionID: "session-1", Provider: "codex", OccurredAtUnixMS: 10,
+			}); err != nil {
+				t.Fatal(err)
+			}
+			if _, _, _, err := store.PrepareGoalControlOperation(ctx, GoalControlOperationPrepare{
+				OperationID: "goal-op-" + tc.name, WorkspaceID: "ws-delete-goal", AgentSessionID: "session-1",
+				Action: "set", Objective: "objective", OccurredAtUnixMS: 20,
+			}); err != nil {
+				t.Fatal(err)
+			}
+			if _, err := store.db.ExecContext(ctx, `PRAGMA foreign_keys = OFF`); err != nil {
+				t.Fatal(err)
+			}
+			seedRuntimeDeletionSaga(t, store, "ws-delete-goal", "session-1")
+			if err := tc.remove(ctx, store); err != nil {
+				t.Fatal(err)
+			}
+			for _, table := range []string{"workspace_agent_runtime_operation_events", "workspace_agent_runtime_operations", "workspace_agent_goal_control_operations", "workspace_agent_session_goals"} {
+				var count int
+				if err := store.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM `+table+` WHERE workspace_id = ?`, "ws-delete-goal").Scan(&count); err != nil || count != 0 {
+					t.Fatalf("%s count=%d error=%v", table, count, err)
+				}
+			}
+		})
+	}
+}
+
+func seedRuntimeDeletionSaga(t *testing.T, store *Store, workspaceID string, sessionID string) {
+	t.Helper()
+	for _, row := range []struct {
+		operationID string
+		status      string
+		turnID      string
+		result      any
+		leaseOwner  any
+		leaseExpiry any
+		nextAttempt any
+		completedAt any
+	}{
+		{operationID: "old-runtime-prepared", status: RuntimeOperationStatusPrepared, turnID: "turn-prepared", nextAttempt: int64(10)},
+		{operationID: "old-runtime-leased", status: RuntimeOperationStatusLeased, turnID: "turn-leased", leaseOwner: "worker", leaseExpiry: int64(1000)},
+		{operationID: "old-runtime-completed", status: RuntimeOperationStatusCompleted, turnID: "turn-completed", result: RuntimeOperationResultCanceled, completedAt: int64(30)},
+	} {
+		query := `INSERT INTO workspace_agent_runtime_operations (
+operation_id, workspace_id, agent_session_id, kind, status, result, subject_id, turn_id,
+payload_json, lease_owner, lease_expires_at_unix_ms, next_attempt_at_unix_ms,
+created_at_unix_ms, updated_at_unix_ms, completed_at_unix_ms
+) VALUES (?, ?, ?, 'cancel_turn', ?, ?, ?, ?, '{}', ?, ?, ?, 20, 20, ?)`
+		if _, err := store.db.Exec(query, row.operationID, workspaceID, sessionID, row.status, row.result, row.turnID, row.turnID,
+			row.leaseOwner, row.leaseExpiry, row.nextAttempt, row.completedAt); err != nil {
+			t.Fatalf("seed runtime operation %s: %v", row.status, err)
+		}
+	}
+	if _, err := store.db.Exec(`INSERT INTO workspace_agent_runtime_operation_events (
+operation_id, workspace_id, agent_session_id, kind, payload_json, created_at_unix_ms
+) VALUES ('old-runtime-completed', ?, ?, 'turn_canceled', '{}', 30)`, workspaceID, sessionID); err != nil {
+		t.Fatalf("seed runtime operation event: %v", err)
+	}
+	if _, err := store.db.Exec(`INSERT INTO workspace_agent_runtime_operations (
+operation_id, workspace_id, agent_session_id, kind, status, result, subject_id, turn_id,
+request_id, payload_json, created_at_unix_ms, updated_at_unix_ms, completed_at_unix_ms
+) VALUES ('old-runtime-interactive', ?, ?, 'interactive_response', 'completed', 'answered',
+  'request-reused', 'turn-prepared', 'request-reused', '{}', 31, 31, 31)`, workspaceID, sessionID); err != nil {
+		t.Fatalf("seed reused interactive runtime operation: %v", err)
+	}
+	if _, err := store.db.Exec(`INSERT INTO workspace_agent_runtime_operation_events (
+operation_id, workspace_id, agent_session_id, kind, payload_json, created_at_unix_ms
+) VALUES ('old-runtime-interactive', ?, ?, 'interactive_completed', '{}', 31)`, workspaceID, sessionID); err != nil {
+		t.Fatalf("seed reused interactive runtime operation event: %v", err)
 	}
 }
 
@@ -408,7 +782,7 @@ func TestStoreClassifiesRailSectionsWithInjectedProjectPaths(t *testing.T) {
 	projects.paths = []string{repo}
 	repoCanonical := NormalizeProjectPath(repo)
 
-	if _, err := store.ReportSessionState(ctx, SessionStateReport{
+	projectResult, err := store.ReportSessionState(ctx, SessionStateReport{
 		WorkspaceID:      "ws-rail",
 		AgentSessionID:   "session-project",
 		Origin:           "runtime",
@@ -416,9 +790,35 @@ func TestStoreClassifiesRailSectionsWithInjectedProjectPaths(t *testing.T) {
 		Cwd:              repoSubdir,
 		Status:           "completed",
 		OccurredAtUnixMS: 100,
-	}); err != nil {
+	})
+	if err != nil {
 		t.Fatalf("ReportSessionState(project) error = %v", err)
 	}
+	wantProjectKey := RailSectionKeyForProject(repoCanonical)
+	if projectResult.Session.RailSectionKey != wantProjectKey {
+		t.Fatalf("ReportSessionState(project) rail key = %q, want %q", projectResult.Session.RailSectionKey, wantProjectKey)
+	}
+	projects.paths = []string{otherDir}
+	updatedProjectResult, err := store.ReportSessionState(ctx, SessionStateReport{
+		WorkspaceID:      "ws-rail",
+		AgentSessionID:   "session-project",
+		Origin:           "runtime",
+		Provider:         "codex",
+		Cwd:              otherDir,
+		Status:           "completed",
+		OccurredAtUnixMS: 200,
+	})
+	if err != nil {
+		t.Fatalf("ReportSessionState(project cwd changed) error = %v", err)
+	}
+	if updatedProjectResult.Session.RailSectionKey != wantProjectKey {
+		t.Fatalf(
+			"ReportSessionState(project cwd changed) rail key = %q, want immutable %q",
+			updatedProjectResult.Session.RailSectionKey,
+			wantProjectKey,
+		)
+	}
+	projects.paths = []string{repo}
 	if _, err := store.ReportSessionState(ctx, SessionStateReport{
 		WorkspaceID:      "ws-rail",
 		AgentSessionID:   "session-other",
@@ -433,14 +833,18 @@ func TestStoreClassifiesRailSectionsWithInjectedProjectPaths(t *testing.T) {
 
 	projectPage, ok, err := store.ListSessionSection(ctx, ListSessionSectionInput{
 		WorkspaceID: "ws-rail",
-		SectionKey:  RailSectionKeyForProject(repoCanonical),
+		SectionKey:  wantProjectKey,
 		Limit:       10,
 	})
 	if err != nil || !ok {
 		t.Fatalf("ListSessionSection(project) ok=%v error=%v", ok, err)
 	}
-	if len(projectPage.Sessions) != 1 || projectPage.Sessions[0].ID != "session-project" {
+	if len(projectPage.Sessions) != 1 || projectPage.Sessions[0].ID != "session-project" || projectPage.Sessions[0].RailSectionKey != wantProjectKey {
 		t.Fatalf("project page = %#v, want session-project", projectPage.Sessions)
+	}
+	projectSession, ok, err := store.GetSession(ctx, "ws-rail", "session-project")
+	if err != nil || !ok || projectSession.RailSectionKey != wantProjectKey {
+		t.Fatalf("GetSession(project) = %#v ok=%v error=%v, want rail key %q", projectSession, ok, err, wantProjectKey)
 	}
 
 	conversationsPage, ok, err := store.ListSessionSection(ctx, ListSessionSectionInput{
@@ -451,7 +855,7 @@ func TestStoreClassifiesRailSectionsWithInjectedProjectPaths(t *testing.T) {
 	if err != nil || !ok {
 		t.Fatalf("ListSessionSection(conversations) ok=%v error=%v", ok, err)
 	}
-	if len(conversationsPage.Sessions) != 1 || conversationsPage.Sessions[0].ID != "session-other" {
+	if len(conversationsPage.Sessions) != 1 || conversationsPage.Sessions[0].ID != "session-other" || conversationsPage.Sessions[0].RailSectionKey != RailSectionKeyConversations {
 		t.Fatalf("conversations page = %#v, want session-other", conversationsPage.Sessions)
 	}
 }
@@ -503,9 +907,9 @@ func TestStoreListSessionSectionFiltersHiddenSessionsBeforePagination(t *testing
 	}
 	if _, err := store.db.ExecContext(ctx, `
 UPDATE workspace_agent_sessions
-SET updated_at_unix_ms = 1000
+SET created_at_unix_ms = 1000, updated_at_unix_ms = 1000
 WHERE workspace_id = ?`, "ws-rail-visible"); err != nil {
-		t.Fatalf("normalize updated_at_unix_ms error = %v", err)
+		t.Fatalf("normalize session timestamps error = %v", err)
 	}
 
 	page, ok, err := store.ListSessionSection(ctx, ListSessionSectionInput{
@@ -522,13 +926,16 @@ WHERE workspace_id = ?`, "ws-rail-visible"); err != nil {
 	if !page.HasMore || !strings.HasSuffix(page.NextCursor, "|bbb-visible-newer") {
 		t.Fatalf("first page state = hasMore %v cursor %q, want visible cursor with more", page.HasMore, page.NextCursor)
 	}
+	if page.TotalCount != 2 {
+		t.Fatalf("first page total count = %d, want 2 visible sessions", page.TotalCount)
+	}
 
 	next, ok, err := store.ListSessionSection(ctx, ListSessionSectionInput{
-		WorkspaceID:       "ws-rail-visible",
-		SectionKey:        RailSectionKeyForProject("/workspace/app"),
-		CursorUpdatedAtMS: page.Sessions[0].UpdatedAtUnixMS,
-		CursorSessionID:   page.Sessions[0].ID,
-		Limit:             1,
+		WorkspaceID:          "ws-rail-visible",
+		SectionKey:           RailSectionKeyForProject("/workspace/app"),
+		CursorSortTimeUnixMS: page.Sessions[0].CreatedAtUnixMS,
+		CursorSessionID:      page.Sessions[0].ID,
+		Limit:                1,
 	})
 	if err != nil || !ok {
 		t.Fatalf("ListSessionSection(next) ok=%v error=%v", ok, err)
@@ -539,124 +946,97 @@ WHERE workspace_id = ?`, "ws-rail-visible"); err != nil {
 	if next.HasMore || next.NextCursor != "" {
 		t.Fatalf("next page state = hasMore %v cursor %q, want exhausted", next.HasMore, next.NextCursor)
 	}
+	if next.TotalCount != 2 {
+		t.Fatalf("next page total count = %d, want stable total 2", next.TotalCount)
+	}
 }
 
-func TestStoreCountAndDeleteSessionSection(t *testing.T) {
+func TestStoreListSessionSectionOrdersAndPagesByLatestTurnStart(t *testing.T) {
 	t.Parallel()
 
 	store := openTestStore(t, testOptions(&staticProjectPaths{paths: []string{"/workspace/app"}}))
 	ctx := context.Background()
-
-	for _, input := range []SessionStateReport{
+	for _, report := range []ActivityStateReport{
 		{
-			WorkspaceID:       "ws-section-delete",
-			AgentSessionID:    "session-codex-1",
-			AgentTargetID:     "local:codex",
-			Origin:            "runtime",
-			UserID:            "user-1",
-			Provider:          "codex",
-			ProviderSessionID: "provider-codex-1",
-			Cwd:               "/workspace/app",
-			Status:            "running",
-			OccurredAtUnixMS:  100,
+			Session: SessionStateReport{
+				WorkspaceID:      "ws-turn-order",
+				AgentSessionID:   "older-start-newer-update",
+				Origin:           "runtime",
+				Provider:         "codex",
+				Cwd:              "/workspace/app",
+				Status:           "working",
+				OccurredAtUnixMS: 9_000,
+			},
+			Turn: &TurnTransition{
+				WorkspaceID:      "ws-turn-order",
+				AgentSessionID:   "older-start-newer-update",
+				TurnID:           "turn-older",
+				Phase:            TurnPhaseRunning,
+				StartedAtUnixMS:  2_000,
+				OccurredAtUnixMS: 9_000,
+			},
 		},
 		{
-			WorkspaceID:       "ws-section-delete",
-			AgentSessionID:    "session-codex-2",
-			AgentTargetID:     "local:codex",
-			Origin:            "runtime",
-			UserID:            "user-1",
-			Provider:          "codex",
-			ProviderSessionID: "provider-codex-2",
-			Cwd:               "/workspace/app/pkg",
-			Status:            "running",
-			OccurredAtUnixMS:  100,
-		},
-		{
-			WorkspaceID:      "ws-section-delete",
-			AgentSessionID:   "session-claude",
-			AgentTargetID:    "local:claude-code",
-			Origin:           "runtime",
-			Provider:         "claude-code",
-			Cwd:              "/workspace/app",
-			Status:           "completed",
-			OccurredAtUnixMS: 100,
-		},
-		{
-			WorkspaceID:      "ws-section-delete",
-			AgentSessionID:   "session-hidden",
-			AgentTargetID:    "local:codex",
-			Origin:           "runtime",
-			Provider:         "codex",
-			Cwd:              "/workspace/app",
-			Status:           "completed",
-			RuntimeContext:   map[string]any{"visible": false},
-			OccurredAtUnixMS: 100,
+			Session: SessionStateReport{
+				WorkspaceID:      "ws-turn-order",
+				AgentSessionID:   "newer-start-older-update",
+				Origin:           "runtime",
+				Provider:         "codex",
+				Cwd:              "/workspace/app",
+				Status:           "working",
+				OccurredAtUnixMS: 4_000,
+			},
+			Turn: &TurnTransition{
+				WorkspaceID:      "ws-turn-order",
+				AgentSessionID:   "newer-start-older-update",
+				TurnID:           "turn-newer",
+				Phase:            TurnPhaseRunning,
+				StartedAtUnixMS:  3_000,
+				OccurredAtUnixMS: 4_000,
+			},
 		},
 	} {
-		if _, err := store.ReportSessionState(ctx, input); err != nil {
-			t.Fatalf("ReportSessionState(%s) error = %v", input.AgentSessionID, err)
-		}
-		if strings.Contains(input.AgentSessionID, "codex") {
-			messageResult, err := store.ReportSessionMessages(ctx, SessionMessageReport{
-				WorkspaceID:    input.WorkspaceID,
-				AgentSessionID: input.AgentSessionID,
-				Origin:         input.Origin,
-				Messages: []MessageUpdate{{
-					MessageID:        "message-" + input.AgentSessionID,
-					TurnID:           "turn-" + input.AgentSessionID,
-					Role:             "assistant",
-					Kind:             "text",
-					Status:           "running",
-					Payload:          map[string]any{"text": input.AgentSessionID},
-					OccurredAtUnixMS: 110,
-				}},
-			})
-			if err != nil {
-				t.Fatalf("ReportSessionMessages(%s) error = %v", input.AgentSessionID, err)
-			}
-			if messageResult.AcceptedCount != 1 {
-				t.Fatalf("ReportSessionMessages(%s) accepted = %d, want 1", input.AgentSessionID, messageResult.AcceptedCount)
-			}
+		if _, err := store.ReportActivityState(ctx, report); err != nil {
+			t.Fatalf("ReportActivityState(%s) error = %v", report.Session.AgentSessionID, err)
 		}
 	}
 
-	sectionKey := RailSectionKeyForProject("/workspace/app")
-	count, ok, err := store.CountSessionSection(ctx, CountSessionSectionInput{
-		WorkspaceID:   "ws-section-delete",
-		SectionKey:    sectionKey,
-		AgentTargetID: "local:codex",
+	page, ok, err := store.ListSessionSection(ctx, ListSessionSectionInput{
+		WorkspaceID: "ws-turn-order",
+		SectionKey:  RailSectionKeyForProject("/workspace/app"),
+		Limit:       1,
 	})
 	if err != nil || !ok {
-		t.Fatalf("CountSessionSection() ok=%v error=%v", ok, err)
+		t.Fatalf("ListSessionSection(first) ok=%v error=%v", ok, err)
 	}
-	if count.Count != 2 {
-		t.Fatalf("CountSessionSection() count = %d, want 2", count.Count)
+	if len(page.Sessions) != 1 || page.Sessions[0].ID != "newer-start-older-update" {
+		t.Fatalf("first page sessions = %#v, want latest turn start", page.Sessions)
+	}
+	if !page.HasMore || page.NextCursor != "3000|newer-start-older-update" {
+		t.Fatalf("first page hasMore=%v cursor=%q", page.HasMore, page.NextCursor)
+	}
+	if page.TotalCount != 2 {
+		t.Fatalf("first page total count = %d, want 2", page.TotalCount)
 	}
 
-	result, ok, err := store.DeleteSessionSection(ctx, DeleteSessionSectionInput{
-		WorkspaceID:   "ws-section-delete",
-		SectionKey:    sectionKey,
-		AgentTargetID: "local:codex",
+	next, ok, err := store.ListSessionSection(ctx, ListSessionSectionInput{
+		WorkspaceID:          "ws-turn-order",
+		SectionKey:           RailSectionKeyForProject("/workspace/app"),
+		CursorSortTimeUnixMS: 3_000,
+		CursorSessionID:      "newer-start-older-update",
+		Limit:                1,
 	})
 	if err != nil || !ok {
-		t.Fatalf("DeleteSessionSection() ok=%v error=%v", ok, err)
+		t.Fatalf("ListSessionSection(next) ok=%v error=%v", ok, err)
 	}
-	if result.RemovedSessions != 2 || result.RemovedMessages != 2 {
-		t.Fatalf("DeleteSessionSection() = %#v, want 2 sessions and 2 messages", result)
+	if len(next.Sessions) != 1 || next.Sessions[0].ID != "older-start-newer-update" {
+		t.Fatalf("next page sessions = %#v, want older turn start", next.Sessions)
 	}
-	slices.Sort(result.RemovedSessionIDs)
-	if !slices.Equal(result.RemovedSessionIDs, []string{"session-codex-1", "session-codex-2"}) {
-		t.Fatalf("removed session ids = %#v", result.RemovedSessionIDs)
+	if next.HasMore || next.NextCursor != "" {
+		t.Fatalf("next page hasMore=%v cursor=%q, want exhausted", next.HasMore, next.NextCursor)
 	}
-	if _, ok, err := store.GetSession(ctx, "ws-section-delete", "session-codex-1"); err != nil || ok {
-		t.Fatalf("GetSession(deleted codex) ok=%v error=%v, want false", ok, err)
-	}
-	if _, ok, err := store.GetSession(ctx, "ws-section-delete", "session-claude"); err != nil || !ok {
-		t.Fatalf("GetSession(other target) ok=%v error=%v, want true", ok, err)
-	}
-	if _, ok, err := store.GetSession(ctx, "ws-section-delete", "session-hidden"); err != nil || !ok {
-		t.Fatalf("GetSession(hidden) ok=%v error=%v, want true", ok, err)
+	if next.TotalCount != 2 {
+		t.Fatalf("next page total count = %d, want stable total 2", next.TotalCount)
 	}
 }
 
@@ -707,7 +1087,20 @@ WHERE workspace_id = ? AND agent_session_id = ?`, pinnedAt, "ws-pinned-page", se
 			t.Fatalf("set pinned_at_unix_ms(%s) error = %v", sessionID, err)
 		}
 	}
-
+	conversations, ok, err := store.ListSessionSection(ctx, ListSessionSectionInput{
+		WorkspaceID: "ws-pinned-page",
+		SectionKey:  RailSectionKeyConversations,
+		Limit:       10,
+	})
+	if err != nil || !ok {
+		t.Fatalf("ListSessionSection(conversations) ok=%v error=%v", ok, err)
+	}
+	if len(conversations.Sessions) != 1 || conversations.Sessions[0].ID != "unpinned" {
+		t.Fatalf("ordinary conversations = %#v, want only unpinned", conversations.Sessions)
+	}
+	if conversations.TotalCount != 1 {
+		t.Fatalf("ordinary conversations total count = %d, want 1", conversations.TotalCount)
+	}
 	page, ok, err := store.ListSessionSection(ctx, ListSessionSectionInput{
 		WorkspaceID: "ws-pinned-page",
 		SectionKey:  PinnedSessionPageKey,
@@ -722,13 +1115,16 @@ WHERE workspace_id = ? AND agent_session_id = ?`, pinnedAt, "ws-pinned-page", se
 	if !page.HasMore || page.NextCursor != "2000|newer-pinned" {
 		t.Fatalf("pinned first page state = hasMore %v cursor %q", page.HasMore, page.NextCursor)
 	}
+	if page.TotalCount != 2 {
+		t.Fatalf("pinned first page total count = %d, want 2", page.TotalCount)
+	}
 
 	next, ok, err := store.ListSessionSection(ctx, ListSessionSectionInput{
-		WorkspaceID:       "ws-pinned-page",
-		SectionKey:        PinnedSessionPageKey,
-		CursorUpdatedAtMS: page.Sessions[0].PinnedAtUnixMS,
-		CursorSessionID:   page.Sessions[0].ID,
-		Limit:             2,
+		WorkspaceID:          "ws-pinned-page",
+		SectionKey:           PinnedSessionPageKey,
+		CursorSortTimeUnixMS: page.Sessions[0].PinnedAtUnixMS,
+		CursorSessionID:      page.Sessions[0].ID,
+		Limit:                2,
 	})
 	if err != nil || !ok {
 		t.Fatalf("ListSessionSection(pinned next) ok=%v error=%v", ok, err)
@@ -738,6 +1134,9 @@ WHERE workspace_id = ? AND agent_session_id = ?`, pinnedAt, "ws-pinned-page", se
 	}
 	if next.HasMore || next.NextCursor != "" {
 		t.Fatalf("pinned next page state = hasMore %v cursor %q, want exhausted", next.HasMore, next.NextCursor)
+	}
+	if next.TotalCount != 2 {
+		t.Fatalf("pinned next page total count = %d, want stable total 2", next.TotalCount)
 	}
 }
 

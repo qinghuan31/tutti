@@ -51,6 +51,33 @@ Business hosts should consume a Browser Node capability, not copy a set of TSH
 or Tutti implementation files. The package owns browser behavior; each host
 only provides product adapters.
 
+The ordinary Browser surface and the Workbench Browser node render the same
+`BrowserNodeChrome` and `BrowserNodeActionsMenu`. The chrome has a shared tab
+strip above a navigation row, so the broad top-row blank area is the window
+drag target while the address bar remains fully interactive below it. The
+Workbench adapter does not recreate either row: it renders the same component
+and opts its custom header into the Browser-owned 76-pixel layout through
+`data-workbench-custom-header-layout="browser-tabs"`.
+
+The menu stays inline so its Electron guest-overlay coordination is identical
+in both shells. The shared Browser header also marks itself with
+`data-workbench-custom-header-overflow="visible"`; Workbench honors that opt-in
+on its otherwise clipping custom-header row, allowing the menu to extend over
+the node body while the outer Workbench window still clips content to the
+window bounds.
+
+Tabbed Browser surfaces keep a feature-owned tab store keyed by the Workbench
+surface node ID. Each tab receives a stable child Browser Node ID and owns its
+own controller, guest webview, navigation history, runtime title, and actions.
+Inactive tab guests remain mounted but hidden so switching tabs does not reload
+their pages. Closing a tab closes and clears only that child guest; closing the
+surface closes all remaining child guests. Snapshot titles, URLs, Dock labels,
+and previews resolve through the active child ID while the Workbench shell
+continues to persist the parent surface ID. Hosts that scope Browser events to
+one surface must use the package-owned surface-event predicate so both the
+parent ID and its `:tab:*` child IDs are accepted without admitting events from
+other Browser surfaces.
+
 ## Package Entry Points
 
 The package uses multiple exports from one package rather than several small
@@ -84,10 +111,24 @@ packages/browser/workbench-node/
 The Browser Node package owns:
 
 - browser node state and lifecycle
+- feature-scoped multi-tab state, active-tab resolution, and child guest
+  cleanup
 - navigation, back, forward, reload, close, and URL normalization
+- page find, printing, zoom, visible-area and full-page screenshot capture,
+  fixed device emulation, Cookie import, and browsing-data clearing against the
+  registered guest
+- the browser settings surface for current-session device, zoom, screenshot,
+  download, Cookie, and data controls
+- node-scoped host-overlay visibility coordination so Electron guest surfaces
+  cannot cover package menus or dialogs
+- download lifecycle state and generic pause, resume, cancel, open, and reveal
+  actions
 - address bar rendering and generic input resolution
 - session, profile, and incognito partition logic
-- React body and optional header surface
+- React body and shared two-row tab/header surface
+- the active guest webview context exposed to navigation actions, so host
+  actions operate on the actual active Tab webview rather than reconstructing
+  that identity from DOM markers
 - workbench node definition helpers
 - Electron webview registration and unregistration coordination
 - Electron guest `webContents` state synchronization
@@ -105,12 +146,38 @@ The host owns:
 - address search provider policy
 - IPC channel registration and preload global wiring
 - external URL opening policy
+- native screenshot save dialogs and file writes
+- native Cookie-file and download-directory selection, file reading, file
+  opening, and file revealing
 - loopback preview target resolution
 - bridge namespace, such as `__tsh` or `__tutti`
 - bridge methods, such as TSH agent/game/share actions or future Tutti actions
 - product authorization and host allowlist policy
 - daemon or server clients
 - any business mutation triggered by a guest page
+
+Browser data actions are scoped through the registered guest's Electron
+session. Clearing data therefore affects the active Browser Node partition:
+all nodes using the shared partition observe the clear, while profile and
+incognito partitions remain isolated. Hosts must not redirect a clear request
+to Electron's default session.
+
+Download progress is package-owned runtime state because it is generic browser
+mechanics. The host still owns operating-system paths and shell integration;
+the package never chooses a product download directory or opens local files
+without an explicit host callback.
+
+Browser settings in the reusable React surface are session-scoped. Device
+emulation and zoom are applied to the registered guest, while a chosen download
+directory is applied to that guest's Electron session. These controls do not
+make popup or external-navigation security policy configurable.
+
+Cookie import accepts JSON arrays (or an object with a `cookies` array) and
+Netscape Cookie files. The host selects and reads the file in the main process;
+file contents and Cookie values never cross into the renderer or diagnostics.
+The package validates each entry and writes it only to the registered guest's
+Electron session Cookie store. Invalid or rejected entries are counted and
+skipped without logging their values.
 
 ## Host Interface Shape
 
@@ -209,6 +276,8 @@ The Browser Node package must preserve these invariants:
 - `allowpopups` is denied by default
 - navigation is limited to HTTP and HTTPS unless a host explicitly extends it
 - local preview proxying is optional and routed through host-provided policy
+- Cookie files are read in the host main process and imported only into the
+  active registered guest session
 
 ## Why One Deep Package
 

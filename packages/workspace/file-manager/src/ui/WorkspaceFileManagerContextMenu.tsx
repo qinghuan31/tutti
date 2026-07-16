@@ -1,4 +1,5 @@
 import {
+  ArrowLeftIcon,
   ArrowRightIcon,
   CopyIcon,
   DeleteIcon,
@@ -25,9 +26,12 @@ import {
   type RefObject
 } from "react";
 import {
-  CONTEXT_MENU_SUBMENU_GAP_PX,
+  OPEN_WITH_SUBMENU_WIDTH_PX,
   clampContextMenuPosition,
-  estimateOpenWithSubmenuHeight
+  estimateOpenWithSubmenuHeight,
+  resolveOpenWithSubmenuPlacement,
+  shouldShowOpenWithSectionDivider,
+  type OpenWithSubmenuPlacement
 } from "./contextMenuPlacement.ts";
 import type { WorkspaceFileManagerI18nRuntime } from "../i18n/workspaceFileManagerI18n.ts";
 import type {
@@ -310,6 +314,7 @@ export function WorkspaceFileManagerContextMenu({
   return (
     <MenuSurface
       ref={contextMenuRef}
+      data-workspace-file-manager-context-menu=""
       className={cn(
         "w-[220px] overflow-visible p-1",
         positionMode === "viewport" ? "fixed" : "absolute"
@@ -526,14 +531,28 @@ function OpenWithMenuItem({
   onOpenWithOtherApplication: () => Promise<void>;
 }): ReactElement {
   const triggerRef = useRef<HTMLDivElement | null>(null);
+  const triggerButtonRef = useRef<HTMLButtonElement | null>(null);
+  const submenuRef = useRef<HTMLDivElement | null>(null);
+  const focusSubmenuOnOpenRef = useRef(false);
   const [open, setOpen] = useState(false);
-  const [submenuPosition, setSubmenuPosition] = useState({ left: 0, top: 0 });
+  const [submenuPosition, setSubmenuPosition] =
+    useState<OpenWithSubmenuPlacement>({
+      left: 0,
+      mode: "right",
+      top: 0,
+      width: OPEN_WITH_SUBMENU_WIDTH_PX
+    });
   const closeTimerRef = useRef<number | null>(null);
   const showExternalSection =
     showOpenInDefaultBrowser ||
     showOpenWithOther ||
     isLoading ||
     applications.length > 0;
+  const showSectionDivider = shouldShowOpenWithSectionDivider({
+    showExternalSection,
+    showOpenInAppBrowser,
+    showOpenInFileViewer
+  });
   const estimatedSubmenuHeight = estimateOpenWithSubmenuHeight({
     applicationCount: applications.length,
     isLoading,
@@ -560,9 +579,47 @@ function OpenWithMenuItem({
   }, [cancelClose]);
 
   const openSubmenu = useCallback(() => {
+    focusSubmenuOnOpenRef.current = false;
     cancelClose();
     setOpen(true);
   }, [cancelClose]);
+
+  const closeSubmenuToTrigger = useCallback(() => {
+    cancelClose();
+    setOpen(false);
+    triggerButtonRef.current?.focus();
+  }, [cancelClose]);
+
+  const updateSubmenuPosition = useCallback(() => {
+    const trigger = triggerRef.current;
+    if (!trigger) {
+      return;
+    }
+
+    const triggerRect = trigger.getBoundingClientRect();
+    const parentMenuRect =
+      trigger
+        .closest<HTMLElement>("[data-workspace-file-manager-context-menu]")
+        ?.getBoundingClientRect() ?? triggerRect;
+    const maxHeight = Math.min(
+      estimatedSubmenuHeight,
+      480,
+      Math.max(0, window.innerHeight - 24)
+    );
+
+    setSubmenuPosition(
+      resolveOpenWithSubmenuPlacement({
+        parentMenuLeft: parentMenuRect.left,
+        parentMenuTop: parentMenuRect.top,
+        submenuHeight: maxHeight,
+        triggerLeft: triggerRect.left,
+        triggerRight: triggerRect.right,
+        triggerTop: triggerRect.top,
+        viewportHeight: window.innerHeight,
+        viewportWidth: window.innerWidth
+      })
+    );
+  }, [estimatedSubmenuHeight]);
 
   useEffect(() => {
     return () => {
@@ -575,22 +632,37 @@ function OpenWithMenuItem({
       return;
     }
 
-    const trigger = triggerRef.current;
-    if (!trigger) {
+    updateSubmenuPosition();
+  }, [open, updateSubmenuPosition]);
+
+  useEffect(() => {
+    if (!open) {
       return;
     }
 
-    const rect = trigger.getBoundingClientRect();
-    const maxHeight = Math.min(
-      estimatedSubmenuHeight,
-      480,
-      Math.max(0, window.innerHeight - 24)
-    );
-    setSubmenuPosition({
-      left: rect.right + CONTEXT_MENU_SUBMENU_GAP_PX,
-      top: Math.max(12, Math.min(rect.top, window.innerHeight - maxHeight - 12))
+    window.addEventListener("resize", updateSubmenuPosition);
+    window.addEventListener("scroll", updateSubmenuPosition, true);
+    return () => {
+      window.removeEventListener("resize", updateSubmenuPosition);
+      window.removeEventListener("scroll", updateSubmenuPosition, true);
+    };
+  }, [open, updateSubmenuPosition]);
+
+  useEffect(() => {
+    if (!open || !focusSubmenuOnOpenRef.current) {
+      return;
+    }
+
+    focusSubmenuOnOpenRef.current = false;
+    const frame = window.requestAnimationFrame(() => {
+      submenuRef.current
+        ?.querySelector<HTMLButtonElement>("button:not(:disabled)")
+        ?.focus();
     });
-  }, [open, estimatedSubmenuHeight]);
+    return () => {
+      window.cancelAnimationFrame(frame);
+    };
+  }, [open, submenuPosition.mode]);
 
   return (
     <div
@@ -600,6 +672,7 @@ function OpenWithMenuItem({
       onPointerLeave={scheduleClose}
     >
       <button
+        ref={triggerButtonRef}
         aria-expanded={open}
         aria-haspopup="menu"
         className={cn(
@@ -609,14 +682,27 @@ function OpenWithMenuItem({
         disabled={busy}
         role="menuitem"
         type="button"
-        onClick={() => {
+        onClick={(event) => {
+          focusSubmenuOnOpenRef.current = event.detail === 0;
           setOpen((current) => {
             const next = !current;
             if (next) {
               cancelClose();
+            } else {
+              focusSubmenuOnOpenRef.current = false;
             }
             return next;
           });
+        }}
+        onKeyDown={(event) => {
+          if (event.key !== "ArrowRight") {
+            return;
+          }
+          event.preventDefault();
+          event.stopPropagation();
+          focusSubmenuOnOpenRef.current = true;
+          cancelClose();
+          setOpen(true);
         }}
       >
         <span className="grid size-4 flex-none place-items-center text-[var(--text-secondary)]">
@@ -633,9 +719,11 @@ function OpenWithMenuItem({
         </span>
       </button>
       <ViewportMenuSurface
-        data-workspace-file-manager-submenu=""
+        ref={submenuRef}
+        aria-label={copy.t("openWithLabel")}
+        data-workspace-file-manager-submenu-mode={submenuPosition.mode}
         open={open}
-        className="w-[220px] max-h-[min(480px,calc(100vh-24px))] overflow-y-auto p-1"
+        className="max-h-[min(480px,calc(100vh-24px))] max-w-[calc(100vw-24px)] overflow-y-auto p-1"
         dismissOnEscape={false}
         dismissOnPointerDownOutside={false}
         dismissOnScroll={false}
@@ -643,14 +731,60 @@ function OpenWithMenuItem({
           type: "absolute",
           left: submenuPosition.left,
           top: submenuPosition.top,
-          boundaryPoint: { x: -1, y: -1 },
-          constrainToBoundary: false
+          boundaryPoint: { x: -1, y: -1 }
         }}
         role="menu"
-        style={{ zIndex: "calc(var(--z-panel-popover) + 200)" }}
+        style={{
+          width: submenuPosition.width,
+          zIndex: "calc(var(--z-panel-popover) + 200)"
+        }}
         onPointerEnter={openSubmenu}
         onPointerLeave={scheduleClose}
+        onKeyDown={(event) => {
+          if (event.key === "ArrowLeft" || event.key === "Escape") {
+            event.preventDefault();
+            event.stopPropagation();
+            closeSubmenuToTrigger();
+            return;
+          }
+
+          if (event.key !== "ArrowDown" && event.key !== "ArrowUp") {
+            return;
+          }
+          const items = Array.from(
+            event.currentTarget.querySelectorAll<HTMLButtonElement>(
+              "button:not(:disabled)"
+            )
+          );
+          if (items.length === 0) {
+            return;
+          }
+          event.preventDefault();
+          event.stopPropagation();
+          const currentIndex = items.indexOf(
+            document.activeElement as HTMLButtonElement
+          );
+          const offset = event.key === "ArrowDown" ? 1 : -1;
+          const nextIndex =
+            currentIndex < 0
+              ? offset > 0
+                ? 0
+                : items.length - 1
+              : (currentIndex + offset + items.length) % items.length;
+          items[nextIndex]?.focus();
+        }}
       >
+        {submenuPosition.mode === "overlay" ? (
+          <>
+            <ContextMenuActionButton
+              activateOnPointerDown
+              icon={<ArrowLeftIcon className="size-4" />}
+              label={copy.t("openWithLabel")}
+              onClick={closeSubmenuToTrigger}
+            />
+            <ContextMenuDivider />
+          </>
+        ) : null}
         {showOpenInFileViewer ? (
           <ContextMenuActionButton
             activateOnPointerDown
@@ -677,7 +811,7 @@ function OpenWithMenuItem({
             }}
           />
         ) : null}
-        {showExternalSection ? <ContextMenuDivider /> : null}
+        {showSectionDivider ? <ContextMenuDivider /> : null}
         {isLoading ? (
           <div className="px-2 py-1.5 text-[11px] text-[var(--text-tertiary)]">
             {copy.t("openWithLoadingLabel")}

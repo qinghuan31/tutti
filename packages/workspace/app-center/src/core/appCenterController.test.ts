@@ -7,8 +7,31 @@ import type {
   WorkspaceAppFactoryJob,
   WorkspaceAppFactorySnapshot
 } from "../contracts/host.ts";
-import { areWorkspaceAppCenterAppsEqual } from "./appCenterControllerHelpers.ts";
+import {
+  areWorkspaceAppCenterAppsEqual,
+  areWorkspaceAppCenterViewStatesEqual,
+  normalizeWorkspaceAppCenterViewState
+} from "./appCenterControllerHelpers.ts";
 import { createWorkspaceAppCenterController } from "./index.ts";
+
+test("app-center view state preserves the inline app selection", () => {
+  const selected = normalizeWorkspaceAppCenterViewState({
+    activeAppTab: "community",
+    openAppId: "  group-chat  "
+  });
+
+  assert.deepEqual(selected, {
+    activeAppTab: "community",
+    openAppId: "group-chat"
+  });
+  assert.equal(
+    areWorkspaceAppCenterViewStatesEqual(selected, {
+      activeAppTab: "community",
+      openAppId: "group-chat"
+    }),
+    true
+  );
+});
 
 test("WorkspaceAppCenterController merges catalog fields without runtime regression", () => {
   const controller = createWorkspaceAppCenterController({

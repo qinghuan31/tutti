@@ -1,4 +1,4 @@
-import type { WorkspaceAgentActivityTimelineItem } from "./workspaceAgentActivityTypes";
+import type { WorkspaceAgentActivityTimelineItem } from "./workspaceAgentTimelineTypes";
 import { translate, translateInUiLanguage } from "../i18n/index";
 import { isWorkspaceAgentSyntheticControlMessage } from "./workspaceAgentSyntheticMessages";
 
@@ -32,7 +32,7 @@ export function activityTitleFromTimeline(
   return (
     compactText(fallbackTitle) ||
     latestUserMessageText(timelineItems) ||
-    workspaceAgentUntitledTaskLabel()
+    workspaceAgentUntitledConversationLabel()
   );
 }
 
@@ -80,9 +80,9 @@ export function isWorkspaceAgentIdleSummary(summary: string): boolean {
   ).has(compactText(summary));
 }
 
-export function isWorkspaceAgentUntitledTask(title: string): boolean {
+export function isWorkspaceAgentUntitledConversation(title: string): boolean {
   return localizedWorkspaceAgentLabelSet(
-    "agentHost.workspaceAgentsUntitledTask"
+    "agentHost.workspaceAgentsUntitledConversation"
   ).has(compactText(title));
 }
 
@@ -289,8 +289,8 @@ function compactText(value: string): string {
   return value.trim().replace(/\s+/g, " ");
 }
 
-function workspaceAgentUntitledTaskLabel(): string {
-  return translate("agentHost.workspaceAgentsUntitledTask");
+function workspaceAgentUntitledConversationLabel(): string {
+  return translate("agentHost.workspaceAgentsUntitledConversation");
 }
 
 function localizedWorkspaceAgentLabelSet(key: string): Set<string> {

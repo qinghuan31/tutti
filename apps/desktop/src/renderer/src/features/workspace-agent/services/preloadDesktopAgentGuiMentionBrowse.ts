@@ -1,17 +1,12 @@
-import {
-  preloadAgentMentionBrowse,
-  type AgentActivityRuntime
-} from "@tutti-os/agent-gui";
+import { preloadAgentMentionBrowse } from "@tutti-os/agent-gui/mention-search";
+import type { AgentActivityRuntime } from "@tutti-os/agent-gui";
 import {
   AGENT_CONTEXT_MENTION_PROVIDER_IDS,
   type AgentContextMentionProvider
 } from "@tutti-os/agent-gui/context-mention-provider";
 import { createDesktopAgentGeneratedFileMentionProvider } from "./internal/createDesktopAgentGeneratedFileMentionProvider.ts";
 import { composeDesktopAgentGuiContextMentionProviders } from "./internal/composeDesktopAgentGuiContextMentionProviders.ts";
-
-// Mirrors the composer's hardcoded currentUserId (DesktopAgentGUIWorkbenchBody),
-// so the warmed browse cache key matches the live controller's.
-const DESKTOP_AGENT_GUI_CURRENT_USER_ID = "local";
+import { DESKTOP_AGENT_GUI_CURRENT_USER_ID } from "./desktopAgentGuiIdentity.ts";
 
 /**
  * Warm the @-mention browse cache at workspace startup, before the agent GUI is

@@ -142,15 +142,37 @@ function buildChangedLanes() {
     });
   }
 
-  if (
-    changedFiles.some((file) =>
-      file.startsWith("apps/desktop/src/renderer/src/")
-    )
-  ) {
+  if (changedFiles.some(isRendererBoundaryRelevant)) {
     addLane({
       key: "boundary:renderer",
       label: "boundary:renderer",
       command: [...pnpmCommand, "run", "check:renderer-boundaries"]
+    });
+  }
+
+  if (changedFiles.some(isAgentActivityRuntimeBoundaryRelevant)) {
+    addLane({
+      key: "boundary:agent-activity-runtime",
+      label: "boundary:agent-activity-runtime",
+      command: [
+        ...pnpmCommand,
+        "run",
+        "check:agent-activity-runtime-boundaries"
+      ]
+    });
+  }
+
+  if (
+    changedFiles.some(
+      (file) =>
+        file.startsWith("packages/agent/") ||
+        file.startsWith("tools/degradation-baseline/")
+    )
+  ) {
+    addLane({
+      key: "degradation:agent-gui",
+      label: "degradation:agent-gui",
+      command: [...pnpmCommand, "run", "check:agent-gui-degradation"]
     });
   }
 
@@ -536,6 +558,30 @@ function isUiBoundaryRelevant(file) {
       file.startsWith("packages/") ||
       file.startsWith("tools/")) &&
     /\.(?:css|json|js|jsx|mjs|ts|tsx)$/u.test(file)
+  );
+}
+
+export function isAgentActivityRuntimeBoundaryRelevant(file) {
+  return (
+    file.startsWith("packages/agent/gui/") ||
+    file.startsWith("packages/agent/activity-core/") ||
+    file.startsWith(
+      "apps/desktop/src/renderer/src/features/workspace-agent/"
+    ) ||
+    file.startsWith(
+      "apps/desktop/src/renderer/src/features/workspace-workbench/"
+    ) ||
+    file === "tools/scripts/check-agent-activity-runtime-boundaries.mjs" ||
+    file === "tools/scripts/check-agent-activity-runtime-boundaries.test.mjs" ||
+    file.startsWith("tools/fixtures/agent-activity-runtime-boundaries/")
+  );
+}
+
+export function isRendererBoundaryRelevant(file) {
+  return (
+    file.startsWith("apps/desktop/src/renderer/src/") ||
+    file === "tools/scripts/check-renderer-feature-boundaries.mjs" ||
+    file === "tools/scripts/check-renderer-feature-boundaries.test.mjs"
   );
 }
 

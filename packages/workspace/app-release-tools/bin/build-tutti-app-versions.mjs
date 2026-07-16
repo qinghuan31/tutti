@@ -3,7 +3,11 @@ import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { pathToFileURL } from "node:url";
 import path from "node:path";
 
-import { validateRelease } from "./build-tutti-app-release.mjs";
+import {
+  normalizeRequiredTuttiCapabilities,
+  requiredTuttiCapabilitiesForManifest,
+  validateRelease
+} from "./build-tutti-app-release.mjs";
 import {
   compareReleaseVersions,
   requireSemver
@@ -40,16 +44,32 @@ export async function buildTuttiAppVersions(options) {
   }
 
   if (releaseFiles.length > 0) {
-    const minTuttiVersion = requireSemver(
-      options.minTuttiVersion,
-      "minTuttiVersion"
-    );
+    const minTuttiVersion = options.minTuttiVersion
+      ? requireSemver(options.minTuttiVersion, "minTuttiVersion")
+      : null;
     const status = normalizeStatus(options.status ?? "active");
     for (const releaseFile of releaseFiles) {
       const release = JSON.parse(await readFile(releaseFile, "utf8"));
       validateRelease(release);
+      const requiredTuttiCapabilities = requiredTuttiCapabilitiesForManifest(
+        release.manifest,
+        "release.manifest"
+      );
+      if (minTuttiVersion && requiredTuttiCapabilities.length > 0) {
+        throw new Error(
+          "a release cannot declare both minTuttiVersion and requiredTuttiCapabilities"
+        );
+      }
+      if (!minTuttiVersion && requiredTuttiCapabilities.length === 0) {
+        throw new Error(
+          "minTuttiVersion or release.manifest.hostCompatibility.requiredTuttiCapabilities is required"
+        );
+      }
       document = addVersionRecord(document, {
-        minTuttiVersion,
+        ...(minTuttiVersion ? { minTuttiVersion } : {}),
+        ...(requiredTuttiCapabilities.length > 0
+          ? { requiredTuttiCapabilities }
+          : {}),
         status,
         release
       });
@@ -104,10 +124,31 @@ export function validateVersionsDocument(document) {
     if (!record || typeof record !== "object" || Array.isArray(record)) {
       throw new Error(`${label} must be an object`);
     }
-    record.minTuttiVersion = requireSemver(
-      record.minTuttiVersion,
-      `${label}.minTuttiVersion`
-    );
+    const hasMinTuttiVersion = record.minTuttiVersion !== undefined;
+    const hasRequiredTuttiCapabilities =
+      record.requiredTuttiCapabilities !== undefined;
+    if (hasMinTuttiVersion && hasRequiredTuttiCapabilities) {
+      throw new Error(
+        `${label} cannot declare both minTuttiVersion and requiredTuttiCapabilities`
+      );
+    }
+    if (!hasMinTuttiVersion && !hasRequiredTuttiCapabilities) {
+      throw new Error(
+        `${label} must declare minTuttiVersion or requiredTuttiCapabilities`
+      );
+    }
+    if (hasMinTuttiVersion) {
+      record.minTuttiVersion = requireSemver(
+        record.minTuttiVersion,
+        `${label}.minTuttiVersion`
+      );
+    }
+    if (hasRequiredTuttiCapabilities) {
+      record.requiredTuttiCapabilities = normalizeRequiredTuttiCapabilities(
+        record.requiredTuttiCapabilities,
+        `${label}.requiredTuttiCapabilities`
+      );
+    }
     record.status = normalizeStatus(record.status);
     validateRelease(record.release);
     if (record.release.appId !== appId) {

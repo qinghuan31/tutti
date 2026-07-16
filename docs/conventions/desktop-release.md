@@ -58,6 +58,13 @@ Supported manual modes:
 - `explicit_version_release`: publish an explicit release semver such as `0.1.0`, `0.1.0-beta.0`, `0.1.0-rc.0`, `1.13.0-rc.0`, or `2.0.0`
 - `unsigned_dry_run`: build unsigned artifacts without publishing a GitHub Release
 
+Manual runs also expose `publication_mode`:
+
+- `publish` keeps the existing end-to-end behavior. The workflow stages a GitHub Draft Release, uploads immutable assets, then calls the promotion workflow to update public channel metadata and publish the stable GitHub Release.
+- `draft_only` builds the same signed and notarized artifacts, keeps the GitHub Release as a draft, uploads immutable assets under the versioned S3/CloudFront `<tag>/` directory, and stops before changing any public channel pointer, changelog, stable alias, or GitHub visibility.
+
+Draft-only assets are unlisted, not private. Anyone who knows the immutable CloudFront URL can download them. This is intentional so internal release notifications can carry working QA download links. Do not use the desktop release asset prefix for confidential artifacts.
+
 Manual RC and stable release modes (`patch_rc_release`, `patch_release`, `minor_release`, and `major_release`) are branch-gated before tag resolution or artifact builds:
 
 - the workflow dispatch branch must be `main` or `release/*`
@@ -99,7 +106,7 @@ apps/desktop/build/tuttid/
 
 For macOS packages, the bundled `tuttid` daemon and `tutti` CLI must be universal binaries. Build both `darwin/arm64` and `darwin/amd64`, merge them with `lipo`, and verify the resulting binary contains `arm64` and `x86_64` slices before packaging.
 
-Vendored Node runtimes that bring their own Mach-O binaries, such as `claude-sdk-sidecar`, must not inherit the build runner architecture through npm optional dependency selection. macOS packaging must vendor and verify both Claude native packages before `electron-builder` runs. Keep only the matching package in x64 and arm64 artifacts, keep both in universal merge inputs and artifacts, and cover their paths with `build.mac.x64ArchFiles` so `@electron/universal` can skip merging duplicate resources.
+Vendored Node bundles (`claude-sdk-sidecar`, `browser-mcp`) must stay free of platform-specific Mach-O binaries so every architecture ships identical resources. The Claude native binary (`@anthropic-ai/claude-agent-sdk-<platform>`, ~230MB per platform) is deliberately excluded from the bundle: `vendor-claude-sdk-sidecar.mjs` installs with `--omit=optional`, and tuttid provisions the binary at runtime from the CDN published by `publish-claude-code-binaries.yml` (npm mirrors as fallback; see `services/tuttid/service/agentstatus/claude_binary.go`). When the pinned `@anthropic-ai/claude-agent-sdk` version changes, that workflow must publish the matching binaries before the release ships.
 
 `electron-builder` then packages that daemon into the desktop app as:
 
@@ -117,6 +124,14 @@ Expected release artifacts include:
 - Linux `.AppImage`
 - update metadata such as `.yml` and `.blockmap`
 - `SHA256SUMS.txt`
+
+The release workflow builds macOS x64, arm64, and universal packages as a
+three-entry GitHub Actions matrix. Each architecture uploads an isolated
+intermediate artifact. The stage job flattens those artifacts and rebuilds one
+channel updater manifest (`latest-mac.yml`, `rc-mac.yml`, or `beta-mac.yml`)
+from the three signed ZIP files, including fresh SHA-512 digests and sizes.
+This prevents same-named per-architecture updater manifests from overwriting
+one another when matrix artifacts are downloaded.
 
 Release notes and Feishu notifications should point the primary macOS download at the universal `.dmg`. The x64 and arm64 artifacts remain attached to the GitHub Release for users or deployment tools that want an architecture-specific installer.
 
@@ -161,6 +176,12 @@ macOS auto-update metadata must keep x64, arm64, and universal zip entries in `l
 
 For automatic updates, electron-updater should download the same-architecture zip first: Intel Macs use `mac-x64.zip`, Apple Silicon Macs use `mac-arm64.zip`, and `mac-universal.zip` remains a fallback and the primary manual download. Do not make universal the only auto-update zip while architecture-specific packages exist.
 
+The pinned `electron-updater` macOS selection behavior also accepts a
+universal-only updater manifest on both x64 and arm64. Keep this fallback under
+test so a future updater dependency change cannot silently break universal
+compatibility, even though normal releases continue to prefer matching
+architecture-specific ZIP files.
+
 Policy meanings:
 
 - `off`: update checks are disabled
@@ -177,24 +198,30 @@ Release notification is handled by:
 apps/desktop/scripts/send-release-feishu-card.mjs
 ```
 
-After a successful publish, the workflow sends a Feishu card when:
+After a successful stage or promotion, the workflow sends a Feishu card when:
 
 - `notify_feishu` is true
 - the `FEISHU_RELEASE_WEBHOOK_URL` secret is configured
 
 If the webhook secret is missing, the workflow skips notification instead of failing the release.
 
+For `draft_only`, the card links to the authorized GitHub Draft Release and uses the immutable AWS/CloudFront asset URLs. Sending the card does not update `latest.json`, a prerelease channel pointer, `changelog.json`, or the floating `stable` release.
+
 The card links to available macOS, Windows, Linux, GitHub Release, and workflow run URLs.
 
 When `TUTTI_DESKTOP_RELEASE_ASSETS_BASE_URL` is configured, the download buttons prefer the mirrored release asset base URL instead of GitHub asset URLs. If the explicit base URL is absent but S3 mirroring is configured, the workflow falls back to the S3 accelerate base URL.
 
+Notification jobs must resolve release asset names through the authenticated
+GitHub Release API. They must not download the full promoted or draft artifact
+set again merely to construct mirrored download URLs.
+
 After a successful mirrored upload, the workflow also upserts a managed `Direct Downloads` section into the GitHub Release body so the release description matches the Feishu direct links.
 
-After every published desktop release, including RC and beta releases, the workflow refreshes a floating GitHub Release named `stable`. This release is a navigation alias for the current concrete stable version, such as `v1.12.20`, so GitHub's Releases page opens with the stable entry before newer prereleases. The alias must be recreated with `--latest=false`, and the concrete stable version release must remain the GitHub `Latest` release.
+GitHub does not offer a supported API to pin an arbitrary release to the top of its public Releases list. Therefore, concrete stable releases and the floating `stable` alias are public, while RC and beta GitHub Releases remain drafts. RC and beta packages remain available through their immutable S3 asset directories and `channels/preview`, `channels/rc`, and `channels/beta` metadata; they are not public GitHub Release entries. The workflow also archives any legacy published prerelease as a draft, so the next successful release repairs the public list without deleting its artifacts.
 
-GitHub orders releases by the timestamp of the commit captured in the release's `createdAt`, not by the time a floating tag was moved. To keep `stable` ahead of a newly published prerelease, create a new alias commit after each desktop release with the exact tree of the concrete stable commit and that concrete commit as its parent. Verify both the tree and parent before moving the lightweight `stable` tag to the alias commit. The alias commit is tag-only and must not be added to a branch; its purpose is release navigation, while the concrete semver tag remains the canonical stable identity. Unless commit signing is added to the release runner, GitHub may display this bot-created alias commit without a `Verified` badge.
+After every desktop release, the workflow refreshes a floating GitHub Release named `stable`. This release is a navigation alias for the current concrete stable version, such as `v1.12.20`. The alias must be recreated with `--latest=false`, and the concrete stable version release remains the GitHub `Latest` release. Each Feishu card links to that build's matching GitHub Release, including RC and beta drafts for authorized release testers, while its download buttons use mirrored preview-download links.
 
-Move the lightweight `stable` tag to the validated alias commit before deleting and recreating the floating GitHub Release. Recreating the release is required because moving an existing tag does not update the release's captured `createdAt`. Do not create an annotated `stable` tag, use `gh release delete --cleanup-tag`, or delete `refs/tags/stable`; those paths require extra Git identity or can leave the alias tag missing when recreation fails.
+Create a new alias commit after each desktop release with the exact tree of the concrete stable commit and that concrete commit as its parent. Verify both the tree and parent before moving the lightweight `stable` tag to the alias commit. The alias commit is tag-only and must not be added to a branch; its purpose is release navigation, while the concrete semver tag remains the canonical stable identity. Unless commit signing is added to the release runner, GitHub may display this bot-created alias commit without a `Verified` badge. Move the lightweight `stable` tag to the validated alias commit before deleting and recreating the floating GitHub Release. Do not create an annotated `stable` tag, use `gh release delete --cleanup-tag`, or delete `refs/tags/stable`; those paths require extra Git identity or can leave the alias tag missing when recreation fails.
 
 Stable mirrored desktop releases also write mutable `latest.json` metadata at the release asset prefix root. That file lists the current stable desktop release tag, version, channel, preferred downloads, and CloudFront/static URLs for every uploaded asset:
 
@@ -213,6 +240,22 @@ https://<asset-base-url>/channels/beta/latest.json
 ```
 
 `preview` is the user-facing name for the RC channel. RC releases write both `channels/preview/latest.json` and `channels/rc/latest.json`. Beta releases write only `channels/beta/latest.json`.
+
+The packaged desktop updater consumes the stable and RC pointer contracts. Before
+each update check it reads `latest.json` for the stable channel or
+`channels/rc/latest.json` for the RC channel, validates the schema, expected
+channel, tag/version relationship, and configured CloudFront prefix, then sets
+the `electron-updater` generic feed to the immutable `<tag>/` directory. The
+updater reads `latest-mac.yml` for stable or `rc-mac.yml` for RC from that
+directory and verifies the signed ZIP normally. It does not discover desktop
+updates through GitHub Releases.
+
+This makes a Draft RC intentionally updateable without exposing it on the
+public GitHub Releases page. Publish the immutable assets and updater YAML
+first, then mutate the relevant pointer; the current pointer cache is 60
+seconds. Before announcing a release, verify HTTP 200 for the channel pointer,
+its `<tag>/latest-mac.yml` or `<tag>/rc-mac.yml`, and the ZIP referenced by that
+YAML.
 
 The `latest.json` metadata must include stable-identifying fields:
 
@@ -244,6 +287,21 @@ https://<asset-base-url>/changelog.json
 ```
 
 `changelog.json` is updated only for stable releases. RC and beta builds can still generate per-run summaries for Feishu and GitHub Release notes, but they should not appear on the public changelog feed unless that policy is changed explicitly.
+
+## Draft Promotion
+
+External publication is owned by `.github/workflows/desktop-release-promote.yml`. It can be called by the normal desktop release workflow for `publication_mode=publish`, or run manually with an existing Draft Release tag after a `draft_only` build has been approved.
+
+Promotion performs these checks before changing public state:
+
+- the GitHub Release exists and its stable, RC, or beta shape matches the tag
+- the tag still points to the staged commit
+- `SHA256SUMS.txt` exists and the downloaded draft assets match it
+- the target version does not move the selected public channel backwards
+
+It then repairs or uploads the immutable AWS objects, updates release notes, publishes a stable GitHub Release when applicable, writes the selected stable/RC/beta pointer, refreshes the stable alias, verifies the public CloudFront pointer, and sends the promoted release notification. Promotion is serialized with the `desktop-release-promotion` concurrency group because stable and prerelease pointers are mutable shared state.
+
+RC and beta promotions preserve the existing GitHub policy: their GitHub Releases remain drafts while their AWS channel pointers become available. Stable promotion changes the GitHub Release from draft to public and marks it Latest.
 
 ## Release Summaries
 

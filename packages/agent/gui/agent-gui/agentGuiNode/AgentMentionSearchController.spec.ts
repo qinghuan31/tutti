@@ -38,6 +38,7 @@ interface TestAgentTargetMentionItem {
 }
 
 interface TestSessionMentionItem {
+  agentTargetId?: string;
   agentName: string;
   id: string;
   initiatorName: string;
@@ -124,7 +125,8 @@ function createTestAgentGeneratedFileProvider(
       const result = await options.queryAgentGeneratedFiles({
         workspaceId: context?.metadata?.workspaceId,
         query: keyword,
-        limit: maxResults
+        limit: maxResults,
+        provenanceFilter: context?.metadata?.referenceProvenanceFilter
       });
       return (result.entries ?? []).map((entry: any) => ({
         label: entry.name,
@@ -295,7 +297,11 @@ function createTestSessionProvider(
         workspaceId,
         sessionOrigin: "WORKSPACE_AGENT_SESSION_ORIGIN_RUNTIME"
       });
-      const sessions = (snapshot.sessions ?? []).slice(0, maxResults);
+      const allSessions = snapshot.sessions ?? [];
+      const sessions =
+        maxResults === undefined
+          ? allSessions
+          : allSessions.slice(0, maxResults);
       const userIds = [
         ...new Set(
           sessions
@@ -335,6 +341,7 @@ function createTestSessionProvider(
             })) ||
             session.agentSessionId;
           return {
+            agentTargetId: session.agentTargetId,
             agentName: testProviderLabel(session.provider),
             id: session.agentSessionId,
             initiatorAvatarUrl: profile?.avatar ?? "",
@@ -385,6 +392,7 @@ function createTestSessionProvider(
         entityId: item.id,
         label: item.title,
         scope: {
+          ...(item.agentTargetId ? { agentTargetId: item.agentTargetId } : {}),
           scope: item.scope ?? "",
           userId: item.userId,
           workspaceId: item.workspaceId
@@ -552,6 +560,107 @@ describe("AgentMentionSearchController", () => {
     expect(queryIssues).not.toHaveBeenCalled();
   });
 
+  it("groups session mentions in provenance catalog order", async () => {
+    const controller = new AgentMentionSearchController({
+      querySessions: vi.fn().mockResolvedValue({
+        sessions: [
+          ...Array.from({ length: 31 }, (_, index) => ({
+            agentSessionId: `session-local-${index}`,
+            agentTargetId: "codex-main",
+            provider: "codex",
+            title: `Local build ${index}`,
+            userId: "user-1"
+          })),
+          {
+            agentSessionId: "session-shared",
+            agentTargetId: "shared-agent:shared-codex",
+            provider: "codex",
+            title: "Shared build",
+            userId: "user-2"
+          },
+          {
+            agentSessionId: "session-uncatalogued",
+            agentTargetId: "legacy-gemini",
+            provider: "gemini",
+            title: "Legacy build",
+            userId: "user-3"
+          }
+        ]
+      })
+    });
+    const states: unknown[] = [];
+    controller.subscribe((state) => states.push(state));
+    controller.setProvenanceCatalog({
+      enabledDimensions: ["agent"],
+      agentOptions: [
+        { id: "codex-main", label: "Me · Codex" },
+        {
+          id: "shared-agent:shared-codex",
+          label: "Lin · Codex"
+        }
+      ],
+      memberOptions: []
+    });
+
+    controller.updateQuery({
+      workspaceId: "room-1",
+      currentUserId: "user-1",
+      query: ""
+    });
+
+    await vi.waitFor(() =>
+      expect(states.at(-1)).toMatchObject({
+        status: "ready",
+        filter: "session",
+        groups: [
+          {
+            id: "agent:codex-main",
+            label: "Me · Codex",
+            items: expect.arrayContaining([
+              expect.objectContaining({ targetId: "session-local-0" })
+            ]),
+            totalCount: 31,
+            hasMore: true
+          },
+          {
+            id: "agent:shared-agent%3Ashared-codex",
+            label: "Lin · Codex",
+            items: [expect.objectContaining({ targetId: "session-shared" })]
+          },
+          {
+            id: "agent:uncatalogued%3Alegacy-gemini",
+            label: "gemini",
+            items: [
+              expect.objectContaining({ targetId: "session-uncatalogued" })
+            ]
+          }
+        ]
+      })
+    );
+    controller.expandGroup("agent:codex-main");
+    expect(
+      (
+        states.at(-1) as { groups: Array<{ id: string; items: unknown[] }> }
+      ).groups.find((group) => group.id === "agent:codex-main")?.items
+    ).toHaveLength(20);
+    controller.setProvenanceFilter({
+      agentTargetIds: ["shared-agent:shared-codex"],
+      memberIds: null
+    });
+    await vi.waitFor(() =>
+      expect(states.at(-1)).toMatchObject({
+        status: "ready",
+        groups: [
+          {
+            id: "agent:shared-agent%3Ashared-codex",
+            items: [expect.objectContaining({ targetId: "session-shared" })]
+          }
+        ]
+      })
+    );
+    controller.dispose();
+  });
+
   it("loads the app provider when switching to the app tab for blank queries", async () => {
     const queryWorkspaceApps = vi.fn().mockResolvedValue({
       apps: [
@@ -663,6 +772,21 @@ describe("AgentMentionSearchController", () => {
           provider: "claude-code",
           targetId: "local:claude-code",
           workspaceId: "room-1"
+        },
+        {
+          description: "Run a shared Codex agent",
+          iconUrl: "tutti://agent/codex.svg",
+          name: "Lin's Codex",
+          provider: "codex",
+          targetId: "shared-agent:shared-codex",
+          workspaceId: "room-1"
+        },
+        {
+          description: "Run an uncatalogued agent",
+          name: "Legacy Gemini",
+          provider: "gemini",
+          targetId: "legacy:gemini",
+          workspaceId: "room-1"
         }
       ]
     });
@@ -697,6 +821,18 @@ describe("AgentMentionSearchController", () => {
     });
     const states: any[] = [];
     controller.subscribe((state) => states.push(state));
+    controller.setProvenanceCatalog({
+      enabledDimensions: ["agent"],
+      agentOptions: [
+        {
+          id: "shared-agent:shared-codex",
+          label: "Lin · Codex"
+        },
+        { id: "local:codex", label: "Me · Codex" },
+        { id: "local:claude-code", label: "Me · Claude Code" }
+      ],
+      memberOptions: []
+    });
 
     controller.setFilter("agent");
     controller.updateQuery({ workspaceId: "room-1", query: "" });
@@ -707,23 +843,48 @@ describe("AgentMentionSearchController", () => {
         mode: "browse",
         filter: "agent",
         groups: [
-          expect.objectContaining({
-            id: "agents",
+          {
+            id: "agent:shared-agent%3Ashared-codex",
+            label: "Lin · Codex",
             items: [
               expect.objectContaining({
                 kind: "agent-target",
-                targetId: "local:codex",
-                href: "mention://agent-target/local:codex?workspaceId=room-1",
+                targetId: "shared-agent:shared-codex",
+                href: "mention://agent-target/shared-agent:shared-codex?workspaceId=room-1",
                 agentProviderId: "codex"
-              }),
-              expect.objectContaining({
-                kind: "agent-target",
-                targetId: "local:claude-code",
-                href: "mention://agent-target/local:claude-code?workspaceId=room-1",
-                agentProviderId: "claude-code"
               })
             ]
-          })
+          },
+          {
+            id: "agent:local%3Acodex",
+            label: "Me · Codex",
+            items: [
+              expect.objectContaining({
+                kind: "agent-target",
+                targetId: "local:codex"
+              })
+            ]
+          },
+          {
+            id: "agent:local%3Aclaude-code",
+            label: "Me · Claude Code",
+            items: [
+              expect.objectContaining({
+                kind: "agent-target",
+                targetId: "local:claude-code"
+              })
+            ]
+          },
+          {
+            id: "agent:uncatalogued%3Alegacy%3Agemini",
+            label: "Legacy Gemini",
+            items: [
+              expect.objectContaining({
+                kind: "agent-target",
+                targetId: "legacy:gemini"
+              })
+            ]
+          }
         ]
       })
     );
@@ -733,6 +894,23 @@ describe("AgentMentionSearchController", () => {
       limit: undefined
     });
     expect(queryWorkspaceApps).not.toHaveBeenCalled();
+    controller.setProvenanceFilter({
+      agentTargetIds: ["shared-agent:shared-codex"],
+      memberIds: null
+    });
+    await vi.waitFor(() =>
+      expect(states.at(-1)).toMatchObject({
+        status: "ready",
+        groups: [
+          {
+            id: "agent:shared-agent%3Ashared-codex",
+            items: [
+              expect.objectContaining({ targetId: "shared-agent:shared-codex" })
+            ]
+          }
+        ]
+      })
+    );
   });
 
   it("renders all workspace apps without mention pagination", async () => {
@@ -1203,16 +1381,18 @@ describe("AgentMentionSearchController", () => {
     expect(queryWorkspaceApps).toHaveBeenCalledTimes(1);
   });
 
-  it("dedupes in-flight browse loads across close and reopen", async () => {
-    let resolveFiles: (value: {
-      workspaceId: string;
-      root: string;
-      entries: { path: string; name: string; kind: string }[];
-    }) => void = () => undefined;
+  it("cancels an orphaned browse load and refetches after reopen", async () => {
+    const resolveFiles: Array<
+      (value: {
+        workspaceId: string;
+        root: string;
+        entries: { path: string; name: string; kind: string }[];
+      }) => void
+    > = [];
     const queryFiles = vi.fn(
       () =>
         new Promise((resolve) => {
-          resolveFiles = resolve;
+          resolveFiles.push(resolve);
         })
     );
     const controller = new AgentMentionSearchController({
@@ -1236,11 +1416,11 @@ describe("AgentMentionSearchController", () => {
     controller.updateQuery({ workspaceId: "room-1", query: "" });
     await vi.waitFor(() => expect(queryFiles).toHaveBeenCalledTimes(1));
     controller.close();
-    controller.setFilter("file");
     controller.updateQuery({ workspaceId: "room-1", query: "" });
-    expect(queryFiles).toHaveBeenCalledTimes(1);
+    controller.setFilter("file");
+    await vi.waitFor(() => expect(queryFiles).toHaveBeenCalledTimes(2));
 
-    resolveFiles({
+    resolveFiles[1]?.({
       workspaceId: "room-1",
       root: "/workspace",
       entries: [
@@ -1269,19 +1449,21 @@ describe("AgentMentionSearchController", () => {
         ])
       })
     );
-    expect(queryFiles).toHaveBeenCalledTimes(1);
+    expect(queryFiles).toHaveBeenCalledTimes(2);
   });
 
-  it("dedupes in-flight browse loads across agent GUI controller recreation", async () => {
-    let resolveFiles: (value: {
-      workspaceId: string;
-      root: string;
-      entries: { path: string; name: string; kind: string }[];
-    }) => void = () => undefined;
+  it("cancels an orphaned browse load and refetches after controller recreation", async () => {
+    const resolveFiles: Array<
+      (value: {
+        workspaceId: string;
+        root: string;
+        entries: { path: string; name: string; kind: string }[];
+      }) => void
+    > = [];
     const queryFiles = vi.fn(
       () =>
         new Promise((resolve) => {
-          resolveFiles = resolve;
+          resolveFiles.push(resolve);
         })
     );
     const providerOptions: TestContextMentionProviderOptions = {
@@ -1314,9 +1496,9 @@ describe("AgentMentionSearchController", () => {
     secondController.subscribe((state) => secondStates.push(state));
     secondController.setFilter("file");
     secondController.updateQuery({ workspaceId: "room-1", query: "" });
-    expect(queryFiles).toHaveBeenCalledTimes(1);
+    await vi.waitFor(() => expect(queryFiles).toHaveBeenCalledTimes(2));
 
-    resolveFiles({
+    resolveFiles[1]?.({
       workspaceId: "room-1",
       root: "/workspace",
       entries: [
@@ -1345,7 +1527,7 @@ describe("AgentMentionSearchController", () => {
         ])
       })
     );
-    expect(queryFiles).toHaveBeenCalledTimes(1);
+    expect(queryFiles).toHaveBeenCalledTimes(2);
   });
 
   it("debounces grouped searches and returns file results", async () => {
@@ -1783,6 +1965,7 @@ describe("AgentMentionSearchController", () => {
                 workspaceId: item.workspaceId
               },
               presentation: {
+                agentIconUrl: "data:image/svg+xml;base64,gemini",
                 status: item.status,
                 subtitle: item.agentName
               }
@@ -1816,6 +1999,7 @@ describe("AgentMentionSearchController", () => {
               expect.objectContaining({
                 kind: "session",
                 agentName: "Codex",
+                agentIconUrl: "data:image/svg+xml;base64,gemini",
                 initiatorName: "",
                 name: "Fix mention session provider",
                 scope: "my_sessions",
@@ -1884,6 +2068,11 @@ describe("AgentMentionSearchController", () => {
         presences: [],
         sessions: [
           {
+            ...{
+              activeTurnId: null,
+              latestTurnInteractions: [],
+              pendingInteractions: []
+            },
             agentSessionId: "session-1",
             workspaceId: "room-1",
             userId: "user-1",
@@ -2095,6 +2284,65 @@ describe("AgentMentionSearchController", () => {
     );
   });
 
+  it("searches agent-generated files for typed file queries under an active provenance filter", async () => {
+    const queryFiles = vi.fn().mockResolvedValue({ entries: [] });
+    const queryAgentGeneratedFiles = vi.fn().mockResolvedValue({
+      entries: [
+        {
+          path: "/workspace/output/report.md",
+          name: "report.md"
+        }
+      ]
+    });
+    const controller = new AgentMentionSearchController({
+      debounceMs: 0,
+      queryAgentGeneratedFiles,
+      queryFiles
+    });
+    const states: unknown[] = [];
+    controller.subscribe((state) => states.push(state));
+    controller.setProvenanceFilter({
+      agentTargetIds: ["agent-codex"],
+      memberIds: null
+    });
+    controller.setFilter("file");
+    controller.updateQuery({
+      workspaceId: "room-1",
+      currentUserId: "user-1",
+      query: "report"
+    });
+
+    await vi.waitFor(() =>
+      expect(states.at(-1)).toMatchObject({
+        status: "ready",
+        mode: "results",
+        filter: "file",
+        groups: [
+          {
+            id: "agent_generated_files",
+            items: [
+              expect.objectContaining({
+                kind: "file",
+                path: "/workspace/output/report.md"
+              })
+            ]
+          }
+        ]
+      })
+    );
+    expect(queryFiles).not.toHaveBeenCalled();
+    expect(queryAgentGeneratedFiles).toHaveBeenCalledWith(
+      expect.objectContaining({
+        query: "report",
+        provenanceFilter: {
+          agentTargetIds: ["agent-codex"],
+          memberIds: null
+        }
+      })
+    );
+    controller.dispose();
+  });
+
   it("groups agent-generated files by folder and supports folder drill-down", async () => {
     setAgentGuiI18nTestLocale("zh-CN");
     const queryAgentGeneratedFiles = vi.fn().mockResolvedValue({
@@ -2233,6 +2481,11 @@ describe("AgentMentionSearchController", () => {
       presences: [],
       sessions: [
         {
+          ...{
+            activeTurnId: null,
+            latestTurnInteractions: [],
+            pendingInteractions: []
+          },
           agentSessionId: "session-1",
           workspaceId: "room-1",
           userId: "user-1",
@@ -2336,6 +2589,11 @@ describe("AgentMentionSearchController", () => {
           presences: [],
           sessions: [
             {
+              ...{
+                activeTurnId: null,
+                latestTurnInteractions: [],
+                pendingInteractions: []
+              },
               agentSessionId: "runtime-session-1",
               workspaceId: "room-1",
               userId: "user-1",
@@ -2415,7 +2673,7 @@ describe("AgentMentionSearchController", () => {
     });
   });
 
-  it("uses session messages instead of timeline for missing runtime session titles", async () => {
+  it("uses the canonical session title without loading message fallback", async () => {
     const loadSessionMessages = vi.fn().mockResolvedValue({
       messages: [
         {
@@ -2447,12 +2705,17 @@ describe("AgentMentionSearchController", () => {
         presences: [],
         sessions: [
           {
+            ...{
+              activeTurnId: null,
+              latestTurnInteractions: [],
+              pendingInteractions: []
+            },
             agentSessionId: "runtime-session-1",
             workspaceId: "room-1",
             userId: "user-1",
             provider: "codex",
             sessionOrigin: "WORKSPACE_AGENT_SESSION_ORIGIN_RUNTIME",
-            title: "",
+            title: "Canonical title",
             createdAtUnixMs: 1,
             updatedAtUnixMs: 10
           }
@@ -2496,21 +2759,14 @@ describe("AgentMentionSearchController", () => {
               expect.objectContaining({
                 kind: "session",
                 targetId: "runtime-session-1",
-                title: "这个会话里面做了什么事情"
+                title: "Canonical title"
               })
             ]
           }
         ]
       })
     );
-    expect(loadSessionMessages).toHaveBeenCalledWith({
-      workspaceId: "room-1",
-
-      agentSessionId: "runtime-session-1",
-      sessionOrigin: "WORKSPACE_AGENT_SESSION_ORIGIN_RUNTIME",
-      afterVersion: 0,
-      limit: 20
-    });
+    expect(loadSessionMessages).not.toHaveBeenCalled();
   });
 
   it("loads default issue items in browse mode when switching to the issue tab", async () => {
@@ -2643,6 +2899,11 @@ describe("AgentMentionSearchController", () => {
       presences: [],
       sessions: [
         {
+          ...{
+            activeTurnId: null,
+            latestTurnInteractions: [],
+            pendingInteractions: []
+          },
           agentSessionId: "session-1",
           workspaceId: "room-1",
           userId: "user-1",
@@ -3229,6 +3490,11 @@ describe("AgentMentionSearchController", () => {
         presences: [],
         sessions: [
           {
+            ...{
+              activeTurnId: null,
+              latestTurnInteractions: [],
+              pendingInteractions: []
+            },
             agentSessionId: "session-1",
             workspaceId: "room-1",
             userId: "user-1",
@@ -3324,6 +3590,11 @@ describe("AgentMentionSearchController", () => {
         presences: [],
         sessions: [
           {
+            ...{
+              activeTurnId: null,
+              latestTurnInteractions: [],
+              pendingInteractions: []
+            },
             agentSessionId: "session-1",
             workspaceId: "room-1",
             userId: "user-1",

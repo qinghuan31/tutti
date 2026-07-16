@@ -167,7 +167,61 @@ export function validateManifest(manifest, sourceLabel = "manifest") {
   }
   validateManifestCLI(manifest.cli, sourceLabel);
   validateManifestReferences(manifest.references, sourceLabel);
+  requiredTuttiCapabilitiesForManifest(manifest, sourceLabel);
   validateLocalizationInfo(manifest.localizationInfo, sourceLabel);
+}
+
+export function requiredTuttiCapabilitiesForManifest(
+  manifest,
+  sourceLabel = "manifest"
+) {
+  const compatibility = manifest.hostCompatibility;
+  if (compatibility === undefined) return [];
+  if (
+    !compatibility ||
+    typeof compatibility !== "object" ||
+    Array.isArray(compatibility)
+  ) {
+    throw new Error(`${sourceLabel}.hostCompatibility must be an object`);
+  }
+  const unsupportedKey = Object.keys(compatibility).find(
+    (key) => key !== "requiredTuttiCapabilities"
+  );
+  if (unsupportedKey) {
+    throw new Error(
+      `${sourceLabel}.hostCompatibility.${unsupportedKey} is unsupported`
+    );
+  }
+  return normalizeRequiredTuttiCapabilities(
+    compatibility.requiredTuttiCapabilities,
+    `${sourceLabel}.hostCompatibility.requiredTuttiCapabilities`
+  );
+}
+
+export function normalizeRequiredTuttiCapabilities(value, label) {
+  if (!Array.isArray(value) || value.length === 0) {
+    throw new Error(`${label} must be a non-empty array`);
+  }
+  if (value.length > 32) {
+    throw new Error(`${label} must contain at most 32 capabilities`);
+  }
+  const capabilities = value.map((capability, index) => {
+    if (typeof capability !== "string" || capability.trim() !== capability) {
+      throw new Error(`${label}[${index}] must be a normalized string`);
+    }
+    if (!/^[a-z][a-z0-9-]{0,63}$/u.test(capability)) {
+      throw new Error(`${label}[${index}] is invalid`);
+    }
+    return capability;
+  });
+  const normalized = [...new Set(capabilities)].sort();
+  if (
+    normalized.length !== capabilities.length ||
+    normalized.some((capability, index) => capability !== capabilities[index])
+  ) {
+    throw new Error(`${label} must be sorted and unique`);
+  }
+  return normalized;
 }
 
 function validateManifestCLI(cli, sourceLabel) {

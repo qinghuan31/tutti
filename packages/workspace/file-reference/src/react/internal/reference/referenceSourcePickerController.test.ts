@@ -5,6 +5,7 @@ import type {
   ListChildrenResult,
   NodeRef,
   ReferenceNode,
+  SearchInput,
   SearchResult,
   SelectedReference
 } from "../../../contracts/referenceSource.ts";
@@ -17,6 +18,7 @@ import { SOURCE_ROOT_NODE_ID } from "../../../core/referenceSourceAggregator.ts"
 import { nodeRefKey } from "../../../core/referenceSourceUtils.ts";
 import {
   ROOT_CHILDREN_KEY,
+  SEARCH_PAGE_SIZE,
   createReferenceSourcePickerController
 } from "./referenceSourcePickerController.ts";
 
@@ -38,6 +40,8 @@ interface FakeOptions {
   tabs: ReferenceSourceTab[];
   children: Record<string, ListChildrenResult>; // key = `${sourceId}:${nodeId}`
   search?: Record<string, SearchResult>; // key = `${sourceId}:${query}`
+  onSearch?: (input: SearchInput) => void;
+  searchImpl?: (input: SearchInput) => Promise<SearchResult>;
   /** navigable=true 的源(app/issue):confirm 时文件夹递归展开成文件。 */
   navigable?: Record<string, boolean>;
   /** locateTarget 返回的 NodeRef 路径(root → leaf),key = sourceId。 */
@@ -57,6 +61,10 @@ function fakeAggregator(options: FakeOptions): ReferenceSourceAggregator {
       );
     },
     async search(_scope, sourceId, input): Promise<SearchResult> {
+      options.onSearch?.(input);
+      if (options.searchImpl) {
+        return options.searchImpl(input);
+      }
       return (
         options.search?.[`${sourceId}:${input.query}`] ?? {
           entries: [],
@@ -129,6 +137,39 @@ test("open 加载 tabs、默认选中首个并加载其根", async () => {
   assert.deepEqual(
     root?.entries.map((n) => n.ref.nodeId),
     ["/a", "/x.md"]
+  );
+});
+
+test("首次加载保留 source 声明的业务顺序", async () => {
+  const controller = createReferenceSourcePickerController({
+    aggregator: fakeAggregator({
+      tabs: [tabsTwo[1]!],
+      children: {
+        [`app-artifact:${SOURCE_ROOT_NODE_ID}`]: {
+          entries: [
+            folder("app-artifact", "project-new", "Untitled"),
+            folder("app-artifact", "project-beta", "Beta"),
+            folder("app-artifact", "project-alpha", "Alpha")
+          ],
+          nextCursor: null,
+          ordered: true
+        }
+      }
+    }),
+    scope,
+    searchDebounceMs: 0
+  });
+
+  controller.open();
+  await flush();
+
+  const root =
+    controller.getSnapshot().bySource["app-artifact"]?.childrenByKey[
+      ROOT_CHILDREN_KEY
+    ];
+  assert.deepEqual(
+    root?.entries.map((node) => node.displayName),
+    ["Untitled", "Beta", "Alpha"]
   );
 });
 
@@ -207,6 +248,38 @@ test("refreshChildren reloads an already loaded app group", async () => {
     entries.map((node) => node.ref.nodeId),
     ["new.png"]
   );
+});
+
+test("failed app group loading is retained as content state instead of empty data", async () => {
+  const appGroup = folder("app-artifact", "app:broken", "Broken App");
+  const expected = new Error("reference endpoint unavailable");
+  const controller = createReferenceSourcePickerController({
+    aggregator: {
+      ...fakeAggregator({ tabs: [tabsTwo[1]!], children: {} }),
+      async listChildren(_scope, ref: NodeRef): Promise<ListChildrenResult> {
+        if (ref.nodeId === SOURCE_ROOT_NODE_ID) {
+          return { entries: [appGroup], nextCursor: null };
+        }
+        throw expected;
+      }
+    },
+    scope,
+    searchDebounceMs: 0
+  });
+
+  controller.open();
+  await flush();
+  controller.refreshChildren(appGroup);
+  await flush();
+
+  const state =
+    controller.getSnapshot().bySource["app-artifact"]?.childrenByKey[
+      nodeRefKey(appGroup.ref)
+    ];
+  assert.equal(state?.loaded, false);
+  assert.equal(state?.loading, false);
+  assert.equal(state?.entries.length, 0);
+  assert.equal(state?.error, expected);
 });
 
 test("toggleSingleSelectionAndExpand single-selects and expands folders", async () => {
@@ -487,6 +560,164 @@ test("search 在当前 tab 生效", async () => {
   assert.equal(
     controller.getSnapshot().bySource["workspace-file"]?.mode,
     "browse"
+  );
+});
+
+test("provenance-only filtering enters query mode and reaches the source before paging", async () => {
+  const searchInputs: SearchInput[] = [];
+  const controller = createReferenceSourcePickerController({
+    aggregator: fakeAggregator({
+      tabs: tabsTwo,
+      children: {},
+      onSearch: (input) => {
+        searchInputs.push(input);
+      }
+    }),
+    scope,
+    searchDebounceMs: 0
+  });
+  controller.open();
+  await flush();
+
+  controller.setProvenanceFilter({
+    agentTargetIds: ["agent-a"],
+    memberIds: null
+  });
+  await flush();
+
+  assert.equal(
+    controller.getSnapshot().bySource["workspace-file"]?.mode,
+    "search"
+  );
+  const searchInput = searchInputs.at(-1);
+  assert.deepEqual(searchInput?.provenanceFilter, {
+    agentTargetIds: ["agent-a"],
+    memberIds: null
+  });
+  assert.equal(searchInput?.query, "");
+  assert.equal(searchInput?.limit, SEARCH_PAGE_SIZE);
+});
+
+test("semantically equal provenance filters do not repeat the active search", async () => {
+  const searchInputs: SearchInput[] = [];
+  const controller = createReferenceSourcePickerController({
+    aggregator: fakeAggregator({
+      tabs: tabsTwo,
+      children: {},
+      onSearch: (input) => searchInputs.push(input)
+    }),
+    scope,
+    searchDebounceMs: 0
+  });
+  controller.open();
+  await flush();
+
+  controller.setProvenanceFilter({
+    agentTargetIds: ["agent-b", "agent-a"],
+    memberIds: null
+  });
+  await flush();
+  assert.equal(searchInputs.length, 1);
+
+  controller.setProvenanceFilter({
+    agentTargetIds: ["agent-a", "agent-b"],
+    memberIds: null
+  });
+  await flush();
+
+  assert.equal(searchInputs.length, 1);
+});
+
+test("changing provenance filters aborts the stale request before debounce", async () => {
+  let resolveFirst: ((result: SearchResult) => void) | undefined;
+  const searchInputs: SearchInput[] = [];
+  const controller = createReferenceSourcePickerController({
+    aggregator: fakeAggregator({
+      tabs: tabsTwo,
+      children: {},
+      searchImpl: (input) => {
+        searchInputs.push(input);
+        if (searchInputs.length === 1) {
+          return new Promise((resolve) => {
+            resolveFirst = resolve;
+          });
+        }
+        return Promise.resolve({ entries: [], nextCursor: null });
+      }
+    }),
+    scope,
+    searchDebounceMs: 0
+  });
+  controller.open();
+  await flush();
+
+  controller.setProvenanceFilter({
+    agentTargetIds: ["agent-a"],
+    memberIds: null
+  });
+  await flush();
+  assert.equal(searchInputs.length, 1);
+  assert.equal(searchInputs[0]?.signal?.aborted, false);
+
+  controller.setProvenanceFilter({
+    agentTargetIds: ["agent-b"],
+    memberIds: null
+  });
+  assert.equal(searchInputs[0]?.signal?.aborted, true);
+
+  resolveFirst?.({ entries: [file("workspace-file", "/stale.md")] });
+  await flush();
+  assert.equal(searchInputs.length, 2);
+  assert.deepEqual(searchInputs[1]?.provenanceFilter, {
+    agentTargetIds: ["agent-b"],
+    memberIds: null
+  });
+  assert.deepEqual(
+    controller
+      .getSnapshot()
+      .bySource["workspace-file"]?.searchEntries.map((node) => node.ref.nodeId),
+    []
+  );
+});
+
+test("search 保留 source 返回的相关性顺序", async () => {
+  const controller = createReferenceSourcePickerController({
+    aggregator: fakeAggregator({
+      tabs: tabsTwo,
+      children: {
+        [`workspace-file:${SOURCE_ROOT_NODE_ID}`]: {
+          entries: [],
+          nextCursor: null
+        }
+      },
+      search: {
+        "workspace-file:load_log": {
+          entries: [
+            file("workspace-file", "/Movies/load_log", "load_log"),
+            folder(
+              "workspace-file",
+              "/Music/downloaded_catalog_data",
+              "downloaded_catalog_data"
+            )
+          ],
+          nextCursor: null
+        }
+      }
+    }),
+    scope,
+    searchDebounceMs: 0
+  });
+
+  controller.open();
+  await flush();
+  controller.setSearchQuery("load_log");
+  await flush();
+
+  assert.deepEqual(
+    controller
+      .getSnapshot()
+      .bySource["workspace-file"]?.searchEntries.map((node) => node.ref.nodeId),
+    ["/Movies/load_log", "/Music/downloaded_catalog_data"]
   );
 });
 

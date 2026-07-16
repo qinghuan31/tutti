@@ -4,7 +4,6 @@ import type {
 } from "@tutti-os/workbench-surface";
 import {
   agentGuiWorkbenchProviders,
-  isAgentGuiWorkbenchProvider,
   normalizeAgentGuiWorkbenchProvider
 } from "./providerCatalog.ts";
 import type {
@@ -35,7 +34,6 @@ export function createDefaultAgentGuiWorkbenchNodeState(
     conversationRailCollapsed: false,
     conversationRailWidthPx: null,
     lastActiveAgentSessionId: null,
-    lastActiveConversationTitle: null,
     provider
   };
 }
@@ -56,10 +54,7 @@ export function normalizeAgentGuiWorkbenchState(
     lastActiveAgentSessionId:
       typeof state.lastActiveAgentSessionId === "string"
         ? state.lastActiveAgentSessionId
-        : null,
-    ...(typeof state.lastActiveConversationTitle === "string"
-      ? { lastActiveConversationTitle: state.lastActiveConversationTitle }
-      : {})
+        : null
   };
 }
 
@@ -93,10 +88,7 @@ export function projectAgentGuiWorkbenchState(
     conversationRailWidthPx: normalizeOptionalPositiveNumber(
       state.conversationRailWidthPx
     ),
-    lastActiveAgentSessionId: state.lastActiveAgentSessionId ?? null,
-    ...(typeof state.lastActiveConversationTitle === "string"
-      ? { lastActiveConversationTitle: state.lastActiveConversationTitle }
-      : {})
+    lastActiveAgentSessionId: state.lastActiveAgentSessionId ?? null
   };
 }
 
@@ -108,48 +100,46 @@ export function areAgentGuiWorkbenchStatesEqual(
     (left.agentTargetId ?? null) === (right.agentTargetId ?? null) &&
     left.conversationRailCollapsed === right.conversationRailCollapsed &&
     left.conversationRailWidthPx === right.conversationRailWidthPx &&
-    left.lastActiveAgentSessionId === right.lastActiveAgentSessionId &&
-    (left.lastActiveConversationTitle ?? null) ===
-      (right.lastActiveConversationTitle ?? null)
+    left.lastActiveAgentSessionId === right.lastActiveAgentSessionId
   );
 }
 
 export function normalizeAgentGuiWorkbenchNodeState(
-  state: Partial<AgentGuiWorkbenchNodeState> | null | undefined,
+  state: unknown,
   fallbackProvider: AgentGuiWorkbenchProvider = "codex"
 ): AgentGuiWorkbenchNodeState {
-  const provider = normalizeAgentGuiWorkbenchProvider(
-    state?.provider,
-    fallbackProvider
-  );
+  const persistedState = isRecord(state) ? state : {};
+  const provider =
+    persistedState.provider === undefined || persistedState.provider === null
+      ? fallbackProvider
+      : normalizeAgentGuiWorkbenchProvider(persistedState.provider);
   return {
     ...createDefaultAgentGuiWorkbenchNodeState(provider),
-    agentTargetId: normalizeOptionalNonEmptyString(state?.agentTargetId),
+    agentTargetId: normalizeOptionalNonEmptyString(
+      persistedState.agentTargetId
+    ),
     composerOverrides: normalizeAgentGuiWorkbenchComposerOverrides(
-      state?.composerOverrides
+      persistedState.composerOverrides
     ),
     composerOverridesByAgentTargetId:
       normalizeAgentGuiWorkbenchComposerOverridesByAgentTargetId(
-        state?.composerOverridesByAgentTargetId
+        persistedState.composerOverridesByAgentTargetId
       ),
     composerOverridesByProvider:
       normalizeAgentGuiWorkbenchComposerOverridesByProvider(
-        state?.composerOverridesByProvider
+        persistedState.composerOverridesByProvider
       ),
     conversationCount: normalizeOptionalNonNegativeNumber(
-      state?.conversationCount
+      persistedState.conversationCount
     ),
-    conversationRailCollapsed: state?.conversationRailCollapsed === true,
+    conversationRailCollapsed:
+      persistedState.conversationRailCollapsed === true,
     conversationRailWidthPx: normalizeOptionalPositiveNumber(
-      state?.conversationRailWidthPx
+      persistedState.conversationRailWidthPx
     ),
     lastActiveAgentSessionId:
-      typeof state?.lastActiveAgentSessionId === "string"
-        ? state.lastActiveAgentSessionId
-        : null,
-    lastActiveConversationTitle:
-      typeof state?.lastActiveConversationTitle === "string"
-        ? state.lastActiveConversationTitle
+      typeof persistedState.lastActiveAgentSessionId === "string"
+        ? persistedState.lastActiveAgentSessionId
         : null,
     provider
   };
@@ -174,40 +164,9 @@ export function areAgentGuiWorkbenchNodeStatesEqual(
     left.conversationRailCollapsed === right.conversationRailCollapsed &&
     left.conversationRailWidthPx === right.conversationRailWidthPx &&
     left.lastActiveAgentSessionId === right.lastActiveAgentSessionId &&
-    left.lastActiveConversationTitle === right.lastActiveConversationTitle &&
     left.provider === right.provider &&
     (left.agentTargetId ?? null) === (right.agentTargetId ?? null)
   );
-}
-
-export function agentGuiWorkbenchProviderFromInstanceId(
-  instanceId: string | null | undefined
-): AgentGuiWorkbenchProvider {
-  const normalized = instanceId?.trim();
-  if (!normalized || normalized === "agent-gui") {
-    return "codex";
-  }
-  const [, provider] = normalized.split(":", 3);
-  return normalizeAgentGuiWorkbenchProvider(provider);
-}
-
-/**
- * Like {@link agentGuiWorkbenchProviderFromInstanceId} but returns `null`
- * instead of defaulting to `"codex"` when the provider cannot be determined
- * yet (e.g. a freshly created session whose instanceId does not encode a
- * provider). Callers that render a provider icon use this so they can show a
- * neutral placeholder during that transient window instead of flashing the
- * wrong provider's icon.
- */
-export function agentGuiWorkbenchProviderFromInstanceIdOrNull(
-  instanceId: string | null | undefined
-): AgentGuiWorkbenchProvider | null {
-  const normalized = instanceId?.trim();
-  if (!normalized || normalized === "agent-gui") {
-    return null;
-  }
-  const [, provider] = normalized.split(":", 3);
-  return isAgentGuiWorkbenchProvider(provider) ? provider : null;
 }
 
 export function createAgentGuiWorkbenchNodeStateSource(input: {

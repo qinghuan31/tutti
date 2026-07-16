@@ -22,8 +22,10 @@ import type {
 import type { TuttiExternalFileOpenInput } from "@tutti-os/workspace-external-core/contracts";
 import { resolveWorkspaceMentionLinkAction } from "@contexts/workspace/presentation/renderer/actions/workspaceLinkActions";
 import { runDesktopAgentGUILinkAction } from "@renderer/features/workspace-agent/services/desktopAgentGUILinkActions.ts";
+import { IWorkspaceAgentActivityService } from "@renderer/features/workspace-agent/services/workspaceAgentActivityService.interface.ts";
+import { useService } from "@tutti-os/infra/di";
 import { requestGroupChatLaunch } from "../services/groupChatLaunchCoordinator.ts";
-import { requestWorkspaceAgentGuiLaunch } from "@renderer/features/workspace-agent";
+import { requestWorkspaceAgentGuiLaunch } from "@renderer/features/workspace-agent/services/workspaceAgentGuiLaunchCoordinator.ts";
 import { useWorkspaceAppCenterService } from "@renderer/features/workspace-app-center";
 import { useTranslation } from "@renderer/i18n";
 import { useWorkspaceWorkbenchHostService } from "./useWorkspaceWorkbenchHostService";
@@ -82,6 +84,9 @@ export function WorkspaceAppExternalBridge({
   const hostService = useWorkspaceWorkbenchHostService();
   const { service: settingsService } = useWorkspaceSettingsService();
   const { service: appCenterService } = useWorkspaceAppCenterService();
+  const workspaceAgentActivityService = useService(
+    IWorkspaceAgentActivityService
+  );
   const { t } = useTranslation();
   const [pendingFileSelect, setPendingFileSelect] =
     useState<PendingFileSelect | null>(null);
@@ -201,6 +206,11 @@ export function WorkspaceAppExternalBridge({
             throw new Error("Unsupported reference link.");
           }
           const opened = await runDesktopAgentGUILinkAction(action, {
+            getAgentSession: ({ agentSessionId, workspaceId }) =>
+              workspaceAgentActivityService.getSession(
+                workspaceId,
+                agentSessionId
+              ),
             launchAgentGui: requestWorkspaceAgentGuiLaunch,
             launchWorkspaceApp: async ({ appId, workspaceId }) => {
               await appCenterService.openApp({ appId, workspaceId });
@@ -247,6 +257,7 @@ export function WorkspaceAppExternalBridge({
       openFileSelect,
       settingsService,
       userProjectsApi,
+      workspaceAgentActivityService,
       workspaceId
     ]
   );

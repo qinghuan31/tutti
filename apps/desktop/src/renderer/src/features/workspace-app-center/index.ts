@@ -1,5 +1,6 @@
 export { registerWorkspaceAppCenterServices } from "./services/registerWorkspaceAppCenterServices";
 export { IWorkspaceAppCenterService } from "./services/workspaceAppCenterService.interface";
+export { IWorkspaceAppSurfaceHost } from "./services/workspaceAppSurfaceHost.interface";
 export { shouldShowWorkspaceApp } from "./services/workspaceAppVisibility";
 export { findWorkspaceApp } from "./services/internal/workspaceAppCenterLaunchRequest";
 export {

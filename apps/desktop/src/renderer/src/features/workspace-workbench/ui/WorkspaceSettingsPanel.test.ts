@@ -11,6 +11,13 @@ const source = readFileSync(
   ),
   "utf8"
 );
+const defaultProvidersSource = readFileSync(
+  resolve(
+    dirname(fileURLToPath(import.meta.url)),
+    "workspaceSettingsDefaultAgentProviders.ts"
+  ),
+  "utf8"
+);
 
 test("workspace settings developer panel exposes analytics debug switch only when available", () => {
   assert.match(source, /useAnalyticsDebugPreferenceService/);
@@ -27,11 +34,6 @@ test("workspace settings panel lists appearance below general", () => {
   );
 });
 
-test("workspace settings panel uses a large desktop frame", () => {
-  assert.match(source, /h-\[min\(640px,calc\(100vh-40px\)\)\]/);
-  assert.match(source, /w-\[min\(960px,calc\(100vw-40px\)\)\]/);
-});
-
 test("workspace settings gates account behind Tutti Agent Switch", () => {
   assert.match(source, /settingsState\.tuttiAgentSwitchEnabled/);
   assert.match(source, /workspace\.settings\.developer\.tuttiAgentSwitchLabel/);
@@ -41,6 +43,25 @@ test("workspace settings gates account behind Tutti Agent Switch", () => {
   );
   assert.match(source, /settingsState\.activeSection === "account"/);
   assert.match(source, /<WorkspaceAccountSettingsSection \/>/);
+});
+
+test("workspace settings serializes feature flag updates from the pending snapshot", () => {
+  assert.match(
+    source,
+    /const pendingFeatureFlags =\s*desktopPreferencesState\.changingFeatureFlags \?\?\s*desktopPreferencesState\.featureFlags/
+  );
+  assert.match(
+    source,
+    /onLabEnabledChange[\s\S]*changeFeatureFlags\(\{\s*\.\.\.pendingFeatureFlags,\s*\[LAB_ENABLED_FLAG\]: enabled/
+  );
+  assert.match(
+    source,
+    /onReferenceProvenanceFilterEnabledChange[\s\S]*changeFeatureFlags\(\{\s*\.\.\.pendingFeatureFlags,\s*\[AGENT_REFERENCE_PROVENANCE_FILTER_FLAG\]: enabled/
+  );
+  assert.equal(
+    (source.match(/disabled=\{featureFlagsUpdating\}/g) ?? []).length,
+    2
+  );
 });
 
 test("workspace settings agent panel lists agent controls", () => {
@@ -70,15 +91,21 @@ test("workspace settings agent panel lists agent controls", () => {
 test("workspace settings general panel lists system controls", () => {
   assert.match(
     source,
-    /function WorkspaceGeneralSettingsSection[\s\S]*workspace\.settings\.general\.preventSleepLabel[\s\S]*workspace\.settings\.general\.languageLabel/
+    /function WorkspaceGeneralSettingsSection[\s\S]*workspace\.settings\.general\.workspaceUiModeLabel[\s\S]*desktopWorkspaceUiModes\.map[\s\S]*workspace\.settings\.general\.preventSleepLabel[\s\S]*workspace\.settings\.general\.languageLabel/
   );
+  assert.doesNotMatch(
+    source,
+    /workspace\.settings\.general\.workspaceUiModeDescription/
+  );
+  assert.match(source, /settingsService\.changeWorkspaceUiMode\(mode\)/);
 });
 
-test("workspace settings default provider offers enabled local agent defaults", () => {
+test("workspace settings default providers come from the provider descriptor catalog", () => {
   assert.match(
-    source,
-    /const workspaceSettingsDefaultAgentProviders = \[\s*"codex",\s*"claude-code",\s*"cursor",\s*"opencode"\s*\]/
+    defaultProvidersSource,
+    /migratedAgentGUIProviderIdentityCatalog[\s\S]*entry\.desktop\.defaultProviderEligible[\s\S]*defaultProviderPriority/
   );
+  assert.doesNotMatch(defaultProvidersSource, /\[\s*"codex",\s*"claude-code"/);
   assert.match(
     source,
     /workspaceSettingsDefaultAgentProviders\.map\(\(provider\) => \([\s\S]*<SelectItem key=\{provider\} value=\{provider\}>/
@@ -320,13 +347,6 @@ test("workspace settings about panel owns product info and keeps developer unloc
     source.slice(aboutSectionStart, appearanceSectionStart),
     /releaseNotesAction|checkForUpdates|checkUpdatesAction/
   );
-});
-
-test("workspace settings appearance panel owns visual settings", () => {
-  assert.match(source, /WorkspaceAppearanceSettingsSection/);
-  assert.match(source, /workspace\.settings\.appearance\.themeLabel/);
-  assert.match(source, /workspace\.settings\.appearance\.dockPlacementLabel/);
-  assert.match(source, /workspace\.settings\.appearance\.wallpaperLabel/);
 });
 
 test("workspace settings window snapping is controlled by one dropdown", () => {

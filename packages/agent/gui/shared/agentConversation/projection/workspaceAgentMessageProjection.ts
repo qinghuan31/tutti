@@ -1,20 +1,19 @@
+import type { AgentActivityMessage } from "@tutti-os/agent-activity-core";
 import type { BuildWorkspaceAgentSessionDetailInput } from "../../workspaceAgentSessionDetailViewModel";
 import { buildCanonicalWorkspaceAgentDetailView } from "../../workspaceAgentTimelineCanonical";
+import { resolveWorkspaceAgentNoticeCommandSemantics } from "../../workspaceAgentSystemNoticeSemantics";
+import type { WorkspaceAgentActivityTimelineItem } from "../../workspaceAgentTimelineTypes";
 import type { AgentConversationVM } from "../contracts/agentConversationVM";
 import {
   projectAgentConversationVM,
   type AgentConversationProjectionOptions
 } from "./agentConversationProjection";
-import type {
-  WorkspaceAgentActivityMessage,
-  WorkspaceAgentActivityTimelineItem
-} from "../../workspaceAgentActivityTypes";
 
 export interface ProjectWorkspaceAgentMessagesInput extends Omit<
   BuildWorkspaceAgentSessionDetailInput,
   "timelineItems"
 > {
-  messages: WorkspaceAgentActivityMessage[];
+  messages: AgentActivityMessage[];
 }
 
 export function projectWorkspaceAgentMessagesToConversationVM(
@@ -34,7 +33,7 @@ export function projectWorkspaceAgentMessagesToConversationVM(
 }
 
 export function projectWorkspaceAgentMessagesToTimelineItems(
-  messages: readonly WorkspaceAgentActivityMessage[]
+  messages: readonly AgentActivityMessage[]
 ): WorkspaceAgentActivityTimelineItem[] {
   const sortedMessages = latestMessageSnapshots(messages).sort(
     compareMessagesByDisplayOrder
@@ -45,7 +44,7 @@ export function projectWorkspaceAgentMessagesToTimelineItems(
     const kind = normalizeToken(message.kind);
     const role = normalizeToken(message.role);
     const payload = normalizedPayload(message.payload);
-    const id = normalizedMessageId(message.id, index);
+    const id = normalizedMessageId(message.version, index);
     const seq = index + 1;
     const eventId = message.messageId.trim() || `message:${id}`;
     const turnId = message.turnId?.trim() || undefined;
@@ -112,7 +111,7 @@ export function projectWorkspaceAgentMessagesToTimelineItems(
       });
     }
 
-    if (kind === "text" && role === "user") {
+    if ((kind === "text" || kind === "session_audit") && role === "user") {
       return messageTimelineItem({
         message,
         id,
@@ -128,8 +127,9 @@ export function projectWorkspaceAgentMessagesToTimelineItems(
     }
 
     if (kind === "text" && (role === "assistant" || role === "agent")) {
+      const projectedMessage = normalizeLegacyCompactNotice(message, payload);
       return messageTimelineItem({
-        message,
+        message: projectedMessage,
         id,
         seq,
         eventId,
@@ -137,14 +137,32 @@ export function projectWorkspaceAgentMessagesToTimelineItems(
         actorType: "agent",
         itemType: "message.assistant",
         role: "assistant",
-        content: messageText(message),
+        content: messageText(projectedMessage),
         occurredAtUnixMs
       });
     }
 
-    const statusTurnId = `${turnId ?? `message:${id}`}:status:${eventId}`;
+    const statusTurnId =
+      turnId ?? `session-status:${kind === "error" ? "error" : "notice"}`;
+    const statusMessage: AgentActivityMessage = {
+      ...message,
+      payload:
+        kind === "error"
+          ? {
+              ...payload,
+              detail: messageText(message),
+              kind: "agent_visible_error"
+            }
+          : {
+              ...payload,
+              detail: messageText(message),
+              kind: "agent_system_notice",
+              noticeKind: kind,
+              severity: "info"
+            }
+    };
     return messageTimelineItem({
-      message,
+      message: statusMessage,
       id,
       seq,
       eventId,
@@ -152,17 +170,65 @@ export function projectWorkspaceAgentMessagesToTimelineItems(
       actorType: role === "user" ? "user" : "agent",
       itemType: role === "user" ? "message.user" : "message.assistant",
       role: role === "user" ? "user" : "assistant",
-      content: statusMessageText(message),
+      content: statusMessageText(statusMessage),
       occurredAtUnixMs
     });
   });
 }
 
+function normalizeLegacyCompactNotice(
+  message: AgentActivityMessage,
+  payload: Record<string, unknown>
+): AgentActivityMessage {
+  const commandSemantics = resolveWorkspaceAgentNoticeCommandSemantics({
+    eventId: message.messageId,
+    messageSemantics: message.semantics,
+    payload,
+    status: message.status
+  });
+  if (commandSemantics?.command !== "compact") {
+    return message;
+  }
+  const commandStatus = commandSemantics.commandStatus;
+  const title =
+    stringValue(payload.title) ||
+    (commandStatus === "completed"
+      ? "Context compacted."
+      : commandStatus === "running"
+        ? "Compacting context."
+        : "Context compaction interrupted.");
+  const originalText = messageText(message);
+  const detail =
+    stringValue(payload.detail) ||
+    (commandStatus === "failed" || commandStatus === "canceled"
+      ? originalText.replace(/^Compacting failed:\s*/iu, "").trim()
+      : "");
+  return {
+    ...message,
+    semantics: {
+      ...message.semantics,
+      noticeCommand: "compact",
+      noticeCommandStatus: commandStatus
+    },
+    payload: {
+      ...payload,
+      kind: "agent_system_notice",
+      noticeKind: stringValue(payload.noticeKind) || "system_notice",
+      noticeCommand: "compact",
+      noticeCommandStatus: commandStatus,
+      title,
+      text: title,
+      content: title,
+      ...(detail ? { detail } : {})
+    }
+  };
+}
+
 function latestMessageSnapshots(
-  messages: readonly WorkspaceAgentActivityMessage[]
-): WorkspaceAgentActivityMessage[] {
-  const latestByKey = new Map<string, WorkspaceAgentActivityMessage>();
-  const unkeyedMessages: WorkspaceAgentActivityMessage[] = [];
+  messages: readonly AgentActivityMessage[]
+): AgentActivityMessage[] {
+  const latestByKey = new Map<string, AgentActivityMessage>();
+  const unkeyedMessages: AgentActivityMessage[] = [];
   for (const message of messages) {
     const key = messageSnapshotKey(message);
     if (!key) {
@@ -181,12 +247,19 @@ function latestMessageSnapshots(
 }
 
 function mergeMessageSnapshot(
-  previous: WorkspaceAgentActivityMessage | undefined,
-  next: WorkspaceAgentActivityMessage
-): WorkspaceAgentActivityMessage {
+  previous: AgentActivityMessage | undefined,
+  next: AgentActivityMessage
+): AgentActivityMessage {
+  const semantics =
+    previous?.semantics || next.semantics
+      ? { ...previous?.semantics, ...next.semantics }
+      : undefined;
   return {
     ...previous,
     ...next,
+    sequence: next.sequence ?? previous?.sequence,
+    createdAtUnixMs: next.createdAtUnixMs ?? previous?.createdAtUnixMs,
+    ...(semantics ? { semantics } : {}),
     payload: {
       ...(previous?.payload ?? {}),
       ...(next.payload ?? {})
@@ -194,9 +267,7 @@ function mergeMessageSnapshot(
   };
 }
 
-function messageSnapshotKey(
-  message: WorkspaceAgentActivityMessage
-): string | null {
+function messageSnapshotKey(message: AgentActivityMessage): string | null {
   const messageId = message.messageId.trim();
   if (!messageId) {
     return null;
@@ -217,7 +288,7 @@ function messageTimelineItem({
   content,
   occurredAtUnixMs
 }: {
-  message: WorkspaceAgentActivityMessage;
+  message: AgentActivityMessage;
   id: number;
   seq: number;
   eventId: string;
@@ -241,6 +312,7 @@ function messageTimelineItem({
     itemType,
     role,
     status: message.status,
+    ...(message.semantics ? { messageSemantics: message.semantics } : {}),
     content,
     payload: normalizedPayload(message.payload),
     ...(occurredAtUnixMs !== undefined ? { occurredAtUnixMs } : {}),
@@ -250,9 +322,7 @@ function messageTimelineItem({
   };
 }
 
-function workspaceIdFromMessage(
-  message: WorkspaceAgentActivityMessage
-): string {
+function workspaceIdFromMessage(message: AgentActivityMessage): string {
   return message.workspaceId?.trim() || "";
 }
 
@@ -265,21 +335,30 @@ function workspaceTimelineFields(
 }
 
 function compareMessagesByDisplayOrder(
-  left: WorkspaceAgentActivityMessage,
-  right: WorkspaceAgentActivityMessage
+  left: AgentActivityMessage,
+  right: AgentActivityMessage
 ): number {
-  // This comparator decides the rendered message position. startedAt is the
-  // start time for long-running items, occurredAt is the append time for plain
-  // messages, and completedAt is only a last fallback; version/id are stable
-  // tie-breakers when two messages share the same display time.
-  return (
-    messageDisplayOrderTime(left) - messageDisplayOrderTime(right) ||
-    normalizedPositiveNumber(left.version) -
-      normalizedPositiveNumber(right.version) ||
-    normalizedPositiveNumber(left.id) - normalizedPositiveNumber(right.id) ||
-    (left.version ?? 0) - (right.version ?? 0) ||
-    left.messageId.localeCompare(right.messageId)
-  );
+  // Durable sequence is assigned once when the message is first stored and is
+  // not changed by later streaming snapshots. Timestamps are compatibility
+  // fallbacks for messages produced by older runtimes.
+  const leftSequence = normalizedPositiveNumber(left.sequence);
+  const rightSequence = normalizedPositiveNumber(right.sequence);
+  if (leftSequence > 0 && rightSequence > 0 && leftSequence !== rightSequence) {
+    return leftSequence - rightSequence;
+  }
+  const leftTime = messageDisplayOrderTime(left);
+  const rightTime = messageDisplayOrderTime(right);
+  if (leftTime > 0 && rightTime > 0 && leftTime !== rightTime) {
+    return leftTime - rightTime;
+  }
+  const leftVersion = normalizedPositiveNumber(left.version);
+  const rightVersion = normalizedPositiveNumber(right.version);
+  if (leftVersion > 0 && rightVersion > 0 && leftVersion !== rightVersion) {
+    return leftVersion - rightVersion;
+  }
+  // Sorting opaque message ids would manufacture chronology and can move a
+  // user prompt behind the assistant output it initiated.
+  return 0;
 }
 
 function normalizedMessageId(id: number | undefined, index: number): number {
@@ -295,11 +374,10 @@ function normalizedPositiveNumber(value: number | undefined): number {
     : 0;
 }
 
-function messageDisplayOrderTime(
-  message: WorkspaceAgentActivityMessage
-): number {
+function messageDisplayOrderTime(message: AgentActivityMessage): number {
   return (
     normalizedPositiveNumber(message.startedAtUnixMs) ||
+    normalizedPositiveNumber(message.createdAtUnixMs) ||
     normalizedPositiveNumber(message.occurredAtUnixMs) ||
     normalizedPositiveNumber(message.completedAtUnixMs)
   );
@@ -327,7 +405,7 @@ function toolCallItemType(status: string | undefined): string {
   }
 }
 
-function messageText(message: WorkspaceAgentActivityMessage): string {
+function messageText(message: AgentActivityMessage): string {
   const payload = normalizedPayload(message.payload);
   const title = messagePayloadString(message, "title");
   return firstNonEmptyString(
@@ -340,7 +418,7 @@ function messageText(message: WorkspaceAgentActivityMessage): string {
   );
 }
 
-function statusMessageText(message: WorkspaceAgentActivityMessage): string {
+function statusMessageText(message: AgentActivityMessage): string {
   const title = messagePayloadString(message, "title") ?? "";
   const text = messageText(message);
   if (title && text && title !== text) {
@@ -350,7 +428,7 @@ function statusMessageText(message: WorkspaceAgentActivityMessage): string {
 }
 
 function messagePayloadString(
-  message: WorkspaceAgentActivityMessage,
+  message: AgentActivityMessage,
   key: string
 ): string | undefined {
   return stringValue(normalizedPayload(message.payload)[key]);

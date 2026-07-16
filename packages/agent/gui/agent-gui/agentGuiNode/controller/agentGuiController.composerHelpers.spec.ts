@@ -4,77 +4,71 @@ import type { AgentSessionPermissionConfig } from "../../../shared/agentSessionT
 import type { AgentGUINodeData } from "../../../types";
 import {
   buildNodeDefaultComposerSettings,
-  composerOptionsMissingLiveModelValues,
-  liveModelOptionValuesFromRuntimeContext,
+  slashCommandPoliciesEqual,
   nodeDataFromComposerSettings,
   permissionModeOptions,
-  readNodeDefaultDraftPrompt,
+  providerSkillsFromComposerOptions,
   readNodeDefaultDraftSettings,
   reasoningSelectionFromComposerOptions
 } from "./agentGuiController.composerHelpers";
 import type { AgentActivityComposerOptions } from "@tutti-os/agent-activity-core";
 
-describe("live model options from runtime context", () => {
-  const cursorRuntimeContext = {
-    configOptions: [
-      { id: "mode", options: [{ value: "agent", name: "Agent" }] },
-      {
-        id: "model",
-        currentValue: "composer-2.5[fast=true]",
-        options: [
-          { value: "default[]", name: "Auto" },
-          { value: "composer-2.5[fast=true]", name: "composer-2.5" },
-          { value: "gpt-5.2[reasoning=medium,fast=false]", name: "gpt-5.2" }
-        ]
-      }
+describe("slash command policy equality", () => {
+  const policy = {
+    fallbackCommands: ["compact", "goal"],
+    commandEffects: [
+      { command: "compact", effect: "submitImmediate" as const },
+      { command: "goal", effect: "activateGoalMode" as const }
     ]
   };
 
-  it("extracts advertised model values", () => {
+  it("compares cloned policy values structurally", () => {
+    expect(slashCommandPoliciesEqual(policy, structuredClone(policy))).toBe(
+      true
+    );
     expect(
-      liveModelOptionValuesFromRuntimeContext(cursorRuntimeContext)
-    ).toEqual([
-      "default[]",
-      "composer-2.5[fast=true]",
-      "gpt-5.2[reasoning=medium,fast=false]"
-    ]);
-    expect(liveModelOptionValuesFromRuntimeContext(null)).toEqual([]);
-    expect(liveModelOptionValuesFromRuntimeContext({})).toEqual([]);
+      slashCommandPoliciesEqual(policy, {
+        ...structuredClone(policy),
+        commandEffects: [
+          { command: "compact", effect: "submitImmediate" },
+          { command: "goal", effect: "showStatus" }
+        ]
+      })
+    ).toBe(false);
     expect(
-      liveModelOptionValuesFromRuntimeContext({ configOptions: "nope" })
-    ).toEqual([]);
+      slashCommandPoliciesEqual(policy, {
+        ...structuredClone(policy),
+        commandCatalogAuthoritative: true
+      })
+    ).toBe(false);
   });
+});
 
-  it("detects composer options missing live models and quiesces once merged", () => {
-    const staleOptions = {
-      provider: "cursor",
-      models: [
-        { value: "composer-2.5[fast=true]", label: "composer-2.5[fast=true]" }
+describe("descriptor-backed skill invocation", () => {
+  it("does not apply invocation metadata from unavailable capabilities", () => {
+    const options = {
+      skills: [
+        {
+          name: "example",
+          trigger: "/example",
+          sourceKind: "plugin"
+        }
       ],
-      reasoningEfforts: [],
-      speeds: [],
-      skills: [],
-      loadedAtUnixMs: 1
-    } as unknown as AgentActivityComposerOptions;
-    const mergedOptions = {
-      ...staleOptions,
-      models: [
-        { value: "default[]", label: "Auto" },
-        { value: "composer-2.5[fast=true]", label: "composer-2.5" },
-        { value: "gpt-5.2[reasoning=medium,fast=false]", label: "gpt-5.2" }
+      capabilityCatalog: [
+        {
+          name: "example",
+          label: "Example",
+          kind: "skill",
+          status: "unavailable",
+          trigger: "/example",
+          invocation: "promptItem"
+        }
       ]
     } as unknown as AgentActivityComposerOptions;
-    const liveValues =
-      liveModelOptionValuesFromRuntimeContext(cursorRuntimeContext);
 
     expect(
-      composerOptionsMissingLiveModelValues(staleOptions, liveValues)
-    ).toBe(true);
-    expect(
-      composerOptionsMissingLiveModelValues(mergedOptions, liveValues)
-    ).toBe(false);
-    expect(composerOptionsMissingLiveModelValues(null, liveValues)).toBe(false);
-    expect(composerOptionsMissingLiveModelValues(staleOptions, [])).toBe(false);
+      providerSkillsFromComposerOptions(options)[0]?.invocation
+    ).toBeUndefined();
   });
 });
 
@@ -107,6 +101,43 @@ describe("permissionModeOptions", () => {
       }
     ]);
   });
+
+  it("presents OpenCode permissions independently from Plan mode", () => {
+    const permissionConfig: AgentSessionPermissionConfig = {
+      configurable: true,
+      defaultValue: "ask",
+      modes: [
+        {
+          id: "read-only",
+          label: "Read-only",
+          description: "Read-only",
+          semantic: "locked-down"
+        },
+        {
+          id: "ask",
+          label: "Ask",
+          description: "Ask",
+          semantic: "ask-before-write"
+        },
+        {
+          id: "full-access",
+          label: "Full access",
+          description: "Full access",
+          semantic: "full-access"
+        }
+      ]
+    };
+
+    expect(permissionModeOptions("opencode", permissionConfig)).toEqual([
+      expect.objectContaining({ value: "read-only", label: "Read-only" }),
+      expect.objectContaining({ value: "ask", label: "Ask" }),
+      expect.objectContaining({
+        value: "full-access",
+        label: "Full access",
+        description: expect.stringContaining("separate Plan mode")
+      })
+    ]);
+  });
 });
 
 describe("model reasoning options", () => {
@@ -123,26 +154,24 @@ describe("model reasoning options", () => {
     reasoningEfforts: [{ value: "high", label: "High" }],
     speeds: [],
     skills: [],
-    runtimeContext: {
-      modelReasoningOptionsByModel: {
-        "gpt-5.6-sol": {
-          defaultValue: "low",
-          options: [
-            { value: "low", name: "Low" },
-            { value: "ultra", name: "ultra" }
-          ]
-        },
-        "gpt-5.6-luna": {
-          defaultValue: "medium",
-          options: [
-            { value: "low", name: "Low" },
-            { value: "medium", name: "Medium" }
-          ]
-        },
-        "no-reasoning": {
-          defaultValue: null,
-          options: []
-        }
+    reasoningOptionsByModel: {
+      "gpt-5.6-sol": {
+        defaultValue: "low",
+        options: [
+          { value: "low", label: "Low" },
+          { value: "ultra", label: "ultra" }
+        ]
+      },
+      "gpt-5.6-luna": {
+        defaultValue: "medium",
+        options: [
+          { value: "low", label: "Low" },
+          { value: "medium", label: "Medium" }
+        ]
+      },
+      "no-reasoning": {
+        defaultValue: null,
+        options: []
       }
     },
     loadedAtUnixMs: 1
@@ -296,16 +325,7 @@ describe("target-keyed composer defaults", () => {
     expect(next.composerOverrides?.model ?? null).toBeNull();
   });
 
-  it("reads target draft defaults before provider legacy defaults", () => {
-    expect(
-      readNodeDefaultDraftPrompt({
-        data: baseNodeData,
-        drafts: {
-          "__agent_gui_node_defaults__:codex": "provider draft",
-          "__agent_gui_node_defaults__:target:local:codex": "target draft"
-        }
-      })
-    ).toBe("target draft");
+  it("reads target draft settings before provider legacy defaults", () => {
     expect(
       readNodeDefaultDraftSettings({
         data: baseNodeData,

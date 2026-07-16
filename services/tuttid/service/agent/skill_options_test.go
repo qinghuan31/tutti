@@ -2,13 +2,68 @@ package agent
 
 import (
 	"bytes"
+	"context"
 	"log/slog"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 	"time"
 )
+
+type extensionComposerProfileResolverStub struct {
+	profile ExtensionComposerProfile
+}
+
+func (s extensionComposerProfileResolverStub) ResolveExtensionComposerProfile(context.Context, string) (ExtensionComposerProfile, error) {
+	return s.profile, nil
+}
+
+func TestDiscoverComposerSkillOptionsUsesExtensionDeclaredRoots(t *testing.T) {
+	tempDir := t.TempDir()
+	homeDir := filepath.Join(tempDir, "home")
+	repoDir := filepath.Join(tempDir, "repo")
+	cwd := filepath.Join(repoDir, "packages", "app")
+	t.Setenv("HOME", homeDir)
+	t.Setenv("USERPROFILE", homeDir)
+	writeSkill(t, filepath.Join(repoDir, ".gemini", "skills", "project-review", "SKILL.md"), `---
+name: project-review
+description: Review this project.
+---
+`)
+	writeSkill(t, filepath.Join(homeDir, ".agents", "skills", "personal-review", "SKILL.md"), `---
+name: personal-review
+description: Review any project.
+---
+`)
+	service := newIsolatedAgentService(newFakeRuntime())
+	service.ExtensionComposerProfiles = extensionComposerProfileResolverStub{
+		profile: ExtensionComposerProfile{Skills: &ExtensionComposerSkillProfile{
+			Invocation:    "textTrigger",
+			TriggerPrefix: "/",
+			Roots: []ExtensionComposerSkillRoot{
+				{Scope: "workspace", Path: ".gemini/skills"},
+				{Scope: "user", Path: ".agents/skills"},
+			},
+		}},
+	}
+	options := service.discoverComposerSkillOptionsForLaunch(
+		context.Background(),
+		"acp:gemini",
+		cwd,
+		nil,
+		map[string]any{"kind": "agent_extension", "extensionInstallationId": "gemini@1.0.1"},
+	)
+	if got := composerSkillOptionTriggers(options); !slices.Equal(got, []string{"/project-review", "/personal-review"}) {
+		t.Fatalf("extension skill triggers = %#v", got)
+	}
+	for _, option := range options {
+		if option.Invocation != "textTrigger" {
+			t.Fatalf("extension skill invocation = %q", option.Invocation)
+		}
+	}
+}
 
 func TestDiscoverComposerSkillOptionsCodexUsesProviderNativeTriggers(t *testing.T) {
 	tempDir := t.TempDir()

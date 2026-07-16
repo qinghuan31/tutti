@@ -1,5 +1,7 @@
 import {
   createElement,
+  lazy,
+  Suspense,
   useState,
   type CSSProperties,
   type HTMLAttributes,
@@ -9,7 +11,6 @@ import type {
   WorkbenchDisplayMode,
   WorkbenchHostNodeHeaderWindowActions
 } from "@tutti-os/workbench-surface";
-import { ExternalLink } from "lucide-react";
 import {
   Button,
   PanelIcon,
@@ -20,7 +21,14 @@ import {
   cn
 } from "@tutti-os/ui-system";
 import { CreateChatIcon } from "@tutti-os/ui-system/icons";
+import openLinkLinedIconUrl from "../app/renderer/assets/icons/open-link-lined.svg";
 import { useAgentGuiWorkbenchBodyRenderError } from "./bodyRenderErrorRegistry.ts";
+
+const LazyAgentRichTextReadonly = lazy(() =>
+  import("../shared/AgentRichTextReadonly.tsx").then((module) => ({
+    default: module.AgentRichTextReadonly
+  }))
+);
 
 const headerChromeIconButtonClassName =
   "agent-gui-workbench-header__icon-button";
@@ -43,10 +51,12 @@ export interface AgentGuiWorkbenchHeaderCopy {
   newConversation: string;
   openDetachedWindow?: string;
   restore?: string;
+  untitledConversation?: string;
 }
 
 export interface AgentGuiWorkbenchHeaderProps extends HTMLAttributes<HTMLElement> {
   copy: AgentGuiWorkbenchHeaderCopy;
+  agentTitle?: string | null;
   defaultActions?: ReactNode;
   displayMode?: WorkbenchDisplayMode;
   isConversationRailAutoCollapsed: boolean;
@@ -54,12 +64,18 @@ export interface AgentGuiWorkbenchHeaderProps extends HTMLAttributes<HTMLElement
   conversationRailWidthPx?: number | null;
   conversationIconUrl?: string | null;
   conversationIconFallbackUrl?: string | null;
+  hasConversation?: boolean;
   providerRailWidthPx?: number | null;
+  primaryAccessory?: ReactNode;
+  secondaryAccessory?: ReactNode;
   conversationTitle?: string | null;
+  conversationTitleDisplayPrompt?: string | null;
   nodeId: string;
   onCreateConversation?: () => void;
   onOpenDetachedWindow?: () => void;
   onToggleConversationRail: (nextCollapsed: boolean) => void;
+  showAppTitle?: boolean;
+  showConversationRailToggle?: boolean;
   showWindowControls?: boolean;
   title?: string;
   windowActions?: Pick<
@@ -71,6 +87,7 @@ export interface AgentGuiWorkbenchHeaderProps extends HTMLAttributes<HTMLElement
 export function AgentGuiWorkbenchHeader({
   className,
   copy,
+  agentTitle,
   defaultActions: _defaultActions,
   displayMode,
   isConversationRailAutoCollapsed,
@@ -78,12 +95,18 @@ export function AgentGuiWorkbenchHeader({
   conversationRailWidthPx,
   conversationIconUrl,
   conversationIconFallbackUrl,
+  hasConversation = false,
   providerRailWidthPx,
+  primaryAccessory,
+  secondaryAccessory,
   conversationTitle,
+  conversationTitleDisplayPrompt,
   nodeId,
   onCreateConversation,
   onOpenDetachedWindow,
   onToggleConversationRail,
+  showAppTitle = true,
+  showConversationRailToggle = true,
   showWindowControls = true,
   title: _title,
   windowActions,
@@ -96,9 +119,18 @@ export function AgentGuiWorkbenchHeader({
   const appTitle = _title?.trim() || copy.fallbackAgentLabel;
   const sessionTitle = hasBodyRenderError
     ? ""
-    : conversationTitle?.trim() || "";
+    : conversationTitle?.trim() ||
+      (hasConversation ? copy.untitledConversation?.trim() : "") ||
+      "";
+  const sessionTitleDisplayPrompt = hasBodyRenderError
+    ? ""
+    : conversationTitleDisplayPrompt?.trim() || "";
+  const collapsedTitle = sessionTitle || agentTitle?.trim() || "";
   const sessionIconUrl = conversationIconUrl?.trim() || "";
   const sessionIconFallbackUrl = conversationIconFallbackUrl?.trim() || "";
+  const hasExpandedIdentity = Boolean(
+    collapsedTitle || sessionIconUrl || sessionIconFallbackUrl
+  );
   const safeDisplayMode = displayMode ?? "floating";
   const safeWindowActions = windowActions ?? {
     close: () => undefined,
@@ -174,7 +206,7 @@ export function AgentGuiWorkbenchHeader({
             })
           )
         : null,
-      !isConversationRailCollapsed
+      showAppTitle && !isConversationRailCollapsed
         ? createElement(
             "div",
             {
@@ -189,59 +221,36 @@ export function AgentGuiWorkbenchHeader({
             )
           )
         : null,
+      primaryAccessory
+        ? createElement(
+            "div",
+            {
+              className: "agent-gui-workbench-header__primary-accessory"
+            },
+            primaryAccessory
+          )
+        : null,
       onOpenDetachedWindow && !hasBodyRenderError
         ? createDetachedWindowButton({
             label: copy.openDetachedWindow ?? "Open in detached window",
             onOpenDetachedWindow
           })
         : null,
-      createElement(
-        Button as never,
-        {
-          "aria-label": toggleLabel,
-          className: conversationRailToggleButtonClassName,
-          "data-agent-gui-conversation-rail-auto-collapsed":
-            isConversationRailAutoCollapsed ? "true" : undefined,
-          "data-agent-gui-conversation-rail-collapsed":
-            isConversationRailCollapsed ? "true" : undefined,
-          "data-testid": "agent-gui-toggle-conversation-rail",
-          size: "icon-sm",
-          title: toggleLabel,
-          type: "button",
-          variant: "ghost",
-          onClick: (event) => {
-            event.stopPropagation();
-            onToggleConversationRail(!isConversationRailCollapsed);
-          },
-          onDoubleClick: (event) => event.stopPropagation(),
-          onPointerDown: (event) => event.stopPropagation()
-        },
-        createElement(PanelIcon, { className: headerChromeIconClassName })
-      ),
-      isConversationRailCollapsed && onCreateConversation
-        ? createElement(
-            Button as never,
-            {
-              "aria-label": copy.newConversation,
-              className: headerChromeIconButtonClassName,
-              size: "icon-sm",
-              title: copy.newConversation,
-              type: "button",
-              variant: "ghost",
-              onClick: (event) => {
-                event.stopPropagation();
-                onCreateConversation();
-              },
-              onDoubleClick: (event) => event.stopPropagation(),
-              onPointerDown: (event) => event.stopPropagation()
-            },
-            createElement(CreateChatIcon, {
-              "aria-hidden": true,
-              className: headerChromeIconClassName
-            })
-          )
+      showConversationRailToggle
+        ? createConversationRailToggleButton({
+            isAutoCollapsed: isConversationRailAutoCollapsed,
+            isCollapsed: isConversationRailCollapsed,
+            label: toggleLabel,
+            onToggleConversationRail
+          })
         : null,
-      isConversationRailCollapsed && sessionTitle
+      isConversationRailCollapsed && onCreateConversation
+        ? createNewConversationButton({
+            label: copy.newConversation,
+            onCreateConversation
+          })
+        : null,
+      isConversationRailCollapsed && collapsedTitle
         ? createElement(
             "span",
             {
@@ -257,33 +266,129 @@ export function AgentGuiWorkbenchHeader({
               {
                 className: "agent-gui-workbench-header__title-text"
               },
-              sessionTitle
+              collapsedTitle
             )
+          )
+        : null,
+      isConversationRailCollapsed && secondaryAccessory
+        ? createElement(
+            "div",
+            {
+              className: "agent-gui-workbench-header__secondary-accessory"
+            },
+            secondaryAccessory
           )
         : null
     ),
-    !isConversationRailCollapsed && sessionTitle
+    !isConversationRailCollapsed && (hasExpandedIdentity || secondaryAccessory)
       ? createElement(
           "div",
           {
-            className: "agent-gui-workbench-header__detail-title",
-            "data-testid": "agent-gui-window-detail-title"
+            className: "agent-gui-workbench-header__detail"
           },
-          createSessionHeaderIconSlot({
-            fallbackSrc: sessionIconFallbackUrl,
-            src: sessionIconUrl,
-            testId: "agent-gui-window-detail-title-icon"
-          }),
-          createElement(
-            "span",
-            {
-              className: "agent-gui-workbench-header__title-text"
-            },
-            sessionTitle
-          )
+          hasExpandedIdentity
+            ? createElement(
+                "div",
+                {
+                  className: "agent-gui-workbench-header__detail-title",
+                  "data-testid": "agent-gui-window-detail-title"
+                },
+                createSessionHeaderIconSlot({
+                  fallbackSrc: sessionIconFallbackUrl,
+                  src: sessionIconUrl,
+                  testId: "agent-gui-window-detail-title-icon"
+                }),
+                sessionTitleDisplayPrompt
+                  ? createElement(
+                      Suspense,
+                      {
+                        fallback: createElement(
+                          "span",
+                          {
+                            className: "agent-gui-workbench-header__title-text"
+                          },
+                          sessionTitle
+                        )
+                      },
+                      createElement(LazyAgentRichTextReadonly, {
+                        className:
+                          "agent-gui-workbench-header__title-text agent-gui-workbench-header__rich-title",
+                        editorClassName:
+                          "agent-gui-workbench-header__rich-title-editor",
+                        value: sessionTitleDisplayPrompt
+                      })
+                    )
+                  : sessionTitle
+                    ? createElement(
+                        "span",
+                        {
+                          className: "agent-gui-workbench-header__title-text"
+                        },
+                        sessionTitle
+                      )
+                    : null
+              )
+            : null,
+          secondaryAccessory
+            ? createElement(
+                "div",
+                {
+                  className: "agent-gui-workbench-header__secondary-accessory"
+                },
+                secondaryAccessory
+              )
+            : null
         )
       : null
   );
+}
+
+function createConversationRailToggleButton({
+  isAutoCollapsed,
+  isCollapsed,
+  label,
+  onToggleConversationRail
+}: {
+  isAutoCollapsed: boolean;
+  isCollapsed: boolean;
+  label: string;
+  onToggleConversationRail: (nextCollapsed: boolean) => void;
+}): ReactNode {
+  const button = createElement(
+    Button as never,
+    {
+      "aria-label": label,
+      className: conversationRailToggleButtonClassName,
+      "data-agent-gui-conversation-rail-auto-collapsed": isAutoCollapsed
+        ? "true"
+        : undefined,
+      "data-agent-gui-conversation-rail-collapsed": isCollapsed
+        ? "true"
+        : undefined,
+      "data-testid": "agent-gui-toggle-conversation-rail",
+      size: "icon-sm",
+      type: "button",
+      variant: "ghost",
+      onClick: (event) => {
+        event.stopPropagation();
+        onToggleConversationRail(!isCollapsed);
+      },
+      onDoubleClick: (event) => event.stopPropagation(),
+      onPointerDown: (event) => event.stopPropagation()
+    },
+    createElement(PanelIcon, { className: headerChromeIconClassName })
+  );
+
+  return createElement(TooltipProvider, {
+    children: createElement(
+      Tooltip,
+      null,
+      createElement(TooltipTrigger, { asChild: true }, button),
+      createElement(TooltipContent, { side: "bottom" }, label)
+    ),
+    delayDuration: 250,
+    skipDelayDuration: 0
+  });
 }
 
 function createDetachedWindowButton({
@@ -309,7 +414,60 @@ function createDetachedWindowButton({
       onDoubleClick: (event) => event.stopPropagation(),
       onPointerDown: (event) => event.stopPropagation()
     },
-    createElement(ExternalLink, {
+    createElement("span", {
+      "aria-hidden": true,
+      className: headerChromeIconClassName,
+      "data-agent-gui-icon": "open-link-lined",
+      style: {
+        backgroundColor: "currentColor",
+        display: "block",
+        WebkitMaskImage: `url("${openLinkLinedIconUrl}")`,
+        WebkitMaskPosition: "center",
+        WebkitMaskRepeat: "no-repeat",
+        WebkitMaskSize: "contain",
+        maskImage: `url("${openLinkLinedIconUrl}")`,
+        maskPosition: "center",
+        maskRepeat: "no-repeat",
+        maskSize: "contain"
+      }
+    })
+  );
+
+  return createElement(TooltipProvider, {
+    children: createElement(
+      Tooltip,
+      null,
+      createElement(TooltipTrigger, { asChild: true }, button),
+      createElement(TooltipContent, { side: "bottom" }, label)
+    ),
+    delayDuration: 250,
+    skipDelayDuration: 0
+  });
+}
+
+function createNewConversationButton({
+  label,
+  onCreateConversation
+}: {
+  label: string;
+  onCreateConversation: () => void;
+}): ReactNode {
+  const button = createElement(
+    Button as never,
+    {
+      "aria-label": label,
+      className: headerChromeIconButtonClassName,
+      size: "icon-sm",
+      type: "button",
+      variant: "ghost",
+      onClick: (event) => {
+        event.stopPropagation();
+        onCreateConversation();
+      },
+      onDoubleClick: (event) => event.stopPropagation(),
+      onPointerDown: (event) => event.stopPropagation()
+    },
+    createElement(CreateChatIcon, {
       "aria-hidden": true,
       className: headerChromeIconClassName
     })

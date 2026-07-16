@@ -88,6 +88,21 @@ or a license to hand-maintain competing event DTOs in desktop or daemon code.
 - keep business rules, orchestration, and persistence hand-written
 - keep compatibility aliases such as `/healthz` out of the versioned generated client surface unless they are part of the intended public contract
 
+## Agent Provider And Target Identity
+
+Agent `provider` values are an open, validated execution identity. OpenAPI,
+generated clients, AgentGUI, and Workbench must preserve an unknown valid
+provider string instead of coercing it to a built-in provider. Closed enums are
+appropriate only for preferences that intentionally select among built-in
+defaults.
+
+`AgentTarget.launchRef` is a discriminated union. `builtin_local` is the
+canonical built-in discriminator and `agent_extension` identifies a fixed,
+verified extension installation. The daemon may accept legacy `local_cli` data
+while reading durable state, but API output and new writes must never emit it.
+Add a new union member before adding a new launch mechanism; do not overload a
+provider string with launch or installation state.
+
 ## Error Contract
 
 Daemon API failures should use the shared protocol-error shape in
@@ -214,7 +229,11 @@ rejection, object closure, array size limits, and numeric min/max constraints.
 ## Tooling Rules
 
 - run `pnpm generate:api` when the OpenAPI contract changes
-- run `pnpm check:api-generated` before finishing API contract changes
+- run `pnpm check:api-generated` before finishing API contract changes; this
+  also runs `pnpm check:agent-protocol-enums`, which fails when the closed
+  agent turn/interaction enums in `tuttid.v1.yaml` drift from the
+  `activity.updated` event schema
+  (`packages/events/protocol/definitions/agent/activity.updated.event.json`)
 - run `pnpm sync:workbench-openapi-schema` after changing the shared workbench
   snapshot schema
 - run `pnpm check:workbench-openapi-schema` when you only need to check that

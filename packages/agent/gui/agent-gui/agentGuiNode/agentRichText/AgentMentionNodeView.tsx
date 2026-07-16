@@ -21,6 +21,7 @@ import {
 import { managedAgentRoundedIconUrl } from "../../../shared/managedAgentIcons";
 import { getAgentCustomMentionKind } from "../../../shared/agentCustomMentionKinds";
 import { AGENT_RICH_TEXT_CARET_ANCHOR } from "./agentRichTextCaretAnchor";
+import { resolveAgentSessionMentionIconUrl } from "./agentMentionPresentation";
 
 type AgentMentionNodeViewKind =
   | "file"
@@ -100,62 +101,6 @@ function normalizeKind(value: string): AgentMentionNodeViewKind {
   return "file";
 }
 
-function normalizeSessionTitle(value: string): string {
-  const trimmed = value.trim();
-  const withoutMentionPrefix = trimmed.replace(/^@+/, "").trim();
-  return withoutMentionPrefix || trimmed;
-}
-
-function parseDottedSessionText(
-  value: string
-): { participant: string; summary: string } | null {
-  const parts = value
-    .split("·")
-    .map((part) => part.trim())
-    .filter(Boolean);
-  if (parts.length < 3) {
-    return null;
-  }
-  return {
-    participant: `${parts[0]} & ${parts[1]}`,
-    summary: normalizeSessionTitle(parts.slice(2).join(" "))
-  };
-}
-
-function sessionPresentation(attrs: Record<string, unknown>): {
-  label: string;
-  summary: string;
-} {
-  const name = attrString(attrs, "name").trim();
-  const initiatorName = attrString(attrs, "initiatorName").trim();
-  const agentName = attrString(attrs, "agentName").trim();
-  const title = normalizeSessionTitle(attrString(attrs, "title") || name);
-  const inputPreview = attrString(attrs, "inputPreview").trim();
-
-  if (initiatorName && agentName) {
-    const dottedTitle = parseDottedSessionText(title);
-    return {
-      // i18n-check-ignore: Dynamic participant display names.
-      label: `${initiatorName} & ${agentName}`,
-      summary:
-        dottedTitle?.summary || (title && title !== name ? title : inputPreview)
-    };
-  }
-
-  const dottedName = parseDottedSessionText(name);
-  if (dottedName) {
-    return {
-      label: dottedName.participant,
-      summary: dottedName.summary
-    };
-  }
-
-  return {
-    label: name,
-    summary: title && title !== name ? title : inputPreview
-  };
-}
-
 function dirnameFromPath(path: string): string {
   const parts = path.split("/").filter(Boolean);
   if (parts.length <= 1) {
@@ -173,17 +118,21 @@ function mentionViewModel(
   const href = attrString(attrs, "href");
 
   if (kind === "session") {
-    const presentation = sessionPresentation(attrs);
-    const primary = `${presentation.label} ${presentation.summary}`.trim();
+    const label = attrString(attrs, "title").trim() || name.trim();
+    const agentTargetId = attrString(attrs, "agentTargetId").trim();
     return {
       ariaLabel:
-        `${t("agentHost.agentGui.mentionKindSession")} ${primary}`.trim(),
+        `${t("agentHost.agentGui.mentionKindSession")} ${label}`.trim(),
       directoryPath: "",
       entryKind: "",
       href,
+      iconUrl: resolveAgentSessionMentionIconUrl({
+        agentIconUrl: attrString(attrs, "iconUrl"),
+        agentTargetId,
+        href
+      }),
       kind,
-      label: presentation.label,
-      summary: presentation.summary
+      label
     };
   }
 
@@ -401,7 +350,7 @@ function AgentMentionLegacyFileNodeView({
           {isEditable ? (
             <button
               aria-label={removeActionAriaLabel}
-              className="absolute left-1/2 top-1/2 inline-flex size-5 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-sm text-[var(--text-secondary)] opacity-0 transition-opacity hover:bg-transparency-block hover:text-[var(--text-primary)] focus-visible:opacity-100 group-hover:opacity-100"
+              className="absolute left-1/2 top-1/2 inline-flex size-5 -translate-x-1/2 -translate-y-1/2 items-center justify-center text-[var(--text-secondary)] opacity-0 transition-opacity hover:text-[var(--text-primary)] focus-visible:opacity-100 group-hover:opacity-100"
               type="button"
               onMouseDown={handleRemove}
             >
@@ -425,7 +374,7 @@ function AgentMentionLegacyFileNodeView({
           {isEditable ? (
             <button
               aria-label={removeActionAriaLabel}
-              className="absolute left-1/2 top-1/2 inline-flex size-5 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-sm text-[var(--text-secondary)] opacity-0 transition-opacity hover:bg-transparency-block hover:text-[var(--text-primary)] focus-visible:opacity-100 group-hover:opacity-100"
+              className="absolute left-1/2 top-1/2 inline-flex size-5 -translate-x-1/2 -translate-y-1/2 items-center justify-center text-[var(--text-secondary)] opacity-0 transition-opacity hover:text-[var(--text-primary)] focus-visible:opacity-100 group-hover:opacity-100"
               type="button"
               onMouseDown={handleRemove}
             >
@@ -537,7 +486,7 @@ export function AgentMentionNodeView(props: NodeViewProps): JSX.Element {
             {isEditable ? (
               <button
                 aria-label={removeActionAriaLabel}
-                className="absolute left-1/2 top-1/2 inline-flex size-5 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-sm text-[var(--text-secondary)] opacity-0 transition-opacity hover:bg-transparency-block hover:text-[var(--text-primary)] focus-visible:opacity-100 group-hover:opacity-100"
+                className="absolute left-1/2 top-1/2 inline-flex size-5 -translate-x-1/2 -translate-y-1/2 items-center justify-center text-[var(--text-secondary)] opacity-0 transition-opacity hover:text-[var(--text-primary)] focus-visible:opacity-100 group-hover:opacity-100"
                 type="button"
                 onMouseDown={handleRemove}
               >
@@ -564,7 +513,7 @@ export function AgentMentionNodeView(props: NodeViewProps): JSX.Element {
     const removeAction = isEditable ? (
       <button
         aria-label={removeActionAriaLabel}
-        className="inline-flex size-4 shrink-0 items-center justify-center rounded-sm text-[var(--text-secondary)] opacity-0 transition-opacity hover:bg-transparency-block hover:text-[var(--text-primary)] focus-visible:opacity-100 group-hover:opacity-100"
+        className="inline-flex size-4 shrink-0 items-center justify-center text-[var(--text-secondary)] opacity-0 transition-opacity hover:text-[var(--text-primary)] focus-visible:opacity-100 group-hover:opacity-100"
         type="button"
         onMouseDown={handleRemove}
       >
@@ -580,6 +529,7 @@ export function AgentMentionNodeView(props: NodeViewProps): JSX.Element {
             selected ? "is-selected" : ""
           }`}
           contentEditable={false}
+          data-agent-custom-mention="true"
           data-agent-file-mention="true"
           data-agent-mention-href={mention.href}
           data-agent-mention-kind={mention.customKind || mention.kind}
@@ -602,6 +552,7 @@ export function AgentMentionNodeView(props: NodeViewProps): JSX.Element {
           selected ? "is-selected" : ""
         }`}
         contentEditable={false}
+        data-agent-custom-mention="true"
         data-agent-file-mention="true"
         data-agent-mention-href={mention.href}
         data-agent-mention-kind={mention.customKind || mention.kind}
@@ -644,6 +595,7 @@ export function AgentMentionNodeView(props: NodeViewProps): JSX.Element {
         data-agent-mention-href={mention.href}
         data-agent-mention-kind={mention.kind}
         kind={mention.kind === "session" ? "session" : "issue"}
+        iconUrl={mention.iconUrl}
         label={mention.label}
         removable={isEditable}
         removeButtonProps={

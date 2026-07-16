@@ -3,8 +3,8 @@ package agent
 import (
 	"strings"
 
+	"github.com/tutti-os/tutti/packages/agent/daemon/providerregistry"
 	"github.com/tutti-os/tutti/services/tuttid/biz/agentprovider"
-	preferencesbiz "github.com/tutti-os/tutti/services/tuttid/biz/preferences"
 )
 
 type composerModelReasoningProfile struct {
@@ -57,33 +57,37 @@ func composerReasoningConfigFromOptions(
 	options []ComposerConfigOptionValue,
 ) ComposerConfigOption {
 	selected = strings.TrimSpace(selected)
+	profile := composerProfileFor(provider)
+	configurable := profile.ReasoningEffort
+	if profile.ReasoningEffortOptions == providerregistry.ReasoningEffortOptionsStrictModelCatalog {
+		configurable = len(options) > 0
+	}
 	return ComposerConfigOption{
-		Configurable: composerProfileFor(provider).ReasoningEffort,
+		Configurable: configurable,
 		CurrentValue: selected,
 		DefaultValue: selected,
 		Options:      cloneComposerConfigOptionValues(options),
 	}
 }
 
-func reasoningEffortOptions(provider string, selected string) []map[string]string {
-	return composerReasoningOptionValuesToRuntimeOptions(
-		composerReasoningOptionValues(
-			provider,
-			selected,
-			preferencesbiz.DefaultDesktopLocale,
-		),
-	)
-}
-
 func reasoningEffortValuesForProvider(provider string) []string {
-	if provider == agentprovider.Codex || provider == agentprovider.TuttiAgent {
+	if !composerProfileKnown(provider) {
 		return nil
 	}
-	if provider == agentprovider.ClaudeCode ||
-		provider == agentprovider.OpenCode {
-		return []string{"low", "medium", "high", "xhigh"}
+	profile := composerProfileFor(provider)
+	if profile.ReasoningEffortOptions != providerregistry.ReasoningEffortOptionsStatic {
+		return nil
 	}
-	return []string{"minimal", "low", "medium", "high", "xhigh"}
+	return append([]string(nil), profile.ReasoningEffortValues...)
+}
+
+// composerProviderUsesModelReasoningCatalog identifies providers whose model
+// catalog is authoritative for reasoning values, including strict catalogs
+// that intentionally expose no provider-level fallback options.
+func composerProviderUsesModelReasoningCatalog(provider string) bool {
+	kind := composerProfileFor(provider).ReasoningEffortOptions
+	return kind == providerregistry.ReasoningEffortOptionsModelCatalog ||
+		kind == providerregistry.ReasoningEffortOptionsStrictModelCatalog
 }
 
 func composerReasoningOptionValues(provider string, selected string, locale string) []ComposerConfigOptionValue {
@@ -188,16 +192,30 @@ func composerReasoningOptionValuesToRuntimeOptions(
 
 func normalizeReasoningEffortForProvider(provider string, value string) string {
 	provider = agentprovider.Normalize(provider)
-	if !composerProfileFor(provider).ReasoningEffort {
+	profile := composerProfileFor(provider)
+	if !profile.ReasoningEffort {
 		return ""
 	}
 	normalized := strings.TrimSpace(value)
-	if (provider == agentprovider.Codex || provider == agentprovider.TuttiAgent || provider == agentprovider.ClaudeCode) &&
-		(normalized == "minimal" || normalized == "none") {
-		return "high"
+	// Model-catalog values are model-specific and authoritative. A generic
+	// provider-level normalizer must not rewrite values such as "minimal" or
+	// "none" that the selected model explicitly advertises.
+	if profile.ReasoningEffortOptions == providerregistry.ReasoningEffortOptionsModelCatalog ||
+		profile.ReasoningEffortOptions == providerregistry.ReasoningEffortOptionsStrictModelCatalog {
+		return normalized
 	}
-	if provider == agentprovider.OpenCode && (normalized == "minimal" || normalized == "none") {
-		return "high"
+	if (normalized == "minimal" || normalized == "none") &&
+		!reasoningEffortValueDeclared(profile, normalized) {
+		return profile.DefaultReasoningEffort
 	}
 	return normalized
+}
+
+func reasoningEffortValueDeclared(profile composerProfile, value string) bool {
+	for _, candidate := range profile.ReasoningEffortValues {
+		if strings.TrimSpace(candidate) == value {
+			return true
+		}
+	}
+	return false
 }

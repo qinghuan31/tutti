@@ -3,6 +3,7 @@ package agentcontext
 import (
 	"testing"
 
+	agentactivitybiz "github.com/tutti-os/tutti/services/tuttid/biz/agentactivity"
 	agentservice "github.com/tutti-os/tutti/services/tuttid/service/agent"
 )
 
@@ -113,6 +114,9 @@ func TestSessionSummaryValueOmitsRuntimeContext(t *testing.T) {
 	if value["agentSessionId"] != "SESSION-1" {
 		t.Fatalf("value = %#v", value)
 	}
+	if value["agentTargetId"] != "local:codex" {
+		t.Fatalf("agentTargetId = %#v", value["agentTargetId"])
+	}
 	if _, ok := value["id"]; ok {
 		t.Fatalf("session JSON should use typed id key: %#v", value)
 	}
@@ -130,138 +134,68 @@ func TestSessionSummaryValueOmitsRuntimeContext(t *testing.T) {
 	}
 }
 
-func TestSessionSummaryValueIncludesTurnLifecycleAndSubmitAvailability(t *testing.T) {
+func TestSessionSummaryValueIncludesTurnEntitiesAndInteractions(t *testing.T) {
 	value := sessionSummaryValue(agentserviceSessionWithLifecycle())
 
-	lifecycle, ok := value["turnLifecycle"].(map[string]any)
+	turn, ok := value["latestTurn"].(map[string]any)
 	if !ok {
-		t.Fatalf("turnLifecycle = %#v", value["turnLifecycle"])
+		t.Fatalf("latestTurn = %#v", value["latestTurn"])
 	}
-	if lifecycle["activeTurnId"] != "TURN-1" {
-		t.Fatalf("turnLifecycle = %#v", lifecycle)
+	if value["activeTurnId"] != "TURN-1" || turn["turnId"] != "TURN-1" {
+		t.Fatalf("turn projection = %#v", value)
 	}
-	if lifecycle["phase"] != "completed" {
-		t.Fatalf("turnLifecycle phase = %#v", lifecycle["phase"])
+	if turn["phase"] != "settled" || turn["outcome"] != "completed" {
+		t.Fatalf("turn = %#v", turn)
 	}
-	if lifecycle["settling"] != true {
-		t.Fatalf("turnLifecycle settling = %#v", lifecycle["settling"])
-	}
-	if lifecycle["outcome"] != "success" {
-		t.Fatalf("turnLifecycle outcome = %#v", lifecycle["outcome"])
-	}
-	completedCommand, ok := lifecycle["completedCommand"].(map[string]any)
-	if !ok {
-		t.Fatalf("completedCommand = %#v", lifecycle["completedCommand"])
-	}
-	if completedCommand["status"] != "succeeded" {
-		t.Fatalf("completedCommand status = %#v", completedCommand["status"])
-	}
-
-	availability, ok := value["submitAvailability"].(map[string]any)
-	if !ok {
-		t.Fatalf("submitAvailability = %#v", value["submitAvailability"])
-	}
-	if availability["state"] != "blocked" {
-		t.Fatalf("submitAvailability state = %#v", availability["state"])
-	}
-	if availability["reason"] != "turn_running" {
-		t.Fatalf("submitAvailability reason = %#v", availability["reason"])
+	if interactions, ok := value["pendingInteractions"].([]any); !ok || len(interactions) != 1 {
+		t.Fatalf("pending interactions = %#v", value["pendingInteractions"])
 	}
 }
 
-func TestSessionInspectValueIncludesTurnLifecycleAndSubmitAvailability(t *testing.T) {
+func TestSessionInspectValueIncludesTurnEntities(t *testing.T) {
 	value := sessionInspectValue(agentserviceSessionWithLifecycle())
+	if _, ok := value["latestTurn"].(map[string]any); !ok {
+		t.Fatalf("latestTurn = %#v", value["latestTurn"])
+	}
+}
 
-	lifecycle, ok := value["turnLifecycle"].(map[string]any)
-	if !ok {
-		t.Fatalf("turnLifecycle = %#v", value["turnLifecycle"])
-	}
-	if lifecycle["phase"] != "completed" {
-		t.Fatalf("turnLifecycle phase = %#v", lifecycle["phase"])
-	}
-	completedCommand, ok := lifecycle["completedCommand"].(map[string]any)
-	if !ok {
-		t.Fatalf("completedCommand = %#v", lifecycle["completedCommand"])
-	}
-	if completedCommand["status"] != "succeeded" {
-		t.Fatalf("completedCommand status = %#v", completedCommand["status"])
-	}
-	if _, ok := value["submitAvailability"].(map[string]any); !ok {
-		t.Fatalf("submitAvailability = %#v", value["submitAvailability"])
+func TestSessionActionValueIncludesExactAgentTarget(t *testing.T) {
+	value := sessionActionValue(agentserviceSessionWithRuntime())
+	if value["agentTargetId"] != "local:codex" {
+		t.Fatalf("agentTargetId = %#v", value["agentTargetId"])
 	}
 }
 
 func TestSessionSummaryValueOmitsOptionalEmptyRuntimeProtocolFields(t *testing.T) {
 	value := sessionSummaryValue(agentservice.Session{
-		ID:       "SESSION-1",
-		Provider: "codex",
-		Status:   "ready",
-		TurnLifecycle: &agentservice.TurnLifecycle{
-			Phase:    " ready ",
-			Settling: false,
-		},
-		SubmitAvailability: &agentservice.SubmitAvailability{
-			State:  " available ",
-			Reason: " ",
-		},
+		ID:           "SESSION-1",
+		Provider:     "codex",
+		ActiveTurnID: "",
 	})
-
-	lifecycle, ok := value["turnLifecycle"].(map[string]any)
-	if !ok {
-		t.Fatalf("turnLifecycle = %#v", value["turnLifecycle"])
+	if value["activeTurnId"] != nil {
+		t.Fatalf("activeTurnId = %#v", value["activeTurnId"])
 	}
-	if lifecycle["phase"] != "ready" {
-		t.Fatalf("turnLifecycle phase = %#v", lifecycle["phase"])
-	}
-	if _, ok := lifecycle["settling"]; ok {
-		t.Fatalf("false settling should be omitted: %#v", lifecycle)
-	}
-
-	availability, ok := value["submitAvailability"].(map[string]any)
-	if !ok {
-		t.Fatalf("submitAvailability = %#v", value["submitAvailability"])
-	}
-	if availability["state"] != "available" {
-		t.Fatalf("submitAvailability state = %#v", availability["state"])
-	}
-	if _, ok := availability["reason"]; ok {
-		t.Fatalf("blank reason should be omitted: %#v", availability)
+	if interactions, ok := value["pendingInteractions"].([]any); !ok || len(interactions) != 0 {
+		t.Fatalf("pendingInteractions = %#v", value["pendingInteractions"])
 	}
 }
 
 func agentserviceSessionWithRuntime() agentservice.Session {
 	title := "Work"
 	return agentservice.Session{
-		ID:             "SESSION-1",
-		Provider:       "codex",
-		Status:         "working",
-		Title:          &title,
-		RuntimeContext: map[string]any{"model": "gpt-5"},
+		ID:            "SESSION-1",
+		AgentTargetID: "local:codex",
+		Provider:      "codex",
+		Title:         &title,
 	}
 }
 
 func agentserviceSessionWithLifecycle() agentservice.Session {
 	title := "Work"
-	activeTurnID := " TURN-1 "
-	outcome := " success "
+	turn := agentactivitybiz.Turn{TurnID: " TURN-1 ", Phase: " settled ", Outcome: " completed "}
 	return agentservice.Session{
-		ID:       "SESSION-1",
-		Provider: "codex",
-		Status:   "working",
-		Title:    &title,
-		TurnLifecycle: &agentservice.TurnLifecycle{
-			ActiveTurnID: &activeTurnID,
-			Phase:        " completed ",
-			Settling:     true,
-			Outcome:      &outcome,
-			CompletedCommand: &agentservice.CompletedCommand{
-				Kind:   " exec ",
-				Status: " succeeded ",
-			},
-		},
-		SubmitAvailability: &agentservice.SubmitAvailability{
-			State:  " blocked ",
-			Reason: " turn_running ",
-		},
+		ID: "SESSION-1", Provider: "codex", Title: &title, ActiveTurnID: " TURN-1 ",
+		ActiveTurn: &turn, LatestTurn: &turn,
+		PendingInteractions: []agentactivitybiz.Interaction{{TurnID: "TURN-1", RequestID: "request-1", Kind: "question", Status: "pending"}},
 	}
 }

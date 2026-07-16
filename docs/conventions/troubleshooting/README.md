@@ -15,15 +15,20 @@ recur and the repository now has implementation or debugging evidence for it.
 Use the focused runtime index or open one area directly:
 
 - [Agent Providers And Setup](./agent-provider-setup.md): Provider discovery, installation, authentication, models, configuration, and runtime reachability.
-- [Agent Sessions And Lifecycle](./agent-session-lifecycle.md): Turn state, loading, cancel, restore, rail projection, event updates, imports, and performance.
-- [Agent Approvals And Sub-Agents](./agent-approvals-subagents.md): Approval gates, plan exits, parent/child event attribution, background agents, and Message Center.
+  Includes extension command/Skill palette hydration failures.
+- [Agent Sessions And Lifecycle](./agent-session-lifecycle.md): Turn state, activation, loading, cancel, goal controls, restore, file-change undo, rail projection, realtime completion provenance, event updates, imports, and performance.
+- [Agent Approvals And Child Sessions](./agent-approvals-subagents.md): Approval gates, plan exits, root/parent/child event attribution, child sessions, and Message Center.
+  Includes provider-native work that continues invisibly after root cancellation
+  and late child creation racing the durable cancel boundary.
 
 ## [Desktop And Release](./desktop-release.md)
 
 Electron startup, daemon supervision, macOS packaging, updates, and performance diagnostics.
 
-- [Desktop stable release alias disappears or stays below a prerelease](./desktop-release.md#desktop-stable-release-alias-disappears-or-stays-below-a-prerelease)
+- [Packaged Tutti starts but external shells cannot find `tutti`](./desktop-release.md#packaged-tutti-starts-but-external-shells-cannot-find-tutti)
+- [Desktop stable release alias disappears or is not first on Releases](./desktop-release.md#desktop-stable-release-alias-disappears-or-is-not-first-on-releases)
 - [Desktop dev GUI exits before opening](./desktop-release.md#desktop-dev-gui-exits-before-opening)
+- [Running a development tuttid breaks the production Agent session](./desktop-release.md#running-a-development-tuttid-breaks-the-production-agent-session)
 - [macOS updates fail from a mounted DMG](./desktop-release.md#macos-updates-fail-from-a-mounted-dmg)
 - [macOS Gatekeeper dialogs appear during Codex provider probing](./desktop-release.md#macos-gatekeeper-dialogs-appear-during-codex-provider-probing)
 - [Electron main/preload crashes on a workspace package `.ts` export](./desktop-release.md#electron-mainpreload-crashes-on-a-workspace-package-ts-export)
@@ -36,13 +41,22 @@ Electron startup, daemon supervision, macOS packaging, updates, and performance 
 
 React rendering, Workbench state, external stores, input composition, and UI performance.
 
+- [Renderer body requests fail with `ERR_H2_OR_QUIC_REQUIRED`](./workbench-renderer.md#renderer-body-requests-fail-with-err_h2_or_quic_required)
 - [Renderer tile memory warnings from hidden autoplay animation](./workbench-renderer.md#renderer-tile-memory-warnings-from-hidden-autoplay-animation)
+- [Standalone Agent dev window stays black during cold startup](./workbench-renderer.md#standalone-agent-dev-window-stays-black-during-cold-startup)
 - [IME composition breaks fuzzy search or controlled search inputs](./workbench-renderer.md#ime-composition-breaks-fuzzy-search-or-controlled-search-inputs)
 - [External-store snapshots churn because derived reads lose reference stability](./workbench-renderer.md#external-store-snapshots-churn-because-derived-reads-lose-reference-stability)
 - [Workbench host rebuilds when dock business status changes](./workbench-renderer.md#workbench-host-rebuilds-when-dock-business-status-changes)
+- [Dock entry is open but its state indicator is missing](./workbench-renderer.md#dock-entry-is-open-but-its-state-indicator-is-missing)
+- [Dense list panel stutters when mounted or resized](./workbench-renderer.md#dense-list-panel-stutters-when-mounted-or-resized)
+- [Adjacent sidebar animation repeatedly reflows its content and message flow](./workbench-renderer.md#adjacent-sidebar-animation-repeatedly-reflows-its-content-and-message-flow)
 - [Effect cleanup leaves mounted refs false in React development](./workbench-renderer.md#effect-cleanup-leaves-mounted-refs-false-in-react-development)
 - [Workbench node body warns about updating WorkbenchNodeLayer during render](./workbench-renderer.md#workbench-node-body-warns-about-updating-workbenchnodelayer-during-render)
 - [Renderer component repeatedly re-renders without visible changes](./workbench-renderer.md#renderer-component-repeatedly-re-renders-without-visible-changes)
+- [Renderer services initialize twice and consume one event twice](./workbench-renderer.md#renderer-services-initialize-twice-and-consume-one-event-twice)
+- [Inline custom-header menu is clipped to the Workbench title bar](./workbench-renderer.md#inline-custom-header-menu-is-clipped-to-the-workbench-title-bar)
+- [Dialog action reacts to Enter but ignores pointer clicks](./workbench-renderer.md#dialog-action-reacts-to-enter-but-ignores-pointer-clicks)
+- [Daemon validation error appears as untranslated developer text](./workbench-renderer.md#daemon-validation-error-appears-as-untranslated-developer-text)
 
 ## [Workspace Apps And Files](./workspace-apps-files.md)
 
@@ -52,6 +66,8 @@ App Center, workspace-app lifecycle, App Factory, file references, and File Mana
 - [App Center list requests repeatedly log runtime preload](./workspace-apps-files.md#app-center-list-requests-repeatedly-log-runtime-preload)
 - [Workspace app uninstall fails on cached manifest validation](./workspace-apps-files.md#workspace-app-uninstall-fails-on-cached-manifest-validation)
 - [Workspace app update reopens the old dock window](./workspace-apps-files.md#workspace-app-update-reopens-the-old-dock-window)
+- [Agent inline app opening leaks into the OS App Center](./workspace-apps-files.md#agent-inline-app-opening-leaks-into-the-os-app-center)
+- [Agent file preview behavior leaks into the OS shell](./workspace-apps-files.md#agent-file-preview-behavior-leaks-into-the-os-shell)
 - [Load unpacked project roots with source manifests](./workspace-apps-files.md#load-unpacked-project-roots-with-source-manifests)
 - [Agent GUI app mentions show unavailable workspace apps](./workspace-apps-files.md#agent-gui-app-mentions-show-unavailable-workspace-apps)
 - [Agent generated files under system temp do not open](./workspace-apps-files.md#agent-generated-files-under-system-temp-do-not-open)
@@ -66,7 +82,13 @@ CLI behavior, CI, package assets, skills, Browser Node, and terminal input.
 - [Browser CLI cold start timeout looks like an unreachable daemon](./toolchain-browser-terminal.md#browser-cli-cold-start-timeout-looks-like-an-unreachable-daemon)
 - [Malformed user skill frontmatter breaks skill discovery](./toolchain-browser-terminal.md#malformed-user-skill-frontmatter-breaks-skill-discovery)
 - [Browser Node failed navigation renders a blank panel](./toolchain-browser-terminal.md#browser-node-failed-navigation-renders-a-blank-panel)
+- [Standalone Agent Browser Node is blank and never attaches a guest](./toolchain-browser-terminal.md#standalone-agent-browser-node-is-blank-and-never-attaches-a-guest)
+- [Browser Node action finds a webview but page injection does nothing](./toolchain-browser-terminal.md#browser-node-action-finds-a-webview-but-page-injection-does-nothing)
+- [Hidden Browser Node webview covers another panel](./toolchain-browser-terminal.md#hidden-browser-node-webview-covers-another-panel)
 - [IME composition leaks native input into xterm terminals](./toolchain-browser-terminal.md#ime-composition-leaks-native-input-into-xterm-terminals)
+- [Chinese input renders replacement and control characters in workspace terminals](./toolchain-browser-terminal.md#chinese-input-renders-replacement-and-control-characters-in-workspace-terminals)
 - [Post-composition suppression window swallows real terminal input](./toolchain-browser-terminal.md#post-composition-suppression-window-swallows-real-terminal-input)
 - [Published package runtime asset 404 because the consumer bundler never saw the file](./toolchain-browser-terminal.md#published-package-runtime-asset-404-because-the-consumer-bundler-never-saw-the-file)
+- [New release CDN namespace returns an S3 403](./toolchain-browser-terminal.md#new-release-cdn-namespace-returns-an-s3-403)
 - [Browser Node focus pings miss iframe-hosted editors](./toolchain-browser-terminal.md#browser-node-focus-pings-miss-iframe-hosted-editors)
+- [Temporary Git fixture turns a linked worktree bare](./toolchain-browser-terminal.md#temporary-git-fixture-turns-a-linked-worktree-bare)

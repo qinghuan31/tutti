@@ -301,8 +301,6 @@ The current shared global `z-index` tokens are:
   The genie animation layer that must stay above ordinary workbench chrome.
 - `--z-popover`
   Cross-feature floating UI such as menus, switchers, and layout popovers.
-- `--z-toast`
-  Toast notifications that should stay above popovers.
 - `--z-panel`
   Full-panel overlays such as workspace settings surfaces.
 - `--z-panel-popover`
@@ -313,6 +311,8 @@ The current shared global `z-index` tokens are:
   Dialog content rendered above dialog backdrops.
 - `--z-dialog-popover`
   Floating controls or host-owned preview windows that must stay above dialog content and backdrop while remaining below tooltips.
+- `--z-toast`
+  Toast notifications that must remain visible above dialogs and their portaled controls while staying below tooltips.
 - `--z-tooltip`
   Short hover/focus guidance that should stay above panels, drawers, and their popovers so clipped text can be inspected across overlay boundaries.
 

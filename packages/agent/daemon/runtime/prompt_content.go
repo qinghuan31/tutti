@@ -11,9 +11,6 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
-	"time"
-
-	"github.com/tutti-os/tutti/packages/agent/daemon/httpx"
 )
 
 var ErrPromptImageUnsupported = errors.New("agent prompt image input is unsupported")
@@ -81,8 +78,10 @@ func normalizeRuntimePromptContentForValidation(content []PromptContentBlock) []
 			mimeType := strings.TrimSpace(block.MimeType)
 			data := strings.TrimSpace(block.Data)
 			imageURL := strings.TrimSpace(block.URL)
+			attachmentID := strings.TrimSpace(block.AttachmentID)
+			path := strings.TrimSpace(block.Path)
 			if !runtimePromptImageMimeTypeSupported(mimeType) ||
-				(data == "" && imageURL == "" && strings.TrimSpace(block.AttachmentID) == "") ||
+				(data == "" && imageURL == "" && attachmentID == "" && path == "") ||
 				(data != "" && imageURL != "") ||
 				(imageURL != "" && !runtimePromptImageURLSafe(imageURL)) {
 				continue
@@ -92,8 +91,9 @@ func normalizeRuntimePromptContentForValidation(content []PromptContentBlock) []
 				MimeType:     mimeType,
 				Data:         data,
 				URL:          imageURL,
-				AttachmentID: strings.TrimSpace(block.AttachmentID),
+				AttachmentID: attachmentID,
 				Name:         strings.TrimSpace(block.Name),
+				Path:         path,
 			})
 		case "skill", "mention":
 			name := strings.TrimSpace(block.Name)
@@ -111,7 +111,15 @@ func normalizeRuntimePromptContentForValidation(content []PromptContentBlock) []
 	return out
 }
 
+func validatePromptContentImagesForPreflight(content []PromptContentBlock) error {
+	return validatePromptContentImages(content, true)
+}
+
 func validateRuntimePromptContentImages(content []PromptContentBlock) error {
+	return validatePromptContentImages(content, false)
+}
+
+func validatePromptContentImages(content []PromptContentBlock, allowPathOnly bool) error {
 	for _, block := range content {
 		if strings.TrimSpace(block.Type) != "image" {
 			continue
@@ -119,8 +127,10 @@ func validateRuntimePromptContentImages(content []PromptContentBlock) error {
 		data := strings.TrimSpace(block.Data)
 		imageURL := strings.TrimSpace(block.URL)
 		attachmentID := strings.TrimSpace(block.AttachmentID)
+		path := strings.TrimSpace(block.Path)
+		hasSource := data != "" || imageURL != "" || attachmentID != "" || (allowPathOnly && path != "")
 		if !runtimePromptImageMimeTypeSupported(block.MimeType) ||
-			(data == "" && imageURL == "" && attachmentID == "") ||
+			!hasSource ||
 			(data != "" && imageURL != "") ||
 			(imageURL != "" && !runtimePromptImageURLSafe(imageURL)) {
 			return ErrPromptImageUnsupported
@@ -188,7 +198,11 @@ func userPromptActivityPayload(content []PromptContentBlock, displayPrompt strin
 }
 
 func userPromptActivityPayloadExtraFromExecMetadata(ctx context.Context, extra map[string]any) map[string]any {
-	clientSubmitID := metadataString(execMetadataFromContext(ctx), "clientSubmitId")
+	return userPromptActivityPayloadExtraFromMetadata(execMetadataFromContext(ctx), extra)
+}
+
+func userPromptActivityPayloadExtraFromMetadata(metadata map[string]any, extra map[string]any) map[string]any {
+	clientSubmitID := metadataString(metadata, "clientSubmitId")
 	if clientSubmitID == "" {
 		return clonePayload(extra)
 	}
@@ -231,16 +245,12 @@ func promptContentForACP(content []PromptContentBlock) []map[string]any {
 	return out
 }
 
-// materializeProviderPromptImages converts remote HTTPS image references at
+// materializeProviderPromptImagesWithClient converts remote HTTPS image references at
 // the provider boundary, immediately before Codex app-server or ACP receives
 // the prompt. Current Codex and Claude transports reject remote image URLs and
 // require inline image data. AgentGUI and durable activity state intentionally
 // keep the uploaded URL; when a provider gains native URL support, only its
 // final adapter needs to stop calling this compatibility conversion.
-func materializeProviderPromptImages(ctx context.Context, content []PromptContentBlock) ([]PromptContentBlock, error) {
-	return materializeProviderPromptImagesWithClient(ctx, content, httpx.NewClient(30*time.Second))
-}
-
 func materializeProviderPromptImagesWithClient(ctx context.Context, content []PromptContentBlock, client *http.Client) ([]PromptContentBlock, error) {
 	requestClient := *client
 	existingRedirectCheck := client.CheckRedirect

@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -79,11 +80,15 @@ type CatalogSnapshot struct {
 }
 
 func Catalog() ([]App, error) {
-	return CatalogForTuttiVersion("")
+	return CatalogForHost(CatalogHost{})
 }
 
 func CatalogForTuttiVersion(tuttiVersion string) ([]App, error) {
-	snapshot, err := snapshot(false, tuttiVersion)
+	return CatalogForHost(CatalogHost{TuttiVersion: tuttiVersion})
+}
+
+func CatalogForHost(host CatalogHost) ([]App, error) {
+	snapshot, err := snapshot(false, host)
 	if err != nil {
 		return nil, err
 	}
@@ -91,35 +96,51 @@ func CatalogForTuttiVersion(tuttiVersion string) ([]App, error) {
 }
 
 func Snapshot() (CatalogSnapshot, error) {
-	return SnapshotForTuttiVersion("")
+	return SnapshotForHost(CatalogHost{})
 }
 
 func SnapshotForTuttiVersion(tuttiVersion string) (CatalogSnapshot, error) {
-	return snapshot(false, tuttiVersion)
+	return SnapshotForHost(CatalogHost{TuttiVersion: tuttiVersion})
+}
+
+func SnapshotForHost(host CatalogHost) (CatalogSnapshot, error) {
+	return snapshot(false, host)
 }
 
 func SnapshotForRemoteURL(catalogURL string) (CatalogSnapshot, error) {
-	return SnapshotForRemoteURLAndTuttiVersion(catalogURL, "")
+	return SnapshotForRemoteURLAndHost(catalogURL, CatalogHost{})
 }
 
 func SnapshotForRemoteURLAndTuttiVersion(catalogURL string, tuttiVersion string) (CatalogSnapshot, error) {
-	return snapshotWithSource(remoteCatalogSourceForURL(catalogURL, tuttiVersion), false)
+	return SnapshotForRemoteURLAndHost(catalogURL, CatalogHost{TuttiVersion: tuttiVersion})
+}
+
+func SnapshotForRemoteURLAndHost(catalogURL string, host CatalogHost) (CatalogSnapshot, error) {
+	return snapshotWithSource(remoteCatalogSourceForURL(catalogURL, host), false)
 }
 
 func RefreshRemoteCatalogAndWait(ctx context.Context) (CatalogSnapshot, error) {
-	return RefreshRemoteCatalogAndWaitForTuttiVersion(ctx, "")
+	return RefreshRemoteCatalogAndWaitForHost(ctx, CatalogHost{})
 }
 
 func RefreshRemoteCatalogAndWaitForTuttiVersion(ctx context.Context, tuttiVersion string) (CatalogSnapshot, error) {
-	return snapshotAndWaitWithSource(ctx, currentRemoteCatalogSource(tuttiVersion))
+	return RefreshRemoteCatalogAndWaitForHost(ctx, CatalogHost{TuttiVersion: tuttiVersion})
+}
+
+func RefreshRemoteCatalogAndWaitForHost(ctx context.Context, host CatalogHost) (CatalogSnapshot, error) {
+	return snapshotAndWaitWithSource(ctx, currentRemoteCatalogSource(host))
 }
 
 func RefreshRemoteCatalogAndWaitForRemoteURL(ctx context.Context, catalogURL string) (CatalogSnapshot, error) {
-	return RefreshRemoteCatalogAndWaitForRemoteURLAndTuttiVersion(ctx, catalogURL, "")
+	return RefreshRemoteCatalogAndWaitForRemoteURLAndHost(ctx, catalogURL, CatalogHost{})
 }
 
 func RefreshRemoteCatalogAndWaitForRemoteURLAndTuttiVersion(ctx context.Context, catalogURL string, tuttiVersion string) (CatalogSnapshot, error) {
-	return snapshotAndWaitWithSource(ctx, remoteCatalogSourceForURL(catalogURL, tuttiVersion))
+	return RefreshRemoteCatalogAndWaitForRemoteURLAndHost(ctx, catalogURL, CatalogHost{TuttiVersion: tuttiVersion})
+}
+
+func RefreshRemoteCatalogAndWaitForRemoteURLAndHost(ctx context.Context, catalogURL string, host CatalogHost) (CatalogSnapshot, error) {
+	return snapshotAndWaitWithSource(ctx, remoteCatalogSourceForURL(catalogURL, host))
 }
 
 func RemoteCatalogEnvOverrideActive() bool {
@@ -191,8 +212,8 @@ func embeddedCatalog() []App {
 	}
 }
 
-func snapshot(refreshRemote bool, tuttiVersion string) (CatalogSnapshot, error) {
-	return snapshotWithSource(currentRemoteCatalogSource(tuttiVersion), refreshRemote)
+func snapshot(refreshRemote bool, host CatalogHost) (CatalogSnapshot, error) {
+	return snapshotWithSource(currentRemoteCatalogSource(host), refreshRemote)
 }
 
 func snapshotWithSource(source remoteCatalogSource, refreshRemote bool) (CatalogSnapshot, error) {
@@ -342,9 +363,10 @@ const (
 )
 
 type remoteCatalogSource struct {
-	kind         remoteCatalogSourceKind
-	value        string
-	tuttiVersion string
+	kind                 remoteCatalogSourceKind
+	value                string
+	tuttiVersion         string
+	tuttiCapabilitiesKey string
 }
 
 type remoteCatalogResult struct {
@@ -370,7 +392,7 @@ func remoteCatalogSnapshot(source remoteCatalogSource, refresh bool) (remoteCata
 			state: RemoteCatalogLoadState{Status: RemoteCatalogLoadStatusDisabled},
 		}, nil
 	case remoteCatalogSourceFile:
-		apps, err := loadRemoteCatalogFromFile(source.value, source.tuttiVersion)
+		apps, err := loadRemoteCatalogFromFile(source.value, source.catalogHost())
 		if err != nil {
 			return remoteCatalogResult{}, err
 		}
@@ -393,7 +415,7 @@ func remoteCatalogSnapshotAndWait(ctx context.Context, source remoteCatalogSourc
 			state: RemoteCatalogLoadState{Status: RemoteCatalogLoadStatusDisabled},
 		}, nil
 	case remoteCatalogSourceFile:
-		apps, err := loadRemoteCatalogFromFile(source.value, source.tuttiVersion)
+		apps, err := loadRemoteCatalogFromFile(source.value, source.catalogHost())
 		if err != nil {
 			return remoteCatalogResult{}, err
 		}
@@ -406,33 +428,69 @@ func remoteCatalogSnapshotAndWait(ctx context.Context, source remoteCatalogSourc
 	}
 }
 
-func currentRemoteCatalogSource(tuttiVersion string) remoteCatalogSource {
+func currentRemoteCatalogSource(host CatalogHost) remoteCatalogSource {
+	host = normalizeCatalogHost(host)
 	filePath := strings.TrimSpace(os.Getenv(remoteCatalogFileEnv))
 	if filePath != "" {
-		return remoteCatalogSource{kind: remoteCatalogSourceFile, value: filePath, tuttiVersion: tuttiVersion}
+		return remoteCatalogSourceForHost(remoteCatalogSourceFile, filePath, host)
 	}
 
 	catalogURL := remoteCatalogURL()
 	if catalogURL == "" {
 		return remoteCatalogSource{kind: remoteCatalogSourceNone}
 	}
-	return remoteCatalogSource{kind: remoteCatalogSourceURL, value: catalogURL, tuttiVersion: tuttiVersion}
+	return remoteCatalogSourceForHost(remoteCatalogSourceURL, catalogURL, host)
 }
 
-func remoteCatalogSourceForURL(catalogURL string, tuttiVersion string) remoteCatalogSource {
+func remoteCatalogSourceForURL(catalogURL string, host CatalogHost) remoteCatalogSource {
 	catalogURL = strings.TrimSpace(catalogURL)
 	if catalogURL == "" {
 		return remoteCatalogSource{kind: remoteCatalogSourceNone}
 	}
-	return remoteCatalogSource{kind: remoteCatalogSourceURL, value: catalogURL, tuttiVersion: tuttiVersion}
+	return remoteCatalogSourceForHost(remoteCatalogSourceURL, catalogURL, normalizeCatalogHost(host))
 }
 
-func loadRemoteCatalogFromFile(filePath string, tuttiVersion string) ([]App, error) {
+func remoteCatalogSourceForHost(kind remoteCatalogSourceKind, value string, host CatalogHost) remoteCatalogSource {
+	return remoteCatalogSource{
+		kind:                 kind,
+		value:                value,
+		tuttiVersion:         host.TuttiVersion,
+		tuttiCapabilitiesKey: strings.Join(host.Capabilities, "\x00"),
+	}
+}
+
+func (source remoteCatalogSource) catalogHost() CatalogHost {
+	capabilities := []string(nil)
+	if source.tuttiCapabilitiesKey != "" {
+		capabilities = strings.Split(source.tuttiCapabilitiesKey, "\x00")
+	}
+	return CatalogHost{TuttiVersion: source.tuttiVersion, Capabilities: capabilities}
+}
+
+func normalizeCatalogHost(host CatalogHost) CatalogHost {
+	seen := make(map[string]struct{}, len(host.Capabilities))
+	for _, capability := range host.Capabilities {
+		if isCanonicalCatalogCapability(capability) {
+			seen[capability] = struct{}{}
+		}
+	}
+	capabilities := make([]string, 0, len(seen))
+	for capability := range seen {
+		capabilities = append(capabilities, capability)
+	}
+	sort.Strings(capabilities)
+	return CatalogHost{
+		TuttiVersion: strings.TrimSpace(host.TuttiVersion),
+		Capabilities: capabilities,
+	}
+}
+
+func loadRemoteCatalogFromFile(filePath string, host CatalogHost) ([]App, error) {
 	data, err := os.ReadFile(filePath)
 	if err != nil {
 		return nil, fmt.Errorf("read app catalog file: %w", err)
 	}
-	return parseRemoteCatalogForTuttiVersion(data, tuttiVersion)
+	return parseRemoteCatalogForHost(data, host)
 }
 
 func (l *asyncRemoteCatalogLoader) snapshot(source remoteCatalogSource) remoteCatalogResult {
@@ -528,7 +586,7 @@ func (l *asyncRemoteCatalogLoader) startLoadLocked(source remoteCatalogSource) {
 
 func (l *asyncRemoteCatalogLoader) load(source remoteCatalogSource, done chan struct{}) {
 	slog.Info("remote app catalog fetch started", "url", source.value)
-	apps, err := fetchRemoteCatalogWithRetries(source.value, source.tuttiVersion)
+	apps, err := fetchRemoteCatalogWithRetries(source.value, source.catalogHost())
 
 	l.mu.Lock()
 	defer l.mu.Unlock()
@@ -550,10 +608,10 @@ func (l *asyncRemoteCatalogLoader) load(source remoteCatalogSource, done chan st
 	l.state = readyRemoteCatalogLoadState()
 }
 
-func fetchRemoteCatalogWithRetries(catalogURL string, tuttiVersion string) ([]App, error) {
+func fetchRemoteCatalogWithRetries(catalogURL string, host CatalogHost) ([]App, error) {
 	var lastErr error
 	for attempt := 1; attempt <= remoteCatalogFetchAttempts; attempt++ {
-		apps, err := fetchRemoteCatalog(catalogURL, tuttiVersion)
+		apps, err := fetchRemoteCatalog(catalogURL, host)
 		if err == nil {
 			return apps, nil
 		}
@@ -573,7 +631,7 @@ func remoteCatalogRetryDelay(attempt int) time.Duration {
 	return 900 * time.Millisecond
 }
 
-func fetchRemoteCatalog(catalogURL string, tuttiVersion string) ([]App, error) {
+func fetchRemoteCatalog(catalogURL string, host CatalogHost) ([]App, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), remoteCatalogFetchTimeout)
 	defer cancel()
 	request, err := http.NewRequestWithContext(ctx, http.MethodGet, catalogURL, nil)
@@ -592,7 +650,7 @@ func fetchRemoteCatalog(catalogURL string, tuttiVersion string) ([]App, error) {
 	if err != nil {
 		return nil, fmt.Errorf("read app catalog response: %w", err)
 	}
-	return parseRemoteCatalogForTuttiVersion(data, tuttiVersion)
+	return parseRemoteCatalogForHost(data, host)
 }
 
 type remoteCatalogHTTPStatusError struct {

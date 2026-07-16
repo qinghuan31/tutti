@@ -8,6 +8,7 @@ import {
   createAppReferenceListBackend,
   listReferenceSupportingApps
 } from "./appReferenceListBackend.ts";
+import { createAppArtifactReferenceSource } from "./appArtifactReferenceSource.ts";
 
 const scope: ReferenceScope = { workspaceId: "workspace-1" };
 
@@ -60,6 +61,7 @@ test("app backend describeHandle resolves the app handle", async () => {
           displayName: "Design",
           installed: true,
           enabled: true,
+          status: "running",
           references: { listSupported: true, searchSupported: false }
         }
       ]
@@ -85,6 +87,7 @@ test("app backend labels child groups with app and project names", async () => {
           displayName: "Prototype Design",
           installed: true,
           enabled: true,
+          status: "running",
           references: { listSupported: true, searchSupported: false }
         }
       ]
@@ -119,6 +122,57 @@ test("app backend labels child groups with app and project names", async () => {
   );
 });
 
+test("app source renders application references in the returned order", async () => {
+  const tuttidClient = {
+    listWorkspaceApps: async () => ({
+      apps: [
+        {
+          appId: "ai-media-canvas",
+          displayName: "AI Canvas",
+          installed: true,
+          enabled: true,
+          status: "running",
+          references: { listSupported: true, searchSupported: false }
+        }
+      ]
+    }),
+    listWorkspaceAppReferences: async () => ({
+      items: [
+        {
+          type: "group",
+          id: "project-new",
+          displayName: "Untitled",
+          referenceCount: 0
+        },
+        {
+          type: "group",
+          id: "project-old",
+          displayName: "Alpha",
+          referenceCount: 0
+        }
+      ],
+      nextCursor: null
+    })
+  } as unknown as TuttidClient;
+  const source = createAppArtifactReferenceSource({
+    tuttidClient,
+    adapter: {},
+    label: "应用文件"
+  });
+
+  const root = await source.listChildren(scope, { node: null });
+  const appGroup = root.entries[0];
+  assert.ok(appGroup);
+  const result = await source.listChildren(scope, { node: appGroup.ref });
+
+  assert.equal(root.ordered, true);
+  assert.equal(result.ordered, true);
+  assert.deepEqual(
+    result.entries.map((item) => item.displayName),
+    ["Untitled", "Alpha"]
+  );
+});
+
 test("app backend search includes matching app project groups", async () => {
   const calls: Array<{ endpoint: "list" | "search"; filterText?: string }> = [];
   const tuttidClient = {
@@ -129,6 +183,7 @@ test("app backend search includes matching app project groups", async () => {
           displayName: "AI Canvas",
           installed: true,
           enabled: true,
+          status: "running",
           references: { listSupported: true, searchSupported: true }
         }
       ]
@@ -208,6 +263,7 @@ test("app reference app discovery caches repeated workspace app listing", async 
             displayName: "Ready",
             installed: true,
             enabled: true,
+            status: "running",
             references: { listSupported: true, searchSupported: false }
           },
           {
@@ -215,6 +271,7 @@ test("app reference app discovery caches repeated workspace app listing", async 
             displayName: "Disabled",
             installed: true,
             enabled: false,
+            status: "running",
             references: { listSupported: true, searchSupported: false }
           }
         ]
@@ -233,6 +290,72 @@ test("app reference app discovery caches repeated workspace app listing", async 
   assert.deepEqual(
     second.map((app) => app.appId),
     ["ready-app"]
+  );
+});
+
+test("app reference discovery excludes apps that are not running", async () => {
+  const tuttidClient = {
+    listWorkspaceApps: async () => ({
+      apps: [
+        {
+          appId: "running-app",
+          displayName: "Running",
+          installed: true,
+          enabled: true,
+          status: "running",
+          references: { listSupported: true, searchSupported: false }
+        },
+        {
+          appId: "idle-app",
+          displayName: "Idle",
+          installed: true,
+          enabled: true,
+          status: "idle",
+          references: { listSupported: true, searchSupported: false }
+        }
+      ]
+    })
+  } as unknown as TuttidClient;
+
+  const apps = await listReferenceSupportingApps(tuttidClient, scope);
+
+  assert.deepEqual(
+    apps.map((app) => app.appId),
+    ["running-app"]
+  );
+});
+
+test("scoped app reference search propagates the selected app error", async () => {
+  const expected = new Error("reference endpoint unavailable");
+  const tuttidClient = {
+    listWorkspaceApps: async () => ({
+      apps: [
+        {
+          appId: "broken-app",
+          displayName: "Broken",
+          installed: true,
+          enabled: true,
+          status: "running",
+          references: { listSupported: true, searchSupported: true }
+        }
+      ]
+    }),
+    listWorkspaceAppReferences: async () => {
+      throw expected;
+    },
+    searchWorkspaceAppReferences: async () => {
+      throw expected;
+    }
+  } as unknown as TuttidClient;
+  const backend = createAppReferenceListBackend(tuttidClient);
+  assert.ok(backend.search);
+
+  await assert.rejects(
+    backend.search(scope, {
+      query: "report",
+      withinGroupId: "app:broken-app"
+    }),
+    expected
   );
 });
 

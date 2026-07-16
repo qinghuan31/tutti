@@ -96,6 +96,12 @@ export interface WorkspaceUserProjectSelectProps {
   i18n?: WorkspaceUserProjectI18nRuntime;
   labels?: WorkspaceUserProjectSelectLabelOverrides;
   onProjectMissingChange?: (isMissing: boolean) => void;
+  /**
+   * Called when the select menu or create dialog is about to restore focus.
+   * Call `event.preventDefault()` to keep focus from returning to the trigger,
+   * then move focus to the preferred surface (for example the composer input).
+   */
+  onDismissAutoFocus?: (event: Event) => void;
   onProjectPathChange: (
     path: string | null,
     metadata?: {
@@ -204,6 +210,7 @@ export function WorkspaceUserProjectSelect({
   i18n = defaultWorkspaceUserProjectSelectI18n,
   labels,
   onProjectMissingChange,
+  onDismissAutoFocus,
   onProjectPathChange,
   projectLocked = false,
   renderAddProjectIcon,
@@ -313,11 +320,13 @@ export function WorkspaceUserProjectSelect({
     visibleProjects.length > 0 && hasProjectActions;
 
   useEffect(() => {
-    if (!disabled || !isSelectOpen) {
-      return;
+    if (!disabled) return;
+    if (isSelectOpen) setIsSelectOpen(false);
+    if (isProjectDialogOpen) {
+      setIsProjectDialogOpen(false);
+      setProjectCreationError(null);
     }
-    setIsSelectOpen(false);
-  }, [disabled, isSelectOpen]);
+  }, [disabled, isProjectDialogOpen, isSelectOpen]);
 
   useEffect(() => {
     onProjectMissingChange?.(shouldShowMissingProjectNotice);
@@ -453,6 +462,7 @@ export function WorkspaceUserProjectSelect({
   );
 
   const createProject = useCallback(async (): Promise<void> => {
+    if (disabled) return;
     const name = draftProjectName.trim();
     if (!effectiveApi?.create) {
       setProjectCreationError(resolvedLabels.createProjectFailed);
@@ -481,6 +491,7 @@ export function WorkspaceUserProjectSelect({
       setIsCreatingProject(false);
     }
   }, [
+    disabled,
     effectiveApi,
     draftProjectName,
     onProjectPathChange,
@@ -490,7 +501,11 @@ export function WorkspaceUserProjectSelect({
   ]);
 
   const submitProjectDialog = (event: FormEvent<HTMLFormElement>): void => {
+    // Dialog content is portaled in the DOM, but still sits under any ancestor
+    // React form (for example the Agent composer). Stop bubbling so Create /
+    // Enter cannot submit that outer form and send a draft prompt.
     event.preventDefault();
+    event.stopPropagation();
     void createProject();
   };
 
@@ -517,12 +532,15 @@ export function WorkspaceUserProjectSelect({
     }
     if (nextValue === linkExistingProjectOptionValue) {
       void Promise.resolve(effectiveApi.selectDirectory?.())
-        .then((selection) => {
+        .then(async (selection) => {
           const path = selection?.path?.trim() ?? "";
           if (!path) {
             return;
           }
-          void useProjectPath(path, "select_existing");
+          await useProjectPath(path, "select_existing");
+          // Native directory pickers skip Radix close-auto-focus; restore the
+          // caller's preferred focus target after the path settles.
+          onDismissAutoFocus?.(new Event("focus"));
         })
         .catch(() => {});
       return;
@@ -574,94 +592,91 @@ export function WorkspaceUserProjectSelect({
             <WorkspaceUserProjectOverflowLabel label={triggerLabel} />
           </span>
         </SelectTrigger>
-        {isSelectOpen ? (
-          <SelectContent
-            align={contentAlign}
-            className={classNames?.content}
-            collisionPadding={16}
-            side={contentSide}
-            sideOffset={contentSideOffset}
-          >
-            {visibleProjects.map((project) => {
-              const projectLabel =
-                resolveWorkspaceUserProjectDisplayLabel(project);
-              return (
+        <SelectContent
+          align={contentAlign}
+          className={classNames?.content}
+          collisionPadding={16}
+          side={contentSide}
+          sideOffset={contentSideOffset}
+          onCloseAutoFocus={onDismissAutoFocus}
+        >
+          {visibleProjects.map((project) => {
+            const projectLabel =
+              resolveWorkspaceUserProjectDisplayLabel(project);
+            return (
+              <SelectItem
+                className={classNames?.item}
+                key={project.id || project.path}
+                value={project.path}
+              >
+                <span className="flex min-w-0 flex-1 items-center gap-2 pr-1">
+                  <FolderIcon aria-hidden size={15} />
+                  <WorkspaceUserProjectOverflowLabel label={projectLabel} />
+                </span>
+              </SelectItem>
+            );
+          })}
+          {showProjectActionDivider ? (
+            <SelectSeparator
+              className="mx-[12px] my-1 shrink-0 bg-[var(--line-2)]"
+              data-workspace-user-project-action-separator="true"
+            />
+          ) : null}
+          {hasProjectActions ? (
+            <SelectGroup
+              className="gap-0.5 p-0"
+              data-workspace-user-project-action-group="true"
+            >
+              {effectiveApi?.selectDirectory ? (
                 <SelectItem
                   className={classNames?.item}
-                  key={project.id || project.path}
-                  value={project.path}
+                  value={linkExistingProjectOptionValue}
                 >
                   <span className="flex min-w-0 flex-1 items-center gap-2 pr-1">
-                    <FolderIcon aria-hidden size={15} />
-                    <WorkspaceUserProjectOverflowLabel label={projectLabel} />
+                    <LinkIcon aria-hidden size={15} />
+                    <span className="truncate">
+                      {resolvedLabels.linkExistingProject}
+                    </span>
                   </span>
                 </SelectItem>
-              );
-            })}
-            {showProjectActionDivider ? (
-              <SelectSeparator
-                className="mx-[12px] my-1 shrink-0 bg-[var(--line-2)]"
-                data-workspace-user-project-action-separator="true"
-              />
-            ) : null}
-            {hasProjectActions ? (
-              <SelectGroup
-                className="gap-0.5 p-0"
-                data-workspace-user-project-action-group="true"
-              >
-                {effectiveApi?.selectDirectory ? (
-                  <SelectItem
-                    className={classNames?.item}
-                    value={linkExistingProjectOptionValue}
-                  >
-                    <span className="flex min-w-0 flex-1 items-center gap-2 pr-1">
-                      <LinkIcon aria-hidden size={15} />
-                      <span className="truncate">
-                        {resolvedLabels.linkExistingProject}
-                      </span>
-                    </span>
-                  </SelectItem>
-                ) : null}
-                {showCreateProjectAction ? (
-                  <SelectItem
-                    className={classNames?.item}
-                    value={addProjectOptionValue}
-                  >
-                    <span className="flex min-w-0 flex-1 items-center gap-2 pr-1">
-                      {renderAddProjectIcon?.() ?? (
-                        <NewWorkspaceLinedIcon
-                          aria-hidden
-                          data-workspace-user-project-add-icon="true"
-                          size={15}
-                        />
-                      )}
-                      <span className="truncate">
-                        {resolvedLabels.addProject}
-                      </span>
-                    </span>
-                  </SelectItem>
-                ) : null}
-                {showNoProjectAction ? (
-                  <SelectItem
-                    className={classNames?.item}
-                    value={noProjectOptionValue}
-                  >
-                    <span className="flex min-w-0 flex-1 items-center gap-2 pr-1">
-                      <NoWorkspaceLinedIcon
+              ) : null}
+              {showCreateProjectAction ? (
+                <SelectItem
+                  className={classNames?.item}
+                  value={addProjectOptionValue}
+                >
+                  <span className="flex min-w-0 flex-1 items-center gap-2 pr-1">
+                    {renderAddProjectIcon?.() ?? (
+                      <NewWorkspaceLinedIcon
                         aria-hidden
-                        data-agent-project-no-workspace-icon="true"
+                        data-workspace-user-project-add-icon="true"
                         size={15}
                       />
-                      <span className="truncate">
-                        {resolvedLabels.noProject}
-                      </span>
+                    )}
+                    <span className="truncate">
+                      {resolvedLabels.addProject}
                     </span>
-                  </SelectItem>
-                ) : null}
-              </SelectGroup>
-            ) : null}
-          </SelectContent>
-        ) : null}
+                  </span>
+                </SelectItem>
+              ) : null}
+              {showNoProjectAction ? (
+                <SelectItem
+                  className={classNames?.item}
+                  value={noProjectOptionValue}
+                >
+                  <span className="flex min-w-0 flex-1 items-center gap-2 pr-1">
+                    <NoWorkspaceLinedIcon
+                      aria-hidden
+                      data-agent-project-no-workspace-icon="true"
+                      size={15}
+                    />
+                    <span className="truncate">{resolvedLabels.noProject}</span>
+                  </span>
+                </SelectItem>
+              ) : null}
+            </SelectGroup>
+          ) : null}
+        </SelectContent>
       </Select>
       {isProjectDialogOpen ? (
         <Dialog
@@ -671,6 +686,7 @@ export function WorkspaceUserProjectSelect({
           <DialogContent
             className="w-[480px] max-w-[calc(100vw-32px)] sm:max-w-[480px]"
             showCloseButton={false}
+            onCloseAutoFocus={onDismissAutoFocus}
           >
             <form className="grid gap-4" onSubmit={submitProjectDialog}>
               <DialogHeader>
@@ -686,7 +702,7 @@ export function WorkspaceUserProjectSelect({
                 <Input
                   autoFocus
                   className="h-10"
-                  disabled={isCreatingProject}
+                  disabled={disabled || isCreatingProject}
                   placeholder={resolvedLabels.createProjectNamePlaceholder}
                   value={draftProjectName}
                   onChange={(event) => {
@@ -704,7 +720,7 @@ export function WorkspaceUserProjectSelect({
               ) : null}
               <DialogFooter>
                 <Button
-                  disabled={isCreatingProject}
+                  disabled={disabled || isCreatingProject}
                   size="dialog"
                   type="button"
                   variant="secondary"
@@ -718,7 +734,9 @@ export function WorkspaceUserProjectSelect({
                   {resolvedLabels.createProjectCancel}
                 </Button>
                 <Button
-                  disabled={isCreatingProject || !draftProjectName.trim()}
+                  disabled={
+                    disabled || isCreatingProject || !draftProjectName.trim()
+                  }
                   size="dialog"
                   type="submit"
                 >

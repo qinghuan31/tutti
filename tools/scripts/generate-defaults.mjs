@@ -93,6 +93,21 @@ var generatedDefaults = generatedDefaultsSpec{
 \t\tChannelDomain: ${goString(specification.analytics.channelDomain)},
 \t\tAppVersion:    ${goString(specification.analytics.appVersion)},
 \t},
+\tAgentExtensions: generatedAgentExtensionDefaults{
+\t\tSources: []generatedAgentExtensionSourceDefaults{
+${(specification.agentExtensions?.sources ?? [])
+  .map(
+    (source) => `\t\t\t{
+\t\t\t\tKey:              ${goString(source.key)},
+\t\t\t\tReleaseIndexURL:  ${goString(source.releaseIndexUrl)},
+\t\t\t\tSigningKeyID:     ${goString(source.signingKeyId)},
+\t\t\t\tSigningPublicKey: ${goString(source.signingPublicKey)},
+\t\t\t\tEnabled:          ${source.enabled},
+\t\t\t},`
+  )
+  .join("\n")}
+\t\t},
+\t},
 }
 `);
 }

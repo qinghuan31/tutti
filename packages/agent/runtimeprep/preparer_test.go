@@ -106,7 +106,9 @@ func TestDefaultPreparerCodexWritesInstructionsSkillManifestAndEnv(t *testing.T)
 	}
 	if !strings.Contains(string(codexAgents), "# Host App Context") ||
 		!strings.Contains(string(codexAgents), "Images/videos: use Markdown") ||
-		!strings.Contains(string(codexAgents), "Generated/edited image output: final response must include Markdown image tag.") ||
+		!strings.Contains(string(codexAgents), "Native image generation results are rendered directly from `imageGeneration` tool output as generated-image artifacts.") ||
+		!strings.Contains(string(codexAgents), "do not repeat generated images as Markdown image tags") ||
+		strings.Contains(string(codexAgents), "Generated/edited image output: final response must include Markdown image tag.") ||
 		!strings.Contains(string(codexAgents), "Prefer `$CODEX_HOME/generated_images/`") ||
 		!strings.Contains(string(codexAgents), "never use unverified sandbox path") ||
 		!strings.Contains(string(codexAgents), "No inline base64.") ||
@@ -276,12 +278,11 @@ func TestDefaultPreparerCodexWritesInstructionsSkillManifestAndEnv(t *testing.T)
 		!strings.Contains(string(workspaceAppSkill), "use injected `$tutti-cli`") ||
 		!strings.Contains(string(workspaceAppSkill), "command-guide.md") ||
 		!strings.Contains(string(workspaceAppSkill), "Do not derive filesystem paths from the plugin directory, plugin name, or skill slug") ||
-		!strings.Contains(string(workspaceAppSkill), "inherits the caller agent session working directory") ||
-		!strings.Contains(string(workspaceAppSkill), "turn-resources") ||
-		!strings.Contains(string(workspaceAppSkill), "specific caller session turn") ||
-		!strings.Contains(string(workspaceAppSkill), "agent turn-resources --session-id <caller-session-id> --turn-id <turnId> --json") ||
-		!strings.Contains(string(workspaceAppSkill), "`--image <localPath>`") {
+		!strings.Contains(string(workspaceAppSkill), "inherits the caller agent session working directory") {
 		t.Fatalf("workspace-app skill content = %q", string(workspaceAppSkill))
+	}
+	if strings.Contains(string(workspaceAppSkill), "turn-resources") || strings.Contains(string(workspaceAppSkill), "--image <localPath>") {
+		t.Fatalf("workspace-app skill owns agent image handoff guidance: %q", string(workspaceAppSkill))
 	}
 	if strings.Contains(string(workspaceAppSkill), "read the materialized sibling `tutti-cli/SKILL.md`") {
 		t.Fatalf("workspace-app skill should not ask agents to guess sibling skill paths: %q", string(workspaceAppSkill))
@@ -939,9 +940,13 @@ func TestDefaultPreparerClaudeCodeUsesSessionScopedSystemPrompt(t *testing.T) {
 		!strings.Contains(string(systemPrompt), "Skill missing/fails -> read matching materialized `SKILL.md`") ||
 		!strings.Contains(string(systemPrompt), "Claude Code mention routing") ||
 		!strings.Contains(string(systemPrompt), "Claude Code skill names may be namespaced") ||
+		!strings.Contains(string(systemPrompt), "`tutti-cli:tutti-handoff`") ||
 		!strings.Contains(string(systemPrompt), "`tutti-cli:issue-manager`") ||
 		!strings.Contains(string(systemPrompt), "`tutti-cli:workspace-app`") ||
 		!strings.Contains(string(systemPrompt), `Skill(skill="tutti-cli:workspace-app")`) ||
+		!strings.Contains(string(systemPrompt), `Skill(skill="tutti-cli:tutti-handoff")`) ||
+		!strings.Contains(string(systemPrompt), "Do not use `ToolSearch` to select Claude Code's native `SendMessage`") ||
+		!strings.Contains(string(systemPrompt), "never pass a Tutti agent target id such as `local:opencode` to native `SendMessage`") ||
 		!strings.Contains(string(systemPrompt), "Do not call a plain skill name that is not visible") ||
 		!strings.Contains(string(systemPrompt), "Do not pass arguments to Skill") ||
 		!strings.Contains(string(systemPrompt), "the skill reads the mention URI from the current user turn") ||
@@ -953,7 +958,7 @@ func TestDefaultPreparerClaudeCodeUsesSessionScopedSystemPrompt(t *testing.T) {
 		!strings.Contains(string(systemPrompt), "bounded shell/script") ||
 		!strings.Contains(string(systemPrompt), "agent wait --session-id <session-id> --json") ||
 		!strings.Contains(string(systemPrompt), "agent session-summary --session-id <session-id> --json") ||
-		!strings.Contains(string(systemPrompt), "hand off, do not do it yourself") {
+		!strings.Contains(string(systemPrompt), "verify with `agent list`; hand off, do not do it yourself") {
 		t.Fatalf("claude system prompt content = %q, want mention handoff fallback guidance", string(systemPrompt))
 	}
 	if !strings.Contains(string(systemPrompt), "# Host App Context") ||
@@ -1037,7 +1042,7 @@ func TestDefaultPreparerClaudeCodeUsesSessionScopedSystemPrompt(t *testing.T) {
 	}
 }
 
-func TestDefaultPreparerClaudeCodeSetsClaudeCodeExecutableFromPath(t *testing.T) {
+func TestDefaultPreparerClaudeCodeSetsFallbackExecutableFromPath(t *testing.T) {
 	binDir := t.TempDir()
 	claudePath := filepath.Join(binDir, "claude")
 	if err := os.WriteFile(claudePath, []byte("#!/bin/sh\n"), 0o755); err != nil {
@@ -1055,8 +1060,41 @@ func TestDefaultPreparerClaudeCodeSetsClaudeCodeExecutableFromPath(t *testing.T)
 	if err != nil {
 		t.Fatalf("Prepare() error = %v", err)
 	}
-	if got := envValue(prepared.Env, "CLAUDE_CODE_EXECUTABLE"); got != claudePath {
-		t.Fatalf("CLAUDE_CODE_EXECUTABLE = %q, want %q", got, claudePath)
+	// A PATH-installed claude is only a fallback: the sidecar prefers a native
+	// SDK binary and the tuttid-provisioned one, so it must arrive via the
+	// fallback env, not the always-wins override.
+	if got := envValue(prepared.Env, claudeCodeFallbackExecutableEnvName); got != claudePath {
+		t.Fatalf("%s = %q, want %q", claudeCodeFallbackExecutableEnvName, got, claudePath)
+	}
+	if got := envValue(prepared.Env, claudeCodeExecutableEnvName); got != "" {
+		t.Fatalf("%s = %q, want empty", claudeCodeExecutableEnvName, got)
+	}
+}
+
+func TestDefaultPreparerClaudeCodePrefersManagedBinaryOverPath(t *testing.T) {
+	binDir := t.TempDir()
+	claudePath := filepath.Join(binDir, "claude")
+	if err := os.WriteFile(claudePath, []byte("#!/bin/sh\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", binDir)
+	t.Setenv("CLAUDE_CODE_EXECUTABLE", "")
+	stateDir := t.TempDir()
+	managed := filepath.Join(stateDir, "agent-providers", "claude-code", "versions", "2.1.201", "claude")
+	writeFakeExecutable(t, managed)
+	writeManagedClaudePointer(t, stateDir, managed)
+
+	prepared, err := NewDefaultPreparer(stateDir).Prepare(t.Context(), PrepareInput{
+		WorkspaceID:    "workspace-1",
+		AgentSessionID: "session-1",
+		Provider:       "claude-code",
+		Cwd:            t.TempDir(),
+	})
+	if err != nil {
+		t.Fatalf("Prepare() error = %v", err)
+	}
+	if got := envValue(prepared.Env, claudeCodeFallbackExecutableEnvName); got != managed {
+		t.Fatalf("%s = %q, want managed binary %q", claudeCodeFallbackExecutableEnvName, got, managed)
 	}
 }
 
@@ -1119,6 +1157,12 @@ func TestDefaultPreparerCursorUsesRuntimePluginDir(t *testing.T) {
 		!strings.Contains(string(pluginManifest), `"skills": "./skills/"`) ||
 		!strings.Contains(string(pluginManifest), `"displayName": "Tutti CLI"`) {
 		t.Fatalf("cursor plugin manifest = %q", string(pluginManifest))
+	}
+	if strings.Contains(string(pluginManifest), `"hooks"`) {
+		t.Fatalf("cursor ACP plugin must not advertise unsupported plugin hooks: %q", string(pluginManifest))
+	}
+	if _, err := os.Stat(filepath.Join(pluginDir, "hooks")); !os.IsNotExist(err) {
+		t.Fatalf("cursor ACP plugin hooks should remain dormant, stat error = %v", err)
 	}
 	pluginSkill, err := os.ReadFile(filepath.Join(pluginDir, "skills", "tutti-cli", "SKILL.md"))
 	if err != nil {

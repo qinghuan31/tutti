@@ -1,79 +1,50 @@
-import type {
-  AgentActivityMessage,
-  AgentActivitySnapshot
-} from "@tutti-os/agent-activity-core";
-import type { UiLanguage } from "../contexts/settings/domain/agentSettings";
-import {
-  firstAgentGUIUserMessageTitle,
-  formatAgentGUIConversationPlainTitle,
-  normalizeAgentGUIProviderIdentity,
-  resolveAgentGUIExplicitConversationTitle,
-  type AgentGUIResolvedProvider
-} from "../shared/agentConversationTitleProjection.ts";
-import { formatAgentSessionMentionText } from "../shared/utils/agentSessionMentionText.ts";
-import type { AgentGuiWorkbenchProvider } from "./types.ts";
+import type { AgentActivitySession } from "@tutti-os/agent-activity-core";
+import { resolveAgentGUIProviderDisplayLabel } from "../shared/agentConversationTitleProjection.ts";
 
-export interface AgentGuiSessionTitleFormatOptions {
-  fallbackAgentLabel?: string;
-  language?: UiLanguage;
+export interface ResolveAgentGuiWorkbenchHeaderTitleInput {
+  agentName?: string | null;
+  conversationTitle?: string | null;
+  provider?: string | null;
 }
 
-export interface ResolveAgentGuiWorkbenchSessionTitleInput extends AgentGuiSessionTitleFormatOptions {
+export interface ResolveAgentGuiWorkbenchSessionTitleInput {
   agentSessionId?: string | null;
   fallbackTitle?: string | null;
-  provider: AgentGuiWorkbenchProvider | string;
-  snapshot: AgentActivitySnapshot;
+  optimisticTitle?: string | null;
+  session?: Pick<AgentActivitySession, "title"> | null;
 }
 
 export interface AgentGuiWorkbenchSessionTitleResult {
   agentSessionId: string | null;
-  source: "snapshot" | "fallback" | "none";
+  source: "snapshot" | "optimistic" | "fallback" | "none";
   title: string | null;
 }
 
-export function formatAgentGuiSessionPlainTitle(
-  title: string | null | undefined,
-  options: AgentGuiSessionTitleFormatOptions = {}
-): string {
-  return formatAgentSessionMentionText(title, { language: options.language });
-}
-
-export function formatAgentGuiConversationPlainTitle(
-  conversation: {
-    title: string;
-    titleFallback?: "generic-agent" | null;
-  },
-  options: AgentGuiSessionTitleFormatOptions = {}
-): string {
-  return formatAgentGUIConversationPlainTitle(conversation, options);
+export function resolveAgentGuiWorkbenchHeaderTitle({
+  agentName,
+  conversationTitle,
+  provider
+}: ResolveAgentGuiWorkbenchHeaderTitleInput): string | null {
+  return (
+    stripTitle(agentName) ||
+    stripTitle(resolveAgentGUIProviderDisplayLabel(provider, "")) ||
+    stripTitle(conversationTitle) ||
+    null
+  );
 }
 
 export function resolveAgentGuiWorkbenchSessionTitle({
   agentSessionId,
   fallbackTitle,
-  language,
-  provider,
-  snapshot
+  optimisticTitle,
+  session = null
 }: ResolveAgentGuiWorkbenchSessionTitleInput): AgentGuiWorkbenchSessionTitleResult {
   const normalizedAgentSessionId = agentSessionId?.trim() ?? "";
   if (!normalizedAgentSessionId) {
     return { agentSessionId: null, source: "none", title: null };
   }
 
-  const session = snapshot.sessions.find(
-    (item) => item.agentSessionId === normalizedAgentSessionId
-  );
-  const sessionMessages =
-    snapshot.sessionMessagesById[normalizedAgentSessionId] ?? [];
-  const normalizedProvider = normalizeAgentGUIProviderIdentity(
-    session?.provider ?? provider
-  );
-  const snapshotTitle = resolveDisplayableSnapshotSessionTitle({
-    messages: sessionMessages,
-    provider: normalizedProvider,
-    sessionTitle: session?.title ?? "",
-    language
-  });
+  const snapshotTitle = stripTitle(session?.title);
   if (snapshotTitle) {
     return {
       agentSessionId: normalizedAgentSessionId,
@@ -82,7 +53,16 @@ export function resolveAgentGuiWorkbenchSessionTitle({
     };
   }
 
-  if (session || sessionMessages.length > 0) {
+  const projectedOptimisticTitle = stripTitle(optimisticTitle);
+  if (projectedOptimisticTitle) {
+    return {
+      agentSessionId: normalizedAgentSessionId,
+      source: "optimistic",
+      title: projectedOptimisticTitle
+    };
+  }
+
+  if (session) {
     return {
       agentSessionId: normalizedAgentSessionId,
       source: "none",
@@ -90,10 +70,7 @@ export function resolveAgentGuiWorkbenchSessionTitle({
     };
   }
 
-  const fallbackDisplayTitle = formatAgentGuiConversationPlainTitle(
-    { title: fallbackTitle ?? "", titleFallback: null },
-    { language }
-  );
+  const fallbackDisplayTitle = stripTitle(fallbackTitle);
   return fallbackDisplayTitle
     ? {
         agentSessionId: normalizedAgentSessionId,
@@ -107,40 +84,6 @@ export function resolveAgentGuiWorkbenchSessionTitle({
       };
 }
 
-function resolveDisplayableSnapshotSessionTitle(input: {
-  messages: readonly AgentActivityMessage[];
-  provider: AgentGUIResolvedProvider;
-  sessionTitle: string;
-  language?: UiLanguage;
-}): string {
-  const explicitSessionTitle = explicitConversationTitle({
-    language: input.language,
-    provider: input.provider,
-    title: input.sessionTitle
-  });
-  if (explicitSessionTitle) {
-    return explicitSessionTitle;
-  }
-  return explicitConversationTitle({
-    language: input.language,
-    provider: input.provider,
-    title: firstAgentGUIUserMessageTitle(input.messages)
-  });
-}
-
-function explicitConversationTitle(input: {
-  language?: UiLanguage;
-  provider: AgentGUIResolvedProvider;
-  title: string | null | undefined;
-}): string {
-  return (
-    resolveAgentGUIExplicitConversationTitle({
-      provider: input.provider,
-      title: formatAgentGuiConversationPlainTitle(
-        { title: input.title ?? "", titleFallback: null },
-        { language: input.language }
-      ),
-      titleFallback: null
-    }) ?? ""
-  );
+function stripTitle(value: string | null | undefined): string {
+  return value?.trim() ?? "";
 }

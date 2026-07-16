@@ -1,6 +1,7 @@
 import type { WorkspaceAgentSessionDetailViewModel } from "../../workspaceAgentSessionDetailViewModel";
 import type { AgentProcessingRowVM } from "../contracts/agentProcessingRowVM";
 import type { AgentTranscriptRowVM } from "../contracts/agentTranscriptRowVM";
+import { agentTranscriptRowHasPresentationKind } from "./agentTranscriptPresentation";
 
 export function projectAgentProcessingRow(
   detail: WorkspaceAgentSessionDetailViewModel,
@@ -9,10 +10,10 @@ export function projectAgentProcessingRow(
   if (!detail.showProcessingIndicator) {
     return null;
   }
-  if (hasSpecificProgressRow(rows)) {
+  const turnId = detail.turns.at(-1)?.id ?? null;
+  if (turnId && hasSpecificProgressRow(rows, turnId)) {
     return null;
   }
-  const turnId = detail.turns.at(-1)?.id ?? null;
   return {
     kind: "processing",
     id: `processing:${turnId ?? "session"}`,
@@ -23,14 +24,20 @@ export function projectAgentProcessingRow(
 }
 
 function hasSpecificProgressRow(
-  rows: readonly AgentTranscriptRowVM[]
+  rows: readonly AgentTranscriptRowVM[],
+  activeTurnId: string
 ): boolean {
   return rows.some((row) => {
-    if (row.kind !== "tool-group") {
+    if (row.turnId !== activeTurnId) {
       return false;
     }
-    return row.calls.some(
-      (call) => call.statusKind === "working" || call.statusKind === "waiting"
+    return (
+      agentTranscriptRowHasPresentationKind(row, "specific-progress") ||
+      (row.kind === "tool-group" &&
+        row.calls.some(
+          (call) =>
+            call.statusKind === "working" || call.statusKind === "waiting"
+        ))
     );
   });
 }

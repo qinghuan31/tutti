@@ -409,8 +409,6 @@ func (api DaemonAPI) PutDesktopPreferences(ctx context.Context, request tuttigen
 		DefaultAgentProvider:        defaultAgentProvider,
 		DockIconStyle:               dockIconStyle,
 		DockPlacement:               dockPlacement,
-		EnableCursorAgent:           request.Body.Preferences.EnableCursorAgent,
-		EnableOpenCodeAgent:         request.Body.Preferences.EnableOpenCodeAgent,
 		FileDefaultOpenersByExtension: fileDefaultOpenersByExtensionFromGenerated(
 			request.Body.Preferences.FileDefaultOpenersByExtension,
 		),

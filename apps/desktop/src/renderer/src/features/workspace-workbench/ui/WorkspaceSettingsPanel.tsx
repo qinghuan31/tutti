@@ -16,13 +16,14 @@ import type {
   DesktopComputerUseStatus
 } from "@shared/contracts/ipc";
 import {
-  AddIcon,
+  AddLinedIcon,
   AskLinedIcon,
   Button,
   CheckIcon,
   ChevronDownIcon,
   ChevronUpIcon,
   CloseIcon,
+  CloseEyesIcon,
   DeleteIcon,
   Dialog,
   DialogContent,
@@ -36,6 +37,7 @@ import {
   Input,
   LoadingIcon,
   OpenLinkLinedIcon,
+  RadioIndicator,
   Select,
   SelectContent,
   SelectItem,
@@ -74,7 +76,6 @@ import {
   type DesktopLocale
 } from "../../../../../shared/i18n/index.ts";
 import {
-  type DesktopAgentProvider,
   type DesktopDefaultAgentProvider,
   desktopAgentConversationDetailModes,
   desktopAppCatalogChannels,
@@ -83,6 +84,7 @@ import {
   desktopFileDefaultOpeners,
   desktopMinimizeAnimations,
   desktopSleepPreventionModes,
+  desktopWorkspaceUiModes,
   desktopUpdateChannels,
   desktopWorkbenchWindowSnappingShortcutPresets,
   formatDesktopShortcutBinding,
@@ -92,6 +94,7 @@ import {
   type DesktopBrowserUseConnectionMode,
   type DesktopDockPlacement,
   type DesktopFeatureFlags,
+  type DesktopWorkspaceUiMode,
   type DesktopFileDefaultOpener,
   type DesktopFileDefaultOpenersByExtension,
   type DesktopMinimizeAnimation,
@@ -102,9 +105,11 @@ import {
   type DesktopWorkbenchWindowSnappingShortcutPreset
 } from "../../../../../shared/preferences/index.ts";
 import {
+  AGENT_REFERENCE_PROVENANCE_FILTER_FLAG,
   isFeatureEnabled,
   LAB_ENABLED_FLAG,
-  LAB_WORKBENCH_SHORTCUTS_FLAG
+  LAB_WORKBENCH_SHORTCUTS_FLAG,
+  resolveDesktopWorkspaceUiMode
 } from "../../../../../shared/featureFlags/catalog.ts";
 import { resolveWorkspaceAgentGuiLabel } from "../services/workspaceAgentProviderCatalog";
 import {
@@ -115,6 +120,10 @@ import {
 import { useWorkspaceSettingsService } from "./useWorkspaceSettingsService";
 import { useWorkspaceWorkbenchHostService } from "./useWorkspaceWorkbenchHostService";
 import { useAccountService } from "./useAccountService";
+import {
+  normalizeWorkspaceSettingsDefaultAgentProvider,
+  workspaceSettingsDefaultAgentProviders
+} from "./workspaceSettingsDefaultAgentProviders";
 import {
   WorkspaceSettingsActionButton,
   workspaceSettingsControlColumnClass
@@ -131,15 +140,12 @@ import {
 } from "../services/workspaceWallpaper";
 
 const workspaceSettingsSelectTriggerClass =
-  "w-full h-8 min-w-0 overflow-hidden rounded-[6px] border-0 bg-[var(--transparency-block)] px-3 text-left text-[13px] font-normal text-[var(--text-primary)] !shadow-none !outline-none !ring-0 transition-colors duration-200 hover:bg-[var(--transparency-hover)] focus-visible:border-0 focus-visible:!ring-0 *:data-[slot=select-value]:!block *:data-[slot=select-value]:min-w-0 *:data-[slot=select-value]:flex-1 *:data-[slot=select-value]:overflow-hidden *:data-[slot=select-value]:text-left *:data-[slot=select-value]:text-ellipsis *:data-[slot=select-value]:whitespace-nowrap";
+  "w-full h-8 min-w-0 overflow-hidden rounded-[6px] border-0 bg-[var(--transparency-block)] px-3 text-left text-[13px] font-normal text-[var(--text-primary)] !shadow-none !outline-none !ring-0 transition-colors duration-200 hover:bg-[var(--transparency-hover)] focus-visible:border-0 focus-visible:!ring-0 [&>svg]:text-[var(--text-tertiary)] *:data-[slot=select-value]:!block *:data-[slot=select-value]:min-w-0 *:data-[slot=select-value]:flex-1 *:data-[slot=select-value]:overflow-hidden *:data-[slot=select-value]:text-left *:data-[slot=select-value]:text-ellipsis *:data-[slot=select-value]:whitespace-nowrap";
 const workspaceSettingsSelectContentClass =
   "w-[var(--radix-select-trigger-width)] rounded-[8px] border border-[var(--border-1)] bg-[var(--background-fronted)] px-1 text-[var(--text-primary)] shadow-[0_16px_40px_var(--shadow-elevated)] [--tutti-select-content-min-width:100%] !outline-none !ring-0";
 const workspaceSettingsInputClass =
-  "h-8 w-full rounded-[6px] border border-[var(--border-1)] bg-[var(--transparency-block)] px-3 text-[13px] text-[var(--text-primary)] outline-none transition-colors duration-150 placeholder:text-[var(--text-tertiary)] hover:bg-[var(--transparency-hover)] focus-visible:border-[var(--border-focus)]";
-const workspaceManagedModelInputClass = `${workspaceSettingsInputClass} focus-visible:!border-[var(--border-1)]`;
-const workspaceManagedModelProviderPrefixClass =
-  "flex h-8 items-center justify-end px-2 text-[11px] text-[var(--text-secondary)]";
-
+  "h-8 w-full rounded-[6px] border-0 bg-[var(--transparency-block)] px-3 text-[13px] text-[var(--text-primary)] outline-none transition-colors duration-150 placeholder:text-[var(--text-tertiary)] hover:bg-[var(--transparency-hover)] focus-visible:border-0";
+const workspaceManagedModelInputClass = workspaceSettingsInputClass;
 const developerPanelUnlockTaps = 7;
 const computerUseOperationSettleMs = 280;
 const computerUseAutoCheckIntervalMs = 1_500;
@@ -158,21 +164,6 @@ const cuaDriverToggleDemoUrl = new URL(
   "../../../assets/cua-driver-toggle-demo.gif",
   import.meta.url
 ).href;
-const workspaceSettingsDefaultAgentProviders = [
-  "codex",
-  "claude-code",
-  "cursor",
-  "opencode"
-] as const satisfies readonly DesktopDefaultAgentProvider[];
-
-function isWorkspaceSettingsDefaultAgentProvider(
-  provider: DesktopAgentProvider
-): provider is DesktopDefaultAgentProvider {
-  return workspaceSettingsDefaultAgentProviders.includes(
-    provider as DesktopDefaultAgentProvider
-  );
-}
-
 export function WorkspaceSettingsPanel({
   onOpenExternalAgentImport,
   onSelectWallpaper,
@@ -249,12 +240,12 @@ export function WorkspaceSettingsPanel({
       <section
         aria-labelledby="workspace-settings-title"
         aria-modal="true"
-        className="relative z-[1] grid h-[min(640px,calc(100vh-40px))] w-[min(960px,calc(100vw-40px))] origin-center grid-cols-[160px_minmax(0,1fr)] grid-rows-[auto_minmax(0,1fr)] overflow-hidden rounded-2xl border border-[var(--border-1)] bg-[var(--background-fronted)] text-[var(--text-primary)] shadow-panel transition-[background,opacity] duration-[180ms] ease-[cubic-bezier(0.22,1,0.36,1)] [-webkit-app-region:no-drag] motion-safe:animate-in motion-safe:fade-in-0 motion-safe:zoom-in-[0.96] motion-safe:duration-[250ms] motion-safe:ease-[cubic-bezier(0.22,1,0.36,1)] motion-reduce:animate-none max-[760px]:h-[min(100vh-24px,640px)] max-[760px]:w-[min(calc(100vw-24px),640px)] max-[760px]:grid-cols-1 max-[760px]:grid-rows-[auto_auto_minmax(0,1fr)]"
+        className="relative z-[1] grid h-[min(640px,calc(100vh-40px))] w-[min(960px,calc(100vw-40px))] origin-center grid-cols-[160px_minmax(0,1fr)] grid-rows-[auto_minmax(0,1fr)] overflow-hidden rounded-2xl border border-[var(--border-1)] bg-[var(--background-fronted)] text-[var(--text-primary)] shadow-panel transition-[background,opacity] duration-[180ms] ease-[cubic-bezier(0.22,1,0.36,1)] [-webkit-app-region:no-drag] motion-safe:animate-in motion-safe:fade-in-0 motion-safe:zoom-in-[0.96] motion-safe:duration-[250ms] motion-safe:ease-[cubic-bezier(0.22,1,0.36,1)] motion-reduce:animate-none max-[1279px]:h-[min(500px,calc(100vh-40px))] max-[1279px]:w-[min(760px,calc(100vw-40px))] max-[959px]:h-[min(480px,calc(100vh-40px))] max-[959px]:w-[min(640px,calc(100vw-40px))] max-[760px]:h-[min(100vh-24px,480px)] max-[760px]:w-[min(calc(100vw-24px),640px)] min-[420px]:max-[640px]:!w-[480px]"
         data-workspace-settings-panel="true"
         role="dialog"
         onClick={(event) => event.stopPropagation()}
       >
-        <div className="col-[1/-1] row-start-1 flex h-[54px] min-h-[54px] items-center justify-between border-b border-[var(--border-1)] px-[22px] py-[13px] max-[760px]:px-5">
+        <div className="col-[1/-1] row-start-1 flex h-[54px] min-h-[54px] items-center justify-between border-b border-[var(--border-1)] px-[22px] py-[13px]">
           <h2
             id="workspace-settings-title"
             className="m-0 text-[15px] font-semibold leading-[1.3] text-[var(--text-primary)]"
@@ -277,7 +268,7 @@ export function WorkspaceSettingsPanel({
 
         <aside
           aria-label={t("workspace.settings.nav.sectionsLabel")}
-          className="col-start-1 row-start-2 flex min-h-0 flex-col gap-2 overflow-y-auto border-r border-[var(--border-1)] bg-[var(--background-fronted)] px-3 pb-4 pt-3 max-[760px]:row-start-2 max-[760px]:overflow-x-auto max-[760px]:border-b max-[760px]:border-r-0 max-[760px]:px-3 max-[760px]:pb-3.5 max-[760px]:pt-5"
+          className="col-start-1 row-start-2 flex min-h-0 flex-col gap-2 overflow-y-auto border-r border-[var(--border-1)] bg-[var(--background-fronted)] px-3 pb-4 pt-3"
         >
           {[
             {
@@ -345,20 +336,27 @@ export function WorkspaceSettingsPanel({
           })}
         </aside>
 
-        <div className="col-start-2 row-start-2 flex min-h-0 flex-col max-[760px]:col-start-1 max-[760px]:row-start-3">
-          <div className="flex min-h-0 flex-1 flex-col gap-0 overflow-y-auto px-[22px] pb-[22px] pt-0 max-[760px]:px-5 max-[760px]:pb-6">
+        <div className="col-start-2 row-start-2 flex min-h-0 flex-col">
+          <div className="flex min-h-0 flex-1 flex-col gap-0 overflow-y-auto px-[22px] pb-[22px] pt-0">
             {settingsState.activeSection === "general" ? (
               <WorkspaceGeneralSettingsSection
+                changingFeatureFlags={
+                  desktopPreferencesState.changingFeatureFlags
+                }
                 changingLocale={desktopPreferencesState.changingLocale}
                 changingSleepPreventionMode={
                   desktopPreferencesState.changingSleepPreventionMode
                 }
+                featureFlags={desktopPreferencesState.featureFlags}
                 locale={desktopPreferencesState.locale}
                 onLocaleChange={(nextLocale) => {
                   void settingsService.changeLocale(nextLocale);
                 }}
                 onSleepPreventionModeChange={(mode) => {
                   void settingsService.changeSleepPreventionMode(mode);
+                }}
+                onWorkspaceUiModeChange={(mode) => {
+                  void settingsService.changeWorkspaceUiMode(mode);
                 }}
                 sleepPreventionMode={
                   desktopPreferencesState.sleepPreventionMode
@@ -516,14 +514,17 @@ export function WorkspaceSettingsPanel({
                 fileDefaultOpenersByExtension={
                   desktopPreferencesState.fileDefaultOpenersByExtension
                 }
-                enableCursorAgent={desktopPreferencesState.enableCursorAgent}
-                enableOpenCodeAgent={
-                  desktopPreferencesState.enableOpenCodeAgent
-                }
                 labEnabled={isFeatureEnabled(
                   pendingFeatureFlags,
                   LAB_ENABLED_FLAG
                 )}
+                referenceProvenanceFilterEnabled={isFeatureEnabled(
+                  pendingFeatureFlags,
+                  AGENT_REFERENCE_PROVENANCE_FILTER_FLAG
+                )}
+                featureFlagsUpdating={
+                  desktopPreferencesState.changingFeatureFlags !== null
+                }
                 showAppDeveloperSources={
                   desktopPreferencesState.showAppDeveloperSources
                 }
@@ -554,8 +555,14 @@ export function WorkspaceSettingsPanel({
                 }}
                 onLabEnabledChange={(enabled) => {
                   void settingsService.changeFeatureFlags({
-                    ...desktopPreferencesState.featureFlags,
+                    ...pendingFeatureFlags,
                     [LAB_ENABLED_FLAG]: enabled
+                  });
+                }}
+                onReferenceProvenanceFilterEnabledChange={(enabled) => {
+                  void settingsService.changeFeatureFlags({
+                    ...pendingFeatureFlags,
+                    [AGENT_REFERENCE_PROVENANCE_FILTER_FLAG]: enabled
                   });
                 }}
                 onTuttiAgentSwitchEnabledChange={(enabled) => {
@@ -566,12 +573,6 @@ export function WorkspaceSettingsPanel({
                 }}
                 onShowAppDeveloperSourcesChange={(show) => {
                   void settingsService.changeShowAppDeveloperSources(show);
-                }}
-                onEnableCursorAgentChange={(enable) => {
-                  void settingsService.changeEnableCursorAgent(enable);
-                }}
-                onEnableOpenCodeAgentChange={(enable) => {
-                  void settingsService.changeEnableOpenCodeAgent(enable);
                 }}
                 onExportLogs={() => {
                   void settingsService.exportDeveloperLogs();
@@ -935,7 +936,7 @@ function WorkspaceAppsSettingsSection({
   const isEmpty = providers.length === 0 && draft === null;
 
   return (
-    <SettingsRows>
+    <SettingsRows className="gap-6">
       <div className="flex w-full items-start justify-between gap-3">
         <div className="flex min-w-0 flex-col gap-2">
           <strong className="text-[13px] font-semibold text-[var(--text-primary)]">
@@ -950,9 +951,10 @@ function WorkspaceAppsSettingsSection({
             disabled={!canAddProvider}
             size="sm"
             type="button"
+            variant="secondary"
             onClick={() => setAddMenuOpen((open) => !open)}
           >
-            <AddIcon className="size-3.5" />
+            <AddLinedIcon className="size-3.5" />
             {t("workspace.settings.apps.managedModels.addProvider")}
           </Button>
           {addMenuOpen && canAddProvider ? (
@@ -1090,9 +1092,15 @@ function ManagedModelProviderItem({
     : t("workspace.settings.apps.managedModels.keyMissing");
 
   return (
-    <section className="flex w-full flex-col gap-4 rounded-[10px] border border-[var(--border-1)] bg-[var(--transparency-block)] p-4">
-      <div className="flex items-center justify-between gap-3">
-        <div className="min-w-0">
+    <section className="flex w-full flex-col gap-4 rounded-[10px] border-0 bg-[var(--transparency-block)] p-4">
+      <div
+        className={cn(
+          "flex min-h-8 items-center justify-between gap-3",
+          !confirmingDelete && "cursor-pointer"
+        )}
+        onClick={confirmingDelete ? undefined : onToggleExpand}
+      >
+        <div className="flex min-h-8 min-w-0 flex-col justify-center">
           <strong className="block text-[13px] font-semibold text-[var(--text-primary)]">
             {label}
           </strong>
@@ -1126,42 +1134,47 @@ function ManagedModelProviderItem({
             </Button>
           </div>
         ) : (
-          <div className="flex shrink-0 items-center gap-1">
-            <Button
-              aria-expanded={expanded}
-              aria-label={t(
-                expanded
-                  ? "workspace.settings.apps.managedModels.collapse"
-                  : "workspace.settings.apps.managedModels.expand"
-              )}
-              className="text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
-              size="icon"
-              type="button"
-              variant="ghost"
-              onClick={onToggleExpand}
-            >
-              {expanded ? (
-                <ChevronUpIcon aria-hidden="true" size={16} />
-              ) : (
-                <ChevronDownIcon aria-hidden="true" size={16} />
-              )}
-            </Button>
-            <Button
-              aria-label={t("workspace.settings.apps.managedModels.delete")}
-              className="text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
-              size="icon"
-              type="button"
-              variant="ghost"
-              onClick={onRequestDelete}
-            >
-              <DeleteIcon aria-hidden="true" size={15} />
-            </Button>
+          <div className="flex shrink-0 items-center gap-3">
+            <div className="flex items-center gap-1">
+              <Button
+                aria-expanded={expanded}
+                aria-label={t(
+                  expanded
+                    ? "workspace.settings.apps.managedModels.collapse"
+                    : "workspace.settings.apps.managedModels.expand"
+                )}
+                className="text-[var(--text-secondary)] hover:text-[var(--text-primary)] aria-expanded:bg-transparent aria-expanded:text-[var(--text-secondary)]"
+                size="icon"
+                type="button"
+                variant="ghost"
+              >
+                {expanded ? (
+                  <ChevronUpIcon aria-hidden="true" size={16} />
+                ) : (
+                  <ChevronDownIcon aria-hidden="true" size={16} />
+                )}
+              </Button>
+              <Button
+                aria-label={t("workspace.settings.apps.managedModels.delete")}
+                className="text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
+                size="icon"
+                type="button"
+                variant="ghost"
+                onClick={(event) => {
+                  event.stopPropagation();
+                  onRequestDelete();
+                }}
+              >
+                <DeleteIcon aria-hidden="true" size={15} />
+              </Button>
+            </div>
             <Switch
               aria-label={t("workspace.settings.apps.managedModels.enabled", {
                 provider: label
               })}
               checked={provider.enabled}
               disabled={saving}
+              onClick={(event) => event.stopPropagation()}
               onCheckedChange={onSetEnabled}
             />
           </div>
@@ -1189,7 +1202,7 @@ function ManagedModelProviderItem({
               variant="ghost"
               onClick={addModel}
             >
-              <AddIcon className="size-3.5" />
+              <AddLinedIcon className="size-3.5" />
               {t("workspace.settings.apps.managedModels.addModel")}
             </Button>
             <div className="flex flex-wrap justify-end gap-2">
@@ -1272,7 +1285,7 @@ function ManagedModelDraftItem({
           variant="ghost"
           onClick={addModel}
         >
-          <AddIcon className="size-3.5" />
+          <AddLinedIcon className="size-3.5" />
           {t("workspace.settings.apps.managedModels.addModel")}
         </Button>
         <div className="flex flex-wrap justify-end gap-2">
@@ -1425,7 +1438,7 @@ function ManagedModelProviderFields({
             {t("workspace.settings.apps.managedModels.apiKey")}
           </span>
           <div className="relative">
-            <input
+            <Input
               className={`${workspaceSettingsInputClass} pr-9`}
               placeholder={
                 draft.hasApiKey
@@ -1447,8 +1460,7 @@ function ManagedModelProviderFields({
               )}
               aria-pressed={apiKeyVisible}
               className={cn(
-                "absolute right-1 top-1/2 flex size-6 -translate-y-1/2 items-center justify-center rounded-[5px] text-[var(--text-secondary)] transition-colors duration-150 hover:bg-[var(--transparency-hover)] hover:text-[var(--text-primary)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--border-focus)]",
-                apiKeyVisible && "text-[var(--text-primary)]"
+                "absolute right-1 top-1/2 flex size-6 -translate-y-1/2 items-center justify-center rounded-[5px] text-[var(--text-secondary)] transition-colors duration-150 hover:bg-[var(--transparency-hover)] hover:text-[var(--text-primary)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--border-focus)]"
               )}
               type="button"
               onClick={() =>
@@ -1457,7 +1469,11 @@ function ManagedModelProviderFields({
                 )
               }
             >
-              <EyeIcon aria-hidden="true" size={16} />
+              {apiKeyVisible ? (
+                <EyeIcon aria-hidden="true" size={16} />
+              ) : (
+                <CloseEyesIcon aria-hidden="true" size={16} />
+              )}
             </button>
           </div>
         </label>
@@ -1466,7 +1482,7 @@ function ManagedModelProviderFields({
           <span className="text-[11px] font-medium text-[var(--text-secondary)]">
             {t("workspace.settings.apps.managedModels.baseUrl")}
           </span>
-          <input
+          <Input
             className={workspaceSettingsInputClass}
             placeholder={defaultManagedProviderBaseUrl(draft.provider)}
             type="url"
@@ -1501,7 +1517,9 @@ function ManagedModelProviderFields({
       <div className="flex flex-col gap-2">
         <div className="flex items-center justify-between gap-2">
           <span className="text-[11px] font-medium text-[var(--text-secondary)]">
-            {t("workspace.settings.apps.managedModels.models")}
+            {t("workspace.settings.apps.managedModels.models", {
+              provider: managedModelProviderLabels[draft.provider]
+            })}
           </span>
           {onDetect ? (
             <Button
@@ -1522,12 +1540,9 @@ function ManagedModelProviderFields({
           {draft.models.map((model, index) => (
             <div
               key={`${model.provider}:${model.id}:${index}`}
-              className="grid grid-cols-[max-content_minmax(0,1fr)_32px] items-center gap-1.5"
+              className="grid grid-cols-[minmax(0,1fr)_32px] items-center gap-1.5"
             >
-              <span className={workspaceManagedModelProviderPrefixClass}>
-                {draft.provider}:
-              </span>
-              <input
+              <Input
                 aria-label={t("workspace.settings.apps.managedModels.modelId")}
                 className={workspaceManagedModelInputClass}
                 placeholder={
@@ -1717,6 +1732,7 @@ function WorkspaceLabShortcutRow({
         />
         <Button
           aria-label={clearLabel}
+          className="text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
           disabled={disabled || value === null}
           size="icon-sm"
           title={clearLabel}
@@ -1731,6 +1747,13 @@ function WorkspaceLabShortcutRow({
   );
 }
 
+type FileDefaultOpenerDraft = {
+  committedExtension: string | null;
+  extension: string;
+  id: number;
+  opener: DesktopFileDefaultOpener;
+};
+
 function WorkspaceDeveloperSettingsSection({
   analyticsDebugAvailable,
   analyticsDebugEnabled,
@@ -1739,10 +1762,10 @@ function WorkspaceDeveloperSettingsSection({
   changingUpdateChannel,
   developerLogs,
   developerPanelVisible,
-  enableCursorAgent,
-  enableOpenCodeAgent,
   fileDefaultOpenersByExtension,
   labEnabled,
+  referenceProvenanceFilterEnabled,
+  featureFlagsUpdating,
   showAppDeveloperSources,
   tuttiAgentSwitchEnabled,
   updateChannel,
@@ -1751,11 +1774,10 @@ function WorkspaceDeveloperSettingsSection({
   onClearConversationHistory,
   onClearLogs,
   onDeveloperPanelVisibleChange,
-  onEnableCursorAgentChange,
-  onEnableOpenCodeAgentChange,
   onExportLogs,
   onFileDefaultOpenersChange,
   onLabEnabledChange,
+  onReferenceProvenanceFilterEnabledChange,
   onShowAppDeveloperSourcesChange,
   onTuttiAgentSwitchEnabledChange,
   onUpdateChannelChange
@@ -1767,10 +1789,10 @@ function WorkspaceDeveloperSettingsSection({
   changingUpdateChannel: DesktopUpdateChannel | null;
   developerLogs: WorkspaceSettingsDeveloperLogsSnapshotState;
   developerPanelVisible: boolean;
-  enableCursorAgent: boolean;
-  enableOpenCodeAgent: boolean;
   fileDefaultOpenersByExtension: DesktopFileDefaultOpenersByExtension;
   labEnabled: boolean;
+  referenceProvenanceFilterEnabled: boolean;
+  featureFlagsUpdating: boolean;
   showAppDeveloperSources: boolean;
   tuttiAgentSwitchEnabled: boolean;
   updateChannel: DesktopUpdateChannel;
@@ -1779,29 +1801,118 @@ function WorkspaceDeveloperSettingsSection({
   onClearConversationHistory: () => void;
   onClearLogs: () => void;
   onDeveloperPanelVisibleChange: (visible: boolean) => void;
-  onEnableCursorAgentChange: (enable: boolean) => void;
-  onEnableOpenCodeAgentChange: (enable: boolean) => void;
   onExportLogs: () => void;
   onFileDefaultOpenersChange: (
     openersByExtension: DesktopFileDefaultOpenersByExtension
   ) => void;
   onLabEnabledChange: (enabled: boolean) => void;
+  onReferenceProvenanceFilterEnabledChange: (enabled: boolean) => void;
   onShowAppDeveloperSourcesChange: (show: boolean) => void;
   onTuttiAgentSwitchEnabledChange: (enabled: boolean) => void;
   onUpdateChannelChange: (channel: DesktopUpdateChannel) => void;
 }) {
   const { t } = useTranslation();
   const logs = developerLogs.logs;
-  const [newExtension, setNewExtension] = useState("");
-  const [newOpener, setNewOpener] =
-    useState<DesktopFileDefaultOpener>("fileViewer");
-  const normalizedNewExtension = normalizeDesktopFileExtension(newExtension);
-  const fileDefaultOpeners = Object.entries(fileDefaultOpenersByExtension).sort(
-    ([left], [right]) => left.localeCompare(right)
+  const [fileDefaultOpenerDrafts, setFileDefaultOpenerDrafts] = useState<
+    FileDefaultOpenerDraft[]
+  >([]);
+  const fileDefaultOpenerDraftIDRef = useRef(0);
+  const fileDefaultOpenerInputRefs = useRef(
+    new Map<number, HTMLInputElement>()
   );
-  const canAddFileDefaultOpener =
-    normalizedNewExtension !== null &&
-    fileDefaultOpenersByExtension[normalizedNewExtension] === undefined;
+  const [pendingFileDefaultOpenerDraftID, setPendingFileDefaultOpenerDraftID] =
+    useState<number | null>(null);
+  const draftCommittedExtensions = new Set(
+    fileDefaultOpenerDrafts.flatMap((draft) =>
+      draft.committedExtension ? [draft.committedExtension] : []
+    )
+  );
+  const fileDefaultOpeners = Object.entries(fileDefaultOpenersByExtension)
+    .filter(([extension]) => !draftCommittedExtensions.has(extension))
+    .sort(([left], [right]) => left.localeCompare(right));
+
+  const addFileDefaultOpener = useCallback(() => {
+    const id = fileDefaultOpenerDraftIDRef.current++;
+    setFileDefaultOpenerDrafts((drafts) => [
+      ...drafts,
+      { committedExtension: null, extension: "", id, opener: "fileViewer" }
+    ]);
+    setPendingFileDefaultOpenerDraftID(id);
+  }, []);
+
+  useEffect(() => {
+    if (pendingFileDefaultOpenerDraftID === null) {
+      return;
+    }
+    const input = fileDefaultOpenerInputRefs.current.get(
+      pendingFileDefaultOpenerDraftID
+    );
+    if (!input) {
+      return;
+    }
+    input.focus();
+    setPendingFileDefaultOpenerDraftID(null);
+  }, [fileDefaultOpenerDrafts.length, pendingFileDefaultOpenerDraftID]);
+
+  const updateFileDefaultOpenerDraft = useCallback(
+    (id: number, patch: Partial<Omit<FileDefaultOpenerDraft, "id">>) => {
+      setFileDefaultOpenerDrafts((drafts) =>
+        drafts.map((draft) => {
+          if (draft.id !== id) {
+            return draft;
+          }
+          const nextDraft = { ...draft, ...patch };
+          const normalizedExtension = normalizeDesktopFileExtension(
+            nextDraft.extension
+          );
+          const nextOpeners = { ...fileDefaultOpenersByExtension };
+          if (draft.committedExtension) {
+            delete nextOpeners[draft.committedExtension];
+          }
+          const canCommitExtension =
+            normalizedExtension &&
+            (fileDefaultOpenersByExtension[normalizedExtension] === undefined ||
+              normalizedExtension === draft.committedExtension);
+          if (canCommitExtension) {
+            nextOpeners[normalizedExtension] = nextDraft.opener;
+            nextDraft.committedExtension = normalizedExtension;
+          } else if (normalizedExtension && draft.committedExtension) {
+            nextOpeners[draft.committedExtension] = draft.opener;
+            nextDraft.committedExtension = draft.committedExtension;
+          } else {
+            nextDraft.committedExtension = null;
+          }
+          onFileDefaultOpenersChange(nextOpeners);
+          return nextDraft;
+        })
+      );
+    },
+    [fileDefaultOpenersByExtension, onFileDefaultOpenersChange]
+  );
+
+  const removeFileDefaultOpenerDraft = useCallback(
+    (id: number) => {
+      const draft = fileDefaultOpenerDrafts.find(
+        (candidate) => candidate.id === id
+      );
+      if (!draft) {
+        return;
+      }
+      if (draft.committedExtension) {
+        const { [draft.committedExtension]: _removed, ...remaining } =
+          fileDefaultOpenersByExtension;
+        onFileDefaultOpenersChange(remaining);
+      }
+      setFileDefaultOpenerDrafts((drafts) =>
+        drafts.filter((candidate) => candidate.id !== id)
+      );
+    },
+    [
+      fileDefaultOpenerDrafts,
+      fileDefaultOpenersByExtension,
+      onFileDefaultOpenersChange
+    ]
+  );
 
   return (
     <SettingsRows>
@@ -1824,6 +1935,27 @@ function WorkspaceDeveloperSettingsSection({
       <div className="flex w-full items-center justify-between gap-4 max-[560px]:flex-col max-[560px]:items-stretch">
         <div className="flex min-w-0 flex-1 flex-col gap-1 max-[560px]:w-full">
           <strong className="text-[13px] font-semibold text-[var(--text-primary)]">
+            {t("workspace.settings.developer.referenceProvenanceFilterLabel")}
+          </strong>
+          <p className="m-0 text-[13px] leading-[1.3] text-[var(--text-secondary)]">
+            {t(
+              "workspace.settings.developer.referenceProvenanceFilterDescription"
+            )}
+          </p>
+        </div>
+        <Switch
+          aria-label={t(
+            "workspace.settings.developer.referenceProvenanceFilterLabel"
+          )}
+          checked={referenceProvenanceFilterEnabled}
+          disabled={featureFlagsUpdating}
+          onCheckedChange={onReferenceProvenanceFilterEnabledChange}
+        />
+      </div>
+
+      <div className="flex w-full items-center justify-between gap-4 max-[560px]:flex-col max-[560px]:items-stretch">
+        <div className="flex min-w-0 flex-1 flex-col gap-1 max-[560px]:w-full">
+          <strong className="text-[13px] font-semibold text-[var(--text-primary)]">
             {t("workspace.settings.developer.labVisibilityLabel")}
           </strong>
           <p className="m-0 text-[13px] leading-[1.3] text-[var(--text-secondary)]">
@@ -1833,6 +1965,7 @@ function WorkspaceDeveloperSettingsSection({
         <Switch
           aria-label={t("workspace.settings.developer.labVisibilityLabel")}
           checked={labEnabled}
+          disabled={featureFlagsUpdating}
           onCheckedChange={onLabEnabledChange}
         />
       </div>
@@ -1885,40 +2018,6 @@ function WorkspaceDeveloperSettingsSection({
         />
       </div>
 
-      <div className="flex w-full items-center justify-between gap-4 max-[560px]:flex-col max-[560px]:items-stretch">
-        <div className="flex min-w-0 flex-1 flex-col gap-1 max-[560px]:w-full">
-          <strong className="text-[13px] font-semibold text-[var(--text-primary)]">
-            {t("workspace.settings.developer.enableCursorAgentLabel")}
-          </strong>
-          <p className="m-0 text-[13px] leading-[1.3] text-[var(--text-secondary)]">
-            {t("workspace.settings.developer.enableCursorAgentDescription")}
-          </p>
-        </div>
-        <Switch
-          aria-label={t("workspace.settings.developer.enableCursorAgentLabel")}
-          checked={enableCursorAgent}
-          onCheckedChange={onEnableCursorAgentChange}
-        />
-      </div>
-
-      <div className="flex w-full items-center justify-between gap-4 max-[560px]:flex-col max-[560px]:items-stretch">
-        <div className="flex min-w-0 flex-1 flex-col gap-1 max-[560px]:w-full">
-          <strong className="text-[13px] font-semibold text-[var(--text-primary)]">
-            {t("workspace.settings.developer.enableOpenCodeAgentLabel")}
-          </strong>
-          <p className="m-0 text-[13px] leading-[1.3] text-[var(--text-secondary)]">
-            {t("workspace.settings.developer.enableOpenCodeAgentDescription")}
-          </p>
-        </div>
-        <Switch
-          aria-label={t(
-            "workspace.settings.developer.enableOpenCodeAgentLabel"
-          )}
-          checked={enableOpenCodeAgent}
-          onCheckedChange={onEnableOpenCodeAgentChange}
-        />
-      </div>
-
       {analyticsDebugAvailable ? (
         <div className="flex w-full items-center justify-between gap-4 max-[560px]:flex-col max-[560px]:items-stretch">
           <div className="flex min-w-0 flex-1 flex-col gap-1 max-[560px]:w-full">
@@ -1946,116 +2045,142 @@ function WorkspaceDeveloperSettingsSection({
             {t("workspace.settings.developer.fileDefaultOpenersDescription")}
           </p>
         </div>
-        <div className="grid gap-2">
-          {fileDefaultOpeners.map(([extension, opener]) => (
-            <div
-              key={extension}
-              className="grid grid-cols-[minmax(70px,0.7fr)_minmax(130px,1fr)_auto] items-center gap-2 max-[560px]:grid-cols-[1fr]"
-            >
-              <span className="min-w-0 truncate text-[13px] text-[var(--text-primary)]">
-                .{extension}
-              </span>
-              <Select
-                value={opener}
-                onValueChange={(value) => {
-                  onFileDefaultOpenersChange({
-                    ...fileDefaultOpenersByExtension,
-                    [extension]: value as DesktopFileDefaultOpener
-                  });
-                }}
+        <div className="flex w-full flex-col gap-2 rounded-[10px] bg-[var(--transparency-block)] p-4">
+          <div className="grid gap-2">
+            {fileDefaultOpeners.map(([extension, opener]) => (
+              <div
+                key={extension}
+                className="grid grid-cols-[minmax(70px,0.7fr)_minmax(130px,1fr)_auto] items-center gap-2"
               >
-                <SelectTrigger
+                <span className="min-w-0 truncate text-[13px] text-[var(--text-primary)]">
+                  .{extension}
+                </span>
+                <Select
+                  value={opener}
+                  onValueChange={(value) => {
+                    onFileDefaultOpenersChange({
+                      ...fileDefaultOpenersByExtension,
+                      [extension]: value as DesktopFileDefaultOpener
+                    });
+                  }}
+                >
+                  <SelectTrigger
+                    aria-label={t(
+                      "workspace.settings.developer.fileDefaultOpenerActionLabel",
+                      { extension }
+                    )}
+                    className={workspaceSettingsSelectTriggerClass}
+                  >
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent
+                    className={workspaceSettingsSelectContentClass}
+                    style={{ zIndex: "var(--z-panel-popover)" }}
+                  >
+                    {desktopFileDefaultOpeners.map((candidate) => (
+                      <SelectItem key={candidate} value={candidate}>
+                        {t(
+                          workspaceSettingsFileDefaultOpenerLabelKey(candidate)
+                        )}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <Button
                   aria-label={t(
-                    "workspace.settings.developer.fileDefaultOpenerActionLabel",
+                    "workspace.settings.developer.removeFileDefaultOpener",
                     { extension }
                   )}
-                  className={workspaceSettingsSelectTriggerClass}
+                  className="text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
+                  variant="ghost"
+                  type="button"
+                  onClick={() => {
+                    const { [extension]: _removed, ...remaining } =
+                      fileDefaultOpenersByExtension;
+                    onFileDefaultOpenersChange(remaining);
+                  }}
                 >
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent
-                  className={workspaceSettingsSelectContentClass}
-                  style={{ zIndex: "var(--z-panel-popover)" }}
+                  <DeleteIcon className="size-3.5" />
+                </Button>
+              </div>
+            ))}
+            {fileDefaultOpenerDrafts.map((draft) => (
+              <div
+                key={draft.id}
+                className="grid grid-cols-[minmax(70px,0.7fr)_minmax(130px,1fr)_auto] items-center gap-2"
+              >
+                <Input
+                  aria-label={t(
+                    "workspace.settings.developer.fileDefaultOpenerExtensionLabel"
+                  )}
+                  className={workspaceSettingsInputClass}
+                  placeholder={t(
+                    "workspace.settings.developer.fileDefaultOpenerExtensionPlaceholder"
+                  )}
+                  ref={(input) => {
+                    if (input) {
+                      fileDefaultOpenerInputRefs.current.set(draft.id, input);
+                      return;
+                    }
+                    fileDefaultOpenerInputRefs.current.delete(draft.id);
+                  }}
+                  value={draft.extension}
+                  onChange={(event) =>
+                    updateFileDefaultOpenerDraft(draft.id, {
+                      extension: event.currentTarget.value
+                    })
+                  }
+                />
+                <Select
+                  value={draft.opener}
+                  onValueChange={(value) =>
+                    updateFileDefaultOpenerDraft(draft.id, {
+                      opener: value as DesktopFileDefaultOpener
+                    })
+                  }
                 >
-                  {desktopFileDefaultOpeners.map((candidate) => (
-                    <SelectItem key={candidate} value={candidate}>
-                      {t(workspaceSettingsFileDefaultOpenerLabelKey(candidate))}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              <Button
-                aria-label={t(
-                  "workspace.settings.developer.removeFileDefaultOpener",
-                  { extension }
-                )}
-                variant="ghost"
-                type="button"
-                onClick={() => {
-                  const { [extension]: _removed, ...remaining } =
-                    fileDefaultOpenersByExtension;
-                  onFileDefaultOpenersChange(remaining);
-                }}
-              >
-                <DeleteIcon className="size-3.5" />
-              </Button>
-            </div>
-          ))}
-          <div className="grid grid-cols-[minmax(70px,0.7fr)_minmax(130px,1fr)_auto] items-center gap-2 max-[560px]:grid-cols-[1fr]">
-            <Input
-              aria-label={t(
-                "workspace.settings.developer.fileDefaultOpenerExtensionLabel"
-              )}
-              className={workspaceSettingsInputClass}
-              placeholder={t(
-                "workspace.settings.developer.fileDefaultOpenerExtensionPlaceholder"
-              )}
-              value={newExtension}
-              onChange={(event) => {
-                setNewExtension(event.currentTarget.value);
-              }}
-            />
-            <Select
-              value={newOpener}
-              onValueChange={(value) => {
-                setNewOpener(value as DesktopFileDefaultOpener);
-              }}
-            >
-              <SelectTrigger
-                aria-label={t(
-                  "workspace.settings.developer.fileDefaultOpenerNewActionLabel"
-                )}
-                className={workspaceSettingsSelectTriggerClass}
-              >
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent
-                className={workspaceSettingsSelectContentClass}
-                style={{ zIndex: "var(--z-panel-popover)" }}
-              >
-                {desktopFileDefaultOpeners.map((candidate) => (
-                  <SelectItem key={candidate} value={candidate}>
-                    {t(workspaceSettingsFileDefaultOpenerLabelKey(candidate))}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+                  <SelectTrigger
+                    aria-label={t(
+                      "workspace.settings.developer.fileDefaultOpenerNewActionLabel"
+                    )}
+                    className={workspaceSettingsSelectTriggerClass}
+                  >
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent
+                    className={workspaceSettingsSelectContentClass}
+                    style={{ zIndex: "var(--z-panel-popover)" }}
+                  >
+                    {desktopFileDefaultOpeners.map((candidate) => (
+                      <SelectItem key={candidate} value={candidate}>
+                        {t(
+                          workspaceSettingsFileDefaultOpenerLabelKey(candidate)
+                        )}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <Button
+                  aria-label={t(
+                    "workspace.settings.developer.removeFileDefaultOpener",
+                    { extension: draft.extension }
+                  )}
+                  className="text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
+                  variant="ghost"
+                  type="button"
+                  onClick={() => removeFileDefaultOpenerDraft(draft.id)}
+                >
+                  <DeleteIcon className="size-3.5" />
+                </Button>
+              </div>
+            ))}
             <Button
-              disabled={!canAddFileDefaultOpener}
-              variant="secondary"
+              className="w-fit"
+              variant="ghost"
               type="button"
-              onClick={() => {
-                if (!normalizedNewExtension) {
-                  return;
-                }
-                onFileDefaultOpenersChange({
-                  ...fileDefaultOpenersByExtension,
-                  [normalizedNewExtension]: newOpener
-                });
-                setNewExtension("");
-              }}
+              onClick={addFileDefaultOpener}
             >
-              <AddIcon className="size-3.5" />
+              <AddLinedIcon className="size-3.5" />
               {t("workspace.settings.developer.addFileDefaultOpener")}
             </Button>
           </div>
@@ -2149,7 +2274,7 @@ function AppCatalogChannelControl({
               className={cn(
                 "min-w-[92px] rounded-[5px] border-0 px-3 text-[13px] font-semibold leading-none outline-none transition-colors duration-150 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-[var(--border-focus)]",
                 selected
-                  ? "bg-[var(--background-fronted)] text-[var(--text-primary)] shadow-sm"
+                  ? "bg-[var(--background-fronted)] text-[var(--text-primary)] shadow-none"
                   : "bg-transparent text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
               )}
               disabled={changingAppCatalogChannel !== null}
@@ -2212,7 +2337,7 @@ function ReleaseChannelControl({
               className={cn(
                 "min-w-[92px] rounded-[5px] border-0 px-3 text-[13px] font-semibold leading-none outline-none transition-colors duration-150 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-[var(--border-focus)]",
                 selected
-                  ? "bg-[var(--background-fronted)] text-[var(--text-primary)] shadow-sm"
+                  ? "bg-[var(--background-fronted)] text-[var(--text-primary)] shadow-none"
                   : "bg-transparent text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
               )}
               disabled={changingUpdateChannel !== null}
@@ -2299,7 +2424,7 @@ function WorkspaceSettingsPanelPortal({
     <div
       className="fixed inset-0 grid place-items-center bg-[var(--backdrop)] supports-backdrop-filter:backdrop-blur-sm transition-[background] duration-[180ms] ease-[cubic-bezier(0.22,1,0.36,1)] [-webkit-app-region:no-drag] motion-safe:animate-in motion-safe:fade-in-0 motion-safe:duration-[180ms] motion-safe:ease-[cubic-bezier(0.22,1,0.36,1)] motion-reduce:animate-none"
       data-workspace-settings-backdrop="true"
-      style={{ zIndex: "var(--z-panel)" }}
+      style={{ zIndex: "var(--z-panel-popover)" }}
       onClick={onClose}
     >
       <div
@@ -2318,9 +2443,17 @@ function WorkspaceSettingsPanelPortal({
   return createPortal(panel, document.body);
 }
 
-function SettingsRows({ children }: { children: React.ReactNode }) {
+function SettingsRows({
+  children,
+  className
+}: {
+  children: React.ReactNode;
+  className?: string;
+}) {
   return (
-    <div className="flex w-full flex-col gap-8 pb-[22px] pt-5">{children}</div>
+    <div className={cn("flex w-full flex-col gap-8 pb-[22px] pt-5", className)}>
+      {children}
+    </div>
   );
 }
 
@@ -2930,7 +3063,7 @@ function ComputerUseSetupRow({
                 progressAriaLabel={t(
                   "workspace.settings.general.computerUseProgressAria"
                 )}
-                variant="destructive"
+                variant="destructive-secondary"
                 onClick={() => {
                   void handleUninstall();
                 }}
@@ -3661,11 +3794,10 @@ function WorkspaceAgentSettingsSection({
   const isUpdatingDefaultAgentProvider = changingDefaultAgentProvider !== null;
   const rawPendingDefaultAgentProvider =
     changingDefaultAgentProvider ?? defaultAgentProvider;
-  const pendingDefaultAgentProvider = isWorkspaceSettingsDefaultAgentProvider(
-    rawPendingDefaultAgentProvider
-  )
-    ? rawPendingDefaultAgentProvider
-    : "codex";
+  const pendingDefaultAgentProvider =
+    normalizeWorkspaceSettingsDefaultAgentProvider(
+      rawPendingDefaultAgentProvider
+    );
   const isUpdatingBrowserUseConnectionMode =
     changingBrowserUseConnectionMode !== null;
   const pendingBrowserUseConnectionMode =
@@ -3688,7 +3820,7 @@ function WorkspaceAgentSettingsSection({
   }, [focusedAnchor, focusRequestID]);
 
   return (
-    <div className="flex flex-col gap-8 pb-[22px] pt-5">
+    <div className="flex flex-col gap-6 pb-[22px] pt-5">
       <div className="flex w-full flex-col gap-3">
         <div className="flex min-w-0 flex-col gap-1">
           <strong className="text-[13px] font-semibold text-[var(--text-primary)]">
@@ -3709,34 +3841,41 @@ function WorkspaceAgentSettingsSection({
                 key={mode}
                 aria-checked={selected}
                 className={cn(
-                  "flex min-h-[72px] min-w-0 flex-col items-start justify-center gap-1 rounded-[8px] border-solid px-3 py-2.5 text-left transition-colors duration-150 disabled:cursor-default disabled:opacity-70",
+                  "flex min-h-[72px] min-w-0 items-center justify-between gap-3 rounded-[8px] border-solid px-3 py-2.5 text-left transition-colors duration-150 disabled:cursor-default disabled:opacity-70",
                   selected
-                    ? "border border-[var(--tutti-purple)] bg-[var(--background-fronted)] text-[var(--text-primary)]"
-                    : "border border-[var(--border-1)] bg-[var(--transparency-block)] text-[var(--text-primary)] hover:bg-[var(--transparency-hover)]"
+                    ? "border border-[var(--tutti-purple)] bg-[color-mix(in_srgb,var(--tutti-purple)_8%,transparent)] text-[var(--text-primary)]"
+                    : "border border-transparent bg-[var(--transparency-block)] text-[var(--text-primary)] hover:bg-[var(--transparency-hover)]"
                 )}
                 disabled={isUpdatingAgentConversationDetailMode}
                 role="radio"
                 type="button"
                 onClick={() => onAgentConversationDetailModeChange(mode)}
               >
-                <span className="text-[13px] font-semibold leading-[1.25]">
-                  {mode === "coding"
-                    ? t(
-                        "workspace.settings.general.agentConversationDetailModeOptions.codingTitle"
-                      )
-                    : t(
-                        "workspace.settings.general.agentConversationDetailModeOptions.generalTitle"
-                      )}
+                <span className="flex min-w-0 flex-1 flex-col items-start gap-1">
+                  <span className="text-[13px] font-semibold leading-4">
+                    {mode === "coding"
+                      ? t(
+                          "workspace.settings.general.agentConversationDetailModeOptions.codingTitle"
+                        )
+                      : t(
+                          "workspace.settings.general.agentConversationDetailModeOptions.generalTitle"
+                        )}
+                  </span>
+                  <span className="text-[12px] leading-[1.3] text-[var(--text-secondary)]">
+                    {mode === "coding"
+                      ? t(
+                          "workspace.settings.general.agentConversationDetailModeOptions.codingDescription"
+                        )
+                      : t(
+                          "workspace.settings.general.agentConversationDetailModeOptions.generalDescription"
+                        )}
+                  </span>
                 </span>
-                <span className="text-[12px] leading-[1.3] text-[var(--text-secondary)]">
-                  {mode === "coding"
-                    ? t(
-                        "workspace.settings.general.agentConversationDetailModeOptions.codingDescription"
-                      )
-                    : t(
-                        "workspace.settings.general.agentConversationDetailModeOptions.generalDescription"
-                      )}
-                </span>
+                <RadioIndicator
+                  checked={selected}
+                  className="shrink-0"
+                  disabled={isUpdatingAgentConversationDetailMode}
+                />
               </button>
             );
           })}
@@ -3884,18 +4023,24 @@ function WorkspaceAgentSettingsSection({
 }
 
 function WorkspaceGeneralSettingsSection({
+  changingFeatureFlags,
   changingLocale,
   changingSleepPreventionMode,
+  featureFlags,
   locale,
   onLocaleChange,
   onSleepPreventionModeChange,
+  onWorkspaceUiModeChange,
   sleepPreventionMode
 }: {
+  changingFeatureFlags: DesktopFeatureFlags | null;
   changingLocale: DesktopLocale | null;
   changingSleepPreventionMode: DesktopSleepPreventionMode | null;
+  featureFlags: DesktopFeatureFlags;
   locale: DesktopLocale;
   onLocaleChange: (locale: DesktopLocale) => void;
   onSleepPreventionModeChange: (mode: DesktopSleepPreventionMode) => void;
+  onWorkspaceUiModeChange: (mode: DesktopWorkspaceUiMode) => void;
   sleepPreventionMode: DesktopSleepPreventionMode;
 }) {
   const { t } = useTranslation();
@@ -3905,10 +4050,80 @@ function WorkspaceGeneralSettingsSection({
   const isUpdatingSleepPrevention = changingSleepPreventionMode !== null;
   const pendingSleepPreventionMode =
     changingSleepPreventionMode ?? sleepPreventionMode;
+  const isUpdatingWorkspaceUiMode = changingFeatureFlags !== null;
+  const pendingWorkspaceUiMode = resolveDesktopWorkspaceUiMode(
+    changingFeatureFlags ?? featureFlags
+  );
 
   return (
-    <div className="flex flex-col gap-8 pb-[22px] pt-5">
-      <div className="flex w-full items-center justify-between gap-4 max-[560px]:flex-col max-[560px]:items-stretch">
+    <div className="flex flex-col gap-6 pb-[22px] pt-5">
+      <div className="flex w-full flex-col gap-3">
+        <strong className="text-[13px] font-semibold text-[var(--text-primary)]">
+          {t("workspace.settings.general.workspaceUiModeLabel")}
+        </strong>
+        <div
+          aria-label={t("workspace.settings.general.workspaceUiModeLabel")}
+          className="grid w-full grid-cols-2 gap-2 max-[430px]:grid-cols-1"
+          role="radiogroup"
+        >
+          {desktopWorkspaceUiModes.map((mode) => {
+            const selected = pendingWorkspaceUiMode === mode;
+            return (
+              <button
+                key={mode}
+                aria-checked={selected}
+                className={cn(
+                  "flex min-h-[72px] min-w-0 items-center justify-between gap-3 rounded-[8px] border-solid px-3 py-2.5 text-left transition-colors duration-150 disabled:cursor-default disabled:opacity-70",
+                  selected
+                    ? "border border-[var(--tutti-purple)] bg-[color-mix(in_srgb,var(--tutti-purple)_8%,transparent)] text-[var(--text-primary)]"
+                    : "border border-transparent bg-[var(--transparency-block)] text-[var(--text-primary)] hover:bg-[var(--transparency-hover)]"
+                )}
+                disabled={isUpdatingWorkspaceUiMode}
+                role="radio"
+                type="button"
+                onClick={() => onWorkspaceUiModeChange(mode)}
+              >
+                <span className="flex min-w-0 flex-1 flex-col items-start gap-1">
+                  <span className="flex min-w-0 items-center gap-1.5">
+                    <span className="text-[13px] font-semibold leading-4">
+                      {mode === "agent"
+                        ? t(
+                            "workspace.settings.general.workspaceUiModeOptions.agentTitle"
+                          )
+                        : t(
+                            "workspace.settings.general.workspaceUiModeOptions.osTitle"
+                          )}
+                    </span>
+                    {mode === "agent" ? (
+                      <span className="inline-flex h-4 shrink-0 items-center rounded-[4px] bg-[color-mix(in_srgb,var(--tutti-purple)_12%,transparent)] px-1.5 text-[10px] font-semibold leading-none text-[var(--tutti-purple)]">
+                        {t(
+                          "workspace.settings.general.workspaceUiModeOptions.agentBadge"
+                        )}
+                      </span>
+                    ) : null}
+                  </span>
+                  <span className="text-[12px] leading-[1.3] text-[var(--text-secondary)]">
+                    {mode === "agent"
+                      ? t(
+                          "workspace.settings.general.workspaceUiModeOptions.agentDescription"
+                        )
+                      : t(
+                          "workspace.settings.general.workspaceUiModeOptions.osDescription"
+                        )}
+                  </span>
+                </span>
+                <RadioIndicator
+                  checked={selected}
+                  className="shrink-0"
+                  disabled={isUpdatingWorkspaceUiMode}
+                />
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
+      <div className="order-3 flex w-full items-center justify-between gap-4 max-[560px]:flex-col max-[560px]:items-stretch">
         <div className="flex min-w-0 flex-1 flex-col gap-1 max-[560px]:w-full">
           <strong className="text-[13px] font-semibold text-[var(--text-primary)]">
             {t("workspace.settings.general.preventSleepLabel")}
@@ -3953,7 +4168,7 @@ function WorkspaceGeneralSettingsSection({
         </div>
       </div>
 
-      <div className="flex w-full items-center justify-between gap-4 max-[560px]:flex-col max-[560px]:items-stretch">
+      <div className="order-2 flex w-full items-center justify-between gap-4 max-[560px]:flex-col max-[560px]:items-stretch">
         <div className="flex min-w-0 flex-1 flex-col gap-1 max-[560px]:w-full">
           <strong className="text-[13px] font-semibold text-[var(--text-primary)]">
             {t("workspace.settings.general.languageLabel")}
@@ -3990,7 +4205,7 @@ function WorkspaceGeneralSettingsSection({
         </div>
       </div>
 
-      <div className="flex w-full items-center justify-between gap-4 max-[560px]:flex-col max-[560px]:items-stretch">
+      <div className="order-4 flex w-full items-center justify-between gap-4 max-[560px]:flex-col max-[560px]:items-stretch">
         <div className="flex min-w-0 flex-1 flex-col gap-1 max-[560px]:w-full">
           <strong className="text-[13px] font-semibold text-[var(--text-primary)]">
             {t("workspace.settings.general.agentDiagnosticsReportingLabel")}
@@ -4145,7 +4360,7 @@ function WorkspaceAboutSettingsSection({
   return (
     <div className="flex w-full flex-col gap-4 px-5 pb-5 pt-7">
       <div className="flex min-w-0 items-center justify-between gap-4 max-[560px]:flex-col max-[560px]:items-start">
-        <div className="flex min-w-0 items-center gap-3.5">
+        <div className="flex min-w-0 items-center gap-1">
           <img
             alt=""
             className="size-14 shrink-0 object-contain"
@@ -4159,7 +4374,7 @@ function WorkspaceAboutSettingsSection({
           </div>
         </div>
         <button
-          className="inline-flex h-7 shrink-0 cursor-default select-none items-center gap-1 rounded-full border border-[var(--border-1)] bg-[var(--background-fronted)] px-3 text-[12px] leading-5 text-[var(--text-secondary)] outline-none focus-visible:border-[var(--border-focus)] max-[560px]:ml-[70px]"
+          className="inline-flex h-7 shrink-0 cursor-default select-none items-center gap-1 rounded-full border-0 bg-[var(--background-fronted)] px-3 text-[12px] leading-5 text-[var(--text-secondary)] outline-none focus-visible:border-0 max-[560px]:ml-[70px]"
           type="button"
           onClick={onVersionTap}
         >
@@ -4262,7 +4477,7 @@ function WorkspaceAppearanceSettingsSection({
     changingWorkbenchWindowSnapping ?? workbenchWindowSnapping;
 
   return (
-    <div className="flex flex-col gap-8 pb-[22px] pt-5">
+    <div className="flex flex-col gap-6 pb-[22px] pt-5">
       <div className="flex w-full items-center justify-between gap-4 max-[560px]:flex-col max-[560px]:items-stretch">
         <div className="flex min-w-0 flex-1 flex-col gap-1 max-[560px]:w-full">
           <strong className="text-[13px] font-semibold text-[var(--text-primary)]">

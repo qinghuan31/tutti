@@ -122,7 +122,6 @@ export class WorkspaceFileManagerPreviewController {
       const loadedState = createWorkspaceFilePreviewLoadedState({
         bytes,
         entry: selectedEntry,
-        renderHtml: true,
         target: activationTarget
       });
       if (loadedState.status === "image" || loadedState.status === "video") {

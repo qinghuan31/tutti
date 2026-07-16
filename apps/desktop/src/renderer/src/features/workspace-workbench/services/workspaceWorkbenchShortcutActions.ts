@@ -7,13 +7,13 @@ import {
   AGENT_GUI_WORKBENCH_NEW_CONVERSATION_EVENT,
   type AgentGuiWorkbenchNewConversationDetail
 } from "@tutti-os/agent-gui/workbench/contribution";
-import { requestWorkspaceAgentGuiLaunch } from "@renderer/features/workspace-agent";
-import { normalizeDesktopAgentGUIProvider } from "@renderer/features/workspace-agent/desktopAgentGUINodeState";
-import {
-  createWorkspaceAgentGuiSessionLaunchRequest,
-  workspaceAgentGuiNodeID,
-  workspaceAgentGuiProviderFromIdentifier
-} from "./workspaceAgentGuiLaunch.ts";
+import { requestWorkspaceAgentGuiLaunch } from "@renderer/features/workspace-agent/services/workspaceAgentGuiLaunchCoordinator.ts";
+import { workspaceAgentGuiNodeID } from "./workspaceAgentGuiLaunch.ts";
+import { createWorkspaceAgentGuiSameTypeWindowLaunchRequest } from "./workspaceWorkbenchShortcutAgentLaunch.ts";
+export {
+  resolveWorkspaceAgentGuiNodeAgentTargetId,
+  resolveWorkspaceAgentGuiNodeProvider
+} from "./workspaceWorkbenchShortcutAgentLaunch.ts";
 
 type WorkspaceWorkbenchNode = ReturnType<
   WorkbenchHostHandle["getSnapshot"]
@@ -28,38 +28,7 @@ export function resolveActiveWorkspaceWorkbenchNode(
 export function isWorkspaceAgentGuiWorkbenchNode(
   node: WorkspaceWorkbenchNode
 ): boolean {
-  return (
-    node.data.typeId === workspaceAgentGuiNodeID ||
-    workspaceAgentGuiProviderFromIdentifier(node.data.instanceId) !== null ||
-    workspaceAgentGuiProviderFromIdentifier(node.data.dockEntryId ?? "") !==
-      null
-  );
-}
-
-export function resolveWorkspaceAgentGuiNodeProvider(
-  node: WorkspaceWorkbenchNode,
-  fallback: WorkspaceAgentProvider
-): WorkspaceAgentProvider {
-  return (
-    workspaceAgentGuiProviderFromIdentifier(node.data.instanceId) ??
-    workspaceAgentGuiProviderFromIdentifier(node.data.dockEntryId ?? "") ??
-    workspaceAgentGuiProviderFromIdentifier(node.data.typeId) ??
-    workspaceAgentGuiProviderFromState(node.data.snapshotNodeState) ??
-    workspaceAgentGuiProviderFromState(node.data.runtimeNodeState) ??
-    fallback
-  );
-}
-
-function workspaceAgentGuiProviderFromState(
-  state: unknown
-): WorkspaceAgentProvider | null {
-  if (!state || typeof state !== "object" || Array.isArray(state)) {
-    return null;
-  }
-  const provider = (state as { provider?: unknown }).provider;
-  return typeof provider === "string"
-    ? normalizeDesktopAgentGUIProvider(provider)
-    : null;
+  return node.data.typeId === workspaceAgentGuiNodeID;
 }
 
 export async function openWorkspaceWorkbenchAgentConversationShortcut(input: {
@@ -98,13 +67,10 @@ export async function openWorkspaceWorkbenchSameTypeWindowShortcut(input: {
   }
   if (isWorkspaceAgentGuiWorkbenchNode(activeNode)) {
     await input.host.launchNode(
-      createWorkspaceAgentGuiSessionLaunchRequest({
-        openInNewWindow: true,
-        provider: resolveWorkspaceAgentGuiNodeProvider(
-          activeNode,
-          input.defaultProvider
-        )
-      })
+      createWorkspaceAgentGuiSameTypeWindowLaunchRequest(
+        activeNode,
+        input.defaultProvider
+      )
     );
     return;
   }

@@ -31,9 +31,14 @@ export function compareAgentActivityMessages(
   left: AgentActivityMessage,
   right: AgentActivityMessage
 ): number {
+  const leftSequence = positiveNumber(left.sequence);
+  const rightSequence = positiveNumber(right.sequence);
+  if (leftSequence > 0 && rightSequence > 0 && leftSequence !== rightSequence) {
+    return leftSequence - rightSequence;
+  }
   return (
+    left.occurredAtUnixMs - right.occurredAtUnixMs ||
     left.version - right.version ||
-    (left.id ?? 0) - (right.id ?? 0) ||
     left.messageId.localeCompare(right.messageId)
   );
 }
@@ -70,18 +75,25 @@ export function areAgentActivityMessagesEqual(
     left.workspaceId === right.workspaceId &&
     left.agentSessionId === right.agentSessionId &&
     left.messageId === right.messageId &&
-    Object.is(left.id, right.id) &&
     left.version === right.version &&
     Object.is(left.turnId, right.turnId) &&
     left.role === right.role &&
     left.kind === right.kind &&
     Object.is(left.status, right.status) &&
     areJsonLikeValuesEqual(left.semantics, right.semantics) &&
+    Object.is(left.sequence, right.sequence) &&
     Object.is(left.occurredAtUnixMs, right.occurredAtUnixMs) &&
+    Object.is(left.createdAtUnixMs, right.createdAtUnixMs) &&
     Object.is(left.startedAtUnixMs, right.startedAtUnixMs) &&
     Object.is(left.completedAtUnixMs, right.completedAtUnixMs) &&
     areJsonLikeValuesEqual(left.payload, right.payload)
   );
+}
+
+function positiveNumber(value: number | undefined): number {
+  return typeof value === "number" && Number.isFinite(value) && value > 0
+    ? value
+    : 0;
 }
 
 export function cloneAgentActivityMessage<
@@ -101,6 +113,8 @@ function mergeAgentActivityMessage<T extends AgentActivityMessage>(
   return {
     ...existing,
     ...incoming,
+    sequence: incoming.sequence ?? existing.sequence,
+    createdAtUnixMs: incoming.createdAtUnixMs ?? existing.createdAtUnixMs,
     semantics: incoming.semantics
       ? {
           ...existing.semantics,
@@ -121,7 +135,7 @@ function shouldReplaceAgentActivityMessage(
   if (incoming.version !== existing.version) {
     return incoming.version > existing.version;
   }
-  return (incoming.id ?? 0) >= (existing.id ?? 0);
+  return incoming.occurredAtUnixMs >= existing.occurredAtUnixMs;
 }
 
 export function areJsonLikeValuesEqual(left: unknown, right: unknown): boolean {

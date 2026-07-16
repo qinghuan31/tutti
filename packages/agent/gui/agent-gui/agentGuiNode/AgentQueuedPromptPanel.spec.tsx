@@ -10,6 +10,8 @@ import { AgentQueuedPromptPanel } from "./AgentQueuedPromptPanel";
 
 const labels = {
   queuedLabel: "Queued",
+  queuePausedByUserLabel:
+    "The queue is paused because you interrupted the current response.",
   sendQueuedPromptNext: "Send next",
   editQueuedPrompt: "Edit",
   deleteQueuedPrompt: "Delete",
@@ -29,6 +31,46 @@ function textQueuedPrompt(id: string, text: string, createdAtUnixMs = 1) {
 }
 
 describe("AgentQueuedPromptPanel", () => {
+  it("switches between the paused and active queue labels while preserving actions", async () => {
+    const onSendQueuedPromptNext = vi.fn();
+    const onRemoveQueuedPrompt = vi.fn();
+    const onEditQueuedPrompt = vi.fn();
+    const createPanel = (queueStatus: "active" | "paused_by_user") => (
+      <AgentQueuedPromptPanel
+        queueStatus={queueStatus}
+        queuedPrompts={[
+          textQueuedPrompt("queued-1", "first queued prompt"),
+          textQueuedPrompt("queued-2", "second queued prompt", 2)
+        ]}
+        drainingQueuedPromptId={null}
+        labels={labels}
+        onSendQueuedPromptNext={onSendQueuedPromptNext}
+        onRemoveQueuedPrompt={onRemoveQueuedPrompt}
+        onEditQueuedPrompt={onEditQueuedPrompt}
+      />
+    );
+    const { rerender } = render(createPanel("paused_by_user"));
+
+    expect(screen.getByText(labels.queuePausedByUserLabel)).toBeInTheDocument();
+    expect(screen.getByText("2")).toBeInTheDocument();
+    fireEvent.click(screen.getAllByRole("button", { name: "Send next" })[1]!);
+    fireEvent.click(screen.getAllByRole("button", { name: "Delete" })[0]!);
+    const moreButton = screen.getAllByRole("button", { name: "More" })[1]!;
+    fireEvent.pointerDown(moreButton, { button: 0, ctrlKey: false });
+    fireEvent.click(moreButton);
+    const editItem = await screen.findByRole("menuitem", { name: "Edit" });
+    fireEvent.pointerDown(editItem, { button: 0, ctrlKey: false });
+    fireEvent.click(editItem);
+
+    expect(onSendQueuedPromptNext).toHaveBeenCalledWith("queued-2");
+    expect(onRemoveQueuedPrompt).toHaveBeenCalledWith("queued-1");
+    expect(onEditQueuedPrompt).toHaveBeenCalledWith("queued-2");
+
+    rerender(createPanel("active"));
+    expect(screen.getByText(labels.queuedLabel)).toBeInTheDocument();
+    expect(screen.queryByText(labels.queuePausedByUserLabel)).toBeNull();
+  });
+
   it("shows an expand cue only when queued content can expand", () => {
     const { rerender } = render(
       <AgentQueuedPromptPanel
@@ -94,6 +136,47 @@ describe("AgentQueuedPromptPanel", () => {
     expect(
       screen.getByTestId("agent-gui-composer-queued-prompt-expand-cue")
     ).toBeInTheDocument();
+
+    scrollWidth.mockRestore();
+    clientWidth.mockRestore();
+  });
+
+  it("shows one plain-text tooltip for a truncated queue row instead of mention tooltips", async () => {
+    const scrollWidth = vi
+      .spyOn(HTMLElement.prototype, "scrollWidth", "get")
+      .mockImplementation(function (this: HTMLElement) {
+        return this.classList.contains("tsh-agent-object-token__main")
+          ? 240
+          : 120;
+      });
+    const clientWidth = vi
+      .spyOn(HTMLElement.prototype, "clientWidth", "get")
+      .mockReturnValue(120);
+    const { container } = render(
+      <AgentQueuedPromptPanel
+        queuedPrompts={[
+          textQueuedPrompt(
+            "queued-1",
+            "Before [@long session](mention://agent-session/session-1?workspaceId=room-1) after **details**"
+          )
+        ]}
+        drainingQueuedPromptId={null}
+        labels={labels}
+        onSendQueuedPromptNext={vi.fn()}
+        onRemoveQueuedPrompt={vi.fn()}
+        onEditQueuedPrompt={vi.fn()}
+      />
+    );
+
+    const mention = container.querySelector('[data-agent-file-mention="true"]');
+    expect(mention).not.toBeNull();
+    expect(screen.queryByRole("tooltip")).toBeNull();
+
+    fireEvent.pointerMove(mention as Element, { pointerType: "mouse" });
+
+    const tooltips = await screen.findAllByRole("tooltip");
+    expect(tooltips).toHaveLength(1);
+    expect(tooltips[0]).toHaveTextContent("Before @long session after details");
 
     scrollWidth.mockRestore();
     clientWidth.mockRestore();
@@ -370,6 +453,70 @@ describe("AgentQueuedPromptPanel", () => {
         "data:image/png;base64,YXR0YWNobWVudC1pbWFnZQ=="
       );
     });
+  });
+
+  it("drops stale queued image reads after workspace and asset identity change", async () => {
+    const resolvers = new Map<
+      string,
+      (asset: { data: string; mimeType: string }) => void
+    >();
+    const readPromptAsset = vi.fn(
+      (input: { path: string; workspaceId: string }) =>
+        new Promise<{ data: string; mimeType: string }>((resolve) => {
+          resolvers.set(`${input.workspaceId}:${input.path}`, resolve);
+        })
+    );
+    setAgentActivityRuntimeForTests({
+      readPromptAsset
+    } as unknown as AgentActivityRuntime);
+    const createPanel = (workspaceId: string, path: string) => (
+      <AgentQueuedPromptPanel
+        agentSessionId="session-1"
+        drainingQueuedPromptId={null}
+        labels={labels}
+        queuedPrompts={[
+          {
+            id: "queued-1",
+            content: [
+              {
+                type: "image",
+                mimeType: "image/png",
+                name: "queued.png",
+                path
+              }
+            ],
+            createdAtUnixMs: 1
+          }
+        ]}
+        workspaceId={workspaceId}
+        onEditQueuedPrompt={vi.fn()}
+        onRemoveQueuedPrompt={vi.fn()}
+        onSendQueuedPromptNext={vi.fn()}
+      />
+    );
+    const { container, rerender } = render(
+      createPanel("workspace-1", "/assets/old.png")
+    );
+    await waitFor(() => expect(readPromptAsset).toHaveBeenCalledTimes(1));
+
+    rerender(createPanel("workspace-2", "/assets/new.png"));
+    await waitFor(() => expect(readPromptAsset).toHaveBeenCalledTimes(2));
+    resolvers.get("workspace-1:/assets/old.png")?.({
+      data: "b2xk",
+      mimeType: "image/png"
+    });
+    await Promise.resolve();
+    expect(container.innerHTML).not.toContain("base64,b2xk");
+
+    resolvers.get("workspace-2:/assets/new.png")?.({
+      data: "bmV3",
+      mimeType: "image/png"
+    });
+    await waitFor(() =>
+      expect(
+        container.querySelector(".agent-gui-node__composer-queued-prompt-image")
+      ).toHaveAttribute("src", "data:image/png;base64,bmV3")
+    );
   });
 
   it("allows queued image prompt previews to zoom", () => {

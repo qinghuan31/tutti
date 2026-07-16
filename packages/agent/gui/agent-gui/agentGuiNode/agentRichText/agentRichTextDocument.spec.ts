@@ -193,6 +193,16 @@ describe("agentRichTextDocument", () => {
     });
   });
 
+  it("keeps a trailing text position after a mention", () => {
+    const prompt =
+      "[@修复输入框光标](mention://workspace-issue/issue-1?workspaceId=room-1) ";
+    const doc = plainTextToAgentRichTextDoc(prompt);
+    const paragraphContent = doc.content?.[0]?.content;
+
+    expect(paragraphContent?.at(-1)).toEqual({ type: "text", text: " " });
+    expect(agentRichTextDocToPromptText(doc)).toBe(prompt);
+  });
+
   it("round-trips workspace app factory mentions as typed mention nodes", () => {
     const prompt =
       "[@Create App](mention://workspace-app-factory/create) Create a weather app.";

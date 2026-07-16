@@ -28,7 +28,7 @@ func TestDefaultPreparerResolvesInjectedPackAcrossPolicySkillsAndEnv(t *testing.
 	preparer.Profile = profile
 
 	bundle, err := preparer.RenderSkillBundle(t.Context(), PrepareInput{
-		WorkspaceID: "workspace-1", AgentSessionID: "session-1", Provider: "codex",
+		WorkspaceID: "workspace-1", AgentSessionID: "session-1", AgentTargetID: "local:codex", Provider: "codex",
 	})
 	if err != nil {
 		t.Fatalf("RenderSkillBundle() error = %v", err)
@@ -48,6 +48,22 @@ func TestDefaultPreparerResolvesInjectedPackAcrossPolicySkillsAndEnv(t *testing.
 	}
 	if envValue(prepared.Env, "TUTTI_DEPLOYMENT_DOCS") != "1" {
 		t.Fatalf("prepared env missing pack overlay: %#v", prepared.Env)
+	}
+}
+
+func TestHostAppContextUsesNativeGeneratedImageArtifactsOnlyForSupportedProviders(t *testing.T) {
+	codexPolicy := hostAppContextPolicy(PrepareInput{Provider: "codex"})
+	if !strings.Contains(codexPolicy, "rendered directly from `imageGeneration` tool output") ||
+		!strings.Contains(codexPolicy, "do not repeat generated images as Markdown image tags") ||
+		strings.Contains(codexPolicy, "final response must include Markdown image tag") {
+		t.Fatalf("codex host policy = %q, want native generated-image artifact contract", codexPolicy)
+	}
+
+	claudePolicy := hostAppContextPolicy(PrepareInput{Provider: "claude-code"})
+	if !strings.Contains(claudePolicy, "Generated/edited image output: final response must include Markdown image tag.") ||
+		!strings.Contains(claudePolicy, "Multiple final images: one Markdown image tag each.") ||
+		strings.Contains(claudePolicy, "rendered directly from `imageGeneration` tool output") {
+		t.Fatalf("claude host policy = %q, want Markdown image fallback contract", claudePolicy)
 	}
 }
 
@@ -97,7 +113,7 @@ func TestDefaultPreparerIncludesHostSkillSources(t *testing.T) {
 		ID: "host/reviewer", Name: "reviewer", Files: map[string]string{"SKILL.md": "# Reviewer\n"},
 	}}}
 	bundle, err := preparer.RenderSkillBundle(t.Context(), PrepareInput{
-		WorkspaceID: "workspace-1", AgentSessionID: "session-1", Provider: "claude-code",
+		WorkspaceID: "workspace-1", AgentSessionID: "session-1", AgentTargetID: "local:claude-code", Provider: "claude-code",
 	})
 	if err != nil {
 		t.Fatalf("RenderSkillBundle() error = %v", err)

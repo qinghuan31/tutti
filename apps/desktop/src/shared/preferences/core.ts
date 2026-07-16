@@ -58,13 +58,15 @@ export const defaultDesktopAppCatalogChannel: DesktopAppCatalogChannel =
 
 export const defaultDesktopShowAppDeveloperSources = false;
 
-export const defaultDesktopEnableCursorAgent = false;
-
-export const defaultDesktopEnableOpenCodeAgent = false;
-
 export type DesktopFeatureFlags = Record<string, boolean>;
 
 export const defaultDesktopFeatureFlags: DesktopFeatureFlags = {};
+
+export const desktopWorkspaceUiModes = ["os", "agent"] as const;
+
+export type DesktopWorkspaceUiMode = (typeof desktopWorkspaceUiModes)[number];
+
+export const defaultDesktopWorkspaceUiMode: DesktopWorkspaceUiMode = "os";
 
 export interface DesktopWorkbenchShortcuts {
   newAgentConversation: string | null;

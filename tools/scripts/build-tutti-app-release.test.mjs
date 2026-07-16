@@ -334,6 +334,107 @@ test("buildTuttiAppVersions rejects changed compatibility for an immutable versi
   );
 });
 
+test("capability-gated releases derive immutable metadata from the app manifest", async () => {
+  const fallback = await releaseFileForTest("capability-app", "1.0.0");
+  const capable = await releaseFileForTest("capability-app", "2.0.0", {
+    hostCompatibility: {
+      requiredTuttiCapabilities: ["managed-model-cli-v1"]
+    }
+  });
+  const tempDir = await mkdtemp(path.join(tmpdir(), "tutti-capability-"));
+  const baseline = path.join(tempDir, "baseline.json");
+  const versions = path.join(tempDir, "versions.json");
+
+  await buildTuttiAppVersions({
+    releaseFiles: [fallback],
+    minTuttiVersion: "0.0.0",
+    outputPath: baseline
+  });
+  const result = await buildTuttiAppVersions({
+    existingVersionsPath: baseline,
+    releaseFiles: [capable],
+    outputPath: versions
+  });
+
+  assert.deepEqual(result.versions.versions[1].requiredTuttiCapabilities, [
+    "managed-model-cli-v1"
+  ]);
+  assert.equal(result.versions.versions[1].minTuttiVersion, undefined);
+
+  const catalog = await buildTuttiAppCatalog({
+    versionsFiles: [versions],
+    outputPath: path.join(tempDir, "catalog.json")
+  });
+  assert.equal(catalog.catalog.apps[0].manifest.version, "1.0.0");
+  assert.equal(
+    catalog.catalog.compatibility.apps["capability-app"][0].app.manifest
+      .version,
+    "1.0.0"
+  );
+  assert.deepEqual(
+    catalog.catalog.compatibility.capabilityApps["capability-app"].map(
+      (entry) => [entry.requiredTuttiCapabilities, entry.app.manifest.version]
+    ),
+    [[["managed-model-cli-v1"], "2.0.0"]]
+  );
+});
+
+test("capability-gated releases reject an additional version selector", async () => {
+  const release = await releaseFileForTest("capability-app", "2.0.0", {
+    hostCompatibility: {
+      requiredTuttiCapabilities: ["managed-model-cli-v1"]
+    }
+  });
+
+  await assert.rejects(
+    () =>
+      buildTuttiAppVersions({
+        releaseFiles: [release],
+        minTuttiVersion: "0.12.0",
+        outputPath: path.join(tmpdir(), "capability-selector.json")
+      }),
+    /cannot declare both minTuttiVersion and requiredTuttiCapabilities/
+  );
+});
+
+test("capability declarations are canonical and immutable per release version", async () => {
+  const invalidManifest = manifestForTest("capability-app");
+  invalidManifest.hostCompatibility = {
+    requiredTuttiCapabilities: ["managed-model-cli-v1", "managed-model-cli-v1"]
+  };
+  assert.throws(
+    () => validateManifest(invalidManifest),
+    /must be sorted and unique/
+  );
+
+  const original = await releaseFileForTest("capability-app", "2.0.0", {
+    hostCompatibility: {
+      requiredTuttiCapabilities: ["managed-model-cli-v1"]
+    }
+  });
+  const changed = await releaseFileForTest("capability-app", "2.0.0", {
+    hostCompatibility: {
+      requiredTuttiCapabilities: ["future-host-capability-v1"]
+    }
+  });
+  const tempDir = await mkdtemp(path.join(tmpdir(), "tutti-capability-"));
+  const existing = path.join(tempDir, "versions.json");
+  await buildTuttiAppVersions({
+    releaseFiles: [original],
+    outputPath: existing
+  });
+
+  await assert.rejects(
+    () =>
+      buildTuttiAppVersions({
+        existingVersionsPath: existing,
+        releaseFiles: [changed],
+        outputPath: path.join(tempDir, "changed.json")
+      }),
+    /different compatibility or release metadata/
+  );
+});
+
 test("buildTuttiAppCatalog emits legacy-safe apps and a compact compatibility frontier", async () => {
   const releases = await Promise.all([
     releaseFileForTest("frontier-app", "1.0.0"),
@@ -647,7 +748,8 @@ test("Tutti app release workflow is reusable by external app repositories", asyn
     workflow,
     /release_assets_base_url is required unless catalog_only is true/
   );
-  assert.match(
+  assert.match(workflow, /min_tutti_version must be valid SemVer/);
+  assert.doesNotMatch(
     workflow,
     /min_tutti_version is required unless catalog_only is true/
   );
@@ -718,6 +820,7 @@ test("Tutti app release workflow is reusable by external app repositories", asyn
   assert.match(workflow, /publish-tutti-app-metadata/);
   assert.match(workflow, /CATALOG_ONLY:/);
   assert.match(workflow, /--min-tutti-version "\$\{MIN_TUTTI_VERSION\}"/);
+  assert.doesNotMatch(workflow, /required_tutti_capabilities:/);
   assert.match(workflow, /--versions-file tutti-app-metadata\/versions\.json/);
   assert.doesNotMatch(workflow, /aws s3 cp tutti-app-catalog\/catalog\.json/);
   assert.match(workflow, /Invalidate app catalog/);
@@ -822,6 +925,7 @@ function assertCatalogWorkflowRefreshesExistingAppLatestMetadata(workflow) {
   );
   assert.match(workflow, /existing-catalog\.json/);
   assert.match(workflow, /manifest\??\.appId/);
+  assert.match(workflow, /compatibility\?\.capabilityApps/);
   assert.match(workflow, /app_ids_value="\$\{existing_app_ids\}"/);
 }
 
@@ -848,7 +952,12 @@ async function releaseFileForTest(appId, version = "0.1.0", overrides = {}) {
     version,
     name: appId,
     description: `${appId} description`,
-    manifest: manifestForTest(appId, version),
+    manifest: {
+      ...manifestForTest(appId, version),
+      ...(overrides.hostCompatibility
+        ? { hostCompatibility: overrides.hostCompatibility }
+        : {})
+    },
     ...(overrides.localizations
       ? { localizations: overrides.localizations }
       : {}),

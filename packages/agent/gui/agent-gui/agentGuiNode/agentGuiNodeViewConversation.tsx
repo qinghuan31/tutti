@@ -9,8 +9,8 @@ export interface ConversationSection {
   id: string;
   kind: "pinned" | "project" | "conversations";
   label: string;
-  project: AgentGUINodeViewModel["conversations"][number]["project"];
-  items: AgentGUINodeViewModel["conversations"];
+  project: AgentGUINodeViewModel["rail"]["conversations"][number]["project"];
+  items: AgentGUINodeViewModel["rail"]["conversations"];
 }
 
 export function ConversationMeta({
@@ -18,7 +18,7 @@ export function ConversationMeta({
   nowMs,
   labels
 }: {
-  item: AgentGUINodeViewModel["conversations"][number];
+  item: AgentGUINodeViewModel["rail"]["conversations"][number];
   nowMs: number;
   labels: Pick<
     AgentGUIViewLabels,
@@ -101,135 +101,9 @@ export function ConversationMeta({
   );
 }
 
-export function groupConversations(
-  conversations: AgentGUINodeViewModel["conversations"],
-  labels: Pick<AgentGUIViewLabels, "sectionPinned" | "sectionConversations">,
-  userProjects: AgentGUINodeViewModel["userProjects"] = [],
-  options: { includeEmptyConversations?: boolean } = {}
-): ConversationSection[] {
-  const groups: ConversationSection[] = [];
-  const pinned = conversations
-    .filter((conversation) => (conversation.pinnedAtUnixMs ?? 0) > 0)
-    .sort(
-      (left, right) =>
-        (right.pinnedAtUnixMs ?? 0) - (left.pinnedAtUnixMs ?? 0) ||
-        resolveAgentGUIConversationSortTimeUnixMs(right) -
-          resolveAgentGUIConversationSortTimeUnixMs(left) ||
-        left.id.localeCompare(right.id)
-    );
-  if (pinned.length > 0) {
-    groups.push({
-      id: "pinned",
-      kind: "pinned",
-      label: labels.sectionPinned,
-      project: null,
-      items: pinned
-    });
-  }
-  const projectGroups = new Map<string, ConversationSectionWithSort>();
-  const normalizedProjectPathByPath = new Map<string, string>();
-  const normalizeProjectPath = (path: string) =>
-    normalizeConversationProjectPathCached(path, normalizedProjectPathByPath);
-  userProjects.forEach((project, projectOrder) => {
-    const normalizedPath = normalizeProjectPath(project.path);
-    const sectionId = conversationProjectSectionId(project, normalizedPath);
-    if (projectGroups.has(sectionId)) {
-      return;
-    }
-    projectGroups.set(sectionId, {
-      id: sectionId,
-      kind: "project",
-      label: project.label,
-      project,
-      items: [],
-      projectOrder,
-      sectionOrder: 0,
-      projectUpdatedAtUnixMs: resolveConversationProjectUpdatedAtUnixMs(project)
-    });
-  });
-  if (options.includeEmptyConversations) {
-    projectGroups.set("conversations", {
-      id: "conversations",
-      kind: "conversations",
-      label: labels.sectionConversations,
-      project: null,
-      items: [],
-      projectOrder: Number.MAX_SAFE_INTEGER,
-      sectionOrder: 1,
-      projectUpdatedAtUnixMs: 0
-    });
-  }
-  for (const conversation of conversations) {
-    if ((conversation.pinnedAtUnixMs ?? 0) > 0) {
-      continue;
-    }
-    if (!conversation.project) {
-      const existing = projectGroups.get("conversations");
-      if (existing) {
-        existing.items.push(conversation);
-        continue;
-      }
-      projectGroups.set("conversations", {
-        id: "conversations",
-        kind: "conversations",
-        label: labels.sectionConversations,
-        project: null,
-        items: [conversation],
-        projectOrder: Number.MAX_SAFE_INTEGER,
-        sectionOrder: 1,
-        projectUpdatedAtUnixMs: 0
-      });
-      continue;
-    }
-
-    const normalizedPath = normalizeProjectPath(conversation.project.path);
-    const sectionId = conversationProjectSectionId(
-      conversation.project,
-      normalizedPath
-    );
-    const existing = projectGroups.get(sectionId);
-    if (existing) {
-      existing.items.push(conversation);
-      continue;
-    }
-    projectGroups.set(sectionId, {
-      id: sectionId,
-      kind: "project",
-      label: conversation.project.label,
-      project: conversation.project,
-      items: [conversation],
-      projectOrder: Number.MAX_SAFE_INTEGER - 1,
-      sectionOrder: 0,
-      projectUpdatedAtUnixMs: resolveConversationProjectUpdatedAtUnixMs(
-        conversation.project
-      )
-    });
-  }
-  groups.push(
-    ...[...projectGroups.values()]
-      .sort(
-        (left, right) =>
-          left.sectionOrder - right.sectionOrder ||
-          right.projectUpdatedAtUnixMs - left.projectUpdatedAtUnixMs ||
-          left.projectOrder - right.projectOrder ||
-          left.label.localeCompare(right.label) ||
-          left.id.localeCompare(right.id)
-      )
-      .map(
-        ({
-          projectOrder: _projectOrder,
-          sectionOrder: _sectionOrder,
-          projectUpdatedAtUnixMs: _projectUpdatedAtUnixMs,
-          ...group
-        }) => group
-      )
-  );
-  return groups;
-}
-
 export function filterConversationSectionsBySearchMatches(
   sections: readonly ConversationSection[],
-  matchingConversations: AgentGUINodeViewModel["conversations"]
+  matchingConversations: AgentGUINodeViewModel["rail"]["conversations"]
 ): ConversationSection[] {
   const matchingConversationIds = new Set(
     matchingConversations.map((conversation) => conversation.id)
@@ -244,58 +118,14 @@ export function filterConversationSectionsBySearchMatches(
     .filter((section) => section.items.length > 0);
 }
 
-type ConversationSectionWithSort = ConversationSection & {
-  projectOrder: number;
-  sectionOrder: number;
-  projectUpdatedAtUnixMs: number;
-};
-
-function resolveConversationProjectUpdatedAtUnixMs(
-  project: ConversationSection["project"]
-): number {
-  if (!project) {
-    return 0;
-  }
-  return (
-    project.updatedAtUnixMs ??
-    project.lastUsedAtUnixMs ??
-    project.createdAtUnixMs ??
-    0
-  );
-}
-
-export function normalizeConversationProjectPath(path: string): string {
-  return path.trim().replaceAll("\\", "/").replace(/\/+$/, "") || "/";
-}
-
-function normalizeConversationProjectPathCached(
-  path: string,
-  normalizedPathByPath: Map<string, string>
-): string {
-  const cached = normalizedPathByPath.get(path);
-  if (cached !== undefined) {
-    return cached;
-  }
-  const normalized = normalizeConversationProjectPath(path);
-  normalizedPathByPath.set(path, normalized);
-  return normalized;
-}
-
-function conversationProjectSectionId(
-  project: NonNullable<ConversationSection["project"]>,
-  normalizedPath: string
-): string {
-  return project.sectionKey?.trim() || `project:${normalizedPath}`;
-}
-
 function conversationMetaKind(
-  conversation: AgentGUINodeViewModel["conversations"][number]
+  conversation: AgentGUINodeViewModel["rail"]["conversations"][number]
 ): "loading" | "waiting" | "failed" | "unread-complete" | "time" {
-  if (conversation.status === "working") {
-    return "loading";
-  }
-  if (conversation.status === "waiting") {
+  if (conversation.needsUserAction) {
     return "waiting";
+  }
+  if (conversation.status === "working" || conversation.status === "waiting") {
+    return "loading";
   }
   if (conversation.status === "failed") {
     return "failed";
@@ -354,7 +184,7 @@ function LoadingGlyph(): React.JSX.Element {
       className={styles.conversationStatusGlyph}
       size={14}
       style={{ color: "var(--text-secondary)" }}
-      strokeWidth={1.5}
+      strokeWidth={2.25}
       trackColor="color-mix(in srgb, currentColor 24%, transparent)"
       testId="agent-gui-conversation-spinner"
     />

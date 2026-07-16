@@ -29,10 +29,11 @@ type AppCenterService struct {
 	AppCLIRegistry         *appcliservice.Registry
 	StateDir               string
 	HostTuttiVersion       string
+	HostTuttiCapabilities  []string
 	Publisher              WorkspaceAppEventPublisher
 	BuiltinCatalog         func() ([]builtinapps.App, error)
 	ArtifactFetcher        AppArtifactFetcher
-	RemoteCatalogRefresher func(context.Context, string) (builtinapps.CatalogSnapshot, error)
+	RemoteCatalogRefresher func(context.Context, string, builtinapps.CatalogHost) (builtinapps.CatalogSnapshot, error)
 
 	mu                sync.Mutex
 	stateRevisions    map[string]int64

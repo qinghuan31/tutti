@@ -6,7 +6,8 @@ import type { BrowserNodeFeature } from "@tutti-os/browser-node";
 import type { I18nRuntime } from "@tutti-os/ui-i18n-runtime";
 import {
   createWorkspaceAppCenterContribution,
-  readWorkspaceAppIdFromNodeId
+  readWorkspaceAppIdFromNodeId,
+  workspaceAppCenterNodeID
 } from "@renderer/features/workspace-app-center";
 import type { IWorkspaceAppCenterService } from "@renderer/features/workspace-app-center";
 import type { DesktopBrowserApi, DesktopRuntimeApi } from "@preload/types";
@@ -81,7 +82,11 @@ function resolveWorkspaceAppBrowserFeature(input: {
     browserApi: input.browserApi,
     browserService: input.browserService,
     getAppLaunchUrlForNodeId: (nodeId) =>
-      resolveWorkspaceAppLaunchUrlForNodeId(input.appCenterService, nodeId),
+      resolveWorkspaceAppLaunchUrlForNodeId(
+        input.appCenterService,
+        input.workspaceId,
+        nodeId
+      ),
     i18n: input.i18n,
     runtimeApi: input.runtimeApi,
     workspaceId: input.workspaceId
@@ -97,9 +102,14 @@ function resolveWorkspaceAppBrowserFeature(input: {
 
 function resolveWorkspaceAppLaunchUrlForNodeId(
   appCenterService: IWorkspaceAppCenterService,
+  workspaceId: string,
   nodeId: string
 ): string | null {
-  const appId = readWorkspaceAppIdFromNodeId(nodeId);
+  const appId =
+    readWorkspaceAppIdFromNodeId(nodeId) ??
+    (nodeId === workspaceAppCenterNodeID
+      ? appCenterService.getViewState(workspaceId).openAppId?.trim() || null
+      : null);
   if (!appId) {
     return null;
   }

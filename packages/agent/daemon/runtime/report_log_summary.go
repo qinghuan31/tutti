@@ -89,11 +89,13 @@ func summarizeStatePatchesForLog(patches []agentsessionstore.WorkspaceAgentState
 			entitySummaries = append(entitySummaries, fmt.Sprintf("...+%d more entities", len(patch.Entities)-entityLimit))
 		}
 		out = append(out, trimReportLogSummary(fmt.Sprintf(
-			"session=%s|phase=%s|lifecycle=%s|turn=%s|entities=%s",
+			"session=%s|phase=%s|lifecycle=%s|turn=%s|turnLifecycle=%s|rootProviderTurn=%s|entities=%s",
 			logSummaryValue(patch.AgentSessionID),
 			logSummaryValue(patch.CurrentPhase),
 			logSummaryValue(patch.LifecycleStatus),
 			logSummaryValue(turnPatchSummary(patch.Turn)),
+			logSummaryValue(turnLifecycleSummary(patch.TurnLifecycle)),
+			logSummaryValue(rootProviderTurnSummary(patch.RootProviderTurn)),
 			strings.Join(entitySummaries, ";"),
 		)))
 	}
@@ -278,6 +280,38 @@ func turnPatchSummary(turn *agentsessionstore.WorkspaceAgentTurnPatch) string {
 	parts := []string{logSummaryValue(turn.TurnID)}
 	if phase := logSummaryValue(turn.Phase); phase != "-" {
 		parts = append(parts, phase)
+	}
+	if outcome := logSummaryValue(turn.Outcome); outcome != "-" {
+		parts = append(parts, outcome)
+	}
+	return strings.Join(parts, "/")
+}
+
+func turnLifecycleSummary(lifecycle *agentsessionstore.WorkspaceAgentTurnLifecycle) string {
+	if lifecycle == nil {
+		return ""
+	}
+	activeTurnID := ""
+	if lifecycle.ActiveTurnID != nil {
+		activeTurnID = *lifecycle.ActiveTurnID
+	}
+	parts := []string{logSummaryValue(activeTurnID), logSummaryValue(lifecycle.Phase)}
+	if lifecycle.Outcome != nil {
+		if outcome := logSummaryValue(*lifecycle.Outcome); outcome != "-" {
+			parts = append(parts, outcome)
+		}
+	}
+	return strings.Join(parts, "/")
+}
+
+func rootProviderTurnSummary(turn *agentsessionstore.WorkspaceAgentRootProviderTurnTransition) string {
+	if turn == nil {
+		return ""
+	}
+	parts := []string{
+		logSummaryValue(turn.RootTurnID),
+		logSummaryValue(turn.ProviderTurnID),
+		logSummaryValue(turn.Phase),
 	}
 	if outcome := logSummaryValue(turn.Outcome); outcome != "-" {
 		parts = append(parts, outcome)

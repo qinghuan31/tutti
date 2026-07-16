@@ -38,17 +38,53 @@ func GeneratedAgentTargetFromBiz(target agenttargetbiz.Target) (tuttigenerated.A
 	if normalized.IconKey == "" {
 		iconKey = nil
 	}
+	iconURL := &normalized.IconURL
+	if normalized.IconURL == "" {
+		iconURL = nil
+	}
+	heroImageURL := &normalized.HeroImageURL
+	if normalized.HeroImageURL == "" {
+		heroImageURL = nil
+	}
+	var availability *tuttigenerated.AgentProviderAvailability
+	if normalized.AvailabilityStatus != "" {
+		availability = &tuttigenerated.AgentProviderAvailability{
+			Status: tuttigenerated.AgentProviderAvailabilityStatus(normalized.AvailabilityStatus),
+		}
+		if normalized.AvailabilityReason != "" {
+			availability.ReasonCode = &normalized.AvailabilityReason
+		}
+	}
+	var launchRef tuttigenerated.AgentTargetLaunchRef
+	switch ref.Type {
+	case agenttargetbiz.LaunchRefTypeBuiltinLocal:
+		if err := launchRef.FromAgentTargetBuiltinLocalLaunchRef(tuttigenerated.AgentTargetBuiltinLocalLaunchRef{
+			Provider: ref.Provider,
+			Type:     tuttigenerated.AgentTargetBuiltinLocalLaunchRefTypeBuiltinLocal,
+		}); err != nil {
+			return tuttigenerated.AgentTarget{}, err
+		}
+	case agenttargetbiz.LaunchRefTypeAgentExtension:
+		if err := launchRef.FromAgentTargetExtensionLaunchRef(tuttigenerated.AgentTargetExtensionLaunchRef{
+			ExtensionInstallationId: ref.ExtensionInstallationID,
+			Type:                    tuttigenerated.AgentTargetExtensionLaunchRefTypeAgentExtension,
+		}); err != nil {
+			return tuttigenerated.AgentTarget{}, err
+		}
+	default:
+		return tuttigenerated.AgentTarget{}, agenttargetbiz.ErrInvalidLaunchRef
+	}
 	return tuttigenerated.AgentTarget{
+		Availability:    availability,
 		CreatedAtUnixMs: normalized.CreatedAtUnixMS,
 		Enabled:         normalized.Enabled,
 		IconKey:         iconKey,
+		IconUrl:         iconURL,
+		HeroImageUrl:    heroImageURL,
 		Id:              normalized.ID,
-		LaunchRef: tuttigenerated.AgentTargetLaunchRef{
-			Provider: tuttigenerated.AgentTargetProvider(ref.Provider),
-			Type:     tuttigenerated.LocalCli,
-		},
+		LaunchRef:       launchRef,
 		Name:            normalized.Name,
-		Provider:        tuttigenerated.AgentTargetProvider(normalized.Provider),
+		Provider:        normalized.Provider,
 		SortOrder:       normalized.SortOrder,
 		Source:          tuttigenerated.AgentTargetSource(normalized.Source),
 		UpdatedAtUnixMs: normalized.UpdatedAtUnixMS,

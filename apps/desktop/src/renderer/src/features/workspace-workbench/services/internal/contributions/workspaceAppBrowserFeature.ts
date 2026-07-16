@@ -5,7 +5,10 @@ import {
 } from "@tutti-os/browser-node";
 import type { I18nRuntime } from "@tutti-os/ui-i18n-runtime";
 import type { DesktopBrowserApi, DesktopRuntimeApi } from "@preload/types";
-import { workspaceAppWebviewTypeID } from "../../../../workspace-app-center/services/workspaceAppCenterLaunchIds.ts";
+import {
+  workspaceAppCenterNodeID,
+  workspaceAppWebviewTypeID
+} from "../../../../workspace-app-center/services/workspaceAppCenterLaunchIds.ts";
 import type { WorkspaceBrowserService } from "../workspaceBrowserService.ts";
 
 export function createWorkspaceAppBrowserFeature(input: {
@@ -56,6 +59,7 @@ function isWorkspaceAppBrowserEvent(
 ): boolean {
   const nodeId = event.type === "open-url" ? event.sourceNodeId : event.nodeId;
   const isWorkspaceAppNode =
+    nodeId === workspaceAppCenterNodeID ||
     nodeId.startsWith(`${workspaceAppWebviewTypeID}:`) ||
     nodeId.startsWith("workspace-app:");
   if (!isWorkspaceAppNode) {

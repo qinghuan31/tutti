@@ -5,6 +5,7 @@ package workspace
 import (
 	"bufio"
 	"context"
+	"io"
 	"os/exec"
 	"path/filepath"
 	"sort"
@@ -14,22 +15,19 @@ import (
 	workspacefiles "github.com/tutti-os/tutti/packages/workspace/files"
 )
 
-// recentCandidateCap bounds how many Spotlight hits we date-stamp and sort.
-// Spotlight returns matches unordered, so we over-fetch candidates, read each
-// one's last-used date, then keep the newest `limit`.
-const recentCandidateCap = 400
+// mdlsPathBatchSize keeps the argv for each metadata lookup comfortably below
+// the platform limit while still avoiding one process per candidate.
+const mdlsPathBatchSize = 200
 
 // recentLookupTimeout bounds the external Spotlight calls so a slow index never
 // stalls the picker.
 const recentLookupTimeout = 4 * time.Second
 
-// recentLookupWindow is the rolling time window for "last used" candidates,
-// mirroring Finder's "Recents" behavior. We use a rolling window (not a natural
-// month) so the list never resets at the start of a month, and bound it because
-// mdfind returns hits unordered: an unbounded query would force us to cap an
-// arbitrary slice of (potentially) hundreds of thousands of all-time hits,
-// dropping the newest ones. 30 days matches Finder's widest named group.
-const recentLookupWindow = "$time.today(-30)"
+// finderRecentSpotlightQuery mirrors Finder's Recents scope: files that
+// LaunchServices has recorded as opened, excluding folders and incomplete
+// Safari downloads. Finder keeps older opened documents in Recents, so this
+// intentionally has no rolling date window.
+const finderRecentSpotlightQuery = "kMDItemLastUsedDate == * && kMDItemContentTypeTree != 'public.folder' && kMDItemFSName != '*.download'cd"
 
 // mdlsLastUsedDateLayout matches `mdls -name kMDItemLastUsedDate` output, e.g.
 // "kMDItemLastUsedDate = 2026-06-17 06:35:10 +0000".
@@ -108,23 +106,27 @@ type recentCandidate struct {
 	lastUsed     time.Time
 }
 
-// spotlightRecentCandidates returns recently used, non-folder paths under
-// rootPath within recentLookupWindow, capped to recentCandidateCap. Order is
-// Spotlight's (unranked by date here).
+// spotlightRecentCandidates returns Finder-compatible recent, non-folder paths
+// under rootPath. Spotlight does not rank these results by last-used date, so
+// every candidate must survive until spotlightLastUsedDates sorts them.
 func spotlightRecentCandidates(ctx context.Context, rootPath string) ([]string, error) {
 	cmd := exec.CommandContext(
 		ctx,
 		"mdfind",
 		"-onlyin", rootPath,
-		"kMDItemLastUsedDate >= "+recentLookupWindow+" && kMDItemContentTypeTree != 'public.folder'",
+		finderRecentSpotlightQuery,
 	)
 	output, err := cmd.Output()
 	if err != nil {
 		return nil, err
 	}
 
-	paths := make([]string, 0, recentCandidateCap)
-	scanner := bufio.NewScanner(strings.NewReader(string(output)))
+	return parseSpotlightRecentCandidates(strings.NewReader(string(output)))
+}
+
+func parseSpotlightRecentCandidates(reader io.Reader) ([]string, error) {
+	paths := make([]string, 0)
+	scanner := bufio.NewScanner(reader)
 	scanner.Buffer(make([]byte, 0, 64*1024), 1024*1024)
 	for scanner.Scan() {
 		path := strings.TrimSpace(scanner.Text())
@@ -132,9 +134,9 @@ func spotlightRecentCandidates(ctx context.Context, rootPath string) ([]string, 
 			continue
 		}
 		paths = append(paths, path)
-		if len(paths) >= recentCandidateCap {
-			break
-		}
+	}
+	if err := scanner.Err(); err != nil {
+		return nil, err
 	}
 	return paths, nil
 }
@@ -146,6 +148,18 @@ func spotlightLastUsedDates(ctx context.Context, paths []string) []recentCandida
 	if len(paths) == 0 {
 		return nil
 	}
+	dated := make([]recentCandidate, 0, len(paths))
+	for start := 0; start < len(paths); start += mdlsPathBatchSize {
+		end := min(start+mdlsPathBatchSize, len(paths))
+		dated = append(dated, spotlightLastUsedDatesBatch(ctx, paths[start:end])...)
+		if ctx.Err() != nil {
+			break
+		}
+	}
+	return dated
+}
+
+func spotlightLastUsedDatesBatch(ctx context.Context, paths []string) []recentCandidate {
 	args := append([]string{"-name", "kMDItemLastUsedDate"}, paths...)
 	output, err := exec.CommandContext(ctx, "mdls", args...).Output()
 	if err != nil {

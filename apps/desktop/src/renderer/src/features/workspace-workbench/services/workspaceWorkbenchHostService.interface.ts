@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import type { AgentGUIProvider, AgentGUIAgent } from "@tutti-os/agent-gui";
+import type { AgentGUIProvider } from "@tutti-os/agent-gui";
 import { createDecorator } from "@tutti-os/infra/di";
 import type { I18nRuntime } from "@tutti-os/ui-i18n-runtime";
 import type { WorkspaceFileManagerPersistedState } from "@tutti-os/workspace-file-manager/services";
@@ -47,6 +47,8 @@ import type { WorkspaceUserProjectApi } from "@tutti-os/workspace-user-project/c
 import type { DesktopWorkspaceAppOpenFileResolvedPayload } from "@shared/contracts/ipc";
 
 export type WorkspaceCustomWallpaperStatus = "idle" | "saving" | "removing";
+
+export type WorkspaceWorkbenchSnapshotPersistence = "durable" | "window-local";
 
 export interface WorkspaceCustomWallpaperSnapshot {
   exists: boolean;
@@ -116,14 +118,11 @@ export interface WorkspaceWorkbenchHostSessionUpdate {
     request: WorkbenchHostCloseDialogRequest
   ) => Promise<boolean> | boolean;
   defaultAgentProvider?: string | null;
-  defaultAgentTargetId?: string | null;
   dockIconStyle: DesktopDockIconStyle;
   i18n: WorkspaceWorkbenchDesktopI18nRuntime;
   onCapabilitySettingsRequest?: (
     target: WorkspaceWorkbenchCapabilitySettingsTarget
   ) => void;
-  agents?: readonly AgentGUIAgent[];
-  agentsLoading?: boolean;
   comingSoonAgentProviders?: readonly AgentGUIProvider[];
   renderFilesNodeBody: (
     context: WorkspaceWorkbenchBodyRendererContext
@@ -149,7 +148,6 @@ export interface IWorkspaceWorkbenchHostService {
 
   approveWindowClose(): Promise<void>;
   openHostSession(workspaceId: string): WorkspaceWorkbenchHostSessionBinding;
-  loadAgentGuiAgents(): Promise<readonly AgentGUIAgent[]>;
   createWorkspaceAppExternalFileReferenceAdapter(
     workspaceId: string
   ): WorkspaceFileReferenceAdapter;

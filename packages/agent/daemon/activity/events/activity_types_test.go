@@ -30,6 +30,21 @@ func TestNormalizeProviderMapsSupportedAgentsToServerValues(t *testing.T) {
 	}
 }
 
+func TestNormalizeProviderUsesMigratedProviderIdentities(t *testing.T) {
+	t.Parallel()
+
+	tests := map[string]Provider{
+		" CODEX ":       ProviderCodex,
+		" opencode-ai ": ProviderOpenCode,
+	}
+	for input, want := range tests {
+		provider, ok := NormalizeProvider(input)
+		if !ok || provider != want {
+			t.Fatalf("NormalizeProvider(%q) = %q, %v; want %q, true", input, provider, ok, want)
+		}
+	}
+}
+
 func TestNormalizeProviderRejectsTuttiAsNexightAlias(t *testing.T) {
 	t.Parallel()
 
@@ -50,6 +65,14 @@ func TestNormalizeProviderHermes(t *testing.T) {
 		if !ok || got != want {
 			t.Fatalf("NormalizeProvider(%q) = %q, %v; want %q, true", input, got, ok, want)
 		}
+	}
+}
+func TestNormalizeProviderAcceptsOpenExtensionIdentity(t *testing.T) {
+	t.Parallel()
+
+	provider, ok := NormalizeProvider("acp:gemini")
+	if !ok || provider != Provider("acp:gemini") {
+		t.Fatalf("NormalizeProvider(acp:gemini) = %q, %v; want acp:gemini, true", provider, ok)
 	}
 }
 

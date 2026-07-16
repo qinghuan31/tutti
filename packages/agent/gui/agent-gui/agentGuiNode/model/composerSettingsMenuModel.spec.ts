@@ -75,7 +75,8 @@ function vm(
       { value: "low", label: "Low" },
       { value: "high", label: "High" },
       { value: "max", label: "Max" },
-      { value: "ultra", label: "ultra" }
+      { value: "ultra", label: "ultra" },
+      { value: "none", label: "Off" }
     ],
     ...overrides
   };
@@ -108,7 +109,8 @@ describe("buildComposerModelMenuModel", () => {
       { value: "low", label: "Low" },
       { value: "high", label: "High" },
       { value: "max", label: "Max" },
-      { value: "ultra", label: "Ultra" }
+      { value: "ultra", label: "Ultra" },
+      { value: "none", label: "Off" }
     ]);
 
     expect(menu.speed.show).toBe(true);
@@ -141,6 +143,26 @@ describe("buildComposerModelMenuModel", () => {
 
     expect(menu.reasoning.selectedLabel).toBe("极致");
     expect(menu.reasoning.options).toEqual([{ value: "ultra", label: "极致" }]);
+  });
+
+  it("uses the provider-localized label for an extensible reasoning value", () => {
+    const menu = buildComposerModelMenuModel(
+      vm({
+        draftSettings: {
+          model: "gpt-5.6-sol",
+          reasoningEffort: "none",
+          speed: "standard",
+          planMode: false,
+          permissionModeId: "preset"
+        },
+        selectedReasoningEffortValue: "none",
+        availableReasoningEfforts: [{ value: "none", label: "关闭" }]
+      }),
+      labels
+    );
+
+    expect(menu.reasoning.selectedLabel).toBe("关闭");
+    expect(menu.reasoning.options).toEqual([{ value: "none", label: "关闭" }]);
   });
 
   it("localizes ultra effort in model summaries", () => {
@@ -197,7 +219,7 @@ describe("buildComposerModelMenuModel", () => {
     });
   });
 
-  it("preserves Claude ACP model descriptions", () => {
+  it("preserves Claude Code model descriptions", () => {
     const menu = buildComposerModelMenuModel(
       vm({
         draftSettings: {
@@ -295,7 +317,7 @@ describe("buildComposerModelMenuModel", () => {
   it("collapses the model list to the latest version per family when enabled", () => {
     const menu = buildComposerModelMenuModel(
       vm({
-        modelListCollapsedToLatest: true,
+        collapseModelOptionsToLatest: true,
         selectedModelValue: "claude-sonnet-5[thinking=true]",
         draftSettings: {
           model: "claude-sonnet-5[thinking=true]",
@@ -332,7 +354,7 @@ describe("buildComposerModelMenuModel", () => {
   it("keeps a selected older version visible after the family collapses", () => {
     const menu = buildComposerModelMenuModel(
       vm({
-        modelListCollapsedToLatest: true,
+        collapseModelOptionsToLatest: true,
         selectedModelValue: "claude-sonnet-4.6[thinking=true]",
         draftSettings: {
           model: "claude-sonnet-4.6[thinking=true]",
@@ -380,6 +402,43 @@ describe("buildComposerModelMenuModel", () => {
     expect(menu.model.show).toBe(true);
     expect(menu.reasoning.show).toBe(false);
     expect(menu.speed.show).toBe(false);
+    expect(menu.trigger.reasoningLabel).toBe("");
+    expect(menu.trigger.showCombined).toBe(true);
+  });
+
+  it("does not show a stale default effort when reasoning is not configurable", () => {
+    // Cursor-like: draft still carries the GUI default "high", but the
+    // provider does not expose a reasoning selector.
+    const menu = buildComposerModelMenuModel(
+      vm({
+        supportsReasoningEffort: false,
+        availableReasoningEfforts: [],
+        draftSettings: {
+          model: "gpt-5.2[reasoning=medium,fast=false]",
+          reasoningEffort: "high",
+          speed: null,
+          planMode: false,
+          permissionModeId: "agent"
+        },
+        availableModels: [
+          {
+            value: "gpt-5.2[reasoning=medium,fast=false]",
+            label: "gpt-5.2"
+          }
+        ],
+        supportsSpeed: false,
+        availableSpeeds: []
+      }),
+      labels
+    );
+
+    expect(menu.reasoning.show).toBe(false);
+    expect(menu.trigger).toMatchObject({
+      modelLabel: "GPT-5.2",
+      reasoningLabel: "",
+      combinedLabel: "GPT-5.2",
+      showCombined: true
+    });
   });
 
   it("shows the loading copy on the trigger while options load", () => {

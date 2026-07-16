@@ -15,6 +15,7 @@ import { createWorkspaceLaunchDesktopAdapters } from "./host/workspaceLaunchDesk
 import type { DesktopLogger } from "./logging";
 import { getDesktopThemeState } from "./desktopTheme";
 import type { TuttidClient } from "@tutti-os/client-tuttid-ts";
+import { resolveWorkspaceLaunchWindowKind } from "./host/workspaceLaunchMode.ts";
 
 export interface DesktopHostServices {
   fileDialogs: DesktopFileDialogAccess;
@@ -56,6 +57,8 @@ export async function createDesktopHostServices(
       browserNodeGuestPreloadPath: options.browserNodeGuestPreloadPath,
       getDockPlacement: () => preferences.getDockPlacement(),
       getLocale: () => preferences.getLocale(),
+      getPrimaryWorkspaceWindowKind: () =>
+        resolveWorkspaceLaunchWindowKind(preferences.getFeatureFlags()),
       getTheme: () => getDesktopThemeState(preferences.getThemeSource()),
       preloadPath: options.preloadPath,
       rendererUrl: options.rendererUrl,

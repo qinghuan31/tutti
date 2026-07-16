@@ -7,6 +7,7 @@ export const AGENT_GUI_CONVERSATION_RAIL_DEFAULT_WIDTH_PX = 280;
 export const AGENT_GUI_CONVERSATION_RAIL_MIN_WIDTH_PX = 248;
 export const AGENT_GUI_CONVERSATION_RAIL_MAX_WIDTH_PX = 520;
 export const AGENT_GUI_DETAIL_MIN_WIDTH_PX = 220;
+export const AGENT_GUI_HOME_COMPOSER_MIN_WIDTH_PX = 320;
 export const AGENT_GUI_RAIL_RESIZE_HANDLE_WIDTH_PX = 10;
 export const AGENT_GUI_COLLAPSED_MIN_WIDTH_PX = 460;
 export const AGENT_GUI_EXPANDED_MIN_WIDTH_PX =
@@ -14,6 +15,15 @@ export const AGENT_GUI_EXPANDED_MIN_WIDTH_PX =
   AGENT_GUI_DETAIL_MIN_WIDTH_PX +
   AGENT_GUI_RAIL_RESIZE_HANDLE_WIDTH_PX;
 export const AGENT_GUI_AUTO_COLLAPSE_WIDTH_PX = 610;
+// The standalone agent window keeps the conversation rail visible until the
+// home composer reaches its actual minimum width. Include the provider rail in
+// this host-specific threshold: 248px conversation rail + 320px composer +
+// 10px resize handle + 52px provider rail = 630px.
+export const AGENT_GUI_STANDALONE_AUTO_COLLAPSE_WIDTH_PX =
+  AGENT_GUI_CONVERSATION_RAIL_MIN_WIDTH_PX +
+  AGENT_GUI_HOME_COMPOSER_MIN_WIDTH_PX +
+  AGENT_GUI_RAIL_RESIZE_HANDLE_WIDTH_PX +
+  52;
 export const AGENT_GUI_EXPANDED_TARGET_WIDTH_PX = 800;
 
 export interface AgentGUIExpandedWindowFrameInput {
@@ -25,12 +35,13 @@ export interface AgentGUIExpandedWindowFrameInput {
 }
 
 export function shouldAutoCollapseAgentGUIConversationRail(
-  containerWidthPx: number
+  containerWidthPx: number,
+  autoCollapseWidthPx: number = AGENT_GUI_AUTO_COLLAPSE_WIDTH_PX
 ): boolean {
   return (
     Number.isFinite(containerWidthPx) &&
     containerWidthPx > 0 &&
-    containerWidthPx <= AGENT_GUI_AUTO_COLLAPSE_WIDTH_PX
+    containerWidthPx <= autoCollapseWidthPx
   );
 }
 

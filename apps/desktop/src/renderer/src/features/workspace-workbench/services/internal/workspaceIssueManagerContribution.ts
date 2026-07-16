@@ -1,5 +1,6 @@
 import { createElement } from "react";
-import { agentGuiDockIconUrls, type AgentGUIAgent } from "@tutti-os/agent-gui";
+import type { AgentGUIAgent } from "@tutti-os/agent-gui";
+import { agentGuiDockIconUrls } from "@tutti-os/agent-gui/dock-icons";
 import { createRichTextMentionHref } from "@tutti-os/ui-rich-text/core";
 import type {
   AgentProviderStatus,
@@ -30,11 +31,12 @@ import {
 } from "@renderer/features/workspace-issue-manager";
 import type { IReporterService } from "../../../analytics/services/reporterService.interface.ts";
 import {
-  requestWorkspaceAgentGuiLaunch,
   type AgentProviderStatusService,
+  type IAgentsService,
   type IWorkspaceAgentActivityService,
   type WorkspaceAgentPromptSessionService
 } from "@renderer/features/workspace-agent";
+import { requestWorkspaceAgentGuiLaunch } from "@renderer/features/workspace-agent/services/workspaceAgentGuiLaunchCoordinator.ts";
 import { runDesktopAgentGUILinkAction } from "@renderer/features/workspace-agent/services/desktopAgentGUILinkActions.ts";
 import { normalizeDesktopAgentGUIProvider } from "@renderer/features/workspace-agent/desktopAgentGUINodeState";
 import { type IDesktopRichTextAtService } from "@renderer/features/rich-text-at";
@@ -47,6 +49,7 @@ import { createWorkspaceIssueManagerRichTextTriggerProviderRequestFromIdentity }
 import { resolveWorkspaceAgentGuiLabel } from "./workspaceAgentProviderCatalog.ts";
 import { renderIssueManagerLatestRunMessageCenterCard } from "../../ui/IssueManagerLatestRunMessageCenterCard.tsx";
 import { workspaceTaskDockSectionId } from "./workspaceDockSections.ts";
+import { registerWorkspaceIssueManagerSurfaceRuntime } from "../workspaceIssueManagerSurfaceRuntime.ts";
 
 export function createWorkspaceIssueManagerContribution(input: {
   agentProviderStatusService: AgentProviderStatusService;
@@ -62,7 +65,7 @@ export function createWorkspaceIssueManagerContribution(input: {
     DesktopPlatformApi,
     "homeDirectory" | "os" | "resolveDroppedPaths"
   >;
-  agents?: readonly AgentGUIAgent[];
+  agentsService: Pick<IAgentsService, "getSnapshot" | "subscribe">;
   richTextAtService: IDesktopRichTextAtService;
   runtimeApi: DesktopRuntimeApi;
   reporterService?: Pick<IReporterService, "trackEvents">;
@@ -76,11 +79,18 @@ export function createWorkspaceIssueManagerContribution(input: {
       getOptions: () =>
         resolveIssueManagerReadyAgentTargetOptions(
           input.agentProviderStatusService.getSnapshot().statuses,
-          input.agents,
+          input.agentsService.getSnapshot().agents,
           input.defaultAgentProvider
         ),
-      subscribe: (listener) =>
-        input.agentProviderStatusService.subscribe(listener)
+      subscribe: (listener) => {
+        const unsubscribeProviderStatuses =
+          input.agentProviderStatusService.subscribe(listener);
+        const unsubscribeAgents = input.agentsService.subscribe(listener);
+        return () => {
+          unsubscribeProviderStatuses();
+          unsubscribeAgents();
+        };
+      }
     },
     agentSessionCreator: input.workspaceAgentPromptSessionService,
     eventStreamClient: input.eventStreamClient,
@@ -119,6 +129,11 @@ export function createWorkspaceIssueManagerContribution(input: {
           return;
         }
         await runDesktopAgentGUILinkAction(action, {
+          getAgentSession: ({ agentSessionId, workspaceId }) =>
+            input.workspaceAgentActivityService.getSession(
+              workspaceId,
+              agentSessionId
+            ),
           homeDirectory: input.platformApi.homeDirectory,
           launchAgentGui: requestWorkspaceAgentGuiLaunch,
           launchWorkspaceIssueManager: requestWorkspaceIssueManagerLaunch,
@@ -194,6 +209,11 @@ export function createWorkspaceIssueManagerContribution(input: {
           locale: input.locale,
           onLinkAction: (action) => {
             void runDesktopAgentGUILinkAction(action, {
+              getAgentSession: ({ agentSessionId, workspaceId }) =>
+                input.workspaceAgentActivityService.getSession(
+                  workspaceId,
+                  agentSessionId
+                ),
               homeDirectory: input.platformApi.homeDirectory,
               launchAgentGui: requestWorkspaceAgentGuiLaunch,
               launchWorkspaceIssueManager: requestWorkspaceIssueManagerLaunch,
@@ -227,6 +247,8 @@ export function createWorkspaceIssueManagerContribution(input: {
     },
     typeId: defaultIssueManagerWorkbenchTypeId
   });
+
+  registerWorkspaceIssueManagerSurfaceRuntime(contribution, { feature });
 
   return contribution;
 }

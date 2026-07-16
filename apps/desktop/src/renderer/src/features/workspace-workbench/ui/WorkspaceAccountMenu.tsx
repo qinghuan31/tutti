@@ -41,17 +41,27 @@ const debugRegistrationCreditsToastID =
   "debug:registrationCreditsToastShown:local";
 const registrationCreditsToastAutoDismissMs = 120_000;
 
-export function WorkspaceAccountMenu() {
+export interface WorkspaceAccountMenuProps {
+  showLeadingDivider?: boolean;
+}
+
+export function WorkspaceAccountMenu({
+  showLeadingDivider = true
+}: WorkspaceAccountMenuProps = {}) {
   const { state: workspaceSettingsState } = useWorkspaceSettingsService();
 
   if (workspaceSettingsState.tuttiAgentSwitchEnabled !== true) {
     return null;
   }
 
-  return <WorkspaceAccountMenuEnabled />;
+  return (
+    <WorkspaceAccountMenuEnabled showLeadingDivider={showLeadingDivider} />
+  );
 }
 
-function WorkspaceAccountMenuEnabled() {
+function WorkspaceAccountMenuEnabled({
+  showLeadingDivider
+}: Required<WorkspaceAccountMenuProps>) {
   const accountMenuState = useWorkspaceAccountMenuState();
   const labels = useWorkspaceAccountMenuLabels();
 
@@ -59,6 +69,7 @@ function WorkspaceAccountMenuEnabled() {
     <WorkspaceAccountMenuView
       accountMenuState={accountMenuState}
       labels={labels}
+      showLeadingDivider={showLeadingDivider}
     />
   );
 }
@@ -225,10 +236,12 @@ function useWorkspaceAccountMenuLabels(): WorkspaceAccountMenuLabels {
 
 const WorkspaceAccountMenuView = memo(function WorkspaceAccountMenuView({
   accountMenuState,
-  labels
+  labels,
+  showLeadingDivider
 }: {
   accountMenuState: WorkspaceAccountMenuState;
   labels: WorkspaceAccountMenuLabels;
+  showLeadingDivider: boolean;
 }) {
   "use memo";
   const userLabel = workspaceAccountUserLabel(accountMenuState, labels);
@@ -256,10 +269,12 @@ const WorkspaceAccountMenuView = memo(function WorkspaceAccountMenuView({
   if (!accountMenuState.user) {
     return (
       <div className="relative flex min-w-0 items-center gap-1.5">
-        <span
-          aria-hidden="true"
-          className="h-4 w-px shrink-0 bg-[color-mix(in_srgb,var(--workbench-chrome-foreground)_24%,transparent)]"
-        />
+        {showLeadingDivider ? (
+          <span
+            aria-hidden="true"
+            className="h-4 w-px shrink-0 bg-[color-mix(in_srgb,var(--workbench-chrome-foreground)_24%,transparent)]"
+          />
+        ) : null}
         <Button
           type="button"
           variant="ghost"
@@ -283,7 +298,7 @@ const WorkspaceAccountMenuView = memo(function WorkspaceAccountMenuView({
           toast={accountMenuState.registrationCreditsToast}
         />
       ) : null}
-      {accountMenuState.user ? (
+      {showLeadingDivider ? (
         <span
           aria-hidden="true"
           className="h-4 w-px shrink-0 bg-[color-mix(in_srgb,var(--workbench-chrome-foreground)_24%,transparent)]"

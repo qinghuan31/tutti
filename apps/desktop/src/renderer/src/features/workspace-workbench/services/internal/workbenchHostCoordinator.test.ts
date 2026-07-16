@@ -9,12 +9,10 @@ import {
 import { IWorkbenchHostCoordinator } from "../workbenchHostCoordinator.interface.ts";
 import {
   createWorkbenchHostSessionConfiguration,
-  WorkbenchHostCoordinator
-} from "./workbenchHostCoordinator.ts";
-import {
+  WorkbenchHostCoordinator,
   WorkbenchHostSession,
   type WorkbenchSnapshotPartition
-} from "./workbenchHostSession.ts";
+} from "@tutti-os/workbench-host";
 
 const configuration = createWorkbenchHostSessionConfiguration({
   createSession
@@ -112,6 +110,22 @@ test("workbench host coordinator keeps different scopes independent", () => {
       }),
     /coordinator is disposed/
   );
+});
+
+test("renderer coordinators keep the same partition isolated across windows", () => {
+  const firstCoordinator = new WorkbenchHostCoordinator();
+  const secondCoordinator = new WorkbenchHostCoordinator();
+  const partition = workspacePartition("workspace-1");
+
+  const first = firstCoordinator.open({ configuration, partition });
+  const second = secondCoordinator.open({ configuration, partition });
+
+  assert.notEqual(first.session, second.session);
+  first.release();
+  assert.equal(first.session.isDisposed, true);
+  assert.equal(second.session.isDisposed, false);
+  second.release();
+  assert.equal(second.session.isDisposed, true);
 });
 
 test("workbench host coordinator rejects a session for another partition", () => {

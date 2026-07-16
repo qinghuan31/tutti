@@ -10,6 +10,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/tutti-os/tutti/packages/agent/daemon/providerregistry"
 	agentproviderbiz "github.com/tutti-os/tutti/services/tuttid/biz/agentprovider"
 )
 
@@ -364,9 +365,8 @@ func resolveExternalImportSessionCwd(raw string) (string, bool) {
 		// independent project rooted at the worktree instead of lining up
 		// with the main checkout the user actually registered as their
 		// project. Resolve it upfront so every downstream consumer of this
-		// cwd (project-path grouping, selection matching, and the persisted
-		// session record the GUI groups conversations by) agrees on the same
-		// canonical project identity.
+		// cwd (project selection, initial rail classification, and the persisted
+		// session record) agrees on the same canonical project identity.
 		if resolved, ok := resolveExternalImportWorktreeCwd(canonical); ok {
 			return resolved, true
 		}
@@ -397,8 +397,11 @@ func isExternalImportNoProjectCwd(provider string, cwd string) bool {
 	if cwd == home {
 		return true
 	}
-	return agentproviderbiz.Normalize(provider) == agentproviderbiz.Codex &&
-		isExternalImportCodexScratchCwd(home, cwd)
+	descriptor, ok := providerregistry.Find(provider)
+	if !ok || descriptor.ExternalImport.NoProjectHomeRelativeDir == "" {
+		return false
+	}
+	return isExternalImportScratchCwd(home, cwd, descriptor.ExternalImport.NoProjectHomeRelativeDir)
 }
 
 // isExternalImportCodexScratchCwd reports whether cwd is anywhere under the
@@ -412,13 +415,14 @@ func isExternalImportNoProjectCwd(provider string, cwd string) bool {
 // into "<date>/<slug>" (Documents/Codex/2026-04-24/gh) — so this intentionally
 // only checks that the path is nested under Documents/Codex rather than
 // pattern-matching a specific segment shape, to stay robust across formats.
-func isExternalImportCodexScratchCwd(home string, cwd string) bool {
+func isExternalImportScratchCwd(home string, cwd string, relativeRoot string) bool {
 	rel, err := filepath.Rel(home, cwd)
 	if err != nil || rel == "." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) || rel == ".." {
 		return false
 	}
-	parts := strings.SplitN(filepath.ToSlash(rel), "/", 3)
-	return len(parts) >= 3 && parts[0] == "Documents" && parts[1] == "Codex" && parts[2] != ""
+	rel = filepath.ToSlash(rel)
+	root := strings.Trim(strings.TrimSpace(filepath.ToSlash(relativeRoot)), "/")
+	return root != "" && strings.HasPrefix(rel, root+"/") && strings.TrimPrefix(rel, root+"/") != ""
 }
 
 func externalImportedMessageHasContent(message externalImportedMessage) bool {
@@ -478,13 +482,17 @@ func externalImportCleanUserText(provider string, text string) (string, bool) {
 	if trimmed == "" {
 		return "", false
 	}
-	switch provider {
-	case agentproviderbiz.ClaudeCode:
+	descriptor, ok := providerregistry.Find(provider)
+	if !ok || !descriptor.ExternalImport.Enabled {
+		return "", false
+	}
+	switch descriptor.ExternalImport.UserTextCleanerKind {
+	case providerregistry.ExternalImportUserTextCleanerKindClaude:
 		if strings.Contains(trimmed, "<local-command-caveat>") || strings.HasPrefix(trimmed, "<command-name>") {
 			return "", false
 		}
 		return trimmed, true
-	default:
+	case providerregistry.ExternalImportUserTextCleanerKindCodex:
 		if strings.HasPrefix(trimmed, "# AGENTS.md") || strings.HasPrefix(trimmed, "<environment_context>") {
 			return "", false
 		}
@@ -492,6 +500,8 @@ func externalImportCleanUserText(provider string, text string) (string, bool) {
 			return extractCodexPromptFromIDEContext(trimmed)
 		}
 		return trimmed, true
+	default:
+		return "", false
 	}
 }
 

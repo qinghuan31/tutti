@@ -16,6 +16,29 @@ pull this package into `node_modules`, install its runtime `dependencies`, and
 launch `src/main.ts` with `--experimental-strip-types`. There is therefore no
 build step and no bundled entry point beyond the source files.
 
+## Sidecar protocol
+
+The daemon and sidecar exchange newline-delimited JSON envelopes over standard
+input and output. Every request and event carries `"version": 2`; either side
+rejects unsupported or missing versions instead of guessing compatibility.
+Protocol types and validation live in `src/protocol.ts`.
+
+Interactive responses use `(turnId, requestId)` identity. The sidecar keeps a
+bounded terminal disposition registry so `submit_interactive` is idempotent:
+an identical replay reports `answered` without resolving the SDK permission
+promise twice, while a changed replay reports `conflict`.
+`interactive_disposition` lets the daemon recover when a submission was
+applied but its acknowledgment was lost; transport ambiguity therefore remains
+non-terminal until the sidecar reports an authoritative disposition.
+
+## Module layout
+
+`src/main.ts` only owns the stdio server and request routing. Session lifecycle,
+stream projection, tools, interactions, compaction, usage, configuration, and
+diagnostics live in focused modules coordinated by `src/sessionRuntime.ts`.
+The full ownership and dependency rules are documented in
+[`docs/architecture/claude-code-sdk-runtime.md`](../../../docs/architecture/claude-code-sdk-runtime.md).
+
 ## Runtime dependencies
 
 - `@anthropic-ai/claude-agent-sdk`

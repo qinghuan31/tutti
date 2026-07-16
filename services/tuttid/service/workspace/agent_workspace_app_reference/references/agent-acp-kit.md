@@ -8,7 +8,7 @@ Depend on a released exact version of `@tutti-os/agent-acp-kit`. The kit owns pr
 
 The app owns product orchestration, its backend endpoint, prompt policy, app tools, persistence, and UI. It must not patch kit build output or copy platform protocol code.
 
-Daemon-owned Agent Session apps are a different execution model: they may use Tutti CLI start/get/cancel commands and must not instantiate an app-owned local runtime merely for consistency.
+Daemon-owned Agent Session apps are a different execution model: they may use Tutti CLI session commands and must not instantiate an app-owned local runtime merely for consistency. They must begin discovery with `tutti agent list --json`, select an exact returned `agents[].id`, and pass it to `tutti agent start --agent-id <agent-id> ...` for starts or handoffs. Provider-specific launch families and provider-only starts are legacy compatibility, not new-session authority.
 
 ## Runtime shape
 
@@ -28,7 +28,12 @@ import { createDefaultLocalAgentRuntime } from "@tutti-os/agent-acp-kit";
 export const localAgentRuntime = createDefaultLocalAgentRuntime();
 ```
 
-Provider IDs are canonical opaque strings. First-party local providers are `codex`, `claude-code`, and `tutti-agent`. The runtime accepts legacy `claude` input internally. `nexight` is historical activity compatibility only: apps must not register it as a new provider or map it to/from `tutti-agent`.
+Provider IDs are canonical opaque strings. Built-in runtime examples include
+`codex`, `claude-code`, and `tutti-agent`, but this is not an exhaustive agent
+catalog: discover selectable agents and their exact ids from the current Tutti
+catalog. The runtime accepts legacy `claude` input internally. `nexight` is
+historical activity compatibility only: apps must not register it as a new
+provider or map it to/from `tutti-agent`.
 
 Read `references/dynamic-agent-providers.md` for catalog, composer, persistence, UI, and standalone behavior.
 
@@ -39,14 +44,14 @@ The `@tutti-os/agent-acp-kit/tutti` subpath exposes three auto-detecting server-
 ```ts
 import {
   loadTuttiAgentComposerOptions,
-  loadTuttiAgentProviderCatalog,
+  loadTuttiAgentCatalog,
   loadTuttiAgentSkillContext
 } from "@tutti-os/agent-acp-kit/tutti";
 ```
 
 Do not pass a mode. When `TUTTI_CLI` is absent, catalog/composer use standalone runtime discovery and skill context is empty with `source: "standalone"`. When `TUTTI_CLI` exists, the kit uses it. A configured CLI failure is a typed error and never silently falls back.
 
-In a Tutti-hosted process, daemon Agent Targets own provider visibility. A disabled target is omitted by the CLI catalog, and the kit must not add that provider back from local runtime detection. Composer and Skill requests for a disabled provider fail before discovery or materialization. Standalone detection is used only when Tutti CLI is genuinely absent.
+In a Tutti-hosted process, daemon Agent Targets own agent visibility. A disabled target is omitted by the CLI catalog, and the kit must not add it back from local runtime detection. Composer and Skill requests for a disabled agent id fail before discovery or materialization. Standalone detection is used only when Tutti CLI is genuinely absent.
 
 The app does not use daemon URL, server credential, workspace identity, or app identity for Agent catalog/composer queries. Those values may still be required for unrelated app-scoped resources.
 
@@ -54,7 +59,7 @@ The app does not use daemon URL, server credential, workspace identity, or app i
 
 For each run:
 
-1. Generate a stable run ID and use the canonical provider ID returned by the facade.
+1. Generate a stable run ID, select an exact agent target id from the facade, and derive its runtime provider from that catalog entry.
 2. Await `createManagedAgentRunContextFromHeaders(...)` directly. It reads and validates the managed credential, canonicalizes supported legacy input internally, creates a safe managed cwd, and rejects unsupported managed providers. The app must not pre-read the credential or perform a separate provider-support precheck.
 3. When no managed header exists, use an app-owned local cwd.
 4. Load Tutti skill context when platform skills are useful. Omit browser/computer capability flags unless the app actually wires those tools and trusted server-side policy enables them.
@@ -85,7 +90,7 @@ const runContext = await createManagedAgentRunContextFromHeaders(req.headers, {
 const cwd = runContext?.cwd ?? appLocalRunCwd;
 
 const tuttiContext = await loadTuttiAgentSkillContext({
-  provider: providerId,
+  agentTargetId,
   agentSessionId: runId,
   cwd,
   signal
@@ -139,7 +144,7 @@ the Skill bundle loader:
 
 ```ts
 const tuttiContext = await loadTuttiAgentSkillContext({
-  provider: providerId,
+  agentTargetId,
   agentSessionId: runId,
   cwd,
   browserUse: browserToolsAreWiredAndAllowed,
@@ -211,8 +216,8 @@ Add tests for:
 - auto CLI-backed and standalone catalog/composer/skill behavior without a mode input;
 - configured-but-failing CLI returning a typed error without standalone fallback;
 - disabled Agent Targets staying absent without SDK detection adding them back;
-- full dynamic provider projection and lazy composer loading;
-- canonical IDs and one-time `claude -> claude-code` state migration;
+- full dynamic Agent Target projection and lazy composer loading;
+- exact agent ids and provider-only legacy state migration only when the current catalog has one unambiguous matching target;
 - direct awaited managed run context creation, with no app credential precheck;
 - no managed secret/cwd leakage;
 - event normalization, cancellation, and resume metadata;
@@ -220,4 +225,4 @@ Add tests for:
 - absence of raw Agent catalog clients, provider alias helpers, and dependency patch scripts.
 - absence of app permission selectors, permission persistence, and run-level permission arguments.
 
-For a real smoke test inside Tutti, load the catalog, one provider's composer options, and skill context before running a narrow cancellable prompt with no irreversible side effects.
+For a real smoke test inside Tutti, load the catalog, one agent's composer options, and skill context before running a narrow cancellable prompt with no irreversible side effects.

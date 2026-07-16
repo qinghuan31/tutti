@@ -2,6 +2,39 @@
 
 [Back to troubleshooting index](./README.md)
 
+### Temporary Git fixture turns a linked worktree bare
+
+- Symptom:
+  A test run leaves the shared repository config with `core.bare=true`, writes
+  fixture author identity into `.git/config`, or creates an `init` commit that
+  deletes most tracked files from a linked-worktree branch.
+- Quick checks:
+  Run `git config --show-origin --get core.bare`, inspect local `user.name` and
+  `user.email`, then inspect the affected branch reflog for a fixture-authored
+  commit. Search the responsible test for temporary-repository Git commands
+  whose child environment inherits `GIT_DIR` or `GIT_WORK_TREE`.
+- Root cause:
+  `mkdtemp` isolates files, not Git repository selection. An inherited
+  linked-worktree `GIT_DIR` overrides the fixture cwd, so `git init` reinitializes
+  the caller's private worktree metadata and updates its shared common config.
+  Later fixture `add` and `commit` commands can then stage the fixture tree
+  against the real branch.
+- Fix:
+  Remove repository-local Git environment variables for every fixture Git
+  command using case-insensitive name matching, set `GIT_CEILING_DIRECTORIES` to
+  the fixture root, stop on any command failure, verify `--absolute-git-dir`
+  after initialization, and pass fixture author identity through commit-local
+  `-c` arguments instead of `git config`.
+- Validation:
+  Run the fixture tests with poisoned `GIT_DIR`, `GIT_WORK_TREE`, and
+  `GIT_CONFIG_*` inputs that point only at disposable paths. Confirm the fixture
+  initializes its own `.git`, then verify the caller's config, index, branch,
+  and worktree remain unchanged.
+- References:
+  [git-environment.mjs](../../../tools/scripts/git-environment.mjs)
+  [check-agent-gui-degradation.test.mjs](../../../tools/scripts/check-agent-gui-degradation.test.mjs)
+  [static-analysis.md](../static-analysis.md)
+
 ### Dynamic CLI input rejects plausible flags
 
 - Symptom:
@@ -156,6 +189,147 @@ delimited by ---`, and the composer skill picker may show partial or
   [workspaceBrowserService.ts](../../../apps/desktop/src/renderer/src/features/workspace-workbench/services/internal/workspaceBrowserService.ts)
   [BrowserNode.tsx](../../../packages/browser/workbench-node/src/react/BrowserNode.tsx)
 
+### Standalone Agent Browser Node is blank and never attaches a guest
+
+- Symptom:
+  The standalone Agent window opens its Browser sidebar with the expected
+  title and panel background, but no page, error card, or Browser Node guest
+  appears. Desktop logs contain no `Browser Node webview will attach` entry for
+  the standalone browser node.
+- Quick checks:
+  Inspect `window.tutti.browser` in the `view=agent` renderer before debugging
+  BrowserNode lifecycle or network access. Compare the preload route gate for
+  `view=agent` with `view=workspace`. An absent browser API explains a panel
+  that renders only host chrome and never reaches Electron guest attachment.
+- Root cause:
+  The desktop preload exposed browser and workspace-app bridges only when the
+  renderer query used `view=workspace`. Standalone Agent windows use
+  `view=agent`, so their renderer received no `DesktopBrowserApi`; the sidebar
+  correctly reserved panel space but had no host API with which to activate or
+  register a `<webview>` guest.
+- Fix:
+  Treat both `workspace` and `agent` as workspace surfaces in the preload route
+  gate. Keep dashboard and unrelated window routes excluded. Because preload
+  code is loaded when the Electron renderer is created, restart the Electron
+  process after changing this gate; renderer HMR is insufficient.
+- Validation:
+  Unit-test the route predicate for `workspace`, `agent`, `dashboard`, and an
+  absent view. Run the desktop typecheck, Electron runtime-boundary check, and
+  desktop build. Confirm the preload remains a self-contained `index.cjs`, then
+  open the Agent Browser panel and verify desktop logs record the shared
+  Browser Node partition attaching with the browser guest preload.
+- References:
+  [main.ts](../../../apps/desktop/src/preload/entries/main.ts)
+  [workspaceSurfacePreload.ts](../../../apps/desktop/src/preload/entries/workspaceSurfacePreload.ts)
+  [StandaloneAgentToolSidebar.tsx](../../../apps/desktop/src/renderer/src/features/workspace-workbench/ui/StandaloneAgentToolSidebar.tsx)
+
+### Browser Node action finds a webview but page injection does nothing
+
+- Symptom:
+  A Browser Node toolbar action is visible and clickable, but moving the pointer
+  over the loaded page produces no expected guest-page behavior. Desktop logs
+  may report `The WebView must be attached to the DOM and the dom-ready event
+emitted before this method can be called`, especially after HMR, navigation,
+  or panel remount.
+- Quick checks:
+  Do not treat a matching `<webview>` DOM element or a visibly rendered page as
+  proof that Electron methods are callable. Call `getWebContentsId()` inside a
+  `try` block and confirm it returns a finite id. Check whether the action found
+  a detached element, ran before `dom-ready`, or retained a stale element while
+  React cleanup and BrowserNode guest teardown raced.
+- Root cause:
+  Electron exposes the webview element before its guest method bridge is ready,
+  and detaches that bridge before React passive cleanup necessarily runs. Direct
+  DOM lookup followed immediately by `executeJavaScript()` therefore races the
+  BrowserNode lifecycle. The method can also throw synchronously before it
+  returns a Promise, so appending `.catch()` alone does not protect cleanup.
+- Fix:
+  Reuse BrowserNode's guest lifecycle rather than creating a second owner. Before
+  guest script execution, require a connected webview with a readable finite
+  web contents id; otherwise wait for its `dom-ready` event with a bounded
+  timeout. Treat cancellation during navigation or unmount as best-effort and
+  guard the full method call with `try`/`catch`, including synchronous throws.
+  For the element selector specifically, keep the selection session independent
+  from one guest: consume BrowserNode's active-webview context, move the
+  selector to the newly active webview, and re-arm it after navigation
+  `dom-ready`. Increment an attempt token whenever the target changes so a late
+  result from the previous page cannot finish the new page's selection.
+- Validation:
+  Test delayed `dom-ready`, detached webviews, unmount cancellation, switching
+  tabs while selecting, and navigating the active tab while selecting. Run the
+  desktop typecheck, changed-aware checks, and production build. Confirm the
+  guest action is bundled with the standalone Agent browser adapter, then reload
+  the standalone Agent window before a manual page-selection smoke test.
+- References:
+  [browserElementWebview.ts](../../../apps/desktop/src/renderer/src/features/workspace-workbench/browser-element-context/browserElementWebview.ts)
+  [BrowserElementContextAction.tsx](../../../apps/desktop/src/renderer/src/features/workspace-workbench/browser-element-context/BrowserElementContextAction.tsx)
+  [webviewController.ts](../../../packages/browser/workbench-node/src/core/webviewController.ts)
+
+### Hidden Browser Node webview covers another panel
+
+- Symptom:
+  After switching from Browser Node to another panel in the same layout region,
+  the new panel title or sidebar appears but the previous web page still covers
+  part of its content. The panel selection state correctly identifies only the
+  new panel as active. The same root cause can make a Browser Node header menu
+  or dialog appear unresponsive: its trigger changes state, but the open Portal
+  is visually covered by the guest page.
+- Quick checks:
+  Inspect the mounted `BrowserNode` and its `<webview>` in DevTools. If the
+  parent panel has `visibility: hidden`, `display: none`, or an inactive class
+  but `BrowserNode` still receives `hidden={false}`, treat the guest surface as
+  the likely overlay before changing the panel reducer.
+- Root cause:
+  Electron webviews are guest surfaces with compositing behavior that cannot be
+  treated as ordinary descendant DOM for visibility coordination. Keeping a
+  Browser Node mounted preserves its local session, but hiding only an ancestor
+  panel can leave the guest surface visible above the newly active sibling.
+- Fix:
+  Keep one active panel id for tools that share the same region. Pass that
+  active state into every mounted Browser Node through its `hidden` prop, while
+  retaining the mounted component when session preservation is required. Keep
+  the App Center catalog and every previously opened inline workspace app as
+  mounted sibling layers: clearing `openAppId` reveals the catalog but must not
+  remove an app's Browser Node, and selecting another app must not replace the
+  previous app's keyed Browser Node. Give each inline app a stable app-specific
+  node id so Browser Node controllers and Electron guests cannot be rebound to
+  a different app. Prune those retained app layers only after a ready catalog
+  snapshot confirms removal; loading or reconnecting snapshots are not proof
+  that an app disappeared. Inactive app layers need both non-interactive DOM
+  visibility and `hidden={true}` on `BrowserNode`, because ancestor visibility
+  alone is insufficient for Electron guest compositing. Do not add an explicit
+  `visibility: visible` utility to the active child layer: CSS descendants can
+  override an inactive parent panel's inherited `visibility: hidden` and leak
+  the retained app or catalog over a newly selected sibling panel. Let active
+  layers inherit visibility from their parent, and apply `invisible` only to
+  inactive layers. Keep
+  tools in separate layout regions, such as a bottom terminal tray, on an
+  independent visibility state. For Browser Node-owned dialogs, track open
+  overlays by node id and mark the registered webview invisible until all modal
+  overlay owners close; do not unmount the webview or discard its session.
+  Render header menus inline through one `MenuSurface` positioned from the
+  browser header, and do not hide the webview for that inline menu. Keep nested
+  action views inside the same surface instead of opening Radix or
+  viewport-menu Portals above the guest. Portaled controls opened from a dialog,
+  such as `SelectContent`, must use the `--z-dialog-popover` semantic layer. The
+  ordinary `--z-popover` layer renders behind dialog content and makes the
+  control appear unresponsive even though its open state changed correctly.
+- Validation:
+  Cover every switch among panels in the shared region, verify the inactive
+  Browser Node receives `hidden={true}`, and verify an independently placed
+  terminal remains open throughout the same switches. For App Center, open two
+  apps, return to the catalog after each, and reopen both; page state and any
+  running in-page Agent must continue while both inactive Browser Nodes stay
+  hidden. Also open the Browser Node overflow menu, its submenus, settings
+  dialog, and clear-data confirmation above a loaded guest page; verify the
+  webview returns after each overlay closes. Renderer-only visibility changes
+  can use HMR; preload or Electron-main changes still require a process restart.
+- References:
+  [BrowserNode.tsx](../../../packages/browser/workbench-node/src/react/BrowserNode.tsx)
+  [browserNodeHostOverlayStore.ts](../../../packages/browser/workbench-node/src/react/browserNodeHostOverlayStore.ts)
+  [dropdown-menu.tsx](../../../packages/ui/system/src/components/dropdown-menu/dropdown-menu.tsx)
+  [StandaloneAgentToolSidebar.tsx](../../../apps/desktop/src/renderer/src/features/workspace-workbench/ui/StandaloneAgentToolSidebar.tsx)
+
 ### IME composition leaks native input into xterm terminals
 
 - Symptom:
@@ -186,6 +360,40 @@ delimited by ---`, and the composer skill picker may show partial or
 - References:
   [terminalImeInputGuard.ts](../../../packages/workspace/terminal/src/react/terminalImeInputGuard.ts)
   [terminalSurfaceRuntime.ts](../../../packages/workspace/terminal/src/react/terminalSurfaceRuntime.ts)
+
+### Chinese input renders replacement and control characters in workspace terminals
+
+- Symptom:
+  Chinese input reaches a local workspace terminal, but the shell prompt shows
+  replacement glyphs or control-byte markers such as `<0095>`. ASCII input and
+  commands continue to work, which can make the failure look like an xterm IME
+  composition bug.
+- Quick checks:
+  Run `locale` or `locale charmap` inside a newly created terminal. If
+  `LC_CTYPE` resolves to `C` and the character map is not UTF-8, inspect the
+  desktop and `tuttid` process environments for `LC_ALL`, `LC_CTYPE`, and
+  `LANG` before changing xterm key handlers or terminal transport encoding.
+- Root cause:
+  Finder-launched macOS applications commonly start without locale variables.
+  The daemon inherited that environment and spawned the interactive shell
+  without a character-type locale, so zsh interpreted UTF-8 IME bytes under the
+  single-byte `C` locale and rendered invalid or control characters.
+- Fix:
+  When all locale variables are absent or effectively empty on macOS, append
+  `LC_CTYPE=UTF-8` to the terminal child environment. Preserve any explicit
+  `LC_ALL`, `LC_CTYPE`, or `LANG` value. Restrict the fallback to the character
+  type so message language, sorting, dates, and other locale categories do not
+  change.
+- Validation:
+  Unit-cover missing, empty, explicit, and non-macOS environment cases. Start a
+  real macOS zsh PTY with empty locale variables and assert `locale charmap`
+  reports `UTF-8`, then manually enter Chinese text in a newly created terminal.
+  Existing terminal processes retain their original environment and must be
+  replaced for the fix to take effect.
+- References:
+  [terminal_helpers.go](../../../services/tuttid/service/workspace/terminal_helpers.go)
+  [terminal_helpers_test.go](../../../services/tuttid/service/workspace/terminal_helpers_test.go)
+  [terminal_test.go](../../../services/tuttid/service/workspace/terminal_test.go)
 
 ### Post-composition suppression window swallows real terminal input
 
@@ -265,6 +473,35 @@ delimited by ---`, and the composer skill picker may show partial or
   [packages/browser/workbench-node/src/workbench/index.ts](../../../packages/browser/workbench-node/src/workbench/index.ts)
   [packages/workspace/issue-manager/package.json](../../../packages/workspace/issue-manager/package.json)
   [packages/workspace/issue-manager/src/workbench/index.ts](../../../packages/workspace/issue-manager/src/workbench/index.ts)
+
+### New release CDN namespace returns an S3 403
+
+- Symptom:
+  Release artifacts upload successfully and `s3api head-object` finds them,
+  but the corresponding CloudFront URL returns HTTP 403 with
+  `server: AmazonS3` and `x-cache: Error from cloudfront`.
+- Quick checks:
+  Compare the requested path with the distribution's ordered cache behaviors,
+  identify the selected origin, and inspect the origin bucket policy for a
+  matching `s3:GetObject` resource prefix. Do not treat a successful S3 upload
+  or invalidation as proof that the CDN route exists.
+- Root cause:
+  The new release namespace was uploaded before its CloudFront path behavior
+  and S3 read policy were provisioned. The request fell through to an unrelated
+  default origin, which correctly returned AccessDenied.
+- Fix:
+  Add a read-only cache behavior for the namespace that targets the intended S3
+  origin, append the narrow bucket-policy resource prefix, wait for the
+  distribution deployment, and invalidate the new namespace. Preserve every
+  unrelated distribution behavior and use the current distribution ETag when
+  updating it.
+- Validation:
+  Download mutable index metadata, immutable release metadata, and the artifact
+  from the public CDN. Require HTTP 200 and rerun signature, SHA-256, and byte
+  size verification against those downloaded files.
+- References:
+  [Agent Extensions](../../architecture/agent-extensions.md) and the concrete
+  Agent repository's release workflow.
 
 ### Browser Node focus pings miss iframe-hosted editors
 

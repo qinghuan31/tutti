@@ -34,3 +34,12 @@ services/tuttid/service/agent/external_import_parse.go.
   LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
   OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
   SOFTWARE.
+
+----------------------------------------------------------------------
+
+The InspectIcon path in packages/ui/system/src/icons/system-icons.tsx is
+adapted from the Visual Studio Code Codicons "inspect" icon by Microsoft
+Corporation, used under the Creative Commons Attribution 4.0 International
+license (https://creativecommons.org/licenses/by/4.0/). The source icon is
+available at https://github.com/microsoft/vscode-codicons. It was adapted into
+a React component that inherits the current text color and shared icon sizing.

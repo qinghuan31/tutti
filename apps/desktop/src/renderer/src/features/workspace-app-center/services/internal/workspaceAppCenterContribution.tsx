@@ -6,7 +6,12 @@ import {
 } from "@tutti-os/browser-node";
 import { BrowserNode } from "@tutti-os/browser-node/react";
 import type { I18nRuntime } from "@tutti-os/ui-i18n-runtime";
-import { NavApplicationsLinedIcon, Spinner } from "@tutti-os/ui-system";
+import {
+  ArrowLeftIcon,
+  Button,
+  NavApplicationsLinedIcon,
+  Spinner
+} from "@tutti-os/ui-system";
 import { resolveWorkspaceAppStatusPresentation } from "@tutti-os/workspace-app-center/core";
 import { createAppCenterI18nRuntime } from "@tutti-os/workspace-app-center/i18n";
 import type {
@@ -18,7 +23,6 @@ import type {
   WorkbenchHostNodeHeaderContext,
   WorkbenchHostNodeDefinition
 } from "@tutti-os/workbench-surface";
-import { WorkspaceAppCenterPane } from "../../ui/WorkspaceAppCenterPane.tsx";
 import { createWorkspaceWorkbenchDesktopI18nRuntime } from "@shared/i18n";
 import { WorkspaceWorkbenchTrafficLights } from "@renderer/features/workspace-workbench/ui/WorkspaceWorkbenchTrafficLights";
 import type { IReporterService } from "@renderer/features/analytics";
@@ -28,6 +32,10 @@ import type {
   WorkspaceAppCenterViewState
 } from "@tutti-os/workspace-app-center";
 import { createWorkspaceAppCenterOpenedLease } from "./workspaceAppCenterAnalytics.ts";
+import {
+  WorkspaceAppCenterInlineAppBody,
+  workspaceAppBrowserPartitionPrefix
+} from "./workspaceAppCenterInlineAppBody.tsx";
 import {
   workspaceAppCenterDockOrder,
   workspaceAppDockOrderStart
@@ -56,8 +64,13 @@ import {
   workspaceAppWebviewTypeID
 } from "./workspaceAppCenterLaunchRequest.ts";
 import { shouldShowWorkspaceApp } from "../workspaceAppVisibility.ts";
+import { useSnapshot } from "valtio";
 
-export const workspaceAppBrowserPartitionPrefix = "persist:tutti-app:";
+export { workspaceAppBrowserPartitionPrefix } from "./workspaceAppCenterInlineAppBody.tsx";
+
+const defaultWorkspaceAppCenterViewState: WorkspaceAppCenterViewState = {
+  activeAppTab: "recommended"
+};
 
 export {
   readWorkspaceAppIdFromDockEntryId,
@@ -99,6 +112,8 @@ export function createWorkspaceAppCenterContribution({
     id: "workspace-app-center",
     nodes: [
       createAppCenterNodeDefinition({
+        appCenterService,
+        browserFeature,
         i18n,
         reporterService,
         workspaceId
@@ -241,6 +256,8 @@ function createWorkspaceAppDockIcon(app: WorkspaceAppCenterApp): ReactNode {
 }
 
 function createAppCenterNodeDefinition(input: {
+  appCenterService: IWorkspaceAppCenterService;
+  browserFeature: BrowserNodeFeature;
   i18n: I18nRuntime<string>;
   reporterService?: Pick<IReporterService, "trackEvents">;
   workspaceId: string;
@@ -252,13 +269,22 @@ function createAppCenterNodeDefinition(input: {
       }),
     frame: workspaceAppCenterFrame,
     renderBody: (context) => (
-      <WorkspaceAppCenterPane
-        restoredViewState={context.externalNodeState}
+      <WorkspaceAppCenterInlineAppBody
+        appCenterService={input.appCenterService}
+        browserFeature={input.browserFeature}
+        context={context}
+        fallbackLabel={input.i18n.t("common.loading")}
+        i18n={input.i18n}
         workspaceId={input.workspaceId}
       />
     ),
     renderHeader: (context) => (
-      <WorkspaceAppCenterWorkbenchHeader context={context} i18n={input.i18n} />
+      <WorkspaceAppCenterWorkbenchHeader
+        appCenterService={input.appCenterService}
+        context={context}
+        i18n={input.i18n}
+        workspaceId={input.workspaceId}
+      />
     ),
     title: input.i18n.t("workspace.workbenchDesktop.nodes.appCenter"),
     typeId: workspaceAppCenterNodeID,
@@ -275,13 +301,23 @@ function createAppCenterNodeDefinition(input: {
 }
 
 function WorkspaceAppCenterWorkbenchHeader({
+  appCenterService,
   context,
-  i18n
+  i18n,
+  workspaceId
 }: {
-  context: WorkbenchHostNodeHeaderContext<unknown>;
+  appCenterService: IWorkspaceAppCenterService;
+  context: WorkbenchHostNodeHeaderContext<WorkspaceAppCenterViewState | null>;
   i18n: I18nRuntime<string>;
+  workspaceId: string;
 }): ReactNode {
   const appCenterI18n = createWorkspaceWorkbenchDesktopI18nRuntime(i18n);
+  const state = useSnapshot(appCenterService.store);
+  const viewState =
+    state.viewStateByWorkspaceId[workspaceId] ??
+    context.externalNodeState ??
+    defaultWorkspaceAppCenterViewState;
+  const openAppId = viewState.openAppId?.trim() ?? "";
 
   return (
     <div className="flex h-full min-h-0 items-center gap-3 bg-[var(--background-panel)] px-3 pl-4">
@@ -291,6 +327,27 @@ function WorkspaceAppCenterWorkbenchHeader({
         i18n={appCenterI18n}
         windowActions={context.windowActions}
       />
+      {openAppId ? (
+        <Button
+          className="nodrag shrink-0 gap-1 px-2"
+          size="sm"
+          type="button"
+          variant="ghost"
+          onClick={() => {
+            appCenterService.getViewState(
+              workspaceId,
+              context.externalNodeState
+            );
+            appCenterService.setViewState({
+              state: { openAppId: null },
+              workspaceId
+            });
+          }}
+        >
+          <ArrowLeftIcon aria-hidden size={16} />
+          {i18n.t("workspace.appCenter.backToApps")}
+        </Button>
+      ) : null}
       <div
         {...context.dragHandleProps}
         className="flex h-full min-w-0 flex-1 cursor-grab items-center gap-2 active:cursor-grabbing"
@@ -327,7 +384,7 @@ function createWorkspaceAppWebviewNodeDefinition(input: {
       />
     ),
     renderHeader: (context) => (
-      <WorkspaceAppCenterWorkbenchHeader context={context} i18n={input.i18n} />
+      <WorkspaceAppWebviewHeader context={context} i18n={input.i18n} />
     ),
     title: input.i18n.t("workspace.workbenchDesktop.nodes.appWebview"),
     typeId: workspaceAppWebviewTypeID,
@@ -349,6 +406,35 @@ function createWorkspaceAppWebviewNodeDefinition(input: {
       restoreOnLoad: true
     }
   };
+}
+
+function WorkspaceAppWebviewHeader({
+  context,
+  i18n
+}: {
+  context: WorkbenchHostNodeHeaderContext<unknown>;
+  i18n: I18nRuntime<string>;
+}): ReactNode {
+  const appCenterI18n = createWorkspaceWorkbenchDesktopI18nRuntime(i18n);
+
+  return (
+    <div className="flex h-full min-h-0 items-center gap-3 bg-[var(--background-panel)] px-3 pl-4">
+      <WorkspaceWorkbenchTrafficLights
+        className="nodrag"
+        displayMode={context.displayMode}
+        i18n={appCenterI18n}
+        windowActions={context.windowActions}
+      />
+      <div
+        {...context.dragHandleProps}
+        className="flex h-full min-w-0 flex-1 cursor-grab items-center gap-2 active:cursor-grabbing"
+      >
+        <div className="min-w-0 truncate text-[13px] font-semibold text-[var(--text-primary)]">
+          {context.node.title}
+        </div>
+      </div>
+    </div>
+  );
 }
 
 function WorkspaceAppWebviewBody({

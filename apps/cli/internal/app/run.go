@@ -38,6 +38,8 @@ func RunWithProgram(ctx context.Context, program string, args []string, stdout i
 			return 2
 		}
 		return runStatus(ctx, commandName, opts, stdout, stderr)
+	case "managed-model":
+		return runManagedModel(ctx, commandName, opts, rest[1:], stdout, stderr)
 	default:
 		return runDynamic(ctx, commandName, opts, rest, stdout, stderr)
 	}
@@ -113,6 +115,14 @@ func runDynamic(ctx context.Context, commandName string, opts options, args []st
 		return 1
 	}
 	command, commandArgs, ok := matchCapability(capabilities.Commands, args)
+	if !ok && legacyAgentCompatibilityInvocation(args) && !includeIntegrationCapabilitiesFromEnv() {
+		compatibilities, listErr := client.ListCapabilitiesForWorkspaceWithOptions(ctx, invokeContext.WorkspaceID, daemon.CapabilityListOptions{
+			IncludeIntegration: true,
+		})
+		if listErr == nil {
+			command, commandArgs, ok = matchCapability(compatibilities.Commands, args)
+		}
+	}
 	if !ok {
 		if prefix, help := commandHelpPrefix(args); help {
 			if printCommandPrefixHelp(stdout, commandName, prefix, capabilities.Commands) {
@@ -156,6 +166,14 @@ func runDynamic(ctx context.Context, commandName string, opts options, args []st
 	return writeCommandOutput(stdout, stderr, *response.Output)
 }
 
+func legacyAgentCompatibilityInvocation(args []string) bool {
+	if len(args) < 2 {
+		return false
+	}
+	path := strings.Join(args[:2], " ")
+	return path == "agent providers" || path == "codex start" || path == "claude start"
+}
+
 func runHelp(ctx context.Context, commandName string, stdout io.Writer) int {
 	var commands []daemon.Capability
 	client, err := discoverClient()
@@ -179,6 +197,7 @@ func includeIntegrationCapabilitiesFromEnv() bool {
 
 func cliInvokeContextFromEnv() daemon.InvokeContext {
 	return daemon.InvokeContext{
+		AppID:           strings.TrimSpace(os.Getenv("TUTTI_APP_ID")),
 		Source:          "cli",
 		WorkspaceID:     strings.TrimSpace(os.Getenv("TUTTI_WORKSPACE_ID")),
 		ParentCommandID: strings.TrimSpace(os.Getenv("TUTTI_APP_CLI_PARENT_COMMAND_ID")),

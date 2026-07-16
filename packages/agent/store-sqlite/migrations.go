@@ -28,8 +28,39 @@ const schemaMigrationWorkspaceAgentActivityV5 = "workspace_agent_activity_v5"
 const schemaMigrationWorkspaceAgentActivityV6 = "workspace_agent_activity_v6"
 const schemaMigrationWorkspaceAgentActivityV7 = "workspace_agent_activity_v7"
 const schemaMigrationWorkspaceAgentActivityV8 = "workspace_agent_activity_v8"
+const schemaMigrationWorkspaceAgentActivityV9 = "workspace_agent_activity_v9"
+const schemaMigrationWorkspaceAgentActivityV10 = "workspace_agent_activity_v10"
 const schemaMigrationWorkspaceAgentActivityRailV1 = "workspace_agent_activity_rail_v1"
+const schemaMigrationWorkspaceAgentActivityTurnsV1 = "workspace_agent_activity_turns_v1"
+const schemaMigrationWorkspaceAgentActivityInteractionsV2 = "workspace_agent_activity_interactions_v2"
+const schemaMigrationWorkspaceAgentActivityMessagesV2 = "workspace_agent_activity_messages_v2"
+const schemaMigrationWorkspaceAgentActivityTurnIntegrityV1 = "workspace_agent_activity_turn_integrity_v1"
+const schemaMigrationWorkspaceAgentSessionMetadataV1 = "workspace_agent_session_metadata_v1"
+const schemaMigrationWorkspaceAgentSessionMetadataV2 = "workspace_agent_session_metadata_v2"
+const schemaMigrationWorkspaceAgentSessionEntitiesV3 = "workspace_agent_session_entities_v3"
+const schemaMigrationWorkspaceAgentEntityInvariantsV1 = "workspace_agent_entity_invariants_v1"
+const schemaMigrationWorkspaceAgentRuntimeOperationsV1 = "workspace_agent_runtime_operations_v1"
+const schemaMigrationWorkspaceAgentRuntimeOperationsV2 = "workspace_agent_runtime_operations_v2"
+const schemaMigrationWorkspaceAgentRuntimeOperationsV3 = "workspace_agent_runtime_operations_v3"
+const schemaMigrationWorkspaceAgentSubmitClaimsV1 = "workspace_agent_submit_claims_v1"
 const schemaMigrationAgentTargetsV1 = "agent_targets_v1"
+const schemaMigrationAgentTargetsV2 = "agent_targets_v2"
+const schemaMigrationAgentTargetsV3 = "agent_targets_v3"
+const schemaMigrationWorkspaceAgentSessionTitlesV1 = "workspace_agent_session_titles_v1"
+const schemaMigrationWorkspaceAgentSessionTitlesV2 = "workspace_agent_session_titles_v2"
+const schemaMigrationWorkspaceAgentChildSessionsV1 = "workspace_agent_child_sessions_v1"
+const schemaMigrationWorkspaceAgentRootTurnCompletionV1 = "workspace_agent_root_turn_completion_v1"
+const schemaMigrationWorkspaceAgentTurnProvenanceV1 = "workspace_agent_turn_provenance_v1"
+const schemaMigrationWorkspaceAgentTurnProvenanceV2 = "workspace_agent_turn_provenance_v2"
+const schemaMigrationWorkspaceAgentGoalStateV1 = "workspace_agent_goal_state_v1"
+const schemaMigrationWorkspaceAgentGoalStateV2 = "workspace_agent_goal_state_v2"
+const schemaMigrationWorkspaceAgentGoalStateV3 = "workspace_agent_goal_state_v3"
+const schemaMigrationWorkspaceAgentGoalStateV4 = "workspace_agent_goal_state_v4"
+const schemaMigrationWorkspaceAgentGoalStateV5 = "workspace_agent_goal_state_v5"
+const schemaMigrationWorkspaceAgentGoalStateV6 = "workspace_agent_goal_state_v6"
+const schemaMigrationWorkspaceAgentGoalStateV7 = "workspace_agent_goal_state_v7"
+const schemaMigrationWorkspaceAgentGoalProvenanceLedgerV1 = "workspace_agent_goal_provenance_ledger_v1"
+const schemaMigrationWorkspaceAgentMessageSemanticsV1 = "workspace_agent_message_semantics_v1"
 
 // claimableMigrationIDs are the migration IDs that may already be recorded
 // in the legacy tuttid ledger; the claim copies exactly these.
@@ -92,7 +123,100 @@ CREATE TABLE IF NOT EXISTS `+schemaMigrationsTable+` (
 	if err := s.applyAgentTargetsV1(ctx); err != nil {
 		return err
 	}
-	return s.applyWorkspaceAgentActivityRailV1(ctx)
+	if err := s.applyAgentTargetsV2(ctx); err != nil {
+		return err
+	}
+	if err := s.applyAgentTargetsV3(ctx); err != nil {
+		return err
+	}
+	if err := s.applyWorkspaceAgentActivityRailV1(ctx); err != nil {
+		return err
+	}
+	if err := s.applyWorkspaceAgentActivityTurnsV1(ctx); err != nil {
+		return err
+	}
+	if err := s.applyWorkspaceAgentActivityInteractionsV2(ctx); err != nil {
+		return err
+	}
+	if err := s.applyWorkspaceAgentActivityMessagesV2(ctx); err != nil {
+		return err
+	}
+	if err := s.applyWorkspaceAgentActivityTurnIntegrityV1(ctx); err != nil {
+		return err
+	}
+	if err := s.applyWorkspaceAgentSessionMetadataV1(ctx); err != nil {
+		return err
+	}
+	if err := s.applyWorkspaceAgentSessionMetadataV2(ctx); err != nil {
+		return err
+	}
+	if err := s.applyWorkspaceAgentSessionEntitiesV3(ctx); err != nil {
+		return err
+	}
+	if err := s.applyWorkspaceAgentActivityV9(ctx); err != nil {
+		return err
+	}
+	if err := s.applyWorkspaceAgentActivityV10(ctx); err != nil {
+		return err
+	}
+	if err := s.applyWorkspaceAgentEntityInvariantsV1(ctx); err != nil {
+		return err
+	}
+	if err := s.applyWorkspaceAgentRuntimeOperationsV1(ctx); err != nil {
+		return err
+	}
+	if err := s.applyWorkspaceAgentRuntimeOperationsV2(ctx); err != nil {
+		return err
+	}
+	if err := s.applyWorkspaceAgentRuntimeOperationsV3(ctx); err != nil {
+		return err
+	}
+	if err := s.applyWorkspaceAgentSubmitClaimsV1(ctx); err != nil {
+		return err
+	}
+	if err := s.applyWorkspaceAgentSessionTitlesV1(ctx); err != nil {
+		return err
+	}
+	if err := s.applyWorkspaceAgentSessionTitlesV2(ctx); err != nil {
+		return err
+	}
+	if err := s.applyWorkspaceAgentChildSessionsV1(ctx); err != nil {
+		return err
+	}
+	if err := s.applyWorkspaceAgentRootTurnCompletionV1(ctx); err != nil {
+		return err
+	}
+	if err := s.applyWorkspaceAgentTurnProvenanceV1(ctx); err != nil {
+		return err
+	}
+	if err := s.applyWorkspaceAgentTurnProvenanceV2(ctx); err != nil {
+		return err
+	}
+	if err := s.applyWorkspaceAgentGoalStateV1(ctx); err != nil {
+		return err
+	}
+	if err := s.applyWorkspaceAgentGoalStateV2(ctx); err != nil {
+		return err
+	}
+	if err := s.applyWorkspaceAgentGoalStateV3(ctx); err != nil {
+		return err
+	}
+	if err := s.applyWorkspaceAgentGoalStateV4(ctx); err != nil {
+		return err
+	}
+	if err := s.applyWorkspaceAgentGoalStateV5(ctx); err != nil {
+		return err
+	}
+	if err := s.applyWorkspaceAgentGoalStateV6(ctx); err != nil {
+		return err
+	}
+	if err := s.applyWorkspaceAgentGoalStateV7(ctx); err != nil {
+		return err
+	}
+	if err := s.applyWorkspaceAgentGoalProvenanceLedgerV1(ctx); err != nil {
+		return err
+	}
+	return s.applyWorkspaceAgentMessageSemanticsV1(ctx)
 }
 
 // claimLegacyMigrations copies agent-store migration records that were
@@ -148,6 +272,15 @@ func (s *Store) recordMigration(ctx context.Context, migrationID string) error {
 	if _, err := s.db.ExecContext(ctx, `
 INSERT INTO `+schemaMigrationsTable+` (id, applied_at_unix_ms)
   VALUES (?, ?);
+`, migrationID, unixMs(time.Now().UTC())); err != nil {
+		return fmt.Errorf("record agent store migration %s: %w", migrationID, err)
+	}
+	return nil
+}
+
+func recordMigrationTx(ctx context.Context, tx *sql.Tx, migrationID string) error {
+	if _, err := tx.ExecContext(ctx, `
+INSERT INTO `+schemaMigrationsTable+` (id, applied_at_unix_ms) VALUES (?, ?)
 `, migrationID, unixMs(time.Now().UTC())); err != nil {
 		return fmt.Errorf("record agent store migration %s: %w", migrationID, err)
 	}

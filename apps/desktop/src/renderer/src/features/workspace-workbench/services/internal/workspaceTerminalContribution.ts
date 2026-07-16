@@ -47,6 +47,7 @@ import {
   resolveTerminalOpenedParams
 } from "./workspaceTerminalAnalytics.ts";
 import { defaultWorkspaceTerminalWorkbenchTypeId } from "./workspaceTerminalWorkbenchConstants.ts";
+import { registerWorkspaceTerminalSurfaceRuntime } from "../workspaceTerminalSurfaceRuntime.ts";
 
 export function createWorkspaceTerminalContribution(input: {
   appI18n: I18nRuntime<string>;
@@ -170,7 +171,7 @@ export function createWorkspaceTerminalContribution(input: {
     typeId: defaultWorkspaceTerminalWorkbenchTypeId
   });
 
-  return {
+  const resolvedContribution: WorkbenchContribution = {
     ...contribution,
     dockEntries: contribution.dockEntries?.map((entry) =>
       entry.id === defaultWorkspaceTerminalWorkbenchTypeId
@@ -222,6 +223,21 @@ export function createWorkspaceTerminalContribution(input: {
         terminalTypeId: defaultWorkspaceTerminalWorkbenchTypeId
       })
   };
+
+  registerWorkspaceTerminalSurfaceRuntime(resolvedContribution, {
+    createSession: () =>
+      feature.launchService.create({
+        reason: "intent",
+        workspaceId: input.workspaceId
+      }),
+    feature,
+    getExternalState: (sessionId) =>
+      terminalAdapter.externalStateSource.get(sessionId),
+    subscribe: (listener) =>
+      terminalAdapter.externalStateSource.subscribe(listener)
+  });
+
+  return resolvedContribution;
 }
 
 function readTerminalWorkbenchIntent(

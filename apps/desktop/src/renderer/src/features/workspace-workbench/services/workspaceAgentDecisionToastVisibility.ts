@@ -13,9 +13,11 @@ export interface WorkspaceAgentDecisionToastVisibilityInput {
  * background the OS notification already covers the "please come back"
  * signal (see compositeNotificationService's background-only presentation),
  * and the pending decision remains available in the message center — the
- * toast itself would just be an unseen, disruptive interruption. Likewise,
- * when the session's own AgentGUI conversation window is already open, the
- * prompt is already visible inline there, so the toast would just duplicate it.
+ * toast itself would just be an unseen, disruptive interruption. The OS
+ * workspace caller also treats an open AgentGUI conversation as sufficient
+ * inline presentation. Standalone Agent intentionally passes false for that
+ * condition because its product contract includes the top-right decision card
+ * in addition to the inline prompt.
  */
 export function shouldShowWorkspaceAgentDecisionToast(
   input: WorkspaceAgentDecisionToastVisibilityInput

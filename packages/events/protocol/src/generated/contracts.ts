@@ -130,8 +130,6 @@ export interface PreferencesDesktopPreferencesV1 {
   minimizeAnimation: "scale" | "genie" | "off";
   sleepPreventionMode: "never" | "whileAgentRunning" | "always";
   showAppDeveloperSources: boolean;
-  enableCursorAgent: boolean;
-  enableOpenCodeAgent: boolean;
   themeSource: "system" | "dark" | "light";
   updateChannel: "stable" | "rc";
   updatePolicy: "off" | "prompt" | "auto";
@@ -221,12 +219,12 @@ export type AgentActivityUpdatedPayloadV1 =
   | {
       workspaceId: string;
       agentSessionId: string;
-      eventType: "session_update";
+      eventType: "session_reconcile_required";
       data: {
         workspaceId: string;
         agentSessionId: string;
         agentTargetId?: string;
-        eventType: "session_update";
+        eventType: "session_reconcile_required";
         lastEventUnixMs: number;
       };
     }
@@ -253,11 +251,11 @@ export type AgentActivityUpdatedPayloadV1 =
         acceptedCount: number;
         messages: readonly {
           agentSessionId: string;
-          id: number;
           kind: string;
           messageId: string;
           payload: Record<string, unknown>;
           role: string;
+          sequence: number;
           version: number;
           turnId: string;
           status?: string;
@@ -272,40 +270,74 @@ export type AgentActivityUpdatedPayloadV1 =
   | {
       workspaceId: string;
       agentSessionId: string;
-      eventType: "state_patch";
+      eventType: "session_audit";
       data: {
         workspaceId: string;
         agentSessionId: string;
-        eventType: "state_patch";
-        lastEventUnixMs: number;
-        occurredAtUnixMs?: number;
-        provider?: string;
-        agentTargetId?: string;
-        providerSessionId?: string;
-        model?: string;
-        cwd?: string;
-        title?: string;
-        lifecycleStatus?: string;
-        currentPhase?: string;
-        lastError?: string;
-        startedAtUnixMs?: number;
-        endedAtUnixMs?: number;
-        runtimeContext?: Record<string, unknown>;
-        submitAvailability?: {
-          state: string;
-          reason?: string;
+        eventType: "session_audit";
+        audit: {
+          auditId: string;
+          role: string;
+          payload: Record<string, unknown>;
+          occurredAtUnixMs: number;
+          version: number;
         };
-        turn?: {
+      };
+    }
+  | {
+      workspaceId: string;
+      agentSessionId: string;
+      eventType: "turn_update";
+      data: {
+        workspaceId: string;
+        agentSessionId: string;
+        eventType: "turn_update";
+        occurredAtUnixMs: number;
+        activeTurnId: string | null;
+        turn: {
           turnId: string;
-          phase?: string;
-          outcome?: string;
-          fileChanges?: unknown;
-          startedAtUnixMs?: number;
-          completedAtUnixMs?: number;
-          submitAvailability?: {
-            state: string;
-            reason?: string;
-          };
+          agentSessionId: string;
+          phase: "submitted" | "running" | "waiting" | "settling" | "settled";
+          origin:
+            | "user_prompt"
+            | "goal_arm"
+            | "goal_continuation"
+            | "provider_initiated"
+            | "legacy_unknown";
+          sourceGoalOperationId?: string | null;
+          sourceGoalRevision?: number | null;
+          sourceGoalRepairEpoch?: number | null;
+          outcome: null | "completed" | "failed" | "canceled" | "interrupted";
+          error: Record<string, unknown> | null;
+          fileChanges: unknown;
+          completedCommand: Record<string, unknown> | null;
+          startedAtUnixMs: number;
+          settledAtUnixMs: number | null;
+          updatedAtUnixMs: number;
+        };
+      };
+    }
+  | {
+      workspaceId: string;
+      agentSessionId: string;
+      eventType: "interaction_update";
+      data: {
+        workspaceId: string;
+        agentSessionId: string;
+        eventType: "interaction_update";
+        occurredAtUnixMs: number;
+        interaction: {
+          requestId: string;
+          agentSessionId: string;
+          turnId: string;
+          kind: "approval" | "question" | "plan";
+          status: "pending" | "answered" | "superseded";
+          toolName: string | null;
+          input: Record<string, unknown> | null;
+          output: Record<string, unknown> | null;
+          metadata: Record<string, unknown> | null;
+          createdAtUnixMs: number;
+          updatedAtUnixMs: number;
         };
       };
     };
@@ -371,7 +403,7 @@ export interface WorkspaceWorkbenchNodeLaunchRequestedPayloadV1 {
 export type AgentActivityUpdatedEventV1 = BusinessEventEnvelopeV1<
   "agent.activity.updated",
   AgentActivityUpdatedPayloadV1,
-  1
+  2
 >;
 
 export type AgentModelCatalogInvalidatedEventV1 = BusinessEventEnvelopeV1<

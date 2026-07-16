@@ -5,6 +5,12 @@ export default defineConfig({
   dts: true,
   entry: {
     index: "index.ts",
+    "agent-gui": "AgentGUI.tsx",
+    "startup-shell": "AgentGUIStartupShell.tsx",
+    agents: "agents.ts",
+    "custom-mention": "custom-mention.ts",
+    "dock-icons": "dockIcons.ts",
+    "mention-search": "agent-gui/agentGuiNode/AgentMentionSearchController.ts",
     "agent-message-center/index": "agent-message-center/index.ts",
     "agent-conversation/index": "agent-conversation/index.ts",
     "agent-env/index": "shared/agentEnv/index.ts",
@@ -12,10 +18,10 @@ export default defineConfig({
     "context-mention-provider":
       "agent-gui/agentGuiNode/agentContextMentionProvider.ts",
     "agent-title-text": "shared/utils/agentTitleText.ts",
-    "queued-prompt-runtime": "agentQueuedPromptRuntimeCore.ts",
+    "provider-identity": "provider-identity.ts",
+    "provider-icons": "provider-icons.ts",
     "i18n/index": "i18n/index.ts",
     "mention-file-presentation": "agent-gui/shared/mentionFilePresentation.ts",
-    "plan-decision-ops": "shared/agentConversation/planImplementation.ts",
     "workbench/index": "workbench/index.ts",
     "workbench/contribution": "workbench/contribution.ts",
     "workbench/launch": "workbench/launch.ts",
@@ -23,13 +29,14 @@ export default defineConfig({
     "workbench/sessionTitle": "workbench/sessionTitle.ts",
     "workbench/state": "workbench/state.ts",
     "workbench/types": "workbench/types.ts",
-    "workspace-agent-generated-files":
-      "shared/workspaceAgentActivityListViewModel.ts"
+    "workspace-agent-generated-files": "shared/workspaceAgentGeneratedFiles.ts",
+    "workspace-query-cache": "shared/query/workspaceQueryCache.ts"
   },
   external: ["react", "react-dom"],
   format: ["esm"],
   loader: {
-    ".png": "dataurl"
+    ".png": "dataurl",
+    ".svg": "dataurl"
   },
   sourcemap: true
 });

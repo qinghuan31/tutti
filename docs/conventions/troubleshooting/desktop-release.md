@@ -2,43 +2,77 @@
 
 [Back to troubleshooting index](./README.md)
 
-### Desktop stable release alias disappears or stays below a prerelease
+### Packaged Tutti starts but external shells cannot find `tutti`
+
+- Symptom:
+  The packaged desktop app starts normally and `~/.tutti/bin/tutti status`
+  succeeds, but a new terminal reports `command not found: tutti`.
+- Quick checks:
+  Run `command -v tutti`, print the login-shell `PATH`, and inspect
+  `~/.tutti/bin/tutti`. Check `~/.tutti/logs/tutti-desktop.log` for
+  `tutti cli shim is not discoverable on user PATH` and check whether an
+  unrelated `tutti` executable already exists earlier on `PATH`.
+- Root cause:
+  Creating the canonical shim under the state root does not make it shell
+  discoverable unless `<state-dir>/bin` is already on `PATH`. Desktop apps
+  launched from Finder may also inherit a smaller `PATH` than the user's login
+  shell, so using only the Electron process environment misses user bin
+  directories.
+- Fix:
+  Reuse the cached login-shell environment resolved for the managed daemon.
+  Keep `<state-dir>/bin/tutti` canonical, and install a forwarding shim only in
+  writable `~/.local/bin` or `~/bin` directories already present on the login
+  shell's `PATH`. Repair Tutti-owned shims on later startups, preserve unrelated
+  commands, and do not edit shell profiles or write `/usr/local/bin`. Keep this
+  installation best-effort so a slow or invalid shell environment cannot delay
+  desktop window creation.
+- Validation:
+  Start packaged Tutti, open a new login shell, and verify `command -v tutti`
+  resolves to a user bin directory and `tutti status` succeeds. Cover creation,
+  repair, canonical-PATH, no-supported-directory, and third-party-command
+  conflict cases in desktop tests.
+- References:
+  [cliInstaller.ts](../../../apps/desktop/src/main/cli/cliInstaller.ts)
+  [userShellEnv.ts](../../../apps/desktop/src/main/daemon/userShellEnv.ts)
+  [desktop-transport.md](../../architecture/desktop-transport.md)
+
+### Desktop stable release alias disappears or is not first on Releases
 
 - Symptom:
   The desktop release workflow publishes a concrete release, but the
   `Refresh stable release alias` step fails with `Committer identity unknown`,
   the GitHub Releases page no longer has a `stable` entry after a failed RC
-  publish, or `stable` remains below a newer RC after its tag was refreshed.
+  publish, or the GitHub Releases list still puts a newer RC above `stable`.
 - Quick checks:
   Inspect the failed `Desktop Release` run's `Refresh stable release alias`
   step. If the log shows `git tag -a` or `gh release delete stable --cleanup-tag`,
   the workflow is using the unsafe annotated-tag refresh path. Also check
   `gh release view stable` and `git ls-remote --tags origin stable` to confirm
-  whether the release, tag, or both are missing. For ordering failures, compare
-  `gh release view stable --json createdAt` with the prerelease commit time;
-  moving a tag alone does not refresh the release's captured `createdAt`.
+  whether the release, tag, or both are missing. For ordering failures, list
+  public prereleases with `gh api 'repos/$GITHUB_REPOSITORY/releases?per_page=100'
+--jq '.[] | select(.prerelease and (.draft | not)) | .tag_name'` and confirm
+  the workflow ran `Archive public GitHub prereleases`.
 - Root cause:
   Annotated tags require a configured Git committer identity in GitHub Actions.
   Deleting the old floating release and tag before creating the replacement
   leaves the repository in a half-refreshed state if tag creation fails.
-  Separately, pointing `stable` directly at an older concrete stable commit
-  gives the alias that older commit time, and moving a tag after its GitHub
-  Release already exists does not update the release ordering timestamp.
+  GitHub's public Releases list has no supported pin or explicit order field.
+  Recreating the alias and assigning it a newer commit timestamp does not
+  reliably place it above public prereleases.
 - Fix:
-  Create a tag-only alias commit whose tree matches the concrete stable commit,
-  whose parent is that concrete commit, and whose timestamp is newer than the
-  just-published release. Verify the tree and parent, force-push the lightweight
-  `stable` tag to the alias commit, then delete and recreate the floating
-  `stable` GitHub Release so GitHub captures the new commit time. Delete only
-  the old release (`gh release delete stable --yes`) and never pass
-  `--cleanup-tag` from this step. Keep the concrete stable release as `Latest`.
+  Keep RC and beta GitHub Releases as drafts and distribute them through the
+  S3 preview-channel metadata instead. The workflow must archive any older
+  public prereleases with `PATCH draft=true`, then refresh the floating
+  `stable` release. Delete only the old stable alias (`gh release delete stable
+--yes`) and never pass `--cleanup-tag`; keep the concrete stable release as
+  `Latest`.
 - Validation:
   Run `node --test ./tools/scripts/desktop-release-config.test.mjs` and verify
-  the workflow test checks the alias tree and parent, enforces tag push before
-  release recreation, and rejects `git tag -a`, `--cleanup-tag`, and deleting
-  `refs/tags/stable`. After a live release, confirm the GitHub Releases page and
-  API list `stable` first while `/releases/latest` still resolves to the
-  concrete stable semver release.
+  the workflow test checks that stable is the only release promoted from draft,
+  archives legacy public prereleases, checks the alias tree and parent, and
+  rejects `git tag -a`, `--cleanup-tag`, and deleting `refs/tags/stable`. After
+  a live release, confirm the GitHub Releases page lists `stable` first while
+  `/releases/latest` still resolves to the concrete stable semver release.
 - References:
   [.github/workflows/desktop-release.yml](../../../.github/workflows/desktop-release.yml)
   [desktop-release-config.test.mjs](../../../tools/scripts/desktop-release-config.test.mjs)
@@ -85,6 +119,53 @@
   [dev-gui.sh](../../../tools/scripts/dev-gui.sh)
   [bootstrap.ts](../../../apps/desktop/src/main/bootstrap.ts)
   [defaults.ts](../../../apps/desktop/src/main/defaults.ts)
+
+### Running a development tuttid breaks the production Agent session
+
+- Symptom:
+  Production Tutti is used to develop Tutti itself. After an Agent runs a newly
+  built `tuttid` command, sending in a new conversation fails and the workspace
+  returns to the previously selected conversation. Daemon logs may report an
+  unsupported Agent Target launch-ref type immediately after a second daemon
+  starts.
+- Quick checks:
+  List live `tuttid` processes and compare their command paths. Inspect
+  `~/.tutti/logs/tuttid.log` for overlapping startup records, then check the
+  command run by the Agent for a bare daemon binary without
+  `TUTTI_ENV=development` or `TUTTI_STATE_DIR`. A historical `tuttid --help`
+  invocation is significant because older binaries treated it as normal
+  startup.
+- Root cause:
+  Bare daemon execution selects the production root. Older `tuttid` binaries
+  did not parse `--help` and overwrote the shared PID file instead of claiming
+  exclusive state ownership. The second process could open the production
+  SQLite database and reseed system Agent Targets with a newer launch-ref
+  discriminator while the packaged daemon still expected the older value.
+  Session creation then failed, and renderer recovery restored the previous
+  conversation.
+- Immediate recovery:
+  Quit Tutti completely, terminate any remaining `tuttid` processes after
+  verifying their command paths, then reopen production Tutti. Do not delete
+  `tuttid.db`; normal daemon startup reseeds its own system records. For further
+  local daemon work, use the managed development command or explicitly set
+  `TUTTI_ENV=development`/`TUTTI_STATE_DIR`.
+- Fix:
+  Parse help and reject unknown arguments before creating state. Acquire the
+  PID sidecar as an exclusive operating-system lease before logging, lock
+  recovery, database wiring, migrations, or listener publication. Keep the PID
+  text check so a new daemon also refuses a state root owned by a live older
+  daemon, but validate process identity so PID reuse by an unrelated process
+  does not block recovery. Leave the marker for stale-owner recovery instead of
+  deleting it through a read/remove race with an older lockless daemon.
+- Validation:
+  Run focused daemon tests. Verify `tuttid --help` exits successfully without
+  creating the selected state root, invalid arguments exit nonzero without
+  state, a live legacy PID is rejected, a stale PID is recovered, and a second
+  lease cannot be acquired while the first is held.
+- References:
+  [main.go](../../../services/tuttid/main.go)
+  [pid_file.go](../../../services/tuttid/pid_file.go)
+  [local-state-storage.md](../local-state-storage.md)
 
 ### macOS updates fail from a mounted DMG
 

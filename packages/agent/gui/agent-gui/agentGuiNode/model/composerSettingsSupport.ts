@@ -1,6 +1,7 @@
 import {
   resolveAgentActivityCapability,
-  type AgentActivityComposerOptions
+  type AgentActivityComposerOptions,
+  type AgentActivitySessionCapabilities
 } from "@tutti-os/agent-activity-core";
 
 export interface AgentComposerSettingsSupport {
@@ -11,6 +12,9 @@ export interface AgentComposerSettingsSupport {
   plan: boolean;
   browser: boolean;
   computer: boolean;
+  planImplementation: boolean;
+  permissionModeChangeDuringTurn: boolean;
+  permissionModeChangeDeferred: boolean;
 }
 
 /**
@@ -22,27 +26,47 @@ export interface AgentComposerSettingsSupport {
  */
 export function composerSettingsSupportFromOptions(
   composerOptions: AgentActivityComposerOptions | null,
-  sessionRuntimeContext: Record<string, unknown> | null
+  sessionCapabilities: Partial<AgentActivitySessionCapabilities> | null
 ): AgentComposerSettingsSupport {
+  const hasModelReasoningOptions = Object.values(
+    composerOptions?.reasoningOptionsByModel ?? {}
+  ).some((profile) => profile.options.length > 0);
   return {
     model: composerOptions?.modelConfigurable ?? false,
-    reasoning: composerOptions?.reasoningConfigurable ?? false,
+    reasoning:
+      (composerOptions?.reasoningConfigurable ?? false) ||
+      hasModelReasoningOptions,
     speed: composerOptions?.speedConfigurable ?? false,
     permission: composerOptions?.permissionConfig?.configurable ?? false,
     plan:
       resolveAgentActivityCapability("planMode", {
         composerOptions,
-        sessionRuntimeContext
+        sessionCapabilities
       }) === true,
     browser:
       resolveAgentActivityCapability("browserUse", {
         composerOptions,
-        sessionRuntimeContext
+        sessionCapabilities
       }) === true,
     computer:
       resolveAgentActivityCapability("computerUse", {
         composerOptions,
-        sessionRuntimeContext
+        sessionCapabilities
+      }) === true,
+    planImplementation:
+      resolveAgentActivityCapability("planImplementation", {
+        composerOptions,
+        sessionCapabilities
+      }) === true,
+    permissionModeChangeDuringTurn:
+      resolveAgentActivityCapability("permissionModeChangeDuringTurn", {
+        composerOptions,
+        sessionCapabilities
+      }) === true,
+    permissionModeChangeDeferred:
+      resolveAgentActivityCapability("permissionModeChangeDeferred", {
+        composerOptions,
+        sessionCapabilities
       }) === true
   };
 }

@@ -17,7 +17,8 @@ export function WorkspaceFileManagerContextMenuContainer({
   onCopyPath,
   openInAppBrowserIcon,
   resolveOpenWithApplicationIcon,
-  session
+  session,
+  showInternalOpenWithActions
 }: {
   hostOs: NodeJS.Platform;
   i18n: WorkspaceFileManagerI18nRuntime;
@@ -28,6 +29,7 @@ export function WorkspaceFileManagerContextMenuContainer({
     application: WorkspaceFileOpenWithApplication
   ) => ReactElement | null;
   session: WorkspaceFileManagerSession;
+  showInternalOpenWithActions: boolean;
 }): ReactElement | null {
   const contextMenuRef = useRef<HTMLDivElement | null>(null);
   const { view } = useWorkspaceFileManagerContextMenuView(session);
@@ -94,6 +96,7 @@ export function WorkspaceFileManagerContextMenuContainer({
       showImportAction={view.showImportAction}
       showExportAction={view.showExportAction}
       showOpenInAppBrowserAction={
+        showInternalOpenWithActions &&
         view.showOpenInAppBrowserAction &&
         !!view.contextMenu?.entry &&
         isWorkspaceFileBrowserOpenable(view.contextMenu.entry)
@@ -103,7 +106,9 @@ export function WorkspaceFileManagerContextMenuContainer({
         !!view.contextMenu?.entry &&
         isWorkspaceFileBrowserOpenable(view.contextMenu.entry)
       }
-      showOpenInFileViewerAction={view.showOpenInFileViewerAction}
+      showOpenInFileViewerAction={
+        showInternalOpenWithActions && view.showOpenInFileViewerAction
+      }
       showOpenWithAction={view.showOpenWithAction}
       showOpenWithOtherAction={view.showOpenWithOtherAction}
       showRevealInFolderAction={view.showRevealInFolderAction}

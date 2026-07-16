@@ -29,7 +29,7 @@ export function AgentSubAgentCards({
     <>
       {subAgents.map((subAgent) => (
         <AgentSubAgentCard
-          key={subAgent.ownerThreadId}
+          key={subAgent.childSessionId}
           subAgent={subAgent}
           onLinkClick={onLinkClick}
         />
@@ -53,7 +53,8 @@ function subAgentVMEquals(
   right: AgentTaskSubAgentVM
 ): boolean {
   return (
-    left.ownerThreadId === right.ownerThreadId &&
+    left.childSessionId === right.childSessionId &&
+    left.parentToolCallId === right.parentToolCallId &&
     left.status === right.status &&
     left.name === right.name &&
     left.task === right.task &&
@@ -64,7 +65,8 @@ function subAgentVMEquals(
     left.queued === right.queued &&
     left.startedAtUnixMs === right.startedAtUnixMs &&
     left.latestActivityAtUnixMs === right.latestActivityAtUnixMs &&
-    left.terminalAtUnixMs === right.terminalAtUnixMs
+    left.terminalAtUnixMs === right.terminalAtUnixMs &&
+    left.childSessions === right.childSessions
   );
 }
 
@@ -166,7 +168,8 @@ function SubAgentHeader({
 }
 
 function SubAgentBody({
-  subAgent
+  subAgent,
+  onLinkClick
 }: {
   subAgent: AgentTaskSubAgentVM;
   onLinkClick?: (href: string) => void;
@@ -183,6 +186,17 @@ function SubAgentBody({
           </div>
         ) : null}
         <SubAgentProgress subAgent={subAgent} />
+        {subAgent.childSessions.length > 0 ? (
+          <div className="workspace-agents-status-panel__detail-subagent-children">
+            {subAgent.childSessions.map((childSession) => (
+              <AgentSubAgentCard
+                key={childSession.childSessionId}
+                subAgent={childSession}
+                onLinkClick={onLinkClick}
+              />
+            ))}
+          </div>
+        ) : null}
       </div>
     </div>
   );

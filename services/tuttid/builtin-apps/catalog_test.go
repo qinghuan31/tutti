@@ -168,7 +168,7 @@ func TestCatalogRetriesRemoteURLFetch(t *testing.T) {
 	t.Cleanup(server.Close)
 	t.Setenv(remoteCatalogURLEnv, server.URL+"/catalog.json")
 
-	snapshot, err := snapshot(true, "")
+	snapshot, err := snapshot(true, CatalogHost{})
 	if err != nil {
 		t.Fatalf("snapshot(true) error = %v", err)
 	}
@@ -500,6 +500,94 @@ func TestParseRemoteCatalogSelectsHighestCompatibleAppVersion(t *testing.T) {
 	}
 	if app := findCatalogAppForTest(highApps, "new-only-app"); app == nil || app.Manifest.Version != "1.0.0" {
 		t.Fatalf("high-version new-only app = %#v, want 1.0.0", app)
+	}
+}
+
+func TestParseRemoteCatalogSelectsCapabilityCompatibleAppVersion(t *testing.T) {
+	legacy := remoteCatalogAppForVersionTest("capability-app", "1.0.0")
+	versionCompatible := remoteCatalogAppForVersionTest("capability-app", "1.1.0")
+	capabilityCompatible := remoteCatalogAppForVersionTest("capability-app", "2.0.0")
+	document := remoteCatalogDocument{
+		SchemaVersion: remoteCatalogSchemaVersionV1,
+		Apps:          []remoteCatalogApp{legacy},
+		Compatibility: &remoteCatalogCompatibility{
+			Apps: map[string][]remoteCatalogCompatibilityEntry{
+				"capability-app": {
+					{MinTuttiVersion: "0.0.0", App: versionCompatible},
+				},
+			},
+			CapabilityApps: map[string][]remoteCatalogCapabilityEntry{
+				"capability-app": {
+					{
+						RequiredTuttiCapabilities: []string{"managed-model-cli-v1"},
+						App:                       capabilityCompatible,
+					},
+				},
+			},
+		},
+	}
+	data, err := json.Marshal(document)
+	if err != nil {
+		t.Fatalf("marshal catalog: %v", err)
+	}
+
+	legacyApps, err := parseRemoteCatalogForTuttiVersion(data, "0.12.0")
+	if err != nil {
+		t.Fatalf("parse legacy wrapper catalog: %v", err)
+	}
+	if app := findCatalogAppForTest(legacyApps, "capability-app"); app == nil || app.Manifest.Version != "1.1.0" {
+		t.Fatalf("legacy capability app = %#v, want 1.1.0", app)
+	}
+
+	unsupportedApps, err := parseRemoteCatalogForHost(data, CatalogHost{
+		TuttiVersion: "0.12.0",
+	})
+	if err != nil {
+		t.Fatalf("parse unsupported capability catalog: %v", err)
+	}
+	if app := findCatalogAppForTest(unsupportedApps, "capability-app"); app == nil || app.Manifest.Version != "1.1.0" {
+		t.Fatalf("unsupported capability app = %#v, want 1.1.0", app)
+	}
+
+	capableApps, err := parseRemoteCatalogForHost(data, CatalogHost{
+		TuttiVersion: "0.12.0",
+		Capabilities: []string{"managed-model-cli-v1"},
+	})
+	if err != nil {
+		t.Fatalf("parse capable catalog: %v", err)
+	}
+	if app := findCatalogAppForTest(capableApps, "capability-app"); app == nil || app.Manifest.Version != "2.0.0" {
+		t.Fatalf("capable app = %#v, want 2.0.0", app)
+	}
+}
+
+func TestParseRemoteCatalogRejectsEligibleMalformedCapabilityPayload(t *testing.T) {
+	legacy := remoteCatalogAppForVersionTest("capability-app", "1.0.0")
+	document := remoteCatalogDocument{
+		SchemaVersion: remoteCatalogSchemaVersionV1,
+		Apps:          []remoteCatalogApp{legacy},
+		Compatibility: &remoteCatalogCompatibility{
+			Apps: map[string][]remoteCatalogCompatibilityEntry{},
+			CapabilityApps: map[string][]remoteCatalogCapabilityEntry{
+				"capability-app": {
+					{
+						RequiredTuttiCapabilities: []string{"managed-model-cli-v1"},
+						App: remoteCatalogApp{
+							Manifest: workspacebiz.AppManifest{Version: "not-a-manifest"},
+						},
+					},
+				},
+			},
+		},
+	}
+	data, err := json.Marshal(document)
+	if err != nil {
+		t.Fatalf("marshal catalog: %v", err)
+	}
+	if _, err := parseRemoteCatalogForHost(data, CatalogHost{
+		Capabilities: []string{"managed-model-cli-v1"},
+	}); err == nil {
+		t.Fatal("parse eligible malformed capability payload error = nil")
 	}
 }
 

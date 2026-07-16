@@ -1,8 +1,10 @@
 import { createDecorator } from "@tutti-os/infra/di";
-import type { AgentActivityRuntime } from "@tutti-os/agent-gui";
 import type {
-  AgentActivityCancelSessionInput,
-  AgentActivityCancelSessionResult,
+  AgentActivityRuntime,
+  AgentActivityRuntimeUpdateSessionSettingsResult
+} from "@tutti-os/agent-gui";
+import type {
+  AgentActivityCancelTurnInput,
   AgentActivityGoalControlInput,
   AgentActivityGoalControlResult,
   AgentActivityCreateSessionInput,
@@ -16,18 +18,17 @@ import type {
   AgentActivitySession,
   AgentActivitySnapshot,
   AgentActivitySnapshotListener,
-  AgentActivitySubmitInteractiveInput
+  AgentSessionEngine,
+  AgentActivitySubmitInteractiveInput,
+  AgentActivitySubmitInteractiveResult
 } from "@tutti-os/agent-activity-core";
-import type {
-  AgentHostAgentSessionComposerSettings,
-  AgentHostUpdateAgentSessionSettingsResult,
-  AgentHostAgentSessionState
-} from "@shared/contracts/dto";
+import type { AgentHostAgentSessionComposerSettings } from "@shared/contracts/dto";
 import type {
   ExternalAgentImportResultResponse,
   ExternalAgentImportScanRequest,
   ExternalAgentImportScanResponse,
   ImportExternalAgentSessionsRequest,
+  WorkspaceAgentPlanDecisionResponse,
   WorkspaceAgentGeneratedFileListResponse
 } from "@tutti-os/client-tuttid-ts";
 
@@ -43,6 +44,7 @@ export interface WorkspaceAgentActivityListMessagesInput {
 }
 
 export interface WorkspaceAgentActivityListGeneratedFilesInput {
+  agentTargetIds?: readonly string[];
   limit?: number;
   query?: string;
   sessionCwd?: string;
@@ -51,6 +53,8 @@ export interface WorkspaceAgentActivityListGeneratedFilesInput {
 }
 
 export interface WorkspaceAgentActivityListSessionsPageInput {
+  agentTargetId?: string | null;
+  cursor?: string;
   limit?: number;
   searchQuery?: string;
   signal?: AbortSignal;
@@ -81,15 +85,21 @@ export type WorkspaceAgentActivitySessionSectionResult = Awaited<
 >;
 
 export type WorkspaceAgentActivitySessionSectionScopeInput = Parameters<
-  NonNullable<AgentActivityRuntime["countSessionSection"]>
+  NonNullable<AgentActivityRuntime["listSessionSectionDeletionCandidates"]>
 >[0];
 
-export type WorkspaceAgentActivitySessionSectionCount = Awaited<
-  ReturnType<NonNullable<AgentActivityRuntime["countSessionSection"]>>
+export type WorkspaceAgentActivitySessionSectionDeletionCandidates = Awaited<
+  ReturnType<
+    NonNullable<AgentActivityRuntime["listSessionSectionDeletionCandidates"]>
+  >
 >;
 
-export type WorkspaceAgentActivityDeleteSessionSectionResult = Awaited<
-  ReturnType<NonNullable<AgentActivityRuntime["deleteSessionSection"]>>
+export type WorkspaceAgentActivityDeleteSessionsBatchInput = Parameters<
+  NonNullable<AgentActivityRuntime["deleteSessionsBatch"]>
+>[0];
+
+export type WorkspaceAgentActivityDeleteSessionsBatchResult = Awaited<
+  ReturnType<NonNullable<AgentActivityRuntime["deleteSessionsBatch"]>>
 >;
 
 export type WorkspaceAgentActivityListPinnedSessionsPageInput = Parameters<
@@ -123,9 +133,11 @@ export interface IWorkspaceAgentActivityService {
   readonly _serviceBrand: undefined;
 
   activateSession: AgentActivityRuntime["activateSession"];
-  cancelSession(
-    input: AgentActivityCancelSessionInput
-  ): Promise<AgentActivityCancelSessionResult>;
+  cancelTurn?(
+    input: AgentActivityCancelTurnInput
+  ): Promise<
+    import("@tutti-os/agent-activity-core").AgentActivityTurnCancelResponse
+  >;
   goalControl(
     input: AgentActivityGoalControlInput
   ): Promise<AgentActivityGoalControlResult>;
@@ -140,7 +152,7 @@ export interface IWorkspaceAgentActivityService {
     agentSessionId: string
   ): Promise<AgentActivitySession>;
   getComposerOptions(input: {
-    agentTargetId?: string | null;
+    agentTargetId: string;
     cwd?: string | null;
     force?: boolean;
     provider?: string;
@@ -152,12 +164,9 @@ export interface IWorkspaceAgentActivityService {
     agentSessionId: string;
     settings: AgentHostAgentSessionComposerSettings;
     workspaceId: string;
-  }): Promise<AgentHostUpdateAgentSessionSettingsResult>;
-  getSessionControlState(input: {
-    agentSessionId: string;
-    workspaceId: string;
-  }): Promise<AgentHostAgentSessionState>;
+  }): Promise<AgentActivityRuntimeUpdateSessionSettingsResult>;
   getSnapshot(workspaceId: string): AgentActivitySnapshot;
+  getSessionEngine(workspaceId: string): AgentSessionEngine;
   listSessionMessages(
     input: WorkspaceAgentActivityListMessagesInput
   ): Promise<AgentActivityMessagePage>;
@@ -173,12 +182,12 @@ export interface IWorkspaceAgentActivityService {
   listSessionSectionPage(
     input: WorkspaceAgentActivityListSessionSectionPageInput
   ): Promise<WorkspaceAgentActivitySessionSectionResult>;
-  countSessionSection(
+  listSessionSectionDeletionCandidates(
     input: WorkspaceAgentActivitySessionSectionScopeInput
-  ): Promise<WorkspaceAgentActivitySessionSectionCount>;
-  deleteSessionSection(
-    input: WorkspaceAgentActivitySessionSectionScopeInput
-  ): Promise<WorkspaceAgentActivityDeleteSessionSectionResult>;
+  ): Promise<WorkspaceAgentActivitySessionSectionDeletionCandidates>;
+  deleteSessionsBatch(
+    input: WorkspaceAgentActivityDeleteSessionsBatchInput
+  ): Promise<WorkspaceAgentActivityDeleteSessionsBatchResult>;
   listPinnedSessionsPage(
     input: WorkspaceAgentActivityListPinnedSessionsPageInput
   ): Promise<WorkspaceAgentActivityPinnedSessionsPageResult>;
@@ -190,6 +199,7 @@ export interface IWorkspaceAgentActivityService {
     workspaceId: string,
     request: ImportExternalAgentSessionsRequest
   ): Promise<ExternalAgentImportResultResponse>;
+  selectExternalSessionImportArchive(): Promise<string | null>;
   load(
     workspaceId: string,
     signal?: AbortSignal
@@ -203,16 +213,16 @@ export interface IWorkspaceAgentActivityService {
   ): () => void;
   submitInteractive(
     input: AgentActivitySubmitInteractiveInput
-  ): Promise<unknown>;
+  ): Promise<AgentActivitySubmitInteractiveResult>;
   submitPlanDecision(input: {
     workspaceId: string;
     agentSessionId: string;
-    promptKind: string;
+    turnId: string;
+    promptKind: "plan-implementation";
     requestId: string;
-    action?: string;
-    optionId?: string;
-    payload?: Record<string, unknown>;
-  }): Promise<void>;
+    action: "implement";
+    idempotencyKey: string;
+  }): Promise<WorkspaceAgentPlanDecisionResponse>;
   ensureSessionSynchronized(
     input: WorkspaceAgentActivityEnsureSessionSynchronizedInput
   ): () => void;

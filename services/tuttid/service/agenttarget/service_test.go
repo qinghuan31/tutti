@@ -14,6 +14,41 @@ type agentTargetStoreStub struct {
 	deleted []string
 }
 
+type availabilityResolverStub struct {
+	resolved []string
+}
+
+func (s *availabilityResolverStub) ResolveAgentTargetAvailability(_ context.Context, target agenttargetbiz.Target) (string, string) {
+	s.resolved = append(s.resolved, target.ID)
+	return "not_installed", "compatible_runtime_not_installed"
+}
+
+func TestServiceListResolvesOnlyExtensionTargetAvailability(t *testing.T) {
+	resolver := &availabilityResolverStub{}
+	store := &agentTargetStoreStub{targets: map[string]agenttargetbiz.Target{
+		"builtin": {
+			ID: "builtin", Provider: "codex", LaunchRefJSON: agenttargetbiz.MustLocalCLILaunchRefJSON("codex"),
+			Name: "Codex", Enabled: true, Source: agenttargetbiz.SourceSystem,
+		},
+		"extension": {
+			ID: "extension", Provider: "acp:gemini", LaunchRefJSON: `{"type":"agent_extension","extensionInstallationId":"gemini@1.0.0"}`,
+			Name: "Gemini", Enabled: true, Source: agenttargetbiz.SourceSystem,
+		},
+	}}
+	targets, err := (Service{Store: store, AvailabilityResolver: resolver}).List(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(resolver.resolved) != 1 || resolver.resolved[0] != "extension" {
+		t.Fatalf("resolved targets = %#v", resolver.resolved)
+	}
+	for _, target := range targets {
+		if target.ID == "extension" && (target.AvailabilityStatus != "not_installed" || target.AvailabilityReason != "compatible_runtime_not_installed") {
+			t.Fatalf("extension availability = %#v", target)
+		}
+	}
+}
+
 func (s *agentTargetStoreStub) ListAgentTargets(context.Context) ([]agenttargetbiz.Target, error) {
 	result := make([]agenttargetbiz.Target, 0, len(s.targets))
 	for _, target := range s.targets {

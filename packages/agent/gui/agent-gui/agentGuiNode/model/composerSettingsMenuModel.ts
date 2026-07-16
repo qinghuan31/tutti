@@ -135,10 +135,13 @@ export function buildComposerModelMenuModel(
   const selectedSpeedValue = selectedComposerSpeedValue(composerSettings) ?? "";
 
   const modelLabel = resolveSelectedModelLabel(composerSettings, labels);
-  const reasoningLabel = resolveSelectedReasoningLabel(
-    composerSettings,
-    labels
-  );
+  // Only surface an effort label when the reasoning control is actually shown.
+  // Providers such as Cursor keep a stale/default draft effort ("high") even
+  // though reasoning is not configurable; showing it next to the model name
+  // reads like a real selection the user cannot change.
+  const reasoningLabel = showReasoning
+    ? resolveSelectedReasoningLabel(composerSettings, labels)
+    : "";
 
   const disabled =
     composerSettings.isSettingsLoading ||
@@ -166,7 +169,7 @@ export function buildComposerModelMenuModel(
         selectedLabel: modelLabel,
         options,
         groups:
-          showModel && composerSettings.modelListCollapsedToLatest
+          showModel && composerSettings.collapseModelOptionsToLatest
             ? groupModelOptionsByVendor(options)
             : []
       };
@@ -177,7 +180,7 @@ export function buildComposerModelMenuModel(
       selectedLabel: reasoningLabel,
       options: reasoningItems.map((option) => ({
         value: option.value,
-        label: resolveReasoningOptionLabel(option.value, labels)
+        label: resolveReasoningOptionLabel(option.value, labels, option.label)
       }))
     },
     speed: {
@@ -478,10 +481,7 @@ function resolveSelectedReasoningLabel(
     (option) => option.value === selectedValue
   );
   if (selected) {
-    const resolved = resolveReasoningOptionLabel(selected.value, labels);
-    return resolved === selected.value && selected.label
-      ? selected.label
-      : resolved;
+    return resolveReasoningOptionLabel(selected.value, labels, selected.label);
   }
   if (composerSettings.reasoningUnavailable) {
     return labels.inheritedUnavailable;
@@ -507,7 +507,8 @@ export function resolveReasoningOptionLabel(
     | "reasoningOptionXHigh"
     | "reasoningOptionMax"
     | "reasoningOptionUltra"
-  >
+  >,
+  providerLabel?: string
 ): string {
   switch (value) {
     case "default":
@@ -527,7 +528,7 @@ export function resolveReasoningOptionLabel(
     case "ultra":
       return labels.reasoningOptionUltra;
     default:
-      return value;
+      return providerLabel?.trim() || value;
   }
 }
 
@@ -601,7 +602,7 @@ function modelOptionsWithSelectedValue(
   // Collapse to the latest version per family first, then re-guarantee the
   // selected value: a previously chosen older version stays visible (and
   // selectable) even though its family collapsed to a newer release.
-  const models = composerSettings.modelListCollapsedToLatest
+  const models = composerSettings.collapseModelOptionsToLatest
     ? collapseModelOptionsToLatest(composerSettings.availableModels)
     : composerSettings.availableModels;
   return optionsWithSelectedValue(
