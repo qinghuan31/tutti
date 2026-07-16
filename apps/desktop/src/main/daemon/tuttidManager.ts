@@ -9,6 +9,7 @@ import type {
   TuttidClient
 } from "@tutti-os/client-tuttid-ts";
 import { resolveDesktopDefaultsFromEnv, resolveTuttiEnv } from "../defaults.ts";
+import { resolveDesktopCliExecutable } from "../cli/cliInstaller.ts";
 import {
   desktopErrorCodes,
   formatErrorMessage
@@ -250,6 +251,7 @@ const vendoredClaudeSDKSidecarRelPath = join(
   "src",
   "main.ts"
 );
+const desktopCLIExecutableEnv = "TUTTI_DESKTOP_CLI_EXECUTABLE";
 
 // resolveBrowserMcpDaemonEnv points the daemon at a vendored chrome-devtools-mcp
 // in packaged builds so browser use never has to fetch it over the network at
@@ -309,6 +311,30 @@ export function resolveClaudeSDKSidecarDaemonEnv(
   };
 }
 
+export function resolveDesktopCliDaemonEnv(
+  runtime?: DesktopElectronAppRuntime,
+  options: ResolveLaunchSpecOptions = {}
+): Record<string, string> {
+  if (process.env[desktopCLIExecutableEnv]?.trim()) {
+    return {};
+  }
+  let appRuntime: DesktopElectronAppRuntime;
+  try {
+    appRuntime = runtime ?? resolveElectronAppRuntime();
+  } catch {
+    return {};
+  }
+  return {
+    [desktopCLIExecutableEnv]: resolveDesktopCliExecutable({
+      isPackaged: appRuntime.isPackaged,
+      repoRoot: appRuntime.isPackaged
+        ? undefined
+        : (options.repoRoot ?? resolveRepoRoot()),
+      resourcesPath: appRuntime.resourcesPath
+    })
+  };
+}
+
 function resolveManagedRuntimeDaemonEnv(
   userShellEnv?: Record<string, string>
 ): Record<string, string> {
@@ -339,6 +365,7 @@ export function resolveManagedDaemonProcessEnv(
     ...resolveManagedRuntimeDaemonEnv(input.userShellEnv),
     ...resolveBrowserMcpDaemonEnv(),
     ...resolveClaudeSDKSidecarDaemonEnv(),
+    ...resolveDesktopCliDaemonEnv(),
     TUTTI_APP_VERSION: process.env.TUTTI_APP_VERSION?.trim() ?? "",
     TUTTI_DESKTOP_PARENT_PID: String(input.parentPID ?? process.pid),
     TUTTI_LOG_DIR: input.logDir ?? resolveDesktopLogsDir(),

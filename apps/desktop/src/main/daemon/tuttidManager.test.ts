@@ -18,6 +18,7 @@ import {
   isLikelyTuttidProcess,
   resolveBrowserMcpDaemonEnv,
   resolveClaudeSDKSidecarDaemonEnv,
+  resolveDesktopCliDaemonEnv,
   resolveLaunchSpec,
   resolveManagedDaemonProcessEnv,
   signalProcessTree
@@ -64,6 +65,22 @@ test("resolveBrowserMcpDaemonEnv is a no-op in development (daemon uses npx)", (
       resourcesPath: join(tmpdir(), "tutti-resources")
     });
     assert.deepEqual(got, {});
+  } finally {
+    restoreEnv(previousEnv);
+  }
+});
+
+test("resolveDesktopCliDaemonEnv injects the packaged Windows CLI executable", () => {
+  const previousEnv = { ...process.env };
+  try {
+    delete process.env.TUTTI_DESKTOP_CLI_EXECUTABLE;
+    const resourcesPath = "C:\\Program Files\\Tutti\\resources";
+    assert.deepEqual(
+      resolveDesktopCliDaemonEnv({ isPackaged: true, resourcesPath }),
+      {
+        TUTTI_DESKTOP_CLI_EXECUTABLE: join(resourcesPath, "bin", "tutti.exe")
+      }
+    );
   } finally {
     restoreEnv(previousEnv);
   }

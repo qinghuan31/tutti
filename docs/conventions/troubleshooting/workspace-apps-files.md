@@ -2,6 +2,29 @@
 
 [Back to troubleshooting index](./README.md)
 
+### Windows app opens but local Agent features fail
+
+- Symptom:
+  A Windows App Center app starts and renders its UI, but AI Slide, AI Media
+  Canvas, or another app that loads local Agent providers returns a generic
+  `Tutti CLI request failed` error.
+- Quick checks:
+  Inspect the app `logs/runtime.log`. A `cli_execution_failed` stack from a
+  Node `execFile` call indicates that the app could not start `TUTTI_CLI`.
+  Confirm the injected value ends in `.exe`, not `.cmd`.
+- Root cause:
+  Node's `execFile` cannot directly run Windows command shims. The user-facing
+  `tutti.cmd` shim remains correct for shells, but app server code commonly
+  invokes `TUTTI_CLI` without a shell.
+- Fix:
+  The desktop process injects its native `resources/bin/tutti.exe` path into
+  `tuttid`; the AppRunner then supplies that path as `TUTTI_CLI` on Windows
+  while retaining the `.cmd` shim directory on `PATH` for shell callers.
+- Validation:
+  Run `go test ./service/workspace -run
+TestAppRunnerStartsCatalogNodeStaticPackagesOnWindows` from
+  `services/tuttid`. The test uses Node `execFile` before its app health check.
+
 ### Windows App Center Cannot Install Node-Static Apps
 
 - Symptom:

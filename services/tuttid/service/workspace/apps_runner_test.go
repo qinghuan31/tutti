@@ -374,6 +374,7 @@ func TestAppRunnerStartsCatalogNodeStaticPackagesOnWindows(t *testing.T) {
 	if err != nil {
 		t.Skip("node is required for catalog runner integration test")
 	}
+	t.Setenv("TUTTI_DESKTOP_CLI_EXECUTABLE", nodePath)
 
 	tests := []struct {
 		appID        string
@@ -407,13 +408,17 @@ func TestAppRunnerStartsCatalogNodeStaticPackagesOnWindows(t *testing.T) {
 				"__VERSION_ENV__", test.versionEnv,
 				"__SERVER_URL_ENV__", test.serverURLEnv,
 			).Replace(`const http = require("node:http");
+const { execFile } = require("node:child_process");
 const port = Number(process.env.PORT);
 if (!process.env.__VERSION_ENV__) process.exit(2);
 if (process.env.__SERVER_URL_ENV__ !== "http://127.0.0.1:" + port) process.exit(3);
-http.createServer((request, response) => {
-  response.writeHead(request.url === "/api/health" ? 200 : 404);
-  response.end();
-}).listen(port, "127.0.0.1");
+execFile(process.env.TUTTI_CLI, ["--version"], (error) => {
+  if (error) process.exit(4);
+  http.createServer((request, response) => {
+    response.writeHead(request.url === "/api/health" ? 200 : 404);
+    response.end();
+  }).listen(port, "127.0.0.1");
+});
 `)
 			if err := os.WriteFile(filepath.Join(serverDir, "server.js"), []byte(serverSource), 0o644); err != nil {
 				t.Fatalf("WriteFile(server.js) error = %v", err)
@@ -1205,6 +1210,15 @@ func TestTuttiCLIShimPathUsesWindowsCommandExtension(t *testing.T) {
 	want := filepath.Join(stateDir, "bin", "tutti.cmd")
 	if got := tuttiCLIShimPathForPlatform("windows"); got != want {
 		t.Fatalf("tuttiCLIShimPathForPlatform() = %q, want %q", got, want)
+	}
+}
+
+func TestTuttiCLICommandPathUsesWindowsDesktopExecutable(t *testing.T) {
+	t.Setenv("TUTTI_DESKTOP_CLI_EXECUTABLE", `C:\\Program Files\\Tutti\\resources\\bin\\tutti.exe`)
+
+	want := `C:\\Program Files\\Tutti\\resources\\bin\\tutti.exe`
+	if got := tuttiCLICommandPathForPlatform("windows"); got != want {
+		t.Fatalf("tuttiCLICommandPathForPlatform() = %q, want %q", got, want)
 	}
 }
 

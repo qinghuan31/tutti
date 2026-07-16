@@ -19,6 +19,29 @@ export interface EnsureDesktopCliShimOptions {
   stateRootDir?: string;
 }
 
+export function resolveDesktopCliExecutable(
+  options: EnsureDesktopCliShimOptions = {}
+): string {
+  const isPackaged = options.isPackaged ?? false;
+  const platform = options.platform ?? process.platform;
+  const binaryName = platform === "win32" ? "tutti.exe" : "tutti";
+  if (isPackaged) {
+    return join(
+      options.resourcesPath ?? process.resourcesPath,
+      "bin",
+      binaryName
+    );
+  }
+  return join(
+    options.repoRoot ?? resolveRepoRoot(),
+    "apps",
+    "cli",
+    "build",
+    "dev",
+    binaryName
+  );
+}
+
 export async function ensureDesktopCliShim(
   options: EnsureDesktopCliShimOptions = {}
 ): Promise<DesktopCliShimState> {
@@ -27,35 +50,31 @@ export async function ensureDesktopCliShim(
   const resourcesPath = options.resourcesPath ?? process.resourcesPath;
   const stateRootDir =
     options.stateRootDir ?? resolveDesktopDefaultsFromEnv().state.rootDir;
-  const binaryName = platform === "win32" ? "tutti.exe" : "tutti";
-  const packagedCliPath = join(resourcesPath, "bin", binaryName);
+  const cliExecutablePath = resolveDesktopCliExecutable({
+    ...options,
+    isPackaged,
+    platform,
+    resourcesPath
+  });
   const shimPath = resolveUserShimPath(stateRootDir, platform, {
     development: !isPackaged
   });
 
   if (!isPackaged) {
     const repoRoot = options.repoRoot ?? resolveRepoRoot();
-    const builtCliPath = join(
-      repoRoot,
-      "apps",
-      "cli",
-      "build",
-      "dev",
-      binaryName
-    );
     ensureDevCliBinary({
       goBin: options.goBin,
       platform,
       repoRoot,
-      targetPath: builtCliPath
+      targetPath: cliExecutablePath
     });
     await mkdir(join(stateRootDir, "bin"), { recursive: true });
     if (platform === "win32") {
-      await writeWindowsShim(shimPath, builtCliPath, stateRootDir, {
+      await writeWindowsShim(shimPath, cliExecutablePath, stateRootDir, {
         development: true
       });
     } else {
-      await writeUnixShim(shimPath, builtCliPath, stateRootDir, {
+      await writeUnixShim(shimPath, cliExecutablePath, stateRootDir, {
         development: true
       });
     }
@@ -67,9 +86,9 @@ export async function ensureDesktopCliShim(
 
   await mkdir(join(stateRootDir, "bin"), { recursive: true });
   if (platform === "win32") {
-    await writeWindowsShim(shimPath, packagedCliPath, stateRootDir);
+    await writeWindowsShim(shimPath, cliExecutablePath, stateRootDir);
   } else {
-    await writeUnixShim(shimPath, packagedCliPath, stateRootDir);
+    await writeUnixShim(shimPath, cliExecutablePath, stateRootDir);
   }
 
   return {

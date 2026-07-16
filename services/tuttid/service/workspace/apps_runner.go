@@ -210,6 +210,7 @@ func (r *AppRunner) startProcess(ctx context.Context, key string, input AppStart
 	command.Stdout = logFile
 	command.Stderr = logFile
 	tuttiCLIShim := tuttiCLIShimPath()
+	tuttiCLICommand := tuttiCLICommandPath()
 	tuttiAPIBaseURL := tuttiAPIBaseURLFromEnv()
 	appToolchainRoot := tuttiAppToolchainRoot()
 	envOverrides := []string{
@@ -228,7 +229,7 @@ func (r *AppRunner) startProcess(ctx context.Context, key string, input AppStart
 		"TUTTI_API_BASE_URL=" + tuttiAPIBaseURL,
 		"TUTTI_APP_INSTALLATION_ID=" + input.WorkspaceID + ":" + input.AppID,
 		"TUTTI_APP_SERVER_TOKEN=" + appServerToken(input.WorkspaceID, input.AppID),
-		"TUTTI_CLI=" + tuttiCLIShim,
+		"TUTTI_CLI=" + tuttiCLICommand,
 	}
 	envOverrides = append(envOverrides, windowsAppBootstrapEnvOverrides(input, port)...)
 	envOverrides = append(envOverrides, appRuntime.EnvOverrides...)
@@ -921,6 +922,19 @@ func allocateLoopbackPort() (int, error) {
 
 func tuttiCLIShimPath() string {
 	return tuttiCLIShimPathForPlatform(runtime.GOOS)
+}
+
+func tuttiCLICommandPath() string {
+	return tuttiCLICommandPathForPlatform(runtime.GOOS)
+}
+
+func tuttiCLICommandPathForPlatform(platform string) string {
+	if platform == "windows" {
+		if executable := strings.TrimSpace(os.Getenv("TUTTI_DESKTOP_CLI_EXECUTABLE")); executable != "" {
+			return executable
+		}
+	}
+	return tuttiCLIShimPathForPlatform(platform)
 }
 
 func tuttiAppToolchainRoot() string {
