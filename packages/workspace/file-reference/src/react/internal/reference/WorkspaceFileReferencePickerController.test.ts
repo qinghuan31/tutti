@@ -309,6 +309,41 @@ test("workspace file reference picker controller loads video previews", async ()
   controller.close();
 });
 
+test("workspace file reference picker controller shows html source as text", async () => {
+  const content = "<!doctype html><h1>Hello</h1>";
+  const adapter: WorkspaceFileReferenceAdapter = {
+    async readReferencePreview() {
+      return {
+        bytes: new TextEncoder().encode(content),
+        contentType: "text/html",
+        kind: "text"
+      };
+    }
+  };
+  const controller = createWorkspaceFileReferencePickerController({
+    fileAdapter: adapter,
+    searchDebounceMs: 0,
+    workspaceId: "workspace-html-source"
+  });
+
+  controller.open();
+  controller.setPreviewReference({
+    kind: "file",
+    path: "/workspace/login.html"
+  });
+  await settlePromises();
+
+  assert.deepEqual(controller.getSnapshot().previewState, {
+    content,
+    reference: {
+      kind: "file",
+      path: "/workspace/login.html"
+    },
+    status: "text"
+  });
+  controller.close();
+});
+
 test("workspace file reference picker controller keeps a slow root load when expanding another folder", async () => {
   // 复现并发竞态:根目录加载在途时展开另一文件夹(不同 key)。全局单 sequence 会把
   // 迟到的根结果作废、令 isBrowseLoading 永不复位;按 key 隔离后两者互不影响。

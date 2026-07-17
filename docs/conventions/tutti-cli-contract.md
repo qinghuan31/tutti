@@ -120,13 +120,17 @@ returned. The command kind chooses the stable JSON view: list/action commands
 return concise summaries, and get commands return detail with nearby context.
 
 Action commands should return the smallest useful confirmation payload. For
-agent session actions, this normally means session id, provider, status, and
-whether a launch/open request was published.
+agent session actions, this normally means session id, exact `agentTargetId`,
+provider runtime metadata, status, and whether a launch/open request was
+published. Existing-session consumers must validate `agentTargetId` before
+sending or attaching; provider equality is not sufficient because several
+Agent Targets may share one provider.
 
-Agent session compact/detail JSON may include additive runtime protocol fields
-such as `turnLifecycle` and `submitAvailability` when the daemon has them. Keep
-their field names aligned with the HTTP/OpenAPI session shape so CLI callers can
-reason about active turns without switching transports.
+Agent session detail JSON uses the same protocol-v2 entities as HTTP/OpenAPI:
+`activeTurnId`, `activeTurn`, `latestTurn`, and pending Interaction records.
+It must not expose the provider-runtime `turnLifecycle` or
+`submitAvailability` mirrors as session-domain fields. CLI status labels are
+derived from the typed Turn projection rather than persisted on Session.
 
 `agent send --guidance` sends a one-shot prompt as active-turn guidance for an
 existing running session. It requires an active turn, does not attach to stdout
@@ -140,7 +144,9 @@ input is a JSON array of task objects, and the daemon appends tasks in array
 order with contiguous issue-local `sortIndex` values.
 
 `agent session-summary --json` returns compact message records for agent-session
-mentions. When a compact message contains image prompt content, include an
+mentions. Its session record includes exact `agentTargetId` alongside provider
+runtime metadata so callers can safely validate attach/resume identity. When a
+compact message contains image prompt content, include an
 `images` array with `attachmentId`, `mimeType`, `name`, and a daemon-local
 `localPath` when the attachment file is available on disk. Keep `payload`
 omitted from this compact shape; expose only fields useful for agent context
@@ -150,11 +156,15 @@ recovery.
 agent sessions. It should wait for the next meaningful stop point such as turn
 completion, failure, cancellation, waiting for approval, waiting for user
 input, or timeout. Its JSON result should stay narrow: compact session status,
-wait reason, latest version, and timeout flag. It must not return execution
-messages or a full transcript; callers that need broader context should follow
-with `agent session-summary`. Keep version cursors and message window controls
-out of the public wait command shape; those are internal synchronization
-details, not model-facing query parameters.
+wait reason, latest version, effective wait cursor, and timeout flag. It must
+not return execution messages, pagination state, or a full transcript; callers
+that need broader context should follow with `agent session-summary`. Keep
+message window controls such as `limit` out of the public wait command shape.
+When a caller continues an existing session with `agent send`, the send action
+should return a `waitAfterVersion` cursor, and the next wait call should pass
+that cursor as `agent wait --after-version <waitAfterVersion> ...` so the wait
+blocks for the new stop point instead of immediately replaying the previous
+session stop state.
 
 `agent turn-resources --json` is the narrow helper for looking up resources from
 one explicit session turn. It requires `--session-id` and `--turn-id`, filters at
@@ -163,16 +173,43 @@ grouped under their source message. Do not flatten images across turns in this
 command; the calling agent decides which turns to inspect and which returned
 `localPath` values to pass to provider launchers as `--image`.
 
-Provider launcher commands such as `codex start`, `claude start`, and
-`tutti-agent start` should keep `--model` optional. When omitted, tuttid
-resolves the model from composer defaults or the provider configured/default
-model before starting the session. These provider launchers must create sessions
-through their fixed local agent targets (`local:codex`, `local:claude-code`,
-and `local:tutti-agent`). Generic provider-shaped launch commands such as
-`agent start --provider ...` must not create a provider-only session when no
-agent target is available; return a CLI invalid-input error that points callers
-to the provider launcher commands or a target-first launch path.
-`--show` on provider launchers requests AgentGUI activation only; it must not
+Agent discovery and launch are target-first. `agent list --json` returns every
+enabled Agent Target in stable target order, including its exact agent id,
+display name, provider metadata, current runtime availability, and an explicit
+`defaultAgentTargetId` resolved from the current desktop preference. The
+preference resolves to the exact built-in target id before considering another
+target that shares its provider, so a user-created agent cannot silently replace
+the desktop default. Preference-read failures use the built-in default instead
+of failing discovery. The default identifies preference, not readiness: it may
+be unavailable. An `--agent-id` filter narrows only `agents`; it does not rewrite
+the global default, so the default id may be absent from a filtered response.
+The command must not collapse several agents that share one provider or make
+callers guess a default from list order. Callers select an exact id and start it with
+`agent start --agent-id <agent-id> ...`; provider-specific command
+families such as `codex start` and `claude start` are not part of the
+agent-facing CLI contract.
+
+During the agent-id migration window, old app integrations may continue to
+invoke `agent providers`, provider-based composer/skill inputs, and the exact
+`codex start` / `claude start` aliases. These are compatibility adapters, not
+agent-facing discovery: generated runtime skills and command guides must omit
+them. A provider selector may resolve only when exactly one enabled target uses
+that provider; zero or multiple matches must fail with recovery guidance to
+run `agent list --json`. Target-first composer-options and skill-bundle
+responses use schema version 2 and carry `agentTargetId`; compatibility
+responses preserve their prior schema version.
+Remove this window only after released kit consumers and organization-owned
+apps have migrated and old materialized skills have crossed the support
+window.
+
+`--model` remains optional on `agent start`. When omitted, tuttid resolves the
+model from the selected agent's composer defaults or its runtime provider
+default. `agent start` must reject unknown or disabled agent ids and point the
+caller back to `agent list`; it must never create a provider-only session.
+Provider is retained as derived runtime and diagnostic metadata, not launch
+identity.
+
+`--show` on `agent start` requests AgentGUI activation only; it must not
 change the created session's visibility. User-started sessions should stay on
 the normal visible default; only an explicit `--hidden` launcher input should
 create a hidden session.
@@ -239,8 +276,8 @@ created from `--prompt`. Keep this compatibility conversion in the CLI provider
 layer; downstream agent session services should receive structured prompt
 content, not raw CLI image flags.
 
-When an agent delegates work through `codex start`, `claude start`, or
-`tutti-agent start`, local file references in the handoff prompt should use
+When an agent delegates work through `agent start --agent-id <agent-id>`, local
+file references in the handoff prompt should use
 `[@filename](/absolute/path)` instead of bare paths. Images have two valid
 representations, and the delegating agent should choose one per image: pass
 `--image <localPath>` for structured visual input, or use

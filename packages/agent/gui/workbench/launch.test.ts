@@ -1,46 +1,47 @@
 import { describe, expect, it } from "vitest";
 import {
-  agentGuiWorkbenchPrefillPromptActivationType,
   agentGuiWorkbenchDockEntryId,
+  agentGuiWorkbenchPrefillPromptActivationType,
   agentGuiWorkbenchDockIdentityFromIdentifier,
-  agentGuiWorkbenchInstanceId,
-  agentGuiWorkbenchProviderFromIdentifier,
   agentGuiWorkbenchProviderFromLaunchRequest,
   agentGuiWorkbenchUnifiedDockEntryId,
   createAgentGuiWorkbenchDraftLaunchRequest,
   createAgentGuiWorkbenchInstanceId,
-  createAgentGuiWorkbenchLaunchDescriptor
+  createAgentGuiWorkbenchLaunchDescriptor,
+  createAgentGuiWorkbenchSessionLaunchRequest,
+  resolveAgentGuiWorkbenchLaunchDockEntryId
 } from "./launch.ts";
 
 describe("agent gui workbench launch contract", () => {
-  it("keeps codex as the legacy default dock entry", () => {
-    expect(agentGuiWorkbenchDockEntryId("codex")).toBe("agent-gui");
-    expect(agentGuiWorkbenchDockEntryId("claude-code")).toBe(
-      "agent-gui:claude-code"
-    );
-    expect(agentGuiWorkbenchInstanceId("codex")).toBe("agent-gui:codex");
-    expect(agentGuiWorkbenchProviderFromIdentifier("agent-gui")).toBe("codex");
-    expect(agentGuiWorkbenchProviderFromIdentifier("agent-gui:codex")).toBe(
-      "codex"
-    );
-    expect(agentGuiWorkbenchProviderFromIdentifier("agent-gui:openclaw")).toBe(
-      "openclaw"
-    );
-    expect(agentGuiWorkbenchProviderFromIdentifier("agent-gui:unknown")).toBe(
-      null
-    );
+  it("keeps runtime instance ids opaque", () => {
+    expect(agentGuiWorkbenchUnifiedDockEntryId()).toBe("agent-gui:unified");
+    const first = createAgentGuiWorkbenchInstanceId();
+    const second = createAgentGuiWorkbenchInstanceId();
+    expect(first).toMatch(/^agent-gui:instance:/);
+    expect(second).toMatch(/^agent-gui:instance:/);
+    expect(first).not.toBe(second);
   });
 
-  it("creates stable session instance ids", () => {
+  it("keeps deprecated dock identity helpers canonical", () => {
+    expect(agentGuiWorkbenchDockEntryId("codex")).toBe("agent-gui:unified");
+    expect(agentGuiWorkbenchDockEntryId("acp:gemini")).toBe(
+      "agent-gui:unified"
+    );
     expect(
-      createAgentGuiWorkbenchInstanceId({
-        agentSessionId: "session:1",
-        provider: "hermes"
+      resolveAgentGuiWorkbenchLaunchDockEntryId({
+        provider: "acp:gemini",
+        requestedDockEntryId: "agent-gui:acp:gemini"
       })
-    ).toBe("agent-gui:hermes:session:session%3A1");
+    ).toBe("agent-gui:unified");
+    expect(
+      resolveAgentGuiWorkbenchLaunchDockEntryId({
+        provider: "codex",
+        requestedDockEntryId: null
+      })
+    ).toBe("agent-gui:unified");
   });
 
-  it("prefers payload providers before dock identifiers", () => {
+  it("requires launch providers in payloads", () => {
     expect(
       agentGuiWorkbenchProviderFromLaunchRequest({
         dockEntryId: "agent-gui:codex",
@@ -48,46 +49,47 @@ describe("agent gui workbench launch contract", () => {
         typeId: "agent-gui"
       })
     ).toBe("claude-code");
-    expect(
+    expect(() =>
       agentGuiWorkbenchProviderFromLaunchRequest({
         dockEntryId: "agent-gui:hermes",
         payload: {},
         typeId: "agent-gui"
       })
-    ).toBe("hermes");
-    expect(
+    ).toThrow("agent_gui_workbench.launch_provider_required");
+    expect(() =>
       agentGuiWorkbenchProviderFromLaunchRequest({
         payload: null,
         typeId: "agent-gui"
       })
-    ).toBe("codex");
+    ).toThrow("agent_gui_workbench.launch_provider_required");
   });
 
-  it("uses payload providers before legacy dock identifiers in launch descriptors", () => {
+  it("uses the unified dock identity in launch descriptors", () => {
     const descriptor = createAgentGuiWorkbenchLaunchDescriptor({
       dockEntryId: "agent-gui:claude-code",
       payload: { provider: "codex" },
       typeId: "agent-gui"
     });
 
-    expect(descriptor.dockEntryId).toBe("agent-gui");
-    expect(descriptor.instanceId).toContain("agent-gui:codex:panel:");
+    expect(descriptor.dockEntryId).toBe("agent-gui:unified");
+    expect(descriptor.instanceId).toMatch(/^agent-gui:instance:/);
     expect(descriptor.provider).toBe("codex");
   });
 
-  it("parses the unified dock identity separately from legacy provider dock ids", () => {
+  it("parses only the canonical aggregate dock identity", () => {
     expect(agentGuiWorkbenchUnifiedDockEntryId()).toBe("agent-gui:unified");
     expect(
       agentGuiWorkbenchDockIdentityFromIdentifier("agent-gui:unified")
     ).toEqual({ kind: "unifiedAggregate" });
+    expect(agentGuiWorkbenchDockIdentityFromIdentifier("agent-gui")).toBeNull();
     expect(
       agentGuiWorkbenchDockIdentityFromIdentifier("agent-gui:claude-code")
-    ).toEqual({ kind: "legacyProvider", provider: "claude-code" });
+    ).toBeNull();
   });
 
   it("launches sessions into provider panels until current session state can reuse a node", () => {
     const descriptor = createAgentGuiWorkbenchLaunchDescriptor({
-      dockEntryId: "agent-gui",
+      dockEntryId: "agent-gui:unified",
       payload: {
         agentSessionId: "session-2",
         provider: "codex"
@@ -102,14 +104,16 @@ describe("agent gui workbench launch contract", () => {
         },
         type: "agent-gui:open-session"
       },
-      dockEntryId: "agent-gui",
+      dockEntryId: "agent-gui:unified",
       openInNewWindow: false,
       provider: "codex",
-      reuseDockEntryNode: false,
-      reuseExistingSessionNode: true,
+      reusePolicy: {
+        agentSessionId: "session-2",
+        kind: "current-session"
+      },
       targetAgentSessionId: "session-2"
     });
-    expect(descriptor.instanceId).toContain("agent-gui:codex:panel:");
+    expect(descriptor.instanceId).toMatch(/^agent-gui:instance:/);
   });
 
   it("launches sessions with target metadata into target panels", () => {
@@ -124,16 +128,18 @@ describe("agent gui workbench launch contract", () => {
         typeId: "agent-gui"
       })
     ).toMatchObject({
-      instanceId: "agent-gui:codex:target:local%3Acodex",
       openInNewWindow: false,
-      reuseExistingSessionNode: true,
+      reusePolicy: {
+        agentSessionId: "session-2",
+        kind: "current-session"
+      },
       targetAgentSessionId: "session-2"
     });
   });
 
   it("can launch an existing session into a new internal window", () => {
     const descriptor = createAgentGuiWorkbenchLaunchDescriptor({
-      dockEntryId: "agent-gui",
+      dockEntryId: "agent-gui:codex",
       payload: {
         agentSessionId: "session-2",
         openInNewWindow: true,
@@ -148,14 +154,13 @@ describe("agent gui workbench launch contract", () => {
       },
       type: "agent-gui:open-session"
     });
-    expect(descriptor.instanceId).toContain("agent-gui:codex:panel:");
+    expect(descriptor.instanceId).toMatch(/^agent-gui:instance:/);
     expect(descriptor.openInNewWindow).toBe(true);
-    expect(descriptor.reuseDockEntryNode).toBe(false);
-    expect(descriptor.reuseExistingSessionNode).toBe(false);
+    expect(descriptor.reusePolicy).toEqual({ kind: "none" });
     expect(descriptor.targetAgentSessionId).toBe("session-2");
   });
 
-  it("keeps unified aggregate dock launches provider-specific at the instance layer", () => {
+  it("keeps provider metadata separate from opaque aggregate instances", () => {
     const descriptor = createAgentGuiWorkbenchLaunchDescriptor({
       dockEntryId: agentGuiWorkbenchUnifiedDockEntryId(),
       payload: {
@@ -165,9 +170,9 @@ describe("agent gui workbench launch contract", () => {
     });
 
     expect(descriptor.dockEntryId).toBe("agent-gui:unified");
-    expect(descriptor.instanceId).toContain("agent-gui:claude-code:panel:");
+    expect(descriptor.instanceId).toMatch(/^agent-gui:instance:/);
     expect(descriptor.provider).toBe("claude-code");
-    expect(descriptor.reuseDockEntryNode).toBe(true);
+    expect(descriptor.reusePolicy).toEqual({ kind: "dock-entry" });
   });
 
   it("reuses unified aggregate dock nodes for empty launches", () => {
@@ -183,7 +188,7 @@ describe("agent gui workbench launch contract", () => {
       dockEntryId: "agent-gui:unified",
       openInNewWindow: false,
       provider: "codex",
-      reuseDockEntryNode: true,
+      reusePolicy: { kind: "dock-entry" },
       targetAgentSessionId: null
     });
   });
@@ -202,7 +207,7 @@ describe("agent gui workbench launch contract", () => {
       dockEntryId: "agent-gui:unified",
       openInNewWindow: true,
       provider: "codex",
-      reuseDockEntryNode: false,
+      reusePolicy: { kind: "none" },
       targetAgentSessionId: null
     });
   });
@@ -221,12 +226,12 @@ describe("agent gui workbench launch contract", () => {
       dockEntryId: "agent-gui:unified",
       openInNewWindow: true,
       provider: "codex",
-      reuseDockEntryNode: false,
+      reusePolicy: { kind: "none" },
       targetAgentSessionId: null
     });
   });
 
-  it("creates draft prompt launch requests for provider dock entries", () => {
+  it("creates draft prompt launch requests for the unified dock entry", () => {
     expect(
       createAgentGuiWorkbenchDraftLaunchRequest({
         agentTargetId: "local:codex",
@@ -235,7 +240,7 @@ describe("agent gui workbench launch contract", () => {
         userProjectPath: "/Users/example/project"
       })
     ).toEqual({
-      dockEntryId: "agent-gui",
+      dockEntryId: "agent-gui:unified",
       payload: {
         agentTargetId: "local:codex",
         draftPrompt: "Review this issue",
@@ -247,7 +252,7 @@ describe("agent gui workbench launch contract", () => {
     });
   });
 
-  it("launches draft prompts into reusable provider nodes", () => {
+  it("launches draft prompts without reusing an unrelated unified node", () => {
     expect(
       createAgentGuiWorkbenchLaunchDescriptor(
         createAgentGuiWorkbenchDraftLaunchRequest({
@@ -265,10 +270,9 @@ describe("agent gui workbench launch contract", () => {
         },
         type: agentGuiWorkbenchPrefillPromptActivationType
       },
-      dockEntryId: "agent-gui",
+      dockEntryId: "agent-gui:unified",
       provider: "codex",
-      reuseDockEntryNode: true,
-      reuseExistingSessionNode: true,
+      reusePolicy: { kind: "none" },
       targetAgentSessionId: null
     });
   });
@@ -292,14 +296,28 @@ describe("agent gui workbench launch contract", () => {
         },
         type: agentGuiWorkbenchPrefillPromptActivationType
       },
-      dockEntryId: "agent-gui",
+      dockEntryId: "agent-gui:unified",
       openInNewWindow: true,
       provider: "codex",
-      reuseDockEntryNode: false,
-      reuseExistingSessionNode: false,
+      reusePolicy: { kind: "none" },
       targetAgentSessionId: null
     });
-    expect(descriptor.instanceId).toContain("agent-gui:codex:panel:");
+    expect(descriptor.instanceId).toMatch(/^agent-gui:instance:/);
+  });
+
+  it("creates session launch requests for the unified dock entry", () => {
+    expect(
+      createAgentGuiWorkbenchSessionLaunchRequest({
+        agentSessionId: "session-2",
+        provider: "claude-code"
+      })
+    ).toMatchObject({
+      dockEntryId: "agent-gui:unified",
+      payload: {
+        agentSessionId: "session-2",
+        provider: "claude-code"
+      }
+    });
   });
 
   it("does not reuse a shared unified aggregate dock node for provider-specific draft prompts", () => {
@@ -315,7 +333,7 @@ describe("agent gui workbench launch contract", () => {
     ).toMatchObject({
       dockEntryId: "agent-gui:unified",
       provider: "codex",
-      reuseDockEntryNode: false,
+      reusePolicy: { kind: "none" },
       targetAgentSessionId: null
     });
 
@@ -331,7 +349,7 @@ describe("agent gui workbench launch contract", () => {
     ).toMatchObject({
       dockEntryId: "agent-gui:unified",
       provider: "claude-code",
-      reuseDockEntryNode: false,
+      reusePolicy: { kind: "none" },
       targetAgentSessionId: null
     });
   });

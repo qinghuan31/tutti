@@ -40,6 +40,7 @@ import { AgentUnifiedPatchViewer } from "./tool-renderers/file-diff/AgentUnified
 interface AgentTurnSummaryRowProps {
   row: AgentTurnSummaryRowVM;
   workspaceRoot?: string | null;
+  basePath?: string | null;
   label: string;
   onLinkAction?: (action: WorkspaceLinkAction) => void;
   previewMode?: boolean;
@@ -53,6 +54,7 @@ type PatchSupportState =
 export function AgentTurnSummaryRow({
   row,
   workspaceRoot,
+  basePath,
   onLinkAction
 }: AgentTurnSummaryRowProps): JSX.Element {
   "use memo";
@@ -208,7 +210,10 @@ export function AgentTurnSummaryRow({
           changed = true;
         }
         if (result.status !== "success") {
-          showPatchFailureToast(agentHostApi, failureMessage);
+          showPatchFailureToast(
+            agentHostApi,
+            patchFailureMessage(result.errorCode, failureMessage)
+          );
           return;
         }
       }
@@ -307,6 +312,7 @@ export function AgentTurnSummaryRow({
                 key={key}
                 file={file}
                 workspaceRoot={workspaceRoot}
+                basePath={basePath}
                 expanded={Boolean(expandedFiles[key])}
                 onLinkAction={onLinkAction}
                 onToggle={() =>
@@ -329,6 +335,7 @@ export function AgentTurnSummaryRow({
                       key={key}
                       file={file}
                       workspaceRoot={workspaceRoot}
+                      basePath={basePath}
                       expanded={Boolean(expandedFiles[key])}
                       onLinkAction={onLinkAction}
                       onToggle={() =>
@@ -380,15 +387,33 @@ export function AgentTurnSummaryRow({
   );
 }
 
+function patchFailureMessage(
+  errorCode: string | undefined,
+  fallback: string
+): string {
+  switch (errorCode) {
+    case "invalid-patch":
+      return translate("agentHost.agentGui.turnSummaryInvalidPatch");
+    case "patch-does-not-apply":
+      return translate("agentHost.agentGui.turnSummaryPatchDoesNotApply");
+    case "not-git-repo":
+      return translate("agentHost.agentGui.turnSummaryGitRequired");
+    default:
+      return fallback;
+  }
+}
+
 function TurnSummaryFileCard({
   file,
   workspaceRoot,
+  basePath,
   expanded,
   onLinkAction,
   onToggle
 }: {
   file: AgentTurnSummaryFileVM;
   workspaceRoot?: string | null;
+  basePath?: string | null;
   expanded: boolean;
   onLinkAction?: (action: WorkspaceLinkAction) => void;
   onToggle: () => void;
@@ -397,6 +422,7 @@ function TurnSummaryFileCard({
   const action = resolveWorkspaceFileLinkAction({
     path: file.path,
     workspaceRoot: workspaceRoot,
+    basePath,
     source: "agent-file-change"
   });
   const canOpen = Boolean(action && onLinkAction);

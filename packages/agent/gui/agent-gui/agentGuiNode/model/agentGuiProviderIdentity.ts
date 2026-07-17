@@ -1,5 +1,5 @@
 export {
-  formatAgentGUIConversationPlainTitle,
+  deriveAgentGUIOptimisticConversationTitle,
   normalizeAgentGUIProviderIdentity,
   resolveAgentGUIConversationDisplayTitle,
   resolveAgentGUIConversationTitle,
@@ -9,7 +9,6 @@ export {
   resolveAgentGUIProviderIdentity
 } from "../../../shared/agentConversationTitleProjection.ts";
 export type {
-  AgentGUIConversationPlainTitleOptions,
   AgentGUIConversationTitleFallback,
   AgentGUIResolvedProvider
 } from "../../../shared/agentConversationTitleProjection.ts";

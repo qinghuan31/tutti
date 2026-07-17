@@ -1,15 +1,178 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import type {
+  CreateWorkspaceAgentSessionRequest,
   TuttidClient,
   PermissionModeSemantic,
+  SendWorkspaceAgentSessionInputRequest,
+  SendWorkspaceAgentSessionInputResponse,
   WorkspaceAgentSession,
   WorkspaceAgentSessionMessage
 } from "@tutti-os/client-tuttid-ts";
 import { TuttidProtocolError } from "@tutti-os/client-tuttid-ts";
-import { createDesktopAgentActivityAdapter } from "./desktopAgentActivityAdapter.ts";
+import {
+  agentActivityMessageFromTuttidMessage,
+  agentActivitySessionFromTuttidSession,
+  createDesktopAgentActivityAdapter
+} from "./desktopAgentActivityAdapter.ts";
 
 const workspaceId = "workspace-1";
+
+test("desktop agent activity adapter preserves durable message sequence", () => {
+  const message = agentActivityMessageFromTuttidMessage(
+    workspaceId,
+    createMessage({
+      sequence: 42,
+      createdAtUnixMs: 100
+    })
+  );
+
+  assert.equal(message.sequence, 42);
+  assert.equal(message.createdAtUnixMs, 100);
+});
+
+test("desktop agent activity adapter rejects missing protocol v2 session fields", () => {
+  for (const field of [
+    "activeTurnId",
+    "latestTurnInteractions",
+    "pendingInteractions",
+    "railSectionKey"
+  ] as const) {
+    const malformed = { ...createSession() } as Record<string, unknown>;
+    delete malformed[field];
+    assert.throws(
+      () =>
+        agentActivitySessionFromTuttidSession(
+          workspaceId,
+          malformed as WorkspaceAgentSession
+        ),
+      new RegExp(`Protocol v2 contract error:.*${field}`)
+    );
+  }
+});
+
+test("desktop agent activity adapter rejects a blank rail section key", () => {
+  assert.throws(
+    () =>
+      agentActivitySessionFromTuttidSession(
+        workspaceId,
+        createSession({ railSectionKey: "  " })
+      ),
+    /railSectionKey must be a non-empty string/
+  );
+});
+
+test("desktop agent activity adapter preserves a settled latest turn on reload", () => {
+  const latestTurn = {
+    agentSessionId: "agent-session-1",
+    completedCommand: null,
+    error: null,
+    fileChanges: null,
+    origin: "goal_continuation" as const,
+    outcome: "failed" as const,
+    phase: "settled" as const,
+    settledAtUnixMs: 30,
+    sourceGoalOperationId: "goal-operation-1",
+    sourceGoalRepairEpoch: 4,
+    sourceGoalRevision: 7,
+    startedAtUnixMs: 10,
+    turnId: "turn-1",
+    updatedAtUnixMs: 30
+  };
+  const session = agentActivitySessionFromTuttidSession(
+    workspaceId,
+    createSession({
+      activeTurn: null,
+      activeTurnId: null,
+      latestTurn,
+      latestTurnInteractions: [
+        {
+          requestId: "request-1",
+          agentSessionId: "agent-session-1",
+          turnId: "turn-1",
+          kind: "question",
+          input: null,
+          metadata: null,
+          output: null,
+          status: "answered",
+          toolName: null,
+          createdAtUnixMs: 20,
+          updatedAtUnixMs: 30
+        }
+      ]
+    })
+  );
+  assert.equal(session.activeTurn, null);
+  assert.equal(session.activeTurnId, null);
+  assert.deepEqual(session.latestTurn, latestTurn);
+  assert.equal(session.latestTurnInteractions?.[0]?.status, "answered");
+});
+
+test("desktop agent activity adapter maps typed canonical session control fields", () => {
+  const session = agentActivitySessionFromTuttidSession(
+    workspaceId,
+    createSession({
+      capabilities: {
+        activeTurnGuidance: false,
+        browserUse: false,
+        compact: true,
+        computerUse: false,
+        goalPause: false,
+        imageInput: false,
+        interrupt: false,
+        modelImageInputRequired: false,
+        permissionModeChangeDeferred: false,
+        permissionModeChangeDuringTurn: false,
+        planImplementation: false,
+        planMode: true,
+        rateLimits: false,
+        resumeRunningTurn: false,
+        review: false,
+        skills: false,
+        tokenUsage: false
+      },
+      createdAtUnixMs: 10,
+      endedAtUnixMs: 30,
+      goal: { objective: "Ship it", status: "active" },
+      imported: true,
+      railSectionKey: "project:repo-1",
+      permissionConfig: {
+        configurable: true,
+        defaultValue: "ask",
+        modes: [
+          {
+            id: "ask",
+            label: "Ask",
+            semantic: "ask-before-write"
+          }
+        ]
+      },
+      settings: { model: "gpt-5", planMode: true },
+      usage: {
+        contextWindow: { usedTokens: 7_460, totalTokens: 200_000 },
+        quotas: []
+      },
+      updatedAtUnixMs: 20
+    })
+  );
+
+  assert.equal(session.capabilities?.compact, true);
+  assert.equal(session.capabilities?.planMode, true);
+  assert.equal(session.createdAtUnixMs, 10);
+  assert.equal(session.endedAtUnixMs, 30);
+  assert.deepEqual(session.goal, { objective: "Ship it", status: "active" });
+  assert.equal(session.imported, true);
+  assert.equal(session.railSectionKey, "project:repo-1");
+  assert.equal(session.permissionConfig?.defaultValue, "ask");
+  assert.deepEqual(session.settings, { model: "gpt-5", planMode: true });
+  assert.deepEqual(session.usage, {
+    contextWindow: { usedTokens: 7_460, totalTokens: 200_000 },
+    quotas: []
+  });
+  assert.equal(session.updatedAtUnixMs, 20);
+  assert.equal("runtimeContext" in session, false);
+  assert.equal("lastError" in session, false);
+});
 
 test("desktop agent activity adapter maps tuttid sessions and messages", async () => {
   const calls: Array<{ method: string; args: unknown[] }> = [];
@@ -18,13 +181,14 @@ test("desktop agent activity adapter maps tuttid sessions and messages", async (
     tuttidClient: createTuttidClient({
       async listWorkspaceAgentSessions(
         requestWorkspaceId: string,
-        request?: { limit?: number }
+        request?: { limit?: number; searchQuery?: string }
       ) {
         calls.push({
           args: [requestWorkspaceId, request],
           method: "listSessions"
         });
         return {
+          hasMore: false,
           sessions: [
             createSession({
               cwd: "/repo",
@@ -55,7 +219,6 @@ test("desktop agent activity adapter maps tuttid sessions and messages", async (
             createMessage({
               agentSessionId,
               completedAtUnixMs: 1717200003000,
-              id: 5,
               kind: "text",
               messageId: "message-5",
               occurredAtUnixMs: 1717200001000,
@@ -100,26 +263,10 @@ test("desktop agent activity adapter maps tuttid sessions and messages", async (
       method: "listMessages"
     }
   ]);
-  assert.deepEqual(sessions.sessions, [
-    {
-      agentSessionId: "agent-session-1",
-      createdAtUnixMs: Date.parse("2026-01-01T00:00:00.000Z"),
-      cwd: "/repo",
-      endedAtUnixMs: Date.parse("2026-01-01T00:02:00.000Z"),
-      lastError: "needs input",
-      lastEventUnixMs: Date.parse("2026-01-01T00:01:00.000Z"),
-      pinnedAtUnixMs: null,
-      provider: "codex",
-      providerSessionId: "agent-session-1",
-      resumable: false,
-      startedAtUnixMs: Date.parse("2026-01-01T00:00:00.000Z"),
-      status: "waiting",
-      title: "Review",
-      updatedAtUnixMs: Date.parse("2026-01-01T00:01:00.000Z"),
-      visible: true,
-      workspaceId
-    }
-  ]);
+  assert.equal(sessions.sessions[0]?.agentSessionId, "agent-session-1");
+  assert.equal(sessions.sessions[0]?.activeTurn?.phase, "waiting");
+  assert.equal(sessions.sessions[0]?.title, "Review");
+  assert.equal(sessions.sessions[0]?.workspaceId, workspaceId);
   assert.deepEqual(messages, {
     hasMore: false,
     latestVersion: 5,
@@ -127,12 +274,13 @@ test("desktop agent activity adapter maps tuttid sessions and messages", async (
       {
         agentSessionId: "agent-session-1",
         completedAtUnixMs: 1717200003000,
-        id: 5,
+        createdAtUnixMs: undefined,
         kind: "text",
         messageId: "message-5",
         occurredAtUnixMs: 1717200001000,
         payload: { text: "hello" },
         role: "assistant",
+        sequence: 1,
         startedAtUnixMs: 1717200002000,
         status: "completed",
         turnId: "turn-1",
@@ -173,51 +321,7 @@ test("desktop agent activity adapter maps tuttid sessions and messages", async (
   assert.equal(typeof resolvedDiagnostic.details?.durationMs, "number");
 });
 
-test("desktop agent activity adapter returns cancel result metadata", async () => {
-  const calls: Array<{ method: string; args: unknown[] }> = [];
-  const adapter = createDesktopAgentActivityAdapter({
-    tuttidClient: createTuttidClient({
-      async cancelWorkspaceAgentSessionWithResult(
-        requestWorkspaceId: string,
-        agentSessionId: string
-      ) {
-        calls.push({
-          args: [requestWorkspaceId, agentSessionId],
-          method: "cancelWithResult"
-        });
-        return {
-          cancel: {
-            canceled: false,
-            reason: "no_active_turn"
-          },
-          session: createSession({
-            id: agentSessionId,
-            status: "created"
-          })
-        };
-      }
-    }),
-    runtimeApi: createRuntimeApi()
-  });
-
-  const result = await adapter.cancelSession({
-    workspaceId,
-    agentSessionId: "agent-session-1"
-  });
-
-  assert.deepEqual(calls, [
-    {
-      args: [workspaceId, "agent-session-1"],
-      method: "cancelWithResult"
-    }
-  ]);
-  assert.equal(result.canceled, false);
-  assert.equal(result.reason, "no_active_turn");
-  assert.equal(result.session.agentSessionId, "agent-session-1");
-  assert.equal(result.session.status, "created");
-});
-
-test("desktop agent activity adapter rejects turnless message pages before core", async () => {
+test("desktop agent activity adapter preserves session-level turnless messages", async () => {
   const adapter = createDesktopAgentActivityAdapter({
     tuttidClient: createTuttidClient({
       async listWorkspaceAgentSessionMessages(_workspaceId, agentSessionId) {
@@ -241,17 +345,17 @@ test("desktop agent activity adapter rejects turnless message pages before core"
     runtimeApi: createRuntimeApi()
   });
 
-  await assert.rejects(
-    () =>
-      adapter.listSessionMessages({
-        agentSessionId: "agent-session-1",
-        workspaceId
-      }),
-    /message-without-turn.*missing turnId/
-  );
+  const result = await adapter.listSessionMessages({
+    agentSessionId: "agent-session-1",
+    workspaceId
+  });
+
+  assert.equal(result.messages.length, 1);
+  assert.equal(result.messages[0]?.messageId, "message-without-turn");
+  assert.equal(result.messages[0]?.turnId, null);
 });
 
-test("desktop agent activity adapter forwards submit diagnostic metadata", async () => {
+test("desktop agent activity adapter forwards typed submit diagnostics", async () => {
   const calls: unknown[] = [];
   const adapter = createDesktopAgentActivityAdapter({
     tuttidClient: createTuttidClient({
@@ -274,13 +378,14 @@ test("desktop agent activity adapter forwards submit diagnostic metadata", async
   });
 
   await adapter.sendInput({
+    clientSubmitId: "submit-1",
     workspaceId,
     agentSessionId: "agent-session-1",
     content: [{ type: "text", text: "hello" }],
     guidance: true,
-    metadata: {
-      clientSubmitId: "submit-1",
-      clientSubmittedAtUnixMs: 1234
+    submitDiagnostics: {
+      submittedAtUnixMs: 1234,
+      source: "agent-gui"
     }
   });
 
@@ -288,17 +393,82 @@ test("desktop agent activity adapter forwards submit diagnostic metadata", async
     {
       agentSessionId: "agent-session-1",
       request: {
+        clientSubmitId: "submit-1",
         content: [{ type: "text", text: "hello" }],
         displayPrompt: null,
         guidance: true,
-        metadata: {
-          clientSubmitId: "submit-1",
-          clientSubmittedAtUnixMs: 1234
+        submitDiagnostics: {
+          submittedAtUnixMs: 1234,
+          source: "agent-gui"
         }
-      },
+      } satisfies SendWorkspaceAgentSessionInputRequest,
       workspaceId
     }
   ]);
+});
+
+test("desktop agent activity adapter rejects send responses without a canonical turn", async () => {
+  const adapter = createDesktopAgentActivityAdapter({
+    tuttidClient: createTuttidClient({
+      async sendWorkspaceAgentSessionInput(
+        _requestWorkspaceId,
+        agentSessionId
+      ) {
+        const { turn: _turn, ...response } = createSendInputResponse(
+          createSession({ id: agentSessionId, status: "running" })
+        );
+        return response as unknown as SendWorkspaceAgentSessionInputResponse;
+      }
+    }),
+    runtimeApi: createRuntimeApi()
+  });
+
+  await assert.rejects(
+    adapter.sendInput({
+      clientSubmitId: "submit-missing-turn",
+      workspaceId,
+      agentSessionId: "agent-session-1",
+      content: [{ type: "text", text: "hello" }]
+    }),
+    /workspace_agent\.send_response_turn_required/
+  );
+});
+
+test("desktop agent activity adapter accepts typed goal input without a Turn", async () => {
+  const adapter = createDesktopAgentActivityAdapter({
+    tuttidClient: createTuttidClient({
+      async sendWorkspaceAgentSessionInput(
+        _requestWorkspaceId,
+        agentSessionId
+      ) {
+        const session = createSession({
+          id: agentSessionId,
+          goal: { objective: "ship it", status: "active" }
+        });
+        return {
+          kind: "goalControl" as const,
+          operationId: "goal-op-1",
+          session,
+          goal: session.goal
+        };
+      }
+    }),
+    runtimeApi: createRuntimeApi()
+  });
+
+  const result = await adapter.sendInput({
+    clientSubmitId: "submit-goal",
+    workspaceId,
+    agentSessionId: "agent-session-1",
+    content: [{ type: "text", text: "/goal ship it" }]
+  });
+
+  assert.equal(result.kind, "goalControl");
+  assert.equal(result.session.activeTurnId, null);
+  if (result.kind !== "goalControl") {
+    throw new Error("expected goal control result");
+  }
+  assert.equal(result.goal?.objective, "ship it");
 });
 
 test("desktop agent activity adapter marks empty-cwd creates as no-project", async () => {
@@ -316,16 +486,14 @@ test("desktop agent activity adapter marks empty-cwd creates as no-project", asy
   });
 
   await adapter.createSession({
+    clientSubmitId: "submit-no-project",
     agentSessionId: "agent-session-1",
     agentTargetId: "local:codex",
     initialContent: [{ type: "text", text: "hi" }],
     workspaceId
   });
 
-  assert.deepEqual(
-    (createBody as { runtimeContext?: Record<string, unknown> }).runtimeContext,
-    { noProject: true }
-  );
+  assert.deepEqual((createBody as { noProject?: boolean }).noProject, true);
 });
 
 test("desktop agent activity adapter forwards HTTPS image URLs structurally", async () => {
@@ -344,6 +512,7 @@ test("desktop agent activity adapter forwards HTTPS image URLs structurally", as
   await adapter.createSession({
     agentSessionId: "22222222-2222-4222-8222-222222222222",
     agentTargetId: "local:codex",
+    clientSubmitId: "submit-remote-image",
     initialContent: [
       {
         type: "image",
@@ -376,7 +545,7 @@ test("desktop agent activity adapter localizes adapter mismatch create failures"
       async createWorkspaceAgentSession() {
         throw new TuttidProtocolError({
           code: "workspace_operation_failed",
-          developerMessage: "claude-code: ACP adapter not found",
+          developerMessage: "opencode: ACP adapter not found",
           reason: "acp_adapter_version_mismatch",
           statusCode: 502
         });
@@ -387,11 +556,12 @@ test("desktop agent activity adapter localizes adapter mismatch create failures"
 
   await assert.rejects(
     adapter.createSession({
+      clientSubmitId: "submit-adapter-mismatch",
       agentSessionId: "agent-session-1",
-      agentTargetId: "local:claude-code",
+      agentTargetId: "local:opencode",
       workspaceId
     }),
-    /Claude Code's local adapter is unavailable or version-mismatched/
+    /The local agent adapter is unavailable or version-mismatched/
   );
 });
 
@@ -412,6 +582,7 @@ test("desktop agent activity adapter passes through unrelated create failures", 
 
   await assert.rejects(
     adapter.createSession({
+      clientSubmitId: "submit-service-unavailable",
       agentSessionId: "agent-session-1",
       agentTargetId: "local:claude-code",
       workspaceId
@@ -427,7 +598,7 @@ test("desktop agent activity adapter leaves session event subscription to the se
     runtimeApi: createRuntimeApi(diagnostics)
   });
 
-  assert.equal(adapter.subscribeSessionEvents, undefined);
+  assert.equal("subscribeSessionEvents" in adapter, false);
   assert.deepEqual(diagnostics, []);
 });
 
@@ -448,11 +619,12 @@ test("desktop agent activity adapter submits interactive responses through tutti
     runtimeApi: createRuntimeApi()
   });
 
-  await adapter.submitInteractive({
+  const result = await adapter.submitInteractive({
     agentSessionId: "agent-session-1",
     optionId: "acceptEdits",
     payload: { path: "/Users/example/demo/src/styles.css" },
     requestId: "interactive-1",
+    turnId: "turn-1",
     workspaceId
   });
 
@@ -464,14 +636,19 @@ test("desktop agent activity adapter submits interactive responses through tutti
       {
         action: null,
         optionId: "acceptEdits",
-        payload: { path: "/Users/example/demo/src/styles.css" }
+        payload: { path: "/Users/example/demo/src/styles.css" },
+        turnId: "turn-1"
       }
     ]
   ]);
+  assert.equal(result.session.workspaceId, workspaceId);
+  assert.equal(result.session.agentSessionId, "agent-session-1");
+  assert.equal(result.session.activeTurn?.phase, "waiting");
 });
 
 test("desktop agent activity adapter normalizes provider composer options", async () => {
   const calls: unknown[] = [];
+  const diagnostics: unknown[] = [];
   const adapter = createDesktopAgentActivityAdapter({
     tuttidClient: createTuttidClient({
       async getAgentProviderComposerOptions(provider, request) {
@@ -511,23 +688,45 @@ test("desktop agent activity adapter normalizes provider composer options", asyn
               }
             ]
           },
-          runtimeContext: {
-            configOptions: [],
-            promptCapabilities: { image: true },
-            skills: [
-              {
-                name: "Create App",
-                trigger: "create-app",
-                sourceKind: "bundled"
-              }
-            ]
+          skills: [
+            {
+              name: "Create App",
+              trigger: "create-app",
+              sourceKind: "bundled"
+            }
+          ],
+          behavior: {
+            collapseModelOptionsToLatest: false,
+            modelOptionsAuthoritative: false,
+            refreshModelOptionsAfterSettings: false,
+            prewarmDraftSession: false,
+            planModeExclusiveWithPermissionMode: false
           },
-          skills: [],
-          capabilityCatalog: []
+          capabilities: {
+            activeTurnGuidance: true,
+            browserUse: true,
+            compact: false,
+            computerUse: false,
+            goalPause: false,
+            imageInput: true,
+            interrupt: true,
+            modelImageInputRequired: true,
+            permissionModeChangeDeferred: false,
+            permissionModeChangeDuringTurn: false,
+            planImplementation: false,
+            planMode: true,
+            rateLimits: false,
+            resumeRunningTurn: false,
+            review: false,
+            skills: false,
+            tokenUsage: false
+          },
+          capabilityCatalog: [],
+          runtimeContext: {}
         };
       }
     }),
-    runtimeApi: createRuntimeApi()
+    runtimeApi: createRuntimeApi(diagnostics)
   });
 
   const options = await adapter.loadComposerOptions({
@@ -572,9 +771,6 @@ test("desktop agent activity adapter normalizes provider composer options", asyn
       }
     ]
   });
-  assert.deepEqual(options.runtimeContext?.promptCapabilities, {
-    image: true
-  });
   assert.deepEqual(options.skills, [
     {
       name: "Create App",
@@ -582,6 +778,28 @@ test("desktop agent activity adapter normalizes provider composer options", asyn
       sourceKind: "bundled"
     }
   ]);
+  assert.equal(options.capabilities?.planMode, true);
+  assert.equal(options.capabilities?.browserUse, true);
+  assert.equal(options.capabilities?.activeTurnGuidance, true);
+  assert.equal(diagnostics.length, 1);
+  const diagnostic = diagnostics[0] as {
+    details: Record<string, unknown>;
+    event: string;
+    level: string;
+    workspaceId: string;
+  };
+  assert.equal(diagnostic.event, "agent.composer_options.load");
+  assert.equal(diagnostic.level, "info");
+  assert.equal(diagnostic.workspaceId, workspaceId);
+  assert.deepEqual(
+    { ...diagnostic.details, durationMs: typeof diagnostic.details.durationMs },
+    {
+      agentTargetId: null,
+      durationMs: "number",
+      provider: "codex",
+      status: "ready"
+    }
+  );
 });
 
 test("desktop agent activity adapter cancels composer options when caller aborts", async () => {
@@ -660,14 +878,15 @@ test("desktop agent activity adapter sends plan mode when creating sessions", as
   });
 
   const session = await adapter.createSession({
+    clientSubmitId: "submit-create-1",
     agentSessionId: "22222222-2222-4222-8222-222222222222",
     agentTargetId: "local:codex",
     cwd: "/workspace",
     initialContent: [{ type: "text", text: "hello" }],
-    metadata: {
-      "": "drop",
-      clientSubmitId: "submit-create-1",
-      clientSubmittedAtUnixMs: 12345
+    submitDiagnostics: {
+      blockCount: 1,
+      submittedAtUnixMs: 12345,
+      source: "agent-gui"
     },
     model: "gpt-5.5-codex-spark",
     permissionModeId: "read-only",
@@ -685,30 +904,32 @@ test("desktop agent activity adapter sends plan mode when creating sessions", as
       {
         agentSessionId: "22222222-2222-4222-8222-222222222222",
         agentTargetId: "local:codex",
+        clientSubmitId: "submit-create-1",
         cwd: "/workspace",
         initialContent: [{ type: "text", text: "hello" }],
         initialDisplayPrompt: null,
-        metadata: {
-          "": "drop",
-          clientSubmitId: "submit-create-1",
-          clientSubmittedAtUnixMs: 12345
+        submitDiagnostics: {
+          blockCount: 1,
+          submittedAtUnixMs: 12345,
+          source: "agent-gui"
         },
         model: "gpt-5.5-codex-spark",
+        noProject: null,
         permissionModeId: "read-only",
         planMode: true,
         reasoningEffort: "high",
         speed: null,
         title: "Plan",
         visible: null
-      }
+      } satisfies CreateWorkspaceAgentSessionRequest
     ]
   ]);
 });
 
-test("desktop agent activity adapter times out create session requests", async () => {
+test("desktop agent activity adapter forwards create cancellation from the engine", async () => {
   let requestSignal: AbortSignal | undefined;
+  const controller = new AbortController();
   const adapter = createDesktopAgentActivityAdapter({
-    agentSessionCreateRequestTimeoutMs: 1,
     tuttidClient: createTuttidClient({
       async createWorkspaceAgentSession(
         _workspaceId,
@@ -716,25 +937,29 @@ test("desktop agent activity adapter times out create session requests", async (
         requestOptions
       ) {
         requestSignal = requestOptions?.signal ?? undefined;
-        return await new Promise(() => undefined);
+        return await new Promise((_resolve, reject) => {
+          requestOptions?.signal?.addEventListener(
+            "abort",
+            () => reject(requestOptions.signal?.reason),
+            { once: true }
+          );
+        });
       }
     }),
     runtimeApi: createRuntimeApi()
   });
 
-  await assert.rejects(
-    adapter.createSession({
-      agentSessionId: "22222222-2222-4222-8222-222222222222",
-      agentTargetId: "local:claude-code",
-      initialContent: [],
-      model: "claude-sonnet-4-20250514",
-      workspaceId
-    }),
-    (error) =>
-      error instanceof Error &&
-      error.message === "Agent session create request timed out." &&
-      (error as NodeJS.ErrnoException).code === "ETIMEDOUT"
-  );
+  const request = adapter.createSession({
+    clientSubmitId: "submit-timeout",
+    agentSessionId: "22222222-2222-4222-8222-222222222222",
+    agentTargetId: "local:claude-code",
+    initialContent: [],
+    model: "claude-sonnet-4-20250514",
+    workspaceId,
+    signal: controller.signal
+  });
+  controller.abort(new Error("engine command timed out"));
+  await assert.rejects(request, /engine command timed out/);
   assert.equal(requestSignal?.aborted, true);
 });
 
@@ -750,6 +975,7 @@ test("desktop agent activity adapter rejects unuploaded file prompt blocks", asy
 
   await assert.rejects(
     adapter.createSession({
+      clientSubmitId: "submit-file",
       agentSessionId: "22222222-2222-4222-8222-222222222222",
       agentTargetId: "local:codex",
       initialContent: [
@@ -807,6 +1033,13 @@ test("desktop agent activity adapter normalizes legacy runtime config options", 
             ]
           },
           skills: [],
+          behavior: {
+            collapseModelOptionsToLatest: false,
+            modelOptionsAuthoritative: false,
+            refreshModelOptionsAfterSettings: false,
+            prewarmDraftSession: false,
+            planModeExclusiveWithPermissionMode: false
+          },
           capabilityCatalog: []
         };
       }
@@ -854,6 +1087,13 @@ test("desktop agent activity adapter preserves ACP labels over synthesized confi
             ]
           },
           skills: [],
+          behavior: {
+            collapseModelOptionsToLatest: false,
+            modelOptionsAuthoritative: false,
+            refreshModelOptionsAfterSettings: false,
+            prewarmDraftSession: false,
+            planModeExclusiveWithPermissionMode: false
+          },
           capabilityCatalog: []
         };
       }
@@ -902,6 +1142,13 @@ test("desktop agent activity adapter uses Claude draft live model list", async (
           reasoningConfig: { configurable: false, options: [] },
           runtimeContext: {},
           skills: [],
+          behavior: {
+            collapseModelOptionsToLatest: false,
+            modelOptionsAuthoritative: false,
+            refreshModelOptionsAfterSettings: false,
+            prewarmDraftSession: false,
+            planModeExclusiveWithPermissionMode: false
+          },
           capabilityCatalog: []
         };
       }
@@ -966,6 +1213,13 @@ test("desktop agent activity adapter flattens grouped runtime config options", a
             ]
           },
           skills: [],
+          behavior: {
+            collapseModelOptionsToLatest: false,
+            modelOptionsAuthoritative: false,
+            refreshModelOptionsAfterSettings: false,
+            prewarmDraftSession: false,
+            planModeExclusiveWithPermissionMode: false
+          },
           capabilityCatalog: []
         };
       }
@@ -1019,6 +1273,13 @@ test("desktop agent activity adapter loads Claude models via composer options re
           reasoningConfig: { configurable: false, options: [] },
           runtimeContext: {},
           skills: [],
+          behavior: {
+            collapseModelOptionsToLatest: false,
+            modelOptionsAuthoritative: false,
+            refreshModelOptionsAfterSettings: false,
+            prewarmDraftSession: false,
+            planModeExclusiveWithPermissionMode: false
+          },
           capabilityCatalog: []
         };
       }
@@ -1104,6 +1365,7 @@ test("desktop agent activity adapter creates a visible target-backed Claude sess
   });
 
   const session = await adapter.createSession({
+    clientSubmitId: "submit-claude-draft",
     agentSessionId: "22222222-2222-4222-8222-222222222222",
     agentTargetId: "local:claude-code",
     initialContent: [{ type: "text", text: "hello" }],
@@ -1112,7 +1374,7 @@ test("desktop agent activity adapter creates a visible target-backed Claude sess
 
   assert.deepEqual(calls, ["create:visible"]);
   assert.equal(session.agentSessionId, "22222222-2222-4222-8222-222222222222");
-  assert.equal(session.status, "running");
+  assert.equal(session.activeTurn, null);
   assert.equal(session.visible, false);
 });
 
@@ -1164,6 +1426,7 @@ test("desktop agent activity adapter forwards agent target id when creating Clau
   });
 
   const session = await adapter.createSession({
+    clientSubmitId: "submit-shared-claude",
     agentSessionId: "22222222-2222-4222-8222-222222222222",
     agentTargetId: "shared-agent:claude-1",
     initialContent: [{ type: "text", text: "hello" }],
@@ -1174,6 +1437,7 @@ test("desktop agent activity adapter forwards agent target id when creating Clau
     {
       agentSessionId: "22222222-2222-4222-8222-222222222222",
       agentTargetId: "shared-agent:claude-1",
+      clientSubmitId: "submit-shared-claude",
       cwd: null,
       initialContent: [{ type: "text", text: "hello" }],
       initialDisplayPrompt: null,
@@ -1181,7 +1445,7 @@ test("desktop agent activity adapter forwards agent target id when creating Clau
       permissionModeId: null,
       planMode: null,
       reasoningEffort: null,
-      runtimeContext: { noProject: true },
+      noProject: true,
       speed: null,
       title: null,
       visible: null
@@ -1211,6 +1475,7 @@ test("desktop agent activity adapter preserves requested session ids across targ
   });
 
   const firstSession = await adapter.createSession({
+    clientSubmitId: "submit-first",
     agentSessionId: fixedAgentSessionId,
     agentTargetId: firstAgentTargetId,
     initialContent: [{ type: "text", text: "first" }],
@@ -1218,6 +1483,7 @@ test("desktop agent activity adapter preserves requested session ids across targ
   });
 
   const secondSession = await adapter.createSession({
+    clientSubmitId: "submit-second",
     agentSessionId: fixedAgentSessionId,
     agentTargetId: secondAgentTargetId,
     initialContent: [{ type: "text", text: "second" }],
@@ -1257,6 +1523,13 @@ test("desktop agent activity adapter loads Claude options without mutating draft
           reasoningConfig: { configurable: true, options: [] },
           runtimeContext: {},
           skills: [],
+          behavior: {
+            collapseModelOptionsToLatest: false,
+            modelOptionsAuthoritative: false,
+            refreshModelOptionsAfterSettings: false,
+            prewarmDraftSession: false,
+            planModeExclusiveWithPermissionMode: false
+          },
           capabilityCatalog: []
         };
       },
@@ -1310,18 +1583,6 @@ function createTuttidClient(
   overrides: Partial<TuttidClient> = {}
 ): TuttidClient {
   return {
-    async cancelWorkspaceAgentSession() {
-      return createSession({ status: "canceled" });
-    },
-    async cancelWorkspaceAgentSessionWithResult() {
-      return {
-        cancel: {
-          canceled: true,
-          reason: "active_turn_canceled"
-        },
-        session: createSession({ status: "canceled" })
-      };
-    },
     async createWorkspaceAgentSession() {
       return createSession();
     },
@@ -1337,7 +1598,7 @@ function createTuttidClient(
       };
     },
     async listWorkspaceAgentSessions() {
-      return { sessions: [createSession()], workspaceId };
+      return { hasMore: false, sessions: [createSession()], workspaceId };
     },
     async getAgentProviderComposerOptions() {
       return {
@@ -1357,6 +1618,13 @@ function createTuttidClient(
         },
         runtimeContext: {},
         skills: [],
+        behavior: {
+          collapseModelOptionsToLatest: false,
+          modelOptionsAuthoritative: false,
+          refreshModelOptionsAfterSettings: false,
+          prewarmDraftSession: false,
+          planModeExclusiveWithPermissionMode: false
+        },
         capabilityCatalog: []
       };
     },
@@ -1391,32 +1659,111 @@ function unknownPermissionModeSemantic(value: string): PermissionModeSemantic {
 }
 
 function createSession(
-  overrides: Partial<WorkspaceAgentSession> = {}
+  overrides: Partial<WorkspaceAgentSession> & {
+    createdAt?: string;
+    endedAt?: string | null;
+    lastError?: string | null;
+    runtimeContext?: Record<string, unknown>;
+    status?: string;
+    updatedAt?: string;
+  } = {}
 ): WorkspaceAgentSession {
+  const {
+    createdAt,
+    endedAt,
+    lastError: _lastError,
+    runtimeContext: _runtimeContext,
+    status,
+    updatedAt,
+    ...canonicalOverrides
+  } = overrides;
+  const createdAtUnixMs = createdAt ? Date.parse(createdAt) : 1;
+  const updatedAtUnixMs = updatedAt ? Date.parse(updatedAt) : 2;
+  const activeTurn =
+    status === "running" || status === "working" || status === "waiting"
+      ? {
+          agentSessionId: canonicalOverrides.id ?? "agent-session-1",
+          completedCommand: null,
+          error: null,
+          fileChanges: null,
+          origin: "user_prompt" as const,
+          outcome: null,
+          phase:
+            status === "waiting" ? ("waiting" as const) : ("running" as const),
+          startedAtUnixMs: createdAtUnixMs,
+          settledAtUnixMs: null,
+          turnId: "turn-active",
+          updatedAtUnixMs
+        }
+      : null;
+  const latestTurn =
+    status === "completed" || status === "failed" || status === "canceled"
+      ? {
+          agentSessionId: canonicalOverrides.id ?? "agent-session-1",
+          completedCommand: null,
+          error: null,
+          fileChanges: null,
+          origin: "user_prompt" as const,
+          outcome: status as "completed" | "failed" | "canceled",
+          phase: "settled" as const,
+          settledAtUnixMs: updatedAtUnixMs,
+          startedAtUnixMs: createdAtUnixMs,
+          turnId: "turn-latest",
+          updatedAtUnixMs
+        }
+      : null;
   return {
-    createdAt: "2026-01-01T00:00:00.000Z",
+    agentTargetId: null,
+    capabilities: null,
+    createdAtUnixMs,
     cwd: "/",
+    endedAtUnixMs: endedAt ? Date.parse(endedAt) : null,
+    goal: null,
     id: "agent-session-1",
+    imported: false,
+    activeTurn,
+    activeTurnId: activeTurn?.turnId ?? null,
+    latestTurn,
+    permissionConfig: { configurable: false, modes: [] },
+    pinnedAtUnixMs: null,
     provider: "codex",
-    status: "running",
+    providerSessionId: null,
+    railSectionKey: "conversations",
+    resumable: true,
+    settings: {},
     title: "Agent session",
-    updatedAt: "2026-01-01T00:01:00.000Z",
+    updatedAtUnixMs,
+    usage: null,
     visible: true,
-    ...overrides
+    ...canonicalOverrides,
+    kind: canonicalOverrides.kind ?? "root",
+    rootAgentSessionId: canonicalOverrides.rootAgentSessionId ?? null,
+    rootTurnId: canonicalOverrides.rootTurnId ?? null,
+    parentAgentSessionId: canonicalOverrides.parentAgentSessionId ?? null,
+    parentTurnId: canonicalOverrides.parentTurnId ?? null,
+    parentToolCallId: canonicalOverrides.parentToolCallId ?? null,
+    latestTurnInteractions: canonicalOverrides.latestTurnInteractions ?? [],
+    pendingInteractions: canonicalOverrides.pendingInteractions ?? []
   };
 }
 
 function createSendInputResponse(session: WorkspaceAgentSession) {
   return {
+    kind: "turn" as const,
     session,
     turnId: "turn-1",
-    turnLifecycle: {
-      activeTurnId: "turn-1",
-      phase: "submitted"
-    },
-    submitAvailability: {
-      reason: "active_turn",
-      state: "blocked"
+    turn: {
+      agentSessionId: session.id,
+      completedCommand: null,
+      error: null,
+      fileChanges: null,
+      origin: "user_prompt" as const,
+      outcome: null,
+      phase: "submitted" as const,
+      settledAtUnixMs: null,
+      startedAtUnixMs: 1,
+      turnId: "turn-1",
+      updatedAtUnixMs: 1
     }
   };
 }
@@ -1426,12 +1773,12 @@ function createMessage(
 ): WorkspaceAgentSessionMessage {
   return {
     agentSessionId: "agent-session-1",
-    id: 1,
     kind: "text",
     messageId: "message-1",
     occurredAtUnixMs: 1717200001000,
     payload: {},
     role: "assistant",
+    sequence: 1,
     turnId: "turn-1",
     version: 1,
     ...overrides

@@ -8,7 +8,7 @@ import {
   TooltipTrigger,
   cn
 } from "@tutti-os/ui-system";
-import type { ReactElement } from "react";
+import type { CSSProperties, ReactElement } from "react";
 import type {
   WorkspaceFileLocation,
   WorkspaceFileExternalLocation,
@@ -19,11 +19,13 @@ export function WorkspaceFileManagerSidebar({
   disabled,
   locationSections,
   selectedLocationId,
+  width,
   onSelectLocation
 }: {
   disabled: boolean;
   locationSections: readonly WorkspaceFileLocationSection[];
   selectedLocationId: string | null;
+  width: number;
   onSelectLocation: (location: WorkspaceFileLocation) => void;
 }): ReactElement | null {
   const visibleSections = locationSections.filter(
@@ -34,7 +36,10 @@ export function WorkspaceFileManagerSidebar({
   }
 
   return (
-    <aside className="@max-[600px]/workspace-file-manager:hidden flex w-[188px] min-w-[188px] flex-col border-r border-[var(--border-1)] bg-[var(--background-panel)]">
+    <aside
+      className="@max-[600px]/workspace-file-manager:hidden flex shrink-0 flex-col border-r border-[var(--border-1)] bg-[var(--background-panel)]"
+      style={{ minWidth: width, width } satisfies CSSProperties}
+    >
       <ScrollArea className="min-h-0 flex-1">
         <TooltipProvider delayDuration={350}>
           <div className="flex flex-col gap-3 px-2 py-3">

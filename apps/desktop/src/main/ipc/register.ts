@@ -45,7 +45,10 @@ export interface IpcRegistrationDependencies {
   updateService: AppUpdateService;
   workspaceLaunch: Pick<
     WorkspaceLaunch,
-    "openStartupWindow" | "showAgentWindow" | "showWorkspace"
+    | "openStartupWindow"
+    | "replaceWorkspaceWindow"
+    | "showAgentWindow"
+    | "showWorkspace"
   >;
 }
 

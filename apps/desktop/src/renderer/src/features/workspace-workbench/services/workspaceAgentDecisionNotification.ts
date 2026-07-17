@@ -5,7 +5,6 @@ import {
   managedAgentRoundedIconUrl,
   type WorkspaceAgentMessageCenterItem
 } from "@tutti-os/agent-gui/agent-message-center";
-import { formatAgentGuiConversationPlainTitle } from "@tutti-os/agent-gui/workbench/sessionTitle";
 
 export interface WorkspaceAgentDecisionSubmitInput {
   action?: string;
@@ -45,7 +44,7 @@ export function buildWorkspaceAgentDecisionNotification(
   const agentName =
     formatWorkspaceAgentProviderName(item.provider) || labels.fallbackAgentName;
   const agentIconUrl = managedAgentRoundedIconUrl(item.provider);
-  const conversationTitle = formatAgentGuiConversationPlainTitle(item);
+  const conversationTitle = item.title.trim();
   switch (prompt.kind) {
     case "approval":
       return {

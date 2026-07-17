@@ -48,8 +48,6 @@ func (api DaemonAPI) GetWorkspaceAppAgentPreferences(
 
 	return tuttigenerated.GetWorkspaceAppAgentPreferences200JSONResponse{
 		DefaultAgentProvider: tuttigenerated.DesktopDefaultAgentProvider(preferences.DefaultAgentProvider),
-		EnableCursorAgent:    preferences.EnableCursorAgent,
-		EnableOpenCodeAgent:  preferences.EnableOpenCodeAgent,
 	}, nil
 }
 
@@ -83,6 +81,7 @@ func (api DaemonAPI) GetWorkspaceAppAgentProviderStatuses(
 		Params: tuttigenerated.GetAgentProviderStatusesParams{
 			Providers:      providers,
 			IncludeNetwork: request.Params.IncludeNetwork,
+			Refresh:        request.Params.Refresh,
 		},
 	})
 	if err != nil {

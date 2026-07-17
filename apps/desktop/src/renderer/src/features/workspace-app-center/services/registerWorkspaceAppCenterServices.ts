@@ -11,10 +11,12 @@ import type {
 import type { IReporterService } from "../../analytics/services/reporterService.interface.ts";
 import { createDesktopWorkspaceAppCenterGateway } from "./internal/adapters/desktopWorkspaceAppCenterGateway.ts";
 import { WorkspaceAppCenterService } from "./internal/workspaceAppCenterService.ts";
+import { WorkspaceAppSurfaceHost } from "./internal/workspaceAppSurfaceHost.ts";
 import {
   IWorkspaceAppCenterService,
   type IWorkspaceAppCenterService as WorkspaceAppCenterServiceInterface
 } from "./workspaceAppCenterService.interface";
+import { IWorkspaceAppSurfaceHost } from "./workspaceAppSurfaceHost.interface.ts";
 
 export interface WorkspaceAppCenterServiceRegistrationInput {
   eventStreamClient: TuttidEventStreamClient;
@@ -37,6 +39,7 @@ export function registerWorkspaceAppCenterServices(
   registry: ServiceRegistry,
   input: WorkspaceAppCenterServiceRegistrationInput
 ): WorkspaceAppCenterServiceInterface {
+  const surfaceHost = new WorkspaceAppSurfaceHost();
   const service = new WorkspaceAppCenterService({
     eventStreamClient: input.eventStreamClient,
     gateway: createDesktopWorkspaceAppCenterGateway(input.tuttidClient),
@@ -44,8 +47,10 @@ export function registerWorkspaceAppCenterServices(
     hostWorkspaceApi: input.hostWorkspaceApi,
     tuttidClient: input.tuttidClient,
     reporterService: input.reporterService,
-    runtimeApi: input.runtimeApi
+    runtimeApi: input.runtimeApi,
+    surfaceHost
   });
   registry.registerInstance(IWorkspaceAppCenterService, service);
+  registry.registerInstance(IWorkspaceAppSurfaceHost, surfaceHost);
   return service;
 }

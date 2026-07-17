@@ -46,7 +46,10 @@ export function AgentRichTextReadonly({
   );
   const isMentionOnly = isMentionOnlyRichTextDoc(contentDoc);
   const editor = useEditor({
-    immediatelyRender: false,
+    // AgentGUI is client-only. Deferring editor creation leaves every user
+    // message blank for one commit, then changes each transcript turn's
+    // measured height when TipTap mounts.
+    immediatelyRender: true,
     editable: false,
     extensions: createAgentRichTextReadonlyExtensions({
       skills: availableSkills
@@ -163,7 +166,7 @@ function plainTextToAgentRichTextDocWithMentionPresentations(
     doc = hydrateWorkspaceAppMentionIcons(doc, workspaceAppIcons);
   }
   if (agentTargets.length > 0) {
-    doc = hydrateAgentTargetMentionPresentations(doc, agentTargets);
+    doc = hydrateAgentMentionPresentations(doc, agentTargets);
   }
   return doc;
 }
@@ -234,22 +237,29 @@ function resolveWorkspaceAppIconUrl(input: {
   );
 }
 
-function hydrateAgentTargetMentionPresentations(
+function hydrateAgentMentionPresentations(
   node: JSONContent,
   agentTargets: readonly AgentMessageMarkdownAgentTarget[]
 ): JSONContent {
   const nextContent = node.content?.map((child) =>
-    hydrateAgentTargetMentionPresentations(child, agentTargets)
+    hydrateAgentMentionPresentations(child, agentTargets)
   );
   if (node.type !== "agentFileMention") {
     return nextContent ? { ...node, content: nextContent } : node;
   }
   const attrs = node.attrs ?? {};
-  if (attrs.kind !== "agent-target") {
+  const kind = typeof attrs.kind === "string" ? attrs.kind : "";
+  if (kind !== "agent-target" && kind !== "session") {
     return nextContent ? { ...node, content: nextContent } : node;
   }
   const agentTargetId =
-    typeof attrs.targetId === "string" ? attrs.targetId.trim() : "";
+    kind === "session"
+      ? typeof attrs.agentTargetId === "string"
+        ? attrs.agentTargetId.trim()
+        : ""
+      : typeof attrs.targetId === "string"
+        ? attrs.targetId.trim()
+        : "";
   const workspaceId =
     typeof attrs.workspaceId === "string" ? attrs.workspaceId.trim() : "";
   const target = resolveAgentTargetPresentation({
@@ -266,7 +276,9 @@ function hydrateAgentTargetMentionPresentations(
       ...node.attrs,
       agentProviderId: target.provider?.trim() ?? "",
       iconUrl: target.iconUrl?.trim() ?? "",
-      name: target.name?.trim() || attrs.name
+      ...(kind === "agent-target"
+        ? { name: target.name?.trim() || attrs.name }
+        : {})
     },
     ...(nextContent ? { content: nextContent } : {})
   };

@@ -5,8 +5,10 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"net/url"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"time"
 
@@ -18,10 +20,14 @@ import (
 )
 
 const defaultSQLiteBusyTimeoutMillisec = 5000
+const defaultSQLiteReaderConnections = 4
 
 type SQLiteStore struct {
-	db    *sql.DB
-	agent *agentstore.Store
+	dbPath      string
+	writeDB     *sql.DB
+	readDB      *sql.DB
+	agentWriter *agentstore.Store
+	agentReader *agentstore.Store
 }
 
 func OpenSQLiteStore(dbPath string) (*SQLiteStore, error) {
@@ -33,23 +39,16 @@ func OpenSQLiteStore(dbPath string) (*SQLiteStore, error) {
 		return nil, fmt.Errorf("create tutti database directory: %w", err)
 	}
 
-	db, err := sql.Open("sqlite", dbPath)
+	db, err := sql.Open("sqlite", sqliteWriterDSN(dbPath))
 	if err != nil {
 		return nil, fmt.Errorf("open tutti database: %w", err)
 	}
 
 	db.SetMaxOpenConns(1)
-	store := &SQLiteStore{db: db}
-	store.agent = store.newAgentStore()
+	db.SetMaxIdleConns(1)
+	store := &SQLiteStore{dbPath: dbPath, writeDB: db}
+	store.agentWriter = newAgentStore(db)
 
-	if _, err := db.Exec(fmt.Sprintf("PRAGMA busy_timeout = %d", defaultSQLiteBusyTimeoutMillisec)); err != nil {
-		_ = store.Close()
-		return nil, fmt.Errorf("set sqlite busy timeout: %w", err)
-	}
-	if _, err := db.Exec("PRAGMA foreign_keys = ON"); err != nil {
-		_ = store.Close()
-		return nil, fmt.Errorf("enable sqlite foreign keys: %w", err)
-	}
 	if _, err := db.Exec("PRAGMA journal_mode = WAL"); err != nil {
 		_ = store.Close()
 		return nil, fmt.Errorf("enable sqlite wal mode: %w", err)
@@ -63,14 +62,69 @@ func DefaultDBPath() string {
 }
 
 func (s *SQLiteStore) Close() error {
-	if s == nil || s.db == nil {
+	if s == nil {
 		return nil
 	}
-	return s.db.Close()
+	var readErr error
+	if s.readDB != nil {
+		readErr = s.readDB.Close()
+	}
+	var writeErr error
+	if s.writeDB != nil {
+		writeErr = s.writeDB.Close()
+	}
+	return errors.Join(readErr, writeErr)
+}
+
+func sqliteWriterDSN(dbPath string) string {
+	return sqliteDSN(dbPath, false)
+}
+
+func sqliteReaderDSN(dbPath string) string {
+	return sqliteDSN(dbPath, true)
+}
+
+func sqliteDSN(dbPath string, readOnly bool) string {
+	query := url.Values{}
+	query.Add("_pragma", fmt.Sprintf("busy_timeout(%d)", defaultSQLiteBusyTimeoutMillisec))
+	query.Add("_pragma", "foreign_keys(1)")
+	if readOnly {
+		query.Set("mode", "ro")
+		query.Add("_pragma", "query_only(1)")
+	}
+	uriPath := filepath.ToSlash(dbPath)
+	if runtime.GOOS == "windows" && filepath.IsAbs(dbPath) && len(uriPath) >= 2 && uriPath[1] == ':' {
+		uriPath = "/" + uriPath
+	}
+	return (&url.URL{Scheme: "file", Path: uriPath, RawQuery: query.Encode()}).String()
+}
+
+func (s *SQLiteStore) openReadPool(ctx context.Context) error {
+	if s == nil || s.writeDB == nil {
+		return errors.New("workspace database is not initialized")
+	}
+	if s.readDB != nil {
+		return nil
+	}
+
+	db, err := sql.Open("sqlite", sqliteReaderDSN(s.dbPath))
+	if err != nil {
+		return fmt.Errorf("open tutti database read pool: %w", err)
+	}
+	db.SetMaxOpenConns(defaultSQLiteReaderConnections)
+	db.SetMaxIdleConns(defaultSQLiteReaderConnections)
+	if err := db.PingContext(ctx); err != nil {
+		_ = db.Close()
+		return fmt.Errorf("ping tutti database read pool: %w", err)
+	}
+
+	s.readDB = db
+	s.agentReader = newAgentStore(db)
+	return nil
 }
 
 func (s *SQLiteStore) Create(ctx context.Context, item workspacebiz.Summary) error {
-	if s == nil || s.db == nil {
+	if s == nil || s.writeDB == nil {
 		return errors.New("workspace database is not initialized")
 	}
 
@@ -81,7 +135,7 @@ func (s *SQLiteStore) Create(ctx context.Context, item workspacebiz.Summary) err
 	}
 
 	now := unixMs(time.Now().UTC())
-	tx, err := s.db.BeginTx(ctx, nil)
+	tx, err := s.writeDB.BeginTx(ctx, nil)
 	if err != nil {
 		return fmt.Errorf("begin create workspace: %w", err)
 	}
@@ -115,7 +169,7 @@ INSERT INTO workspace_issue_topics (
 }
 
 func (s *SQLiteStore) Delete(ctx context.Context, workspaceID string) error {
-	if s == nil || s.db == nil {
+	if s == nil || s.writeDB == nil {
 		return errors.New("workspace database is not initialized")
 	}
 
@@ -124,7 +178,7 @@ func (s *SQLiteStore) Delete(ctx context.Context, workspaceID string) error {
 		return errors.New("workspace id is required")
 	}
 
-	tx, err := s.db.BeginTx(ctx, nil)
+	tx, err := s.writeDB.BeginTx(ctx, nil)
 	if err != nil {
 		return fmt.Errorf("begin delete workspace: %w", err)
 	}
@@ -167,7 +221,7 @@ WHERE id = ?
 }
 
 func (s *SQLiteStore) Get(ctx context.Context, workspaceID string) (workspacebiz.Summary, error) {
-	if s == nil || s.db == nil {
+	if s == nil || s.writeDB == nil {
 		return workspacebiz.Summary{}, errors.New("workspace database is not initialized")
 	}
 
@@ -176,7 +230,7 @@ func (s *SQLiteStore) Get(ctx context.Context, workspaceID string) (workspacebiz
 		return workspacebiz.Summary{}, errors.New("workspace id is required")
 	}
 
-	row := s.db.QueryRowContext(ctx, `
+	row := s.readDB.QueryRowContext(ctx, `
 SELECT id, name
      , last_opened_at_unix_ms
 FROM workspaces
@@ -197,11 +251,11 @@ WHERE id = ?
 }
 
 func (s *SQLiteStore) List(ctx context.Context) ([]workspacebiz.Summary, error) {
-	if s == nil || s.db == nil {
+	if s == nil || s.writeDB == nil {
 		return nil, errors.New("workspace database is not initialized")
 	}
 
-	rows, err := s.db.QueryContext(ctx, `
+	rows, err := s.readDB.QueryContext(ctx, `
 SELECT id, name, last_opened_at_unix_ms
 FROM workspaces
 ORDER BY COALESCE(last_opened_at_unix_ms, 0) DESC, updated_at_unix_ms DESC, id ASC`)
@@ -229,11 +283,11 @@ ORDER BY COALESCE(last_opened_at_unix_ms, 0) DESC, updated_at_unix_ms DESC, id A
 }
 
 func (s *SQLiteStore) GetStartup(ctx context.Context) (*workspacebiz.Summary, error) {
-	if s == nil || s.db == nil {
+	if s == nil || s.writeDB == nil {
 		return nil, errors.New("workspace database is not initialized")
 	}
 
-	row := s.db.QueryRowContext(ctx, `
+	row := s.readDB.QueryRowContext(ctx, `
 SELECT id, name, last_opened_at_unix_ms
 FROM workspaces
 WHERE last_opened_at_unix_ms IS NOT NULL
@@ -254,7 +308,7 @@ LIMIT 1`)
 }
 
 func (s *SQLiteStore) Update(ctx context.Context, item workspacebiz.Summary) error {
-	if s == nil || s.db == nil {
+	if s == nil || s.writeDB == nil {
 		return errors.New("workspace database is not initialized")
 	}
 
@@ -264,7 +318,7 @@ func (s *SQLiteStore) Update(ctx context.Context, item workspacebiz.Summary) err
 		return errors.New("workspace id and name are required")
 	}
 
-	result, err := s.db.ExecContext(ctx, `
+	result, err := s.writeDB.ExecContext(ctx, `
 UPDATE workspaces
 SET name = ?, updated_at_unix_ms = ?
 WHERE id = ?
@@ -285,7 +339,7 @@ WHERE id = ?
 }
 
 func (s *SQLiteStore) Open(ctx context.Context, workspaceID string) (workspacebiz.Summary, error) {
-	if s == nil || s.db == nil {
+	if s == nil || s.writeDB == nil {
 		return workspacebiz.Summary{}, errors.New("workspace database is not initialized")
 	}
 
@@ -295,7 +349,7 @@ func (s *SQLiteStore) Open(ctx context.Context, workspaceID string) (workspacebi
 	}
 
 	now := unixMs(time.Now().UTC())
-	result, err := s.db.ExecContext(ctx, `
+	result, err := s.writeDB.ExecContext(ctx, `
 UPDATE workspaces
 SET last_opened_at_unix_ms = ?, updated_at_unix_ms = ?
 WHERE id = ?

@@ -11,7 +11,6 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
-	"runtime"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -169,7 +168,7 @@ func TestCatalogRetriesRemoteURLFetch(t *testing.T) {
 	t.Cleanup(server.Close)
 	t.Setenv(remoteCatalogURLEnv, server.URL+"/catalog.json")
 
-	snapshot, err := snapshot(true, "")
+	snapshot, err := snapshot(true, CatalogHost{})
 	if err != nil {
 		t.Fatalf("snapshot(true) error = %v", err)
 	}
@@ -294,11 +293,7 @@ func TestCatalogReturnsEmbeddedCatalogWhenRemoteURLFails(t *testing.T) {
 		t.Fatalf("Catalog() error = %v", err)
 	}
 	app := findCatalogAppForTest(apps, "tutti-onboarding")
-	if runtime.GOOS == "windows" {
-		if app != nil {
-			t.Fatalf("Catalog() apps = %#v, want no embedded onboarding on windows", apps)
-		}
-	} else if app == nil {
+	if app == nil {
 		t.Fatalf("Catalog() apps = %#v, want embedded onboarding", apps)
 	}
 
@@ -307,20 +302,12 @@ func TestCatalogReturnsEmbeddedCatalogWhenRemoteURLFails(t *testing.T) {
 		t.Fatal("remote catalog last error is empty, want failure details")
 	}
 	app = findCatalogAppForTest(snapshot.Apps, "tutti-onboarding")
-	if runtime.GOOS == "windows" {
-		if app != nil {
-			t.Fatalf("failed snapshot apps = %#v, want no embedded onboarding on windows", snapshot.Apps)
-		}
-	} else if app == nil {
+	if app == nil {
 		t.Fatalf("failed snapshot apps = %#v, want embedded onboarding", snapshot.Apps)
 	}
 }
 
 func TestEmbeddedOnboardingArchiveMatchesCatalog(t *testing.T) {
-	if runtime.GOOS == "windows" {
-		t.Skip("embedded onboarding is disabled on windows")
-	}
-
 	app := findCatalogAppForTest(embeddedCatalog(), "tutti-onboarding")
 	if app == nil {
 		t.Fatal("embedded catalog missing tutti-onboarding")
@@ -351,9 +338,12 @@ func TestEmbeddedOnboardingArchiveMatchesCatalog(t *testing.T) {
 	requireZipEntryForTest(t, archive, "tutti.cli.json")
 	requireZipEntryForTest(t, archive, "tutti-guide.md")
 	requireZipEntryForTest(t, archive, "bootstrap.sh")
+	requireZipEntryForTest(t, archive, "bootstrap.cmd")
 	requireZipEntryForTest(t, archive, "dist/index.html")
 	requireZipEntryForTest(t, archive, "bin/darwin-arm64/tutti-onboarding-server")
 	requireZipEntryForTest(t, archive, "bin/darwin-amd64/tutti-onboarding-server")
+	requireZipEntryForTest(t, archive, "bin/windows-amd64/tutti-onboarding-server.exe")
+	requireZipEntryForTest(t, archive, "bin/windows-arm64/tutti-onboarding-server.exe")
 
 	archiveManifestData := readZipEntryForTest(t, archive, "tutti.app.json")
 	archiveManifest, _, err := workspacebiz.ParseAppManifestJSON(archiveManifestData)
@@ -393,9 +383,6 @@ func TestRemoteCatalogURLDefaultsToPublishedCatalog(t *testing.T) {
 func TestMergeCatalogsKeepsEmbeddedAppBeforeRemoteAppWithSameID(t *testing.T) {
 	embedded := embeddedCatalog()
 	if len(embedded) == 0 {
-		if runtime.GOOS == "windows" {
-			t.Skip("embedded onboarding is disabled on windows")
-		}
 		t.Fatal("embedded catalog is empty")
 	}
 	remoteManifest := embedded[0].Manifest
@@ -518,6 +505,94 @@ func TestParseRemoteCatalogSelectsHighestCompatibleAppVersion(t *testing.T) {
 	}
 	if app := findCatalogAppForTest(highApps, "new-only-app"); app == nil || app.Manifest.Version != "1.0.0" {
 		t.Fatalf("high-version new-only app = %#v, want 1.0.0", app)
+	}
+}
+
+func TestParseRemoteCatalogSelectsCapabilityCompatibleAppVersion(t *testing.T) {
+	legacy := remoteCatalogAppForVersionTest("capability-app", "1.0.0")
+	versionCompatible := remoteCatalogAppForVersionTest("capability-app", "1.1.0")
+	capabilityCompatible := remoteCatalogAppForVersionTest("capability-app", "2.0.0")
+	document := remoteCatalogDocument{
+		SchemaVersion: remoteCatalogSchemaVersionV1,
+		Apps:          []remoteCatalogApp{legacy},
+		Compatibility: &remoteCatalogCompatibility{
+			Apps: map[string][]remoteCatalogCompatibilityEntry{
+				"capability-app": {
+					{MinTuttiVersion: "0.0.0", App: versionCompatible},
+				},
+			},
+			CapabilityApps: map[string][]remoteCatalogCapabilityEntry{
+				"capability-app": {
+					{
+						RequiredTuttiCapabilities: []string{"managed-model-cli-v1"},
+						App:                       capabilityCompatible,
+					},
+				},
+			},
+		},
+	}
+	data, err := json.Marshal(document)
+	if err != nil {
+		t.Fatalf("marshal catalog: %v", err)
+	}
+
+	legacyApps, err := parseRemoteCatalogForTuttiVersion(data, "0.12.0")
+	if err != nil {
+		t.Fatalf("parse legacy wrapper catalog: %v", err)
+	}
+	if app := findCatalogAppForTest(legacyApps, "capability-app"); app == nil || app.Manifest.Version != "1.1.0" {
+		t.Fatalf("legacy capability app = %#v, want 1.1.0", app)
+	}
+
+	unsupportedApps, err := parseRemoteCatalogForHost(data, CatalogHost{
+		TuttiVersion: "0.12.0",
+	})
+	if err != nil {
+		t.Fatalf("parse unsupported capability catalog: %v", err)
+	}
+	if app := findCatalogAppForTest(unsupportedApps, "capability-app"); app == nil || app.Manifest.Version != "1.1.0" {
+		t.Fatalf("unsupported capability app = %#v, want 1.1.0", app)
+	}
+
+	capableApps, err := parseRemoteCatalogForHost(data, CatalogHost{
+		TuttiVersion: "0.12.0",
+		Capabilities: []string{"managed-model-cli-v1"},
+	})
+	if err != nil {
+		t.Fatalf("parse capable catalog: %v", err)
+	}
+	if app := findCatalogAppForTest(capableApps, "capability-app"); app == nil || app.Manifest.Version != "2.0.0" {
+		t.Fatalf("capable app = %#v, want 2.0.0", app)
+	}
+}
+
+func TestParseRemoteCatalogRejectsEligibleMalformedCapabilityPayload(t *testing.T) {
+	legacy := remoteCatalogAppForVersionTest("capability-app", "1.0.0")
+	document := remoteCatalogDocument{
+		SchemaVersion: remoteCatalogSchemaVersionV1,
+		Apps:          []remoteCatalogApp{legacy},
+		Compatibility: &remoteCatalogCompatibility{
+			Apps: map[string][]remoteCatalogCompatibilityEntry{},
+			CapabilityApps: map[string][]remoteCatalogCapabilityEntry{
+				"capability-app": {
+					{
+						RequiredTuttiCapabilities: []string{"managed-model-cli-v1"},
+						App: remoteCatalogApp{
+							Manifest: workspacebiz.AppManifest{Version: "not-a-manifest"},
+						},
+					},
+				},
+			},
+		},
+	}
+	data, err := json.Marshal(document)
+	if err != nil {
+		t.Fatalf("marshal catalog: %v", err)
+	}
+	if _, err := parseRemoteCatalogForHost(data, CatalogHost{
+		Capabilities: []string{"managed-model-cli-v1"},
+	}); err == nil {
+		t.Fatal("parse eligible malformed capability payload error = nil")
 	}
 }
 

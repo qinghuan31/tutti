@@ -4,6 +4,7 @@ import { pathToFileURL } from "node:url";
 import path from "node:path";
 
 import {
+  normalizeRequiredTuttiCapabilities,
   releaseToCatalogApp,
   validateRelease
 } from "./build-tutti-app-release.mjs";
@@ -30,6 +31,7 @@ export async function buildTuttiAppCatalog(options) {
 
   const appsByID = new Map();
   const compatibilityByAppID = new Map();
+  const capabilityCompatibilityByAppID = new Map();
   if (existingCatalogPath) {
     const existingCatalog = JSON.parse(
       await readFile(existingCatalogPath, "utf8")
@@ -43,6 +45,11 @@ export async function buildTuttiAppCatalog(options) {
     )) {
       compatibilityByAppID.set(appId, entries);
     }
+    for (const [appId, entries] of Object.entries(
+      existingCatalog.compatibility?.capabilityApps ?? {}
+    )) {
+      capabilityCompatibilityByAppID.set(appId, entries);
+    }
   }
 
   const seenVersionsAppIDs = new Set();
@@ -53,7 +60,12 @@ export async function buildTuttiAppCatalog(options) {
       throw new Error(`duplicate versions appId ${versions.appId}`);
     }
     seenVersionsAppIDs.add(versions.appId);
-    applyVersionsDocument(appsByID, compatibilityByAppID, versions);
+    applyVersionsDocument(
+      appsByID,
+      compatibilityByAppID,
+      capabilityCompatibilityByAppID,
+      versions
+    );
   }
 
   const seenReleaseAppIDs = new Set();
@@ -72,7 +84,11 @@ export async function buildTuttiAppCatalog(options) {
     appsByID.set(release.appId, releaseToCatalogApp(release));
   }
 
-  if (appsByID.size === 0 && compatibilityByAppID.size === 0) {
+  if (
+    appsByID.size === 0 &&
+    compatibilityByAppID.size === 0 &&
+    capabilityCompatibilityByAppID.size === 0
+  ) {
     throw new Error(
       "at least one versions file, release file, or existing catalog app is required"
     );
@@ -86,11 +102,24 @@ export async function buildTuttiAppCatalog(options) {
       .filter(([, entries]) => entries.length > 0)
       .sort(([left], [right]) => left.localeCompare(right))
   );
+  const capabilityApps = Object.fromEntries(
+    [...capabilityCompatibilityByAppID.entries()]
+      .filter(([, entries]) => entries.length > 0)
+      .sort(([left], [right]) => left.localeCompare(right))
+  );
   const catalog = {
     schemaVersion: catalogSchemaVersion,
     apps,
-    ...(Object.keys(compatibilityApps).length > 0
-      ? { compatibility: { apps: compatibilityApps } }
+    ...(Object.keys(compatibilityApps).length > 0 ||
+    Object.keys(capabilityApps).length > 0
+      ? {
+          compatibility: {
+            apps: compatibilityApps,
+            ...(Object.keys(capabilityApps).length > 0
+              ? { capabilityApps }
+              : {})
+          }
+        }
       : {})
   };
   validateCatalog(catalog);
@@ -141,7 +170,18 @@ export function validateCatalog(catalog) {
   ) {
     throw new Error("catalog compatibility.apps must be an object");
   }
-  for (const [appId, entries] of Object.entries(compatibility.apps)) {
+  validateCatalogCompatibilityApps(compatibility.apps);
+  if (compatibility.capabilityApps !== undefined) {
+    validateCatalogCapabilityApps(
+      compatibility.capabilityApps,
+      seenLegacyAppIDs
+    );
+  }
+  return catalog;
+}
+
+function validateCatalogCompatibilityApps(compatibilityApps) {
+  for (const [appId, entries] of Object.entries(compatibilityApps)) {
     if (!Array.isArray(entries) || entries.length === 0) {
       throw new Error(`catalog compatibility app ${appId} must be non-empty`);
     }
@@ -169,7 +209,55 @@ export function validateCatalog(catalog) {
       seenVersions.add(version);
     }
   }
-  return catalog;
+}
+
+function validateCatalogCapabilityApps(capabilityApps, legacyAppIDs) {
+  if (
+    !capabilityApps ||
+    typeof capabilityApps !== "object" ||
+    Array.isArray(capabilityApps)
+  ) {
+    throw new Error("catalog compatibility.capabilityApps must be an object");
+  }
+  for (const [rawAppID, entries] of Object.entries(capabilityApps)) {
+    const appId = String(rawAppID).trim();
+    if (appId === "" || !Array.isArray(entries) || entries.length === 0) {
+      throw new Error(
+        `catalog capability compatibility app ${rawAppID} must be non-empty`
+      );
+    }
+    if (!legacyAppIDs.has(appId)) {
+      throw new Error(
+        `catalog capability compatibility app ${appId} requires a legacy fallback app`
+      );
+    }
+    const seenCapabilitySets = new Set();
+    const seenVersions = new Set();
+    for (const [index, entry] of entries.entries()) {
+      const label = `catalog capability compatibility app ${appId}[${index}]`;
+      if (!entry || typeof entry !== "object" || Array.isArray(entry)) {
+        throw new Error(`${label} must be an object`);
+      }
+      const requiredTuttiCapabilities = normalizeRequiredTuttiCapabilities(
+        entry.requiredTuttiCapabilities,
+        `${label}.requiredTuttiCapabilities`
+      );
+      const capabilityKey = requiredTuttiCapabilities.join("\u0000");
+      if (seenCapabilitySets.has(capabilityKey)) {
+        throw new Error(`${label} has duplicate requiredTuttiCapabilities`);
+      }
+      seenCapabilitySets.add(capabilityKey);
+      const entryAppID = validateCatalogApp(entry.app, `${label}.app`);
+      if (entryAppID !== appId) {
+        throw new Error(`${label}.app manifest.appId must match map key`);
+      }
+      const version = entry.app.manifest.version;
+      if (seenVersions.has(version)) {
+        throw new Error(`${label} has duplicate app version ${version}`);
+      }
+      seenVersions.add(version);
+    }
+  }
 }
 
 export function validateCatalogApp(app, label) {
@@ -200,7 +288,12 @@ export function validateCatalogApp(app, label) {
   return appId;
 }
 
-function applyVersionsDocument(appsByID, compatibilityByAppID, versions) {
+function applyVersionsDocument(
+  appsByID,
+  compatibilityByAppID,
+  capabilityCompatibilityByAppID,
+  versions
+) {
   const activeRecords = versions.versions.filter(
     (record) => record.status === "active"
   );
@@ -214,7 +307,9 @@ function applyVersionsDocument(appsByID, compatibilityByAppID, versions) {
     appsByID.delete(versions.appId);
   }
 
-  const entries = compatibilityFrontier(activeRecords).map((record) => ({
+  const entries = compatibilityFrontier(
+    activeRecords.filter((record) => record.minTuttiVersion !== undefined)
+  ).map((record) => ({
     minTuttiVersion: record.minTuttiVersion,
     app: releaseToCatalogApp(record.release)
   }));
@@ -222,6 +317,20 @@ function applyVersionsDocument(appsByID, compatibilityByAppID, versions) {
     compatibilityByAppID.set(versions.appId, entries);
   } else {
     compatibilityByAppID.delete(versions.appId);
+  }
+
+  const capabilityEntries = capabilityCompatibilityFrontier(
+    activeRecords.filter(
+      (record) => record.requiredTuttiCapabilities !== undefined
+    )
+  ).map((record) => ({
+    requiredTuttiCapabilities: record.requiredTuttiCapabilities,
+    app: releaseToCatalogApp(record.release)
+  }));
+  if (capabilityEntries.length > 0) {
+    capabilityCompatibilityByAppID.set(versions.appId, capabilityEntries);
+  } else {
+    capabilityCompatibilityByAppID.delete(versions.appId);
   }
 }
 
@@ -256,6 +365,27 @@ export function compatibilityFrontier(records) {
     }
   }
   return frontier;
+}
+
+export function capabilityCompatibilityFrontier(records) {
+  const highestByCapabilitySet = new Map();
+  for (const record of records) {
+    const capabilityKey = record.requiredTuttiCapabilities.join("\u0000");
+    const existing = highestByCapabilitySet.get(capabilityKey);
+    if (
+      !existing ||
+      compareReleaseVersions(record.release, existing.release) > 0
+    ) {
+      highestByCapabilitySet.set(capabilityKey, record);
+    }
+  }
+  return [...highestByCapabilitySet.values()].sort((left, right) => {
+    const leftKey = left.requiredTuttiCapabilities.join("\u0000");
+    const rightKey = right.requiredTuttiCapabilities.join("\u0000");
+    const keyComparison = leftKey.localeCompare(rightKey);
+    if (keyComparison !== 0) return keyComparison;
+    return compareReleaseVersions(left.release, right.release);
+  });
 }
 
 function highestReleaseRecord(records) {

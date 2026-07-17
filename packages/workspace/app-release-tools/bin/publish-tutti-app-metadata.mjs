@@ -7,6 +7,7 @@ import path from "node:path";
 
 import { buildTuttiAppCatalog } from "./build-tutti-app-catalog.mjs";
 import {
+  requiredTuttiCapabilitiesForManifest,
   releaseToCatalogApp,
   validateRelease
 } from "./build-tutti-app-release.mjs";
@@ -37,10 +38,6 @@ export async function publishTuttiAppMetadata(options) {
   if (!catalogOnly && !releasePath) {
     throw new Error("releasePath is required unless catalogOnly is true");
   }
-  if (!catalogOnly && !minTuttiVersion) {
-    throw new Error("minTuttiVersion is required for app releases");
-  }
-
   await mkdir(outputDir, { recursive: true });
   const release = releasePath
     ? JSON.parse(await readFile(releasePath, "utf8"))
@@ -50,6 +47,23 @@ export async function publishTuttiAppMetadata(options) {
     if (release.appId !== appId) {
       throw new Error("release appId must match input appId");
     }
+  }
+  const requiredTuttiCapabilities = release
+    ? requiredTuttiCapabilitiesForManifest(release.manifest, "release.manifest")
+    : [];
+  if (
+    !catalogOnly &&
+    !minTuttiVersion &&
+    requiredTuttiCapabilities.length === 0
+  ) {
+    throw new Error(
+      "minTuttiVersion or release.manifest.hostCompatibility.requiredTuttiCapabilities is required for app releases"
+    );
+  }
+  if (minTuttiVersion && requiredTuttiCapabilities.length > 0) {
+    throw new Error(
+      "an app release cannot declare both minTuttiVersion and requiredTuttiCapabilities"
+    );
   }
 
   const key = (suffix) => (prefix ? `${prefix}/${suffix}` : suffix);
@@ -78,7 +92,7 @@ export async function publishTuttiAppMetadata(options) {
 
       if (releasePath) {
         releaseFiles.push(releasePath);
-      } else if (!existingPath && minTuttiVersion) {
+      } else if (!existingPath) {
         const latest = await getObject({
           bucket,
           key: latestKey,
@@ -100,7 +114,9 @@ export async function publishTuttiAppMetadata(options) {
         existingVersionsPath: existingPath,
         baselineReleaseFiles,
         releaseFiles,
-        ...(releaseFiles.length > 0 ? { minTuttiVersion } : {}),
+        ...(releaseFiles.length > 0 && minTuttiVersion
+          ? { minTuttiVersion }
+          : {}),
         outputPath
       });
       return outputPath;
@@ -173,7 +189,10 @@ async function downloadLegacyBaseline(input) {
   });
   if (!catalog) return null;
   const document = JSON.parse(await readFile(catalog.path, "utf8"));
-  if ((document.compatibility?.apps?.[input.appId] ?? []).length > 0) {
+  if (
+    (document.compatibility?.apps?.[input.appId] ?? []).length > 0 ||
+    (document.compatibility?.capabilityApps?.[input.appId] ?? []).length > 0
+  ) {
     throw new Error(
       `versions index for ${input.appId} is missing but catalog compatibility history exists; restore versions.json before publishing`
     );

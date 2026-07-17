@@ -1,4 +1,5 @@
 import { fireEvent, render } from "@testing-library/react";
+import type { ComponentProps } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { AgentMessageBlock } from "./AgentMessageBlock";
 import type {
@@ -27,6 +28,7 @@ function buildRow(
         id: "msg-1",
         turnId: "turn-1",
         body,
+        presentationKind: "content",
         occurredAtUnixMs: 0,
         visibleError
       }
@@ -34,13 +36,18 @@ function buildRow(
   };
 }
 
-function renderBlock(row: AgentMessageRowVM, provider?: string) {
+function renderBlock(
+  row: AgentMessageRowVM,
+  provider?: string,
+  onLinkAction?: ComponentProps<typeof AgentMessageBlock>["onLinkAction"]
+) {
   return render(
     <AgentMessageBlock
       workspaceRoot={null}
       basePath="/"
       row={row}
       provider={provider}
+      onLinkAction={onLinkAction}
       thinkingLabel="thinking"
     />
   );
@@ -60,12 +67,22 @@ function buildFailedTextRow(body: string): AgentMessageRowVM {
         id: "msg-1",
         turnId: "turn-1",
         body,
+        presentationKind: "content",
         statusKind: "failed",
         occurredAtUnixMs: 0,
         visibleError: null
       }
     ]
   };
+}
+
+function buildCompletedTextRow(body: string): AgentMessageRowVM {
+  const row = buildFailedTextRow(body);
+  const message = row.messages[0];
+  if (message) {
+    message.statusKind = "completed";
+  }
+  return row;
 }
 
 afterEach(() => {
@@ -128,6 +145,28 @@ describe("AgentVisibleErrorMessage", () => {
     expect(getAgentEnvPanelStore().focus).toBe("detect");
   });
 
+  it("keeps the remediation action when the provider is unavailable", () => {
+    const { getAllByRole } = renderBlock(
+      buildRow({
+        code: "cli_not_found",
+        phase: "start",
+        provider: null,
+        detail: "spawn failed",
+        retryable: false
+      })
+    );
+
+    const action = getAllByRole("button").find(
+      (button) => button.textContent === "Connect"
+    );
+    expect(action).toBeTruthy();
+    fireEvent.click(action as HTMLButtonElement);
+    const store = getAgentEnvPanelStore();
+    expect(store.open).toBe(true);
+    expect(store.provider).toBeNull();
+    expect(store.focus).toBe("install");
+  });
+
   it("tucks the raw payload behind a single 'Raw error' disclosure", () => {
     const { getByText, queryByText } = renderBlock(
       buildRow({
@@ -162,6 +201,50 @@ describe("AgentVisibleErrorMessage", () => {
     expect(queryByText("Sign in")).toBeNull();
   });
 
+  it("shows an insufficient-credits card that opens Tutti subscription plans", () => {
+    const onLinkAction = vi.fn();
+    const { getByText, queryByText } = renderBlock(
+      buildRow({
+        code: "insufficient_credits",
+        phase: "turn",
+        provider: "tutti-agent",
+        detail:
+          "unexpected status 402 Payment Required: pre-deduct credits failed",
+        retryable: false
+      }),
+      "tutti-agent",
+      onLinkAction
+    );
+
+    expect(
+      getByText("Your Tutti credits are insufficient to continue this request.")
+    ).toBeTruthy();
+    expect(queryByText("Open setup")).toBeNull();
+    fireEvent.click(getByText("View plans"));
+    expect(onLinkAction).toHaveBeenCalledWith({
+      type: "open-url",
+      url: "https://tutti.sh/profile/plan",
+      source: "agent-markdown"
+    });
+  });
+
+  it("shows Cursor plan-limit cards as a calm warning status, not a danger alert", () => {
+    const { getByText, getByRole, queryByText } = renderBlock(
+      buildRow({
+        code: "quota_or_rate_limit",
+        phase: "turn",
+        provider: "cursor",
+        detail: "Upgrade your plan to continue",
+        retryable: false
+      })
+    );
+
+    expect(getByText("Upgrade your plan to continue")).toBeTruthy();
+    expect(getByRole("status")).toBeTruthy();
+    expect(queryByText("Open setup")).toBeNull();
+    expect(queryByText("Sign in")).toBeNull();
+  });
+
   it("recovers a failed plain auth message into the wizard card (Claude 401)", () => {
     const { getByText, getAllByRole } = renderBlock(
       buildFailedTextRow(
@@ -182,6 +265,19 @@ describe("AgentVisibleErrorMessage", () => {
     expect(store.open).toBe(true);
     expect(store.provider).toBe("claude-code");
     expect(store.focus).toBe("auth");
+  });
+
+  it("recovers Claude SDK's completed login notice into the wizard card", () => {
+    const { getByText, queryByText } = renderBlock(
+      buildCompletedTextRow("Not logged in · Please run /login"),
+      "claude-code"
+    );
+
+    expect(
+      getByText("Claude Code needs authentication or configuration")
+    ).toBeTruthy();
+    expect(getByText("Sign in")).toBeTruthy();
+    expect(queryByText("Not logged in · Please run /login")).toBeNull();
   });
 
   it("leaves a non-env failed message as plain text (no card)", () => {

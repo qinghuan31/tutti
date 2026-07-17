@@ -3,49 +3,62 @@ package projection
 import "strings"
 
 type SessionSnapshot struct {
-	WorkspaceID       string
-	AgentSessionID    string
-	Origin            string
-	UserID            string
-	AgentTargetID     string
-	Provider          string
-	ProviderSessionID string
-	Model             string
-	Settings          map[string]any
-	RuntimeContext    map[string]any
-	CWD               string
-	Title             string
-	Status            string
-	CurrentPhase      string
-	LastError         string
-	MessageVersion    uint64
-	LastEventUnixMS   int64
-	StartedAtUnixMS   int64
-	EndedAtUnixMS     int64
-	CreatedAtUnixMS   int64
-	UpdatedAtUnixMS   int64
-	DeletedAtUnixMS   int64
+	WorkspaceID          string
+	AgentSessionID       string
+	Kind                 string
+	RootAgentSessionID   string
+	RootTurnID           string
+	ParentAgentSessionID string
+	ParentTurnID         string
+	ParentToolCallID     string
+	Origin               string
+	UserID               string
+	AgentTargetID        string
+	Provider             string
+	ProviderSessionID    string
+	Model                string
+	Settings             map[string]any
+	RuntimeContext       map[string]any
+	CWD                  string
+	Title                string
+	Status               string
+	CurrentPhase         string
+	LastError            string
+	MessageVersion       uint64
+	LastEventUnixMS      int64
+	StartedAtUnixMS      int64
+	EndedAtUnixMS        int64
+	CreatedAtUnixMS      int64
+	UpdatedAtUnixMS      int64
+	DeletedAtUnixMS      int64
 }
 
 type SessionStateReport struct {
-	WorkspaceID       string
-	AgentSessionID    string
-	Origin            string
-	UserID            string
-	AgentTargetID     string
-	Provider          string
-	ProviderSessionID string
-	Model             string
-	Settings          map[string]any
-	RuntimeContext    map[string]any
-	CWD               string
-	Title             string
-	Status            string
-	CurrentPhase      string
-	LastError         string
-	OccurredAtUnixMS  int64
-	StartedAtUnixMS   int64
-	EndedAtUnixMS     int64
+	WorkspaceID          string
+	AgentSessionID       string
+	Kind                 string
+	RootAgentSessionID   string
+	RootTurnID           string
+	ParentAgentSessionID string
+	ParentTurnID         string
+	ParentToolCallID     string
+	Origin               string
+	UserID               string
+	AgentTargetID        string
+	Provider             string
+	ProviderSessionID    string
+	Model                string
+	Settings             map[string]any
+	RuntimeContext       map[string]any
+	CWD                  string
+	Title                string
+	Status               string
+	CurrentPhase         string
+	LastError            string
+	OccurredAtUnixMS     int64
+	StartedAtUnixMS      int64
+	EndedAtUnixMS        int64
+	CreatedAtUnixMS      int64
 }
 
 type SessionProjection struct {
@@ -72,26 +85,35 @@ func ProjectSessionState(
 		}
 	}
 	session := SessionSnapshot{
-		WorkspaceID:       strings.TrimSpace(report.WorkspaceID),
-		AgentSessionID:    strings.TrimSpace(report.AgentSessionID),
-		Origin:            strings.TrimSpace(report.Origin),
-		UserID:            strings.TrimSpace(report.UserID),
-		AgentTargetID:     strings.TrimSpace(report.AgentTargetID),
-		Provider:          strings.TrimSpace(report.Provider),
-		ProviderSessionID: strings.TrimSpace(report.ProviderSessionID),
-		Model:             strings.TrimSpace(report.Model),
-		Settings:          cloneJSONMap(report.Settings),
-		RuntimeContext:    cloneJSONMap(report.RuntimeContext),
-		CWD:               strings.TrimSpace(report.CWD),
-		Title:             strings.TrimSpace(report.Title),
-		Status:            strings.TrimSpace(report.Status),
-		CurrentPhase:      strings.TrimSpace(report.CurrentPhase),
-		LastError:         strings.TrimSpace(report.LastError),
-		LastEventUnixMS:   lastEvent,
-		StartedAtUnixMS:   report.StartedAtUnixMS,
-		EndedAtUnixMS:     report.EndedAtUnixMS,
-		CreatedAtUnixMS:   nowUnixMS,
-		UpdatedAtUnixMS:   nowUnixMS,
+		WorkspaceID:          strings.TrimSpace(report.WorkspaceID),
+		AgentSessionID:       strings.TrimSpace(report.AgentSessionID),
+		Kind:                 strings.TrimSpace(report.Kind),
+		RootAgentSessionID:   strings.TrimSpace(report.RootAgentSessionID),
+		RootTurnID:           strings.TrimSpace(report.RootTurnID),
+		ParentAgentSessionID: strings.TrimSpace(report.ParentAgentSessionID),
+		ParentTurnID:         strings.TrimSpace(report.ParentTurnID),
+		ParentToolCallID:     strings.TrimSpace(report.ParentToolCallID),
+		Origin:               strings.TrimSpace(report.Origin),
+		UserID:               strings.TrimSpace(report.UserID),
+		AgentTargetID:        strings.TrimSpace(report.AgentTargetID),
+		Provider:             strings.TrimSpace(report.Provider),
+		ProviderSessionID:    strings.TrimSpace(report.ProviderSessionID),
+		Model:                strings.TrimSpace(report.Model),
+		Settings:             cloneJSONMap(report.Settings),
+		RuntimeContext:       cloneJSONMap(report.RuntimeContext),
+		CWD:                  strings.TrimSpace(report.CWD),
+		Title:                strings.TrimSpace(report.Title),
+		Status:               strings.TrimSpace(report.Status),
+		CurrentPhase:         strings.TrimSpace(report.CurrentPhase),
+		LastError:            strings.TrimSpace(report.LastError),
+		LastEventUnixMS:      lastEvent,
+		StartedAtUnixMS:      report.StartedAtUnixMS,
+		EndedAtUnixMS:        report.EndedAtUnixMS,
+		CreatedAtUnixMS:      report.CreatedAtUnixMS,
+		UpdatedAtUnixMS:      nowUnixMS,
+	}
+	if session.CreatedAtUnixMS <= 0 {
+		session.CreatedAtUnixMS = nowUnixMS
 	}
 	if hasExisting {
 		session.CreatedAtUnixMS = existing.CreatedAtUnixMS
@@ -101,6 +123,24 @@ func ProjectSessionState(
 		}
 		if session.Origin == "" {
 			session.Origin = existing.Origin
+		}
+		if session.Kind == "" {
+			session.Kind = existing.Kind
+		}
+		if session.RootAgentSessionID == "" {
+			session.RootAgentSessionID = existing.RootAgentSessionID
+		}
+		if session.RootTurnID == "" {
+			session.RootTurnID = existing.RootTurnID
+		}
+		if session.ParentAgentSessionID == "" {
+			session.ParentAgentSessionID = existing.ParentAgentSessionID
+		}
+		if session.ParentTurnID == "" {
+			session.ParentTurnID = existing.ParentTurnID
+		}
+		if session.ParentToolCallID == "" {
+			session.ParentToolCallID = existing.ParentToolCallID
 		}
 		if session.UserID == "" {
 			session.UserID = existing.UserID
@@ -249,9 +289,6 @@ func ProjectMessageUpdate(
 		} else if existing.CompletedAtUnixMS > 0 && existing.CompletedAtUnixMS > message.CompletedAtUnixMS {
 			message.CompletedAtUnixMS = existing.CompletedAtUnixMS
 		}
-	}
-	if message.TurnID == "" {
-		return MessageSnapshot{}, false
 	}
 	if message.OccurredAtUnixMS <= 0 {
 		message.OccurredAtUnixMS = firstNonZeroInt64(message.StartedAtUnixMS, message.CompletedAtUnixMS, nowUnixMS)

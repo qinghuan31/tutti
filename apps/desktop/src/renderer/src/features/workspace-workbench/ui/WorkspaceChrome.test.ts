@@ -4,82 +4,123 @@ import { dirname, resolve } from "node:path";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
 
-const source = readFileSync(
+const chromeSource = readFileSync(
   resolve(dirname(fileURLToPath(import.meta.url)), "WorkspaceChrome.tsx"),
+  "utf8"
+);
+const chromeActionsSource = readFileSync(
+  resolve(
+    dirname(fileURLToPath(import.meta.url)),
+    "WorkspaceChromeActions.tsx"
+  ),
+  "utf8"
+);
+const messageCenterSource = readFileSync(
+  resolve(
+    dirname(fileURLToPath(import.meta.url)),
+    "WorkspaceAgentMessageCenterAction.tsx"
+  ),
+  "utf8"
+);
+const decisionNotificationsSource = readFileSync(
+  resolve(
+    dirname(fileURLToPath(import.meta.url)),
+    "useWorkspaceAgentDecisionNotifications.tsx"
+  ),
   "utf8"
 );
 
 test("workspace chrome header releases the drag region while the message center is open", () => {
   assert.match(
-    source,
+    chromeSource,
     /messageCenterOpen\s*\?\s*"\[-webkit-app-region:no-drag\]"\s*:\s*"\[-webkit-app-region:drag\]"/
   );
-  assert.doesNotMatch(source, /min-h-\[52px\][^"]*\[-webkit-app-region:drag\]/);
-  assert.match(source, /open=\{messageCenterOpen\}/);
-  assert.match(source, /setOpen=\{setMessageCenterOpen\}/);
+  assert.doesNotMatch(
+    chromeSource,
+    /min-h-\[52px\][^"]*\[-webkit-app-region:drag\]/
+  );
+  assert.match(chromeSource, /open=\{messageCenterOpen\}/);
+  assert.match(chromeSource, /setOpen=\{setMessageCenterOpen\}/);
 });
 
 test("workspace chrome renders Windows host traffic lights with guarded close actions", () => {
   assert.match(
-    source,
+    chromeSource,
     /isWindows\s*&&\s*\(\s*<WorkspaceWorkbenchTrafficLights/
   );
   assert.match(
-    source,
+    chromeSource,
     /displayMode=\{isWindowMaximized \? "fullscreen" : "floating"\}/
   );
-  assert.match(source, /close:\s*\(\) => \{\s*void onRequestWindowClose\(\);/);
   assert.match(
-    source,
+    chromeSource,
+    /close:\s*\(\) => \{\s*void onRequestWindowClose\(\);/
+  );
+  assert.match(
+    chromeSource,
     /minimize:\s*\(\) => \{\s*void hostWindowApi\.minimize\(\);/
   );
   assert.match(
-    source,
+    chromeSource,
     /toggleDisplayMode:\s*\(\) => \{\s*void hostWindowApi\.toggleMaximize\(\);/
   );
 });
 
-test("workspace chrome deck submit forwards to submitPlanDecision instead of branching on plan action", () => {
-  // Must call submitPlanDecision with promptKind threaded from the panel
-  assert.match(source, /workspaceAgentActivityService\.submitPlanDecision\(/);
-  assert.match(source, /promptKind: input\.promptKind/);
+test("workspace chrome deck submit dispatches plan decisions through the canonical engine", () => {
+  assert.match(
+    messageCenterSource,
+    /dispatchAgentPlanPromptAction\(\{[\s\S]*engine: sessionEngine/
+  );
+  assert.match(
+    messageCenterSource,
+    /input\.promptKind === "plan-implementation"/
+  );
 
   // Must NOT contain the old plan-implementation branch inside onSubmitPrompt
-  assert.doesNotMatch(source, /PLAN_IMPLEMENTATION_ACTION_IMPLEMENT/);
-  assert.doesNotMatch(source, /PLAN_IMPLEMENTATION_PROMPT/);
+  assert.doesNotMatch(
+    messageCenterSource,
+    /PLAN_IMPLEMENTATION_ACTION_IMPLEMENT/
+  );
+  assert.doesNotMatch(messageCenterSource, /PLAN_IMPLEMENTATION_PROMPT/);
+});
+
+test("workspace message center forwards canonical session identity into AgentGUI launches", () => {
+  assert.match(
+    messageCenterSource,
+    /createWorkspaceAgentGuiSessionLaunchRequest\(\{[\s\S]*?agentSessionId: input\.agentSessionId,[\s\S]*?agentTargetId: input\.agentTargetId,[\s\S]*?provider: input\.provider/
+  );
 });
 
 test("workspace chrome does not call updateSessionSettings or sendInput from the deck submit handler", () => {
   // Ensure the old branching logic in onSubmitPrompt is removed
   // (toast notification path at line 484 uses submitInteractive — that is expected to stay)
   // But updateSessionSettings + sendInput pair for plan mode must be gone from deck handler
-  const deckSubmitMatch = source.match(
-    /const handleMessageCenterSubmitPrompt = useCallback\(\s*async \(input: \{[\s\S]*?\}\) => \{([\s\S]*?)\},\s*\[workspace\.id, workspaceAgentActivityService\]\s*\)/
+  const deckSubmitMatch = messageCenterSource.match(
+    /const handleMessageCenterSubmitPrompt = useCallback\(\s*async \(input: \{[\s\S]*?\}\) => \{([\s\S]*?)\},\s*\[sessionEngine, workspace\.id\]\s*\)/
   );
   assert.ok(
     deckSubmitMatch,
-    "message center submit handler should be present in WorkspaceChrome"
+    "message center submit handler should be present in WorkspaceAgentMessageCenterAction"
   );
   const handler = deckSubmitMatch[1] ?? "";
   assert.doesNotMatch(handler, /updateSessionSettings/);
   assert.doesNotMatch(handler, /sendInput/);
   assert.doesNotMatch(handler, /submitInteractive/);
-  assert.match(source, /onSubmitPrompt=\{handleMessageCenterSubmitPrompt\}/);
-});
-
-test("workspace chrome coalesces agent activity snapshot notifications before notifying React", () => {
+  assert.match(handler, /interaction\/responseRequested/);
+  assert.match(handler, /selectEngineInteraction\(/);
   assert.match(
-    source,
-    /function createCoalescedWorkspaceAgentActivityListener\(listener: \(\) => void\)/
+    handler,
+    /input\.agentSessionId,[\s\S]*input\.turnId,[\s\S]*input\.requestId/
+  );
+  assert.match(handler, /requestId: input\.requestId/);
+  assert.match(handler, /turnId: input\.turnId/);
+  assert.match(
+    handler,
+    /input\.payload \? \{ payload: input\.payload \} : \{\}/
   );
   assert.match(
-    source,
-    /frameId = requestAnimationFrame\(flush\);\s*timeoutId = setTimeout\(\s*flush,\s*WORKSPACE_AGENT_ACTIVITY_LISTENER_MAX_DELAY_MS\s*\);/
-  );
-  assert.match(source, /coalescedListener\.schedule\(\);/);
-  assert.doesNotMatch(
-    source,
-    /workspaceAgentActivityService\.subscribe\(\s*workspace\.id,\s*\(nextSnapshot\) => \{[\s\S]*?listener\(\);[\s\S]*?\}\s*\)/
+    messageCenterSource,
+    /onSubmitPrompt=\{handleMessageCenterSubmitPrompt\}/
   );
 });
 
@@ -90,19 +131,68 @@ test("workspace chrome gates the agent decision toast on window focus, message c
   // interrupt the user while the workspace window is unfocused or the
   // conversation is already visible.
   assert.match(
-    source,
-    /shouldShowWorkspaceAgentDecisionToast\(\{\s*agentGuiSessionOpen: isWorkspaceAgentGuiSessionOpen\(\s*workspace\.id,\s*item\.agentSessionId\s*\),\s*messageCenterOpen: open,\s*windowForeground: windowForegroundVisibility\.isForeground\(\)\s*\}\)/
-  );
-  // The OS notification path (background-only presentation) must remain
-  // unconditional here — it is the mechanism that already correctly gates on
-  // focus for the OS face, and the message-center model/list must keep
-  // reflecting pending items regardless of toast visibility.
-  assert.match(
-    source,
-    /notifications\.notify\(osMessage\);\s*if \(\s*!shouldShowWorkspaceAgentDecisionToast/
+    messageCenterSource,
+    /const isAgentGuiSessionOpenForWorkspace = useCallback\([\s\S]*?isWorkspaceAgentGuiSessionOpen\(workspace\.id, agentSessionId\)[\s\S]*?useWorkspaceAgentDecisionNotifications\(\{[\s\S]*?isAgentGuiSessionOpen: isAgentGuiSessionOpenForWorkspace,[\s\S]*?sendBackgroundNotification: true/
   );
   assert.match(
-    source,
+    decisionNotificationsSource,
+    /shouldShowWorkspaceAgentDecisionToast\(\{[\s\S]*?agentGuiSessionOpen:[\s\S]*?isAgentGuiSessionOpen\?\.\(item\.agentSessionId\) \?\? false,[\s\S]*?messageCenterOpen,[\s\S]*?windowForeground: windowForegroundVisibility\.isForeground\(\)/
+  );
+  // The OS workspace opts into the background-only face before applying the
+  // foreground toast visibility gate. Standalone reuses the same controller
+  // with this OS face disabled, so opening both renderers cannot duplicate it.
+  assert.match(
+    decisionNotificationsSource,
+    /if \(sendBackgroundNotification\) \{[\s\S]*?notifications\.notify\(osMessage\);[\s\S]*?shouldShowWorkspaceAgentDecisionToast/
+  );
+  assert.match(
+    decisionNotificationsSource,
     /createDocumentNotificationVisibilityState\(\{\s*hasFocus: \(\) => document\.hasFocus\(\),\s*visibilityState: \(\) => document\.visibilityState\s*\}\)/
+  );
+});
+
+test("workspace decision toast routes child prompts by exact interaction identity", () => {
+  assert.match(
+    decisionNotificationsSource,
+    /const target = item\.pendingInteractionTarget;[\s\S]*?selectEngineInteraction\([\s\S]*?target\.agentSessionId,[\s\S]*?target\.turnId,[\s\S]*?target\.requestId/
+  );
+  assert.match(
+    decisionNotificationsSource,
+    /type: "interaction\/responseRequested",[\s\S]*?agentSessionId: target\.agentSessionId,[\s\S]*?requestId: target\.requestId,[\s\S]*?turnId: target\.turnId/
+  );
+});
+
+test("workspace chrome derives message-center decisions and pet mood from the canonical engine", () => {
+  assert.match(messageCenterSource, /getSessionEngine\(workspace\.id\)/);
+  assert.match(
+    messageCenterSource,
+    /useEngineSelector\(\s*sessionEngine,\s*selectWorkspaceAgentMessageCenterPresentation/
+  );
+  assert.match(
+    messageCenterSource,
+    /buildWorkspaceAgentMessageCenterModelFromEngine\(/
+  );
+  assert.match(
+    messageCenterSource,
+    /useEngineSelector\(\s*sessionEngine,\s*resolveWorkspaceAgentStatusPetMood/
+  );
+  assert.doesNotMatch(
+    messageCenterSource,
+    /buildWorkspaceAgentMessageCenterModel\(/
+  );
+  assert.doesNotMatch(
+    messageCenterSource,
+    /resolveWorkspaceAgentStatusPetMood\(snapshot/
+  );
+});
+
+test("workspace chrome settings opens General while Agent deep links keep their section", () => {
+  assert.match(
+    chromeActionsSource,
+    /settingsPanelRequest\.section as WorkspaceSettingsSectionID/
+  );
+  assert.match(
+    chromeActionsSource,
+    /settingsService\.openPanel\(\s*\{ id: workspace\.id \},\s*\{ section: "general" \}\s*\)/
   );
 });

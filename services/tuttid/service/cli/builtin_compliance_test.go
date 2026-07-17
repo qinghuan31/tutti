@@ -11,6 +11,7 @@ import (
 	"github.com/tutti-os/tutti/services/tuttid/service/cli/providers/computer"
 	"github.com/tutti-os/tutti/services/tuttid/service/cli/providers/diagnostics"
 	"github.com/tutti-os/tutti/services/tuttid/service/cli/providers/issuemanager"
+	"github.com/tutti-os/tutti/services/tuttid/service/cli/providers/managedmodels"
 )
 
 func TestBuiltinProviderCapabilitiesAreFrameworkCompliant(t *testing.T) {
@@ -20,6 +21,7 @@ func TestBuiltinProviderCapabilitiesAreFrameworkCompliant(t *testing.T) {
 		agentcontext.NewProviderWithLaunchPublisher(nil, nil, nil),
 		browser.NewProvider(nil, nil),
 		computer.NewProvider(nil, nil),
+		managedmodels.NewProvider(nil),
 	}
 	total := 0
 	for _, provider := range providers {

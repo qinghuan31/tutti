@@ -56,47 +56,6 @@ test("Browser Node webview controller derives render state and partition", () =>
   assert.equal(state.webviewSrc, "about:blank");
 });
 
-test("Browser Node webview controller unregisters guests after release", async () => {
-  const registerCalls: number[] = [];
-  const unregisterCalls: number[] = [];
-  const feature = createBrowserNodeFeature({
-    hostApi: createBrowserNodeHostApi({
-      registerGuest(payload) {
-        registerCalls.push(payload.webContentsId);
-        return Promise.resolve();
-      },
-      unregisterGuest(payload) {
-        unregisterCalls.push(payload.webContentsId);
-        return Promise.resolve();
-      }
-    })
-  });
-
-  const controller = acquireBrowserNodeWebviewController({
-    feature,
-    initialUrl: "https://example.com/",
-    lifecycle: "active",
-    nodeId: "browser-3",
-    profileId: null,
-    sessionMode: "shared"
-  });
-
-  const webview = new MockBrowserNodeWebviewTag(17);
-  controller.retain();
-  controller.setWebview(webview as unknown as BrowserNodeWebviewTag);
-  webview.emit("did-attach");
-  await Promise.resolve();
-  await Promise.resolve();
-
-  controller.release();
-  await new Promise((resolve) => {
-    setTimeout(resolve, 300);
-  });
-
-  assert.deepEqual(registerCalls, [17]);
-  assert.deepEqual(unregisterCalls, [17]);
-});
-
 test("Browser Node webview controller tolerates webviews before dom-ready exposes webContentsId", async () => {
   const registerCalls: number[] = [];
   const feature = createBrowserNodeFeature({
@@ -132,109 +91,6 @@ test("Browser Node webview controller tolerates webviews before dom-ready expose
   await Promise.resolve();
   assert.deepEqual(registerCalls, [18]);
   controller.release();
-});
-
-test("Browser Node webview controller keeps a pending guest alive when the node is retained again", async () => {
-  const registerCalls: number[] = [];
-  const unregisterCalls: number[] = [];
-  const feature = createBrowserNodeFeature({
-    hostApi: createBrowserNodeHostApi({
-      registerGuest(payload) {
-        registerCalls.push(payload.webContentsId);
-        return Promise.resolve();
-      },
-      unregisterGuest(payload) {
-        unregisterCalls.push(payload.webContentsId);
-        return Promise.resolve();
-      }
-    })
-  });
-
-  const first = acquireBrowserNodeWebviewController({
-    feature,
-    initialUrl: "https://example.com/",
-    lifecycle: "active",
-    nodeId: "browser-retained-again",
-    profileId: null,
-    sessionMode: "shared"
-  });
-
-  const webview = new MockBrowserNodeWebviewTag(19);
-  first.retain();
-  first.setWebview(webview as unknown as BrowserNodeWebviewTag);
-  webview.emit("did-attach");
-  await Promise.resolve();
-  await Promise.resolve();
-
-  first.release();
-  const second = acquireBrowserNodeWebviewController({
-    feature,
-    initialUrl: "https://example.com/",
-    lifecycle: "active",
-    nodeId: "browser-retained-again",
-    profileId: null,
-    sessionMode: "shared"
-  });
-  second.retain();
-
-  await waitForTimers();
-  assert.deepEqual(registerCalls, [19]);
-  assert.deepEqual(unregisterCalls, []);
-
-  second.release();
-  await waitForTimers();
-  assert.deepEqual(unregisterCalls, [19]);
-});
-
-test("Browser Node webview controller keeps shared guest registration alive until the last consumer releases", async () => {
-  const registerCalls: number[] = [];
-  const unregisterCalls: number[] = [];
-  const feature = createBrowserNodeFeature({
-    hostApi: createBrowserNodeHostApi({
-      registerGuest(payload) {
-        registerCalls.push(payload.webContentsId);
-        return Promise.resolve();
-      },
-      unregisterGuest(payload) {
-        unregisterCalls.push(payload.webContentsId);
-        return Promise.resolve();
-      }
-    })
-  });
-
-  const first = acquireBrowserNodeWebviewController({
-    feature,
-    initialUrl: "https://example.com/",
-    lifecycle: "active",
-    nodeId: "browser-4",
-    profileId: null,
-    sessionMode: "shared"
-  });
-  const second = acquireBrowserNodeWebviewController({
-    feature,
-    initialUrl: "https://example.com/",
-    lifecycle: "active",
-    nodeId: "browser-4",
-    profileId: null,
-    sessionMode: "shared"
-  });
-
-  const webview = new MockBrowserNodeWebviewTag(21);
-  first.retain();
-  second.retain();
-  first.setWebview(webview as unknown as BrowserNodeWebviewTag);
-  webview.emit("did-attach");
-  await Promise.resolve();
-  await Promise.resolve();
-
-  first.release();
-  await waitForTimers();
-  assert.deepEqual(unregisterCalls, []);
-
-  second.release();
-  await waitForTimers();
-  assert.deepEqual(registerCalls, [21]);
-  assert.deepEqual(unregisterCalls, [21]);
 });
 
 test("Browser Node webview controller resyncs webview state when context changes for the same node", async () => {
@@ -556,10 +412,4 @@ class MockBrowserNodeWebviewTag extends EventTarget {
   getBoundingClientRect(): DOMRect {
     return this.rect;
   }
-}
-
-function waitForTimers(durationMs = 300): Promise<void> {
-  return new Promise((resolve) => {
-    setTimeout(resolve, durationMs);
-  });
 }

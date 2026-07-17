@@ -1,20 +1,44 @@
 import { describe, expect, it } from "vitest";
-import type { AgentActivitySnapshot } from "@tutti-os/agent-activity-core";
 import {
-  formatAgentGuiSessionPlainTitle,
+  normalizeAgentActivitySession,
+  type AgentActivityMessage,
+  type AgentActivitySession
+} from "@tutti-os/agent-activity-core";
+import {
+  resolveAgentGuiWorkbenchHeaderTitle,
   resolveAgentGuiWorkbenchSessionTitle
 } from "./sessionTitle";
 
+describe("agent GUI workbench header titles", () => {
+  it("uses the selected agent name before a conversation title exists", () => {
+    expect(
+      resolveAgentGuiWorkbenchHeaderTitle({
+        agentName: "Cursor",
+        conversationTitle: null,
+        provider: "cursor"
+      })
+    ).toBe("Cursor");
+  });
+
+  it("keeps the selected agent name after a conversation title exists", () => {
+    expect(
+      resolveAgentGuiWorkbenchHeaderTitle({
+        agentName: "Cursor",
+        conversationTitle: "Fix the header",
+        provider: "cursor"
+      })
+    ).toBe("Cursor");
+  });
+});
+
 describe("agent GUI workbench session titles", () => {
-  it("formats raw mention markdown from snapshot titles", () => {
+  it("uses canonical snapshot titles", () => {
     const title = resolveAgentGuiWorkbenchSessionTitle({
       agentSessionId: "session-1",
       fallbackTitle: "Stale session title",
-      provider: "codex",
-      snapshot: snapshotWithSession({
+      ...sessionState({
         agentSessionId: "session-1",
-        title:
-          "[@automation 发布](mention://user/automation?workspaceId=workspace-1) 帮我跟进"
+        title: "@automation 发布 帮我跟进"
       })
     });
 
@@ -25,15 +49,13 @@ describe("agent GUI workbench session titles", () => {
     });
   });
 
-  it("formats workspace issue mention titles like the conversation rail", () => {
+  it("uses canonical workspace issue titles like the conversation rail", () => {
     const title = resolveAgentGuiWorkbenchSessionTitle({
       agentSessionId: "session-1",
       fallbackTitle: null,
-      provider: "codex",
-      snapshot: snapshotWithSession({
+      ...sessionState({
         agentSessionId: "session-1",
-        title:
-          "[@调研 spool 仓库 这个任务](mention://workspace-issue/issue-1?workspaceId=workspace-1)"
+        title: "@调研 spool 仓库 这个任务"
       })
     });
 
@@ -44,53 +66,42 @@ describe("agent GUI workbench session titles", () => {
     });
   });
 
-  it("does not expose provider-only session titles as conversation titles", () => {
+  it("uses the engine optimistic title while the canonical title is empty", () => {
     const title = resolveAgentGuiWorkbenchSessionTitle({
       agentSessionId: "session-1",
       fallbackTitle: null,
-      provider: "codex",
-      snapshot: snapshotWithSession({
-        agentSessionId: "session-1",
-        title: "Codex"
-      })
+      optimisticTitle: "test1",
+      ...sessionState({ agentSessionId: "session-1", title: "" })
     });
 
     expect(title).toEqual({
       agentSessionId: "session-1",
-      source: "none",
-      title: null
+      source: "optimistic",
+      title: "test1"
     });
   });
 
-  it("does not expose localized untitled placeholders as conversation titles", () => {
+  it("prefers the canonical title over the engine optimistic title", () => {
     const title = resolveAgentGuiWorkbenchSessionTitle({
       agentSessionId: "session-1",
       fallbackTitle: null,
-      provider: "codex",
-      snapshot: snapshotWithSession({
-        agentSessionId: "session-1",
-        title: "Current task"
-      })
+      optimisticTitle: "test1",
+      ...sessionState({ agentSessionId: "session-1", title: "Canonical title" })
     });
 
     expect(title).toEqual({
       agentSessionId: "session-1",
-      source: "none",
-      title: null
+      source: "snapshot",
+      title: "Canonical title"
     });
   });
 
-  it("uses the first user message when the snapshot title is not displayable", () => {
+  it("uses the canonical snapshot title without provider interpretation", () => {
     const title = resolveAgentGuiWorkbenchSessionTitle({
       agentSessionId: "session-1",
       fallbackTitle: null,
-      provider: "codex",
-      snapshot: snapshotWithSession({
+      ...sessionState({
         agentSessionId: "session-1",
-        messages: [
-          message({ role: "assistant", text: "Working on it", version: 1 }),
-          message({ role: "user", text: "Ship the title fix.", version: 2 })
-        ],
         title: "Codex"
       })
     });
@@ -98,22 +109,52 @@ describe("agent GUI workbench session titles", () => {
     expect(title).toEqual({
       agentSessionId: "session-1",
       source: "snapshot",
-      title: "Ship the title fix"
+      title: "Codex"
     });
   });
 
-  it("uses the persisted title only as a formatted hydration fallback", () => {
+  it("uses the canonical snapshot title without localized interpretation", () => {
     const title = resolveAgentGuiWorkbenchSessionTitle({
       agentSessionId: "session-1",
-      fallbackTitle:
-        "[@automation 发布](mention://user/automation?workspaceId=workspace-1) 帮我跟进",
-      provider: "codex",
-      snapshot: {
-        workspaceId: "workspace-1",
-        presences: [],
-        sessions: [],
-        sessionMessagesById: {}
-      }
+      fallbackTitle: null,
+      ...sessionState({
+        agentSessionId: "session-1",
+        title: "Current task"
+      })
+    });
+
+    expect(title).toEqual({
+      agentSessionId: "session-1",
+      source: "snapshot",
+      title: "Current task"
+    });
+  });
+
+  it("does not derive a title from snapshot messages", () => {
+    const title = resolveAgentGuiWorkbenchSessionTitle({
+      agentSessionId: "session-1",
+      fallbackTitle: null,
+      ...sessionState({
+        agentSessionId: "session-1",
+        messages: [
+          message({ role: "assistant", text: "Working on it", version: 1 }),
+          message({ role: "user", text: "Ship the title fix.", version: 2 })
+        ],
+        title: "Canonical title"
+      })
+    });
+
+    expect(title).toEqual({
+      agentSessionId: "session-1",
+      source: "snapshot",
+      title: "Canonical title"
+    });
+  });
+
+  it("uses the persisted canonical title only as a hydration fallback", () => {
+    const title = resolveAgentGuiWorkbenchSessionTitle({
+      agentSessionId: "session-1",
+      fallbackTitle: "@automation 发布 帮我跟进"
     });
 
     expect(title).toEqual({
@@ -123,12 +164,11 @@ describe("agent GUI workbench session titles", () => {
     });
   });
 
-  it("does not reuse the persisted fallback after live snapshot data exists", () => {
+  it("prefers live snapshot titles over persisted hydration fallback", () => {
     const title = resolveAgentGuiWorkbenchSessionTitle({
       agentSessionId: "session-1",
       fallbackTitle: "Stale session title",
-      provider: "codex",
-      snapshot: snapshotWithSession({
+      ...sessionState({
         agentSessionId: "session-1",
         title: "Codex"
       })
@@ -136,44 +176,34 @@ describe("agent GUI workbench session titles", () => {
 
     expect(title).toEqual({
       agentSessionId: "session-1",
-      source: "none",
-      title: null
+      source: "snapshot",
+      title: "Codex"
     });
-  });
-
-  it("formats plain titles for message center and toast surfaces", () => {
-    expect(
-      formatAgentGuiSessionPlainTitle(
-        "[@automation 发布](mention://user/automation?workspaceId=workspace-1) 帮我跟进"
-      )
-    ).toBe("@automation 发布 帮我跟进");
   });
 });
 
-function snapshotWithSession(input: {
+function sessionState(input: {
   agentSessionId: string;
-  messages?: AgentActivitySnapshot["sessionMessagesById"][string];
+  messages?: AgentActivityMessage[];
   title: string;
-}): AgentActivitySnapshot {
+}): { messages: AgentActivityMessage[]; session: AgentActivitySession } {
   return {
-    workspaceId: "workspace-1",
-    presences: [],
-    sessions: [
-      {
-        workspaceId: "workspace-1",
-        agentSessionId: input.agentSessionId,
-        provider: "codex",
-        providerSessionId: input.agentSessionId,
-        cwd: "/workspace",
-        title: input.title,
-        status: "ready",
-        createdAtUnixMs: 1,
-        updatedAtUnixMs: 2
-      }
-    ],
-    sessionMessagesById: {
-      [input.agentSessionId]: input.messages ?? []
-    }
+    messages: input.messages ?? [],
+    session: normalizeAgentActivitySession({
+      ...{
+        activeTurnId: null,
+        latestTurnInteractions: [],
+        pendingInteractions: []
+      },
+      workspaceId: "workspace-1",
+      agentSessionId: input.agentSessionId,
+      provider: "codex",
+      providerSessionId: input.agentSessionId,
+      cwd: "/workspace",
+      title: input.title,
+      createdAtUnixMs: 1,
+      updatedAtUnixMs: 2
+    })
   };
 }
 
@@ -181,7 +211,7 @@ function message(input: {
   role: "assistant" | "user";
   text: string;
   version: number;
-}): AgentActivitySnapshot["sessionMessagesById"][string][number] {
+}): AgentActivityMessage {
   return {
     workspaceId: "workspace-1",
     agentSessionId: "session-1",

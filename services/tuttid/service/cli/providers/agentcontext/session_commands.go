@@ -9,8 +9,8 @@ import (
 	"path/filepath"
 	"strings"
 
+	agentactivitybiz "github.com/tutti-os/tutti/services/tuttid/biz/agentactivity"
 	"github.com/tutti-os/tutti/services/tuttid/biz/agentgui"
-	agentproviderbiz "github.com/tutti-os/tutti/services/tuttid/biz/agentprovider"
 	agenttargetbiz "github.com/tutti-os/tutti/services/tuttid/biz/agenttarget"
 	agentservice "github.com/tutti-os/tutti/services/tuttid/service/agent"
 	cliservice "github.com/tutti-os/tutti/services/tuttid/service/cli"
@@ -20,12 +20,12 @@ import (
 var sessionActionColumns = []cliservice.TableColumn{
 	{Key: "id", Label: "ID"},
 	{Key: "provider", Label: "Provider"},
-	{Key: "status", Label: "Status"},
+	{Key: "activeTurnId", Label: "Active Turn"},
 	{Key: "launchRequested", Label: "Launch Requested"},
 }
 
 type startInput struct {
-	Provider        string   `cli:"provider" validate:"required"`
+	AgentID         string   `cli:"agent-id" advertise-required:"true" hint:"Use agent list --json to discover available agents."`
 	Cwd             string   `cli:"cwd"`
 	DisplayPrompt   string   `cli:"display-prompt"`
 	Hidden          bool     `cli:"hidden"`
@@ -33,20 +33,7 @@ type startInput struct {
 	Model           string   `cli:"model"`
 	PermissionMode  string   `cli:"permission-mode"`
 	Prompt          string   `cli:"prompt" validate:"required"`
-	ReasoningEffort string   `cli:"reasoning-effort"`
-	Show            bool     `cli:"show"`
-	Speed           string   `cli:"speed"`
-	Title           string   `cli:"title"`
-}
-
-type providerStartInput struct {
-	Cwd             string   `cli:"cwd"`
-	DisplayPrompt   string   `cli:"display-prompt"`
-	Hidden          bool     `cli:"hidden"`
-	Images          []string `cli:"image" description:"Image file to attach to the initial prompt. May be passed multiple times."`
-	Model           string   `cli:"model"`
-	PermissionMode  string   `cli:"permission-mode"`
-	Prompt          string   `cli:"prompt" validate:"required"`
+	Provider        string   `cli:"provider" hidden:"true"`
 	ReasoningEffort string   `cli:"reasoning-effort"`
 	Show            bool     `cli:"show"`
 	Speed           string   `cli:"speed"`
@@ -65,27 +52,28 @@ type sendInput struct {
 }
 
 type sessionActionResult struct {
-	Session         agentservice.Session
-	LaunchRequested bool
+	Session          agentservice.Session
+	LaunchRequested  bool
+	WaitAfterVersion *uint64
 }
 
 func (p Provider) newStartCommand() cliservice.Command {
 	return framework.Register(framework.CommandSpec[startInput]{
 		ID:          appID + ".agent.start",
 		Path:        []string{"agent", "start"},
-		Summary:     "Start an agent session with a provider shortcut",
-		Description: "Start an agent session by canonical provider id. Tutti resolves the provider through the enabled Agent Target catalog.",
+		Summary:     "Start an agent session",
+		Description: "Start an agent session by agent id. Use agent list --json to discover the currently available agents.",
 		Kind:        framework.KindAction,
 		Workspace:   framework.WorkspaceRequired,
 		Workspaces:  p.workspaces,
 		Inputs:      framework.FromStruct[startInput](),
 		Output:      sessionActionOutputSpec(),
 		Run: func(ctx context.Context, invoke framework.InvokeContext, input startInput) (any, error) {
-			target, err := p.resolveGenericStartTarget(ctx, input.Provider)
+			target, _, err := p.resolveAgentSelector(ctx, input.AgentID, input.Provider)
 			if err != nil {
 				return nil, err
 			}
-			return p.runStart(ctx, invoke, target.Provider, target.ID, startFields{
+			return p.runStart(ctx, invoke, target, startFields{
 				Cwd:             input.Cwd,
 				DisplayPrompt:   input.DisplayPrompt,
 				Hidden:          input.Hidden,
@@ -98,58 +86,6 @@ func (p Provider) newStartCommand() cliservice.Command {
 				Speed:           input.Speed,
 				Title:           input.Title,
 			})
-		},
-	})
-}
-
-func (p Provider) resolveGenericStartTarget(ctx context.Context, provider string) (agenttargetbiz.Target, error) {
-	canonicalProvider := agentproviderbiz.Normalize(provider)
-	if canonicalProvider == "" {
-		return agenttargetbiz.Target{}, fmt.Errorf("%w: unsupported agent provider %q", cliservice.ErrInvalidInput, provider)
-	}
-	return p.resolveEnabledAgentTarget(ctx, canonicalProvider)
-}
-
-type providerStartCommandSpec struct {
-	AppID         string
-	AppName       string
-	CommandID     string
-	Description   string
-	Path          []string
-	Provider      string
-	AgentTargetID string
-	Summary       string
-}
-
-func (p Provider) newProviderStartCommand(spec providerStartCommandSpec) cliservice.Command {
-	return framework.Register(framework.CommandSpec[providerStartInput]{
-		ID:          spec.CommandID,
-		Path:        spec.Path,
-		Summary:     spec.Summary,
-		Description: spec.Description,
-		Kind:        framework.KindAction,
-		Workspace:   framework.WorkspaceRequired,
-		Workspaces:  p.workspaces,
-		Inputs:      framework.FromStruct[providerStartInput](),
-		Output:      sessionActionOutputSpec(),
-		Source: cliservice.CapabilitySource{
-			Kind:           cliservice.CapabilitySourceApp,
-			AppID:          spec.AppID,
-			AppName:        spec.AppName,
-			CLIDescription: spec.Description,
-		},
-		Run: func(ctx context.Context, invoke framework.InvokeContext, input providerStartInput) (any, error) {
-			targetID := spec.AgentTargetID
-			provider := spec.Provider
-			if p.agentTargets != nil {
-				target, err := p.resolveEnabledAgentTarget(ctx, spec.Provider)
-				if err != nil {
-					return nil, err
-				}
-				targetID = target.ID
-				provider = target.Provider
-			}
-			return p.runStart(ctx, invoke, provider, targetID, startFields(input))
 		},
 	})
 }
@@ -168,14 +104,15 @@ type startFields struct {
 	Title           string
 }
 
-func (p Provider) runStart(ctx context.Context, invoke framework.InvokeContext, provider string, agentTargetID string, input startFields) (any, error) {
+func (p Provider) runStart(ctx context.Context, invoke framework.InvokeContext, target agenttargetbiz.Target, input startFields) (any, error) {
 	if err := p.requireSessions(); err != nil {
 		return nil, err
 	}
-	agentTargetID = strings.TrimSpace(agentTargetID)
+	agentTargetID := strings.TrimSpace(target.ID)
 	if agentTargetID == "" {
 		return nil, fmt.Errorf("%w: agent target id is required", cliservice.ErrInvalidInput)
 	}
+	provider := strings.TrimSpace(target.Provider)
 	cwd, err := p.resolveStartCwd(ctx, invoke.WorkspaceID, input.Cwd, invoke.Request.Context)
 	if err != nil {
 		return nil, err
@@ -184,7 +121,7 @@ func (p Provider) runStart(ctx context.Context, invoke framework.InvokeContext, 
 	if err != nil {
 		return nil, err
 	}
-	defaults := p.composerDefaultsForProvider(ctx, provider)
+	defaults := p.composerDefaultsForAgent(ctx, agentTargetID)
 	model := input.Model
 	if strings.TrimSpace(model) == "" {
 		model = defaults.Model
@@ -341,6 +278,14 @@ func (p Provider) runSend(ctx context.Context, invoke framework.InvokeContext, i
 	if err != nil {
 		return nil, err
 	}
+	messagePage, err := p.sessions.ListMessages(ctx, invoke.WorkspaceID, input.SessionID, agentservice.ListMessagesInput{
+		Limit: 1,
+		Order: agentactivitybiz.MessageOrderDesc,
+	})
+	if err != nil {
+		return nil, err
+	}
+	waitAfterVersion := messagePage.LatestVersion
 	result, err := p.sessions.SendInput(ctx, invoke.WorkspaceID, input.SessionID, agentservice.SendInput{
 		Content:  content,
 		Guidance: input.Guidance,
@@ -349,7 +294,7 @@ func (p Provider) runSend(ctx context.Context, invoke framework.InvokeContext, i
 		return nil, err
 	}
 	session := result.Session
-	return sessionActionResult{Session: session}, nil
+	return sessionActionResult{Session: session, WaitAfterVersion: &waitAfterVersion}, nil
 }
 
 func promptContentFromCLIInput(prompt string, imagePaths []string) ([]agentservice.PromptContentBlock, error) {
@@ -423,11 +368,16 @@ func (p Provider) runCancel(ctx context.Context, invoke framework.InvokeContext,
 	if err := p.requireSessions(); err != nil {
 		return nil, err
 	}
-	result, err := p.sessions.Cancel(ctx, invoke.WorkspaceID, input.SessionID)
+	session, err := p.sessions.Get(ctx, invoke.WorkspaceID, input.SessionID)
 	if err != nil {
 		return nil, err
 	}
-	return sessionActionResult{Session: result.Session}, nil
+	if turnID := strings.TrimSpace(session.ActiveTurnID); turnID != "" {
+		if _, err := p.sessions.CancelTurn(ctx, invoke.WorkspaceID, input.SessionID, turnID); err != nil {
+			return nil, err
+		}
+	}
+	return sessionActionResult{Session: session}, nil
 }
 
 func sessionActionOutputSpec() framework.OutputSpec {
@@ -442,7 +392,7 @@ func sessionActionOutputSpec() framework.OutputSpec {
 				return []map[string]any{{
 					"id":              action.Session.ID,
 					"provider":        action.Session.Provider,
-					"status":          action.Session.Status,
+					"activeTurnId":    action.Session.ActiveTurnID,
 					"launchRequested": action.LaunchRequested,
 				}}
 			},
@@ -453,6 +403,9 @@ func sessionActionOutputSpec() framework.OutputSpec {
 				value := map[string]any{
 					"launchRequested": action.LaunchRequested,
 					"session":         sessionActionValue(action.Session),
+				}
+				if action.WaitAfterVersion != nil {
+					value["waitAfterVersion"] = *action.WaitAfterVersion
 				}
 				return value
 			},
@@ -473,6 +426,7 @@ func (p Provider) publishLaunchRequested(
 	return p.launchPublisher.PublishAgentGUILaunchRequested(ctx, agentgui.NormalizeLaunchRequest(agentgui.LaunchRequest{
 		WorkspaceID:    workspaceID,
 		AgentSessionID: session.ID,
+		AgentTargetID:  session.AgentTargetID,
 		Provider:       session.Provider,
 		Source:         source,
 		Reason:         reason,

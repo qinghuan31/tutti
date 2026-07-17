@@ -36,7 +36,7 @@ func TestAppServerCollabAgentCompletedCarriesResultOutput(t *testing.T) {
 	if !ok {
 		t.Fatalf("rawOutput.result = %#v, want map", rawOutput["result"])
 	}
-	if got, _ := acpInt64Value(result["integer"]); got != 7 {
+	if got, _ := int64Value(result["integer"]); got != 7 {
 		t.Fatalf("rawOutput.result.integer = %#v, want 7", result["integer"])
 	}
 }
@@ -76,7 +76,7 @@ func TestAppServerForeignThreadMismatch(t *testing.T) {
 		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			got := adapter.appServerNotificationRoute(session, appServerNotifyItemStarted, tc.params).drop
+			got := adapter.appServerNotificationRoute(session, "turn-1", appServerNotifyItemStarted, tc.params).drop
 			if got != tc.want {
 				t.Fatalf("drop = %v, want %v", got, tc.want)
 			}

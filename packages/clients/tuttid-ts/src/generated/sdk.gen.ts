@@ -19,9 +19,9 @@ import type {
   AttachEventStreamData,
   AttachEventStreamErrors,
   AttachEventStreamResponses,
-  CancelWorkspaceAgentSessionData,
-  CancelWorkspaceAgentSessionErrors,
-  CancelWorkspaceAgentSessionResponses,
+  CancelWorkspaceAgentTurnData,
+  CancelWorkspaceAgentTurnErrors,
+  CancelWorkspaceAgentTurnResponses,
   CancelWorkspaceAppFactoryJobData,
   CancelWorkspaceAppFactoryJobErrors,
   CancelWorkspaceAppFactoryJobResponses,
@@ -49,9 +49,6 @@ import type {
   CopyWorkspaceFileEntryData,
   CopyWorkspaceFileEntryErrors,
   CopyWorkspaceFileEntryResponses,
-  CountWorkspaceAgentSessionSectionData,
-  CountWorkspaceAgentSessionSectionErrors,
-  CountWorkspaceAgentSessionSectionResponses,
   CreateWorkspaceAgentSessionData,
   CreateWorkspaceAgentSessionErrors,
   CreateWorkspaceAgentSessionResponses,
@@ -94,9 +91,9 @@ import type {
   DeleteWorkspaceAgentSessionData,
   DeleteWorkspaceAgentSessionErrors,
   DeleteWorkspaceAgentSessionResponses,
-  DeleteWorkspaceAgentSessionSectionData,
-  DeleteWorkspaceAgentSessionSectionErrors,
-  DeleteWorkspaceAgentSessionSectionResponses,
+  DeleteWorkspaceAgentSessionsBatchData,
+  DeleteWorkspaceAgentSessionsBatchErrors,
+  DeleteWorkspaceAgentSessionsBatchResponses,
   DeleteWorkspaceAppData,
   DeleteWorkspaceAppErrors,
   DeleteWorkspaceAppFactoryJobData,
@@ -153,6 +150,9 @@ import type {
   GetStartupWorkspaceResponses,
   GetWorkspaceAgentSessionData,
   GetWorkspaceAgentSessionErrors,
+  GetWorkspaceAgentSessionGoalData,
+  GetWorkspaceAgentSessionGoalErrors,
+  GetWorkspaceAgentSessionGoalResponses,
   GetWorkspaceAgentSessionResponses,
   GetWorkspaceAppAgentPreferencesData,
   GetWorkspaceAppAgentPreferencesErrors,
@@ -236,6 +236,9 @@ import type {
   ListWorkspaceAgentSessionMessagesErrors,
   ListWorkspaceAgentSessionMessagesResponses,
   ListWorkspaceAgentSessionsData,
+  ListWorkspaceAgentSessionSectionDeletionCandidatesData,
+  ListWorkspaceAgentSessionSectionDeletionCandidatesErrors,
+  ListWorkspaceAgentSessionSectionDeletionCandidatesResponses,
   ListWorkspaceAgentSessionSectionPageData,
   ListWorkspaceAgentSessionSectionPageErrors,
   ListWorkspaceAgentSessionSectionPageResponses,
@@ -328,6 +331,9 @@ import type {
   ReadWorkspaceFilePreviewData,
   ReadWorkspaceFilePreviewErrors,
   ReadWorkspaceFilePreviewResponses,
+  ReconcileWorkspaceAgentSessionGoalData,
+  ReconcileWorkspaceAgentSessionGoalErrors,
+  ReconcileWorkspaceAgentSessionGoalResponses,
   RefreshWorkspaceAppCatalogData,
   RefreshWorkspaceAppCatalogErrors,
   RefreshWorkspaceAppCatalogResponses,
@@ -394,6 +400,9 @@ import type {
   SubmitWorkspaceAgentInteractiveData,
   SubmitWorkspaceAgentInteractiveErrors,
   SubmitWorkspaceAgentInteractiveResponses,
+  SubmitWorkspaceAgentPlanDecisionData,
+  SubmitWorkspaceAgentPlanDecisionErrors,
+  SubmitWorkspaceAgentPlanDecisionResponses,
   TerminateWorkspaceTerminalData,
   TerminateWorkspaceTerminalErrors,
   TerminateWorkspaceTerminalResponses,
@@ -1120,7 +1129,7 @@ export const reloadLocalWorkspaceApp = <ThrowOnError extends boolean = false>(
 /**
  * Get workspace-app agent preference projection
  *
- * Read-only subset of desktop agent preferences for one workspace app runtime. Intended for workspace app server tokens; exposes default provider selection and developer-gated provider visibility only. Deprecated for Agent integrations: use `tutti --json agent providers` through `@tutti-os/agent-acp-kit/tutti`. Removal is gated by the production-usage telemetry and release criteria in `docs/conventions/deprecated-workspace-app-agent-apis.md`.
+ * Read-only subset of desktop agent preferences for one workspace app runtime. Intended for workspace app server tokens; exposes default provider selection and developer-gated provider visibility only. Deprecated for Agent integrations: use the current agent catalog (`tutti --json agent list`) through `@tutti-os/agent-acp-kit/tutti`. Removal is gated by the production-usage telemetry and release criteria in `docs/conventions/deprecated-workspace-app-agent-apis.md`.
  *
  *
  * @deprecated
@@ -1143,7 +1152,7 @@ export const getWorkspaceAppAgentPreferences = <
 /**
  * Get agent provider availability for one workspace app
  *
- * Workspace-app scoped alias of `GET /v1/agent-providers/status` for app server tokens. When `providers` is omitted, returns provider statuses for enabled daemon-owned Agent Targets visible to Agent GUI. When `providers` is supplied, it narrows that Agent Target set and cannot expose providers outside it. Deprecated for Agent integrations: use `tutti --json agent providers` through `@tutti-os/agent-acp-kit/tutti`. Removal is gated by the production-usage telemetry and release criteria in `docs/conventions/deprecated-workspace-app-agent-apis.md`.
+ * Workspace-app scoped alias of `GET /v1/agent-providers/status` for app server tokens. When `providers` is omitted, returns provider statuses for enabled daemon-owned Agent Targets visible to Agent GUI. When `providers` is supplied, it narrows that Agent Target set and cannot expose providers outside it. Deprecated for Agent integrations: use the current agent catalog (`tutti --json agent list`) through `@tutti-os/agent-acp-kit/tutti`. Removal is gated by the production-usage telemetry and release criteria in `docs/conventions/deprecated-workspace-app-agent-apis.md`.
  *
  *
  * @deprecated
@@ -1166,7 +1175,7 @@ export const getWorkspaceAppAgentProviderStatuses = <
 /**
  * Get agent provider composer options for one workspace app
  *
- * Workspace-app scoped alias of `POST /v1/agent-providers/{provider}/composer-options` for app server tokens. Deprecated for Agent integrations: use `tutti --json agent composer-options --provider <providerId>` through `@tutti-os/agent-acp-kit/tutti`. Removal is gated by the production-usage telemetry and release criteria in `docs/conventions/deprecated-workspace-app-agent-apis.md`.
+ * Workspace-app scoped alias of `POST /v1/agent-providers/{provider}/composer-options` for app server tokens. Deprecated for Agent integrations: use `tutti --json agent composer-options --agent-id <agentId>` through `@tutti-os/agent-acp-kit/tutti`. Removal is gated by the production-usage telemetry and release criteria in `docs/conventions/deprecated-workspace-app-agent-apis.md`.
  *
  *
  * @deprecated
@@ -1703,21 +1712,25 @@ export const createWorkspaceAgentSession = <
   });
 
 /**
- * Delete all agent sessions in one rail section for one workspace
+ * Delete an exact snapshot of agent sessions for one workspace
  */
-export const deleteWorkspaceAgentSessionSection = <
+export const deleteWorkspaceAgentSessionsBatch = <
   ThrowOnError extends boolean = false
 >(
-  options: Options<DeleteWorkspaceAgentSessionSectionData, ThrowOnError>
+  options: Options<DeleteWorkspaceAgentSessionsBatchData, ThrowOnError>
 ) =>
   (options.client ?? client).delete<
-    DeleteWorkspaceAgentSessionSectionResponses,
-    DeleteWorkspaceAgentSessionSectionErrors,
+    DeleteWorkspaceAgentSessionsBatchResponses,
+    DeleteWorkspaceAgentSessionsBatchErrors,
     ThrowOnError
   >({
     security: [{ scheme: "bearer", type: "http" }],
-    url: "/v1/workspaces/{workspaceID}/agent-session-sections",
-    ...options
+    url: "/v1/workspaces/{workspaceID}/agent-sessions/batch",
+    ...options,
+    headers: {
+      "Content-Type": "application/json",
+      ...options.headers
+    }
   });
 
 /**
@@ -1757,25 +1770,28 @@ export const listWorkspaceAgentSessionSectionPage = <
   });
 
 /**
- * Count agent sessions in one rail section for one workspace
+ * List the exact agent session deletion candidates in one rail section
  */
-export const countWorkspaceAgentSessionSection = <
+export const listWorkspaceAgentSessionSectionDeletionCandidates = <
   ThrowOnError extends boolean = false
 >(
-  options: Options<CountWorkspaceAgentSessionSectionData, ThrowOnError>
+  options: Options<
+    ListWorkspaceAgentSessionSectionDeletionCandidatesData,
+    ThrowOnError
+  >
 ) =>
   (options.client ?? client).get<
-    CountWorkspaceAgentSessionSectionResponses,
-    CountWorkspaceAgentSessionSectionErrors,
+    ListWorkspaceAgentSessionSectionDeletionCandidatesResponses,
+    ListWorkspaceAgentSessionSectionDeletionCandidatesErrors,
     ThrowOnError
   >({
     security: [{ scheme: "bearer", type: "http" }],
-    url: "/v1/workspaces/{workspaceID}/agent-session-sections/count",
+    url: "/v1/workspaces/{workspaceID}/agent-session-sections/deletion-candidates",
     ...options
   });
 
 /**
- * Scan external local agent session history that can be imported into one workspace
+ * Scan local agent history or a supported provider export that can be imported into one workspace
  */
 export const scanWorkspaceExternalAgentSessionImports = <
   ThrowOnError extends boolean = false
@@ -1797,7 +1813,7 @@ export const scanWorkspaceExternalAgentSessionImports = <
   });
 
 /**
- * Import selected external local agent session history into one workspace
+ * Import selected local agent history or provider-export conversations into one workspace
  */
 export const importWorkspaceExternalAgentSessions = <
   ThrowOnError extends boolean = false
@@ -2067,20 +2083,62 @@ export const listWorkspaceAgentSessionGitBranches = <
   });
 
 /**
- * Cancel one workspace agent session
+ * Cancel one workspace agent turn
+ *
+ * Idempotent turn-scoped cancellation (protocol v2). Canceling a turn that is already settled or unknown is a no-op success, not an error; the race between a user stop request and natural turn settlement is harmless at the protocol level.
  */
-export const cancelWorkspaceAgentSession = <
-  ThrowOnError extends boolean = false
->(
-  options: Options<CancelWorkspaceAgentSessionData, ThrowOnError>
+export const cancelWorkspaceAgentTurn = <ThrowOnError extends boolean = false>(
+  options: Options<CancelWorkspaceAgentTurnData, ThrowOnError>
 ) =>
   (options.client ?? client).post<
-    CancelWorkspaceAgentSessionResponses,
-    CancelWorkspaceAgentSessionErrors,
+    CancelWorkspaceAgentTurnResponses,
+    CancelWorkspaceAgentTurnErrors,
     ThrowOnError
   >({
     security: [{ scheme: "bearer", type: "http" }],
-    url: "/v1/workspaces/{workspaceID}/agent-sessions/{agentSessionID}/cancel",
+    url: "/v1/workspaces/{workspaceID}/agent-sessions/{agentSessionID}/turns/{turnID}/cancel",
+    ...options
+  });
+
+/**
+ * Submit one durable workspace agent plan decision
+ *
+ * Prepares and advances an idempotent daemon-owned plan decision saga. The workspace, session, turn, request, and idempotency key form the strict operation scope. A retry with the same identity and payload returns the existing operation; a mismatched payload is rejected.
+ */
+export const submitWorkspaceAgentPlanDecision = <
+  ThrowOnError extends boolean = false
+>(
+  options: Options<SubmitWorkspaceAgentPlanDecisionData, ThrowOnError>
+) =>
+  (options.client ?? client).post<
+    SubmitWorkspaceAgentPlanDecisionResponses,
+    SubmitWorkspaceAgentPlanDecisionErrors,
+    ThrowOnError
+  >({
+    security: [{ scheme: "bearer", type: "http" }],
+    url: "/v1/workspaces/{workspaceID}/agent-sessions/{agentSessionID}/turns/{turnID}/plan-decisions/{requestID}",
+    ...options,
+    headers: {
+      "Content-Type": "application/json",
+      ...options.headers
+    }
+  });
+
+/**
+ * Get the durable desired and observed goal state
+ */
+export const getWorkspaceAgentSessionGoal = <
+  ThrowOnError extends boolean = false
+>(
+  options: Options<GetWorkspaceAgentSessionGoalData, ThrowOnError>
+) =>
+  (options.client ?? client).get<
+    GetWorkspaceAgentSessionGoalResponses,
+    GetWorkspaceAgentSessionGoalErrors,
+    ThrowOnError
+  >({
+    security: [{ scheme: "bearer", type: "http" }],
+    url: "/v1/workspaces/{workspaceID}/agent-sessions/{agentSessionID}/goal",
     ...options
   });
 
@@ -2104,6 +2162,24 @@ export const goalControlWorkspaceAgentSession = <
       "Content-Type": "application/json",
       ...options.headers
     }
+  });
+
+/**
+ * Reconcile the durable goal projection with provider evidence
+ */
+export const reconcileWorkspaceAgentSessionGoal = <
+  ThrowOnError extends boolean = false
+>(
+  options: Options<ReconcileWorkspaceAgentSessionGoalData, ThrowOnError>
+) =>
+  (options.client ?? client).post<
+    ReconcileWorkspaceAgentSessionGoalResponses,
+    ReconcileWorkspaceAgentSessionGoalErrors,
+    ThrowOnError
+  >({
+    security: [{ scheme: "bearer", type: "http" }],
+    url: "/v1/workspaces/{workspaceID}/agent-sessions/{agentSessionID}/goal/reconcile",
+    ...options
   });
 
 /**
@@ -2152,6 +2228,8 @@ export const updateWorkspaceAgentSessionSettings = <
 
 /**
  * Update one workspace agent session title
+ *
+ * Titles longer than 120 Unicode characters return `invalid_request` with reason `workspace_agent_session_title_too_long` and `params.maxCharacters` set to 120.
  */
 export const updateWorkspaceAgentSessionTitle = <
   ThrowOnError extends boolean = false

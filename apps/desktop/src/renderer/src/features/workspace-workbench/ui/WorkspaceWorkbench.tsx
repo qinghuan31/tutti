@@ -11,14 +11,9 @@ import type {
   WorkspaceAgentProvider,
   WorkspaceSummary
 } from "@tutti-os/client-tuttid-ts";
-import {
-  defaultIssueManagerWorkbenchTypeId,
-  issueManagerOpenActivationType,
-  type IssueManagerOpenActivationPayload
-} from "@tutti-os/workspace-issue-manager/workbench";
+import { defaultIssueManagerWorkbenchTypeId } from "@tutti-os/workspace-issue-manager/workbench";
 import {
   isEditableShortcutTarget,
-  type WorkbenchHostCloseDialogRequest,
   type WorkbenchContribution,
   type WorkbenchHostHandle,
   type WorkbenchHostDockEntry,
@@ -26,27 +21,19 @@ import {
   WorkbenchHost
 } from "@tutti-os/workbench-surface";
 import {
-  Button,
-  CardDescription,
-  CardTitle,
-  ConfirmationDialog,
-  LoadingIcon,
-  WarningLinedIcon
-} from "@tutti-os/ui-system";
-import {
   useWorkspaceAppCenterService,
   WorkspaceAppCenterIntegration,
   workspaceAppCenterNodeID
 } from "@renderer/features/workspace-app-center";
 import type { IWorkspaceFileManagerService } from "@renderer/features/workspace-file-manager";
 import { useWorkspaceCatalogService } from "@renderer/features/workspace-catalog";
+import { AgentEnvPanel } from "@renderer/features/workspace-agent/ui/AgentEnvPanel.tsx";
+import { DesktopAgentProviderManageDialog } from "@renderer/features/workspace-agent/ui/DesktopAgentProviderManageDialog.tsx";
+import { IAgentProviderStatusService } from "@renderer/features/workspace-agent/services/agentProviderStatusService.interface.ts";
 import {
-  AgentEnvPanel,
-  DesktopAgentProviderManageDialog,
-  IAgentProviderStatusService,
   registerWorkspaceAgentGuiLaunchHandler,
   requestWorkspaceAgentGuiLaunch
-} from "@renderer/features/workspace-agent";
+} from "@renderer/features/workspace-agent/services/workspaceAgentGuiLaunchCoordinator.ts";
 import {
   isDesktopAgentGUIProvider,
   normalizeDesktopAgentGUIProvider
@@ -57,8 +44,8 @@ import { translate } from "@renderer/i18n/appRuntime";
 import { cn } from "@renderer/lib/format";
 import { Toast } from "@renderer/lib/toast";
 import {
-  createWorkspaceAgentGuiUnifiedDraftLaunchRequest,
-  createWorkspaceAgentGuiUnifiedSessionLaunchRequest
+  createWorkspaceAgentGuiDraftLaunchRequest,
+  createWorkspaceAgentGuiSessionLaunchRequest
 } from "../services/workspaceAgentGuiLaunch.ts";
 import {
   resolveWorkspaceAgentChatProvider,
@@ -78,10 +65,9 @@ import {
   workspaceFilesLaunchTypeId,
   type WorkspaceFilesLaunchRequest
 } from "../services/workspaceFilesLaunchCoordinator.ts";
-import {
-  registerWorkspaceIssueManagerLaunchHandler,
-  type WorkspaceIssueManagerLaunchRequest
-} from "../services/workspaceIssueManagerLaunchCoordinator.ts";
+import { showWorkspaceFileMissingToast } from "../services/workspaceFilesLaunchFeedback.ts";
+import { registerWorkspaceIssueManagerLaunchPresenter } from "../services/workspaceIssueManagerLaunchCoordinator.ts";
+import { createWorkbenchWorkspaceIssueManagerPresenter } from "../services/workbenchWorkspaceIssueManagerPresenter.ts";
 import { registerWorkspaceWorkbenchNodeLaunchHandler } from "../services/workspaceWorkbenchNodeLaunchCoordinator.ts";
 import {
   buildGroupChatDeepLinkUrl,
@@ -105,12 +91,10 @@ import {
 import { WorkspaceChrome } from "./WorkspaceChrome";
 import { WorkspaceAppExternalBridge } from "./WorkspaceAppExternalBridge";
 import { WorkspaceLaunchpadOverlay } from "./WorkspaceLaunchpadOverlay.tsx";
-import {
-  StandaloneAgentWindow,
-  type StandaloneAgentWindowProps
-} from "./StandaloneAgentWindow.tsx";
 import { useWorkspaceWorkbenchShellRuntime } from "./useWorkspaceWorkbenchShellRuntime";
 import { useWorkspaceWorkbenchHostService } from "./useWorkspaceWorkbenchHostService.ts";
+import { WorkspaceCloseGuardDialog } from "./WorkspaceCloseGuardDialog.tsx";
+import { WorkspaceFallbackState } from "./WorkspaceFallbackState.tsx";
 import type { WorkspaceWorkbenchHostSessionBinding } from "../services/workspaceWorkbenchHostService.interface.ts";
 import { useWorkspaceOnboardingAutoOpen } from "./useWorkspaceOnboardingAutoOpen.ts";
 import { resolveWorkspaceWorkbenchLayoutConstraints } from "./workspaceWorkbenchLayoutConstraints.ts";
@@ -137,28 +121,24 @@ const workspaceFilesSystemFileManagerActionId =
   "workspace-files:open-system-file-manager";
 
 interface WorkspaceWorkbenchProps {
-  agentWindowInput?: Omit<StandaloneAgentWindowProps, "workspace">;
   enableWindowCloseGuard: boolean;
   headerSlot?: React.ReactNode;
   hostWindowApi: Pick<DesktopHostWindowApi, "minimize" | "toggleMaximize">;
-  routeView: string;
   workspaceAppExternalApi?: DesktopWorkspaceAppExternalHostApi;
   workspaceID: string | null;
 }
 export function WorkspaceWorkbench({
-  agentWindowInput,
   enableWindowCloseGuard,
   headerSlot,
   hostWindowApi,
-  routeView,
   workspaceAppExternalApi,
   workspaceID
 }: WorkspaceWorkbenchProps) {
   const { service, state } = useWorkspaceCatalogService();
   const { t } = useTranslation();
   const loadWorkspaceWindow = useCallback(() => {
-    void service.loadWorkspaceWindow(workspaceID, routeView);
-  }, [routeView, service, workspaceID]);
+    void service.loadWorkspaceWindow(workspaceID, "workspace");
+  }, [service, workspaceID]);
 
   useEffect(() => {
     loadWorkspaceWindow();
@@ -179,15 +159,6 @@ export function WorkspaceWorkbench({
 
   if (state.status === "loading" || !state.workspace) {
     return <main className="h-screen min-h-0 bg-background" />;
-  }
-
-  if (routeView === "agent" && agentWindowInput) {
-    return (
-      <StandaloneAgentWindow
-        {...agentWindowInput}
-        workspace={state.workspace}
-      />
-    );
   }
 
   return (
@@ -444,7 +415,7 @@ function ReadyWorkspaceWorkbenchWithSession({
             const normalizedDraftPrompt = draftPrompt?.trim() ?? "";
             await host.launchNode(
               normalizedDraftPrompt
-                ? createWorkspaceAgentGuiUnifiedDraftLaunchRequest({
+                ? createWorkspaceAgentGuiDraftLaunchRequest({
                     agentTargetId,
                     autoSubmit,
                     draftPrompt: normalizedDraftPrompt,
@@ -452,7 +423,7 @@ function ReadyWorkspaceWorkbenchWithSession({
                     provider,
                     userProjectPath
                   })
-                : createWorkspaceAgentGuiUnifiedSessionLaunchRequest({
+                : createWorkspaceAgentGuiSessionLaunchRequest({
                     agentTargetId,
                     agentSessionId,
                     openInNewWindow,
@@ -472,11 +443,9 @@ function ReadyWorkspaceWorkbenchWithSession({
         }
       );
       unregisterIssueManagerLaunchRef.current =
-        registerWorkspaceIssueManagerLaunchHandler(
+        registerWorkspaceIssueManagerLaunchPresenter(
           state.workspace.id,
-          async (request) => {
-            return openWorkspaceIssueManagerNode(host, request);
-          }
+          createWorkbenchWorkspaceIssueManagerPresenter({ host })
         );
       unregisterGroupChatLaunchRef.current = registerGroupChatLaunchHandler(
         state.workspace.id,
@@ -1120,16 +1089,7 @@ async function openWorkspaceFilesNode(
       workspaceID: request.workspaceId
     }))
   ) {
-    // The requested path doesn't exist on this machine (e.g. an imported
-    // historical session's recorded working directory has since been deleted
-    // or moved — see resolveExternalImportSessionCwd on the import side,
-    // which deliberately keeps such sessions instead of dropping them). Surface
-    // this instead of silently doing nothing, which previously looked like the
-    // Files panel simply refused to open with no explanation.
-    Toast.Error(
-      translate("workspace.workbenchDesktop.filesLaunch.openFailedTitle"),
-      translate("workspace.workbenchDesktop.filesLaunch.openFailedDescription")
-    );
+    showWorkspaceFileMissingToast();
     return false;
   }
 
@@ -1212,40 +1172,6 @@ async function openGroupChatNode(
   return true;
 }
 
-async function openWorkspaceIssueManagerNode(
-  host: WorkbenchHostHandle,
-  request: WorkspaceIssueManagerLaunchRequest
-): Promise<boolean> {
-  const nodeId = await host.launchNode({
-    launchSource: "agent_command",
-    reason: "host",
-    typeId: defaultIssueManagerWorkbenchTypeId
-  });
-  if (!nodeId) {
-    return false;
-  }
-  if (!request.issueId) {
-    return true;
-  }
-
-  const payload: IssueManagerOpenActivationPayload = {
-    issueId: request.issueId,
-    ...(request.mode ? { mode: request.mode } : {}),
-    ...(request.outputDir ? { outputDir: request.outputDir } : {}),
-    ...(request.runId ? { runId: request.runId } : {}),
-    ...(request.taskId ? { taskId: request.taskId } : {}),
-    ...(request.topicId ? { topicId: request.topicId } : {})
-  };
-  host.activateNode(
-    { nodeId },
-    {
-      payload,
-      type: issueManagerOpenActivationType
-    }
-  );
-  return true;
-}
-
 async function openWorkspaceBrowserNode(
   host: WorkbenchHostHandle,
   request: WorkspaceBrowserLaunchRequest
@@ -1292,94 +1218,5 @@ function resolveCurrentWorkspaceBrowserNodeId(
   return (
     snapshot.nodes.find((node) => node.data.typeId === workspaceBrowserNodeID)
       ?.id ?? null
-  );
-}
-
-function WorkspaceCloseGuardDialog({
-  request,
-  onCancel,
-  onConfirm
-}: {
-  request: WorkbenchHostCloseDialogRequest | null;
-  onCancel: () => void;
-  onConfirm: () => void;
-}) {
-  if (request === null) {
-    return null;
-  }
-
-  return (
-    <ConfirmationDialog
-      cancelLabel={request.cancelLabel}
-      confirmLabel={request.confirmLabel}
-      description={request.description}
-      open={true}
-      title={request.title}
-      tone={request.variant === "destructive" ? "destructive" : "default"}
-      onOpenChange={(nextOpen) => {
-        if (!nextOpen) {
-          onCancel();
-        }
-      }}
-      onConfirm={onConfirm}
-    >
-      {request.details ? (
-        <div className="whitespace-pre-wrap">{request.details}</div>
-      ) : null}
-    </ConfirmationDialog>
-  );
-}
-
-interface WorkspaceFallbackStateProps {
-  description: string;
-  isLoading?: boolean;
-  onRetry?: () => void;
-  title: string;
-  tone?: "default" | "destructive";
-}
-
-function WorkspaceFallbackState({
-  description,
-  isLoading = false,
-  onRetry,
-  title,
-  tone = "default"
-}: WorkspaceFallbackStateProps) {
-  const { t } = useTranslation();
-
-  return (
-    <main className="min-h-screen px-4 py-5 sm:px-6 sm:py-7">
-      <div className="mx-auto flex min-h-[calc(100vh-2.5rem)] max-w-3xl items-center justify-center">
-        <div className="flex max-w-3xl flex-col items-center text-center">
-          <div
-            className={cn(
-              "text-primary",
-              tone === "destructive" && "text-[var(--state-danger)]"
-            )}
-          >
-            {isLoading ? (
-              <LoadingIcon className="size-9 animate-spin" />
-            ) : (
-              <WarningLinedIcon className="size-9" />
-            )}
-          </div>
-          <div className="mt-6 flex flex-col items-center gap-3">
-            <CardTitle className="text-3xl tracking-tight">{title}</CardTitle>
-            <CardDescription className="text-[15px] text-muted-foreground">
-              {description}
-            </CardDescription>
-            {onRetry ? (
-              <Button
-                className="mt-3 h-10 rounded-lg px-4"
-                type="button"
-                onClick={onRetry}
-              >
-                {t("workspace.fallback.retryAction")}
-              </Button>
-            ) : null}
-          </div>
-        </div>
-      </div>
-    </main>
   );
 }

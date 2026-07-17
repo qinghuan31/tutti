@@ -1,8 +1,14 @@
-import type { AgentActivityUsage } from "@tutti-os/agent-activity-core";
+import type {
+  AgentActivitySessionGoal,
+  AgentActivityUsage,
+  CanonicalAgentSession
+} from "@tutti-os/agent-activity-core";
 import type {
   AgentGUINodeData,
+  AgentGUIProvider,
+  AgentGUIProviderRailMode,
   AgentGUIProviderReadinessGate,
-  AgentGUIProviderTarget
+  AgentGUIAgentTarget
 } from "../../../types";
 import type {
   AgentGUIApprovalRequest,
@@ -16,30 +22,50 @@ import type {
   AgentSessionComposerSettings,
   AgentSessionPermissionConfig,
   AgentSessionReasoningEffort,
-  AgentSessionSpeed,
-  AgentSessionState
+  AgentSessionSpeed
 } from "../../../shared/agentSessionTypes";
+import type { AgentSlashCommandPolicy } from "./agentSlashCommandProviderPolicy";
 import type { AgentConversationVM } from "../../../shared/agentConversation/contracts/agentConversationVM";
 import type { WorkspaceAgentSessionDetailViewModel } from "../../../shared/workspaceAgentSessionDetailViewModel";
 import type { AgentPromptContentBlock } from "../../../shared/contracts/dto";
+import { AGENT_PASTED_TEXT_BLOCK_KIND } from "../../../shared/pastedTextKinds";
+
+export {
+  AGENT_PASTED_TEXT_BLOCK_KIND,
+  AGENT_PASTED_TEXT_MENTION_KIND
+} from "../../../shared/pastedTextKinds";
 
 export interface AgentGUISessionChrome {
   auth: {
     message: string;
   } | null;
   approval: AgentGUIApprovalRequest | null;
-  recovery: {
-    kind: "activating" | "failed" | "warning";
-    message: string;
-    canRetry?: boolean;
-    followupAction?: "continue-in-new-conversation";
-  } | null;
-  rawState: AgentSessionState | null;
+  recovery:
+    | {
+        kind: "activating" | "failed" | "warning";
+        message: string;
+        canRetry?: boolean;
+        followupAction?: never;
+      }
+    | {
+        kind: "resume-unavailable";
+        message: string;
+        followupAction: "continue-in-new-conversation";
+        canRetry?: never;
+      }
+    | null;
+  rawState:
+    | (Pick<CanonicalAgentSession, "agentSessionId" | "goal"> & {
+        goalIsOptimistic: boolean;
+      })
+    | null;
 }
 
-export interface OpenclawGatewayViewState {
-  status: "starting" | "ready" | "failed";
-  error: string | null;
+export interface AgentGUIOptimisticGoalControl {
+  agentSessionId: string;
+  goal: AgentActivitySessionGoal | null;
+  reconcileOnObjectiveMatch: boolean;
+  requestId: string;
 }
 
 export interface AgentGUIInlineNotice {
@@ -50,13 +76,9 @@ export interface AgentGUIInlineNotice {
 }
 
 export interface AgentGUIProjectConversationDeleteTarget {
-  conversationCount: number | null;
+  conversationCount: number;
   label: string;
   path: string;
-}
-
-export interface AgentGUIConversationSectionDeleteTarget {
-  conversationCount: number | null;
 }
 
 export interface AgentGUIComposerSettingOption {
@@ -69,6 +91,8 @@ export interface AgentGUIComposerSettingOption {
 export interface AgentGUIProviderSkillOption {
   name: string;
   trigger: string;
+  /** Daemon-issued invocation contract; never infer this from provider id. */
+  invocation?: "promptItem" | "textTrigger";
   sourceKind:
     | "project"
     | "personal"
@@ -83,7 +107,13 @@ export interface AgentGUIProviderSkillOption {
   kind?: "skill" | "connector";
 }
 
-export interface AgentComposerDraftImage {
+export interface AgentComposerTextBlock {
+  type: "text";
+  text: string;
+}
+
+export interface AgentComposerImageBlock {
+  type: "image";
   id: string;
   name: string;
   mimeType: "image/png" | "image/jpeg" | "image/webp";
@@ -96,7 +126,8 @@ export interface AgentComposerDraftImage {
   uploadError?: string;
 }
 
-export interface AgentComposerDraftFile {
+interface AgentComposerFileBlockBase {
+  type: "file";
   id: string;
   name: string;
   mimeType?: string;
@@ -108,39 +139,54 @@ export interface AgentComposerDraftFile {
   uploadError?: string;
 }
 
-export interface AgentComposerDraftLargeText {
-  id: string;
-  name: string;
+export interface AgentComposerRegularFileBlock extends AgentComposerFileBlockBase {
+  kind: "file";
+  text?: never;
+}
+
+export interface AgentComposerPastedTextBlock extends AgentComposerFileBlockBase {
+  kind: typeof AGENT_PASTED_TEXT_BLOCK_KIND;
+  /** Empty only when a queued pasted-text attachment is restored by path. */
   text: string;
-  sizeBytes?: number;
-  path?: string;
-  uploading?: boolean;
-  uploadError?: string;
 }
 
-/**
- * Marks a prompt `file` content block as a pasted-text attachment (as opposed
- * to a user-attached file). Carried on the block `kind` so the round-trip
- * (submit → queue → edit-restore) can rebuild a large-text chip instead of a
- * regular file chip, and so the codex-style "read this file" instruction is
- * materialized only for these blocks at send time.
- */
-export const AGENT_PASTED_TEXT_BLOCK_KIND = "pasted-text";
+export type AgentComposerFileBlock =
+  | AgentComposerRegularFileBlock
+  | AgentComposerPastedTextBlock;
 
-/**
- * Provider id of the custom mention kind used to render a pasted-text chip in
- * the conversation flow. The mention href (`mention://pasted-text/...`) carries
- * the landed archive path + size so the host can render the chip and open a
- * preview on click. Registered via registerAgentCustomMentionKind.
- */
-export const AGENT_PASTED_TEXT_MENTION_KIND = "pasted-text";
+export type AgentComposerAttachmentBlock =
+  | AgentComposerImageBlock
+  | AgentComposerFileBlock;
 
-export interface AgentComposerDraft {
-  prompt: string;
-  images: AgentComposerDraftImage[];
-  files?: AgentComposerDraftFile[];
-  largeTexts?: AgentComposerDraftLargeText[];
+export type AgentComposerDraftBlock =
+  | AgentComposerTextBlock
+  | AgentComposerAttachmentBlock;
+
+export type AgentComposerDraftContent = [
+  AgentComposerTextBlock,
+  ...AgentComposerAttachmentBlock[]
+];
+
+/** One atomic, unsent composer message. */
+export type AgentComposerDraft = AgentComposerDraftContent;
+
+export interface SubmittedDraftSnapshot {
+  sourceScopeKey: string;
+  content: AgentComposerDraftContent;
+  /** Existing-session destination; may differ from source after recovery. */
+  targetAgentSessionId?: string;
 }
+
+/** UI aliases retained for focused attachment components. */
+export type AgentComposerDraftImage = Omit<AgentComposerImageBlock, "type">;
+export type AgentComposerDraftFile = Omit<
+  AgentComposerRegularFileBlock,
+  "type" | "kind"
+>;
+export type AgentComposerDraftLargeText = Omit<
+  AgentComposerPastedTextBlock,
+  "type" | "kind"
+>;
 
 /**
  * Built-in glyph for a home-suggestion category chip. Keeps the localized data
@@ -215,13 +261,15 @@ export interface AgentGUIComposerSettingsVM {
   supportsSpeed: boolean;
   supportsPermissionMode?: boolean;
   supportsPlanMode: boolean;
-  // claude-code: plan mode overrides the permission mode in the daemon, so the
-  // two are mutually exclusive and picking a permission mode clears plan. codex:
-  // plan is an independent collaboration mode left untouched by permission picks.
+  // Descriptor-derived plan/permission exclusivity.
   planExclusiveWithPermissionMode?: boolean;
   supportsBrowser?: boolean;
   supportsComputerUse?: boolean;
+  permissionModeChangeDuringTurn?: boolean;
+  slashCommandPolicy?: AgentSlashCommandPolicy | null;
   isSettingsLoading: boolean;
+  /** Initial slash command and capability catalog request is in flight. */
+  isCapabilityOptionsLoading?: boolean;
   isModelOptionsLoading?: boolean;
   modelUnavailable: boolean;
   reasoningUnavailable: boolean;
@@ -242,7 +290,7 @@ export interface AgentGUIComposerSettingsVM {
   // Collapse the model list to the latest version per model family (providers
   // whose live lists span many vendors and versions, e.g. Cursor). The
   // currently selected model always stays visible even if older.
-  modelListCollapsedToLatest?: boolean;
+  collapseModelOptionsToLatest?: boolean;
   availableModels: AgentGUIComposerSettingOption[];
   availableReasoningEfforts: AgentGUIComposerSettingOption[];
   availableSpeeds: AgentGUIComposerSettingOption[];
@@ -257,69 +305,95 @@ export interface AgentGUIQueuedPromptVM {
   createdAtUnixMs: number;
 }
 
-export interface AgentGUINodeViewModel {
+export type AgentGUIQueueStatus = "active" | "paused_by_user";
+
+export interface AgentGUIShellViewModel {
   workspaceId: string;
   workspacePath?: string | null;
   currentUserId?: string | null;
   data: AgentGUINodeData;
-  selectedProviderTarget: AgentGUIProviderTarget;
-  providerTargets: readonly AgentGUIProviderTarget[];
-  handoffProviderTargets: readonly AgentGUIProviderTarget[];
-  providerTargetsLoading: boolean;
+}
+
+export interface AgentGUIRailViewModel {
+  selectedAgentTarget: AgentGUIAgentTarget;
+  agentTargets: readonly AgentGUIAgentTarget[];
+  agentTargetsLoading: boolean;
+  /** How the rail composes its list — "exact" renders targets verbatim with no static injection. */
+  providerRailMode: AgentGUIProviderRailMode;
+  /** Providers gated by the host (feature-gated) — rail renders coming-soon placeholders. */
+  comingSoonProviders: readonly AgentGUIProvider[];
   conversationFilter: AgentGUIConversationFilter;
   conversations: AgentGUIConversationSummary[];
   userProjects: AgentGUIConversationUserProject[];
   activeConversation: AgentGUIConversationSummary | null;
   activeConversationId: string | null;
-  availableCommands: AgentSessionCommand[];
-  availableSkills: AgentGUIProviderSkillOption[];
-  draftPrompt: string;
-  draftContent: AgentComposerDraft;
   isLoadingConversations: boolean;
+  listError: string | null;
+}
+
+export interface AgentGUIDetailViewModel {
+  availability: "loading" | "ready" | "not_found" | "error";
   isLoadingMessages: boolean;
   isLoadingOlderMessages: boolean;
   hasOlderMessages: boolean;
-  isCreatingConversation: boolean;
-  isSubmitting: boolean;
-  isInterrupting: boolean;
-  isCancelPending: boolean;
-  isRespondingApproval: boolean;
-  canCancel: boolean;
-  canSubmitInteractive: boolean;
-  canGoalControl: boolean;
-  canUploadAttachment: boolean;
-  promptImagesSupported: boolean;
-  compactSupported: boolean | null;
-  /**
-   * Provider goal supports a real paused state (codex thread goals). Claude
-   * Code's goal has none — the banner then omits pause/resume controls.
-   */
-  goalPauseSupported: boolean;
   usage: AgentActivityUsage | null;
-  backgroundAgentCount: number;
-  /** Codex plan turn finished: offer the TUI-equivalent implement prompt. */
-  listError: string | null;
-  isDeletingConversation: boolean;
-  isDeletingProjectConversations: boolean;
-  pendingDeleteConversation: AgentGUIConversationSummary | null;
-  pendingDeleteProjectConversations: AgentGUIProjectConversationDeleteTarget | null;
-  pendingDeleteConversations: AgentGUIConversationSectionDeleteTarget | null;
-  pendingApproval: AgentGUIApprovalRequest | null;
-  pendingInteractivePrompt: AgentGUIInteractivePrompt | null;
-  activeLiveState: "inactive" | "activating" | "active" | "failed";
-  activationError: string | null;
-  openclawGateway: OpenclawGatewayViewState | null;
-  activeConversationBusy: boolean;
-  canSubmit: boolean;
-  composerSettings: AgentGUIComposerSettingsVM;
-  queuedPrompts: readonly AgentGUIQueuedPromptVM[];
-  drainingQueuedPromptId: string | null;
-  canQueueWhileBusy: boolean;
   hasSentUserMessage: boolean;
   avoidGroupingEdits: boolean;
   conversation?: AgentConversationVM | null;
   conversationDetail: WorkspaceAgentSessionDetailViewModel | null;
+}
+
+export interface AgentGUIComposerViewModel {
+  handoffAgentTargets: readonly AgentGUIAgentTarget[];
+  availableCommands: AgentSessionCommand[];
+  availableSkills: AgentGUIProviderSkillOption[];
+  draftPrompt: string;
+  draftContent: AgentComposerDraft;
+  isCreatingConversation: boolean;
+  isSubmitting: boolean;
+  isInterrupting: boolean;
+  isCancelPending: boolean;
+  promptImagesSupported: boolean;
+  compactSupported: boolean | null;
+  /** Provider goal exposes a real paused state and pause/resume controls. */
+  goalPauseSupported: boolean;
+  canSubmit: boolean;
+  composerSettings: AgentGUIComposerSettingsVM;
+  queuedPrompts: AgentGUIQueuedPromptVM[];
+  queueStatus: AgentGUIQueueStatus;
+  drainingQueuedPromptId: string | null;
+  canQueueWhileBusy: boolean;
+}
+
+export interface AgentGUIInteractionViewModel {
+  isRespondingApproval: boolean;
+  pendingApproval: AgentGUIApprovalRequest | null;
+  pendingInteractivePrompt: AgentGUIInteractivePrompt | null;
   sessionChrome: AgentGUISessionChrome;
   inlineNotice: AgentGUIInlineNotice | null;
+}
+
+export interface AgentGUIReadinessViewModel {
+  activeLiveState: "inactive" | "activating" | "active" | "failed";
+  activationError: string | null;
+  activeConversationBusy: boolean;
   providerReadinessGate: AgentGUIProviderReadinessGate | null;
+}
+
+export interface AgentGUIOperationsViewModel {
+  goalClearNoticeSequence: number;
+  isDeletingConversation: boolean;
+  isDeletingProjectConversations: boolean;
+  pendingDeleteConversation: AgentGUIConversationSummary | null;
+  pendingDeleteProjectConversations: AgentGUIProjectConversationDeleteTarget | null;
+}
+
+export interface AgentGUINodeViewModel {
+  shell: AgentGUIShellViewModel;
+  rail: AgentGUIRailViewModel;
+  detail: AgentGUIDetailViewModel;
+  composer: AgentGUIComposerViewModel;
+  interaction: AgentGUIInteractionViewModel;
+  readiness: AgentGUIReadinessViewModel;
+  operations: AgentGUIOperationsViewModel;
 }

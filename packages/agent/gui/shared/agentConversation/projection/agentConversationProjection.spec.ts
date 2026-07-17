@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { normalizeAgentActivitySession } from "@tutti-os/agent-activity-core";
 import type { WorkspaceAgentSessionDetailViewModel } from "../../workspaceAgentSessionDetailViewModel";
 import {
   projectAgentConversationVM,
@@ -6,14 +7,101 @@ import {
 } from "./agentConversationProjection";
 
 describe("projectAgentConversationVM", () => {
-  it("keeps trailing tools split while the session is still processing without appending summary rows", () => {
+  it("interleaves guidance with earlier and later assistant output in the same turn", () => {
+    const sourceItem = (
+      seq: number,
+      role: "user" | "assistant",
+      content: string
+    ) => ({
+      id: seq,
+      workspaceId: "workspace-1",
+      agentSessionId: "session-1",
+      seq,
+      turnId: "turn-1",
+      eventId: `event-${seq}`,
+      actorType: role === "user" ? "user" : "agent",
+      actorId: role === "user" ? "user" : "session-1",
+      itemType: role === "user" ? "message.user" : "message.assistant",
+      role,
+      content,
+      occurredAtUnixMs: seq * 100
+    });
+    const initialUser = {
+      id: "user-1",
+      body: "Build the game",
+      turnId: "turn-1",
+      occurredAtUnixMs: 100,
+      sourceTimelineItems: [sourceItem(1, "user", "Build the game")]
+    };
+    const earlierAssistant = {
+      id: "assistant-1",
+      body: "I will inspect the workspace first.",
+      turnId: "turn-1",
+      occurredAtUnixMs: 200,
+      sourceTimelineItems: [
+        sourceItem(2, "assistant", "I will inspect the workspace first.")
+      ]
+    };
+    const guidance = {
+      id: "user-2",
+      body: "Make it colorful",
+      turnId: "turn-1",
+      occurredAtUnixMs: 300,
+      sourceTimelineItems: [sourceItem(3, "user", "Make it colorful")]
+    };
+    const laterAssistant = {
+      id: "assistant-2",
+      body: "I will update the palette.",
+      turnId: "turn-1",
+      occurredAtUnixMs: 400,
+      sourceTimelineItems: [
+        sourceItem(4, "assistant", "I will update the palette.")
+      ]
+    };
+    const agentItems = [
+      { kind: "message" as const, message: earlierAssistant },
+      { kind: "message" as const, message: laterAssistant }
+    ];
+
+    const conversation = projectAgentConversationVM(
+      detailViewModel({
+        turns: [
+          {
+            id: "turn-1",
+            userMessage: initialUser,
+            userMessages: [initialUser, guidance],
+            agentMessages: [earlierAssistant, laterAssistant],
+            toolCalls: [],
+            toolCallCount: 0,
+            hasFailedToolCall: false,
+            rawAgentItems: agentItems,
+            agentItems
+          }
+        ],
+        showProcessingIndicator: false
+      })
+    );
+
+    expect(
+      conversation.rows.flatMap((row) =>
+        row.kind === "message"
+          ? row.messages.map((message) => message.body)
+          : []
+      )
+    ).toEqual([
+      "Build the game",
+      "I will inspect the workspace first.",
+      "Make it colorful",
+      "I will update the palette."
+    ]);
+  });
+
+  it("groups trailing tools while the session is still processing without appending summary rows", () => {
     const detail = detailViewModel();
     const conversation = projectAgentConversationVM(detail);
 
     expect(conversation.rows.map((row) => row.kind)).toEqual([
       "message",
-      "message",
-      "tool-group",
       "message",
       "tool-group",
       "processing"
@@ -27,22 +115,272 @@ describe("projectAgentConversationVM", () => {
         { kind: "tool-group" }
       > => row.kind === "tool-group"
     );
-    expect(toolRows).toHaveLength(2);
-    expect(toolRows.every((row) => row.grouped === false)).toBe(true);
-    const standaloneThinking = conversation.rows.find(
-      (
-        row
-      ): row is Extract<
-        (typeof conversation.rows)[number],
-        { kind: "message" }
-      > =>
-        row.kind === "message" &&
-        row.speaker === "assistant" &&
-        row.messages.length === 0
+    expect(toolRows).toHaveLength(1);
+    expect(toolRows[0]?.grouped).toBe(true);
+    expect(toolRows[0]?.calls).toHaveLength(2);
+    expect(toolRows[0]?.entries.map((entry) => entry.kind)).toEqual([
+      "tool-call",
+      "thinking",
+      "tool-call"
+    ]);
+  });
+
+  it("promotes a completed generated image beside its retained tool-call group", () => {
+    const imageCall = {
+      id: "call:image-1",
+      name: "Generate image",
+      toolName: "image_generation",
+      callType: "tool",
+      status: "Completed",
+      statusKind: "completed" as const,
+      summary: "Generated image",
+      payload: {
+        input: {
+          prompt: "A friendly corgi"
+        },
+        output: {
+          savedPath: "/workspace/output/generated-corgi.png",
+          content: [
+            {
+              type: "image",
+              uri: "/workspace/output/generated-corgi.png",
+              mimeType: "image/png"
+            }
+          ]
+        }
+      }
+    };
+    const conversation = projectAgentConversationVM(
+      detailViewModel({
+        turns: [
+          {
+            id: "turn-image",
+            userMessage: { id: "user-image", body: "Generate a corgi" },
+            userMessages: [{ id: "user-image", body: "Generate a corgi" }],
+            agentMessages: [],
+            toolCalls: [imageCall],
+            toolCallCount: 1,
+            hasFailedToolCall: false,
+            agentItems: [
+              {
+                kind: "tool-calls",
+                id: "tools-image",
+                toolCalls: [imageCall],
+                toolCallCount: 1,
+                hasFailedToolCall: false
+              }
+            ]
+          }
+        ],
+        showProcessingIndicator: false
+      })
     );
-    expect(standaloneThinking?.thinking[0]?.body).toBe(
-      "Need to inspect before editing."
+
+    expect(
+      conversation.rows.filter((row) => row.kind === "tool-group")
+    ).toHaveLength(1);
+    expect(
+      conversation.rows.find((row) => row.kind === "generated-image")
+    ).toMatchObject({
+      kind: "generated-image",
+      id: "generated-image:call:image-1",
+      turnId: "turn-image",
+      sourceCallId: "call:image-1",
+      uri: "/workspace/output/generated-corgi.png",
+      mimeType: "image/png",
+      prompt: "A friendly corgi"
+    });
+  });
+
+  it("does not promote an image before generation completes", () => {
+    const imageCall = {
+      id: "call:image-running",
+      name: "Generate image",
+      toolName: "image_generation",
+      callType: "tool",
+      status: "Running",
+      statusKind: "working" as const,
+      summary: "Generating image",
+      payload: {
+        input: {
+          prompt: "A friendly corgi"
+        },
+        output: {
+          savedPath: "/workspace/output/generated-corgi.png"
+        }
+      }
+    };
+    const conversation = projectAgentConversationVM(
+      detailViewModel({
+        turns: [
+          {
+            id: "turn-image-running",
+            userMessage: { id: "user-image", body: "Generate a corgi" },
+            userMessages: [{ id: "user-image", body: "Generate a corgi" }],
+            agentMessages: [],
+            toolCalls: [imageCall],
+            toolCallCount: 1,
+            hasFailedToolCall: false,
+            agentItems: [
+              {
+                kind: "tool-calls",
+                id: "tools-image",
+                toolCalls: [imageCall],
+                toolCallCount: 1,
+                hasFailedToolCall: false
+              }
+            ]
+          }
+        ],
+        showProcessingIndicator: false
+      })
     );
+
+    expect(
+      conversation.rows.some((row) => row.kind === "generated-image")
+    ).toBe(false);
+  });
+
+  it("removes final Markdown that repeats a generated-image artifact", () => {
+    const savedPath = "/workspace/output/generated-corgi.png";
+    const imageCall = {
+      id: "call:image-deduplicated",
+      name: "Generate image",
+      toolName: "image_generation",
+      callType: "tool",
+      status: "Completed",
+      statusKind: "completed" as const,
+      summary: "Generated image",
+      payload: {
+        input: {
+          prompt: "A friendly corgi"
+        },
+        output: {
+          savedPath,
+          content: [
+            {
+              type: "image",
+              uri: savedPath,
+              mimeType: "image/png"
+            }
+          ]
+        }
+      }
+    };
+    const conversation = projectAgentConversationVM(
+      detailViewModel({
+        turns: [
+          {
+            id: "turn-image-deduplicated",
+            userMessage: { id: "user-image", body: "Generate a corgi" },
+            userMessages: [{ id: "user-image", body: "Generate a corgi" }],
+            agentMessages: [
+              {
+                id: "assistant-image",
+                body: `Done.\n\n![generated corgi](${savedPath})`
+              }
+            ],
+            toolCalls: [imageCall],
+            toolCallCount: 1,
+            hasFailedToolCall: false,
+            agentItems: [
+              {
+                kind: "tool-calls",
+                id: "tools-image",
+                toolCalls: [imageCall],
+                toolCallCount: 1,
+                hasFailedToolCall: false
+              },
+              {
+                kind: "message",
+                message: {
+                  id: "assistant-image",
+                  body: `Done.\n\n![generated corgi](${savedPath})`
+                }
+              }
+            ]
+          }
+        ],
+        showProcessingIndicator: false
+      })
+    );
+
+    expect(
+      conversation.rows.filter((row) => row.kind === "generated-image")
+    ).toHaveLength(1);
+    expect(
+      conversation.rows
+        .filter(
+          (row): row is Extract<typeof row, { kind: "message" }> =>
+            row.kind === "message" && row.speaker === "assistant"
+        )
+        .flatMap((row) => row.messages.map((message) => message.body))
+    ).toEqual(["Done."]);
+  });
+
+  it("keeps assistant Markdown images that are not generated artifacts", () => {
+    const generatedPath = "/workspace/output/generated-corgi.png";
+    const otherPath = "/workspace/reference/reference-corgi.png";
+    const imageCall = {
+      id: "call:image-keep-other",
+      name: "Generate image",
+      toolName: "image_generation",
+      callType: "tool",
+      status: "Completed",
+      statusKind: "completed" as const,
+      summary: "Generated image",
+      payload: {
+        output: {
+          savedPath: generatedPath,
+          content: [
+            {
+              type: "image",
+              uri: generatedPath,
+              mimeType: "image/png"
+            }
+          ]
+        }
+      }
+    };
+    const body = `![generated](${generatedPath})\n\n![reference](${otherPath})`;
+    const conversation = projectAgentConversationVM(
+      detailViewModel({
+        turns: [
+          {
+            id: "turn-image-keep-other",
+            userMessage: { id: "user-image", body: "Generate a corgi" },
+            userMessages: [{ id: "user-image", body: "Generate a corgi" }],
+            agentMessages: [{ id: "assistant-image", body }],
+            toolCalls: [imageCall],
+            toolCallCount: 1,
+            hasFailedToolCall: false,
+            agentItems: [
+              {
+                kind: "tool-calls",
+                id: "tools-image",
+                toolCalls: [imageCall],
+                toolCallCount: 1,
+                hasFailedToolCall: false
+              },
+              {
+                kind: "message",
+                message: { id: "assistant-image", body }
+              }
+            ]
+          }
+        ],
+        showProcessingIndicator: false
+      })
+    );
+
+    expect(
+      conversation.rows
+        .filter(
+          (row): row is Extract<typeof row, { kind: "message" }> =>
+            row.kind === "message" && row.speaker === "assistant"
+        )
+        .flatMap((row) => row.messages.map((message) => message.body))
+    ).toEqual([`![reference](${otherPath})`]);
   });
 
   const tailChainConversation = (latestTail: {
@@ -83,6 +421,20 @@ describe("projectAgentConversationVM", () => {
     ];
     const conversation = projectAgentConversationVM(
       detailViewModel({
+        session: {
+          ...detailViewModel().session,
+          activeTurn: {
+            agentSessionId: "session-1",
+            outcome: null,
+            origin: "user_prompt",
+            phase: "running",
+            settledAtUnixMs: null,
+            startedAtUnixMs: 1,
+            turnId: "turn-2",
+            updatedAtUnixMs: 10
+          },
+          activeTurnId: "turn-2"
+        },
         turns: [
           {
             id: "turn-1",
@@ -115,41 +467,35 @@ describe("projectAgentConversationVM", () => {
     );
   };
 
-  it("keeps completed tail tools visible instead of collapsing to the latest", () => {
-    // Session still working, but the latest tail tool has finished: every
-    // completed tool stays visible as its own row rather than vanishing.
+  it("keeps completed tail tools in one stable group", () => {
     const toolRows = tailChainConversation({
       status: "Completed",
       statusKind: "completed"
     });
 
-    expect(toolRows.map((row) => row.calls[0]?.id)).toEqual([
+    expect(toolRows).toHaveLength(1);
+    expect(toolRows[0]?.calls.map((call) => call.id)).toEqual([
       "call:1",
       "call:2",
       "call:3"
     ]);
-    expect(toolRows.every((row) => row.grouped === false)).toBe(true);
+    expect(toolRows[0]?.grouped).toBe(true);
   });
 
-  it("keeps completed tail tools visible while the latest tail tool runs", () => {
-    // Regression for the Codex tool-rendering flicker: Codex emits long runs of
-    // short, sequential tool calls. Previously, while the newest tail tool was
-    // still active every already-completed predecessor was collapsed into a
-    // single live row, so the transcript jumped between showing one tool and
-    // many as the burst advanced (and again when interleaved reasoning broke the
-    // trailing run). Completed tools must stay visible alongside the live one so
-    // the streaming transcript only grows instead of toggling.
+  it("keeps the latest running tool in the same stable group", () => {
     const toolRows = tailChainConversation({
       status: "Running",
       statusKind: "working"
     });
 
-    expect(toolRows.map((row) => row.calls[0]?.id)).toEqual([
+    expect(toolRows).toHaveLength(1);
+    expect(toolRows[0]?.calls.map((call) => call.id)).toEqual([
       "call:1",
       "call:2",
       "call:3"
     ]);
-    expect(toolRows.every((row) => row.grouped === false)).toBe(true);
+    expect(toolRows[0]?.calls.at(-1)?.statusKind).toBe("working");
+    expect(toolRows[0]?.grouped).toBe(true);
   });
 
   it("keeps Codex transport retry notices out of the working processing label", () => {
@@ -217,8 +563,7 @@ describe("projectAgentConversationVM", () => {
     const conversation = projectAgentConversationVM(
       detailViewModel({
         session: {
-          ...detailViewModel().session,
-          status: "completed"
+          ...detailViewModel().session
         },
         turns: [
           {
@@ -295,8 +640,7 @@ describe("projectAgentConversationVM", () => {
     const conversation = projectAgentConversationVM(
       detailViewModel({
         session: {
-          ...detailViewModel().session,
-          status: "failed"
+          ...detailViewModel().session
         },
         turns: [
           {
@@ -473,8 +817,7 @@ describe("projectAgentConversationVM", () => {
     const conversation = projectAgentConversationVM(
       detailViewModel({
         session: {
-          ...detailViewModel().session,
-          status: "completed"
+          ...detailViewModel().session
         },
         showProcessingIndicator: false
       })
@@ -509,18 +852,102 @@ describe("projectAgentConversationVM", () => {
     ).toBe("Need to inspect before editing.");
   });
 
-  it("appends summary rows after the turn has completed", () => {
+  it("places each canonical file summary directly after its settled turn", () => {
     const conversation = projectAgentConversationVM(
       detailViewModel({
-        session: {
-          ...detailViewModel().session,
-          status: "completed"
-        },
+        turns: [
+          {
+            id: "turn-1",
+            userMessage: { id: "user-1", body: "First" },
+            userMessages: [{ id: "user-1", body: "First" }],
+            agentMessages: [{ id: "assistant-1", body: "Done first" }],
+            toolCalls: [],
+            toolCallCount: 0,
+            hasFailedToolCall: false,
+            agentItems: [
+              {
+                kind: "message",
+                message: { id: "assistant-1", body: "Done first" }
+              }
+            ]
+          },
+          {
+            id: "turn-2",
+            userMessage: { id: "user-2", body: "Second" },
+            userMessages: [{ id: "user-2", body: "Second" }],
+            agentMessages: [{ id: "assistant-2", body: "Done second" }],
+            toolCalls: [],
+            toolCallCount: 0,
+            hasFailedToolCall: false,
+            agentItems: [
+              {
+                kind: "message",
+                message: { id: "assistant-2", body: "Done second" }
+              }
+            ]
+          }
+        ],
+        sessionTurns: [
+          {
+            agentSessionId: "session-1",
+            turnId: "turn-1",
+            phase: "settled",
+            origin: "user_prompt",
+            outcome: "completed",
+            startedAtUnixMs: 1,
+            settledAtUnixMs: 10,
+            updatedAtUnixMs: 10,
+            fileChanges: {
+              files: [{ path: "/workspace/demo/first.ts", change: "added" }]
+            }
+          },
+          {
+            agentSessionId: "session-1",
+            turnId: "turn-2",
+            phase: "settled",
+            origin: "user_prompt",
+            outcome: "completed",
+            startedAtUnixMs: 11,
+            settledAtUnixMs: 20,
+            updatedAtUnixMs: 20,
+            fileChanges: {
+              files: [{ path: "/workspace/demo/second.ts", change: "deleted" }]
+            }
+          }
+        ],
         showProcessingIndicator: false
       })
     );
 
-    expect(conversation.rows.map((row) => row.kind)).toContain("turn-summary");
+    expect(conversation.rows.map((row) => `${row.turnId}:${row.kind}`)).toEqual(
+      [
+        "turn-1:message",
+        "turn-1:message",
+        "turn-1:turn-summary",
+        "turn-2:message",
+        "turn-2:message",
+        "turn-2:turn-summary"
+      ]
+    );
+  });
+
+  it("uses the session cwd for turn summaries when no workspace root is selected", () => {
+    const conversation = projectAgentConversationVM(
+      detailViewModel({
+        workspaceRoot: null,
+        showProcessingIndicator: false
+      })
+    );
+
+    const summary = conversation.rows.find(
+      (row) => row.kind === "turn-summary"
+    );
+    expect(summary).toMatchObject({
+      kind: "turn-summary",
+      files: expect.arrayContaining([
+        expect.objectContaining({ path: "/workspace/demo/src/App.tsx" })
+      ])
+    });
   });
 
   it("derives pending approval and ask-user prompts from typed tool rows", () => {
@@ -599,26 +1026,20 @@ describe("projectAgentConversationVM", () => {
 
     const conversation = projectAgentConversationVM(detail);
 
-    expect(conversation.pendingApproval?.requestId).toBe("approval-request-1");
-    expect(conversation.pendingApproval?.options[0]?.label).toBe("Allow once");
-    expect(conversation.pendingInteractivePrompt).toEqual({
-      kind: "ask-user",
-      requestId: "ask-request-1",
-      title: "Ask user",
-      questions: [
-        {
-          id: "approach",
-          header: "Approach",
-          question: "Which path should we take?",
-          options: [{ label: "Typed renderer", description: "Keep going" }],
-          multiSelect: false,
-          answer: null
-        }
-      ]
-    });
+    expect("pendingApproval" in conversation).toBe(false);
+    expect("pendingInteractivePrompt" in conversation).toBe(false);
+    expect(
+      conversation.rows.flatMap((row) =>
+        row.kind === "tool-group" ? row.calls : []
+      )
+    ).not.toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ toolName: "Approval" })
+      ])
+    );
   });
 
-  it("surfaces a pending approval nested inside a delegated subagent's steps", () => {
+  it("hides a pending approval nested inside a delegated subagent's steps", () => {
     const detail = detailViewModel({
       turns: [
         {
@@ -676,15 +1097,72 @@ describe("projectAgentConversationVM", () => {
 
     const conversation = projectAgentConversationVM(detail);
 
-    // Regression: a Task/subagent call renders its own tool activity as
-    // nested `task.steps`, not as sibling rows. Without descending into
-    // those steps, an approval a delegated subagent is blocked on never
-    // reached `conversation.pendingApproval`, so the session-detail bottom
-    // dock never mounted a prompt even though the run was genuinely stuck
-    // waiting on the user.
-    expect(conversation.pendingApproval?.requestId).toBe("nested-approval-1");
-    expect(conversation.pendingApproval?.options[0]?.label).toBe("Allow once");
+    expect("pendingApproval" in conversation).toBe(false);
+    const taskCall = conversation.rows
+      .flatMap((row) => (row.kind === "tool-group" ? row.calls : []))
+      .find((call) => call.toolName === "Task");
+    expect(taskCall?.task?.steps).toEqual([]);
   });
+
+  it.each([
+    ["working", "working"],
+    ["completed", "completed"],
+    ["failed", "failed"]
+  ] as const)(
+    "hides %s approval tool calls without hiding neighboring tools",
+    (status, statusKind) => {
+      const conversation = projectAgentConversationVM(
+        detailViewModel({
+          turns: [
+            {
+              id: "turn-1",
+              userMessage: { id: "user-1", body: "Write it" },
+              userMessages: [{ id: "user-1", body: "Write it" }],
+              agentMessages: [],
+              toolCalls: [],
+              toolCallCount: 2,
+              hasFailedToolCall: statusKind === "failed",
+              agentItems: [
+                {
+                  kind: "tool-calls",
+                  id: "tools-1",
+                  toolCalls: [
+                    {
+                      id: "call:write-1",
+                      name: "Write file",
+                      toolName: "Write",
+                      callType: "tool",
+                      status: "completed",
+                      statusKind: "completed",
+                      summary: "hello.md",
+                      payload: null
+                    },
+                    {
+                      id: `call:approval-${status}`,
+                      name: "Approval",
+                      toolName: "Approval",
+                      callType: "approval",
+                      status,
+                      statusKind,
+                      summary: "/workspace/hello.md",
+                      payload: null
+                    }
+                  ],
+                  toolCallCount: 2,
+                  hasFailedToolCall: statusKind === "failed"
+                }
+              ]
+            }
+          ]
+        })
+      );
+
+      const visibleCalls = conversation.rows.flatMap((row) =>
+        row.kind === "tool-group" ? row.calls : []
+      );
+      expect(visibleCalls.map((call) => call.toolName)).toEqual(["Write"]);
+    }
+  );
 
   it("surfaces a pending ask-user prompt nested inside a delegated subagent's steps", () => {
     const detail = detailViewModel({
@@ -751,21 +1229,7 @@ describe("projectAgentConversationVM", () => {
 
     const conversation = projectAgentConversationVM(detail);
 
-    expect(conversation.pendingInteractivePrompt).toEqual({
-      kind: "ask-user",
-      requestId: "nested-ask-1",
-      title: "Ask user",
-      questions: [
-        {
-          id: "approach",
-          header: "Approach",
-          question: "Which path should we take?",
-          options: [{ label: "Typed renderer", description: "Keep going" }],
-          multiSelect: false,
-          answer: null
-        }
-      ]
-    });
+    expect("pendingInteractivePrompt" in conversation).toBe(false);
   });
 
   it("carries runtime exit-plan options through the pending interactive prompt", () => {
@@ -830,20 +1294,7 @@ describe("projectAgentConversationVM", () => {
 
     const conversation = projectAgentConversationVM(detail);
 
-    expect(conversation.pendingInteractivePrompt).toEqual({
-      kind: "exit-plan",
-      requestId: "plan-request-1",
-      title: "Exit plan mode",
-      options: [
-        {
-          id: "acceptEdits",
-          label: "Yes, and auto-accept edits",
-          kind: "acceptEdits"
-        },
-        { id: "auto", label: "Yes, and use auto mode", kind: "auto" }
-      ],
-      keepPlanningOptionId: "plan"
-    });
+    expect("pendingInteractivePrompt" in conversation).toBe(false);
   });
 
   it("does not append the processing row when canonical detail suppresses it", () => {
@@ -896,6 +1347,98 @@ describe("projectAgentConversationVM", () => {
     );
   });
 
+  it("uses active semantic progress instead of appending generic processing", () => {
+    const baseTurn = detailViewModel().turns[0]!;
+    const compactNotice = compactNoticeMessage("turn-1", "running");
+    const conversation = projectAgentConversationVM(
+      detailViewModel({
+        turns: [
+          {
+            ...baseTurn,
+            agentMessages: [compactNotice],
+            toolCalls: [],
+            toolCallCount: 0,
+            agentItems: [{ kind: "message", message: compactNotice }]
+          }
+        ],
+        showProcessingIndicator: true
+      })
+    );
+
+    expect(conversation.rows.some((row) => row.kind === "processing")).toBe(
+      false
+    );
+    expect(
+      conversation.rows.some(
+        (row) =>
+          row.kind === "message" &&
+          row.messages.some(
+            (message) => message.presentationKind === "specific-progress"
+          )
+      )
+    ).toBe(true);
+  });
+
+  it.each(["completed", "failed", "canceled"] as const)(
+    "fails open to generic processing after compact is %s",
+    (commandStatus) => {
+      const baseTurn = detailViewModel().turns[0]!;
+      const compactNotice = compactNoticeMessage("turn-1", commandStatus);
+      const conversation = projectAgentConversationVM(
+        detailViewModel({
+          turns: [
+            {
+              ...baseTurn,
+              agentMessages: [compactNotice],
+              toolCalls: [],
+              toolCallCount: 0,
+              agentItems: [{ kind: "message", message: compactNotice }]
+            }
+          ],
+          showProcessingIndicator: true
+        })
+      );
+
+      expect(conversation.rows.some((row) => row.kind === "processing")).toBe(
+        true
+      );
+    }
+  );
+
+  it("does not let progress from an older turn suppress current processing", () => {
+    const firstTurn = detailViewModel().turns[0]!;
+    const compactNotice = compactNoticeMessage("turn-1", "running");
+    const secondTurn = {
+      id: "turn-2",
+      userMessage: { id: "user-2", body: "Follow-up", turnId: "turn-2" },
+      userMessages: [{ id: "user-2", body: "Follow-up", turnId: "turn-2" }],
+      agentMessages: [],
+      toolCalls: [],
+      toolCallCount: 0,
+      hasFailedToolCall: false,
+      agentItems: []
+    };
+    const conversation = projectAgentConversationVM(
+      detailViewModel({
+        turns: [
+          {
+            ...firstTurn,
+            agentMessages: [compactNotice],
+            toolCalls: [],
+            toolCallCount: 0,
+            agentItems: [{ kind: "message", message: compactNotice }]
+          },
+          secondTurn
+        ],
+        showProcessingIndicator: true
+      })
+    );
+
+    expect(conversation.rows.find((row) => row.kind === "processing")).toEqual(
+      expect.objectContaining({ turnId: "turn-2" })
+    );
+  });
+
   it("keeps Edit and Write tool calls as standalone rows when avoidGroupingEdits is enabled", () => {
     const detail = detailViewModel();
 
@@ -921,7 +1464,7 @@ describe("projectAgentConversationVM", () => {
       > => row.kind === "tool-group"
     );
     expect(toolRows).toHaveLength(2);
-    expect(toolRows.every((row) => row.grouped === false)).toBe(true);
+    expect(toolRows.map((row) => row.grouped)).toEqual([true, false]);
     expect(
       conversation.rows.some(
         (
@@ -993,7 +1536,18 @@ describe("projectAgentConversationVM", () => {
       detailViewModel({
         session: {
           ...detailViewModel().session,
-          status: "completed"
+          activeTurn: null,
+          activeTurnId: null,
+          latestTurn: {
+            agentSessionId: "session-1",
+            outcome: "completed",
+            origin: "user_prompt",
+            phase: "settled",
+            settledAtUnixMs: 10,
+            startedAtUnixMs: 1,
+            turnId: "turn-1",
+            updatedAtUnixMs: 10
+          }
         },
         turns: [
           {
@@ -1064,6 +1618,20 @@ describe("projectAgentConversationVM", () => {
   it("marks prior turn assistant replies copyable while the latest turn is still working", () => {
     const conversation = projectAgentConversationVM(
       detailViewModel({
+        session: {
+          ...detailViewModel().session,
+          activeTurn: {
+            agentSessionId: "session-1",
+            outcome: null,
+            origin: "user_prompt",
+            phase: "running",
+            settledAtUnixMs: null,
+            startedAtUnixMs: 1,
+            turnId: "turn-2",
+            updatedAtUnixMs: 10
+          },
+          activeTurnId: "turn-2"
+        },
         turns: [
           {
             id: "turn-1",
@@ -1125,6 +1693,20 @@ describe("projectAgentConversationVM", () => {
   it("does not mark assistant replies copyable while the session is working", () => {
     const conversation = projectAgentConversationVM(
       detailViewModel({
+        session: {
+          ...detailViewModel().session,
+          activeTurn: {
+            agentSessionId: "session-1",
+            outcome: null,
+            origin: "user_prompt",
+            phase: "running",
+            settledAtUnixMs: null,
+            startedAtUnixMs: 1,
+            turnId: "turn-1",
+            updatedAtUnixMs: 10
+          },
+          activeTurnId: "turn-1"
+        },
         turns: [
           {
             id: "turn-1",
@@ -1344,12 +1926,28 @@ describe("projectAgentConversationVM", () => {
     };
     const previous = projectAgentConversationVM(
       detailViewModel({
+        session: {
+          ...detailViewModel().session,
+          latestTurn: {
+            ...detailViewModel().session.latestTurn!,
+            turnId: "turn-2",
+            fileChanges: null
+          }
+        },
         turns: [firstTurn, secondTurn],
         showProcessingIndicator: false
       })
     );
     const next = projectAgentConversationVM(
       detailViewModel({
+        session: {
+          ...detailViewModel().session,
+          latestTurn: {
+            ...detailViewModel().session.latestTurn!,
+            turnId: "turn-2",
+            fileChanges: null
+          }
+        },
         turns: [
           firstTurn,
           {
@@ -1417,31 +2015,71 @@ function detailViewModel(
       sessionId: "session-1",
       agentName: "Codex",
       agentProvider: "codex",
-      status: "working",
       title: "Codex",
       latestActivitySummary: "Working",
+      status: "working",
       sortTimeUnixMs: 10,
       changedFiles: [{ path: "src/App.tsx", label: "src/App.tsx" }],
       userId: "user-1",
       userName: "Taylor",
       userAvatarUrl: ""
     },
-    session: {
-      id: 1,
+    session: normalizeAgentActivitySession({
+      ...{
+        activeTurnId: null,
+        latestTurnInteractions: [],
+        pendingInteractions: []
+      },
+      workspaceId: "workspace-1",
       agentSessionId: "session-1",
-      presenceId: 1,
       userId: "user-1",
       provider: "codex",
       providerSessionId: "provider-session-1",
-      sessionOrigin: "WORKSPACE_AGENT_SESSION_ORIGIN_RUNTIME",
       cwd: "/workspace/demo",
-      status: "working",
       title: "Codex",
       createdAtUnixMs: 1,
-      updatedAtUnixMs: 10
-    },
+      updatedAtUnixMs: 10,
+      latestTurn: {
+        agentSessionId: "session-1",
+        turnId: "turn-1",
+        phase: "settled",
+        origin: "user_prompt",
+        outcome: "completed",
+        startedAtUnixMs: 1,
+        settledAtUnixMs: 10,
+        updatedAtUnixMs: 10,
+        fileChanges: {
+          files: [
+            {
+              path: "/workspace/demo/src/App.tsx",
+              change: "modified"
+            }
+          ]
+        }
+      }
+    }),
     cwd: "/workspace/demo",
     workspaceRoot: "/workspace/demo",
+    sessionTurns: [
+      {
+        agentSessionId: "session-1",
+        turnId: "turn-1",
+        phase: "settled",
+        origin: "user_prompt",
+        outcome: "completed",
+        startedAtUnixMs: 1,
+        settledAtUnixMs: 10,
+        updatedAtUnixMs: 10,
+        fileChanges: {
+          files: [
+            {
+              path: "/workspace/demo/src/App.tsx",
+              change: "modified"
+            }
+          ]
+        }
+      }
+    ],
     turns: [
       {
         id: "turn-1",
@@ -1522,5 +2160,25 @@ function detailViewModel(
     ],
     showProcessingIndicator: true,
     ...overrides
+  };
+}
+
+function compactNoticeMessage(
+  turnId: string,
+  commandStatus: "running" | "completed" | "failed" | "canceled"
+): WorkspaceAgentSessionDetailViewModel["turns"][number]["agentMessages"][number] {
+  return {
+    id: `compact:${turnId}`,
+    body: "Compact notice",
+    turnId,
+    systemNotice: {
+      noticeKind: "system_notice",
+      severity: null,
+      command: "compact",
+      commandStatus,
+      title: "Compact notice",
+      detail: null,
+      retryable: null
+    }
   };
 }

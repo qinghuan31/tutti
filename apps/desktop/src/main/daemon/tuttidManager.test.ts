@@ -517,6 +517,18 @@ async function developmentBinaryIsFresh(binaryPath: string): Promise<boolean> {
 }
 
 function isPidRunning(pid: number): boolean {
+  if (process.platform === "win32") {
+    const result = spawnSync(
+      "tasklist",
+      ["/FI", `PID eq ${pid}`, "/FO", "CSV", "/NH"],
+      { encoding: "utf8", windowsHide: true }
+    );
+    return (
+      result.status === 0 &&
+      result.stdout.includes(`"${pid}"`) &&
+      !result.stdout.includes("INFO:")
+    );
+  }
   try {
     process.kill(pid, 0);
     return true;

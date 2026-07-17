@@ -2,28 +2,20 @@ import type {
   WorkspaceAgentSessionDetailTurn,
   WorkspaceAgentSessionDetailViewModel
 } from "../../workspaceAgentSessionDetailViewModel";
-import type { AgentApprovalItemVM } from "../contracts/agentApprovalItemVM";
-import type {
-  AgentConversationPendingInteractivePromptVM,
-  AgentConversationVM
-} from "../contracts/agentConversationVM";
+import { extractImageGenerationPreview } from "../../imageGenerationTool";
+import type { AgentConversationVM } from "../contracts/agentConversationVM";
+import type { AgentGeneratedImageRowVM } from "../contracts/agentGeneratedImageRowVM";
 import type {
   AgentMessageContentVM,
   AgentMessageRowVM
 } from "../contracts/agentMessageRowVM";
 import type { AgentToolCallVM } from "../contracts/agentToolCallVM";
 import type { AgentTranscriptRowVM } from "../contracts/agentTranscriptRowVM";
-import {
-  buildAgentTurnSequenceItems,
-  computeAgentToolGroups
-} from "./agentToolGroupingProjection";
+import { computeAgentToolGroups } from "./agentToolGroupingProjection";
+import { buildAgentTurnSequenceItems } from "./agentTurnSequenceProjection";
 import { projectTurnRows } from "./agentTurnRowProjection";
 import { projectAgentProcessingRow } from "./agentProcessingProjection";
-import { linkifyPastedTextReferences } from "../../../agent-gui/agentGuiNode/model/agentComposerDraft";
-import {
-  projectAgentTurnSummaryRowForTurn,
-  projectAgentTurnSummaryRows
-} from "./agentTurnSummaryProjection";
+import { projectAgentTurnSummaryRows } from "./agentTurnSummaryProjection";
 
 export interface AgentConversationProjectionOptions {
   avoidGroupingEdits?: boolean;
@@ -34,6 +26,8 @@ const CODEX_SKILLS_CONTEXT_BUDGET_NOTICE_FRAGMENT =
   "skill descriptions were shortened to fit the 2% skills context budget";
 const CODEX_MODEL_METADATA_FALLBACK_NOTICE_FRAGMENT =
   "defaulting to fallback metadata";
+const MARKDOWN_IMAGE_PATTERN =
+  /!\[[^\]]*]\(\s*(?:<([^>]+)>|([^)\s]+))(?:\s+["'][^"']*["'])?\s*\)/g;
 
 export function projectAgentConversationVM(
   detail: WorkspaceAgentSessionDetailViewModel,
@@ -41,34 +35,23 @@ export function projectAgentConversationVM(
 ): AgentConversationVM {
   const rows: AgentTranscriptRowVM[] = [];
   const turns = detail.turns;
-  const allowTrailingToolGrouping = !isSessionWorking(detail);
+  const summariesByTurnId = new Map(
+    projectAgentTurnSummaryRows(detail).map((summary) => [
+      summary.turnId,
+      summary
+    ])
+  );
 
-  turns.forEach((turn, index) => {
-    rows.push(...projectUserRows(turn, detail.session.workspaceId));
+  turns.forEach((turn) => {
     rows.push(
-      ...projectTurnAgentRows(turn, {
+      ...projectTurnConversationRows(turn, detail.session.workspaceId, {
         agentSessionId: detail.session.agentSessionId,
-        turnIndex: index,
-        allowTrailingFinalization:
-          allowTrailingToolGrouping || index < turns.length - 1,
         avoidGroupingEdits: options.avoidGroupingEdits
       })
     );
-    if (shouldShowTurnSummaryForTurn(detail, index)) {
-      rows.push(
-        ...projectAgentTurnSummaryRowForTurn(turn, {
-          workspaceRoot: detail.workspaceRoot
-        })
-      );
-    }
+    const summary = summariesByTurnId.get(turn.id);
+    if (summary) rows.push(summary);
   });
-
-  if (
-    !rows.some((row) => row.kind === "turn-summary") &&
-    shouldShowLatestTurnSummaryFallback(detail)
-  ) {
-    rows.push(...projectAgentTurnSummaryRows(detail));
-  }
 
   const processing = projectAgentProcessingRow(detail, rows);
   if (processing) {
@@ -79,7 +62,9 @@ export function projectAgentConversationVM(
     dropCodexRuntimeDiagnosticNotices(
       dropRedundantErrorWarningNotices(
         mergeAdjacentAssistantMessageRows(
-          mergeAdjacentTransportRetryNoticeRows(rows)
+          dropRedundantCompactFailureEchoRows(
+            mergeAdjacentTransportRetryNoticeRows(rows)
+          )
         )
       )
     ),
@@ -92,10 +77,61 @@ export function projectAgentConversationVM(
     activity: detail.activity,
     workspaceRoot: detail.workspaceRoot,
     sourceDetail: detail,
-    rows: normalizedRows,
-    pendingApproval: selectPendingApproval(normalizedRows),
-    pendingInteractivePrompt: selectPendingInteractivePrompt(normalizedRows)
+    rows: normalizedRows
   };
+}
+
+function dropRedundantCompactFailureEchoRows(
+  rows: readonly AgentTranscriptRowVM[]
+): AgentTranscriptRowVM[] {
+  const filtered: AgentTranscriptRowVM[] = [];
+  for (const row of rows) {
+    const previous = filtered.at(-1);
+    if (
+      isSingleCompactFailureNoticeRow(previous) &&
+      isSinglePlainAssistantMessageRow(row) &&
+      previous.turnId === row.turnId &&
+      previous.messages[0]?.systemNotice?.detail?.trim() ===
+        row.messages[0]?.body.trim()
+    ) {
+      continue;
+    }
+    filtered.push(row);
+  }
+  return filtered;
+}
+
+function isSingleCompactFailureNoticeRow(
+  row: AgentTranscriptRowVM | undefined
+): row is AgentMessageRowVM {
+  if (
+    !row ||
+    row.kind !== "message" ||
+    row.speaker !== "assistant" ||
+    row.thinking.length > 0 ||
+    row.messages.length !== 1
+  ) {
+    return false;
+  }
+  const notice = row.messages[0]?.systemNotice;
+  return (
+    notice?.command === "compact" &&
+    notice.commandStatus === "failed" &&
+    Boolean(notice.detail?.trim())
+  );
+}
+
+function isSinglePlainAssistantMessageRow(
+  row: AgentTranscriptRowVM
+): row is AgentMessageRowVM {
+  return (
+    row.kind === "message" &&
+    row.speaker === "assistant" &&
+    row.thinking.length === 0 &&
+    row.messages.length === 1 &&
+    !row.messages[0]?.visibleError &&
+    !row.messages[0]?.systemNotice
+  );
 }
 
 export function reconcileProjectedAgentConversationVM(
@@ -123,20 +159,8 @@ export function reconcileProjectedAgentConversationVM(
 
   return {
     ...next,
-    rows: rowsArrayReused ? previous.rows : rows,
-    pendingApproval: reuseEquivalentValue(
-      previous.pendingApproval,
-      next.pendingApproval
-    ),
-    pendingInteractivePrompt: reuseEquivalentValue(
-      previous.pendingInteractivePrompt,
-      next.pendingInteractivePrompt
-    )
+    rows: rowsArrayReused ? previous.rows : rows
   };
-}
-
-function reuseEquivalentValue<T>(previous: T, next: T): T {
-  return equivalentValue(previous, next) ? previous : next;
 }
 
 function equivalentTranscriptRowForRender(
@@ -147,38 +171,6 @@ function equivalentTranscriptRowForRender(
     previous,
     next,
     RENDER_IRRELEVANT_TRANSCRIPT_ROW_FIELDS
-  );
-}
-
-function equivalentValue(left: unknown, right: unknown): boolean {
-  if (Object.is(left, right)) {
-    return true;
-  }
-  if (typeof left !== typeof right || left === null || right === null) {
-    return false;
-  }
-  if (Array.isArray(left) || Array.isArray(right)) {
-    return (
-      Array.isArray(left) &&
-      Array.isArray(right) &&
-      left.length === right.length &&
-      left.every((value, index) => equivalentValue(value, right[index]))
-    );
-  }
-  if (typeof left !== "object" || typeof right !== "object") {
-    return false;
-  }
-  const leftRecord = left as Record<string, unknown>;
-  const rightRecord = right as Record<string, unknown>;
-  const leftKeys = Object.keys(leftRecord);
-  const rightKeys = Object.keys(rightRecord);
-  return (
-    leftKeys.length === rightKeys.length &&
-    leftKeys.every(
-      (key) =>
-        Object.prototype.hasOwnProperty.call(rightRecord, key) &&
-        equivalentValue(leftRecord[key], rightRecord[key])
-    )
   );
 }
 
@@ -269,7 +261,7 @@ function dropCodexRuntimeDiagnosticNotices(
       continue;
     }
     const messages = row.messages.filter(
-      (message) => !isCodexRuntimeDiagnosticNotice(message)
+      (message) => !isCodexSkillsContextBudgetNotice(message)
     );
     if (messages.length === 0 && row.thinking.length === 0) {
       continue;
@@ -283,7 +275,7 @@ function dropCodexRuntimeDiagnosticNotices(
   return filteredRows;
 }
 
-function isCodexRuntimeDiagnosticNotice(
+function isCodexSkillsContextBudgetNotice(
   message: AgentMessageContentVM
 ): boolean {
   const notice = message.systemNotice;
@@ -466,11 +458,42 @@ function buildAssistantCopyEligibleTurnIds(
 ): ReadonlySet<string> {
   const ids = new Set<string>();
   detail.turns.forEach((turn, index) => {
-    if (index < detail.turns.length - 1 || isLatestTurnSettled(detail)) {
+    if (
+      index < detail.turns.length - 1 ||
+      isLatestTranscriptTurnSettled(detail)
+    ) {
       ids.add(turn.id);
     }
   });
   return ids;
+}
+
+function isLatestTranscriptTurnSettled(
+  detail: WorkspaceAgentSessionDetailViewModel
+): boolean {
+  const latestTranscriptTurnId = detail.turns.at(-1)?.id;
+  const canonicalTurn = detail.sessionTurns?.find(
+    (turn) => turn.turnId === latestTranscriptTurnId
+  );
+  const activeTurn = detail.session.activeTurn;
+  if (
+    activeTurn &&
+    activeTurn.turnId === latestTranscriptTurnId &&
+    activeTurn.phase !== "settled"
+  ) {
+    return false;
+  }
+  if (canonicalTurn) {
+    return (
+      canonicalTurn.phase === "settled" &&
+      detail.showProcessingIndicator !== true
+    );
+  }
+  const activePhase = activeTurn?.phase ?? "";
+  return (
+    detail.showProcessingIndicator !== true &&
+    !["submitted", "running", "waiting", "settling"].includes(activePhase)
+  );
 }
 
 function findLatestAssistantCopyTargetKeys(
@@ -572,533 +595,204 @@ function isSpecialAssistantMessage(message: {
   );
 }
 
-function shouldShowTurnSummaryForTurn(
-  detail: WorkspaceAgentSessionDetailViewModel,
-  turnIndex: number
-): boolean {
-  return turnIndex < detail.turns.length - 1 || isLatestTurnSettled(detail);
-}
-
-function shouldShowLatestTurnSummaryFallback(
-  detail: WorkspaceAgentSessionDetailViewModel
-): boolean {
-  return detail.turns.length === 0 || isLatestTurnSettled(detail);
-}
-
-function isLatestTurnSettled(
-  detail: WorkspaceAgentSessionDetailViewModel
-): boolean {
-  const status = normalizedSessionDisplayStatus(detail);
-  return !isUnsettledSessionStatus(status);
-}
-
-function isSessionWorking(
-  detail: WorkspaceAgentSessionDetailViewModel
-): boolean {
-  const status = normalizedSessionDisplayStatus(detail);
-  return isWorkingSessionStatus(status);
-}
-
-function isWorkingSessionStatus(status: string): boolean {
-  return status === "working";
-}
-
-function isUnsettledSessionStatus(status: string): boolean {
-  return isWorkingSessionStatus(status) || status === "waiting";
-}
-
-function normalizeStatusToken(status: string | null | undefined): string {
-  return status?.trim().toLowerCase() ?? "";
-}
-
-function normalizedSessionDisplayStatus(
-  detail: WorkspaceAgentSessionDetailViewModel
-): string {
-  const session = detail.session as {
-    effectiveStatus?: string | null;
-    turnPhase?: string | null;
-    status?: string | null;
-  };
-  return normalizeStatusToken(
-    session.effectiveStatus ?? session.turnPhase ?? session.status
-  );
-}
-
-function projectUserRows(
+function projectTurnConversationRows(
   turn: WorkspaceAgentSessionDetailTurn,
-  workspaceId: string | null | undefined
-): AgentMessageRowVM[] {
-  return turn.userMessages.map((message) => {
-    const turnId = message.turnId ?? turn.id;
-    return {
-      kind: "message",
-      id: `message:user:${message.id}`,
-      turnId,
-      speaker: "user",
-      messages: projectUserMessageContentParts(message, turnId, workspaceId),
-      thinking: [],
-      occurredAtUnixMs: message.occurredAtUnixMs ?? null
-    };
-  });
-}
-
-function projectUserMessageContentParts(
-  message: WorkspaceAgentSessionDetailTurn["userMessages"][number],
-  turnId: string,
-  workspaceId: string | null | undefined
-): AgentMessageContentVM[] {
-  const blocks = userPromptContentBlocks(message, workspaceId);
-  if (blocks.length === 0) {
-    return [
-      {
-        kind: "message-content",
-        id: message.id,
-        turnId,
-        body: message.body,
-        contentKind: "text",
-        occurredAtUnixMs: message.occurredAtUnixMs ?? null,
-        sourceTimelineItems: message.sourceTimelineItems
-      }
-    ];
-  }
-
-  const parts: AgentMessageContentVM[] = [];
-  const imageBlocks = blocks.filter(
-    (block): block is UserPromptImageBlock => block.type === "image"
-  );
-  if (imageBlocks.length > 0) {
-    parts.push({
-      kind: "message-content",
-      id: `${message.id}:images:0`,
-      turnId,
-      body: "",
-      contentKind: "image-grid",
-      images: imageBlocks.map((image, index) => ({
-        id:
-          image.path || image.attachmentId || `${message.id}:image:0:${index}`,
-        workspaceId: image.workspaceId,
-        agentSessionId: image.agentSessionId,
-        attachmentId: image.attachmentId,
-        mimeType: image.mimeType,
-        name: image.name,
-        data: image.data,
-        url: image.url,
-        path: image.path
-      })),
-      occurredAtUnixMs: message.occurredAtUnixMs ?? null,
-      sourceTimelineItems: message.sourceTimelineItems
-    });
-  }
-
-  blocks.forEach((block, index) => {
-    if (block.type === "image") {
-      return;
-    }
-    if (block.text.trim() === "") {
-      return;
-    }
-    parts.push({
-      kind: "message-content",
-      id: `${message.id}:text:${index}`,
-      turnId,
-      body: block.text,
-      contentKind: "text",
-      occurredAtUnixMs: message.occurredAtUnixMs ?? null,
-      sourceTimelineItems: message.sourceTimelineItems
-    });
-  });
-
-  return parts.length > 0
-    ? parts
-    : [
-        {
-          kind: "message-content",
-          id: message.id,
-          turnId,
-          body: message.body,
-          contentKind: "text",
-          occurredAtUnixMs: message.occurredAtUnixMs ?? null,
-          sourceTimelineItems: message.sourceTimelineItems
-        }
-      ];
-}
-
-type UserPromptContentBlock = UserPromptTextBlock | UserPromptImageBlock;
-
-interface UserPromptTextBlock {
-  type: "text";
-  text: string;
-}
-
-interface UserPromptImageBlock {
-  type: "image";
-  workspaceId?: string | null;
-  agentSessionId: string;
-  attachmentId?: string | null;
-  mimeType: string;
-  name?: string | null;
-  data?: string | null;
-  url?: string | null;
-  path?: string | null;
-}
-
-function userPromptContentBlocks(
-  message: WorkspaceAgentSessionDetailTurn["userMessages"][number],
-  fallbackWorkspaceId: string | null | undefined
-): UserPromptContentBlock[] {
-  const item = message.sourceTimelineItems?.find((candidate) =>
-    Array.isArray(candidate.payload?.content)
-  );
-  const content = Array.isArray(item?.payload?.content)
-    ? item.payload.content
-    : null;
-  if (!content) {
-    return [];
-  }
-  const displayPrompt = firstString(
-    message.sourceTimelineItems?.map((candidate) =>
-      typeof candidate.payload?.displayPrompt === "string"
-        ? candidate.payload.displayPrompt
-        : ""
-    ) ?? []
-  );
-  const blocks = content.flatMap((raw): UserPromptContentBlock[] => {
-    const block =
-      raw && typeof raw === "object" && !Array.isArray(raw)
-        ? (raw as Record<string, unknown>)
-        : null;
-    if (!block) {
-      return [];
-    }
-    if (block.type === "text" && typeof block.text === "string") {
-      if (displayPrompt) {
-        return [];
-      }
-      // Reload-safe pasted-text chips: the persisted content carries the
-      // codex-style "Referenced pasted text files: - pasted text file: <path>"
-      // instruction; rewrite it back into the same mention chips the optimistic
-      // display prompt renders, so a refreshed message stays consistent.
-      return [{ type: "text", text: linkifyPastedTextReferences(block.text) }];
-    }
-    if (block.type !== "image") {
-      return [];
-    }
-    const mimeType =
-      typeof block.mimeType === "string" && block.mimeType.trim()
-        ? block.mimeType.trim()
-        : "";
-    if (!mimeType) {
-      return [];
-    }
-    return [
-      {
-        type: "image",
-        workspaceId: item?.workspaceId ?? fallbackWorkspaceId ?? null,
-        agentSessionId: item?.agentSessionId ?? message.id,
-        attachmentId:
-          typeof block.attachmentId === "string" && block.attachmentId.trim()
-            ? block.attachmentId.trim()
-            : null,
-        mimeType,
-        name:
-          typeof block.name === "string" && block.name.trim()
-            ? block.name.trim()
-            : null,
-        data:
-          typeof block.data === "string" && block.data.trim()
-            ? block.data.trim()
-            : null,
-        url:
-          typeof block.url === "string" && block.url.trim()
-            ? block.url.trim()
-            : null,
-        path:
-          typeof block.path === "string" && block.path.trim()
-            ? block.path.trim()
-            : null
-      }
-    ];
-  });
-  if (!displayPrompt) {
-    return blocks;
-  }
-  return [{ type: "text", text: displayPrompt }, ...blocks];
-}
-
-function firstString(values: readonly string[]): string {
-  for (const value of values) {
-    const trimmed = value.trim();
-    if (trimmed) {
-      return trimmed;
-    }
-  }
-  return "";
-}
-
-function projectTurnAgentRows(
-  turn: WorkspaceAgentSessionDetailTurn,
+  workspaceId: string | null | undefined,
   options: {
     agentSessionId: string;
-    turnIndex: number;
-    allowTrailingFinalization: boolean;
     avoidGroupingEdits?: boolean;
   }
 ): AgentTranscriptRowVM[] {
-  const sequence = buildAgentTurnSequenceItems(turn);
+  const sequence = buildAgentTurnSequenceItems(turn, workspaceId);
   const { groups, groupedIndices, suppressedIndices } = computeAgentToolGroups(
     sequence,
     options
   );
   const skippedIndices = new Set([...groupedIndices, ...suppressedIndices]);
-  return projectTurnRows(sequence, groups, skippedIndices, turn.id);
-}
-
-function selectPendingApproval(
-  rows: readonly AgentTranscriptRowVM[]
-): AgentApprovalItemVM | null {
-  for (const row of [...rows].reverse()) {
-    if (row.kind !== "tool-group") {
-      continue;
-    }
-    for (const call of toolCallsFromRow(row).reverse()) {
-      const nestedApproval = pendingApprovalFromNestedTask(call);
-      if (nestedApproval) {
-        return nestedApproval;
-      }
-      const approval = call.approval ?? fallbackApprovalFromCall(call);
-      if (
-        approval &&
-        normalizeApprovalPendingStatus(
-          approval.status ?? call.status,
-          call.statusKind
-        ) &&
-        !approval.output
-      ) {
-        return approval;
-      }
-    }
-  }
-  return null;
-}
-
-// A delegated Task/subagent call renders its own tool activity as nested
-// `task.steps`, each carrying a fully-projected AgentToolCallVM (including its
-// own `approval`, recursively, for sub-subagents). Those nested calls never
-// appear in `toolCallsFromRow`, so without this a subagent step waiting on
-// approval was invisible to the parent conversation's `pendingApproval` --
-// the bottom-dock prompt would never mount even though the delegated tool
-// call was genuinely blocked on a human decision.
-function pendingApprovalFromNestedTask(
-  call: AgentToolCallVM
-): AgentApprovalItemVM | null {
-  if (!call.task) {
-    return null;
-  }
-  for (const step of [...call.task.steps].reverse()) {
-    const stepCall = step.tool;
-    if (!stepCall) {
-      continue;
-    }
-    const nestedApproval = pendingApprovalFromNestedTask(stepCall);
-    if (nestedApproval) {
-      return nestedApproval;
-    }
-    const approval = stepCall.approval ?? fallbackApprovalFromCall(stepCall);
-    if (
-      approval &&
-      normalizeApprovalPendingStatus(
-        approval.status ?? stepCall.status,
-        stepCall.statusKind
-      ) &&
-      !approval.output
-    ) {
-      return approval;
-    }
-  }
-  return null;
-}
-
-function selectPendingInteractivePrompt(
-  rows: readonly AgentTranscriptRowVM[]
-): AgentConversationPendingInteractivePromptVM | null {
-  for (const row of [...rows].reverse()) {
-    if (row.kind !== "tool-group") {
-      continue;
-    }
-    for (const call of toolCallsFromRow(row).reverse()) {
-      const prompt = pendingInteractivePromptFromCall(call);
-      if (prompt) {
-        return prompt;
-      }
-    }
-  }
-  return null;
-}
-
-// See pendingApprovalFromNestedTask: a delegated Task/subagent call's own
-// ask-user / exit-plan prompts live under `task.steps`, not in the parent
-// row's flat call list, so they need the same nested lookup.
-function pendingInteractivePromptFromCall(
-  call: AgentToolCallVM
-): AgentConversationPendingInteractivePromptVM | null {
-  if (
-    call.askUserQuestion &&
-    normalizeInteractivePendingStatus(
-      call.askUserQuestion.status ?? call.status,
-      call.statusKind
-    ) &&
-    call.askUserQuestion.questions.some((question) => question.answer === null)
-  ) {
-    return {
-      kind: "ask-user",
-      requestId: call.askUserQuestion.requestId,
-      title: call.askUserQuestion.title,
-      questions: call.askUserQuestion.questions
-    };
-  }
-  if (
-    call.planMode?.kind === "exit" &&
-    normalizeInteractivePendingStatus(
-      call.planMode.status ?? call.status,
-      call.statusKind
+  return promoteGeneratedImageRows(
+    projectTurnRows(
+      sequence,
+      groups,
+      skippedIndices,
+      turn.id,
+      options.agentSessionId
     )
-  ) {
-    return {
-      kind: "exit-plan",
-      requestId: call.planMode.requestId ?? call.id.replace(/^call:/, ""),
-      title: call.planMode.title,
-      options: call.planMode.options ?? [],
-      ...(call.planMode.keepPlanningOptionId
-        ? { keepPlanningOptionId: call.planMode.keepPlanningOptionId }
-        : {})
-    };
-  }
-  if (!call.task) {
-    return null;
-  }
-  for (const step of [...call.task.steps].reverse()) {
-    if (!step.tool) {
-      continue;
-    }
-    const prompt = pendingInteractivePromptFromCall(step.tool);
-    if (prompt) {
-      return prompt;
-    }
-  }
-  return null;
-}
-
-function toolCallsFromRow(
-  row: Extract<AgentTranscriptRowVM, { kind: "tool-group" }>
-): AgentToolCallVM[] {
-  return row.calls.length > 0
-    ? [...row.calls]
-    : row.entries.flatMap((entry) =>
-        entry.kind === "tool-call" ? [entry.call] : []
-      );
-}
-
-function normalizeApprovalPendingStatus(
-  value: string | null | undefined,
-  statusKind: AgentToolCallVM["statusKind"]
-): boolean {
-  if (statusKind === "waiting") {
-    return true;
-  }
-  const normalized = (value ?? "").trim().toLowerCase();
-  switch (normalized) {
-    case "awaiting_approval":
-    case "requested":
-    case "waiting_approval":
-    case "waiting":
-      return true;
-    default:
-      return false;
-  }
-}
-
-function normalizeInteractivePendingStatus(
-  value: string | null | undefined,
-  statusKind: AgentToolCallVM["statusKind"]
-): boolean {
-  if (statusKind === "waiting" || statusKind === "working") {
-    return true;
-  }
-  const normalized = (value ?? "").trim().toLowerCase();
-  return (
-    normalized === "waiting_input" ||
-    normalized === "waiting" ||
-    normalized === "pending" ||
-    normalized === "running" ||
-    normalized === "streaming" ||
-    normalized === "working"
   );
 }
 
-function fallbackApprovalFromCall(
-  call: AgentToolCallVM
-): AgentApprovalItemVM | null {
-  if (call.rendererKind !== "approval") {
+function promoteGeneratedImageRows(
+  rows: readonly AgentTranscriptRowVM[]
+): AgentTranscriptRowVM[] {
+  const promoted: AgentTranscriptRowVM[] = [];
+  for (const row of rows) {
+    promoted.push(row);
+    if (row.kind !== "tool-group") {
+      continue;
+    }
+    for (const call of row.calls) {
+      const artifact = projectGeneratedImageRow(call, row.turnId);
+      if (artifact) {
+        promoted.push(artifact);
+      }
+    }
+  }
+  return dropDuplicateGeneratedImageMarkdown(promoted);
+}
+
+function dropDuplicateGeneratedImageMarkdown(
+  rows: readonly AgentTranscriptRowVM[]
+): AgentTranscriptRowVM[] {
+  const generatedImagesByTurn = new Map<string, Set<string>>();
+  for (const row of rows) {
+    if (row.kind !== "generated-image") {
+      continue;
+    }
+    const reference = normalizeGeneratedImageReference(row.uri);
+    if (!reference) {
+      continue;
+    }
+    const references = generatedImagesByTurn.get(row.turnId) ?? new Set();
+    references.add(reference);
+    generatedImagesByTurn.set(row.turnId, references);
+  }
+  if (generatedImagesByTurn.size === 0) {
+    return [...rows];
+  }
+
+  const filtered: AgentTranscriptRowVM[] = [];
+  for (const row of rows) {
+    if (row.kind !== "message" || row.speaker !== "assistant") {
+      filtered.push(row);
+      continue;
+    }
+    const generatedImages = generatedImagesByTurn.get(row.turnId);
+    if (!generatedImages) {
+      filtered.push(row);
+      continue;
+    }
+    let changed = false;
+    const messages = row.messages.flatMap((message) => {
+      const body = removeGeneratedImageMarkdown(message.body, generatedImages);
+      if (body === message.body) {
+        return [message];
+      }
+      changed = true;
+      return body ? [{ ...message, body }] : [];
+    });
+    if (messages.length === 0 && row.thinking.length === 0) {
+      continue;
+    }
+    filtered.push(changed ? { ...row, messages } : row);
+  }
+  return filtered;
+}
+
+function removeGeneratedImageMarkdown(
+  body: string,
+  generatedImages: ReadonlySet<string>
+): string {
+  let removed = false;
+  const next = body.replace(
+    MARKDOWN_IMAGE_PATTERN,
+    (
+      match,
+      angleReference: string | undefined,
+      plainReference: string | undefined
+    ) => {
+      const reference = normalizeGeneratedImageReference(
+        angleReference ?? plainReference ?? ""
+      );
+      if (!reference || !generatedImages.has(reference)) {
+        return match;
+      }
+      removed = true;
+      return "";
+    }
+  );
+  return removed
+    ? next
+        .replace(/[ \t]+\n/g, "\n")
+        .replace(/\n{3,}/g, "\n\n")
+        .trim()
+    : body;
+}
+
+function normalizeGeneratedImageReference(reference: string): string | null {
+  let normalized = reference.trim();
+  if (!normalized) {
     return null;
   }
-  const rawOptions = Array.isArray(call.input?.options)
-    ? call.input.options
-    : [];
-  const options = rawOptions.flatMap((option) => {
-    const record =
-      option && typeof option === "object" && !Array.isArray(option)
-        ? (option as Record<string, unknown>)
-        : null;
-    const id =
-      typeof record?.id === "string" && record.id.trim()
-        ? record.id.trim()
-        : typeof record?.optionId === "string" && record.optionId.trim()
-          ? record.optionId.trim()
-          : "";
-    if (!id) {
-      return [];
+  if (/^file:\/\//i.test(normalized)) {
+    if (!URL.canParse(normalized)) {
+      return null;
     }
-    return [
-      {
-        id,
-        label:
-          typeof record?.name === "string" && record.name.trim()
-            ? record.name.trim()
-            : typeof record?.label === "string" && record.label.trim()
-              ? record.label.trim()
-              : id,
-        kind:
-          typeof record?.kind === "string" && record.kind.trim()
-            ? record.kind.trim()
-            : id,
-        ...(typeof record?.description === "string" && record.description.trim()
-          ? { description: record.description.trim() }
-          : {})
-      }
-    ];
+    normalized = new URL(normalized).pathname;
+  } else if (/^[a-z][a-z\d+.-]*:\/\//i.test(normalized)) {
+    return URL.canParse(normalized) ? new URL(normalized).href : normalized;
+  }
+  normalized = decodePercentEncodedReference(normalized);
+  normalized = normalized.replaceAll("\\", "/");
+  const prefix = normalized.startsWith("/") ? "/" : "";
+  const parts: string[] = [];
+  for (const part of normalized.split("/")) {
+    if (!part || part === ".") {
+      continue;
+    }
+    if (part === ".." && parts.length > 0) {
+      parts.pop();
+      continue;
+    }
+    parts.push(part);
+  }
+  const collapsed = `${prefix}${parts.join("/")}`;
+  return /^[a-z]:\//i.test(collapsed) ? collapsed.toLowerCase() : collapsed;
+}
+
+function decodePercentEncodedReference(reference: string): string {
+  return reference.replace(/(?:%[a-f\d]{2})+/gi, (encodedRun) => {
+    const bytes = encodedRun
+      .slice(1)
+      .split("%")
+      .map((hex) => Number.parseInt(hex, 16));
+    return new TextDecoder().decode(Uint8Array.from(bytes));
   });
-  const requestId =
-    (typeof call.input?.requestId === "string" && call.input.requestId.trim()
-      ? call.input.requestId.trim()
-      : null) ?? call.id.replace(/^call:/, "");
-  if (!requestId || options.length === 0) {
+}
+
+function projectGeneratedImageRow(
+  call: AgentToolCallVM,
+  turnId: string
+): AgentGeneratedImageRowVM | null {
+  if (
+    call.rendererKind !== "image-generation" ||
+    call.statusKind !== "completed"
+  ) {
+    return null;
+  }
+  const image = extractImageGenerationPreview({
+    toolName: call.toolName,
+    displayName: call.name,
+    content: call.content,
+    outputContent: call.output?.content,
+    outputSavedPath: call.output?.savedPath ?? call.output?.saved_path,
+    inputPrompt: call.input?.prompt,
+    payloadInputPrompt:
+      call.payload?.input &&
+      typeof call.payload.input === "object" &&
+      !Array.isArray(call.payload.input)
+        ? (call.payload.input as Record<string, unknown>).prompt
+        : null
+  });
+  if (!image.imageUri) {
     return null;
   }
   return {
-    kind: "approval",
-    id: call.id,
-    turnId: call.turnId,
-    requestId,
-    callId: call.id.replace(/^call:/, ""),
-    title: call.summary.trim() || call.name,
-    status:
-      typeof call.payload?.status === "string" && call.payload.status.trim()
-        ? call.payload.status.trim()
-        : call.status,
-    toolName: call.toolName,
-    input: call.input,
-    options,
-    output: call.output,
+    kind: "generated-image",
+    id: `generated-image:${call.id}`,
+    turnId,
+    sourceCallId: call.id,
+    uri: image.imageUri,
+    mimeType: image.mimeType,
+    prompt: image.prompt,
     occurredAtUnixMs: call.occurredAtUnixMs
   };
 }

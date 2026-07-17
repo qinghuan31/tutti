@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"testing"
 	"time"
 
@@ -9,8 +10,25 @@ import (
 	agentservice "github.com/tutti-os/tutti/services/tuttid/service/agent"
 )
 
+func TestMapAgentRuntimeErrorPreservesInteractiveRecoveryCodes(t *testing.T) {
+	tests := []struct {
+		runtimeErr error
+		serviceErr error
+	}{
+		{agentruntime.ErrInteractiveRequestNotLive, agentservice.ErrInteractiveRequestNotLive},
+		{agentruntime.ErrInteractiveAlreadyAnswered, agentservice.ErrInteractiveAlreadyAnswered},
+		{agentruntime.ErrSessionDisconnected, agentservice.ErrRuntimeSessionDisconnected},
+	}
+	for _, test := range tests {
+		if err := mapAgentRuntimeError(test.runtimeErr); !errors.Is(err, test.serviceErr) {
+			t.Fatalf("mapAgentRuntimeError(%v) = %v, want %v", test.runtimeErr, err, test.serviceErr)
+		}
+	}
+}
+
 func TestAgentRuntimeAdapterReturnsClaudeSDKModelConfigOptions(t *testing.T) {
 	t.Setenv("TUTTI_CLAUDE_SDK_SIDECAR_TEST_DRIVER", "1")
+	t.Setenv("TUTTI_CLAUDE_SDK_SIDECAR_ENTRY_PATH", "")
 
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()

@@ -5,8 +5,23 @@ import (
 	"errors"
 	"testing"
 
+	"github.com/tutti-os/tutti/packages/agent/daemon/providerregistry"
 	agenttargetbiz "github.com/tutti-os/tutti/services/tuttid/biz/agenttarget"
 )
+
+func TestDefaultTargetIDBackfillUsesMigratedProviderDescriptors(t *testing.T) {
+	descriptor, ok := providerregistry.Find(providerregistry.CodexProviderID)
+	if !ok {
+		t.Fatal("codex descriptor missing")
+	}
+	got := defaultTargetIDBackfillByProvider()
+	if got[descriptor.Identity.ID] != descriptor.Target.ID {
+		t.Fatalf("codex target backfill = %q, want %q", got[descriptor.Identity.ID], descriptor.Target.ID)
+	}
+	if got["claude-code"] != agenttargetbiz.IDLocalClaudeCode || got["cursor"] != agenttargetbiz.IDLocalCursor {
+		t.Fatalf("legacy target backfills = %#v", got)
+	}
+}
 
 func TestSQLiteStoreSeedsSystemAgentTargets(t *testing.T) {
 	t.Parallel()
@@ -17,30 +32,17 @@ func TestSQLiteStoreSeedsSystemAgentTargets(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ListAgentTargets() error = %v", err)
 	}
-	if len(targets) != 5 {
-		t.Fatalf("ListAgentTargets() len = %d, want 5", len(targets))
+	descriptors := providerregistry.Migrated()
+	if len(targets) != len(descriptors) {
+		t.Fatalf("ListAgentTargets() len = %d, want descriptor count %d", len(targets), len(descriptors))
 	}
-	if targets[0].ID != agenttargetbiz.IDLocalCodex || targets[0].Provider != "codex" {
-		t.Fatalf("first target = %#v, want local codex", targets[0])
-	}
-	if targets[1].ID != agenttargetbiz.IDLocalClaudeCode || targets[1].Provider != "claude-code" {
-		t.Fatalf("second target = %#v, want local claude-code", targets[1])
-	}
-	if targets[2].ID != agenttargetbiz.IDLocalTuttiAgent || targets[2].Provider != "tutti-agent" {
-		t.Fatalf("third target = %#v, want local tutti-agent", targets[2])
-	}
-	if targets[3].ID != agenttargetbiz.IDLocalCursor || targets[3].Provider != "cursor" {
-		t.Fatalf("fourth target = %#v, want local cursor", targets[3])
-	}
-	if targets[4].ID != agenttargetbiz.IDLocalOpenCode || targets[4].Provider != "opencode" {
-		t.Fatalf("fifth target = %#v, want local opencode", targets[4])
-	}
-	for _, target := range targets {
+	for index, target := range targets {
+		descriptor := descriptors[index]
+		if target.ID != descriptor.Target.ID || target.Provider != descriptor.Identity.ID || target.Enabled != descriptor.Target.Enabled {
+			t.Fatalf("target[%d] = %#v, want descriptor target %#v", index, target, descriptor.Target)
+		}
 		if target.Source != agenttargetbiz.SourceSystem {
 			t.Fatalf("target %q source = %q, want system", target.ID, target.Source)
-		}
-		if !target.Enabled {
-			t.Fatalf("target %q enabled = false, want true", target.ID)
 		}
 		if _, err := agenttargetbiz.CanonicalLaunchRefJSONString(target.Provider, target.LaunchRefJSON); err != nil {
 			t.Fatalf("target %q launch ref invalid: %v", target.ID, err)
@@ -54,7 +56,7 @@ func TestSQLiteStoreListAgentTargetsSkipsInvalidRows(t *testing.T) {
 	ctx := context.Background()
 	store := openTestSQLiteStore(t)
 	now := int64(1700000000000)
-	if _, err := store.db.ExecContext(ctx, `
+	if _, err := store.writeDB.ExecContext(ctx, `
 	INSERT INTO agent_targets (
 	  id,
 	  provider,
@@ -94,13 +96,13 @@ func TestSQLiteStoreSeedReconcilesLegacySystemAgentTargetIDs(t *testing.T) {
 	ctx := context.Background()
 	store := openTestSQLiteStore(t)
 	now := int64(1700000000000)
-	if _, err := store.db.ExecContext(ctx, `
+	if _, err := store.writeDB.ExecContext(ctx, `
 INSERT INTO workspaces (id, name, created_at_unix_ms, updated_at_unix_ms)
 VALUES ('ws-legacy-targets', 'Legacy Targets', ?, ?);
 `, now, now); err != nil {
 		t.Fatalf("insert legacy workspace fixture: %v", err)
 	}
-	if _, err := store.db.ExecContext(ctx, `
+	if _, err := store.writeDB.ExecContext(ctx, `
 INSERT INTO agent_targets (
   id,
   provider,
@@ -117,18 +119,17 @@ VALUES (?, 'codex', ?, 'Legacy Codex', 'codex', 1, 'system', 10, ?, ?);
 `, legacyIDLocalCodex, agenttargetbiz.MustLocalCLILaunchRefJSON("codex"), now, now); err != nil {
 		t.Fatalf("insert legacy agent target fixture: %v", err)
 	}
-	if _, err := store.db.ExecContext(ctx, `
+	if _, err := store.writeDB.ExecContext(ctx, `
 INSERT INTO workspace_agent_sessions (
   workspace_id,
   agent_session_id,
   origin,
   agent_target_id,
   provider,
-  status,
   created_at_unix_ms,
   updated_at_unix_ms
 )
-VALUES ('ws-legacy-targets', 'session-1', 'runtime', ?, 'codex', 'ready', ?, ?);
+VALUES ('ws-legacy-targets', 'session-1', 'runtime', ?, 'codex', ?, ?);
 `, legacyIDLocalCodex, now, now); err != nil {
 		t.Fatalf("insert legacy agent session fixture: %v", err)
 	}
@@ -220,8 +221,8 @@ func TestSQLiteStorePutAgentTargetCanonicalizesLaunchRef(t *testing.T) {
 	if err != nil {
 		t.Fatalf("PutAgentTarget() error = %v", err)
 	}
-	if target.LaunchRefJSON != `{"type":"local_cli","provider":"codex"}` {
-		t.Fatalf("LaunchRefJSON = %q, want canonical local_cli codex", target.LaunchRefJSON)
+	if target.LaunchRefJSON != `{"type":"builtin_local","provider":"codex"}` {
+		t.Fatalf("LaunchRefJSON = %q, want canonical builtin_local codex", target.LaunchRefJSON)
 	}
 	if target.Name != "Custom Codex" {
 		t.Fatalf("Name = %q, want trimmed Custom Codex", target.Name)

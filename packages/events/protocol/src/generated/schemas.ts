@@ -22,8 +22,6 @@ export const preferencesDesktopPreferencesSchema = {
     "minimizeAnimation",
     "sleepPreventionMode",
     "showAppDeveloperSources",
-    "enableCursorAgent",
-    "enableOpenCodeAgent",
     "themeSource",
     "updateChannel",
     "updatePolicy"
@@ -300,12 +298,6 @@ export const preferencesDesktopPreferencesSchema = {
       enum: ["never", "whileAgentRunning", "always"]
     },
     showAppDeveloperSources: {
-      type: "boolean"
-    },
-    enableCursorAgent: {
-      type: "boolean"
-    },
-    enableOpenCodeAgent: {
       type: "boolean"
     },
     themeSource: {
@@ -706,10 +698,11 @@ export const agentActivityUpdatedPayloadSchema = {
           minLength: 1
         },
         eventType: {
-          const: "session_update"
+          const: "session_reconcile_required"
         },
         data: {
           type: "object",
+          additionalProperties: false,
           required: [
             "workspaceId",
             "agentSessionId",
@@ -729,7 +722,7 @@ export const agentActivityUpdatedPayloadSchema = {
               type: "string"
             },
             eventType: {
-              const: "session_update"
+              const: "session_reconcile_required"
             },
             lastEventUnixMs: {
               type: "integer",
@@ -757,6 +750,7 @@ export const agentActivityUpdatedPayloadSchema = {
         },
         data: {
           type: "object",
+          additionalProperties: false,
           required: [
             "workspaceId",
             "agentSessionId",
@@ -801,6 +795,7 @@ export const agentActivityUpdatedPayloadSchema = {
         },
         data: {
           type: "object",
+          additionalProperties: false,
           required: [
             "workspaceId",
             "agentSessionId",
@@ -833,14 +828,15 @@ export const agentActivityUpdatedPayloadSchema = {
               type: "array",
               items: {
                 type: "object",
+                additionalProperties: false,
                 required: [
                   "agentSessionId",
-                  "id",
                   "kind",
                   "messageId",
                   "occurredAtUnixMs",
                   "payload",
                   "role",
+                  "sequence",
                   "turnId",
                   "version"
                 ],
@@ -848,10 +844,6 @@ export const agentActivityUpdatedPayloadSchema = {
                   agentSessionId: {
                     type: "string",
                     minLength: 1
-                  },
-                  id: {
-                    type: "integer",
-                    minimum: 0
                   },
                   kind: {
                     type: "string",
@@ -868,13 +860,21 @@ export const agentActivityUpdatedPayloadSchema = {
                     type: "string",
                     minLength: 1
                   },
+                  sequence: {
+                    type: "integer",
+                    minimum: 1,
+                    description:
+                      "Stable message presentation order assigned when the durable message row is first created."
+                  },
                   version: {
                     type: "integer",
                     minimum: 1
                   },
                   turnId: {
                     type: "string",
-                    minLength: 1
+                    minLength: 1,
+                    description:
+                      "Turn-scoped messages always reference a real persisted Turn. Session audits use the separate session_audit event."
                   },
                   status: {
                     type: "string"
@@ -920,15 +920,86 @@ export const agentActivityUpdatedPayloadSchema = {
           minLength: 1
         },
         eventType: {
-          const: "state_patch"
+          const: "session_audit"
         },
         data: {
           type: "object",
+          additionalProperties: false,
+          required: ["workspaceId", "agentSessionId", "eventType", "audit"],
+          properties: {
+            workspaceId: {
+              type: "string",
+              minLength: 1
+            },
+            agentSessionId: {
+              type: "string",
+              minLength: 1
+            },
+            eventType: {
+              const: "session_audit"
+            },
+            audit: {
+              type: "object",
+              additionalProperties: false,
+              required: [
+                "auditId",
+                "role",
+                "payload",
+                "occurredAtUnixMs",
+                "version"
+              ],
+              properties: {
+                auditId: {
+                  type: "string",
+                  minLength: 1
+                },
+                role: {
+                  type: "string",
+                  minLength: 1
+                },
+                payload: {
+                  type: "object"
+                },
+                occurredAtUnixMs: {
+                  type: "integer",
+                  minimum: 1
+                },
+                version: {
+                  type: "integer",
+                  minimum: 1
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      type: "object",
+      additionalProperties: false,
+      required: ["workspaceId", "agentSessionId", "eventType", "data"],
+      properties: {
+        workspaceId: {
+          type: "string",
+          minLength: 1
+        },
+        agentSessionId: {
+          type: "string",
+          minLength: 1
+        },
+        eventType: {
+          const: "turn_update"
+        },
+        data: {
+          type: "object",
+          additionalProperties: false,
           required: [
             "workspaceId",
             "agentSessionId",
             "eventType",
-            "lastEventUnixMs"
+            "occurredAtUnixMs",
+            "activeTurnId",
+            "turn"
           ],
           properties: {
             workspaceId: {
@@ -940,102 +1011,226 @@ export const agentActivityUpdatedPayloadSchema = {
               minLength: 1
             },
             eventType: {
-              const: "state_patch"
-            },
-            lastEventUnixMs: {
-              type: "integer",
-              minimum: 0
+              const: "turn_update"
             },
             occurredAtUnixMs: {
               type: "integer",
               minimum: 0
             },
-            provider: {
-              type: "string"
-            },
-            agentTargetId: {
-              type: "string"
-            },
-            providerSessionId: {
-              type: "string"
-            },
-            model: {
-              type: "string"
-            },
-            cwd: {
-              type: "string"
-            },
-            title: {
-              type: "string"
-            },
-            lifecycleStatus: {
-              type: "string"
-            },
-            currentPhase: {
-              type: "string"
-            },
-            lastError: {
-              type: "string"
-            },
-            startedAtUnixMs: {
-              type: "integer",
-              minimum: 0
-            },
-            endedAtUnixMs: {
-              type: "integer",
-              minimum: 0
-            },
-            runtimeContext: {
-              type: "object"
-            },
-            submitAvailability: {
-              type: "object",
-              required: ["state"],
-              properties: {
-                state: {
-                  type: "string",
-                  minLength: 1
-                },
-                reason: {
-                  type: "string"
-                }
-              }
+            activeTurnId: {
+              type: ["string", "null"],
+              description:
+                "The session's active turn reference after this update; null once the turn settles."
             },
             turn: {
               type: "object",
-              required: ["turnId"],
+              additionalProperties: false,
+              required: [
+                "turnId",
+                "agentSessionId",
+                "phase",
+                "origin",
+                "outcome",
+                "error",
+                "fileChanges",
+                "completedCommand",
+                "startedAtUnixMs",
+                "settledAtUnixMs",
+                "updatedAtUnixMs"
+              ],
               properties: {
                 turnId: {
                   type: "string",
                   minLength: 1
                 },
+                agentSessionId: {
+                  type: "string",
+                  minLength: 1
+                },
                 phase: {
-                  type: "string"
+                  type: "string",
+                  enum: [
+                    "submitted",
+                    "running",
+                    "waiting",
+                    "settling",
+                    "settled"
+                  ]
+                },
+                origin: {
+                  type: "string",
+                  enum: [
+                    "user_prompt",
+                    "goal_arm",
+                    "goal_continuation",
+                    "provider_initiated",
+                    "legacy_unknown"
+                  ]
+                },
+                sourceGoalOperationId: {
+                  type: ["string", "null"],
+                  minLength: 1
+                },
+                sourceGoalRevision: {
+                  type: ["integer", "null"],
+                  minimum: 0
+                },
+                sourceGoalRepairEpoch: {
+                  type: ["integer", "null"],
+                  minimum: 0
                 },
                 outcome: {
-                  type: "string"
+                  type: ["string", "null"],
+                  enum: [null, "completed", "failed", "canceled", "interrupted"]
                 },
-                fileChanges: true,
+                error: {
+                  type: ["object", "null"],
+                  additionalProperties: false,
+                  required: ["message"],
+                  properties: {
+                    message: {
+                      type: "string",
+                      minLength: 1
+                    },
+                    code: {
+                      type: "string"
+                    }
+                  }
+                },
+                fileChanges: {
+                  type: ["object", "null"]
+                },
+                completedCommand: {
+                  type: ["object", "null"],
+                  additionalProperties: false,
+                  required: ["kind", "status"],
+                  properties: {
+                    kind: {
+                      type: "string",
+                      enum: ["compact", "review", "undo", "goal"]
+                    },
+                    status: {
+                      type: "string",
+                      enum: ["completed", "failed", "canceled"]
+                    }
+                  }
+                },
                 startedAtUnixMs: {
                   type: "integer",
                   minimum: 0
                 },
-                completedAtUnixMs: {
+                settledAtUnixMs: {
+                  type: ["integer", "null"],
+                  minimum: 0
+                },
+                updatedAtUnixMs: {
+                  type: "integer",
+                  minimum: 0
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      type: "object",
+      additionalProperties: false,
+      required: ["workspaceId", "agentSessionId", "eventType", "data"],
+      properties: {
+        workspaceId: {
+          type: "string",
+          minLength: 1
+        },
+        agentSessionId: {
+          type: "string",
+          minLength: 1
+        },
+        eventType: {
+          const: "interaction_update"
+        },
+        data: {
+          type: "object",
+          additionalProperties: false,
+          required: [
+            "workspaceId",
+            "agentSessionId",
+            "eventType",
+            "occurredAtUnixMs",
+            "interaction"
+          ],
+          properties: {
+            workspaceId: {
+              type: "string",
+              minLength: 1
+            },
+            agentSessionId: {
+              type: "string",
+              minLength: 1
+            },
+            eventType: {
+              const: "interaction_update"
+            },
+            occurredAtUnixMs: {
+              type: "integer",
+              minimum: 0
+            },
+            interaction: {
+              type: "object",
+              additionalProperties: false,
+              required: [
+                "requestId",
+                "agentSessionId",
+                "turnId",
+                "kind",
+                "status",
+                "toolName",
+                "input",
+                "output",
+                "metadata",
+                "createdAtUnixMs",
+                "updatedAtUnixMs"
+              ],
+              properties: {
+                requestId: {
+                  type: "string",
+                  minLength: 1
+                },
+                agentSessionId: {
+                  type: "string",
+                  minLength: 1
+                },
+                turnId: {
+                  type: "string",
+                  minLength: 1
+                },
+                kind: {
+                  type: "string",
+                  enum: ["approval", "question", "plan"]
+                },
+                status: {
+                  type: "string",
+                  enum: ["pending", "answered", "superseded"]
+                },
+                toolName: {
+                  type: ["string", "null"]
+                },
+                input: {
+                  type: ["object", "null"]
+                },
+                output: {
+                  type: ["object", "null"]
+                },
+                metadata: {
+                  type: ["object", "null"]
+                },
+                createdAtUnixMs: {
                   type: "integer",
                   minimum: 0
                 },
-                submitAvailability: {
-                  type: "object",
-                  required: ["state"],
-                  properties: {
-                    state: {
-                      type: "string",
-                      minLength: 1
-                    },
-                    reason: {
-                      type: "string"
-                    }
-                  }
+                updatedAtUnixMs: {
+                  type: "integer",
+                  minimum: 0
                 }
               }
             }
@@ -1059,10 +1254,12 @@ export const agentActivityUpdatedPayloadSchema = {
     eventType: {
       type: "string",
       enum: [
-        "session_update",
+        "session_reconcile_required",
         "session_deleted",
+        "session_audit",
         "message_update",
-        "state_patch"
+        "turn_update",
+        "interaction_update"
       ]
     },
     data: true
@@ -1148,8 +1345,6 @@ export const preferencesDesktopUpdateRequestedPayloadSchema = {
         "minimizeAnimation",
         "sleepPreventionMode",
         "showAppDeveloperSources",
-        "enableCursorAgent",
-        "enableOpenCodeAgent",
         "themeSource",
         "updateChannel",
         "updatePolicy"
@@ -1426,12 +1621,6 @@ export const preferencesDesktopUpdateRequestedPayloadSchema = {
           enum: ["never", "whileAgentRunning", "always"]
         },
         showAppDeveloperSources: {
-          type: "boolean"
-        },
-        enableCursorAgent: {
-          type: "boolean"
-        },
-        enableOpenCodeAgent: {
           type: "boolean"
         },
         themeSource: {
@@ -1515,8 +1704,6 @@ export const preferencesDesktopUpdatedPayloadSchema = {
         "minimizeAnimation",
         "sleepPreventionMode",
         "showAppDeveloperSources",
-        "enableCursorAgent",
-        "enableOpenCodeAgent",
         "themeSource",
         "updateChannel",
         "updatePolicy"
@@ -1793,12 +1980,6 @@ export const preferencesDesktopUpdatedPayloadSchema = {
           enum: ["never", "whileAgentRunning", "always"]
         },
         showAppDeveloperSources: {
-          type: "boolean"
-        },
-        enableCursorAgent: {
-          type: "boolean"
-        },
-        enableOpenCodeAgent: {
           type: "boolean"
         },
         themeSource: {

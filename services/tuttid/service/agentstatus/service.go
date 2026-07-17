@@ -9,7 +9,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/tutti-os/tutti/services/tuttid/biz/agentprovider"
+	"golang.org/x/sync/errgroup"
+
 	externalagentregistry "github.com/tutti-os/tutti/services/tuttid/service/externalagentregistry"
 	managedruntime "github.com/tutti-os/tutti/services/tuttid/service/managedruntime"
 	reporterservice "github.com/tutti-os/tutti/services/tuttid/service/reporter"
@@ -72,6 +73,9 @@ type ListInput struct {
 	// never blocks on the network. Only the agent-env wizard, which renders the
 	// network diagnostic, sets this.
 	IncludeNetwork bool
+	// ForceRefresh bypasses the application readiness cache. Interactive refresh,
+	// install, and login flows use it; ordinary startup and dock reads do not.
+	ForceRefresh bool
 }
 
 type ProbeInput struct {
@@ -159,7 +163,7 @@ type CLIStatus struct {
 	Version    string
 	// MinVersion is the lowest CLI version this provider supports, when it
 	// enforces a floor (codex). Empty for providers with no version gate. Lets
-	// the UI surface "current X, requires >= Y" from the same constant the gate uses.
+	// the UI surface "current X, requires Y" from the same constant the gate uses.
 	MinVersion string
 }
 
@@ -168,10 +172,9 @@ type AdapterStatus struct {
 	BinaryPath string
 	Command    []string
 	// Version is the installed adapter package version (when resolvable);
-	// RequiredVersion is the minimum adapter package version this provider
-	// accepts. Exposed so the UI can show "current X, requires >= Y" on an
-	// adapter version mismatch and so telemetry can surface the drift — the same
-	// data the readiness gate uses.
+	// RequiredVersion is the version this provider requires. Exposed so the UI
+	// can show "current X, requires Y" on an adapter version mismatch and so
+	// telemetry can surface the drift — the same data the readiness gate uses.
 	Version         string
 	RequiredVersion string
 }
@@ -227,10 +230,17 @@ type Service struct {
 	Registry                    Registry
 	ExternalAgentRegistry       externalagentregistry.Store
 	ManagedRuntime              managedruntime.Resolver
-	AnalyticsReporter           reporterservice.Reporter
+	// ClaudeCodeStateDir overrides the tutti state root that hosts the
+	// provisioned claude runtime binary (tests); empty uses DefaultStateDir.
+	ClaudeCodeStateDir string
+	AnalyticsReporter  reporterservice.Reporter
 	// RunOutcomes lets a runtime auth failure override a stale "logged in" marker
 	// so the dock/wizard surface that login dropped. Shared pointer across copies.
 	RunOutcomes *RunOutcomeStore
+	// StatusCache is shared by the daemon API and agent session service so local
+	// readiness probes run once per provider instead of once per caller/window.
+	StatusCache    *ProviderStatusCache
+	StatusCacheTTL time.Duration
 }
 
 const authStatusCommandTimeout = 5 * time.Second
@@ -247,17 +257,47 @@ const defaultProbeTimeout = 3 * time.Second
 const defaultProbeWaitDelay = 500 * time.Millisecond
 const externalRegistryNPMProbeTimeoutPadding = 100 * time.Millisecond
 
-func (s Service) List(ctx context.Context, input ListInput) (Snapshot, error) {
+// statusDetectionConcurrency bounds how many providers are detected at once.
+// Per-provider detection is dominated by short-lived subprocesses (auth status
+// command, `--version`, adapter probe), so running providers concurrently drops
+// snapshot latency from the serial sum to roughly the slowest provider. The
+// bound keeps the subprocess fan-out small on constrained machines.
+const statusDetectionConcurrency = 4
+
+func (s Service) List(ctx context.Context, input ListInput) (snapshot Snapshot, err error) {
+	startedAt := time.Now()
+	defer func() {
+		slog.Info(
+			"agent provider status list completed",
+			"event", "tutti.agent_provider.status_list.completed",
+			"durationMs", time.Since(startedAt).Milliseconds(),
+			"includeNetwork", input.IncludeNetwork,
+			"forceRefresh", input.ForceRefresh,
+			"providerCount", len(snapshot.Providers),
+			"requestedProviderCount", len(input.Providers),
+			"requestedProviders", input.Providers,
+			"success", err == nil,
+		)
+	}()
+
 	now := s.now()
 	specs, err := s.selectProviderSpecs(ctx, input.Providers, false)
 	if err != nil {
 		return Snapshot{}, err
 	}
 
-	statuses := make([]ProviderStatus, 0, len(specs))
-	for _, spec := range specs {
-		statuses = append(statuses, s.statusForSpec(ctx, spec, now))
+	// Detect providers concurrently; each writes only its own slot so the
+	// response order stays the registry selection order.
+	statuses := make([]ProviderStatus, len(specs))
+	var group errgroup.Group
+	group.SetLimit(statusDetectionConcurrency)
+	for i, spec := range specs {
+		group.Go(func() error {
+			statuses[i] = s.cachedStatusForSpec(ctx, spec, input.ForceRefresh || input.IncludeNetwork)
+			return nil
+		})
 	}
+	_ = group.Wait() // statusForSpec never returns an error
 
 	// The network connectivity probe is OPT-IN (input.IncludeNetwork). The dock /
 	// startup / polling / provider-availability path leaves it off so detection is
@@ -308,10 +348,77 @@ func (s Service) List(ctx context.Context, input ListInput) (Snapshot, error) {
 		statuses[i].ActiveAction = activeActionForProvider(statuses[i].Provider)
 	}
 
-	return Snapshot{
-		CapturedAt: now,
+	capturedAt := now
+	for i := range statuses {
+		if checkedAt := statuses[i].Availability.CheckedAt; checkedAt != nil && checkedAt.After(capturedAt) {
+			capturedAt = *checkedAt
+		}
+	}
+	snapshot = Snapshot{
+		CapturedAt: capturedAt,
 		Providers:  statuses,
-	}, nil
+	}
+	return snapshot, nil
+}
+
+func (s Service) cachedStatusForSpec(ctx context.Context, spec ProviderSpec, forceRefresh bool) ProviderStatus {
+	cache := s.StatusCache
+	if cache == nil {
+		return s.detectStatusForSpec(ctx, spec)
+	}
+	if !forceRefresh {
+		if cached, cachedAt, credentialFingerprint, ok := cache.get(spec.Provider, s.now(), s.providerStatusCacheTTL()); ok &&
+			s.cachedProviderStatusStillValid(spec, cachedAt, credentialFingerprint) {
+			return cached
+		}
+	}
+
+	value, _, _ := cache.group.Do(spec.Provider, func() (any, error) {
+		if !forceRefresh {
+			if cached, cachedAt, credentialFingerprint, ok := cache.get(spec.Provider, s.now(), s.providerStatusCacheTTL()); ok &&
+				s.cachedProviderStatusStillValid(spec, cachedAt, credentialFingerprint) {
+				return cached, nil
+			}
+		}
+		status := s.detectStatusForSpec(ctx, spec)
+		completedAt := s.now()
+		status.Availability.CheckedAt = &completedAt
+		cache.set(spec.Provider, completedAt, s.providerCredentialFingerprint(spec), status)
+		return status, nil
+	})
+	return cloneProviderStatus(value.(ProviderStatus))
+}
+
+func (s Service) detectStatusForSpec(ctx context.Context, spec ProviderSpec) ProviderStatus {
+	status := s.statusForSpec(ctx, spec, s.now())
+	completedAt := s.now()
+	status.Availability.CheckedAt = &completedAt
+	return status
+}
+
+func (s Service) providerStatusCacheTTL() time.Duration {
+	if s.StatusCacheTTL != 0 {
+		return s.StatusCacheTTL
+	}
+	return defaultProviderStatusCacheTTL
+}
+
+func (s Service) cachedProviderStatusStillValid(spec ProviderSpec, cachedAt time.Time, credentialFingerprint string) bool {
+	failedAt, invalidated := s.RunOutcomes.AuthInvalidatedSince(spec.Provider)
+	if invalidated && failedAt.After(cachedAt) {
+		return false
+	}
+	return credentialFingerprint == s.providerCredentialFingerprint(spec)
+}
+
+func (s Service) invalidateProviderStatus(provider string) {
+	s.StatusCache.invalidate(provider)
+}
+
+// Invalidate drops one provider's application readiness snapshot after the
+// real runtime proves that cached launch assumptions are no longer reliable.
+func (s Service) Invalidate(provider string) {
+	s.invalidateProviderStatus(strings.TrimSpace(provider))
 }
 
 func (s Service) Probe(ctx context.Context, input ProbeInput) (ProbeResult, error) {
@@ -349,7 +456,7 @@ func (s Service) Probe(ctx context.Context, input ProbeInput) (ProbeResult, erro
 		result.Message = agentProviderProbeAdapterUnavailableMessage(result.ReasonCode)
 		return result, nil
 	}
-	if spec.Provider == agentprovider.Codex && status.LastError != nil {
+	if isCodexStatusSpec(spec) && status.LastError != nil {
 		result.Status = ProbeFailed
 		result.ReasonCode = codexReasonCodeFromErrorCode(status.LastError.Code)
 		result.Message = status.LastError.Message
@@ -391,7 +498,7 @@ func (s Service) probeAdapterRuntimeCommand(
 		result.BinaryPath = command[0]
 	}
 	result = s.probeCommandWithReadyAfter(ctx, result, command, env, s.probeReadyAfterForSpec(spec))
-	if spec.Provider == agentprovider.Codex && result.Status == ProbeFailed {
+	if isCodexStatusSpec(spec) && result.Status == ProbeFailed {
 		if code, ok := classifyCodexRuntimeError(result.Message); ok {
 			result.LastError = &ProviderLastError{Code: string(code), Message: result.Message}
 			result.ReasonCode = codexReasonCodeFromErrorCode(string(code))
@@ -407,6 +514,7 @@ func (s Service) RunAction(ctx context.Context, input RunActionInput) (RunAction
 		return RunActionResult{}, err
 	}
 	spec := specs[0]
+	defer s.invalidateProviderStatus(spec.Provider)
 	result := RunActionResult{
 		Provider:    spec.Provider,
 		ActionID:    input.ActionID,
@@ -447,7 +555,7 @@ func (s Service) runInstallAction(ctx context.Context, spec ProviderSpec, result
 	summary, updatedRuntime, err := s.installMissingProviderRuntime(installCtx, spec, runtimeResolution)
 	result = applyInstallerExecutionSummary(result, summary)
 	if err != nil {
-		return installActionErrorResult(result, err, s.installTimeout()), nil
+		return installActionErrorResult(result, err, s.installTimeout(), spec.Install), nil
 	}
 	if len(summary.Commands) == 0 {
 		probeStartedAt := s.now()
@@ -471,7 +579,7 @@ func (s Service) runInstallAction(ctx context.Context, spec ProviderSpec, result
 				result = applyInstallerExecutionSummary(result, summary)
 				result.Probe = nil
 				if err != nil {
-					return installActionErrorResult(result, err, s.installTimeout()), nil
+					return installActionErrorResult(result, err, s.installTimeout(), spec.Install), nil
 				}
 				if len(summary.Commands) > 0 {
 					goto postInstallProbe
@@ -499,8 +607,8 @@ func (s Service) runInstallAction(ctx context.Context, spec ProviderSpec, result
 	}
 	if summary.ExitCode != nil && *summary.ExitCode != 0 {
 		result.Status = RunActionFailed
-		result.ReasonCode = "install_command_failed"
 		result.Message = firstNonBlank(result.Stderr, result.Stdout, "Install command failed")
+		result.ReasonCode = installerFailureReasonCode(spec.Install, result.Message, "install_command_failed")
 		return result, nil
 	}
 
@@ -551,7 +659,7 @@ func applyInstallerExecutionSummary(result RunActionResult, summary installerExe
 	return result
 }
 
-func installActionErrorResult(result RunActionResult, err error, timeout time.Duration) RunActionResult {
+func installActionErrorResult(result RunActionResult, err error, timeout time.Duration, installer InstallerSpec) RunActionResult {
 	result.Status = RunActionFailed
 	if errors.Is(err, context.DeadlineExceeded) {
 		result.ReasonCode = "install_timed_out"
@@ -563,204 +671,19 @@ func installActionErrorResult(result RunActionResult, err error, timeout time.Du
 		result.Message = err.Error()
 		return result
 	}
-	result.ReasonCode = "install_start_failed"
 	result.Message = err.Error()
+	result.ReasonCode = installerFailureReasonCode(installer, result.Message, "install_start_failed")
 	return result
 }
 
-func (s Service) statusForSpec(ctx context.Context, spec ProviderSpec, now time.Time) ProviderStatus {
-	if status, ok := unsupportedProviderStatus(spec, now); ok {
-		return status
-	}
-	runtimeResolution := s.resolveProviderRuntime(ctx, spec)
-	installed := strings.TrimSpace(runtimeResolution.CLIPath) != ""
-	adapterInstalled := strings.TrimSpace(runtimeResolution.AdapterPath) != ""
-	adapterReady := adapterInstalled && adapterPackageRequirementSatisfied(spec.AdapterPackage, runtimeResolution.AdapterVersion)
-	adapterLaunchFailed := false
-	if installed && adapterReady && s.shouldProbeAdapterCommandForStatus(spec, runtimeResolution) {
-		probe := s.probeAdapterRuntimeCommand(ctx, spec, runtimeResolution, now)
-		if probe.Status == ProbeFailed {
-			adapterReady = false
-			adapterLaunchFailed = true
-		}
-	}
-	auth := s.resolveAuth(ctx, spec, installed, runtimeResolution.CLIPath)
-	cliVersion := ""
-	if installed {
-		cliVersion = s.cliVersion(ctx, runtimeResolution.CLIPath, runtimeResolution.Env)
-	}
-	codexPlatformOK := true
-	if spec.Provider == agentprovider.Codex && installed {
-		codexPlatformOK = s.codexPlatformBinaryOK(runtimeResolution.CLIPath)
-	}
-	availability := Availability{
-		CheckedAt: &now,
-		Status:    AvailabilityReady,
-	}
-	actions := []Action{}
-
-	if !installed {
-		availability.Status = AvailabilityNotInstalled
-		availability.ReasonCode = "cli_not_found"
-		actions = append(actions, daemonAction(ActionInstall))
-	} else if !adapterInstalled {
-		availability.Status = AvailabilityNotInstalled
-		availability.ReasonCode = firstNonBlank(runtimeResolution.ReasonCode, spec.AdapterUnavailableReasonCode, "acp_adapter_not_found")
-		actions = append(actions, daemonAction(ActionInstall))
-	} else if adapterLaunchFailed {
-		availability.Status = AvailabilityNotInstalled
-		availability.ReasonCode = "acp_adapter_launch_failed"
-		actions = append(actions, daemonAction(ActionInstall))
-	} else if !adapterReady {
-		availability.Status = AvailabilityNotInstalled
-		availability.ReasonCode = "acp_adapter_version_mismatch"
-		actions = append(actions, daemonAction(ActionInstall))
-	} else if spec.Provider == agentprovider.Codex && !codexPlatformOK {
-		availability.Status = AvailabilityNotInstalled
-		availability.ReasonCode = codexReasonCodeFromErrorCode(string(CodexErrPlatformPkgIncomplete))
-		actions = append(actions, daemonAction(ActionInstall))
-	} else if spec.Provider == agentprovider.Codex && !codexVersionMeetsMinimum(cliVersion) {
-		availability.Status = AvailabilityNotInstalled
-		availability.ReasonCode = codexReasonCodeFromErrorCode(string(CodexErrVersionTooOld))
-		actions = append(actions, daemonAction(ActionInstall))
-	} else {
-		actions = append(actions, terminalAction(ActionLogin, loginCommandForRuntime(spec, runtimeResolution)))
-
-		// Providers can run in API Usage Billing mode — an API key, an auth
-		// token, or an apiKeyHelper — which bills usage to an API account and
-		// overrides any stored OAuth/subscription session. CLI auth-status
-		// commands (e.g. `claude auth status`, `codex login status`) only
-		// reflect the stored session, so they are blind to these env/config
-		// credentials; detect them directly and prefer that signal over
-		// whatever the CLI reports, so the wizard shows "已配置 API 计费"
-		// instead of a stale OAuth label or "未登录". A bare custom endpoint
-		// without a credential is NOT API billing (the user may still be on
-		// an OAuth session), so it does not trigger this override.
-		if s.providerHasAPICredential(spec.Provider) {
-			auth.Status = AuthAuthenticated
-			auth.AccountLabel = "API Usage Billing"
-			auth.AuthMethod = "apiKey"
-		} else {
-			switch auth.Status {
-			case AuthAuthenticated:
-				// already ready
-			case AuthRequired:
-				availability.Status = AvailabilityAuthRequired
-				availability.ReasonCode = "auth_required"
-				actions = append(actions, Action{ID: ActionRefresh, Kind: ActionKindRefresh})
-			case AuthUnknown:
-				availability.Status = AvailabilityAuthRequired
-				availability.ReasonCode = "auth_unknown"
-				actions = append(actions, Action{ID: ActionRefresh, Kind: ActionKindRefresh})
+func installerFailureReasonCode(installer InstallerSpec, message string, fallback string) string {
+	normalized := strings.ToLower(message)
+	for reasonCode, markers := range installer.FailureReasonMarkers {
+		for _, marker := range markers {
+			if normalizedMarker := strings.ToLower(strings.TrimSpace(marker)); normalizedMarker != "" && strings.Contains(normalized, normalizedMarker) {
+				return reasonCode
 			}
 		}
 	}
-
-	status := ProviderStatus{
-		Provider:     spec.Provider,
-		Availability: availability,
-		CLI: CLIStatus{
-			Installed:  installed,
-			BinaryPath: runtimeResolution.CLIPath,
-			Version:    cliVersion,
-		},
-		Adapter: AdapterStatus{
-			Installed:       adapterReady,
-			BinaryPath:      runtimeResolution.AdapterPath,
-			Command:         cloneStrings(runtimeResolution.AdapterCommand),
-			Version:         runtimeResolution.AdapterVersion,
-			RequiredVersion: spec.AdapterPackage.Version,
-		},
-		Auth:    auth,
-		Actions: actions,
-	}
-	status.ActiveAction = activeActionForProvider(spec.Provider)
-	if status.ActiveAction != nil {
-		bytes, lines := activeActionOutputStats(status.ActiveAction.Stdout)
-		slog.Info(
-			"agent provider status attached active action",
-			"event", "tutti.agent_provider.status.active_action_attached",
-			"provider", spec.Provider,
-			"availability", status.Availability.Status,
-			"reasonCode", status.Availability.ReasonCode,
-			"step", status.ActiveAction.Step,
-			"registryPresent", strings.TrimSpace(status.ActiveAction.Registry) != "",
-			"stdoutBytes", bytes,
-			"stdoutLines", lines,
-		)
-	}
-	if spec.Provider == agentprovider.Codex {
-		status.CLI.MinVersion = MinSupportedCodexVersion
-		status.Checks = codexProviderChecks(status, codexPlatformOK, s.codexNodeRuntimeCheck(spec))
-		status.LastError = codexProviderLastError(status)
-		slog.Info(
-			"codex agent provider status checked",
-			"availability", status.Availability.Status,
-			"reasonCode", status.Availability.ReasonCode,
-			"version", status.CLI.Version,
-			"lastErrorCode", providerLastErrorCode(status.LastError),
-			"missingPlatformPath", s.codexPlatformPackageMissingPath(runtimeResolution.CLIPath),
-		)
-	}
-	return status
-}
-
-func (s Service) shouldProbeAdapterCommandForStatus(spec ProviderSpec, runtimeResolution providerRuntimeResolution) bool {
-	if strings.TrimSpace(spec.ExternalRegistryID) != "" {
-		return true
-	}
-	return spec.Provider == agentprovider.Codex && s.executableFile(runtimeResolution.AdapterPath)
-}
-
-func (s Service) probeReadyAfterForSpec(spec ProviderSpec) time.Duration {
-	if strings.TrimSpace(spec.ExternalRegistryID) != "" && spec.AdapterInstall.RegistryNPM != nil {
-		return externalRegistryNPMProbeReadyAfter(s.probeTimeout())
-	}
-	return s.probeReadyAfter()
-}
-
-func agentNPMRegistryProbePackage(spec ProviderSpec) string {
-	if spec.Provider == agentprovider.Codex {
-		return "@openai/codex"
-	}
-	if spec.AdapterInstall.RegistryNPM != nil {
-		packageName, _ := splitNPMPackageSpec(spec.AdapterInstall.RegistryNPM.Package)
-		if strings.TrimSpace(packageName) != "" {
-			return packageName
-		}
-	}
-	if spec.Install.RegistryNPM != nil {
-		packageName, _ := splitNPMPackageSpec(spec.Install.RegistryNPM.Package)
-		if strings.TrimSpace(packageName) != "" {
-			return packageName
-		}
-	}
-	return "@openai/codex"
-}
-
-func externalRegistryNPMProbeReadyAfter(timeout time.Duration) time.Duration {
-	if timeout <= 0 {
-		timeout = defaultProbeTimeout
-	}
-	if timeout <= 200*time.Millisecond {
-		return timeout / 2
-	}
-	return timeout - externalRegistryNPMProbeTimeoutPadding
-}
-
-func agentProviderProbeAdapterUnavailableMessage(reasonCode string) string {
-	switch strings.TrimSpace(reasonCode) {
-	case "acp_adapter_version_mismatch":
-		return "ACP adapter version does not match the required package version"
-	case "acp_adapter_launch_failed":
-		return "ACP adapter command failed to start"
-	case ReasonExternalAgentRegistryUnavailable:
-		return "ACP external agent registry is unavailable"
-	case ReasonManagedRuntimeUnavailable:
-		return "Managed Node runtime is unavailable"
-	case ReasonClaudeSDKSidecarUnavailable:
-		return "Claude SDK sidecar not found"
-	default:
-		return "ACP adapter not found"
-	}
+	return fallback
 }

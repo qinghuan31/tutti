@@ -1,8 +1,9 @@
 import { describe, expect, it } from "vitest";
-import type {
-  AgentHostWorkspaceAgentSession,
-  AgentHostWorkspaceAgentTimelineItem
-} from "../../contracts/dto";
+import {
+  normalizeAgentActivitySession,
+  type AgentActivitySession
+} from "@tutti-os/agent-activity-core";
+import type { WorkspaceAgentActivityTimelineItem } from "../../workspaceAgentTimelineTypes";
 import type { WorkspaceAgentActivityCard } from "../../workspaceAgentActivityListViewModel";
 import { buildWorkspaceAgentSessionDetailViewModel } from "../../workspaceAgentSessionDetailViewModel";
 import {
@@ -23,9 +24,7 @@ describe("projectWorkspaceAgentTimelineToConversationVM", () => {
       "message",
       "message",
       "tool-group",
-      "tool-group",
-      "tool-group",
-      "turn-summary"
+      "tool-group"
     ]);
 
     const groupedRows = conversation.rows.filter(
@@ -49,22 +48,8 @@ describe("projectWorkspaceAgentTimelineToConversationVM", () => {
         : null
     ).toBe("Need to inspect before editing.");
 
-    expect(conversation.pendingApproval?.requestId).toBe("approval-request-1");
-    expect(conversation.pendingInteractivePrompt).toEqual({
-      kind: "ask-user",
-      requestId: "ask-request-1",
-      title: "AskUserQuestion",
-      questions: [
-        {
-          id: "approach",
-          header: "Approach",
-          question: "Which direction should we take?",
-          options: [{ label: "Use typed renderer", description: "Keep going" }],
-          multiSelect: false,
-          answer: null
-        }
-      ]
-    });
+    expect("pendingApproval" in conversation).toBe(false);
+    expect("pendingInteractivePrompt" in conversation).toBe(false);
 
     const summaryRow = conversation.rows.find(
       (
@@ -74,9 +59,7 @@ describe("projectWorkspaceAgentTimelineToConversationVM", () => {
         { kind: "turn-summary" }
       > => row.kind === "turn-summary"
     );
-    expect(summaryRow?.files.map((file) => file.path)).toEqual([
-      "/workspace/demo/src/App.tsx"
-    ]);
+    expect(summaryRow).toBeUndefined();
   });
 
   it("builds canonical detail turns directly from timeline items without the legacy detail builder", () => {
@@ -184,9 +167,7 @@ describe("projectWorkspaceAgentTimelineToConversationVM", () => {
       "message",
       "message",
       "tool-group",
-      "tool-group",
-      "tool-group",
-      "turn-summary"
+      "tool-group"
     ]);
   });
 
@@ -226,7 +207,10 @@ describe("projectWorkspaceAgentTimelineToConversationVM", () => {
         { kind: "tool-group" }
       > => row.kind === "tool-group" && row.grouped
     );
-    expect(groupedRows).toHaveLength(0);
+    expect(groupedRows).toHaveLength(1);
+    expect(groupedRows[0]?.calls.map((call) => call.id)).toEqual([
+      "call:read-1"
+    ]);
     expect(
       conversation.rows.some(
         (
@@ -420,7 +404,7 @@ describe("projectWorkspaceAgentTimelineToConversationVM", () => {
   });
 
   it("does not append processing after a terminal assistant message even if the session patch is still working", () => {
-    const completedReplyTimelineItems: AgentHostWorkspaceAgentTimelineItem[] = [
+    const completedReplyTimelineItems: WorkspaceAgentActivityTimelineItem[] = [
       timelineItems()[0]!,
       {
         id: 99,
@@ -443,7 +427,6 @@ describe("projectWorkspaceAgentTimelineToConversationVM", () => {
     const detail = buildCanonicalWorkspaceAgentDetailView({
       activity: activity(),
       session: session({
-        status: "working",
         effectiveStatus: "working",
         turnPhase: "working"
       }),
@@ -453,7 +436,6 @@ describe("projectWorkspaceAgentTimelineToConversationVM", () => {
     const conversation = projectWorkspaceAgentTimelineToConversationVM({
       activity: activity(),
       session: session({
-        status: "working",
         effectiveStatus: "working",
         turnPhase: "working"
       }),
@@ -468,7 +450,7 @@ describe("projectWorkspaceAgentTimelineToConversationVM", () => {
   });
 
   it("keeps processing after an interim assistant message while the turn lifecycle reports an active turn", () => {
-    const interimReplyTimelineItems: AgentHostWorkspaceAgentTimelineItem[] = [
+    const interimReplyTimelineItems: WorkspaceAgentActivityTimelineItem[] = [
       timelineItems()[0]!,
       {
         id: 99,
@@ -489,14 +471,10 @@ describe("projectWorkspaceAgentTimelineToConversationVM", () => {
     ];
     const workingSession = {
       ...session({
-        status: "working",
         effectiveStatus: "working",
         turnPhase: "working"
       }),
-      turnLifecycle: {
-        activeTurnId: "turn-1",
-        phase: "running"
-      }
+      activeTurn: activeTurn("running")
     };
 
     const detail = buildCanonicalWorkspaceAgentDetailView({
@@ -522,14 +500,10 @@ describe("projectWorkspaceAgentTimelineToConversationVM", () => {
     const completedToolTimelineItems = timelineItems().slice(0, 5);
     const staleReadySession = {
       ...session({
-        status: "ready",
         effectiveStatus: "ready",
         turnPhase: "idle"
       }),
-      turnLifecycle: {
-        activeTurnId: "turn-1",
-        phase: "running"
-      }
+      activeTurn: activeTurn("running")
     };
 
     const detail = buildCanonicalWorkspaceAgentDetailView({
@@ -552,7 +526,7 @@ describe("projectWorkspaceAgentTimelineToConversationVM", () => {
   });
 
   it("does not append processing after a terminal assistant message once the turn lifecycle is settling", () => {
-    const settlingReplyTimelineItems: AgentHostWorkspaceAgentTimelineItem[] = [
+    const settlingReplyTimelineItems: WorkspaceAgentActivityTimelineItem[] = [
       timelineItems()[0]!,
       {
         id: 99,
@@ -573,15 +547,10 @@ describe("projectWorkspaceAgentTimelineToConversationVM", () => {
     ];
     const settlingSession = {
       ...session({
-        status: "working",
         effectiveStatus: "working",
         turnPhase: "working"
       }),
-      turnLifecycle: {
-        activeTurnId: "turn-1",
-        phase: "running",
-        settling: true
-      }
+      activeTurn: activeTurn("settled")
     };
 
     const detail = buildCanonicalWorkspaceAgentDetailView({
@@ -616,28 +585,65 @@ function activity(
 }
 
 function session(
-  overrides: Partial<AgentHostWorkspaceAgentSession> = {}
-): AgentHostWorkspaceAgentSession {
-  return {
-    id: 1,
+  overrides: Partial<AgentActivitySession> & {
+    effectiveStatus?: string;
+    turnPhase?: string;
+  } = {}
+): AgentActivitySession {
+  const {
+    effectiveStatus: _effectiveStatus,
+    turnPhase: _turnPhase,
+    ...canonical
+  } = overrides;
+  return normalizeAgentActivitySession({
+    ...{
+      activeTurnId: null,
+      latestTurnInteractions: [],
+      pendingInteractions: []
+    },
+    workspaceId: "workspace-1",
     agentSessionId: "session-1",
-    presenceId: 1,
     userId: "user-1",
     provider: "codex",
     providerSessionId: "provider-session-1",
-    sessionOrigin: "WORKSPACE_AGENT_SESSION_ORIGIN_RUNTIME",
     cwd: "/workspace/demo",
-    lifecycleStatus: "active",
-    turnPhase: "completed",
-    effectiveStatus: "completed",
     title: "Codex",
     createdAtUnixMs: 1,
     updatedAtUnixMs: 10,
-    ...overrides
+    latestTurn: {
+      agentSessionId: "session-1",
+      turnId: "turn-1",
+      phase: "settled",
+      origin: "user_prompt",
+      outcome: "completed",
+      startedAtUnixMs: 1,
+      settledAtUnixMs: 10,
+      updatedAtUnixMs: 10,
+      fileChanges: {
+        files: [
+          {
+            path: "/workspace/demo/src/App.tsx",
+            change: "modified"
+          }
+        ]
+      }
+    },
+    ...canonical
+  });
+}
+
+function activeTurn(phase: "running" | "settled") {
+  return {
+    agentSessionId: "session-1",
+    origin: "user_prompt" as const,
+    phase,
+    startedAtUnixMs: 1,
+    turnId: "turn-1",
+    updatedAtUnixMs: 10
   };
 }
 
-function timelineItems(): AgentHostWorkspaceAgentTimelineItem[] {
+function timelineItems(): WorkspaceAgentActivityTimelineItem[] {
   return [
     {
       id: 1,

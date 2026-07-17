@@ -1,17 +1,43 @@
 import { AGENT_PROVIDER_LABEL } from "../contexts/settings/domain/agentSettings.providerMeta.ts";
-import type { UiLanguage } from "../contexts/settings/domain/agentSettings.ts";
+import {
+  isPendingActivationViable,
+  type PendingActivationStatus,
+  type AgentActivityMessage,
+  type AgentPromptContentBlock
+} from "@tutti-os/agent-activity-core";
+import {
+  extractRichTextLinksFromContent,
+  extractRichTextMentionsFromContent,
+  removeRichTextMentionFromContent,
+  type RichTextMentionRef
+} from "@tutti-os/ui-rich-text/core";
 import { translateInUiLanguage } from "../i18n/runtime.ts";
+import { resolveAgentGUIProviderCatalogIdentity } from "../providerIdentityCatalog.ts";
 import type { AgentGUIProvider } from "../types.ts";
-import type { WorkspaceAgentActivityTimelineItem } from "./workspaceAgentActivityTypes.ts";
-import { formatAgentSessionMentionText } from "./utils/agentSessionMentionText.ts";
+import type { WorkspaceAgentActivityTimelineItem } from "./workspaceAgentTimelineTypes.ts";
 import { normalizeAgentTitleText } from "./utils/agentTitleText.ts";
 
 export type AgentGUIResolvedProvider = AgentGUIProvider | "unknown";
-export type AgentGUIConversationTitleFallback = "generic-agent" | null;
+export type AgentGUIConversationTitleFallback = "untitled-conversation" | null;
+export type AgentGUIConversationTitleLeadingMentionKind =
+  | "agent"
+  | "app"
+  | "file"
+  | "session"
+  | "task";
+export type AgentGUIConversationTitleIconMentionKind = Extract<
+  AgentGUIConversationTitleLeadingMentionKind,
+  "file" | "task"
+>;
 
-export interface AgentGUIConversationPlainTitleOptions {
-  fallbackAgentLabel?: string;
-  language?: UiLanguage;
+const AGENT_GUI_UNRESOLVED_PROVIDER: AgentGUIResolvedProvider = "unknown";
+const AGENT_GUI_MAX_OPTIMISTIC_TITLE_CODE_POINTS = 120;
+const AGENT_GUI_TRUNCATED_TITLE_SUFFIX = "...";
+
+export function isAgentGUIProviderUnresolved(
+  value: AgentGUIResolvedProvider
+): value is "unknown" {
+  return value === AGENT_GUI_UNRESOLVED_PROVIDER;
 }
 
 export interface AgentGUIConversationTitleMessage {
@@ -33,34 +59,19 @@ export interface AgentGUIConversationTitleMessage {
 export function normalizeAgentGUIProviderIdentity(
   provider: string | null | undefined
 ): AgentGUIResolvedProvider {
-  switch (provider?.trim().toLowerCase() ?? "") {
-    case "claude-code":
-    case "claude":
-    case "claude code":
-      return "claude-code";
-    case "codex":
-      return "codex";
-    case "tutti-agent":
-    case "tutti agent":
-      return "tutti-agent";
-    case "cursor":
-    case "cursor-agent":
-    case "cursor agent":
-      return "cursor";
-    case "nexight":
-    case "tutti":
-      return "nexight";
-    case "hermes":
-      return "hermes";
-    case "openclaw":
-      return "openclaw";
-    case "opencode":
-    case "open-code":
-    case "opencode-ai":
-      return "opencode";
-    default:
-      return "unknown";
+  const normalized = provider?.trim().toLowerCase() ?? "";
+  const catalogIdentity = resolveAgentGUIProviderCatalogIdentity(normalized);
+  if (catalogIdentity) {
+    return catalogIdentity.providerId as AgentGUIProvider;
   }
+  if (!/^[a-z][a-z0-9._:-]{0,127}$/.test(normalized)) {
+    return "unknown";
+  }
+  return normalized as AgentGUIProvider;
+}
+
+function providerLabel(provider: AgentGUIProvider): string {
+  return (AGENT_PROVIDER_LABEL as Record<string, string>)[provider] ?? provider;
 }
 
 export function resolveAgentGUIProviderIdentity(input: {
@@ -85,31 +96,288 @@ export function resolveAgentGUIProviderIdentity(input: {
 }
 
 export function resolveAgentGUIConversationTitle(
-  title: string | null | undefined,
-  provider: AgentGUIResolvedProvider
+  title: string | null | undefined
 ): {
   title: string;
   titleFallback: AgentGUIConversationTitleFallback;
 } {
-  const normalizedTitle = stripAgentGUITitleTrailingPeriod(
-    normalizeAgentTitleText(title)
-  );
+  const normalizedTitle = stripAgentGUITitleTrailingPeriod(title?.trim() ?? "");
   if (normalizedTitle) {
     return {
       title: normalizedTitle,
       titleFallback: null
     };
   }
-  if (provider === "unknown") {
-    return {
-      title: "",
-      titleFallback: "generic-agent"
-    };
-  }
   return {
-    title: AGENT_PROVIDER_LABEL[provider],
-    titleFallback: null
+    title: "",
+    titleFallback: "untitled-conversation"
   };
+}
+
+export function deriveAgentGUIOptimisticConversationTitle(
+  visiblePrompt: string | null | undefined
+): string {
+  const normalizedTitle = normalizeAgentTitleText(visiblePrompt);
+  const codePoints = Array.from(normalizedTitle);
+  if (codePoints.length <= AGENT_GUI_MAX_OPTIMISTIC_TITLE_CODE_POINTS) {
+    return normalizedTitle;
+  }
+  return `${codePoints
+    .slice(
+      0,
+      AGENT_GUI_MAX_OPTIMISTIC_TITLE_CODE_POINTS -
+        AGENT_GUI_TRUNCATED_TITLE_SUFFIX.length
+    )
+    .join("")
+    .trimEnd()}${AGENT_GUI_TRUNCATED_TITLE_SUFFIX}`;
+}
+
+export function resolveAgentGUIConversationTitleDisplayPrompt(input: {
+  activation?: {
+    content: readonly AgentPromptContentBlock[];
+    displayPrompt?: string;
+    mode: "existing" | "new";
+    status: PendingActivationStatus;
+  } | null;
+  allowEmptyTitle?: boolean;
+  firstUserDisplayPrompt?: string | null;
+  messages?: readonly AgentActivityMessage[];
+  title: string | null;
+}): string | null {
+  const prompt = resolveAgentGUIConversationTitlePrompt(input);
+  if (
+    !prompt ||
+    !isAgentGUIConversationTitleDisplayPromptEligible(prompt) ||
+    !agentGUITitleMatchesDerivedPrompt(
+      input.title,
+      prompt,
+      input.allowEmptyTitle
+    )
+  ) {
+    return null;
+  }
+  return prompt;
+}
+
+export function resolveAgentGUIConversationBrowserFreeTitle(input: {
+  activation?: {
+    content: readonly AgentPromptContentBlock[];
+    displayPrompt?: string;
+    mode: "existing" | "new";
+    status: PendingActivationStatus;
+  } | null;
+  allowEmptyTitle?: boolean;
+  firstUserDisplayPrompt?: string | null;
+  messages?: readonly AgentActivityMessage[];
+  title: string | null;
+}): string | null {
+  const prompt = resolveAgentGUIConversationTitlePrompt(input);
+  if (
+    !prompt ||
+    !agentGUITitleMatchesDerivedPrompt(
+      input.title,
+      prompt,
+      input.allowEmptyTitle
+    )
+  ) {
+    return input.title;
+  }
+  const presentationPrompt = removeAgentGUIBrowserElementMentions(prompt);
+  return presentationPrompt === prompt
+    ? input.title
+    : deriveAgentGUIOptimisticConversationTitle(presentationPrompt);
+}
+
+export function resolveAgentGUIConversationTitleLeadingMentionKind(
+  displayPrompt: string | null | undefined
+): AgentGUIConversationTitleLeadingMentionKind | null {
+  const firstMention = extractRichTextMentionsFromContent(displayPrompt)[0];
+  const mentionKind = firstMention
+    ? agentGUIConversationTitleMentionKind(firstMention)
+    : null;
+  if (isAgentGUIConversationTitleIconMentionKind(mentionKind)) {
+    return mentionKind;
+  }
+  if (firstMention) return null;
+  return extractRichTextLinksFromContent(displayPrompt).length > 0
+    ? "file"
+    : null;
+}
+
+export function isAgentGUIConversationTitleIconMentionKind(
+  kind: AgentGUIConversationTitleLeadingMentionKind | null | undefined
+): kind is AgentGUIConversationTitleIconMentionKind {
+  return kind === "file" || kind === "task";
+}
+
+function agentGUIConversationTitleMentionKind(
+  mention: RichTextMentionRef
+): AgentGUIConversationTitleLeadingMentionKind | null {
+  if (
+    mention.providerId === "agent-session" ||
+    mention.providerId === "session"
+  ) {
+    return "session";
+  }
+  if (
+    mention.providerId === "workspace-issue" ||
+    mention.providerId === "issue" ||
+    mention.providerId === "task"
+  ) {
+    return "task";
+  }
+  if (mention.providerId === "workspace-app") return "app";
+  if (mention.providerId === "agent-target") return "agent";
+  if (mention.providerId === "workspace-reference") {
+    return mention.scope?.source === "task"
+      ? "task"
+      : mention.scope?.source === "app"
+        ? "app"
+        : null;
+  }
+  return null;
+}
+
+function isAgentGUIConversationTitleDisplayPromptEligible(
+  displayPrompt: string
+): boolean {
+  const mentions = extractRichTextMentionsFromContent(displayPrompt);
+  if (
+    mentions.some(
+      (mention) => {
+        if (mention.providerId === "browser-element") {
+          return false;
+        }
+        return !isAgentGUIConversationTitleIconMentionKind(
+          agentGUIConversationTitleMentionKind(mention)
+        );
+      }
+    )
+  ) {
+    return false;
+  }
+  return (
+    mentions.length > 0 ||
+    extractRichTextLinksFromContent(displayPrompt).length > 0
+  );
+}
+
+function resolveAgentGUIConversationTitlePrompt(input: {
+  activation?: {
+    content: readonly AgentPromptContentBlock[];
+    displayPrompt?: string;
+    mode: "existing" | "new";
+    status: PendingActivationStatus;
+  } | null;
+  firstUserDisplayPrompt?: string | null;
+  messages?: readonly AgentActivityMessage[];
+}): string {
+  const activationPrompt =
+    input.activation?.mode === "new" &&
+    isPendingActivationViable(input.activation)
+      ? agentGUIActivationPromptText(
+          input.activation.content,
+          input.activation.displayPrompt ?? null
+        )
+      : "";
+  return (
+    activationPrompt ||
+    input.firstUserDisplayPrompt?.trim() ||
+    resolveAgentGUIFirstUserMessageDisplayPrompt(input.messages ?? [])
+  );
+}
+
+function removeAgentGUIBrowserElementMentions(prompt: string): string {
+  return extractRichTextMentionsFromContent(prompt)
+    .filter((mention) => mention.providerId === "browser-element")
+    .reduce(
+      (content, mention) => removeRichTextMentionFromContent(content, mention),
+      prompt
+    );
+}
+
+export function resolveAgentGUIFirstUserMessageDisplayPrompt(
+  messages: readonly AgentActivityMessage[]
+): string {
+  const message = messages.find(
+    (candidate) =>
+      candidate.role.trim().toLowerCase() === "user" &&
+      candidate.kind.trim().toLowerCase() === "text"
+  );
+  if (!message) {
+    return "";
+  }
+  return (
+    agentGUIStringValue(message.payload.displayPrompt) ||
+    agentGUIPromptTextFromUnknownContent(message.payload.content) ||
+    agentGUIStringValue(message.payload.text) ||
+    agentGUIStringValue(message.payload.content)
+  );
+}
+
+function agentGUIPromptTextFromUnknownContent(content: unknown): string {
+  if (!Array.isArray(content)) {
+    return "";
+  }
+  return content
+    .flatMap((value) => {
+      if (!value || typeof value !== "object" || Array.isArray(value)) {
+        return [];
+      }
+      const block = value as Record<string, unknown>;
+      return block.type === "text" && typeof block.text === "string"
+        ? [block.text.trim()]
+        : [];
+    })
+    .filter(Boolean)
+    .join("\n");
+}
+
+function agentGUIActivationPromptText(
+  content: readonly AgentPromptContentBlock[],
+  displayPrompt: string | null
+): string {
+  const display = displayPrompt?.trim() ?? "";
+  if (display) {
+    return display;
+  }
+  return content
+    .filter((block) => block.type === "text")
+    .map((block) => block.text?.trim() ?? "")
+    .filter(Boolean)
+    .join("\n");
+}
+
+function agentGUITitleMatchesDerivedPrompt(
+  title: string | null,
+  prompt: string,
+  allowEmptyTitle = false
+): boolean {
+  const canonicalTitle = title?.trim() ?? "";
+  if (!canonicalTitle) {
+    return allowEmptyTitle;
+  }
+  const derivedTitle = normalizeAgentTitleText(prompt);
+  if (canonicalTitle === derivedTitle) {
+    return true;
+  }
+  const runes = Array.from(derivedTitle);
+  const truncatedDerivedTitle =
+    runes.length > AGENT_GUI_MAX_OPTIMISTIC_TITLE_CODE_POINTS
+      ? `${runes
+          .slice(
+            0,
+            AGENT_GUI_MAX_OPTIMISTIC_TITLE_CODE_POINTS -
+              AGENT_GUI_TRUNCATED_TITLE_SUFFIX.length
+          )
+          .join("")
+          .trim()}${AGENT_GUI_TRUNCATED_TITLE_SUFFIX}`
+      : derivedTitle;
+  return canonicalTitle === truncatedDerivedTitle;
+}
+
+function agentGUIStringValue(value: unknown): string {
+  return typeof value === "string" ? value.trim() : "";
 }
 
 export function resolveAgentGUIConversationDisplayTitle(
@@ -117,35 +385,15 @@ export function resolveAgentGUIConversationDisplayTitle(
     title: string;
     titleFallback?: AgentGUIConversationTitleFallback;
   },
-  fallbackAgentLabel: string
+  untitledConversationLabel: string
 ): string {
   if (input.title) {
-    return stripAgentGUITitleTrailingPeriod(
-      normalizeAgentTitleText(input.title)
-    );
+    return stripAgentGUITitleTrailingPeriod(input.title.trim());
   }
-  if (input.titleFallback === "generic-agent") {
-    return stripAgentGUITitleTrailingPeriod(fallbackAgentLabel);
+  if (input.titleFallback === "untitled-conversation") {
+    return stripAgentGUITitleTrailingPeriod(untitledConversationLabel);
   }
   return "";
-}
-
-export function formatAgentGUIConversationPlainTitle(
-  input: {
-    title: string;
-    titleFallback?: AgentGUIConversationTitleFallback;
-  },
-  options: AgentGUIConversationPlainTitleOptions = {}
-): string {
-  return formatAgentSessionMentionText(
-    resolveAgentGUIConversationDisplayTitle(
-      input,
-      options.fallbackAgentLabel ?? "Agent"
-    ),
-    {
-      language: options.language
-    }
-  );
 }
 
 export function resolveAgentGUIDockConversationTitle(input: {
@@ -165,9 +413,7 @@ export function resolveAgentGUIExplicitConversationTitle(input: {
     return null;
   }
 
-  const title = stripAgentGUITitleTrailingPeriod(
-    normalizeAgentTitleText(input.title)
-  );
+  const title = stripAgentGUITitleTrailingPeriod(input.title.trim());
   if (!title) {
     return null;
   }
@@ -175,14 +421,29 @@ export function resolveAgentGUIExplicitConversationTitle(input: {
     return null;
   }
 
-  if (
-    input.provider !== "unknown" &&
-    title === AGENT_PROVIDER_LABEL[input.provider]
-  ) {
+  if (input.provider !== "unknown" && title === providerLabel(input.provider)) {
     return null;
   }
 
   return title;
+}
+
+export function resolveAgentGUIExplicitConversationTitleFromMessages(input: {
+  messages: readonly AgentGUIConversationTitleMessage[];
+  provider: AgentGUIResolvedProvider;
+  title: string | null | undefined;
+}): string | null {
+  const explicitTitle = resolveAgentGUIExplicitConversationTitle({
+    provider: input.provider,
+    title: input.title?.trim() ?? ""
+  });
+  if (explicitTitle) {
+    return explicitTitle;
+  }
+  return resolveAgentGUIExplicitConversationTitle({
+    provider: input.provider,
+    title: firstAgentGUIUserMessageTitle(input.messages)
+  });
 }
 
 export function resolveAgentGUIProviderDisplayLabel(
@@ -193,7 +454,7 @@ export function resolveAgentGUIProviderDisplayLabel(
   if (resolvedProvider === "unknown") {
     return fallbackAgentLabel;
   }
-  return AGENT_PROVIDER_LABEL[resolvedProvider];
+  return providerLabel(resolvedProvider);
 }
 
 export function firstAgentGUIUserMessageTitle(
@@ -287,7 +548,7 @@ function localizedAgentGUIUntitledTaskLabels(): Set<string> {
         compactTitleText(
           translateInUiLanguage(
             language,
-            "agentHost.workspaceAgentsUntitledTask"
+            "agentHost.workspaceAgentsUntitledConversation"
           )
         )
       )

@@ -20,7 +20,6 @@ import (
 	workspacebiz "github.com/tutti-os/tutti/services/tuttid/biz/workspace"
 	workspacedata "github.com/tutti-os/tutti/services/tuttid/data/workspace"
 	agentservice "github.com/tutti-os/tutti/services/tuttid/service/agent"
-	tuttitypes "github.com/tutti-os/tutti/services/tuttid/types"
 )
 
 const (
@@ -50,12 +49,6 @@ type AppFactoryService struct {
 	Publisher             WorkspaceAppFactoryEventPublisher
 
 	publishLocks keyedOperationLocks
-
-	// liveTurnAgentSessions tracks, per agent session, whether the most
-	// recently observed TurnLifecycle snapshot (see ObserveAgentSessionState)
-	// reports a live turn. See agentSessionHasLiveTurn in
-	// app_factory_agent_state.go for why this exists.
-	liveTurnAgentSessions sync.Map
 }
 
 type keyedOperationLocks struct {
@@ -98,7 +91,7 @@ type FactoryAgentSessionService interface {
 	Create(context.Context, string, agentservice.CreateSessionInput) (agentservice.Session, error)
 	GetComposerOptions(context.Context, agentservice.ComposerOptionsInput) (agentservice.ComposerOptions, error)
 	SendInput(context.Context, string, string, agentservice.SendInput) (agentservice.SendInputResult, error)
-	Cancel(context.Context, string, string) (agentservice.CancelSessionResult, error)
+	CancelTurn(context.Context, string, string, string) (agentservice.CancelTurnResult, error)
 }
 
 type FactoryAgentSessionStateReporter interface {
@@ -395,21 +388,6 @@ func (s *AppFactoryService) Create(ctx context.Context, workspaceID string, inpu
 	return s.putAndPublishReturn(ctx, job)
 }
 
-func (s *AppFactoryService) Cancel(ctx context.Context, workspaceID string, jobID string) (workspacebiz.AppFactoryJob, error) {
-	job, err := s.Get(ctx, workspaceID, jobID)
-	if err != nil {
-		return workspacebiz.AppFactoryJob{}, err
-	}
-	if job.AgentSessionID != "" && s.AgentSessionService != nil {
-		if _, err := s.AgentSessionService.Cancel(ctx, workspaceID, job.AgentSessionID); err != nil {
-			slog.Warn("cancel app factory agent session failed", "workspaceId", workspaceID, "jobId", jobID, "error", err)
-		}
-	}
-	job.Status = workspacebiz.AppFactoryJobStatusCanceled
-	job.FailureReason = ""
-	return s.putAndPublishReturn(ctx, job)
-}
-
 func (s *AppFactoryService) Fix(ctx context.Context, workspaceID string, jobID string, input FixAppFactoryJobInput) (workspacebiz.AppFactoryJob, error) {
 	job, err := s.Get(ctx, workspaceID, jobID)
 	if err != nil {
@@ -482,6 +460,14 @@ func (s *AppFactoryService) PrepareModification(ctx context.Context, workspaceID
 }
 
 func prepareAppFactoryJob(ctx context.Context, job workspacebiz.AppFactoryJob) error {
+	return prepareAppFactoryJobWithRuntimeResolver(ctx, job, DefaultManagedAppRuntimeResolver{})
+}
+
+func prepareAppFactoryJobWithRuntimeResolver(
+	ctx context.Context,
+	job workspacebiz.AppFactoryJob,
+	runtimeResolver AppRuntimeResolver,
+) error {
 	draftPackageDir := appFactoryDraftPackageDir(job)
 	if draftPackageDir == "" {
 		return errors.New("app factory draft package directory is missing")
@@ -500,6 +486,19 @@ func prepareAppFactoryJob(ctx context.Context, job workspacebiz.AppFactoryJob) e
 	if runtime.GOOS != "windows" && info.Mode()&0o111 == 0 {
 		return errors.New("prepare.sh must be executable")
 	}
+	if runtime.GOOS == "windows" {
+		preparePath = filepath.Join(draftPackageDir, "prepare.cmd")
+		companionInfo, companionErr := os.Stat(preparePath)
+		if companionErr != nil {
+			if os.IsNotExist(companionErr) {
+				return errors.New("prepare.cmd is required alongside prepare.sh on Windows")
+			}
+			return fmt.Errorf("stat prepare.cmd: %w", companionErr)
+		}
+		if companionInfo.IsDir() {
+			return errors.New("prepare.cmd must be a file")
+		}
+	}
 
 	runCtx, cancel := context.WithTimeout(ctx, defaultFactoryPrepareTimeout)
 	defer cancel()
@@ -508,7 +507,7 @@ func prepareAppFactoryJob(ctx context.Context, job workspacebiz.AppFactoryJob) e
 		return fmt.Errorf("open factory log: %w", err)
 	}
 	defer logFile.Close()
-	appRuntime, err := DefaultManagedAppRuntimeResolver{}.Resolve(runCtx)
+	appRuntime, err := runtimeResolver.Resolve(runCtx)
 	if err != nil {
 		return fmt.Errorf("resolve managed app runtime: %w", err)
 	}
@@ -527,7 +526,7 @@ func prepareAppFactoryJob(ctx context.Context, job workspacebiz.AppFactoryJob) e
 	envOverrides = append(envOverrides, appRuntime.EnvOverrides...)
 	command.Env = workspaceAppProcessEnv(envOverrides...)
 	if err := command.Run(); err != nil {
-		return fmt.Errorf("run prepare.sh: %w", err)
+		return fmt.Errorf("run %s: %w", filepath.Base(preparePath), err)
 	}
 	return nil
 }
@@ -633,30 +632,14 @@ func validateAppFactoryBootstrap(bootstrapPath string) error {
 }
 
 func (s *AppFactoryService) failInterruptedAgentSession(ctx context.Context, job workspacebiz.AppFactoryJob) error {
-	if s == nil || s.AgentSessionState == nil {
+	if s == nil {
 		return nil
 	}
 	agentSessionID := strings.TrimSpace(job.AgentSessionID)
 	if agentSessionID == "" {
 		return nil
 	}
-	now := unixMsNow()
-	_, err := s.AgentSessionState.ReportSessionState(ctx, agentsessionstore.ReportSessionStateInput{
-		WorkspaceID:    strings.TrimSpace(job.WorkspaceID),
-		AgentSessionID: agentSessionID,
-		SessionOrigin:  agentsessionstore.WorkspaceAgentSessionOriginRuntime,
-		State: agentsessionstore.WorkspaceAgentSessionStateUpdate{
-			AgentTargetID:    strings.TrimSpace(job.AgentTargetID),
-			Provider:         strings.TrimSpace(job.Provider),
-			Title:            "Create App: " + strings.TrimSpace(job.DisplayName),
-			LifecycleStatus:  "failed",
-			CurrentPhase:     "idle",
-			LastError:        interruptedFactoryJobReason,
-			OccurredAtUnixMS: now,
-			EndedAtUnixMS:    now,
-		},
-	})
-	return err
+	return s.handleAgentSessionTerminalState(ctx, strings.TrimSpace(job.WorkspaceID), agentSessionID, "failed", interruptedFactoryJobReason)
 }
 
 func (s *AppFactoryService) removeFactoryJobFiles(job workspacebiz.AppFactoryJob) error {
@@ -826,44 +809,4 @@ func (s *AppFactoryService) workspaceRoot(ctx context.Context, workspaceID strin
 		return workspacefiles.WorkspaceRoot{}, nil
 	}
 	return s.WorkspaceRootResolver.ResolveWorkspaceRoot(ctx, workspaceID)
-}
-
-func (s *AppFactoryService) store() workspacedata.AppFactoryStore {
-	return s.Store
-}
-
-func (s *AppFactoryService) appStore() workspacedata.AppStore {
-	return s.AppStore
-}
-
-func (s *AppFactoryService) appCenter() *AppCenterService {
-	return s.AppCenter
-}
-
-func (s *AppFactoryService) runner() *AppRunner {
-	if s.Runner == nil {
-		s.Runner = &AppRunner{}
-	}
-	return s.Runner
-}
-
-func (s *AppFactoryService) stateDir() string {
-	if strings.TrimSpace(s.StateDir) != "" {
-		return s.StateDir
-	}
-	if value := strings.TrimSpace(os.Getenv("TUTTI_STATE_DIR")); value != "" {
-		return value
-	}
-	return tuttitypes.DefaultStateDir()
-}
-
-func (s *AppFactoryService) appFactoryComposerDraftDir(workspaceID string) string {
-	return filepath.Join(
-		s.stateDir(),
-		"apps",
-		"factory",
-		"composer",
-		safeAppPathSegment(workspaceID),
-		"draft",
-	)
 }

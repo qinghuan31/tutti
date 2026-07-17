@@ -130,7 +130,7 @@ describe("AgentExpandedToolContent", () => {
   it("renders web fetch URL details in a Claude Code web-read approval dialog", async () => {
     setAgentGuiI18nTestLocale("en");
 
-    // Claude Code's approval payload has no ACP `kind` field — the nested
+    // Claude Code's approval payload has no top-level `kind` field — the nested
     // toolCall is identified only by `title`/`toolName` ("WebFetch"), unlike
     // Codex's ACP `kind: "fetch"`. Both must resolve to the web-fetch
     // renderer instead of the bare summary fallback.
@@ -242,6 +242,52 @@ describe("AgentExpandedToolContent", () => {
       screen.getByText("Add typed tool bodies on top of the existing shell.")
     ).toBeTruthy();
     expect(screen.getByText("Answer: Keep the shared renderer")).toBeTruthy();
+  });
+
+  it("renders an ask-user answer from the provider response payload", async () => {
+    setAgentGuiI18nTestLocale("en");
+
+    render(
+      <AgentExpandedToolContent
+        call={projectAgentToolCall(
+          toolCall({
+            callType: "interactive",
+            status: "completed",
+            toolName: "AskUserQuestion",
+            payload: {
+              input: {
+                questions: [
+                  {
+                    header: "Test scope",
+                    question: "Which modules should we test?",
+                    options: [
+                      {
+                        label: "Code editing",
+                        description: "Test code editing."
+                      }
+                    ]
+                  }
+                ]
+              },
+              output: {
+                action: "submit",
+                payload: {
+                  answers: ["Code editing"],
+                  answersByQuestionId: {
+                    "question-1": ["Code editing"]
+                  }
+                },
+                text: "Your questions have been answered."
+              }
+            }
+          })
+        )}
+      />
+    );
+
+    expect(screen.getByText("Answer: Code editing")).toBeTruthy();
+    expect(screen.getByText("Your questions have been answered.")).toBeTruthy();
+    expect(screen.queryByText("Waiting for answer…")).toBeNull();
   });
 
   it("renders task steps through the new task renderer path", async () => {
@@ -1295,7 +1341,8 @@ describe("AgentExpandedToolContent", () => {
     render(
       <AgentSubAgentCard
         subAgent={{
-          ownerThreadId: "child-thread-1",
+          childSessionId: "child-session-1",
+          parentToolCallId: "spawn-1",
           status: "running",
           name: "Repo smell analyst",
           task: "inspect the repository",
@@ -1311,7 +1358,8 @@ describe("AgentExpandedToolContent", () => {
           failureDetail: null,
           startedAtUnixMs: 1_000,
           latestActivityAtUnixMs: 101_000,
-          terminalAtUnixMs: null
+          terminalAtUnixMs: null,
+          childSessions: []
         }}
       />
     );
@@ -1336,7 +1384,8 @@ describe("AgentExpandedToolContent", () => {
     render(
       <AgentSubAgentCard
         subAgent={{
-          ownerThreadId: "child-thread-1",
+          childSessionId: "child-session-1",
+          parentToolCallId: "spawn-1",
           status: "running",
           name: null,
           task: "inspect the repository",
@@ -1349,7 +1398,8 @@ describe("AgentExpandedToolContent", () => {
           failureDetail: null,
           startedAtUnixMs: 1_000,
           latestActivityAtUnixMs: 1_000,
-          terminalAtUnixMs: null
+          terminalAtUnixMs: null,
+          childSessions: []
         }}
       />
     );

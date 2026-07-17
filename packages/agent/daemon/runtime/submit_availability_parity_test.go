@@ -5,8 +5,8 @@ import "testing"
 // PARITY TABLE: mirrored in TypeScript at
 // packages/agent/activity-core/src/selectors.test.ts
 // (deriveSubmitAvailabilityParityCases) — keep the two tables identical. The
-// GUI derives submit availability locally from turnLifecycle +
-// runtimeContext, and this table pins both derivations to the same semantics.
+// GUI derives submit availability locally from turnLifecycle, and this table
+// pins both derivations to the same semantics.
 // (The TS side additionally treats an activeTurnId without a phase as a live
 // turn — a defensive case the daemon never emits.)
 func TestSubmitAvailabilityForAuthoritySessionParity(t *testing.T) {
@@ -16,7 +16,6 @@ func TestSubmitAvailabilityForAuthoritySessionParity(t *testing.T) {
 	cases := []struct {
 		name           string
 		lifecycle      *TurnLifecycle
-		runtimeContext map[string]any
 		expectedState  string
 		expectedReason string
 	}{
@@ -58,36 +57,6 @@ func TestSubmitAvailabilityForAuthoritySessionParity(t *testing.T) {
 			lifecycle:     &TurnLifecycle{ActiveTurnID: &turnID, Phase: "settled"},
 			expectedState: "available",
 		},
-		{
-			name:      "settled with live background agents (count) -> blocked/background_agent",
-			lifecycle: &TurnLifecycle{Phase: "settled"},
-			runtimeContext: map[string]any{
-				"backgroundAgents": map[string]any{"count": 1, "items": []any{}},
-			},
-			expectedState:  "blocked",
-			expectedReason: "background_agent",
-		},
-		{
-			name:      "settled with a running background item (no status) -> blocked/background_agent",
-			lifecycle: &TurnLifecycle{Phase: "settled"},
-			runtimeContext: map[string]any{
-				"backgroundAgents": map[string]any{"count": 0, "items": []any{map[string]any{"id": "agent-1"}}},
-			},
-			expectedState:  "blocked",
-			expectedReason: "background_agent",
-		},
-		{
-			name:      "settled with only terminal background items -> available",
-			lifecycle: &TurnLifecycle{Phase: "settled"},
-			runtimeContext: map[string]any{
-				"backgroundAgents": map[string]any{"count": 0, "items": []any{
-					map[string]any{"status": "completed"},
-					map[string]any{"status": "failed"},
-					map[string]any{"status": "stopped"},
-				}},
-			},
-			expectedState: "available",
-		},
 	}
 
 	for _, tt := range cases {
@@ -95,8 +64,7 @@ func TestSubmitAvailabilityForAuthoritySessionParity(t *testing.T) {
 			t.Parallel()
 
 			session := Session{
-				TurnLifecycle:  tt.lifecycle,
-				RuntimeContext: tt.runtimeContext,
+				TurnLifecycle: tt.lifecycle,
 			}
 			availability := submitAvailabilityForAuthoritySession(session)
 			if availability == nil {

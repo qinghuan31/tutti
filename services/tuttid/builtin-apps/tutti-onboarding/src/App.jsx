@@ -4,12 +4,16 @@ import { Trans, useTranslation } from "react-i18next";
 import i18n from "./i18n";
 import { useAppLocale } from "./i18n/app-context";
 import { reportUserActiveOnce } from "./tutti-activity.js";
+import claudeCodeIcon from "../../../../../packages/agent/gui/app/renderer/assets/icons/agents/claudecode-flat-filled.svg";
+import codexIcon from "../../../../../packages/agent/gui/app/renderer/assets/icons/agents/codex-flat-filled.svg";
+import cursorIcon from "../../../../../packages/agent/gui/app/renderer/assets/icons/agents/cursor-flat-filled.svg";
+import openCodeIcon from "../../../../../packages/agent/gui/app/renderer/assets/icons/agents/opencode-flat-filled.svg";
 
 const agentTabs = [
-  { label: "Claude Code", image: "/assets/bind-claude.webp", altKey: "t_s1a" },
-  { label: "Codex", image: "/assets/bind-codex.webp", altKey: "t_s1b" },
-  { label: "Hermes Agent", soon: true },
-  { label: "OpenClaw", soon: true }
+  { icon: claudeCodeIcon, labelKey: "t_agent_claude" },
+  { icon: codexIcon, labelKey: "t_agent_codex" },
+  { icon: cursorIcon, labelKey: "t_agent_cursor" },
+  { icon: openCodeIcon, labelKey: "t_agent_opencode" }
 ];
 
 const atTabs = [
@@ -57,9 +61,10 @@ const taskControlTabs = [
 
 const sectionIcons = {
   setup: "/assets/icon-electric-plug.webp",
-  collaboration: "/assets/icon-at.png",
+  collaboration: "/assets/icon-at.webp",
   apps: "/assets/icon-toolbox.webp",
-  taskControl: "/assets/icon-clipboard.webp"
+  taskControl: "/assets/icon-clipboard.webp",
+  windowLayout: "/assets/icon-window-layout.webp"
 };
 
 function HtmlText({ as: Tag = "p", className, i18nKey }) {
@@ -130,6 +135,27 @@ function ActionButton({ action, children, className, provider }) {
     >
       <span>{children}</span>
     </button>
+  );
+}
+
+function AgentProviderList() {
+  const { t } = useTranslation();
+
+  return (
+    <div
+      aria-label={t("t_agent_list_label")}
+      className="agent-provider-list"
+      role="list"
+    >
+      {agentTabs.map((agent) => (
+        <div className="agent-provider" key={agent.labelKey} role="listitem">
+          <span className="agent-provider-icon">
+            <img alt="" aria-hidden="true" src={agent.icon} />
+          </span>
+          <b>{t(agent.labelKey)}</b>
+        </div>
+      ))}
+    </div>
   );
 }
 
@@ -268,7 +294,7 @@ function SectionTabs({ active, items, onChange }) {
   );
 }
 
-function VideoPane() {
+function VideoPane({ altKey = "t_agd1", src = "/assets/apps-agent.mp4" }) {
   const { t } = useTranslation();
   const [playing, setPlaying] = useState(false);
   const videoRef = useRef(null);
@@ -287,7 +313,7 @@ function VideoPane() {
   return (
     <div className={`shot shot-video${playing ? " playing" : ""}`}>
       <video
-        aria-label={t("t_agd1")}
+        aria-label={t(altKey)}
         controls
         controlsList="nodownload"
         loop
@@ -295,7 +321,7 @@ function VideoPane() {
         playsInline
         preload="metadata"
         ref={videoRef}
-        src="/assets/apps-agent.mp4"
+        src={src}
         onEnded={() => setPlaying(false)}
         onPause={() => setPlaying(false)}
         onPlay={() => setPlaying(true)}
@@ -559,6 +585,12 @@ export default function App() {
       icon: sectionIcons.taskControl,
       labelKey: "t_n4",
       tone: "var(--accent-claude)"
+    },
+    {
+      id: "s5",
+      icon: sectionIcons.windowLayout,
+      labelKey: "t_n5",
+      tone: "var(--tutti-purple)"
     }
   ];
 
@@ -609,8 +641,13 @@ export default function App() {
             <IconImage className="sec-ico" src={sectionIcons.setup} />
             <h2>{t("t_h1")}</h2>
           </div>
-          <HtmlText className="sec-intro" i18nKey="t_i1" />
-          <Tabs items={agentTabs} onOpen={openLightbox} variant="segment" />
+          <HtmlText className="sec-intro agent-intro" i18nKey="t_i1" />
+          <AgentProviderList />
+          <ShotImage
+            altKey="t_agent_gui_unconnected_alt"
+            onOpen={openLightbox}
+            src="/assets/agent-gui-unconnected.webp"
+          />
           <div className="btns">
             <ActionButton
               action="agent-connect"
@@ -719,6 +756,26 @@ export default function App() {
               {t("t_bg4b")}
             </ActionButton>
           </div>
+        </section>
+
+        {/* Section 5: Window auto layout */}
+        <section
+          className="sec"
+          id="s5"
+          style={{
+            "--tone": "var(--tutti-purple)",
+            "--tone-fg": "var(--white-stationary)"
+          }}
+        >
+          <div className="sec-h">
+            <IconImage className="sec-ico" src={sectionIcons.windowLayout} />
+            <h2>{t("t_h5")}</h2>
+          </div>
+          <HtmlText className="sec-intro" i18nKey="t_h5_desc" />
+          <VideoPane
+            altKey="t_window_layout_alt"
+            src="/assets/window-layout.mp4"
+          />
         </section>
 
         <footer className="end">

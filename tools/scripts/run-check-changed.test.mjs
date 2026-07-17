@@ -4,10 +4,45 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
 import {
+  isAgentActivityRuntimeBoundaryRelevant,
+  isRendererBoundaryRelevant,
   printSummary,
   runLanes,
   selectExistingLintFiles
 } from "./run-check-changed.mjs";
+
+test("renderer boundary lane covers renderer and checker changes", () => {
+  for (const file of [
+    "apps/desktop/src/renderer/src/features/workspace-workbench/services/coordinator.ts",
+    "tools/scripts/check-renderer-feature-boundaries.mjs",
+    "tools/scripts/check-renderer-feature-boundaries.test.mjs"
+  ]) {
+    assert.equal(isRendererBoundaryRelevant(file), true, file);
+  }
+  assert.equal(
+    isRendererBoundaryRelevant("apps/desktop/src/main/index.ts"),
+    false
+  );
+});
+
+test("activity runtime boundary lane covers package, desktop adapter, and checker changes", () => {
+  for (const file of [
+    "packages/agent/gui/AgentGUI.tsx",
+    "packages/agent/activity-core/src/engine/engine.ts",
+    "apps/desktop/src/renderer/src/features/workspace-agent/services/runtime.ts",
+    "apps/desktop/src/renderer/src/features/workspace-workbench/ui/Agent.tsx",
+    "tools/scripts/check-agent-activity-runtime-boundaries.mjs",
+    "tools/scripts/check-agent-activity-runtime-boundaries.test.mjs"
+  ]) {
+    assert.equal(isAgentActivityRuntimeBoundaryRelevant(file), true, file);
+  }
+  assert.equal(
+    isAgentActivityRuntimeBoundaryRelevant(
+      "apps/desktop/src/renderer/src/features/workspace-file-manager/file.ts"
+    ),
+    false
+  );
+});
 
 test("selectExistingLintFiles drops deleted lint targets", () => {
   const changedFiles = [

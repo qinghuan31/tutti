@@ -3,8 +3,10 @@ package main
 import (
 	"context"
 	"errors"
+	"fmt"
 
 	agentruntime "github.com/tutti-os/tutti/packages/agent/daemon/runtime"
+	agentactivitybiz "github.com/tutti-os/tutti/services/tuttid/biz/agentactivity"
 	agentservice "github.com/tutti-os/tutti/services/tuttid/service/agent"
 )
 
@@ -12,31 +14,61 @@ type agentRuntimeAdapter struct {
 	controller *agentruntime.Controller
 }
 
+func (a agentRuntimeAdapter) ObserveRootTurnSettled(_ context.Context, workspaceID string, agentSessionID string, turn agentactivitybiz.Turn) {
+	a.controller.ReconcileRootTurnSettlement(agentruntime.RootTurnSettlement{
+		RoomID:         workspaceID,
+		AgentSessionID: agentSessionID,
+		TurnID:         turn.TurnID,
+		Outcome:        turn.Outcome,
+	})
+}
+
 func newAgentRuntimeAdapter(controller *agentruntime.Controller) agentRuntimeAdapter {
 	return agentRuntimeAdapter{controller: controller}
 }
 
 func (a agentRuntimeAdapter) Cancel(ctx context.Context, input agentservice.RuntimeCancelInput) (agentservice.RuntimeCancelResult, error) {
+	targets := make([]agentruntime.CancelTarget, 0, len(input.Targets))
+	for _, target := range input.Targets {
+		targets = append(targets, agentruntime.CancelTarget{
+			AgentSessionID: target.AgentSessionID,
+			TurnID:         target.TurnID,
+		})
+	}
 	result, err := a.controller.Cancel(ctx, agentruntime.CancelInput{
-		RoomID:         input.WorkspaceID,
-		AgentSessionID: input.AgentSessionID,
-		Reason:         input.Reason,
+		RoomID:             input.WorkspaceID,
+		RootAgentSessionID: input.RootAgentSessionID,
+		Targets:            targets,
+		Reason:             input.Reason,
 	})
 	if err != nil {
 		return agentservice.RuntimeCancelResult{}, mapAgentRuntimeError(err)
 	}
+	confirmedTargets := make([]agentservice.RuntimeCancelTarget, 0, len(result.ConfirmedTargets))
+	for _, target := range result.ConfirmedTargets {
+		confirmedTargets = append(confirmedTargets, agentservice.RuntimeCancelTarget{
+			AgentSessionID: target.AgentSessionID,
+			TurnID:         target.TurnID,
+		})
+	}
 	return agentservice.RuntimeCancelResult{
-		AgentSessionID: result.AgentSessionID,
-		Canceled:       result.Canceled,
+		AgentSessionID:   result.AgentSessionID,
+		Canceled:         result.Canceled,
+		TargetAbsent:     result.TargetAbsent,
+		ConfirmedTargets: confirmedTargets,
 	}, nil
 }
 
 func (a agentRuntimeAdapter) GoalControl(ctx context.Context, input agentservice.RuntimeGoalControlInput) (agentservice.RuntimeGoalControlResult, error) {
 	result, err := a.controller.GoalControl(ctx, agentruntime.GoalControlInput{
-		RoomID:         input.WorkspaceID,
-		AgentSessionID: input.AgentSessionID,
-		Action:         agentruntime.GoalControlAction(input.Action),
-		Objective:      input.Objective,
+		RoomID:             input.WorkspaceID,
+		AgentSessionID:     input.AgentSessionID,
+		Action:             agentruntime.GoalControlAction(input.Action),
+		Objective:          input.Objective,
+		OperationID:        input.OperationID,
+		GoalRevision:       input.GoalRevision,
+		RepairEpoch:        input.RepairEpoch,
+		SubmissionMetadata: input.SubmissionMetadata,
 	})
 	if err != nil {
 		return agentservice.RuntimeGoalControlResult{}, mapAgentRuntimeError(err)
@@ -44,7 +76,29 @@ func (a agentRuntimeAdapter) GoalControl(ctx context.Context, input agentservice
 	return agentservice.RuntimeGoalControlResult{
 		AgentSessionID: result.AgentSessionID,
 		Goal:           result.Goal,
+		Evidence:       result.Evidence,
+		ProviderPhase:  result.ProviderPhase,
 	}, nil
+}
+
+func (a agentRuntimeAdapter) ReconcileGoal(ctx context.Context, input agentservice.RuntimeGoalControlInput) (agentservice.RuntimeGoalReconcileResult, error) {
+	result, err := a.controller.ReconcileGoal(ctx, agentruntime.GoalReconcileInput{
+		RoomID: input.WorkspaceID, AgentSessionID: input.AgentSessionID,
+	})
+	if err != nil {
+		return agentservice.RuntimeGoalReconcileResult{}, mapAgentRuntimeError(err)
+	}
+	return agentservice.RuntimeGoalReconcileResult{
+		AgentSessionID: result.AgentSessionID, Goal: result.Goal, Evidence: result.Evidence,
+	}, nil
+}
+
+func (a agentRuntimeAdapter) GoalRecoveryPolicy(ctx context.Context, input agentservice.RuntimeGoalControlInput) (agentservice.RuntimeGoalRecoveryPolicy, error) {
+	capabilities, err := a.controller.GoalCapabilities(ctx, agentruntime.GoalReconcileInput{RoomID: input.WorkspaceID, AgentSessionID: input.AgentSessionID})
+	if err != nil {
+		return agentservice.RuntimeGoalRecoveryPolicy{}, mapAgentRuntimeError(err)
+	}
+	return agentservice.RuntimeGoalRecoveryPolicy{QuerySupported: capabilities.QuerySupported, ReplaySetAfterRestart: capabilities.ReplaySetAfterRestart}, nil
 }
 
 func agentRuntimeSessionSettings(settings agentservice.ComposerSettings) *agentruntime.SessionSettings {
@@ -79,6 +133,7 @@ func (a agentRuntimeAdapter) CanResume(input agentservice.RuntimeResumeInput) bo
 		UpdatedAtUnixMS:   input.UpdatedAtUnixMS,
 		Visible:           input.Visible,
 		RuntimeContext:    cloneRuntimeContext(input.RuntimeContext),
+		ProviderTargetRef: cloneRuntimeContext(input.ProviderTargetRef),
 	})
 }
 
@@ -97,12 +152,14 @@ func (a agentRuntimeAdapter) Exec(ctx context.Context, input agentservice.Runtim
 		"content_block_count": len(input.Content),
 	})
 	result, err := a.controller.Exec(ctx, agentruntime.ExecInput{
-		RoomID:         input.WorkspaceID,
-		AgentSessionID: input.AgentSessionID,
-		Content:        runtimePromptContentFromService(input.Content),
-		DisplayPrompt:  input.DisplayPrompt,
-		Guidance:       input.Guidance,
-		Metadata:       cloneRuntimeContext(input.Metadata),
+		RoomID:           input.WorkspaceID,
+		AgentSessionID:   input.AgentSessionID,
+		Content:          runtimePromptContentFromService(input.Content),
+		DisplayPrompt:    input.DisplayPrompt,
+		InitialTitle:     input.InitialTitle,
+		InitialTitleBase: input.InitialTitleBase,
+		Guidance:         input.Guidance,
+		Metadata:         cloneRuntimeContext(input.Metadata),
 	})
 	if err != nil {
 		agentservice.LogSubmitTrace("runtime_adapter.exec.failed", input.WorkspaceID, input.AgentSessionID, input.Metadata, map[string]any{
@@ -190,18 +247,28 @@ func runtimePromptContentFromService(content []agentservice.PromptContentBlock) 
 	return result
 }
 
-func (a agentRuntimeAdapter) SubmitInteractive(ctx context.Context, input agentservice.RuntimeSubmitInteractiveInput) error {
-	if _, err := a.controller.SubmitInteractive(ctx, agentruntime.SubmitInteractiveInput{
-		RoomID:         input.WorkspaceID,
-		AgentSessionID: input.AgentSessionID,
-		RequestID:      input.RequestID,
-		Action:         input.Action,
-		OptionID:       input.OptionID,
-		Payload:        input.Payload,
-	}); err != nil {
-		return mapAgentRuntimeError(err)
+func (a agentRuntimeAdapter) SubmitInteractive(ctx context.Context, input agentservice.RuntimeSubmitInteractiveInput) (agentservice.RuntimeSubmitInteractiveResult, error) {
+	result, err := a.controller.SubmitInteractive(ctx, agentruntime.SubmitInteractiveInput{
+		RoomID:             input.WorkspaceID,
+		RootAgentSessionID: input.RootAgentSessionID,
+		AgentSessionID:     input.AgentSessionID,
+		TurnID:             input.TurnID,
+		RequestID:          input.RequestID,
+		Action:             input.Action,
+		OptionID:           input.OptionID,
+		Payload:            input.Payload,
+	})
+	mapped := agentservice.RuntimeSubmitInteractiveResult{
+		Disposition: agentservice.RuntimeInteractiveDisposition(result.Disposition),
 	}
-	return nil
+	if err != nil {
+		return mapped, mapAgentRuntimeError(err)
+	}
+	return mapped, nil
+}
+
+func (a agentRuntimeAdapter) InteractiveDisposition(workspaceID string, rootAgentSessionID string, agentSessionID string, turnID string, requestID string) agentservice.RuntimeInteractiveDisposition {
+	return agentservice.RuntimeInteractiveDisposition(a.controller.InteractiveDisposition(workspaceID, rootAgentSessionID, agentSessionID, turnID, requestID))
 }
 
 func (a agentRuntimeAdapter) UpdateSettings(ctx context.Context, input agentservice.RuntimeUpdateSettingsInput) error {
@@ -222,7 +289,7 @@ func (a agentRuntimeAdapter) UpdateSettings(ctx context.Context, input agentserv
 	return nil
 }
 
-func (a agentRuntimeAdapter) Resume(ctx context.Context, input agentservice.RuntimeResumeInput) (agentservice.RuntimeSession, error) {
+func (a agentRuntimeAdapter) Resume(ctx context.Context, input agentservice.RuntimeResumeInput) (agentservice.ProviderRuntimeSession, error) {
 	session, err := a.controller.Resume(ctx, agentruntime.ResumeInput{
 		RoomID:            input.WorkspaceID,
 		AgentSessionID:    input.AgentSessionID,
@@ -239,59 +306,61 @@ func (a agentRuntimeAdapter) Resume(ctx context.Context, input agentservice.Runt
 		UpdatedAtUnixMS:   input.UpdatedAtUnixMS,
 		Visible:           input.Visible,
 		RuntimeContext:    cloneRuntimeContext(input.RuntimeContext),
+		ProviderTargetRef: cloneRuntimeContext(input.ProviderTargetRef),
 		RecreateIfMissing: input.RecreateIfMissing,
 	})
 	if err != nil {
-		return agentservice.RuntimeSession{}, mapAgentRuntimeError(err)
+		return agentservice.ProviderRuntimeSession{}, mapAgentRuntimeError(err)
 	}
 	return a.runtimeSessionWithState(session), nil
 }
 
-func (a agentRuntimeAdapter) Session(workspaceID string, agentSessionID string) (agentservice.RuntimeSession, bool) {
+func (a agentRuntimeAdapter) Session(workspaceID string, agentSessionID string) (agentservice.ProviderRuntimeSession, bool) {
 	session, ok := a.controller.Session(workspaceID, agentSessionID)
 	if !ok {
-		return agentservice.RuntimeSession{}, false
+		return agentservice.ProviderRuntimeSession{}, false
 	}
 	return a.runtimeSessionWithState(session), true
 }
 
-func (a agentRuntimeAdapter) SetVisible(ctx context.Context, input agentservice.RuntimeSetVisibleInput) (agentservice.RuntimeSession, error) {
+func (a agentRuntimeAdapter) SetVisible(ctx context.Context, input agentservice.RuntimeSetVisibleInput) (agentservice.ProviderRuntimeSession, error) {
 	session, err := a.controller.SetVisible(ctx, input.WorkspaceID, input.AgentSessionID, input.Visible)
 	if err != nil {
-		return agentservice.RuntimeSession{}, mapAgentRuntimeError(err)
+		return agentservice.ProviderRuntimeSession{}, mapAgentRuntimeError(err)
 	}
 	return a.runtimeSessionWithState(session), nil
 }
 
-func (a agentRuntimeAdapter) SetTitle(ctx context.Context, input agentservice.RuntimeSetTitleInput) (agentservice.RuntimeSession, error) {
+func (a agentRuntimeAdapter) SetTitle(ctx context.Context, input agentservice.RuntimeSetTitleInput) (agentservice.ProviderRuntimeSession, error) {
 	session, err := a.controller.SetTitle(ctx, input.WorkspaceID, input.AgentSessionID, input.Title)
 	if err != nil {
-		return agentservice.RuntimeSession{}, mapAgentRuntimeError(err)
+		return agentservice.ProviderRuntimeSession{}, mapAgentRuntimeError(err)
 	}
 	return a.runtimeSessionWithState(session), nil
 }
 
-func (a agentRuntimeAdapter) Sessions(workspaceID string) []agentservice.RuntimeSession {
+func (a agentRuntimeAdapter) Sessions(workspaceID string) []agentservice.ProviderRuntimeSession {
 	sessions := a.controller.Sessions(workspaceID)
-	result := make([]agentservice.RuntimeSession, 0, len(sessions))
+	result := make([]agentservice.ProviderRuntimeSession, 0, len(sessions))
 	for _, session := range sessions {
 		result = append(result, a.runtimeSessionWithState(session))
 	}
 	return result
 }
 
-func (a agentRuntimeAdapter) Start(ctx context.Context, input agentservice.RuntimeStartInput) (agentservice.RuntimeSession, error) {
+func (a agentRuntimeAdapter) Start(ctx context.Context, input agentservice.RuntimeStartInput) (agentservice.ProviderRuntimeSession, error) {
 	result, err := a.controller.Start(ctx, agentruntime.StartInput{
-		RoomID:            input.WorkspaceID,
-		AgentSessionID:    input.AgentSessionID,
-		AgentTargetID:     input.AgentTargetID,
-		Provider:          input.Provider,
-		CWD:               input.Cwd,
-		Env:               append([]string(nil), input.Env...),
-		Title:             input.Title,
-		ProviderTargetRef: cloneRuntimeContext(input.ProviderTargetRef),
-		RuntimeContext:    cloneRuntimeContext(input.RuntimeContext),
-		PermissionModeID:  input.PermissionModeID,
+		RoomID:                  input.WorkspaceID,
+		AgentSessionID:          input.AgentSessionID,
+		AgentTargetID:           input.AgentTargetID,
+		Provider:                input.Provider,
+		CWD:                     input.Cwd,
+		Env:                     append([]string(nil), input.Env...),
+		Title:                   input.Title,
+		InitialTitleEstablished: input.InitialTitleEstablished,
+		ProviderTargetRef:       cloneRuntimeContext(input.ProviderTargetRef),
+		RuntimeContext:          cloneRuntimeContext(input.RuntimeContext),
+		PermissionModeID:        input.PermissionModeID,
 		Settings: &agentruntime.SessionSettings{
 			Model:                  input.Model,
 			ReasoningEffort:        input.ReasoningEffort,
@@ -301,10 +370,11 @@ func (a agentRuntimeAdapter) Start(ctx context.Context, input agentservice.Runti
 			PermissionModeID:       input.PermissionModeID,
 			ConversationDetailMode: input.ConversationDetailMode,
 		},
-		Visible: input.Visible,
+		Visible:     input.Visible,
+		Provisional: input.Provisional,
 	})
 	if err != nil {
-		return agentservice.RuntimeSession{}, mapAgentRuntimeError(err)
+		return agentservice.ProviderRuntimeSession{}, mapAgentRuntimeError(err)
 	}
 	return a.runtimeSessionWithState(result.Session), nil
 }
@@ -328,29 +398,30 @@ func agentRuntimeStreamEvents(events <-chan agentruntime.StreamEvent) <-chan age
 	return out
 }
 
-func agentRuntimeSession(session agentruntime.Session) agentservice.RuntimeSession {
-	return agentservice.RuntimeSession{
-		ID:                 session.AgentSessionID,
-		WorkspaceID:        session.RoomID,
-		AgentTargetID:      session.AgentTargetID,
-		Provider:           session.Provider,
-		ProviderSessionID:  session.ProviderSessionID,
-		Cwd:                session.CWD,
-		Env:                append([]string(nil), session.Env...),
-		Settings:           agentRuntimeComposerSettings(session.Settings),
-		Status:             session.Status,
-		TurnLifecycle:      serviceTurnLifecyclePointerFromRuntime(session.TurnLifecycle),
-		SubmitAvailability: serviceSubmitAvailabilityPointerFromRuntime(session.SubmitAvailability),
-		Visible:            session.Visible,
-		Title:              session.Title,
-		LastError:          session.LastError,
-		RuntimeContext:     cloneRuntimeContext(session.RuntimeContext),
-		CreatedAtUnixMS:    session.CreatedAtUnixMS,
-		UpdatedAtUnixMS:    session.UpdatedAtUnixMS,
+func agentRuntimeSession(session agentruntime.Session) agentservice.ProviderRuntimeSession {
+	return agentservice.ProviderRuntimeSession{
+		ID:                      session.AgentSessionID,
+		WorkspaceID:             session.RoomID,
+		AgentTargetID:           session.AgentTargetID,
+		Provider:                session.Provider,
+		ProviderSessionID:       session.ProviderSessionID,
+		Cwd:                     session.CWD,
+		Env:                     append([]string(nil), session.Env...),
+		Settings:                agentRuntimeComposerSettings(session.Settings),
+		Status:                  session.Status,
+		TurnLifecycle:           serviceTurnLifecyclePointerFromRuntime(session.TurnLifecycle),
+		SubmitAvailability:      serviceSubmitAvailabilityPointerFromRuntime(session.SubmitAvailability),
+		Visible:                 session.Visible,
+		Title:                   session.Title,
+		InitialTitleEstablished: session.InitialTitleEstablished,
+		LastError:               session.LastError,
+		RuntimeContext:          cloneRuntimeContext(session.RuntimeContext),
+		CreatedAtUnixMS:         session.CreatedAtUnixMS,
+		UpdatedAtUnixMS:         session.UpdatedAtUnixMS,
 	}
 }
 
-func (a agentRuntimeAdapter) runtimeSessionWithState(session agentruntime.Session) agentservice.RuntimeSession {
+func (a agentRuntimeAdapter) runtimeSessionWithState(session agentruntime.Session) agentservice.ProviderRuntimeSession {
 	result := agentRuntimeSession(session)
 	state, err := a.controller.State(session.RoomID, session.AgentSessionID)
 	if err != nil {
@@ -368,9 +439,6 @@ func (a agentRuntimeAdapter) runtimeSessionWithState(session agentruntime.Sessio
 	if state.SubmitAvailability != nil {
 		result.SubmitAvailability = serviceSubmitAvailabilityPointerFromRuntime(state.SubmitAvailability)
 	}
-	if state.PendingInteractive != nil {
-		result.PendingInteractive = serviceInteractivePromptFromRuntime(state.PendingInteractive)
-	}
 	if state.Settings != nil {
 		result.Settings = agentRuntimeComposerSettings(state.Settings)
 	}
@@ -379,22 +447,6 @@ func (a agentRuntimeAdapter) runtimeSessionWithState(session agentruntime.Sessio
 		result.UpdatedAtUnixMS = state.UpdatedAtUnixMS
 	}
 	return result
-}
-
-func serviceInteractivePromptFromRuntime(value *agentruntime.SessionInteractivePrompt) *agentservice.RuntimeInteractivePrompt {
-	if value == nil {
-		return nil
-	}
-	return &agentservice.RuntimeInteractivePrompt{
-		Kind:      value.Kind,
-		RequestID: value.RequestID,
-		ToolName:  value.ToolName,
-		Status:    value.Status,
-		Input:     cloneRuntimeContext(value.Input),
-		Output:    cloneRuntimeContext(value.Output),
-		Error:     cloneRuntimeContext(value.Error),
-		Metadata:  cloneRuntimeContext(value.Metadata),
-	}
 }
 
 func serviceSubmitAvailabilityPointerFromRuntime(value *agentruntime.SubmitAvailability) *agentservice.SubmitAvailability {
@@ -472,6 +524,15 @@ func mapAgentRuntimeError(err error) error {
 	}
 	if errors.Is(err, agentruntime.ErrSessionNotFound) {
 		return agentservice.ErrSessionNotFound
+	}
+	if errors.Is(err, agentruntime.ErrSessionDisconnected) {
+		return fmt.Errorf("%w: %v", agentservice.ErrRuntimeSessionDisconnected, err)
+	}
+	if errors.Is(err, agentruntime.ErrInteractiveRequestNotLive) {
+		return fmt.Errorf("%w: %v", agentservice.ErrInteractiveRequestNotLive, err)
+	}
+	if errors.Is(err, agentruntime.ErrInteractiveAlreadyAnswered) {
+		return fmt.Errorf("%w: %v", agentservice.ErrInteractiveAlreadyAnswered, err)
 	}
 	if errors.Is(err, agentruntime.ErrSessionNoActiveTurn) {
 		return agentservice.ErrSessionNoActiveTurn

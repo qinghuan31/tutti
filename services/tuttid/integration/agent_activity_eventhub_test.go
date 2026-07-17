@@ -73,23 +73,55 @@ func TestAgentActivityProjectionPublishesEventHubUpdatesAndSupportsReconcile(t *
 	}
 
 	stateEvent := receiveAgentActivityEvent(t, events, session)
-	if stateEvent.EventType != "state_patch" {
-		t.Fatalf("state event type = %q, want state_patch", stateEvent.EventType)
+	if stateEvent.EventType != "session_reconcile_required" {
+		t.Fatalf("state event type = %q, want session_reconcile_required", stateEvent.EventType)
 	}
 	stateData := agentActivityDataMap(t, stateEvent)
 	if stateData["lastEventUnixMs"] != float64(100) {
 		t.Fatalf("state event data = %#v, want lastEventUnixMs 100", stateData)
 	}
-	if stateData["title"] != "Hello from activity" || stateData["lifecycleStatus"] != "running" {
-		t.Fatalf("state event data = %#v, want inline title/status", stateData)
+	if _, leaked := stateData["lifecycleStatus"]; leaked {
+		t.Fatalf("state event data = %#v, session lifecycle must not leak into v2 event", stateData)
 	}
 
 	persisted, ok := projection.GetSession(workspaceID, agentSessionID)
 	if !ok {
 		t.Fatal("GetSession() ok = false, want true")
 	}
-	if persisted.Title != "Hello from activity" || persisted.Status != "working" {
+	if persisted.Title != "Hello from activity" || persisted.ActiveTurnID != "" {
 		t.Fatalf("persisted session = %#v", persisted)
+	}
+
+	turnID := "turn-1"
+	turnReply, err := projection.ReportSessionState(ctx, agentsessionstore.ReportSessionStateInput{
+		WorkspaceID: workspaceID, AgentSessionID: agentSessionID,
+		SessionOrigin: agentsessionstore.WorkspaceAgentSessionOriginRuntime,
+		Source:        agentsessionstore.EventSource{Provider: "codex", ProviderSessionID: "provider-session-1"},
+		State: agentsessionstore.WorkspaceAgentSessionStateUpdate{
+			LifecycleStatus: "running", OccurredAtUnixMS: 105,
+			Turn: &agentsessionstore.WorkspaceAgentTurnStateUpdate{
+				TurnID: turnID, ActiveTurnID: &turnID, Phase: agentactivitybiz.TurnPhaseSubmitted,
+				Origin: agentactivitybiz.TurnOriginUserPrompt, StartedAtUnixMS: 105,
+			},
+		},
+	})
+	if err != nil || !turnReply.Accepted {
+		t.Fatalf("ReportSessionState(turn) reply=%#v error=%v", turnReply, err)
+	}
+	receivedTurnUpdate := false
+	receivedSessionReconcile := false
+	for range 2 {
+		switch event := receiveAgentActivityEvent(t, events, session); event.EventType {
+		case "turn_update":
+			receivedTurnUpdate = true
+		case "session_reconcile_required":
+			receivedSessionReconcile = true
+		default:
+			t.Fatalf("turn state report event type = %q", event.EventType)
+		}
+	}
+	if !receivedTurnUpdate || !receivedSessionReconcile {
+		t.Fatalf("turn state report events: turn=%v reconcile=%v", receivedTurnUpdate, receivedSessionReconcile)
 	}
 
 	messageReply, err := projection.ReportSessionMessages(ctx, agentsessionstore.ReportSessionMessagesInput{
@@ -124,6 +156,10 @@ func TestAgentActivityProjectionPublishesEventHubUpdatesAndSupportsReconcile(t *
 	messages, ok := messageData["messages"].([]any)
 	if !ok || len(messages) != 1 {
 		t.Fatalf("message event data = %#v, want one inline message", messageData)
+	}
+	inlineMessage, ok := messages[0].(map[string]any)
+	if !ok || inlineMessage["sequence"] != float64(1) {
+		t.Fatalf("inline message = %#v, want durable sequence 1", messages[0])
 	}
 
 	page, ok := projection.ListSessionMessages(agentactivitybiz.ListSessionMessagesInput{

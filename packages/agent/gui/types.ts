@@ -46,7 +46,6 @@ export interface AgentGUINodeData {
   provider: AgentGUIProvider;
   agentTargetId?: string | null;
   lastActiveAgentSessionId: string | null;
-  lastActiveConversationTitle?: string | null;
   conversationCount?: number | null;
   conversationRailWidthPx?: number | null;
   conversationRailCollapsed?: boolean | null;
@@ -60,17 +59,25 @@ export interface AgentGUINodeData {
   > | null;
 }
 
-export type AgentGUIProvider = Extract<
-  AgentProvider,
-  | "claude-code"
-  | "codex"
-  | "tutti-agent"
-  | "cursor"
-  | "nexight"
-  | "hermes"
-  | "openclaw"
-  | "opencode"
->;
+/**
+ * Open runtime metadata reported by an Agent Target.
+ *
+ * Built-in providers still use AgentProvider, while externally installed ACP
+ * extensions use namespaced values such as `acp:gemini`.
+ */
+export type AgentGUIProvider = string;
+
+/**
+ * Stable identifiers for the starter entries shown below the empty new-session
+ * composer. Hosts can pass these values to `AgentGUI.disabled` to hide entries
+ * that should not be available in their integration.
+ */
+export type AgentGUIHomeSuggestionId =
+  | "meet-tutti"
+  | "task-breakdown"
+  | "quality-review"
+  | "agent-interaction"
+  | "import-session";
 
 export type AgentGUIAgentAvailabilityStatus =
   | "ready"
@@ -104,37 +111,58 @@ export interface AgentGUIAgent {
   agentTargetId: string;
   name: string;
   iconUrl: string;
+  heroImageUrl?: string | null;
   description?: string | null;
   owner?: AgentGUIAgentOwner | null;
   availability: AgentGUIAgentAvailability;
   provider: AgentGUIProvider;
 }
 
+export type AgentGUIAgentDirectoryStatus =
+  | "idle"
+  | "loading"
+  | "ready"
+  | "error";
+
+export interface AgentGUIAgentDirectorySnapshot {
+  agents: readonly AgentGUIAgent[];
+  capturedAtUnixMs: number | null;
+  error: string | null;
+  status: AgentGUIAgentDirectoryStatus;
+}
+
+export interface AgentGUIAgentDirectoryPort {
+  getSnapshot(): AgentGUIAgentDirectorySnapshot;
+  subscribe(listener: () => void): () => void;
+}
+
 export interface AgentGUIAllAgentsPresentation {
   iconUrl?: string | null;
 }
 
-export interface AgentGUIProviderTargetRef {
+export interface AgentGUIAgentTargetRef {
   kind: string;
   provider: AgentGUIProvider;
   [key: string]: unknown;
 }
 
-export interface AgentGUIProviderTargetBadge {
+export interface AgentGUIAgentTargetBadge {
   iconUrl: string;
   label?: string;
 }
 
-export interface AgentGUIProviderTarget {
+export interface AgentGUIAgentTarget {
   targetId: string;
   agentTargetId?: string | null;
   provider: AgentGUIProvider;
-  ref: AgentGUIProviderTargetRef;
+  ref: AgentGUIAgentTargetRef;
   label: string;
   description?: string;
   iconUrl?: string | null;
-  badge?: AgentGUIProviderTargetBadge | null;
+  heroImageUrl?: string | null;
+  badge?: AgentGUIAgentTargetBadge | null;
   ownerLabel?: string;
+  availability?: AgentGUIAgentAvailability;
   disabled?: boolean;
   unavailableReason?: string;
 }

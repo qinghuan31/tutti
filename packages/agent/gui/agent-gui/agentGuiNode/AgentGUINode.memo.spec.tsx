@@ -6,8 +6,14 @@ import type {
   AgentComposerDraft,
   AgentGUINodeViewModel
 } from "./model/agentGuiNodeTypes";
+import {
+  groupAgentGUINodeViewModelFixture,
+  type AgentGUINodeViewModelFixtureOverrides,
+  type FlatAgentGUINodeViewModelFixture
+} from "./model/AgentGUINodeViewModel.fixture";
 import { AgentGUINode } from "./AgentGUINode";
-import { createLocalAgentGUIProviderTarget } from "../../providerTargets";
+import { createLocalAgentGUIAgentTarget } from "../../agentTargets";
+import { buildAgentComposerDraft } from "./model/agentComposerDraft";
 
 const { agentGuiNodeViewSpy } = vi.hoisted(() => ({
   agentGuiNodeViewSpy: vi.fn()
@@ -44,16 +50,10 @@ vi.mock("./controller/useAgentGUINodeController", () => ({
       removeQueuedPrompt: vi.fn(),
       editQueuedPrompt: vi.fn(),
       removeProject: vi.fn(),
-      requestDeleteProjectConversations: vi.fn(),
-      cancelDeleteProjectConversations: vi.fn(),
       confirmDeleteProjectConversations: vi.fn(),
-      requestDeleteConversations: vi.fn(),
-      cancelDeleteConversations: vi.fn(),
-      confirmDeleteConversations: vi.fn(),
       requestDeleteConversation: vi.fn(),
       retryActivation: vi.fn(),
       continueInNewConversation: vi.fn(),
-      retryOpenclawGateway: vi.fn(),
       cancelDeleteConversation: vi.fn(),
       confirmDeleteConversation: vi.fn()
     }
@@ -103,19 +103,21 @@ describe("AgentGUINode memoization", () => {
   it("rerenders when its own provider probe changes", () => {
     mockViewModel = createViewModel();
     const props = createProps({
-      workspaceAgentProbes: {
-        snapshot: {
-          workspaceId: "workspace-1",
-          capturedAtUnixMs: 1,
-          providers: [
-            {
-              provider: "codex",
-              availability: { status: "available", detailsVisible: false }
-            }
-          ]
-        },
-        isLoadingAvailability: false,
-        isLoadingUsage: false
+      runtimeRequests: {
+        agentProbes: {
+          snapshot: {
+            workspaceId: "workspace-1",
+            capturedAtUnixMs: 1,
+            providers: [
+              {
+                provider: "codex",
+                availability: { status: "available", detailsVisible: false }
+              }
+            ]
+          },
+          isLoadingAvailability: false,
+          isLoadingUsage: false
+        }
       }
     });
     const { rerender } = render(<AgentGUINode {...props} />);
@@ -126,20 +128,26 @@ describe("AgentGUINode memoization", () => {
     rerender(
       <AgentGUINode
         {...props}
-        workspaceAgentProbes={{
-          snapshot: {
-            workspaceId: "workspace-1",
-            capturedAtUnixMs: 2,
-            providers: [
-              {
-                provider: "codex",
-                availability: { status: "unavailable", detailsVisible: false },
-                lastError: { code: "auth_required", message: "Sign in again" }
-              }
-            ]
-          },
-          isLoadingAvailability: false,
-          isLoadingUsage: false
+        runtimeRequests={{
+          ...props.runtimeRequests,
+          agentProbes: {
+            snapshot: {
+              workspaceId: "workspace-1",
+              capturedAtUnixMs: 2,
+              providers: [
+                {
+                  provider: "codex",
+                  availability: {
+                    status: "unavailable",
+                    detailsVisible: false
+                  },
+                  lastError: { code: "auth_required", message: "Sign in again" }
+                }
+              ]
+            },
+            isLoadingAvailability: false,
+            isLoadingUsage: false
+          }
         }}
       />
     );
@@ -176,77 +184,38 @@ describe("AgentGUINode memoization", () => {
 
     expect(agentGuiNodeViewSpy).toHaveBeenCalledTimes(1);
   });
-
-  it("rerenders when the legacy provider target identity changes", () => {
-    mockViewModel = createViewModel();
-    const props = createProps({
-      state: createState({
-        agentTargetId: "shared-agent:codex-a"
-      })
-    });
-    const { rerender } = render(<AgentGUINode {...props} />);
-
-    expect(agentGuiNodeViewSpy).toHaveBeenCalledTimes(1);
-    agentGuiNodeViewSpy.mockClear();
-
-    rerender(
-      <AgentGUINode
-        {...props}
-        state={createState({
-          agentTargetId: "shared-agent:codex-b"
-        })}
-      />
-    );
-
-    expect(agentGuiNodeViewSpy).toHaveBeenCalledTimes(1);
-  });
-
-  it("rerenders when the active conversation title changes", () => {
-    mockViewModel = createViewModel();
-    const props = createProps({
-      state: createState({
-        lastActiveAgentSessionId: "session-1",
-        lastActiveConversationTitle: "Old title"
-      })
-    });
-    const { rerender } = render(<AgentGUINode {...props} />);
-
-    expect(agentGuiNodeViewSpy).toHaveBeenCalledTimes(1);
-    agentGuiNodeViewSpy.mockClear();
-
-    rerender(
-      <AgentGUINode
-        {...props}
-        state={createState({
-          lastActiveAgentSessionId: "session-1",
-          lastActiveConversationTitle: "New title"
-        })}
-      />
-    );
-
-    expect(agentGuiNodeViewSpy).toHaveBeenCalledTimes(1);
-  });
 });
 
 function createProps(
   overrides: Partial<Parameters<typeof AgentGUINode>[0]> = {}
 ): Parameters<typeof AgentGUINode>[0] {
   return {
-    nodeId: "agent-gui-1",
-    workspaceId: "room-1",
-    currentUserId: "user-1",
-    workspacePath: "/workspace",
-    agentSettings: { avoidGroupingEdits: false },
-    title: "Codex",
+    identity: {
+      nodeId: "agent-gui-1",
+      workspaceId: "room-1",
+      currentUserId: "user-1",
+      title: "Codex"
+    },
+    workspace: {
+      path: "/workspace",
+      agentSettings: { avoidGroupingEdits: false }
+    },
+    frame: {
+      position: { x: 80, y: 56 },
+      width: 880,
+      height: 520,
+      desktopSize: { width: 1280, height: 720 },
+      isActive: true
+    },
     state: createState(),
-    position: { x: 80, y: 56 },
-    width: 880,
-    height: 520,
-    desktopSize: { width: 1280, height: 720 },
-    isActive: true,
-    onClose: vi.fn(),
-    onResize: vi.fn<(frame: NodeFrame) => void>(),
-    onUpdateNode: vi.fn(),
+    runtimeRequests: {},
+    hostCapabilities: {},
+    hostActions: {
+      onClose: vi.fn(),
+      onResize: vi.fn<(frame: NodeFrame) => void>(),
+      onUpdateNode: vi.fn()
+    },
+    renderSlots: {},
     ...overrides
   };
 }
@@ -264,10 +233,12 @@ function createState(
 }
 
 function createViewModel(
-  overrides: Partial<AgentGUINodeViewModel> = {}
+  overrides: AgentGUINodeViewModelFixtureOverrides = {}
 ): AgentGUINodeViewModel {
-  const draftContent: AgentComposerDraft = { prompt: "", images: [] };
-  return {
+  const draftContent: AgentComposerDraft = buildAgentComposerDraft({
+    prompt: ""
+  });
+  return groupAgentGUINodeViewModelFixture({
     workspaceId: "room-1",
     data: createState(),
     activeConversationId: null,
@@ -276,9 +247,9 @@ function createViewModel(
     userProjects: [],
     conversation: null,
     conversationDetail: null,
-    selectedProviderTarget: createLocalAgentGUIProviderTarget("codex"),
-    providerTargets: [createLocalAgentGUIProviderTarget("codex")],
-    providerTargetsLoading: false,
+    selectedAgentTarget: createLocalAgentGUIAgentTarget("codex"),
+    agentTargets: [createLocalAgentGUIAgentTarget("codex")],
+    agentTargetsLoading: false,
     conversationFilter: { kind: "all" },
     draftPrompt: "",
     draftContent,
@@ -290,16 +261,13 @@ function createViewModel(
     },
     pendingInteractivePrompt: null,
     queuedPrompts: [],
+    queueStatus: "active",
     canSubmit: true,
     canQueueWhileBusy: false,
     isSubmitting: false,
     isInterrupting: false,
-    canCancel: true,
-    canSubmitInteractive: true,
-    canGoalControl: true,
-    canUploadAttachment: true,
     promptImagesSupported: true,
-    backgroundAgentCount: 0,
+    availability: "ready",
     listError: null,
     isCreatingConversation: false,
     isLoadingConversations: false,
@@ -326,9 +294,8 @@ function createViewModel(
       availableModels: [],
       availableReasoningEfforts: []
     },
-    openclawGateway: null,
     availableCommands: [],
     availableSkills: [],
     ...overrides
-  } as AgentGUINodeViewModel;
+  } as FlatAgentGUINodeViewModelFixture);
 }

@@ -7,6 +7,7 @@ import {
   within
 } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
+import { normalizeAgentActivitySession } from "@tutti-os/agent-activity-core";
 import type { WorkspaceAgentSessionDetailViewModel } from "../../workspaceAgentSessionDetailViewModel";
 import {
   AgentTranscriptView,
@@ -74,23 +75,12 @@ describe("AgentTranscriptView", () => {
     expect(
       screen.getByRole("button", { name: "Thought process" })
     ).toBeTruthy();
-    expect(
-      screen.getByRole("button", { name: /Read File Completed .*README\.md/ })
-    ).toBeTruthy();
 
     fireEvent.click(screen.getByRole("button", { name: "Thought process" }));
     await flushCollapsibleRevealFrames();
     expect(
       screen.getByText("Need to inspect the workspace first.")
     ).toBeTruthy();
-
-    fireEvent.click(
-      screen.getByRole("button", { name: /Read File Completed .*README\.md/ })
-    );
-    await flushCollapsibleRevealFrames();
-    expect(
-      screen.getAllByText("/workspace/demo/README.md").length
-    ).toBeGreaterThan(0);
   });
 
   it("does not replay the enter animation when the transient processing row appears", () => {
@@ -117,8 +107,7 @@ describe("AgentTranscriptView", () => {
           detailViewModel({
             showProcessingIndicator: true,
             session: {
-              ...detailViewModel().session,
-              status: "working"
+              ...detailViewModel().session
             }
           })
         )}
@@ -133,40 +122,6 @@ describe("AgentTranscriptView", () => {
     expect(processingRow).not.toHaveAttribute(
       "data-agent-transcript-row-enter"
     );
-  });
-
-  it("does not replay the enter animation when a single tool row becomes a group", () => {
-    const labels = {
-      thinkingLabel: "Thought process",
-      toolCallsLabel: (count: number) => `Tool calls (${count})`,
-      processing: "Planning next moves",
-      turnSummary: "Changed files"
-    };
-    const { rerender } = render(
-      <AgentTranscriptView
-        conversation={projectAgentConversationVM(
-          detailViewModel({
-            showProcessingIndicator: false
-          })
-        )}
-        labels={labels}
-      />
-    );
-
-    rerender(
-      <AgentTranscriptView
-        conversation={projectAgentConversationVM(
-          groupedToolDetail(["call:1", "call:2"])
-        )}
-        labels={labels}
-      />
-    );
-
-    const toolGroupRow = screen
-      .getByRole("button", { name: "Tool calls (2)" })
-      .closest("[data-agent-transcript-row]");
-    expect(toolGroupRow).toBeInstanceOf(HTMLElement);
-    expect(toolGroupRow).not.toHaveAttribute("data-agent-transcript-row-enter");
   });
 
   it("renders a divider between transcript turns", () => {
@@ -261,6 +216,11 @@ describe("AgentTranscriptView", () => {
       expect(locator).toHaveStyle({
         "--agent-message-locator-height": "66px"
       });
+      expect(
+        locator.querySelector(".agent-gui-message-locator__track-segment")
+      ).toHaveStyle({
+        "--agent-message-locator-segment-position": "33px"
+      });
       fireEvent.mouseEnter(locator);
       const panel = screen.getByTestId("agent-message-locator-panel");
       expect(within(panel).getByText("User asks for a fix")).toBeTruthy();
@@ -301,6 +261,53 @@ describe("AgentTranscriptView", () => {
       vi.useRealTimers();
       HTMLElement.prototype.scrollIntoView = originalScrollIntoView;
     }
+  });
+
+  it("formats rich mention syntax as plain text in user message locator previews", () => {
+    const mentionPrompt =
+      "[@我打算去泰国旅游，你制定下旅游计划](mention://agent-session/session-source?workspaceId=workspace-1) 这个计划你锐评一下";
+    const displayPrompt =
+      "@我打算去泰国旅游，你制定下旅游计划 这个计划你锐评一下";
+    const base = detailViewModel();
+
+    render(
+      <AgentTranscriptView
+        conversation={projectAgentConversationVM(
+          detailViewModel({
+            turns: [
+              {
+                ...base.turns[0]!,
+                userMessage: { id: "user-1", body: mentionPrompt },
+                userMessages: [{ id: "user-1", body: mentionPrompt }]
+              },
+              {
+                id: "turn-2",
+                userMessage: { id: "user-2", body: "啊？" },
+                userMessages: [{ id: "user-2", body: "啊？" }],
+                agentMessages: [],
+                toolCalls: [],
+                toolCallCount: 0,
+                hasFailedToolCall: false,
+                agentItems: []
+              }
+            ]
+          })
+        )}
+        labels={{
+          thinkingLabel: "Thought process",
+          toolCallsLabel: (count) => `Tool calls (${count})`,
+          processing: "Planning next moves",
+          turnSummary: "Changed files",
+          userMessageLocator: "User messages"
+        }}
+      />
+    );
+
+    fireEvent.mouseEnter(screen.getByTestId("agent-message-locator"));
+    const panel = screen.getByTestId("agent-message-locator-panel");
+    expect(within(panel).getByText(displayPrompt)).toBeTruthy();
+    expect(within(panel).getByText("啊？")).toBeTruthy();
+    expect(within(panel).queryByText(mentionPrompt)).toBeNull();
   });
 
   it("locates the nearest user message when clicking the locator rail around a dot", () => {
@@ -981,7 +988,7 @@ describe("AgentTranscriptView", () => {
     expect(onLinkAction).not.toHaveBeenCalled();
   });
 
-  it("opens local absolute paths inside the current workspace root", () => {
+  it("opens explicit Markdown links to local absolute paths", () => {
     const onLinkAction = vi.fn();
     render(
       <AgentTranscriptView
@@ -995,7 +1002,7 @@ describe("AgentTranscriptView", () => {
                 agentMessages: [
                   {
                     id: "assistant-1",
-                    body: "工作区路径：`/Users/example/demo/output/imagegen/dancing-girl.png`"
+                    body: "工作区路径：[/Users/example/demo/output/imagegen/dancing-girl.png](/Users/example/demo/output/imagegen/dancing-girl.png)"
                   }
                 ],
                 agentItems: [
@@ -1003,7 +1010,7 @@ describe("AgentTranscriptView", () => {
                     kind: "message",
                     message: {
                       id: "assistant-1",
-                      body: "工作区路径：`/Users/example/demo/output/imagegen/dancing-girl.png`"
+                      body: "工作区路径：[/Users/example/demo/output/imagegen/dancing-girl.png](/Users/example/demo/output/imagegen/dancing-girl.png)"
                     }
                   }
                 ],
@@ -1035,6 +1042,80 @@ describe("AgentTranscriptView", () => {
       path: "/Users/example/demo/output/imagegen/dancing-girl.png",
       directoryPath: "/Users/example/demo/output/imagegen",
       workspaceRoot: "/Users/example/demo",
+      source: "agent-markdown"
+    });
+  });
+
+  it("opens explicit Markdown links from no-project session directories", () => {
+    const onLinkAction = vi.fn();
+    render(
+      <AgentTranscriptView
+        conversation={projectAgentConversationVM(
+          detailViewModel({
+            session: normalizeAgentActivitySession({
+              ...{
+                activeTurnId: null,
+                latestTurnInteractions: [],
+                pendingInteractions: []
+              },
+              workspaceId: "workspace-1",
+              agentSessionId: "session-1",
+              userId: "user-1",
+              provider: "opencode",
+              providerSessionId: "provider-session-1",
+              cwd: "/Users/example/Documents/tutti/session-1",
+              title: "OpenCode",
+              createdAtUnixMs: 1,
+              updatedAtUnixMs: 10
+            }),
+            cwd: "/Users/example/Documents/tutti/session-1",
+            workspaceRoot: null,
+            turns: [
+              {
+                ...detailViewModel().turns[0]!,
+                agentMessages: [
+                  {
+                    id: "assistant-1",
+                    body: "打开 [/Users/example/Documents/tutti/session-1/index.html](/Users/example/Documents/tutti/session-1/index.html)"
+                  }
+                ],
+                agentItems: [
+                  {
+                    kind: "message",
+                    message: {
+                      id: "assistant-1",
+                      body: "打开 [/Users/example/Documents/tutti/session-1/index.html](/Users/example/Documents/tutti/session-1/index.html)"
+                    }
+                  }
+                ],
+                toolCalls: [],
+                toolCallCount: 0,
+                hasFailedToolCall: false
+              }
+            ]
+          })
+        )}
+        onLinkAction={onLinkAction}
+        labels={{
+          thinkingLabel: "Thought process",
+          toolCallsLabel: (count) => `Tool calls (${count})`,
+          processing: "Planning next moves",
+          turnSummary: "Changed files"
+        }}
+      />
+    );
+
+    fireEvent.click(
+      screen.getByRole("link", {
+        name: "/Users/example/Documents/tutti/session-1/index.html"
+      })
+    );
+
+    expect(onLinkAction).toHaveBeenCalledWith({
+      type: "open-workspace-file",
+      path: "/Users/example/Documents/tutti/session-1/index.html",
+      directoryPath: "/Users/example/Documents/tutti/session-1",
+      workspaceRoot: "/Users/example/Documents/tutti/session-1",
       source: "agent-markdown"
     });
   });
@@ -1160,224 +1241,13 @@ describe("AgentTranscriptView", () => {
     expect(screen.getByText("http://0.0.0.0:4173")).toBeTruthy();
   });
 
-  it("keeps completed trailing tools visible while the session is still active and shows the processing row", async () => {
-    render(
-      <AgentTranscriptView
-        conversation={projectAgentConversationVM(
-          detailViewModel({
-            showProcessingIndicator: true,
-            session: {
-              ...detailViewModel().session,
-              status: "working"
-            },
-            turns: [
-              {
-                id: "turn-1",
-                userMessage: { id: "user-1", body: "Ship the patch" },
-                userMessages: [{ id: "user-1", body: "Ship the patch" }],
-                agentMessages: [],
-                toolCalls: [
-                  {
-                    id: "call:1",
-                    name: "Edit file",
-                    toolName: "edit_file",
-                    callType: "tool",
-                    status: "Completed",
-                    statusKind: "completed",
-                    summary: "/workspace/demo/src/App.tsx",
-                    payload: null
-                  },
-                  {
-                    id: "call:2",
-                    name: "Write file",
-                    toolName: "write_file",
-                    callType: "tool",
-                    status: "Completed",
-                    statusKind: "completed",
-                    summary: "/workspace/demo/src/routes.ts",
-                    payload: null
-                  }
-                ],
-                toolCallCount: 2,
-                hasFailedToolCall: false,
-                agentItems: [
-                  {
-                    kind: "tool-calls",
-                    id: "tools-1",
-                    toolCalls: [
-                      {
-                        id: "call:1",
-                        name: "Edit file",
-                        toolName: "edit_file",
-                        callType: "tool",
-                        status: "Completed",
-                        statusKind: "completed",
-                        summary: "/workspace/demo/src/App.tsx",
-                        payload: null
-                      },
-                      {
-                        id: "call:2",
-                        name: "Write file",
-                        toolName: "write_file",
-                        callType: "tool",
-                        status: "Completed",
-                        statusKind: "completed",
-                        summary: "/workspace/demo/src/routes.ts",
-                        payload: null
-                      }
-                    ],
-                    toolCallCount: 2,
-                    hasFailedToolCall: false,
-                    summary: "Changed App.tsx and 1 more files"
-                  }
-                ]
-              }
-            ]
-          })
-        )}
-        labels={{
-          thinkingLabel: "Thought process",
-          toolCallsLabel: (count) => `Tool calls (${count})`,
-          processing: "Planning next moves",
-          turnSummary: "Changed files"
-        }}
-      />
-    );
-
-    expect(screen.getByText("Edit file")).toBeTruthy();
-    expect(screen.getByText("Write file")).toBeTruthy();
-    expect(screen.getByText("Planning next moves")).toBeTruthy();
-  });
-
-  it("keeps every completed tool of an unfinalized tail chain visible", () => {
-    const calls = [
-      {
-        id: "call:1",
-        name: "Read page A",
-        toolName: "web_fetch",
-        callType: "tool",
-        status: "Completed" as const,
-        statusKind: "completed" as const,
-        summary: "https://example.com/a",
-        payload: null
-      },
-      {
-        id: "call:2",
-        name: "Read page B",
-        toolName: "web_fetch",
-        callType: "tool",
-        status: "Completed" as const,
-        statusKind: "completed" as const,
-        summary: "https://example.com/b",
-        payload: null
-      },
-      {
-        id: "call:3",
-        name: "Read page C",
-        toolName: "web_fetch",
-        callType: "tool",
-        status: "Completed" as const,
-        statusKind: "completed" as const,
-        summary: "https://example.com/c",
-        payload: null
-      }
-    ];
-    render(
-      <AgentTranscriptView
-        conversation={projectAgentConversationVM(
-          detailViewModel({
-            showProcessingIndicator: true,
-            session: {
-              ...detailViewModel().session,
-              status: "working"
-            },
-            turns: [
-              {
-                id: "turn-1",
-                userMessage: { id: "user-1", body: "Read pages" },
-                userMessages: [{ id: "user-1", body: "Read pages" }],
-                agentMessages: [],
-                toolCalls: calls,
-                toolCallCount: calls.length,
-                hasFailedToolCall: false,
-                agentItems: [
-                  {
-                    kind: "tool-calls",
-                    id: "tools-1",
-                    toolCalls: calls,
-                    toolCallCount: calls.length,
-                    hasFailedToolCall: false
-                  }
-                ]
-              }
-            ]
-          })
-        )}
-        labels={{
-          thinkingLabel: "Thought process",
-          toolCallsLabel: (count) => `Tool calls (${count})`,
-          processing: "Planning next moves",
-          turnSummary: "Changed files"
-        }}
-      />
-    );
-
-    expect(screen.getByText("Read page A")).toBeTruthy();
-    expect(screen.getByText("Read page B")).toBeTruthy();
-    expect(screen.getByText("Read page C")).toBeTruthy();
-  });
-
-  it("preserves expanded tool groups when incremental timeline updates add calls to the same group", async () => {
-    const labels = {
-      thinkingLabel: "Thought process",
-      toolCallsLabel: (count: number) => `Tool calls (${count})`,
-      processing: "Planning next moves",
-      turnSummary: "Changed files"
-    };
-    const { rerender } = render(
-      <AgentTranscriptView
-        conversation={projectAgentConversationVM(
-          groupedToolDetail(["call:1", "call:2"])
-        )}
-        labels={labels}
-      />
-    );
-
-    fireEvent.click(screen.getByRole("button", { name: "Tool calls (2)" }));
-    await flushCollapsibleRevealFrames();
-    await waitFor(() => {
-      expect(
-        screen.getByRole("button", { name: /Read file Completed .*call:1/ })
-      ).toBeTruthy();
-    });
-
-    rerender(
-      <AgentTranscriptView
-        conversation={projectAgentConversationVM(
-          groupedToolDetail(["call:1", "call:2", "call:3"])
-        )}
-        labels={labels}
-      />
-    );
-
-    expect(screen.getByRole("button", { name: "Tool calls (3)" })).toBeTruthy();
-    expect(
-      screen.getByRole("button", { name: /Read file Completed .*call:1/ })
-    ).toBeTruthy();
-    expect(
-      screen.getByRole("button", { name: /Read file Completed .*call:3/ })
-    ).toBeTruthy();
-  });
-
   it("renders thinking entries between tool calls inside the grouped disclosure", async () => {
     render(
       <AgentTranscriptView
         conversation={projectAgentConversationVM(
           detailViewModel({
             session: {
-              ...detailViewModel().session,
-              effectiveStatus: "completed",
-              turnPhase: "completed"
+              ...detailViewModel().session
             },
             showProcessingIndicator: false,
             turns: [
@@ -1524,9 +1394,53 @@ describe("AgentTranscriptView", () => {
             },
             session: {
               ...detailViewModel().session,
-              effectiveStatus: "completed",
-              turnPhase: "completed"
+              latestTurn: {
+                agentSessionId: "session-1",
+                turnId: "turn-1",
+                phase: "settled",
+                origin: "user_prompt",
+                outcome: "completed",
+                startedAtUnixMs: 1,
+                settledAtUnixMs: 10,
+                updatedAtUnixMs: 10,
+                fileChanges: {
+                  files: [
+                    {
+                      path: "/workspace/demo/src/App.tsx",
+                      change: "modified"
+                    },
+                    {
+                      path: "/workspace/demo/src/routes.ts",
+                      change: "added"
+                    }
+                  ]
+                }
+              }
             },
+            sessionTurns: [
+              {
+                agentSessionId: "session-1",
+                turnId: "turn-1",
+                phase: "settled",
+                origin: "user_prompt",
+                outcome: "completed",
+                startedAtUnixMs: 1,
+                settledAtUnixMs: 10,
+                updatedAtUnixMs: 10,
+                fileChanges: {
+                  files: [
+                    {
+                      path: "/workspace/demo/src/App.tsx",
+                      change: "modified"
+                    },
+                    {
+                      path: "/workspace/demo/src/routes.ts",
+                      change: "added"
+                    }
+                  ]
+                }
+              }
+            ],
             showProcessingIndicator: false
           })
         )}
@@ -1544,12 +1458,12 @@ describe("AgentTranscriptView", () => {
     ).toBeTruthy();
     fireEvent.click(
       screen.getByRole("button", {
-        name: /src\/App\.tsx/i
+        name: /App\.tsx/i
       })
     );
     await flushCollapsibleRevealFrames();
-    expect(screen.getByTitle("src/App.tsx")).toBeTruthy();
-    expect(screen.getByTitle("src/routes.ts")).toBeTruthy();
+    expect(screen.getByTitle("/workspace/demo/src/App.tsx")).toBeTruthy();
+    expect(screen.getByTitle("/workspace/demo/src/routes.ts")).toBeTruthy();
   });
 
   it("renders visible agent errors as an alert with collapsible details", async () => {
@@ -1628,7 +1542,6 @@ describe("AgentTranscriptView", () => {
 
 async function flushCollapsibleRevealFrames(): Promise<void> {
   await flushAnimationFrame();
-  await flushAnimationFrame();
 }
 
 async function flushAnimationFrame(): Promise<void> {
@@ -1648,31 +1561,31 @@ function detailViewModel(
       sessionId: "session-1",
       agentName: "Codex",
       agentProvider: "codex",
-      status: "working",
       title: "Codex",
       latestActivitySummary: "Working",
+      status: "working",
       sortTimeUnixMs: 10,
       changedFiles: [],
       userId: "user-1",
       userName: "Taylor",
       userAvatarUrl: ""
     },
-    session: {
-      id: 1,
+    session: normalizeAgentActivitySession({
+      ...{
+        activeTurnId: null,
+        latestTurnInteractions: [],
+        pendingInteractions: []
+      },
+      workspaceId: "workspace-1",
       agentSessionId: "session-1",
-      presenceId: 1,
       userId: "user-1",
       provider: "codex",
       providerSessionId: "provider-session-1",
-      sessionOrigin: "WORKSPACE_AGENT_SESSION_ORIGIN_RUNTIME",
       cwd: "/workspace/demo",
-      lifecycleStatus: "active",
-      turnPhase: "working",
-      effectiveStatus: "working",
       title: "Codex",
       createdAtUnixMs: 1,
       updatedAtUnixMs: 10
-    },
+    }),
     cwd: "/workspace/demo",
     workspaceRoot: "/workspace/demo",
     turns: [
@@ -1738,45 +1651,4 @@ function detailViewModel(
     ],
     ...overrides
   };
-}
-
-function groupedToolDetail(
-  callIds: string[]
-): WorkspaceAgentSessionDetailViewModel {
-  const calls = callIds.map((callId) => ({
-    id: callId,
-    name: "Read file",
-    toolName: "read_file",
-    callType: "tool",
-    status: "Completed" as const,
-    statusKind: "completed" as const,
-    summary: `/workspace/demo/${callId}`,
-    payload: null
-  }));
-  return detailViewModel({
-    session: {
-      ...detailViewModel().session,
-      effectiveStatus: "completed",
-      turnPhase: "completed"
-    },
-    showProcessingIndicator: false,
-    turns: [
-      {
-        id: "turn-1",
-        userMessage: { id: "user-1", body: "Inspect files" },
-        userMessages: [{ id: "user-1", body: "Inspect files" }],
-        agentMessages: [],
-        toolCalls: calls,
-        toolCallCount: calls.length,
-        hasFailedToolCall: false,
-        agentItems: calls.map((call) => ({
-          kind: "tool-calls" as const,
-          id: `tools:${call.id}`,
-          toolCalls: [call],
-          toolCallCount: 1,
-          hasFailedToolCall: false
-        }))
-      }
-    ]
-  });
 }

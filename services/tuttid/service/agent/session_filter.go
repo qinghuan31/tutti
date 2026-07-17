@@ -12,8 +12,12 @@ func filterSessions(
 		return sessions
 	}
 	filtered := make([]Session, 0, len(sessions))
+	agentTargetID := strings.TrimSpace(input.AgentTargetID)
 	for _, session := range sessions {
 		if !sessionVisibleInLists(session) {
+			continue
+		}
+		if agentTargetID != "" && strings.TrimSpace(session.AgentTargetID) != agentTargetID {
 			continue
 		}
 		if !matchesSessionSearch(session, input.SearchQuery) {
@@ -25,10 +29,7 @@ func filterSessions(
 }
 
 func sessionVisibleInLists(session Session) bool {
-	if !session.Visible {
-		return false
-	}
-	return visibleFromRuntimeContext(session.RuntimeContext, true)
+	return session.Visible
 }
 
 func matchesSessionSearch(session Session, rawQuery string) bool {
@@ -36,13 +37,7 @@ func matchesSessionSearch(session Session, rawQuery string) bool {
 	if query == "" {
 		return true
 	}
-	haystack := strings.ToLower(strings.Join([]string{
-		session.ID,
-		session.Provider,
-		value(session.Title),
-		session.Status,
-		session.Cwd,
-	}, "\n"))
+	haystack := strings.ToLower(value(session.Title))
 	for _, token := range strings.Fields(query) {
 		if !strings.Contains(haystack, token) {
 			return false

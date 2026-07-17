@@ -19,15 +19,13 @@ import type {
   AppCenterHostActions
 } from "@tutti-os/workspace-app-center/ui";
 import { AppCenterPanel } from "@tutti-os/workspace-app-center/ui";
-import { agentGuiDockIconUrls } from "@tutti-os/agent-gui";
+import { agentGuiDockIconUrls } from "@tutti-os/agent-gui/dock-icons";
 import type { AgentProviderStatus } from "@tutti-os/client-tuttid-ts";
 import { useService } from "@tutti-os/infra/di";
-import {
-  IAgentProviderStatusService,
-  IAgentsService,
-  requestWorkspaceAgentGuiLaunch
-} from "@renderer/features/workspace-agent";
-import type { AgentTargetPresentation } from "@renderer/features/workspace-agent";
+import { IAgentProviderStatusService } from "@renderer/features/workspace-agent/services/agentProviderStatusService.interface.ts";
+import { IAgentsService } from "@renderer/features/workspace-agent/services/agentsService.interface.ts";
+import { requestWorkspaceAgentGuiLaunch } from "@renderer/features/workspace-agent/services/workspaceAgentGuiLaunchCoordinator.ts";
+import type { AgentTargetPresentation } from "@renderer/features/workspace-agent/services/agentsService.interface.ts";
 import { useDesktopPreferencesService } from "@renderer/features/desktop-preferences";
 import { normalizeDesktopAgentGUIProvider } from "@renderer/features/workspace-agent/desktopAgentGUINodeState";
 import { useTranslation } from "@renderer/i18n";
@@ -39,6 +37,7 @@ import {
 } from "@renderer/features/workspace-workbench/services/workspaceAgentProviderCatalog";
 import { shouldShowWorkspaceApp } from "../services/workspaceAppVisibility.ts";
 import { useWorkspaceAppCenterService } from "./useWorkspaceAppCenterService.ts";
+import { shouldLoadWorkspaceAppFactoryDependencies } from "./workspaceAppCenterLoadPolicy.ts";
 
 const aiPptAppIconUrl = new URL(
   "../../../assets/workspace-canvas/dock/default/apps/PPT.png",
@@ -153,33 +152,32 @@ export function WorkspaceAppCenterPane({
     : undefined;
   const viewState =
     storedViewState ?? service.getViewState(workspaceId, restoredViewState);
+  const shouldLoadFactoryDependencies =
+    shouldLoadWorkspaceAppFactoryDependencies(viewState.activeAppTab);
   useEffect(() => {
     void service.refreshCatalog(workspaceId);
   }, [service, workspaceId]);
   useEffect(() => {
+    if (!shouldLoadFactoryDependencies) {
+      return;
+    }
     void agentsService.load();
-  }, [agentsService]);
+  }, [agentsService, shouldLoadFactoryDependencies]);
   useEffect(() => {
+    if (!shouldLoadFactoryDependencies) {
+      return;
+    }
     void agentProviderStatusService.ensureLoaded({
       providers: [...workspaceAgentGuiProviders]
     });
-  }, [agentProviderStatusService]);
+  }, [agentProviderStatusService, shouldLoadFactoryDependencies]);
   const factoryProviderOptions = useMemo(
     () =>
       resolveAppCenterReadyAgentProviderOptions(
         agentProviderSnapshot.statuses,
-        agentsSnapshot.agentTargets,
-        createHiddenFactoryProviderSet({
-          enableCursorAgent: desktopPreferencesState.enableCursorAgent,
-          enableOpenCodeAgent: desktopPreferencesState.enableOpenCodeAgent
-        })
+        agentsSnapshot.agentTargets
       ),
-    [
-      agentProviderSnapshot.statuses,
-      agentsSnapshot.agentTargets,
-      desktopPreferencesState.enableCursorAgent,
-      desktopPreferencesState.enableOpenCodeAgent
-    ]
+    [agentProviderSnapshot.statuses, agentsSnapshot.agentTargets]
   );
   const defaultFactoryAgentTargetId = useMemo(
     () =>
@@ -541,8 +539,7 @@ function resolveWorkspaceAppCategory(
 
 function resolveAppCenterReadyAgentProviderOptions(
   statuses: readonly AgentProviderStatus[],
-  agentTargets: readonly AgentTargetPresentation[],
-  hiddenProviders?: ReadonlySet<string>
+  agentTargets: readonly AgentTargetPresentation[]
 ): readonly AppCenterFactoryProviderOption[] {
   const readyProviders = new Set(
     statuses
@@ -555,7 +552,6 @@ function resolveAppCenterReadyAgentProviderOptions(
       (target) =>
         target.enabled === true &&
         readyProviders.has(target.provider) &&
-        hiddenProviders?.has(target.provider) !== true &&
         !isWorkspaceAgentGuiComingSoonProvider(target.provider)
     )
     .map((target) => ({
@@ -564,17 +560,6 @@ function resolveAppCenterReadyAgentProviderOptions(
       label: target.name || resolveWorkspaceAgentGuiLabel(target.provider),
       provider: target.provider
     }));
-}
-
-function createHiddenFactoryProviderSet(input: {
-  enableCursorAgent: boolean;
-  enableOpenCodeAgent: boolean;
-}): ReadonlySet<string> | undefined {
-  const hidden = [
-    ...(input.enableCursorAgent ? [] : ["cursor"]),
-    ...(input.enableOpenCodeAgent ? [] : ["opencode"])
-  ];
-  return hidden.length > 0 ? new Set(hidden) : undefined;
 }
 
 function toWorkspaceAppRecord(

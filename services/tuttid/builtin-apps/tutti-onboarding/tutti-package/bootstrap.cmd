@@ -1,0 +1,16 @@
+@echo off
+setlocal
+
+if not defined TUTTI_APP_PACKAGE_DIR set "TUTTI_APP_PACKAGE_DIR=%~dp0"
+if not defined TUTTI_APP_RUNTIME_DIR set "TUTTI_APP_RUNTIME_DIR=%CD%"
+if not defined TUTTI_APP_DATA_DIR set "TUTTI_APP_DATA_DIR=%TUTTI_APP_RUNTIME_DIR%\data"
+if not defined TUTTI_APP_HOST set "TUTTI_APP_HOST=127.0.0.1"
+if not defined TUTTI_APP_PORT set "TUTTI_APP_PORT=3003"
+
+if not exist "%TUTTI_APP_DATA_DIR%" mkdir "%TUTTI_APP_DATA_DIR%"
+
+set "TUTTI_ONBOARDING_PLATFORM=windows-amd64"
+if /I "%PROCESSOR_ARCHITECTURE%"=="ARM64" set "TUTTI_ONBOARDING_PLATFORM=windows-arm64"
+
+"%TUTTI_APP_PACKAGE_DIR%\bin\%TUTTI_ONBOARDING_PLATFORM%\tutti-onboarding-server.exe"
+exit /b %ERRORLEVEL%

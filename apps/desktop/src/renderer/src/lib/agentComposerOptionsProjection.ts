@@ -3,7 +3,10 @@ import type {
   AgentActivityComposerOptions,
   AgentActivityComposerPermissionConfig,
   AgentActivityComposerSettingOption,
-  AgentActivityComposerSkillOption
+  AgentActivityComposerSkillOption,
+  AgentActivitySessionCapabilities,
+  AgentActivitySlashCommandEffect,
+  AgentActivitySlashCommandPolicy
 } from "@tutti-os/agent-activity-core";
 
 export function agentActivityComposerOptionsFromTuttidResult(
@@ -18,6 +21,7 @@ export function agentActivityComposerOptionsFromTuttidResult(
   const modelConfig = recordValue(result.modelConfig);
   const reasoningConfig = recordValue(result.reasoningConfig);
   const speedConfig = recordValue(result.speedConfig);
+  const effectiveSettings = composerSettingsFromValue(result.effectiveSettings);
   const modelsFromConfig = settingOptionsFromComposerConfig(modelConfig);
   // The live agent's advertised model list reflects what the running session
   // can actually use, so it takes precedence when present.
@@ -50,6 +54,7 @@ export function agentActivityComposerOptionsFromTuttidResult(
       : capabilitiesFromRuntimeContext;
   return {
     provider: normalizeText(result.provider) ?? provider,
+    capabilities: sessionCapabilitiesFromValue(result.capabilities),
     models:
       modelsFromLiveConfig.length > 0 ? modelsFromLiveConfig : modelsFromConfig,
     reasoningEfforts:
@@ -59,6 +64,9 @@ export function agentActivityComposerOptionsFromTuttidResult(
             reasoningEffortsFromConfig
           )
         : reasoningEffortsFromConfig,
+    reasoningOptionsByModel: reasoningOptionsByModelFromValue(
+      runtimeContext.modelReasoningOptionsByModel
+    ),
     speeds:
       speedsFromConfig.length > 0 ? speedsFromConfig : speedsFromLiveConfig,
     modelConfigurable:
@@ -73,13 +81,43 @@ export function agentActivityComposerOptionsFromTuttidResult(
       speedConfig.configurable === true ||
       (speedConfig.configurable === undefined &&
         speedsFromLiveConfig.length > 0),
+    effectiveSettings,
     permissionConfig: permissionConfigFromValue(result.permissionConfig),
-    runtimeContext,
+    draftAgentSessionId: normalizeText(runtimeContext.draftAgentSessionId),
+    modelOptionsLoading:
+      recordValue(runtimeContext.appServerStartup).models === "loading",
     skills:
       skillsFromResult.length > 0 ? skillsFromResult : skillsFromRuntimeContext,
+    commands: commandOptionsFromValue(runtimeContext.availableCommands),
     capabilityCatalog,
+    behavior: composerBehaviorFromValue(result.behavior),
+    slashCommandPolicy: slashCommandPolicyFromValue(result.slashCommandPolicy),
     loadedAtUnixMs: Date.now()
   };
+}
+
+function commandOptionsFromValue(value: unknown) {
+  if (!Array.isArray(value)) return [];
+  const commands: Array<{
+    name: string;
+    description?: string;
+    inputHint?: string;
+  }> = [];
+  const seen = new Set<string>();
+  for (const raw of value) {
+    const command = recordValue(raw);
+    const name = normalizeText(command.name);
+    if (!name || seen.has(name)) continue;
+    seen.add(name);
+    const description = normalizeText(command.description);
+    const inputHint = normalizeText(command.inputHint);
+    commands.push({
+      name,
+      ...(description ? { description } : {}),
+      ...(inputHint ? { inputHint } : {})
+    });
+  }
+  return commands;
 }
 
 function settingOptionsWithLocalizedPresentation(
@@ -108,6 +146,140 @@ function settingOptionsWithLocalizedPresentation(
       ? { ...localizedOption, description: localized.description }
       : localizedOption;
   });
+}
+
+function sessionCapabilitiesFromValue(
+  value: unknown
+): AgentActivitySessionCapabilities | null {
+  const capabilities = recordValue(value);
+  if (Object.keys(capabilities).length === 0) {
+    return null;
+  }
+  return {
+    activeTurnGuidance: capabilities.activeTurnGuidance === true,
+    browserUse: capabilities.browserUse === true,
+    compact: capabilities.compact === true,
+    computerUse: capabilities.computerUse === true,
+    goalPause: capabilities.goalPause === true,
+    imageInput: capabilities.imageInput === true,
+    interrupt: capabilities.interrupt === true,
+    modelImageInputRequired: capabilities.modelImageInputRequired === true,
+    permissionModeChangeDeferred:
+      capabilities.permissionModeChangeDeferred === true,
+    permissionModeChangeDuringTurn:
+      capabilities.permissionModeChangeDuringTurn === true,
+    planImplementation: capabilities.planImplementation === true,
+    planMode: capabilities.planMode === true,
+    rateLimits: capabilities.rateLimits === true,
+    resumeRunningTurn: capabilities.resumeRunningTurn === true,
+    review: capabilities.review === true,
+    skills: capabilities.skills === true,
+    tokenUsage: capabilities.tokenUsage === true
+  };
+}
+
+function reasoningOptionsByModelFromValue(
+  value: unknown
+): AgentActivityComposerOptions["reasoningOptionsByModel"] {
+  const profiles = recordValue(value);
+  const entries = Object.entries(profiles).flatMap(([model, rawProfile]) => {
+    const profile = recordValue(rawProfile);
+    const options = settingOptionsFromRawOptions(profile.options, {
+      labelKeys: ["name", "label", "displayName"],
+      valueKeys: ["value", "id"]
+    });
+    if (!model.trim()) {
+      return [];
+    }
+    return [
+      [
+        model.trim(),
+        {
+          defaultValue: normalizeText(profile.defaultValue),
+          options
+        }
+      ] as const
+    ];
+  });
+  return entries.length > 0 ? Object.fromEntries(entries) : undefined;
+}
+
+function composerBehaviorFromValue(
+  value: unknown
+): AgentActivityComposerOptions["behavior"] {
+  const behavior = recordValue(value);
+  return {
+    collapseModelOptionsToLatest:
+      behavior.collapseModelOptionsToLatest === true,
+    modelOptionsAuthoritative: behavior.modelOptionsAuthoritative === true,
+    refreshModelOptionsAfterSettings:
+      behavior.refreshModelOptionsAfterSettings === true,
+    prewarmDraftSession: behavior.prewarmDraftSession === true,
+    planModeExclusiveWithPermissionMode:
+      behavior.planModeExclusiveWithPermissionMode === true
+  };
+}
+
+function composerSettingsFromValue(
+  value: unknown
+): AgentActivityComposerOptions["effectiveSettings"] {
+  const settings = recordValue(value);
+  if (Object.keys(settings).length === 0) {
+    return null;
+  }
+  return {
+    model: normalizeText(settings.model),
+    reasoningEffort: normalizeText(settings.reasoningEffort),
+    speed: normalizeText(settings.speed),
+    planMode:
+      typeof settings.planMode === "boolean" ? settings.planMode : undefined,
+    permissionModeId: normalizeText(settings.permissionModeId)
+  };
+}
+
+function slashCommandPolicyFromValue(
+  value: unknown
+): AgentActivitySlashCommandPolicy | null {
+  const policy = recordValue(value);
+  if (
+    !Array.isArray(policy.fallbackCommands) ||
+    !Array.isArray(policy.commandEffects)
+  ) {
+    return null;
+  }
+  const fallbackCommands = policy.fallbackCommands.flatMap((entry) => {
+    const command = normalizeText(entry);
+    return command ? [command] : [];
+  });
+  const commandEffects = policy.commandEffects.flatMap((entry) => {
+    const descriptor = recordValue(entry);
+    const command = normalizeText(descriptor.command);
+    const effect = slashCommandEffectFromValue(descriptor.effect);
+    return command && effect ? [{ command, effect }] : [];
+  });
+  return {
+    fallbackCommands,
+    commandEffects,
+    ...(policy.commandCatalogAuthoritative === true
+      ? { commandCatalogAuthoritative: true }
+      : {})
+  };
+}
+
+function slashCommandEffectFromValue(
+  value: unknown
+): AgentActivitySlashCommandEffect | null {
+  switch (value) {
+    case "submitImmediate":
+    case "showReviewPicker":
+    case "activateGoalMode":
+    case "togglePlanMode":
+    case "showStatus":
+    case "toggleSpeed":
+      return value;
+    default:
+      return null;
+  }
 }
 
 function settingOptionsFromComposerConfig(
@@ -263,6 +435,7 @@ function skillOptionsFromValue(
     const pluginName = normalizeText(record.pluginName);
     const path = normalizeText(record.path);
     const kind = normalizeSkillKind(record.kind);
+    const invocation = normalizeSkillInvocation(record.invocation);
     options.push({
       name,
       trigger,
@@ -270,10 +443,20 @@ function skillOptionsFromValue(
       ...(description ? { description } : {}),
       ...(pluginName ? { pluginName } : {}),
       ...(path ? { path } : {}),
-      ...(kind ? { kind } : {})
+      ...(kind ? { kind } : {}),
+      ...(invocation ? { invocation } : {})
     });
   }
   return options;
+}
+
+function normalizeSkillInvocation(
+  value: unknown
+): AgentActivityComposerSkillOption["invocation"] | null {
+  const normalized = normalizeText(value);
+  return normalized === "promptItem" || normalized === "textTrigger"
+    ? normalized
+    : null;
 }
 
 function normalizeSkillSourceKind(

@@ -195,12 +195,16 @@ export function createAppReferenceListBackend(
             });
             return mapped;
           } catch (error) {
-            // 单 app 失败不影响其他 app —— 但别再静默吞掉,打日志暴露原因。
+            // 已限定到单个 app 时,失败必须交给 picker 展示,不能伪装成空结果。
+            // 跨 app 搜索仍允许部分成功,避免一个 app 故障拖垮其它 app 的结果。
             console.warn("[app-reference-search] app search failed", {
               appId: app.appId,
               query,
               error
             });
+            if (scopedAppId !== null) {
+              throw error;
+            }
             return [];
           }
         })
@@ -263,7 +267,11 @@ export async function listReferenceSupportingApps(
     .listWorkspaceApps(workspaceID)
     .then((response) =>
       response.apps.filter(
-        (app) => app.references.listSupported && app.installed && app.enabled
+        (app) =>
+          app.references.listSupported &&
+          app.installed &&
+          app.enabled &&
+          app.status === "running"
       )
     );
   clientCache.set(workspaceID, {

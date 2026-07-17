@@ -6,9 +6,9 @@ const styles = {
   chromeCardMuted: "agent-gui-chrome__card--muted",
   chromeCardConnecting: "agent-gui-chrome__card--connecting",
   chromeCardDanger: "agent-gui-chrome__card--danger",
+  chromeCardSuccess: "agent-gui-chrome__card--success",
   chromeIcon: "agent-gui-chrome__icon",
   chromeMessageSlot: "agent-gui-chrome__message-slot",
-  chromeMessageTooltip: "agent-gui-chrome__message-tooltip",
   chromeInlineActions: "agent-gui-chrome__inline-actions",
   chromeNoticeDescription: "agent-gui-chrome__notice-description",
   chromeNoticeMessage: "agent-gui-chrome__notice-message",
@@ -18,6 +18,7 @@ const styles = {
   chromeActions: "agent-gui-chrome__actions",
   chromeMetaRow: "agent-gui-chrome__meta-row",
   chromeDangerGhostButton: "agent-gui-chrome__danger-ghost-button",
+  chromeSuccessGhostButton: "agent-gui-chrome__success-ghost-button",
   chromeGoalHint: "agent-gui-chrome__goal-hint",
   chromeGoalActions: "agent-gui-chrome__goal-actions",
   chromeGoalEditInput: "agent-gui-chrome__goal-edit-input"

@@ -245,7 +245,7 @@ export const appCenterEn = {
   labels: {
     allApps: "All",
     appCategories: "App categories",
-    appList: "App Center",
+    appList: "Apps",
     appPlural: "Apps",
     appSingular: "App",
     communityApps: "Community apps",
@@ -305,7 +305,7 @@ export const appCenterEn = {
     stopping: "Stopping",
     unavailable: "Unavailable"
   },
-  title: "App Center"
+  title: "Apps"
 } as const satisfies I18nDictionary;
 
 export const appCenterZhCN = {
@@ -524,7 +524,7 @@ export const appCenterZhCN = {
   labels: {
     allApps: "全部",
     appCategories: "应用分类",
-    appList: "应用中心",
+    appList: "应用",
     appPlural: "App",
     appSingular: "App",
     communityApps: "社区应用",
@@ -582,7 +582,7 @@ export const appCenterZhCN = {
     stopping: "停止中",
     unavailable: "不可用"
   },
-  title: "应用中心"
+  title: "应用"
 } as const satisfies I18nDictionary;
 
 export type AppCenterI18nKey = string;

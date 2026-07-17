@@ -256,10 +256,14 @@ func (s *AppCenterService) builtinCatalog(ctx context.Context) ([]builtinapps.Ap
 	if s.BuiltinCatalog != nil {
 		return s.BuiltinCatalog()
 	}
-	if builtinapps.RemoteCatalogEnvOverrideActive() {
-		return builtinapps.CatalogForTuttiVersion(s.HostTuttiVersion)
+	host := builtinapps.CatalogHost{
+		TuttiVersion: s.HostTuttiVersion,
+		Capabilities: s.HostTuttiCapabilities,
 	}
-	snapshot, err := builtinapps.SnapshotForRemoteURLAndTuttiVersion(s.appCatalogRemoteURL(ctx), s.HostTuttiVersion)
+	if builtinapps.RemoteCatalogEnvOverrideActive() {
+		return builtinapps.CatalogForHost(host)
+	}
+	snapshot, err := builtinapps.SnapshotForRemoteURLAndHost(s.appCatalogRemoteURL(ctx), host)
 	if err != nil {
 		return nil, err
 	}
@@ -267,14 +271,18 @@ func (s *AppCenterService) builtinCatalog(ctx context.Context) ([]builtinapps.Ap
 }
 
 func (s *AppCenterService) refreshBuiltinCatalogAndWait(ctx context.Context) (builtinapps.CatalogSnapshot, error) {
+	host := builtinapps.CatalogHost{
+		TuttiVersion: s.HostTuttiVersion,
+		Capabilities: s.HostTuttiCapabilities,
+	}
 	if builtinapps.RemoteCatalogEnvOverrideActive() {
-		return builtinapps.RefreshRemoteCatalogAndWaitForTuttiVersion(ctx, s.HostTuttiVersion)
+		return builtinapps.RefreshRemoteCatalogAndWaitForHost(ctx, host)
 	}
 	catalogURL := s.appCatalogRemoteURL(ctx)
 	if s.RemoteCatalogRefresher != nil {
-		return s.RemoteCatalogRefresher(ctx, catalogURL)
+		return s.RemoteCatalogRefresher(ctx, catalogURL, host)
 	}
-	return builtinapps.RefreshRemoteCatalogAndWaitForRemoteURLAndTuttiVersion(ctx, catalogURL, s.HostTuttiVersion)
+	return builtinapps.RefreshRemoteCatalogAndWaitForRemoteURLAndHost(ctx, catalogURL, host)
 }
 
 func (s *AppCenterService) appCatalogRemoteURL(ctx context.Context) string {
@@ -304,9 +312,15 @@ func (s *AppCenterService) CatalogLoadState() workspacebiz.AppCatalogLoadState {
 		err      error
 	)
 	if builtinapps.RemoteCatalogEnvOverrideActive() {
-		snapshot, err = builtinapps.SnapshotForTuttiVersion(s.HostTuttiVersion)
+		snapshot, err = builtinapps.SnapshotForHost(builtinapps.CatalogHost{
+			TuttiVersion: s.HostTuttiVersion,
+			Capabilities: s.HostTuttiCapabilities,
+		})
 	} else {
-		snapshot, err = builtinapps.SnapshotForRemoteURLAndTuttiVersion(s.appCatalogRemoteURL(context.Background()), s.HostTuttiVersion)
+		snapshot, err = builtinapps.SnapshotForRemoteURLAndHost(s.appCatalogRemoteURL(context.Background()), builtinapps.CatalogHost{
+			TuttiVersion: s.HostTuttiVersion,
+			Capabilities: s.HostTuttiCapabilities,
+		})
 	}
 	if err != nil {
 		lastError := err.Error()

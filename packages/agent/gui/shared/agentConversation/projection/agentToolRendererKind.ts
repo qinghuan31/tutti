@@ -66,6 +66,7 @@ export function resolveAgentToolRendererKind(
       displayName: call.displayName,
       content: call.content,
       outputContent: call.output?.content,
+      outputSavedPath: call.output?.savedPath ?? call.output?.saved_path,
       inputPrompt: call.input?.prompt
     })
   ) {
@@ -130,6 +131,16 @@ export function inferToolCallType(toolName: string | null | undefined): string {
     return "mcp";
   }
   return "tool";
+}
+
+export function isApprovalToolCall(call: {
+  toolName: string | null | undefined;
+  callType: string | null | undefined;
+}): boolean {
+  return (
+    normalizeCallType(call.callType) === "approval" ||
+    normalizeToolName(call.toolName) === "approval"
+  );
 }
 
 export function normalizeToolName(value: string | null | undefined): string {

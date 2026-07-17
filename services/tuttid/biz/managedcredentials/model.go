@@ -51,7 +51,6 @@ func PublicProvider(config ProviderConfig) PublicProviderConfig {
 		WorkspaceID: config.WorkspaceID,
 		Provider:    config.Provider,
 		Enabled:     config.Enabled,
-		APIKey:      config.APIKey,
 		HasAPIKey:   config.APIKey != "",
 		BaseURL:     config.BaseURL,
 		Models:      cloneModels(config.Models),

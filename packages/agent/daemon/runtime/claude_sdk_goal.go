@@ -2,6 +2,7 @@ package agentruntime
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"log/slog"
 	"sort"
@@ -14,6 +15,89 @@ import (
 // claudeSDKGoalCommandTimeout bounds the sidecar ack round-trip for /goal
 // command execs issued by goal controls.
 const claudeSDKGoalCommandTimeout = 30 * time.Second
+
+func claudeGoalSlashPromptUpdate(prompt string) (map[string]any, string, bool) {
+	text := strings.TrimSpace(prompt)
+	if !strings.HasPrefix(text, appServerSlashGoal) {
+		return nil, "", false
+	}
+	if len(text) > len(appServerSlashGoal) {
+		switch text[len(appServerSlashGoal)] {
+		case ' ', '\t', '\n', '\r':
+		default:
+			return nil, "", false
+		}
+	}
+	objective := strings.TrimSpace(text[len(appServerSlashGoal):])
+	if objective == "" {
+		return nil, "", false
+	}
+	if isGoalClearCommandArgs(objective) {
+		return nil, "thread_goal_cleared", true
+	}
+	return map[string]any{"objective": objective, "status": "active"}, "thread_goal_update", true
+}
+
+func claudeSDKGoalStatusPayload(raw json.RawMessage) (map[string]any, bool) {
+	var params any
+	if err := json.Unmarshal(raw, &params); err != nil {
+		return nil, false
+	}
+	attachment := claudeSDKGoalStatusAttachment(params, 6)
+	if len(attachment) == 0 {
+		return nil, false
+	}
+	objective := strings.TrimSpace(asString(attachment["condition"]))
+	if objective == "" {
+		return nil, false
+	}
+	goal := map[string]any{"objective": objective, "status": "active"}
+	if met, ok := attachment["met"].(bool); ok && met {
+		goal["status"] = "complete"
+	}
+	for _, key := range []string{"reason", "iterations", "durationMs", "tokens", "sentinel"} {
+		if value, ok := attachment[key]; ok {
+			goal[key] = value
+		}
+	}
+	return goal, true
+}
+
+func claudeSDKGoalStatusAttachment(value any, depth int) map[string]any {
+	if depth <= 0 {
+		return nil
+	}
+	obj := payloadObject(value)
+	if len(obj) > 0 {
+		if strings.TrimSpace(asString(obj["type"])) == "goal_status" {
+			return obj
+		}
+		if attachment := payloadObject(obj["attachment"]); strings.TrimSpace(asString(attachment["type"])) == "goal_status" {
+			return attachment
+		}
+		for _, child := range obj {
+			if attachment := claudeSDKGoalStatusAttachment(child, depth-1); len(attachment) > 0 {
+				return attachment
+			}
+		}
+		return nil
+	}
+	switch items := value.(type) {
+	case []any:
+		for _, item := range items {
+			if attachment := claudeSDKGoalStatusAttachment(item, depth-1); len(attachment) > 0 {
+				return attachment
+			}
+		}
+	case []map[string]any:
+		for _, item := range items {
+			if attachment := claudeSDKGoalStatusAttachment(item, depth-1); len(attachment) > 0 {
+				return attachment
+			}
+		}
+	}
+	return nil
+}
 
 // Claude Code's goal is a session-level entity inside the CLI (a condition
 // whose evaluator drives autonomous new turns until it is met), but the SDK
@@ -30,15 +114,23 @@ const claudeSDKGoalCommandTimeout = 30 * time.Second
 
 // GoalControl performs a direct goal action (GUI banner buttons) without
 // claiming the session's turn slot.
-func (a *ClaudeCodeSDKAdapter) GoalControl(
+func (*ClaudeCodeSDKAdapter) GoalCapabilities() GoalAdapterCapabilities {
+	return GoalAdapterCapabilities{
+		QuerySupported: false, ClearSupported: true, PauseSupported: false,
+		QuiesceGoalTurns: true, ReplaySetAfterRestart: false,
+	}
+}
+
+func (a *ClaudeCodeSDKAdapter) ApplyGoal(
 	ctx context.Context,
 	session Session,
-	action GoalControlAction,
-	objective string,
-) ([]activityshared.Event, map[string]any, error) {
+	input GoalApplyInput,
+) (GoalAdapterResult, error) {
+	action := input.Action
+	objective := input.Objective
 	adapterSession := a.getSession(session.AgentSessionID)
 	if adapterSession == nil {
-		return nil, nil, ErrSessionDisconnected
+		return GoalAdapterResult{}, ErrSessionDisconnected
 	}
 	session.ProviderSessionID = adapterSession.providerSessionID
 	slog.Info("agent session claude sdk goal control",
@@ -48,30 +140,86 @@ func (a *ClaudeCodeSDKAdapter) GoalControl(
 	)
 
 	var events []activityshared.Event
+	previousOperationID, previousRevision, previousRepairEpoch := a.replaceClaudeGoalOperationIdentity(adapterSession, input.OperationID, input.Revision, input.RepairEpoch)
+	restoreIdentity := func() {
+		a.restoreClaudeGoalOperationIdentity(adapterSession, input.OperationID, input.Revision, input.RepairEpoch, previousOperationID, previousRevision, previousRepairEpoch)
+	}
 	switch action {
 	case GoalControlSet:
 		objective = strings.TrimSpace(objective)
 		if objective == "" {
-			return nil, nil, fmt.Errorf("goal objective is required")
+			restoreIdentity()
+			return GoalAdapterResult{}, fmt.Errorf("goal objective is required")
 		}
 		if err := a.applyGoalMirrorAndSend(ctx, session, adapterSession,
 			map[string]any{"objective": objective, "status": "active"},
-			appServerSlashGoal+" "+objective); err != nil {
-			return nil, nil, err
+			appServerSlashGoal+" "+objective, input.OperationID, input.Revision, input.RepairEpoch); err != nil {
+			restoreIdentity()
+			return GoalAdapterResult{}, err
 		}
 		events = a.goalMirrorEvents(session, "thread_goal_update")
 	case GoalControlClear:
-		events = a.interruptLiveTurnsForGoalClear(ctx, session, adapterSession)
-		if err := a.applyGoalMirrorAndSend(ctx, session, adapterSession, nil, appServerSlashGoal+" clear"); err != nil {
-			return nil, nil, err
+		if err := a.applyGoalMirrorAndSend(ctx, session, adapterSession, nil, appServerSlashGoal+" clear", input.OperationID, input.Revision, input.RepairEpoch); err != nil {
+			restoreIdentity()
+			return GoalAdapterResult{}, err
 		}
 		events = append(events, a.goalMirrorEvents(session, "thread_goal_cleared")...)
 	case GoalControlPause, GoalControlResume:
-		return nil, nil, fmt.Errorf("goal %s is not supported for claude sessions: Claude Code has no paused goal state (stop the turn, or clear the goal)", action)
+		restoreIdentity()
+		return GoalAdapterResult{}, fmt.Errorf("goal %s is not supported for claude sessions: Claude Code has no paused goal state (stop the turn, or clear the goal)", action)
 	default:
-		return nil, nil, fmt.Errorf("unsupported goal control action %q", action)
+		restoreIdentity()
+		return GoalAdapterResult{}, fmt.Errorf("unsupported goal control action %q", action)
 	}
-	return events, a.localGoal(adapterSession), nil
+	return GoalAdapterResult{
+		Events: events, Observation: a.localGoal(adapterSession),
+		Evidence:      map[string]any{"source": "claude_command_ack", "confidence": "accepted_only", "phase": "accepted", "repairEpoch": input.RepairEpoch},
+		ProviderPhase: "accepted",
+	}, nil
+}
+
+// GoalControl is retained as an adapter-level compatibility shim for focused
+// provider tests; controller consumers use the semantic ApplyGoal contract.
+func (a *ClaudeCodeSDKAdapter) GoalControl(ctx context.Context, session Session, action GoalControlAction, objective string) ([]activityshared.Event, map[string]any, error) {
+	result, err := a.ApplyGoal(ctx, session, GoalApplyInput{Action: action, Objective: objective})
+	return result.Events, result.Observation, err
+}
+
+func (a *ClaudeCodeSDKAdapter) replaceClaudeGoalOperationIdentity(adapterSession *claudeSDKAdapterSession, operationID string, revision int64, repairEpoch int64) (string, int64, int64) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	previousOperationID, previousRevision, previousRepairEpoch := adapterSession.goalOperationID, adapterSession.goalRevision, adapterSession.goalRepairEpoch
+	if revision > 0 || strings.TrimSpace(operationID) != "" {
+		adapterSession.goalOperationID, adapterSession.goalRevision, adapterSession.goalRepairEpoch = strings.TrimSpace(operationID), revision, repairEpoch
+	}
+	return previousOperationID, previousRevision, previousRepairEpoch
+}
+
+func (a *ClaudeCodeSDKAdapter) restoreClaudeGoalOperationIdentity(adapterSession *claudeSDKAdapterSession, operationID string, revision int64, repairEpoch int64, previousOperationID string, previousRevision int64, previousRepairEpoch int64) {
+	if revision <= 0 && strings.TrimSpace(operationID) == "" {
+		return
+	}
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	if adapterSession.goalOperationID != strings.TrimSpace(operationID) || adapterSession.goalRevision != revision || adapterSession.goalRepairEpoch != repairEpoch {
+		return
+	}
+	adapterSession.goalOperationID, adapterSession.goalRevision, adapterSession.goalRepairEpoch = previousOperationID, previousRevision, previousRepairEpoch
+}
+
+func (a *ClaudeCodeSDKAdapter) ReconcileGoal(_ context.Context, session Session) (GoalAdapterResult, error) {
+	adapterSession := a.getSession(session.AgentSessionID)
+	if adapterSession == nil {
+		return GoalAdapterResult{}, ErrSessionDisconnected
+	}
+	return GoalAdapterResult{
+		Observation: a.localGoal(adapterSession),
+		Evidence:    map[string]any{"source": "claude_lifecycle_mirror", "confidence": "lifecycle_inferred"},
+	}, nil
+}
+
+func (*ClaudeCodeSDKAdapter) NormalizeGoalObservation(raw map[string]any) map[string]any {
+	return clonePayload(raw)
 }
 
 // applyGoalMirrorAndSend updates the local goal mirror and forwards the
@@ -85,14 +233,63 @@ func (a *ClaudeCodeSDKAdapter) applyGoalMirrorAndSend(
 	adapterSession *claudeSDKAdapterSession,
 	goal map[string]any,
 	command string,
+	operationID string,
+	revision int64,
+	repairEpoch int64,
 ) error {
 	previous := a.localGoal(adapterSession)
 	a.applyLocalGoal(adapterSession, goal)
-	if err := a.sendGoalCommandExec(ctx, session, adapterSession, command); err != nil {
-		a.applyLocalGoal(adapterSession, previous)
+	if err := a.sendGoalCommandExec(ctx, session, adapterSession, command, operationID, revision, repairEpoch); err != nil {
+		a.restoreClaudeGoalMirrorIfCurrent(adapterSession, operationID, revision, repairEpoch, previous)
 		return err
 	}
 	return nil
+}
+
+func (a *ClaudeCodeSDKAdapter) restoreClaudeGoalMirrorIfCurrent(
+	adapterSession *claudeSDKAdapterSession,
+	operationID string,
+	revision int64,
+	repairEpoch int64,
+	previous map[string]any,
+) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	operationID = strings.TrimSpace(operationID)
+	if operationID != "" || revision > 0 {
+		if adapterSession.goalOperationID != operationID || adapterSession.goalRevision != revision || adapterSession.goalRepairEpoch != repairEpoch {
+			return
+		}
+	}
+	adapterSession.liveState.goal = clonePayload(previous)
+}
+
+// cancelClaudeSDKGoalTurn fences one exact provider turn from a superseded
+// repair epoch. The sidecar validates turnId before interrupting the query;
+// terminal lifecycle remains provider-owned.
+func (*ClaudeCodeSDKAdapter) cancelClaudeSDKGoalTurn(adapterSession *claudeSDKAdapterSession, session Session, turnID string, revision, repairEpoch int64) {
+	turnID = strings.TrimSpace(turnID)
+	if adapterSession == nil || turnID == "" {
+		return
+	}
+	if err := adapterSession.send(claudeSDKSidecarRequest{
+		ID: newID(), Type: "cancel",
+		Payload: map[string]any{
+			"agentSessionId":  session.AgentSessionID,
+			"turnId":          turnID,
+			"goalRevision":    revision,
+			"goalRepairEpoch": repairEpoch,
+		},
+	}); err != nil {
+		slog.Warn("agent session claude sdk precise goal interrupt failed",
+			"event", "agent_session.claude_sdk.goal.precise_interrupt_failed",
+			"agent_session_id", session.AgentSessionID,
+			"turn_id", turnID,
+			"goal_revision", revision,
+			"goal_repair_epoch", repairEpoch,
+			"error", err.Error(),
+		)
+	}
 }
 
 // ExecGoalControl forwards a typed "/goal …" prompt through the sidecar's
@@ -104,10 +301,9 @@ func (a *ClaudeCodeSDKAdapter) ExecGoalControl(
 	session Session,
 	content []PromptContentBlock,
 	displayPrompt string,
-	turnID string,
 ) ([]activityshared.Event, bool, error) {
 	explicitDisplayPrompt, visibleText := explicitAndVisiblePromptText(content, displayPrompt)
-	command, args := splitSlashCommand(visibleText)
+	command, _ := splitSlashCommand(visibleText)
 	if command != appServerSlashGoal {
 		return nil, false, nil
 	}
@@ -116,30 +312,25 @@ func (a *ClaudeCodeSDKAdapter) ExecGoalControl(
 		return nil, true, ErrSessionDisconnected
 	}
 	session.ProviderSessionID = adapterSession.providerSessionID
-	// The submission is recorded like a steered message so the controller
-	// closes this Exec's turn record while the running turn keeps owning the
-	// session lifecycle; the command itself runs as its own queued turn.
+	// The command is a session-level control operation. Its transcript audit
+	// message is deliberately turnless; any later model execution is adopted
+	// as a separate provider-started Turn.
 	events := []activityshared.Event{
-		newTurnActivityEvent(session, EventMessage, turnID, "", RoleUser, visibleText, userPromptActivityPayload(content, explicitDisplayPrompt, userPromptActivityPayloadExtraFromExecMetadata(ctx, map[string]any{
+		newSessionAuditEventWithID(session, newID(), RoleUser, visibleText, userPromptActivityPayload(content, explicitDisplayPrompt, userPromptActivityPayloadExtraFromExecMetadata(ctx, map[string]any{
 			"adapter":     claudeSDKSidecarAdapterName,
-			"steered":     true,
 			"goalControl": true,
 		}))),
 	}
 	if event, ok := adapterSession.mirrorGoalSlashPrompt(session, visibleText); ok {
 		events = append(events, event)
 	}
-	if isGoalClearCommandArgs(args) {
-		events = append(events, a.interruptLiveTurnsForGoalClear(ctx, session, adapterSession)...)
-	}
-	if err := a.sendGoalCommandExec(ctx, session, adapterSession, visibleText); err != nil {
+	if err := a.sendGoalCommandExec(ctx, session, adapterSession, visibleText, "", 0, 0); err != nil {
 		return events, true, err
 	}
 	return events, true, nil
 }
 
-// isGoalClearCommandArgs mirrors claudeGoalSlashPromptUpdate's reserved
-// clear keywords.
+// isGoalClearCommandArgs recognizes Claude Code's reserved clear keywords.
 func isGoalClearCommandArgs(args string) bool {
 	switch strings.ToLower(strings.TrimSpace(args)) {
 	case "clear", "reset":
@@ -149,40 +340,8 @@ func isGoalClearCommandArgs(args string) bool {
 	}
 }
 
-// interruptLiveTurnsForGoalClear stops the running turn before a /goal clear
-// is forwarded. The sidecar queues goal command execs behind the live turn,
-// and a goal turn only settles once its condition is met — a queued clear
-// would never run while the goal loop keeps working (the stall users see:
-// clear sent, goal still driving new work). The sidecar processes its pipe
-// in order, so the cancel lands before the clear exec; and an interrupted
-// goal stays active CLI-side, so the clear that follows still reaches the
-// CLI and clears it. Reuses Cancel for the sidecar interrupt, the
-// pending-approval rejection, and the settle-guarded terminal synthesis.
-func (a *ClaudeCodeSDKAdapter) interruptLiveTurnsForGoalClear(
-	ctx context.Context,
-	session Session,
-	adapterSession *claudeSDKAdapterSession,
-) []activityshared.Event {
-	var events []activityshared.Event
-	for _, turnID := range a.liveClaudeSDKTurnIDs(adapterSession) {
-		cancelEvents, err := a.Cancel(ctx, session, turnID)
-		if err != nil {
-			slog.Warn("agent session claude sdk goal clear interrupt failed",
-				"event", "agent_session.claude_sdk.goal.clear_interrupt_failed",
-				"agent_session_id", session.AgentSessionID,
-				"turn_id", turnID,
-				"error", err.Error(),
-			)
-			continue
-		}
-		events = append(events, cancelEvents...)
-	}
-	return events
-}
-
-// liveClaudeSDKTurnIDs returns the turns with a registered waiter whose
-// terminal event has not left this adapter yet — the sidecar work a goal
-// clear must interrupt.
+// liveClaudeSDKTurnIDs is the diagnostic live-waiter view used by lifecycle
+// tests. Goal control never uses it to cancel an active Turn.
 func (a *ClaudeCodeSDKAdapter) liveClaudeSDKTurnIDs(
 	adapterSession *claudeSDKAdapterSession,
 ) []string {
@@ -210,40 +369,111 @@ func (a *ClaudeCodeSDKAdapter) sendGoalCommandExec(
 	session Session,
 	adapterSession *claudeSDKAdapterSession,
 	command string,
+	operationID string,
+	revision int64,
+	repairEpoch int64,
 ) error {
 	if err := a.startClaudeSDKReader(session.AgentSessionID, adapterSession); err != nil {
 		return err
 	}
 	turnID := newID()
 	args := strings.TrimSpace(strings.TrimPrefix(strings.TrimSpace(command), appServerSlashGoal))
+	isClear := isGoalClearCommandArgs(args)
 	a.mu.Lock()
 	previousArm := adapterSession.goalArmTurnID
-	if isGoalClearCommandArgs(args) {
-		adapterSession.goalArmTurnID = ""
+	assignedArm := turnID
+	if isClear {
+		assignedArm = ""
+		adapterSession.goalArmTurnID = assignedArm
+		if adapterSession.goalClearControlTurns == nil {
+			adapterSession.goalClearControlTurns = make(map[string]struct{})
+		}
+		adapterSession.goalClearControlTurns[turnID] = struct{}{}
 	} else {
-		adapterSession.goalArmTurnID = turnID
+		adapterSession.goalArmTurnID = assignedArm
 	}
 	a.mu.Unlock()
 	// The API context may carry no deadline; a missing sidecar ack must not
 	// hang this goroutine forever.
 	ctx, cancel := context.WithTimeout(ctx, claudeSDKGoalCommandTimeout)
 	defer cancel()
+	payload := map[string]any{
+		"agentSessionId": session.AgentSessionID,
+		"turnId":         turnID,
+		"prompt":         command,
+		"content":        promptContentForClaudeSDK(nil, command),
+	}
+	if !isGoalClearCommandArgs(args) {
+		payload["turnOrigin"] = "goal_arm"
+	}
+	if strings.TrimSpace(operationID) != "" && revision > 0 {
+		payload["goalOperationId"] = strings.TrimSpace(operationID)
+		payload["goalRevision"] = revision
+		payload["goalRepairEpoch"] = repairEpoch
+		if isGoalClearCommandArgs(args) {
+			payload["goalAction"] = "clear"
+		} else {
+			payload["goalAction"] = "set"
+		}
+	}
 	err := a.roundTripClaudeSDK(ctx, session.AgentSessionID, adapterSession, claudeSDKSidecarRequest{
-		ID:   newID(),
-		Type: "exec",
-		Payload: map[string]any{
-			"agentSessionId": session.AgentSessionID,
-			"turnId":         turnID,
-			"prompt":         command,
-			"content":        promptContentForClaudeSDK(nil, command),
-		},
+		ID:      newID(),
+		Type:    "exec",
+		Payload: payload,
 	})
 	if err != nil {
-		a.mu.Lock()
-		adapterSession.goalArmTurnID = previousArm
-		a.mu.Unlock()
+		a.restoreClaudeGoalArmIfCurrent(adapterSession, operationID, revision, repairEpoch, assignedArm, previousArm)
+		if isClear {
+			a.mu.Lock()
+			delete(adapterSession.goalClearControlTurns, turnID)
+			a.mu.Unlock()
+		}
 	}
 	return err
+}
+
+func (a *ClaudeCodeSDKAdapter) isGoalClearControlTurn(
+	adapterSession *claudeSDKAdapterSession,
+	turnID string,
+) bool {
+	if a == nil || adapterSession == nil {
+		return false
+	}
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	_, ok := adapterSession.goalClearControlTurns[strings.TrimSpace(turnID)]
+	return ok
+}
+
+func (a *ClaudeCodeSDKAdapter) forgetGoalClearControlTurn(
+	adapterSession *claudeSDKAdapterSession,
+	turnID string,
+) {
+	if a == nil || adapterSession == nil {
+		return
+	}
+	a.mu.Lock()
+	delete(adapterSession.goalClearControlTurns, strings.TrimSpace(turnID))
+	a.mu.Unlock()
+}
+
+func (a *ClaudeCodeSDKAdapter) restoreClaudeGoalArmIfCurrent(
+	adapterSession *claudeSDKAdapterSession,
+	operationID string,
+	revision int64,
+	repairEpoch int64,
+	assignedArm string,
+	previousArm string,
+) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	currentOperationID := strings.TrimSpace(adapterSession.goalOperationID)
+	operationID = strings.TrimSpace(operationID)
+	identityMatches := operationID == "" && revision == 0 ||
+		currentOperationID == operationID && adapterSession.goalRevision == revision && adapterSession.goalRepairEpoch == repairEpoch
+	if identityMatches && adapterSession.goalArmTurnID == assignedArm {
+		adapterSession.goalArmTurnID = previousArm
+	}
 }
 
 // goalEventsOnTurnSettled reconciles the goal mirror when a turn settles.
@@ -314,7 +544,7 @@ func (a *ClaudeCodeSDKAdapter) applyLocalGoal(adapterSession *claudeSDKAdapterSe
 }
 
 func (*ClaudeCodeSDKAdapter) goalMirrorEvents(session Session, updateType string) []activityshared.Event {
-	if event, ok := acpGoalUpdatedEvent(session, updateType); ok {
+	if event, ok := normalizedGoalUpdatedEvent(session, updateType); ok {
 		return []activityshared.Event{event}
 	}
 	return nil

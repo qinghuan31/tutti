@@ -243,6 +243,12 @@ export function createHostDesktopApi(): DesktopHostApi {
           payload
         );
       },
+      resizeContentWidth(input) {
+        return invokeDesktopApi(
+          desktopIpcChannels.host.window.resizeContentWidth,
+          input
+        );
+      },
       toggleMaximize(): Promise<void> {
         return invokeDesktopApi(desktopIpcChannels.host.window.toggleMaximize);
       }
@@ -304,6 +310,12 @@ export function createHostDesktopApi(): DesktopHostApi {
       openWorkspaceAppFolder(input): Promise<void> {
         return invokeDesktopApi(
           desktopIpcChannels.host.workspace.openWorkspaceAppFolder,
+          input
+        );
+      },
+      replaceWorkspaceWindow(input): Promise<void> {
+        return invokeDesktopApi(
+          desktopIpcChannels.host.workspace.replaceWorkspaceWindow,
           input
         );
       },

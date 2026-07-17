@@ -6,7 +6,7 @@ import "encoding/json"
 
 const (
 	BusinessEventProtocolVersion = 1
-	BusinessEventCatalogRevision = "sha256:1b69c706c4d5eca2"
+	BusinessEventCatalogRevision = "sha256:2172d1e6fc35bc32"
 )
 
 type Topic string
@@ -143,8 +143,6 @@ type PreferencesDesktopPreferences struct {
 	MinimizeAnimation       string `json:"minimizeAnimation"`
 	SleepPreventionMode     string `json:"sleepPreventionMode"`
 	ShowAppDeveloperSources bool   `json:"showAppDeveloperSources"`
-	EnableCursorAgent       bool   `json:"enableCursorAgent"`
-	EnableOpenCodeAgent     bool   `json:"enableOpenCodeAgent"`
 	ThemeSource             string `json:"themeSource"`
 	UpdateChannel           string `json:"updateChannel"`
 	UpdatePolicy            string `json:"updatePolicy"`
@@ -422,7 +420,7 @@ type ServerPongFrame struct {
 var BusinessEventDefinitions = []EventDefinition{
 	{
 		Topic:     TopicAgentActivityUpdated,
-		Version:   1,
+		Version:   2,
 		Direction: DirectionServerToClient,
 		Owner:     "agent",
 		Scope:     ScopeNameWorkspace,

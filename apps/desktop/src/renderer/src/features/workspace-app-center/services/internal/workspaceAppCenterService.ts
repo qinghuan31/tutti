@@ -12,7 +12,6 @@ import {
 import type {
   WorkspaceAppCenterApp,
   WorkspaceAppCenterGateway,
-  WorkspaceAppCenterRuntimeStatus,
   WorkspaceAppCenterStoreState,
   WorkspaceAppCenterViewState,
   WorkspaceAppFactoryJob,
@@ -43,6 +42,7 @@ import { ErrorAppRuntimeFailedReporter } from "../../../analytics/reporters/erro
 import type { IReporterService } from "../../../analytics/services/reporterService.interface.ts";
 import type { TuttiExternalWorkspaceOpenRouteIntent } from "@tutti-os/workspace-external-core/contracts";
 import type { IWorkspaceAppCenterService } from "../workspaceAppCenterService.interface";
+import type { IWorkspaceAppSurfaceHost } from "../workspaceAppSurfaceHost.interface.ts";
 import {
   normalizeWorkspaceAppCenterApp,
   normalizeWorkspaceAppFactoryJob,
@@ -50,6 +50,7 @@ import {
 } from "./adapters/desktopWorkspaceAppCenterGateway.ts";
 import { recordWorkspaceAppCenterOperationFailure } from "./workspaceAppCenterDiagnostics.ts";
 import { createWorkspaceAppCenterStore } from "./workspaceAppCenterStore.ts";
+import { WorkspaceAppSurfaceHost } from "./workspaceAppSurfaceHost.ts";
 
 const factoryJobDiagnosticLimit = 20;
 
@@ -77,15 +78,8 @@ export interface WorkspaceAppCenterServiceDependencies {
   reporterNow?: () => number;
   reporterService?: Pick<IReporterService, "trackEvents">;
   runtimeApi?: Pick<DesktopRuntimeApi, "logRendererDiagnostic">;
+  surfaceHost?: IWorkspaceAppSurfaceHost;
 }
-
-type WorkspaceAppLauncher = (input: {
-  appId: string;
-  intent?: TuttiExternalWorkspaceOpenRouteIntent;
-  prepared: boolean;
-  prevStatus?: WorkspaceAppCenterRuntimeStatus;
-  workspaceId: string;
-}) => Promise<boolean>;
 
 export class WorkspaceAppCenterService implements IWorkspaceAppCenterService {
   readonly _serviceBrand = undefined;
@@ -93,17 +87,13 @@ export class WorkspaceAppCenterService implements IWorkspaceAppCenterService {
 
   private readonly controller: WorkspaceAppCenterController;
   private readonly dependencies: WorkspaceAppCenterServiceDependencies;
-  private workspaceAppLauncher: WorkspaceAppLauncher | null = null;
-  private workspaceAppViewCloser:
-    | ((input: { appId: string; workspaceId: string }) => void)
-    | null = null;
-  private workspaceAppViewOpenChecker:
-    | ((input: { appId: string; workspaceId: string }) => boolean)
-    | null = null;
+  private readonly surfaceHost: IWorkspaceAppSurfaceHost;
   private updates: WorkspaceAppCenterUpdateState | null = null;
 
   constructor(dependencies: WorkspaceAppCenterServiceDependencies) {
     this.dependencies = dependencies;
+    this.surfaceHost =
+      dependencies.surfaceHost ?? new WorkspaceAppSurfaceHost();
     const store = createWorkspaceAppCenterStore();
     this.controller = createWorkspaceAppCenterController({
       appOpenLaunchWaitTimeoutMs: dependencies.appOpenLaunchWaitTimeoutMs,
@@ -142,6 +132,11 @@ export class WorkspaceAppCenterService implements IWorkspaceAppCenterService {
     this.store = store;
   }
 
+  dispose(): void {
+    this.updates?.dispose();
+    this.updates = null;
+  }
+
   consumeError(): string | null {
     return this.controller.consumeError();
   }
@@ -160,18 +155,19 @@ export class WorkspaceAppCenterService implements IWorkspaceAppCenterService {
     const previousApp = this.store.apps.find(
       (candidate) => candidate.appId === input.appId
     );
+    const attempt = this.surfaceHost.beginOpen(input);
     const launchableApp = await this.controller.prepareAppLaunch(input);
     if (!launchableApp) {
+      this.surfaceHost.rollbackOpen(attempt);
       return false;
     }
-    return (
-      (await this.workspaceAppLauncher?.({
-        appId: launchableApp.appId,
-        prepared: true,
-        prevStatus: previousApp?.runtimeStatus ?? launchableApp.runtimeStatus,
-        workspaceId: input.workspaceId
-      })) === true
-    );
+    return await this.surfaceHost.presentPrepared({
+      appId: launchableApp.appId,
+      attempt,
+      prepared: true,
+      prevStatus: previousApp?.runtimeStatus ?? launchableApp.runtimeStatus,
+      workspaceId: input.workspaceId
+    });
   }
 
   getViewState(
@@ -680,42 +676,27 @@ export class WorkspaceAppCenterService implements IWorkspaceAppCenterService {
       (candidate) => candidate.appId === input.appId
     );
     this.closeWorkspaceAppViews(input.workspaceId, [input.appId]);
+    const attempt = this.surfaceHost.beginOpen(input);
     const launchableApp = await this.controller.restartAndOpenApp(input);
     if (!launchableApp) {
+      this.surfaceHost.rollbackOpen(attempt);
       return false;
     }
-    return (
-      (await this.workspaceAppLauncher?.({
-        appId: launchableApp.appId,
-        ...(input.intent ? { intent: input.intent } : {}),
-        prepared: true,
-        prevStatus: previousApp?.runtimeStatus ?? launchableApp.runtimeStatus,
-        workspaceId: input.workspaceId
-      })) === true
-    );
-  }
-
-  setWorkspaceAppLauncher(launcher: WorkspaceAppLauncher | null): void {
-    this.workspaceAppLauncher = launcher;
-  }
-
-  setWorkspaceAppViewCloser(
-    closer: ((input: { appId: string; workspaceId: string }) => void) | null
-  ): void {
-    this.workspaceAppViewCloser = closer;
-  }
-
-  setWorkspaceAppViewOpenChecker(
-    checker: ((input: { appId: string; workspaceId: string }) => boolean) | null
-  ): void {
-    this.workspaceAppViewOpenChecker = checker;
+    return await this.surfaceHost.presentPrepared({
+      appId: launchableApp.appId,
+      attempt,
+      ...(input.intent ? { intent: input.intent } : {}),
+      prepared: true,
+      prevStatus: previousApp?.runtimeStatus ?? launchableApp.runtimeStatus,
+      workspaceId: input.workspaceId
+    });
   }
 
   isWorkspaceAppViewOpen(input: {
     appId: string;
     workspaceId: string;
   }): boolean {
-    return this.workspaceAppViewOpenChecker?.(input) === true;
+    return this.surfaceHost.isOpen(input);
   }
 
   private async startWorkspaceUpdates(
@@ -899,11 +880,8 @@ export class WorkspaceAppCenterService implements IWorkspaceAppCenterService {
     workspaceId: string,
     appIds: readonly string[]
   ): void {
-    if (!this.workspaceAppViewCloser || appIds.length === 0) {
-      return;
-    }
     for (const appId of appIds) {
-      this.workspaceAppViewCloser({ appId, workspaceId });
+      this.surfaceHost.close({ appId, workspaceId });
     }
   }
 

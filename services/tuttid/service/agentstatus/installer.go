@@ -15,7 +15,6 @@ import (
 
 	"github.com/tutti-os/tutti/packages/agent/daemon/httpx"
 	"github.com/tutti-os/tutti/packages/agent/daemon/runtimecmd"
-	"github.com/tutti-os/tutti/services/tuttid/biz/agentprovider"
 	managedruntime "github.com/tutti-os/tutti/services/tuttid/service/managedruntime"
 )
 
@@ -40,7 +39,7 @@ type installerExecutionSummary struct {
 func (s Service) resolveProviderRuntime(ctx context.Context, spec ProviderSpec) providerRuntimeResolution {
 	resolver := s.commandResolver()
 	env := resolver.Env(spec.AdapterEnv)
-	if strings.TrimSpace(os.Getenv("TUTTI_MOCK_AGENT_UNBOUND")) == "1" && spec.Provider == "codex" {
+	if strings.TrimSpace(os.Getenv("TUTTI_MOCK_AGENT_UNBOUND")) == "1" && isCodexStatusSpec(spec) {
 		return providerRuntimeResolution{Env: env}
 	}
 	if strings.TrimSpace(spec.ExternalRegistryID) != "" {
@@ -355,13 +354,13 @@ func installNodeForTarget(target string) string {
 }
 
 func (s Service) providerCLIRequiresInstall(spec ProviderSpec, runtime providerRuntimeResolution) bool {
-	if spec.Provider != agentprovider.Codex {
+	if !isCodexStatusSpec(spec) {
 		return false
 	}
 	if !s.codexPlatformBinaryOK(runtime.CLIPath) {
 		return true
 	}
-	return !codexVersionMeetsMinimum(s.cliVersion(context.Background(), runtime.CLIPath, runtime.Env))
+	return !cliVersionMeetsMinimum(s.cliVersion(context.Background(), runtime.CLIPath, runtime.Env), spec.MinVersion)
 }
 
 func adapterPackageRequirementSatisfied(requirement AdapterPackageRequirement, version string) bool {
@@ -416,9 +415,6 @@ func (s Service) executeInstaller(
 			Env:      s.shellCommandInstallerEnv(installCtx, spec),
 			OnStdout: activeActionStdoutAppender(ctx, provider),
 		})
-		if err == nil && result.ExitCode == 0 {
-			result = s.applyInstallerPostStep(installCtx, spec, result)
-		}
 		return runResult(result, err)
 	case InstallerKindOfficialScript:
 		result, err := s.runOfficialScriptInstaller(installCtx, provider, spec)
@@ -449,7 +445,7 @@ func (s Service) executeInstaller(
 		if runtime != nil {
 			existingCLIPath = strings.TrimSpace(runtime.CLIPath)
 		}
-		result, err := s.runCodexCLILatestInstaller(installCtx, spec, existingCLIPath)
+		result, err := s.runCodexCLILatestInstaller(installCtx, provider, spec, existingCLIPath)
 		return runResult(result, err)
 	case InstallerKindManagedNPMPackage:
 		existingCLIPath := ""
@@ -460,9 +456,6 @@ func (s Service) executeInstaller(
 		return runResult(result, err)
 	case InstallerKindExternalAgentRegistryNPM:
 		result, err := s.runExternalAgentRegistryNPMInstaller(installCtx, provider, spec)
-		if err == nil && result.ExitCode == 0 {
-			result = s.applyInstallerPostStep(installCtx, spec, result)
-		}
 		return runResult(result, err)
 	default:
 		return command, InstallCommandResult{ExitCode: 1, Stderr: fmt.Sprintf("unsupported installer kind %q", spec.Kind)}, nil
@@ -482,8 +475,21 @@ func (s Service) shellCommandInstallerEnv(ctx context.Context, spec InstallerSpe
 }
 
 func shellCommandUsesNPM(command string) bool {
-	fields := strings.Fields(command)
-	return len(fields) > 0 && fields[0] == npmBinaryName()
+	command = strings.TrimSpace(command)
+	if command == "" {
+		return false
+	}
+	program := command
+	if command[0] == '"' || command[0] == '\'' {
+		quote := command[0]
+		if closing := strings.IndexByte(command[1:], quote); closing >= 0 {
+			program = command[1 : closing+1]
+		}
+	} else if end := strings.IndexAny(command, " \t\r\n"); end >= 0 {
+		program = command[:end]
+	}
+	program = strings.ToLower(filepath.Base(program))
+	return program == "npm" || program == "npm.cmd"
 }
 
 func installerLockCommand(spec InstallerSpec) string {

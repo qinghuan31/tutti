@@ -13,6 +13,7 @@ import type { WorkspaceFileManagerI18nRuntime } from "../i18n/workspaceFileManag
 import type {
   CSSProperties,
   DragEvent as ReactDragEvent,
+  KeyboardEvent as ReactKeyboardEvent,
   MouseEvent as ReactMouseEvent,
   PointerEvent as ReactPointerEvent,
   ReactElement,
@@ -49,23 +50,30 @@ import {
   type WorkspaceFileManagerArrangeMode
 } from "./workspaceFileManagerArrangeMode.ts";
 import type { WorkspaceFileManagerLayoutMode } from "./workspaceFileManagerLayoutMode.ts";
+import {
+  readWorkspaceFileManagerPreviewWidth,
+  workspaceFileManagerPaneResizeStep,
+  workspaceFileManagerPreviewDefaultWidth,
+  writeWorkspaceFileManagerPreviewWidth
+} from "./workspaceFileManagerPaneSizing.ts";
 import type { WorkspaceFileManagerVisibleTreeRow } from "./workspaceFileManagerVisibleTree.ts";
+import {
+  workspaceFileManagerCompactTableGridClassName,
+  workspaceFileManagerCompactTableGridTemplate,
+  workspaceFileManagerTableGridClassName,
+  workspaceFileManagerTableGridTemplate
+} from "./workspaceFileManagerTableSizing.ts";
 
-const workspaceFileManagerTableGridClassName =
-  "grid-cols-[minmax(0,_1fr)_148px_96px]";
 const workspaceFileManagerTableGridStyle: CSSProperties = {
-  gridTemplateColumns: "minmax(0, 1fr) 148px 96px"
+  gridTemplateColumns: workspaceFileManagerTableGridTemplate
 };
-const workspaceFileManagerCompactTableGridClassName =
-  "grid-cols-[minmax(0,_1fr)_96px_72px]";
 const workspaceFileManagerCompactTableGridStyle: CSSProperties = {
-  gridTemplateColumns: "minmax(0, 1fr) 96px 72px"
+  gridTemplateColumns: workspaceFileManagerCompactTableGridTemplate
 };
 const workspaceFileManagerPreviewDetailGridStyle: CSSProperties = {
   gridTemplateColumns: "minmax(82px, 0.8fr) minmax(0, 1.2fr)"
 };
 const workspaceFileManagerStackedBreakpoint = 600;
-const workspaceFileManagerPreviewDefaultWidth = 280;
 const workspaceFileManagerPreviewMinWidth = 220;
 const workspaceFileManagerTableMinWidth = 360;
 const workspaceFileManagerMoveDragThreshold = 4;
@@ -96,6 +104,7 @@ export function WorkspaceFileManagerPanels({
   onEntryIconViewportEnter,
   selectedEntry,
   selectedPath,
+  showPreviewPanel: showPreviewPanelEnabled = true,
   state,
   showDropOverlay,
   treeRows,
@@ -129,6 +138,7 @@ export function WorkspaceFileManagerPanels({
   onEntryIconViewportEnter?: (entry: WorkspaceFileEntry) => void;
   selectedEntry: WorkspaceFileEntry | null;
   selectedPath: string | null;
+  showPreviewPanel?: boolean;
   state: {
     entries: readonly WorkspaceFileEntry[];
     error: string | null;
@@ -161,12 +171,16 @@ export function WorkspaceFileManagerPanels({
     workspaceFileManagerStackedBreakpoint
   );
   const previewResizeRef = useRef<{
+    currentWidth: number;
     pointerId: number;
     startX: number;
     startWidth: number;
     maxWidth: number;
   } | null>(null);
   const [previewPaneWidth, setPreviewPaneWidth] = useState(
+    readWorkspaceFileManagerPreviewWidth
+  );
+  const [previewPaneMaxWidth, setPreviewPaneMaxWidth] = useState(
     workspaceFileManagerPreviewDefaultWidth
   );
   const [moveDragPreview, setMoveDragPreview] =
@@ -415,7 +429,7 @@ export function WorkspaceFileManagerPanels({
     stopMoveDragAutoScroll,
     updateMoveDragAutoScroll
   ]);
-  const showPreviewPanel = layoutMode === "list";
+  const showPreviewPanel = showPreviewPanelEnabled && layoutMode === "list";
   const useStackedPreview = false;
   const previewPaneClassName = useStackedPreview
     ? "min-w-0 border-t border-[var(--border-1)]"
@@ -440,6 +454,15 @@ export function WorkspaceFileManagerPanels({
     },
     []
   );
+  const resolvePreviewPaneMaxWidth = useCallback((): number => {
+    const containerWidth =
+      rootRef.current?.getBoundingClientRect().width ??
+      workspaceFileManagerTableMinWidth + workspaceFileManagerPreviewMinWidth;
+    return Math.max(
+      workspaceFileManagerPreviewMinWidth,
+      containerWidth - workspaceFileManagerTableMinWidth
+    );
+  }, [rootRef]);
 
   useLayoutEffect(() => {
     const element = rootRef.current;
@@ -448,11 +471,8 @@ export function WorkspaceFileManagerPanels({
     }
 
     const publishLayout = () => {
-      const containerWidth = Math.round(element.getBoundingClientRect().width);
-      const maxWidth = Math.max(
-        workspaceFileManagerPreviewMinWidth,
-        containerWidth - workspaceFileManagerTableMinWidth
-      );
+      const maxWidth = resolvePreviewPaneMaxWidth();
+      setPreviewPaneMaxWidth(maxWidth);
       setPreviewPaneWidth((currentWidth) =>
         clampPreviewPaneWidth(currentWidth, maxWidth)
       );
@@ -472,7 +492,13 @@ export function WorkspaceFileManagerPanels({
     return () => {
       observer.disconnect();
     };
-  }, [clampPreviewPaneWidth, rootRef, showPreviewPanel, useStackedPreview]);
+  }, [
+    clampPreviewPaneWidth,
+    resolvePreviewPaneMaxWidth,
+    rootRef,
+    showPreviewPanel,
+    useStackedPreview
+  ]);
 
   const handlePreviewResizePointerDown = useCallback(
     (event: ReactPointerEvent<HTMLDivElement>): void => {
@@ -480,23 +506,19 @@ export function WorkspaceFileManagerPanels({
         return;
       }
 
-      const containerWidth =
-        rootRef.current?.getBoundingClientRect().width ?? 0;
-      const maxWidth = Math.max(
-        workspaceFileManagerPreviewMinWidth,
-        containerWidth - workspaceFileManagerTableMinWidth
-      );
+      const maxWidth = resolvePreviewPaneMaxWidth();
       event.preventDefault();
       event.stopPropagation();
       event.currentTarget.setPointerCapture(event.pointerId);
       previewResizeRef.current = {
+        currentWidth: previewPaneWidth,
         pointerId: event.pointerId,
         startX: event.clientX,
         startWidth: previewPaneWidth,
         maxWidth
       };
     },
-    [previewPaneWidth, rootRef]
+    [previewPaneWidth, resolvePreviewPaneMaxWidth]
   );
 
   const handlePreviewResizePointerMove = useCallback(
@@ -507,9 +529,11 @@ export function WorkspaceFileManagerPanels({
       }
 
       const deltaX = event.clientX - resize.startX;
-      setPreviewPaneWidth(
-        clampPreviewPaneWidth(resize.startWidth - deltaX, resize.maxWidth)
+      resize.currentWidth = clampPreviewPaneWidth(
+        resize.startWidth - deltaX,
+        resize.maxWidth
       );
+      setPreviewPaneWidth(resize.currentWidth);
     },
     [clampPreviewPaneWidth]
   );
@@ -522,9 +546,36 @@ export function WorkspaceFileManagerPanels({
       }
 
       previewResizeRef.current = null;
+      writeWorkspaceFileManagerPreviewWidth(resize.currentWidth);
       event.currentTarget.releasePointerCapture(event.pointerId);
     },
     []
+  );
+  const handlePreviewResizeKeyDown = useCallback(
+    (event: ReactKeyboardEvent<HTMLDivElement>): void => {
+      let nextWidth: number | null = null;
+      if (event.key === "Home") {
+        event.preventDefault();
+        nextWidth = workspaceFileManagerPreviewMinWidth;
+      } else if (event.key === "End") {
+        event.preventDefault();
+        nextWidth = previewPaneMaxWidth;
+      } else if (event.key === "ArrowLeft" || event.key === "ArrowRight") {
+        event.preventDefault();
+        nextWidth = clampPreviewPaneWidth(
+          previewPaneWidth +
+            (event.key === "ArrowLeft"
+              ? workspaceFileManagerPaneResizeStep
+              : -workspaceFileManagerPaneResizeStep),
+          previewPaneMaxWidth
+        );
+      }
+      if (nextWidth !== null) {
+        setPreviewPaneWidth(nextWidth);
+        writeWorkspaceFileManagerPreviewWidth(nextWidth);
+      }
+    },
+    [clampPreviewPaneWidth, previewPaneMaxWidth, previewPaneWidth]
   );
 
   const tablePanel = (
@@ -583,16 +634,22 @@ export function WorkspaceFileManagerPanels({
                 )}
                 style={tableGridStyle}
               >
-                <span className={tableCellPaddingClassName}>
+                <span
+                  className={cn(
+                    "min-w-0 overflow-hidden",
+                    tableCellPaddingClassName
+                  )}
+                  data-workspace-file-manager-name-column=""
+                >
                   {copy.t("nameLabel")}
                 </span>
                 <span
-                  className={cn("whitespace-nowrap", tableCellPaddingClassName)}
+                  className={cn("min-w-0 truncate", tableCellPaddingClassName)}
                 >
                   {dateColumnLabel}
                 </span>
                 <span
-                  className={cn("whitespace-nowrap", tableCellPaddingClassName)}
+                  className={cn("min-w-0 truncate", tableCellPaddingClassName)}
                 >
                   {copy.t("sizeLabel")}
                 </span>
@@ -704,9 +761,14 @@ export function WorkspaceFileManagerPanels({
         {tablePanel}
         {showPreviewPanel && !useStackedPreview ? (
           <div
+            aria-label={copy.t("resizePreviewPanel")}
             aria-orientation="vertical"
+            aria-valuemax={previewPaneMaxWidth}
+            aria-valuemin={workspaceFileManagerPreviewMinWidth}
+            aria-valuenow={previewPaneWidth}
             className="nodrag absolute top-0 bottom-0 z-[1] w-2 cursor-col-resize touch-none"
             role="separator"
+            tabIndex={0}
             style={
               {
                 right: previewPaneWidth - 4
@@ -716,6 +778,7 @@ export function WorkspaceFileManagerPanels({
             onPointerDown={handlePreviewResizePointerDown}
             onPointerMove={handlePreviewResizePointerMove}
             onPointerUp={handlePreviewResizePointerEnd}
+            onKeyDown={handlePreviewResizeKeyDown}
           />
         ) : null}
         {previewPanel}
@@ -919,7 +982,7 @@ function EntryRow({
     }
   };
   const nameCell = (
-    <span className={tableCellPaddingClassName}>
+    <span className={cn("min-w-0 overflow-hidden", tableCellPaddingClassName)}>
       <EntryNameCell
         copy={copy}
         contextLabel={contextLabel}

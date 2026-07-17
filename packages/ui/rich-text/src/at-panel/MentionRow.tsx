@@ -211,15 +211,13 @@ export function renderMentionRow(
   if (item.kind === "session") {
     return (
       <span className="rich-text-at-mention-row rich-text-at-mention-row--session">
-        <span className="rich-text-at-mention-row__leading">
-          <MentionSessionAvatarStack
-            item={item}
-            classNames={resolved}
-            dataAttributeMode={dataAttributeMode}
-          />
-          <span className="rich-text-at-mention-row__session-title">
-            <MentionSessionTitle item={item} />
-          </span>
+        <MentionSessionAvatarStack
+          item={item}
+          classNames={resolved}
+          dataAttributeMode={dataAttributeMode}
+        />
+        <span className="rich-text-at-mention-row__entity-text rich-text-at-mention-row__session-title">
+          <MentionSessionTitle item={item} />
         </span>
         {item.statusTag ? (
           <MentionStatusBadge
@@ -239,12 +237,12 @@ export function renderMentionRow(
           kindIconClassName={resolved.kindIcon}
           dataAttributeMode={dataAttributeMode}
         />
-        <span className="rich-text-at-mention-row__app-text">
-          <span className="rich-text-at-mention-row__app-name">
+        <span className="rich-text-at-mention-row__entity-text rich-text-at-mention-row__app-text">
+          <span className="rich-text-at-mention-row__entity-name rich-text-at-mention-row__app-name">
             {item.name}
           </span>
           {item.description ? (
-            <span className="rich-text-at-mention-row__app-description">
+            <span className="rich-text-at-mention-row__entity-description rich-text-at-mention-row__app-description">
               {item.description}
             </span>
           ) : null}
@@ -404,12 +402,12 @@ function MentionFileRow({
       />
       <span className="rich-text-at-mention-row__file-text">
         <span className="rich-text-at-mention-row__title">{item.name}</span>
-        {item.childCountLabel ? (
-          <span className="rich-text-at-mention-row__file-count">
-            {item.childCountLabel}
-          </span>
-        ) : null}
       </span>
+      {item.childCountLabel ? (
+        <span className="rich-text-at-mention-row__file-count">
+          {item.childCountLabel}
+        </span>
+      ) : null}
       {onNavigateInto ? (
         <MentionNavigateIntoButton
           label={navigateIntoLabel}
@@ -641,10 +639,10 @@ function MentionSessionTitle({
 }): React.JSX.Element {
   return (
     <>
-      <span className="rich-text-at-mention-row__session-participant">
+      <span className="rich-text-at-mention-row__entity-name rich-text-at-mention-row__session-participant">
         {item.participant}
       </span>
-      <span className="rich-text-at-mention-row__session-summary">
+      <span className="rich-text-at-mention-row__entity-description rich-text-at-mention-row__session-summary">
         {item.summary ?? ""}
       </span>
     </>

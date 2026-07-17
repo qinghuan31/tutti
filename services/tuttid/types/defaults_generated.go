@@ -32,4 +32,22 @@ var generatedDefaults = generatedDefaultsSpec{
 		ChannelDomain: "https://gator.uba.ap-southeast-1.volces.com",
 		AppVersion:    "0.0.0",
 	},
+	AgentExtensions: generatedAgentExtensionDefaults{
+		Sources: []generatedAgentExtensionSourceDefaults{
+			{
+				Key:              "gemini",
+				ReleaseIndexURL:  "https://d1x7gb6wqsqmnm.cloudfront.net/tutti-agent-releases/agents/gemini/versions.json",
+				SigningKeyID:     "tutti-gemini-release-v1",
+				SigningPublicKey: "-----BEGIN PUBLIC KEY-----\nMCowBQYDK2VwAyEAXKvHPk/lWXqeK3Q1cg6vaOFfhqmXm3jcNgECsZ9XT/g=\n-----END PUBLIC KEY-----\n",
+				Enabled:          false,
+			},
+			{
+				Key:              "codebuddy",
+				ReleaseIndexURL:  "https://d1x7gb6wqsqmnm.cloudfront.net/tutti-agent-releases/agents/codebuddy/versions.json",
+				SigningKeyID:     "tutti-codebuddy-release-v1",
+				SigningPublicKey: "-----BEGIN PUBLIC KEY-----\nMCowBQYDK2VwAyEAfzdtf41+SN0hrZqK0JX2pdDluCwpUbn1HPDoz4D7OxA=\n-----END PUBLIC KEY-----\n",
+				Enabled:          false,
+			},
+		},
+	},
 }

@@ -13,22 +13,31 @@ import type {
 } from "../preferences/index.ts";
 import type {
   AgentProviderProbeListInput,
-  AgentProviderProbeListResult,
-  AgentGUIAgent
+  AgentProviderProbeListResult
 } from "@tutti-os/agent-gui";
+import type { DesktopAgentDirectorySnapshot } from "./agentDirectory.ts";
 import type {
   AgentProviderStatus,
   WorkspaceAgentProvider
 } from "@tutti-os/client-tuttid-ts";
 import type {
   BrowserNodeActivationInput,
+  BrowserNodeCookieImportResult,
+  BrowserNodeDownloadDirectoryResult,
+  BrowserNodeDownloadActionInput,
   BrowserNodeEvent,
+  BrowserNodeFindInPageInput,
   BrowserNodeNavigateInput,
   BrowserNodeNodeIdInput,
   BrowserNodeOpenExternalInput,
   BrowserNodePrepareSessionInput,
   BrowserNodeRegisterGuestInput,
+  BrowserNodeScreenshotSaveResult,
+  BrowserNodeSaveScreenshotInput,
+  BrowserNodeSetDeviceEmulationInput,
+  BrowserNodeSetZoomFactorInput,
   BrowserNodeShowDevToolsContextMenuInput,
+  BrowserNodeStopFindInPageInput,
   BrowserNodeUnregisterGuestInput
 } from "@tutti-os/browser-node";
 import type {
@@ -116,8 +125,12 @@ export const desktopIpcChannels = {
   browser: {
     activate: "browser:activate",
     capturePreview: "browser:capturePreview",
+    chooseDownloadDirectory: "browser:chooseDownloadDirectory",
+    clearBrowsingData: "browser:clearBrowsingData",
     close: "browser:close",
     event: "browser:event",
+    findInPage: "browser:findInPage",
+    importCookies: "browser:importCookies",
     goBack: "browser:goBack",
     goForward: "browser:goForward",
     guestDiagnostic: "browser:guestDiagnostic",
@@ -125,10 +138,16 @@ export const desktopIpcChannels = {
     navigate: "browser:navigate",
     openDevTools: "browser:openDevTools",
     openExternal: "browser:openExternal",
+    performDownloadAction: "browser:performDownloadAction",
     prepareSession: "browser:prepareSession",
+    printPage: "browser:printPage",
     registerGuest: "browser:registerGuest",
     reload: "browser:reload",
+    saveScreenshot: "browser:saveScreenshot",
+    setDeviceEmulation: "browser:setDeviceEmulation",
+    setZoomFactor: "browser:setZoomFactor",
     showDevToolsContextMenu: "browser:showDevToolsContextMenu",
+    stopFindInPage: "browser:stopFindInPage",
     unregisterGuest: "browser:unregisterGuest"
   },
   dockPreviewCache: {
@@ -200,10 +219,12 @@ export const desktopIpcChannels = {
       minimizeState: "host:window:minimizeState",
       openAgentWindow: "host:window:openAgentWindow",
       quitShortcutToast: "host:window:quitShortcutToast",
+      resizeContentWidth: "host:window:resizeContentWidth",
       toggleMaximize: "host:window:toggleMaximize"
     },
     workspace: {
       openWorkspaceAppFolder: "host:workspace:openWorkspaceAppFolder",
+      replaceWorkspaceWindow: "host:workspace:replaceWorkspaceWindow",
       showWorkspace: "host:workspace:showWorkspace"
     },
     notifications: {
@@ -233,17 +254,36 @@ export interface DesktopHostWindowCapturePreviewInput {
   };
 }
 
+export interface DesktopHostWindowResizeContentWidthInput {
+  animate?: boolean;
+  width: number;
+}
+
+export interface DesktopHostWindowResizeContentWidthResult {
+  width: number;
+}
+
 export interface DesktopHostWindowCloseRequestPayload {
   requestId?: string;
   reason: "quit" | "window-close";
 }
 
 export interface DesktopHostOpenAgentWindowInput {
+  agentDirectorySnapshot?: DesktopAgentDirectorySnapshot | null;
   agentSessionId?: string | null;
   agentTargetId?: string | null;
+  autoSubmit?: boolean;
+  draftPrompt?: string | null;
   providerStatusSnapshot?: DesktopAgentProviderStatusSnapshot | null;
-  agents?: readonly AgentGUIAgent[];
+  minimizeSourceWindow?: boolean;
+  offsetFromSourceWindow?: boolean;
   provider?: string | null;
+  userProjectPath?: string | null;
+  workspaceId: string;
+}
+
+export interface DesktopHostReplaceWorkspaceWindowInput {
+  mode: "agent" | "os";
   workspaceId: string;
 }
 
@@ -821,17 +861,29 @@ export interface DesktopInvokePayloadByChannel {
     .workspaceFeatureOpen]: DesktopWorkspaceOpenFeatureRequest;
   [desktopIpcChannels.browser.activate]: BrowserNodeActivationInput;
   [desktopIpcChannels.browser.capturePreview]: BrowserNodeNodeIdInput;
+  [desktopIpcChannels.browser.chooseDownloadDirectory]: BrowserNodeNodeIdInput;
+  [desktopIpcChannels.browser.clearBrowsingData]: BrowserNodeNodeIdInput;
   [desktopIpcChannels.browser.close]: BrowserNodeNodeIdInput;
+  [desktopIpcChannels.browser.findInPage]: BrowserNodeFindInPageInput;
+  [desktopIpcChannels.browser.importCookies]: BrowserNodeNodeIdInput;
   [desktopIpcChannels.browser.goBack]: BrowserNodeNodeIdInput;
   [desktopIpcChannels.browser.goForward]: BrowserNodeNodeIdInput;
   [desktopIpcChannels.browser.navigate]: BrowserNodeNavigateInput;
   [desktopIpcChannels.browser.openDevTools]: BrowserNodeNodeIdInput;
   [desktopIpcChannels.browser.openExternal]: BrowserNodeOpenExternalInput;
+  [desktopIpcChannels.browser
+    .performDownloadAction]: BrowserNodeDownloadActionInput;
   [desktopIpcChannels.browser.prepareSession]: BrowserNodePrepareSessionInput;
+  [desktopIpcChannels.browser.printPage]: BrowserNodeNodeIdInput;
   [desktopIpcChannels.browser.registerGuest]: BrowserNodeRegisterGuestInput;
   [desktopIpcChannels.browser.reload]: BrowserNodeNodeIdInput;
+  [desktopIpcChannels.browser.saveScreenshot]: BrowserNodeSaveScreenshotInput;
+  [desktopIpcChannels.browser
+    .setDeviceEmulation]: BrowserNodeSetDeviceEmulationInput;
+  [desktopIpcChannels.browser.setZoomFactor]: BrowserNodeSetZoomFactorInput;
   [desktopIpcChannels.browser
     .showDevToolsContextMenu]: BrowserNodeShowDevToolsContextMenuInput;
+  [desktopIpcChannels.browser.stopFindInPage]: BrowserNodeStopFindInPageInput;
   [desktopIpcChannels.browser.unregisterGuest]: BrowserNodeUnregisterGuestInput;
   [desktopIpcChannels.dockPreviewCache.read]: DesktopReadDockPreviewInput;
   [desktopIpcChannels.dockPreviewCache.write]: DesktopWriteDockPreviewInput;
@@ -902,9 +954,13 @@ export interface DesktopInvokePayloadByChannel {
   [desktopIpcChannels.host.window.minimize]: undefined;
   [desktopIpcChannels.host.window
     .openAgentWindow]: DesktopHostOpenAgentWindowInput;
+  [desktopIpcChannels.host.window
+    .resizeContentWidth]: DesktopHostWindowResizeContentWidthInput;
   [desktopIpcChannels.host.window.toggleMaximize]: undefined;
   [desktopIpcChannels.host.workspace
     .openWorkspaceAppFolder]: DesktopWorkspaceAppPayload;
+  [desktopIpcChannels.host.workspace
+    .replaceWorkspaceWindow]: DesktopHostReplaceWorkspaceWindowInput;
   [desktopIpcChannels.host.workspace.showWorkspace]: string;
   [desktopIpcChannels.host.notifications.show]: DesktopHostNotificationPayload;
 }
@@ -960,16 +1016,27 @@ export interface DesktopInvokeResultByChannel {
   [desktopIpcChannels.appExternal.workspaceFeatureOpen]: void;
   [desktopIpcChannels.browser.activate]: void;
   [desktopIpcChannels.browser.capturePreview]: string | null;
+  [desktopIpcChannels.browser
+    .chooseDownloadDirectory]: BrowserNodeDownloadDirectoryResult;
+  [desktopIpcChannels.browser.clearBrowsingData]: void;
   [desktopIpcChannels.browser.close]: void;
+  [desktopIpcChannels.browser.findInPage]: void;
+  [desktopIpcChannels.browser.importCookies]: BrowserNodeCookieImportResult;
   [desktopIpcChannels.browser.goBack]: void;
   [desktopIpcChannels.browser.goForward]: void;
   [desktopIpcChannels.browser.navigate]: void;
   [desktopIpcChannels.browser.openDevTools]: void;
   [desktopIpcChannels.browser.openExternal]: void;
+  [desktopIpcChannels.browser.performDownloadAction]: void;
   [desktopIpcChannels.browser.prepareSession]: void;
+  [desktopIpcChannels.browser.printPage]: void;
   [desktopIpcChannels.browser.registerGuest]: void;
   [desktopIpcChannels.browser.reload]: void;
+  [desktopIpcChannels.browser.saveScreenshot]: BrowserNodeScreenshotSaveResult;
+  [desktopIpcChannels.browser.setDeviceEmulation]: void;
+  [desktopIpcChannels.browser.setZoomFactor]: void;
   [desktopIpcChannels.browser.showDevToolsContextMenu]: void;
+  [desktopIpcChannels.browser.stopFindInPage]: void;
   [desktopIpcChannels.browser.unregisterGuest]: void;
   [desktopIpcChannels.dockPreviewCache.read]: string | null;
   [desktopIpcChannels.dockPreviewCache.write]: void;
@@ -1023,8 +1090,11 @@ export interface DesktopInvokeResultByChannel {
   [desktopIpcChannels.host.window.capturePreview]: string | null;
   [desktopIpcChannels.host.window.minimize]: void;
   [desktopIpcChannels.host.window.openAgentWindow]: void;
+  [desktopIpcChannels.host.window
+    .resizeContentWidth]: DesktopHostWindowResizeContentWidthResult;
   [desktopIpcChannels.host.window.toggleMaximize]: void;
   [desktopIpcChannels.host.workspace.openWorkspaceAppFolder]: void;
+  [desktopIpcChannels.host.workspace.replaceWorkspaceWindow]: void;
   [desktopIpcChannels.host.workspace.showWorkspace]: void;
   [desktopIpcChannels.host.notifications.show]: DesktopHostNotificationResult;
 }

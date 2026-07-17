@@ -1,11 +1,5 @@
 import "@testing-library/jest-dom/vitest";
-import {
-  act,
-  fireEvent,
-  render,
-  screen,
-  waitFor
-} from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   AgentMessageMarkdown,
@@ -265,6 +259,31 @@ describe("AgentMessageMarkdown", () => {
     });
   });
 
+  it("resolves local file links from the session cwd without a project root", () => {
+    const onLinkAction = vi.fn();
+    render(
+      <AgentMessageMarkdown
+        content={"打开 [index.html](/Users/local/session-1/index.html)"}
+        onLinkAction={onLinkAction}
+        workspaceLinkContext={{
+          workspaceRoot: null,
+          basePath: "/Users/local/session-1",
+          source: "agent-markdown"
+        }}
+      />
+    );
+
+    fireEvent.click(screen.getByRole("link", { name: "index.html" }));
+
+    expect(onLinkAction).toHaveBeenCalledWith({
+      type: "open-workspace-file",
+      path: "/Users/local/session-1/index.html",
+      directoryPath: "/Users/local/session-1",
+      workspaceRoot: "/Users/local/session-1",
+      source: "agent-markdown"
+    });
+  });
+
   it("resolves home-relative markdown file links when workspace context is provided", () => {
     const onLinkAction = vi.fn();
     render(
@@ -320,7 +339,7 @@ describe("AgentMessageMarkdown", () => {
     render(
       <AgentMessageMarkdown
         content={
-          "图片在这里： `/Users/local/.tutti-dev/agent/runs/session-1/codex-home/generated_images/imagegen/ig_123.png`"
+          "图片在这里： [/Users/local/.tutti-dev/agent/runs/session-1/codex-home/generated_images/imagegen/ig_123.png](/Users/local/.tutti-dev/agent/runs/session-1/codex-home/generated_images/imagegen/ig_123.png)"
         }
         onLinkAction={onLinkAction}
         workspaceLinkContext={{
@@ -909,6 +928,49 @@ describe("AgentMessageMarkdown", () => {
     });
   });
 
+  it("closes the zoom preview with Escape when focus is outside the dialog", async () => {
+    const readFile = vi.fn().mockResolvedValue({
+      bytes: new Uint8Array([137, 80, 78, 71])
+    });
+    window.agentHostApi = {
+      ...(window.agentHostApi ?? {}),
+      workspace: {
+        ...(window.agentHostApi?.workspace ?? {}),
+        readFile
+      }
+    } as typeof window.agentHostApi;
+    Object.defineProperty(URL, "createObjectURL", {
+      configurable: true,
+      value: vi.fn(() => "blob:tsh-markdown-image")
+    });
+    Object.defineProperty(URL, "revokeObjectURL", {
+      configurable: true,
+      value: vi.fn()
+    });
+
+    render(
+      <AgentMessageMarkdown
+        content={"![generated image](/workspace/output/imagegen/dance.png)"}
+        enableImageZoom
+      />
+    );
+
+    fireEvent.click(await screen.findByRole("button", { name: /Zoom image/ }));
+    const dialog = await screen.findByRole("dialog");
+    const backgroundButton = document.createElement("button");
+    document.body.append(backgroundButton);
+    backgroundButton.focus();
+
+    fireEvent.keyDown(window, { key: "Escape" });
+
+    expect(dialog).toHaveAttribute("data-closing", "true");
+    fireEvent.animationEnd(dialog);
+    await waitFor(() => {
+      expect(screen.queryByRole("dialog")).toBeNull();
+    });
+    backgroundButton.remove();
+  });
+
   it("closes the zoom preview when the zoomed image is clicked", async () => {
     const readFile = vi.fn().mockResolvedValue({
       bytes: new Uint8Array([137, 80, 78, 71])
@@ -947,45 +1009,6 @@ describe("AgentMessageMarkdown", () => {
     await waitFor(() => {
       expect(screen.queryByRole("dialog")).toBeNull();
     });
-  });
-
-  it("keeps the zoom preview open when reopened during the close animation", async () => {
-    const readFile = vi.fn().mockResolvedValue({
-      bytes: new Uint8Array([137, 80, 78, 71])
-    });
-    window.agentHostApi = {
-      ...(window.agentHostApi ?? {}),
-      workspace: {
-        ...(window.agentHostApi?.workspace ?? {}),
-        readFile
-      }
-    } as typeof window.agentHostApi;
-    Object.defineProperty(URL, "createObjectURL", {
-      configurable: true,
-      value: vi.fn(() => "blob:tsh-markdown-image")
-    });
-    Object.defineProperty(URL, "revokeObjectURL", {
-      configurable: true,
-      value: vi.fn()
-    });
-
-    render(
-      <AgentMessageMarkdown
-        content={"![generated image](/workspace/output/imagegen/dance.png)"}
-        enableImageZoom
-      />
-    );
-
-    fireEvent.click(await screen.findByRole("button", { name: /Zoom image/ }));
-    const dialog = await screen.findByRole("dialog");
-    const modalImage = dialog.querySelector("[data-rmiz-modal-img]");
-    expect(modalImage).toBeInstanceOf(HTMLElement);
-
-    fireEvent.click(modalImage as HTMLElement);
-    fireEvent.click(screen.getByRole("button", { name: /Zoom image/ }));
-    await new Promise((resolve) => window.setTimeout(resolve, 220));
-
-    expect(screen.getByRole("dialog")).toBeInTheDocument();
   });
 
   it("does not add a zoom trigger when the markdown image is already inside a link", async () => {
@@ -1190,6 +1213,33 @@ describe("AgentMessageMarkdown", () => {
     expect(mention).toHaveTextContent("Claude Code");
   });
 
+  it("renders session mentions with their Agent Target icons", () => {
+    const iconUrl = "data:image/svg+xml;base64,gemini";
+    const { container } = render(
+      <AgentMessageMarkdown
+        content="Review [@Gemini session](mention://agent-session/session-1?agentTargetId=extension%3Agemini&workspaceId=room-1)"
+        agentTargets={[
+          {
+            agentTargetId: "extension:gemini",
+            iconUrl,
+            name: "Gemini CLI",
+            provider: "acp:gemini",
+            workspaceId: "room-1"
+          }
+        ]}
+      />
+    );
+
+    const mention = container.querySelector(
+      '[data-agent-mention-kind="session"]'
+    );
+    expect(mention).toHaveAttribute("data-agent-mention-icon-url", iconUrl);
+    expect(
+      mention?.querySelector('[data-agent-mention-session-icon="true"] img')
+    ).toHaveAttribute("src", iconUrl);
+    expect(mention).toHaveTextContent("Gemini session");
+  });
+
   it("renders agent target mentions without provider ids as agent tokens", () => {
     const { container } = render(
       <AgentMessageMarkdown content="让 [@Claude Code](mention://agent-target/local:claude-code?workspaceId=room-1) 做题" />
@@ -1265,18 +1315,18 @@ describe("AgentMessageMarkdown", () => {
     const { container } = render(
       <AgentMessageMarkdown
         content={
-          "回复 [@sunhello135-png & Nexight 长标题会话]\n(mention://agent-session/session-with-long-title?workspaceId=room-1)"
+          "回复 [@长标题会话]\n(mention://agent-session/session-with-long-title?workspaceId=room-1)"
         }
       />
     );
 
     const mention = container.querySelector('[data-agent-file-mention="true"]');
     expect(mention).toHaveAttribute("data-agent-mention-kind", "session");
-    expect(mention).toHaveTextContent("sunhello135-png & Nexight 长标题会话");
+    expect(mention).toHaveTextContent("长标题会话");
     expect(screen.queryByText(/mention:\/\/session/)).toBeNull();
   });
 
-  it("turns inline code paths into clickable links", () => {
+  it("keeps inline code paths as code instead of inferring links", () => {
     const onLinkClick = vi.fn();
     render(
       <AgentMessageMarkdown
@@ -1287,14 +1337,14 @@ describe("AgentMessageMarkdown", () => {
       />
     );
 
-    fireEvent.click(
-      screen.getByRole("link", { name: "/Users/example/demo/abc" })
-    );
-
-    expect(onLinkClick).toHaveBeenCalledWith("/Users/example/demo/abc");
+    expect(
+      screen.queryByRole("link", { name: "/Users/example/demo/abc" })
+    ).toBeNull();
+    expect(screen.getByText("/Users/example/demo/abc")).toBeInTheDocument();
+    expect(onLinkClick).not.toHaveBeenCalled();
   });
 
-  it("turns inline code home-relative paths into clickable links", () => {
+  it("keeps inline code home-relative paths as code", () => {
     const onLinkAction = vi.fn();
     render(
       <AgentMessageMarkdown
@@ -1308,18 +1358,12 @@ describe("AgentMessageMarkdown", () => {
       />
     );
 
-    fireEvent.click(screen.getByRole("link", { name: "~/docs/a.md" }));
-
-    expect(onLinkAction).toHaveBeenCalledWith({
-      type: "open-workspace-file",
-      path: "~/docs/a.md",
-      directoryPath: "~/docs",
-      workspaceRoot: "/Users/example/demo",
-      source: "agent-markdown"
-    });
+    expect(screen.queryByRole("link", { name: "~/docs/a.md" })).toBeNull();
+    expect(screen.getByText("~/docs/a.md")).toBeInTheDocument();
+    expect(onLinkAction).not.toHaveBeenCalled();
   });
 
-  it("turns inline code Windows absolute paths into clickable links", () => {
+  it("keeps inline code Windows absolute paths as code", () => {
     const onLinkAction = vi.fn();
     render(
       <AgentMessageMarkdown
@@ -1333,22 +1377,18 @@ describe("AgentMessageMarkdown", () => {
       />
     );
 
-    fireEvent.click(
-      screen.getByRole("link", {
+    expect(
+      screen.queryByRole("link", {
         name: "C:\\Users\\local\\project\\docs\\README.md"
       })
-    );
-
-    expect(onLinkAction).toHaveBeenCalledWith({
-      type: "open-workspace-file",
-      path: "C:/Users/local/project/docs/README.md",
-      directoryPath: "C:/Users/local/project/docs",
-      workspaceRoot: "C:/Users/local/project",
-      source: "agent-markdown"
-    });
+    ).toBeNull();
+    expect(
+      screen.getByText("C:\\Users\\local\\project\\docs\\README.md")
+    ).toBeInTheDocument();
+    expect(onLinkAction).not.toHaveBeenCalled();
   });
 
-  it("turns inline code http urls into clickable links", () => {
+  it("keeps inline code http urls as code", () => {
     const onLinkClick = vi.fn();
     render(
       <AgentMessageMarkdown
@@ -1357,11 +1397,11 @@ describe("AgentMessageMarkdown", () => {
       />
     );
 
-    fireEvent.click(
-      screen.getByRole("link", { name: "http://127.0.0.1:9999" })
-    );
-
-    expect(onLinkClick).toHaveBeenCalledWith("http://127.0.0.1:9999");
+    expect(
+      screen.queryByRole("link", { name: "http://127.0.0.1:9999" })
+    ).toBeNull();
+    expect(screen.getByText("http://127.0.0.1:9999")).toBeInTheDocument();
+    expect(onLinkClick).not.toHaveBeenCalled();
   });
 
   it("prevents default navigation for markdown http links", () => {
@@ -1393,26 +1433,30 @@ describe("AgentMessageMarkdown", () => {
     expect(onLinkClick).toHaveBeenCalledWith("http://127.0.0.1:9999");
   });
 
-  it("turns bare local absolute paths into clickable links", () => {
+  it("keeps bare local absolute paths and slash commands as plain text", () => {
     const onLinkClick = vi.fn();
     render(
       <AgentMessageMarkdown
         content={
-          "已创建空的 txt 文件：\n\n/Users/example/demo/83c66a52-4ff2-436a-a300-e346c9fdd9d2/note.txt\n\n当前大小：0 bytes。"
+          "已创建空的 txt 文件：\n\n/Users/example/demo/83c66a52-4ff2-436a-a300-e346c9fdd9d2/note.txt\n\nNot logged in · Please run /login"
         }
         onLinkClick={onLinkClick}
       />
     );
 
-    fireEvent.click(
-      screen.getByRole("link", {
+    expect(
+      screen.queryByRole("link", {
         name: "/Users/example/demo/83c66a52-4ff2-436a-a300-e346c9fdd9d2/note.txt"
       })
-    );
-
-    expect(onLinkClick).toHaveBeenCalledWith(
-      "/Users/example/demo/83c66a52-4ff2-436a-a300-e346c9fdd9d2/note.txt"
-    );
+    ).toBeNull();
+    expect(screen.queryByRole("link", { name: "/login" })).toBeNull();
+    expect(
+      screen.getByText(
+        "/Users/example/demo/83c66a52-4ff2-436a-a300-e346c9fdd9d2/note.txt"
+      )
+    ).toBeInTheDocument();
+    expect(screen.getByText(/Please run \/login/)).toBeInTheDocument();
+    expect(onLinkClick).not.toHaveBeenCalled();
   });
 
   it("does not auto-link bare relative paths", () => {
@@ -1521,35 +1565,13 @@ describe("AgentMessageMarkdown", () => {
     expect(screen.queryByRole("button", { name: "展开全部" })).toBeNull();
   });
 
-  it("defers full markdown rendering for long messages when requested", () => {
-    vi.useFakeTimers();
-    try {
-      const content = `请看 [README.md](README.md)\n\n${"x".repeat(4096)}`;
-      const { container } = render(
-        <AgentMessageMarkdown content={content} deferLongContentRender />
-      );
+  it("renders long messages as markdown on the first render", () => {
+    const content = `# Long answer\n\n${"x".repeat(4096)}`;
+    render(<AgentMessageMarkdown content={content} />);
 
-      expect(
-        container.querySelector(
-          '[data-workspace-agent-markdown-deferred="true"]'
-        )
-      ).toBeTruthy();
-      expect(screen.queryByRole("link", { name: "README.md" })).toBeNull();
-
-      act(() => {
-        vi.advanceTimersByTime(80);
-      });
-
-      expect(screen.queryByRole("link", { name: "README.md" })).toBeNull();
-      expect(screen.getByText("README.md")).toBeInTheDocument();
-      expect(
-        container.querySelector(
-          '[data-workspace-agent-markdown-deferred="true"]'
-        )
-      ).toBeNull();
-    } finally {
-      vi.useRealTimers();
-    }
+    expect(
+      screen.getByRole("heading", { level: 1, name: "Long answer" })
+    ).toBeInTheDocument();
   });
 });
 

@@ -32,19 +32,37 @@ type Client struct {
 }
 
 type ReportActivityInput struct {
-	WorkspaceID    string
-	Connector      *ConnectorInfo
-	Source         EventSource
-	TimelineItems  []WorkspaceAgentTimelineItem
-	StatePatches   []WorkspaceAgentStatePatch
-	MessageUpdates []WorkspaceAgentMessageUpdate
+	WorkspaceID           string
+	Connector             *ConnectorInfo
+	Source                EventSource
+	TimelineItems         []WorkspaceAgentTimelineItem
+	StatePatches          []WorkspaceAgentStatePatch
+	MessageUpdates        []WorkspaceAgentMessageUpdate
+	SessionAudits         []WorkspaceAgentSessionAuditUpdate
+	GoalReconcileRequests []WorkspaceAgentGoalReconcileRequest
 }
 
 type ReportActivityReply struct {
-	AcceptedTimelineItemCount  int `json:"acceptedTimelineItemCount"`
-	AcceptedStatePatchCount    int `json:"acceptedStatePatchCount"`
-	AcceptedMessageUpdateCount int `json:"acceptedMessageUpdateCount"`
-	RequestBodyBytes           int `json:"-"`
+	AcceptedTimelineItemCount         int `json:"acceptedTimelineItemCount"`
+	AcceptedStatePatchCount           int `json:"acceptedStatePatchCount"`
+	AcceptedMessageUpdateCount        int `json:"acceptedMessageUpdateCount"`
+	AcceptedSessionAuditCount         int `json:"acceptedSessionAuditCount"`
+	AcceptedGoalReconcileRequestCount int `json:"acceptedGoalReconcileRequestCount"`
+	RequestBodyBytes                  int `json:"-"`
+}
+
+type WorkspaceAgentGoalReconcileRequest struct {
+	RequestID           string `json:"requestId"`
+	Phase               string `json:"phase"`
+	AgentSessionID      string `json:"agentSessionId"`
+	ProviderTurnID      string `json:"providerTurnId,omitempty"`
+	Reason              string `json:"reason,omitempty"`
+	FenceMode           string `json:"fenceMode"`
+	ExpectedOperationID string `json:"expectedOperationId,omitempty"`
+	ExpectedRevision    int64  `json:"expectedRevision,omitempty"`
+	ExpectedRepairEpoch int64  `json:"expectedRepairEpoch,omitempty"`
+	QuiesceSucceeded    bool   `json:"quiesceSucceeded"`
+	QuiesceError        string `json:"quiesceError,omitempty"`
 }
 
 type ReportSessionStateInput struct {
@@ -66,6 +84,57 @@ type ReportSessionStateReply struct {
 	StateApplied      bool  `json:"stateApplied"`
 	LastEventAtUnixMS int64 `json:"lastEventAtUnixMs"`
 	RequestBodyBytes  int   `json:"-"`
+}
+
+type ReportGoalReconcileRequiredInput struct {
+	WorkspaceID string
+	Request     WorkspaceAgentGoalReconcileRequest
+}
+
+type ReportGoalReconcileRequiredReply struct {
+	Accepted bool
+}
+
+// GoalProvenanceBinding is the durable exact-key answer used by provider
+// adapters to attribute provider-authored Goal generations without relying on
+// a transient Turn id. Ambiguous is a permanent fail-closed tombstone.
+type GoalProvenanceBinding struct {
+	WorkspaceID            string `json:"workspaceId"`
+	AgentSessionID         string `json:"agentSessionId"`
+	SessionCreatedAtUnixMS int64  `json:"sessionCreatedAtUnixMs"`
+	ProviderSessionID      string `json:"providerSessionId"`
+	Fingerprint            string `json:"fingerprint"`
+	OperationID            string `json:"operationId,omitempty"`
+	Revision               int64  `json:"revision,omitempty"`
+	RepairEpoch            int64  `json:"repairEpoch,omitempty"`
+	Ambiguous              bool   `json:"ambiguous"`
+	CreatedAtUnixMS        int64  `json:"createdAtUnixMs"`
+	UpdatedAtUnixMS        int64  `json:"updatedAtUnixMs"`
+}
+
+type BindGoalProvenanceInput struct {
+	WorkspaceID            string `json:"workspaceId"`
+	AgentSessionID         string `json:"agentSessionId"`
+	SessionCreatedAtUnixMS int64  `json:"sessionCreatedAtUnixMs"`
+	ProviderSessionID      string `json:"providerSessionId"`
+	Fingerprint            string `json:"fingerprint"`
+	OperationID            string `json:"operationId"`
+	Revision               int64  `json:"revision"`
+	RepairEpoch            int64  `json:"repairEpoch"`
+	OccurredAtUnixMS       int64  `json:"occurredAtUnixMs,omitempty"`
+}
+
+type LookupGoalProvenanceInput struct {
+	WorkspaceID            string `json:"workspaceId"`
+	AgentSessionID         string `json:"agentSessionId"`
+	SessionCreatedAtUnixMS int64  `json:"sessionCreatedAtUnixMs"`
+	ProviderSessionID      string `json:"providerSessionId"`
+	Fingerprint            string `json:"fingerprint"`
+}
+
+type LookupGoalProvenanceReply struct {
+	Binding GoalProvenanceBinding `json:"binding"`
+	Found   bool                  `json:"found"`
 }
 
 func (r *ReportSessionStateReply) UnmarshalJSON(data []byte) error {
@@ -96,38 +165,64 @@ func (r *ReportSessionStateReply) UnmarshalJSON(data []byte) error {
 }
 
 type WorkspaceAgentSessionStateUpdate struct {
-	AgentTargetID      string                            `json:"agentTargetId,omitempty"`
-	DeviceID           string                            `json:"deviceId,omitempty"`
-	Provider           string                            `json:"provider,omitempty"`
-	ProviderSessionID  string                            `json:"providerSessionId,omitempty"`
-	Model              string                            `json:"model,omitempty"`
-	Settings           map[string]any                    `json:"settings,omitempty"`
-	RuntimeContext     map[string]any                    `json:"runtimeContext,omitempty"`
-	TurnLifecycle      *WorkspaceAgentTurnLifecycle      `json:"turnLifecycle,omitempty"`
-	SubmitAvailability *WorkspaceAgentSubmitAvailability `json:"submitAvailability,omitempty"`
-	PendingInteractive *WorkspaceAgentInteractivePrompt  `json:"pendingInteractive,omitempty"`
-	CWD                string                            `json:"cwd,omitempty"`
-	Title              string                            `json:"title,omitempty"`
-	LifecycleStatus    string                            `json:"lifecycleStatus,omitempty"`
-	CurrentPhase       string                            `json:"currentPhase,omitempty"`
-	LastError          string                            `json:"lastError,omitempty"`
-	OccurredAtUnixMS   int64                             `json:"occurredAtUnixMs,omitempty"`
-	StartedAtUnixMS    int64                             `json:"startedAtUnixMs,omitempty"`
-	EndedAtUnixMS      int64                             `json:"endedAtUnixMs,omitempty"`
-	Turn               *WorkspaceAgentTurnStateUpdate    `json:"turn,omitempty"`
+	Kind                  string                                    `json:"kind,omitempty"`
+	RootAgentSessionID    string                                    `json:"rootAgentSessionId,omitempty"`
+	RootTurnID            string                                    `json:"rootTurnId,omitempty"`
+	ParentAgentSessionID  string                                    `json:"parentAgentSessionId,omitempty"`
+	ParentTurnID          string                                    `json:"parentTurnId,omitempty"`
+	ParentToolCallID      string                                    `json:"parentToolCallId,omitempty"`
+	AgentTargetID         string                                    `json:"agentTargetId,omitempty"`
+	DeviceID              string                                    `json:"deviceId,omitempty"`
+	Provider              string                                    `json:"provider,omitempty"`
+	ProviderSessionID     string                                    `json:"providerSessionId,omitempty"`
+	Model                 string                                    `json:"model,omitempty"`
+	Settings              map[string]any                            `json:"settings,omitempty"`
+	RuntimeContext        map[string]any                            `json:"runtimeContext,omitempty"`
+	TurnLifecycle         *WorkspaceAgentTurnLifecycle              `json:"turnLifecycle,omitempty"`
+	SubmitAvailability    *WorkspaceAgentSubmitAvailability         `json:"submitAvailability,omitempty"`
+	InteractionTransition *WorkspaceAgentInteractionTransition      `json:"interactionTransition,omitempty"`
+	CWD                   string                                    `json:"cwd,omitempty"`
+	Title                 string                                    `json:"title,omitempty"`
+	LifecycleStatus       string                                    `json:"lifecycleStatus,omitempty"`
+	CurrentPhase          string                                    `json:"currentPhase,omitempty"`
+	LastError             string                                    `json:"lastError,omitempty"`
+	OccurredAtUnixMS      int64                                     `json:"occurredAtUnixMs,omitempty"`
+	StartedAtUnixMS       int64                                     `json:"startedAtUnixMs,omitempty"`
+	EndedAtUnixMS         int64                                     `json:"endedAtUnixMs,omitempty"`
+	Turn                  *WorkspaceAgentTurnStateUpdate            `json:"turn,omitempty"`
+	RootProviderTurn      *WorkspaceAgentRootProviderTurnTransition `json:"rootProviderTurn,omitempty"`
 }
 
+type WorkspaceAgentRootProviderTurnTransition struct {
+	RootTurnID       string                          `json:"rootTurnId"`
+	ProviderTurnID   string                          `json:"providerTurnId"`
+	Phase            string                          `json:"phase"`
+	Outcome          string                          `json:"outcome,omitempty"`
+	CompletedCommand *WorkspaceAgentCompletedCommand `json:"completedCommand,omitempty"`
+	ErrorMessage     string                          `json:"errorMessage,omitempty"`
+	ErrorCode        string                          `json:"errorCode,omitempty"`
+}
+
+const (
+	RootProviderTurnPhaseRunning   = "running"
+	RootProviderTurnPhaseCompleted = "completed"
+)
+
 type WorkspaceAgentTurnStateUpdate struct {
-	TurnID             string                            `json:"turnId"`
-	ActiveTurnID       *string                           `json:"activeTurnId,omitempty"`
-	Phase              string                            `json:"phase,omitempty"`
-	Outcome            string                            `json:"outcome,omitempty"`
-	Settling           bool                              `json:"settling,omitempty"`
-	CompletedCommand   *WorkspaceAgentCompletedCommand   `json:"completedCommand,omitempty"`
-	SubmitAvailability *WorkspaceAgentSubmitAvailability `json:"submitAvailability,omitempty"`
-	FileChanges        map[string]any                    `json:"fileChanges,omitempty"`
-	StartedAtUnixMS    int64                             `json:"startedAtUnixMs,omitempty"`
-	CompletedAtUnixMS  int64                             `json:"completedAtUnixMs,omitempty"`
+	TurnID                string                            `json:"turnId"`
+	Origin                string                            `json:"origin,omitempty"`
+	SourceGoalOperationID string                            `json:"sourceGoalOperationId,omitempty"`
+	SourceGoalRevision    int64                             `json:"sourceGoalRevision,omitempty"`
+	SourceGoalRepairEpoch int64                             `json:"sourceGoalRepairEpoch,omitempty"`
+	ActiveTurnID          *string                           `json:"activeTurnId,omitempty"`
+	Phase                 string                            `json:"phase,omitempty"`
+	Outcome               string                            `json:"outcome,omitempty"`
+	Settling              bool                              `json:"settling,omitempty"`
+	CompletedCommand      *WorkspaceAgentCompletedCommand   `json:"completedCommand,omitempty"`
+	SubmitAvailability    *WorkspaceAgentSubmitAvailability `json:"submitAvailability,omitempty"`
+	FileChanges           map[string]any                    `json:"fileChanges,omitempty"`
+	StartedAtUnixMS       int64                             `json:"startedAtUnixMs,omitempty"`
+	CompletedAtUnixMS     int64                             `json:"completedAtUnixMs,omitempty"`
 }
 
 type WorkspaceAgentCompletedCommand struct {
@@ -148,14 +243,13 @@ type WorkspaceAgentTurnLifecycle struct {
 	CompletedCommand *WorkspaceAgentCompletedCommand `json:"completedCommand,omitempty"`
 }
 
-type WorkspaceAgentInteractivePrompt struct {
+type WorkspaceAgentInteractionTransition struct {
+	RequestID string         `json:"requestId"`
+	TurnID    string         `json:"turnId"`
 	Kind      string         `json:"kind"`
-	RequestID string         `json:"requestId,omitempty"`
+	Status    string         `json:"status"`
 	ToolName  string         `json:"toolName,omitempty"`
-	Status    string         `json:"status,omitempty"`
 	Input     map[string]any `json:"input,omitempty"`
-	Output    map[string]any `json:"output,omitempty"`
-	Error     map[string]any `json:"error,omitempty"`
 	Metadata  map[string]any `json:"metadata,omitempty"`
 }
 
@@ -212,6 +306,17 @@ type WorkspaceAgentSessionMessageUpdate struct {
 	OccurredAtUnixMS  int64                           `json:"occurredAtUnixMs,omitempty"`
 	StartedAtUnixMS   int64                           `json:"startedAtUnixMs,omitempty"`
 	CompletedAtUnixMS int64                           `json:"completedAtUnixMs,omitempty"`
+}
+
+// WorkspaceAgentSessionAuditUpdate is a first-class session-level activity.
+// Compatibility transport may encode it in the session-message endpoint as
+// kind=session_audit, but it never owns or references a Turn.
+type WorkspaceAgentSessionAuditUpdate struct {
+	AuditID          string         `json:"auditId"`
+	Role             string         `json:"role"`
+	Content          string         `json:"content,omitempty"`
+	Payload          map[string]any `json:"payload,omitempty"`
+	OccurredAtUnixMS int64          `json:"occurredAtUnixMs,omitempty"`
 }
 
 type ListSessionMessagesInput struct {
@@ -274,6 +379,7 @@ type WorkspaceAgentSessionMessage struct {
 func (m *WorkspaceAgentSessionMessage) UnmarshalJSON(data []byte) error {
 	var raw struct {
 		ID                     flexibleUint64                  `json:"id"`
+		Sequence               flexibleUint64                  `json:"sequence"`
 		AgentSessionID         string                          `json:"agentSessionId"`
 		AgentSessionIDSnake    string                          `json:"agent_session_id"`
 		MessageID              string                          `json:"messageId"`
@@ -301,7 +407,7 @@ func (m *WorkspaceAgentSessionMessage) UnmarshalJSON(data []byte) error {
 		return err
 	}
 	*m = WorkspaceAgentSessionMessage{
-		ID:             uint64(raw.ID),
+		ID:             uint64(firstNonZeroFlexibleUint64(raw.Sequence, raw.ID)),
 		AgentSessionID: firstNonEmptyString(raw.AgentSessionID, raw.AgentSessionIDSnake),
 		MessageID:      firstNonEmptyString(raw.MessageID, raw.MessageIDSnake),
 		TurnID:         firstNonEmptyString(raw.TurnID, raw.TurnIDSnake),
@@ -341,10 +447,11 @@ type ConnectorInfo struct {
 }
 
 type EventSource struct {
-	Provider          string `json:"provider,omitempty"`
-	ProviderSessionID string `json:"providerSessionId,omitempty"`
-	AgentID           string `json:"agentId,omitempty"`
-	AgentTargetID     string `json:"agentTargetId,omitempty"`
+	Provider               string `json:"provider,omitempty"`
+	ProviderSessionID      string `json:"providerSessionId,omitempty"`
+	SessionCreatedAtUnixMS int64  `json:"sessionCreatedAtUnixMs,omitempty"`
+	AgentID                string `json:"agentId,omitempty"`
+	AgentTargetID          string `json:"agentTargetId,omitempty"`
 	// DeviceID optionally identifies the reporting device so multi-device
 	// controlplanes can attribute and scope sessions. Empty means unset.
 	DeviceID      string `json:"deviceId,omitempty"`
@@ -354,58 +461,50 @@ type EventSource struct {
 }
 
 type WorkspaceAgentStatePatch struct {
-	AgentSessionID            string                            `json:"agentSessionId"`
-	AgentTargetID             string                            `json:"agentTargetId,omitempty"`
-	DeviceID                  string                            `json:"deviceId,omitempty"`
-	Provider                  string                            `json:"provider,omitempty"`
-	ProviderSessionID         string                            `json:"providerSessionId,omitempty"`
-	Model                     string                            `json:"model,omitempty"`
-	PermissionModeID          string                            `json:"permissionModeId,omitempty"`
-	Settings                  map[string]any                    `json:"settings,omitempty"`
-	RuntimeContext            map[string]any                    `json:"runtimeContext,omitempty"`
-	TurnLifecycle             *WorkspaceAgentTurnLifecycle      `json:"turnLifecycle,omitempty"`
-	SubmitAvailability        *WorkspaceAgentSubmitAvailability `json:"submitAvailability,omitempty"`
-	PendingInteractive        *WorkspaceAgentInteractivePrompt  `json:"pendingInteractive,omitempty"`
-	PendingInteractivePresent bool                              `json:"-"`
-	CWD                       string                            `json:"cwd,omitempty"`
-	Title                     string                            `json:"title,omitempty"`
-	LifecycleStatus           string                            `json:"lifecycleStatus,omitempty"`
-	CurrentPhase              string                            `json:"currentPhase,omitempty"`
-	LastError                 string                            `json:"lastError,omitempty"`
-	OccurredAtUnixMS          int64                             `json:"occurredAtUnixMs,omitempty"`
-	Turn                      *WorkspaceAgentTurnPatch          `json:"turn,omitempty"`
-	Entities                  []WorkspaceAgentEntityPatch       `json:"entities,omitempty"`
-}
-
-func (p WorkspaceAgentStatePatch) MarshalJSON() ([]byte, error) {
-	type alias WorkspaceAgentStatePatch
-	data, err := json.Marshal(alias(p))
-	if err != nil || !p.PendingInteractivePresent {
-		return data, err
-	}
-	var object map[string]any
-	if err := json.Unmarshal(data, &object); err != nil {
-		return nil, err
-	}
-	if p.PendingInteractive == nil {
-		object["pendingInteractive"] = nil
-	} else {
-		object["pendingInteractive"] = p.PendingInteractive
-	}
-	return json.Marshal(object)
+	AgentSessionID        string                                    `json:"agentSessionId"`
+	Kind                  string                                    `json:"kind,omitempty"`
+	RootAgentSessionID    string                                    `json:"rootAgentSessionId,omitempty"`
+	RootTurnID            string                                    `json:"rootTurnId,omitempty"`
+	ParentAgentSessionID  string                                    `json:"parentAgentSessionId,omitempty"`
+	ParentTurnID          string                                    `json:"parentTurnId,omitempty"`
+	ParentToolCallID      string                                    `json:"parentToolCallId,omitempty"`
+	AgentTargetID         string                                    `json:"agentTargetId,omitempty"`
+	DeviceID              string                                    `json:"deviceId,omitempty"`
+	Provider              string                                    `json:"provider,omitempty"`
+	ProviderSessionID     string                                    `json:"providerSessionId,omitempty"`
+	Model                 string                                    `json:"model,omitempty"`
+	PermissionModeID      string                                    `json:"permissionModeId,omitempty"`
+	Settings              map[string]any                            `json:"settings,omitempty"`
+	RuntimeContext        map[string]any                            `json:"runtimeContext,omitempty"`
+	TurnLifecycle         *WorkspaceAgentTurnLifecycle              `json:"turnLifecycle,omitempty"`
+	SubmitAvailability    *WorkspaceAgentSubmitAvailability         `json:"submitAvailability,omitempty"`
+	InteractionTransition *WorkspaceAgentInteractionTransition      `json:"interactionTransition,omitempty"`
+	CWD                   string                                    `json:"cwd,omitempty"`
+	Title                 string                                    `json:"title,omitempty"`
+	LifecycleStatus       string                                    `json:"lifecycleStatus,omitempty"`
+	CurrentPhase          string                                    `json:"currentPhase,omitempty"`
+	LastError             string                                    `json:"lastError,omitempty"`
+	OccurredAtUnixMS      int64                                     `json:"occurredAtUnixMs,omitempty"`
+	Turn                  *WorkspaceAgentTurnPatch                  `json:"turn,omitempty"`
+	RootProviderTurn      *WorkspaceAgentRootProviderTurnTransition `json:"rootProviderTurn,omitempty"`
+	Entities              []WorkspaceAgentEntityPatch               `json:"entities,omitempty"`
 }
 
 type WorkspaceAgentTurnPatch struct {
-	TurnID             string                            `json:"turnId"`
-	ActiveTurnID       *string                           `json:"activeTurnId,omitempty"`
-	Phase              string                            `json:"phase,omitempty"`
-	Outcome            string                            `json:"outcome,omitempty"`
-	Settling           bool                              `json:"settling,omitempty"`
-	CompletedCommand   *WorkspaceAgentCompletedCommand   `json:"completedCommand,omitempty"`
-	SubmitAvailability *WorkspaceAgentSubmitAvailability `json:"submitAvailability,omitempty"`
-	FileChanges        map[string]any                    `json:"fileChanges,omitempty"`
-	StartedAtUnixMS    int64                             `json:"startedAtUnixMs,omitempty"`
-	CompletedAtUnixMS  int64                             `json:"completedAtUnixMs,omitempty"`
+	TurnID                string                            `json:"turnId"`
+	Origin                string                            `json:"origin,omitempty"`
+	SourceGoalOperationID string                            `json:"sourceGoalOperationId,omitempty"`
+	SourceGoalRevision    int64                             `json:"sourceGoalRevision,omitempty"`
+	SourceGoalRepairEpoch int64                             `json:"sourceGoalRepairEpoch,omitempty"`
+	ActiveTurnID          *string                           `json:"activeTurnId,omitempty"`
+	Phase                 string                            `json:"phase,omitempty"`
+	Outcome               string                            `json:"outcome,omitempty"`
+	Settling              bool                              `json:"settling,omitempty"`
+	CompletedCommand      *WorkspaceAgentCompletedCommand   `json:"completedCommand,omitempty"`
+	SubmitAvailability    *WorkspaceAgentSubmitAvailability `json:"submitAvailability,omitempty"`
+	FileChanges           map[string]any                    `json:"fileChanges,omitempty"`
+	StartedAtUnixMS       int64                             `json:"startedAtUnixMs,omitempty"`
+	CompletedAtUnixMS     int64                             `json:"completedAtUnixMs,omitempty"`
 }
 
 type WorkspaceAgentEntityPatch struct {
@@ -501,7 +600,7 @@ type ListAgentsInput struct {
 
 type WorkspaceAgentSnapshot struct {
 	Presences           []WorkspaceAgentPresence                  `json:"presences"`
-	Sessions            []WorkspaceAgentSession                   `json:"sessions"`
+	Sessions            []ProviderActivitySessionProjection       `json:"sessions"`
 	SessionTimelineByID map[string][]WorkspaceAgentTimelineItem   `json:"sessionTimelineById,omitempty"`
 	SessionMessagesByID map[string][]WorkspaceAgentSessionMessage `json:"sessionMessagesById,omitempty"`
 }
@@ -518,7 +617,10 @@ type WorkspaceAgentPresence struct {
 	UpdatedAtUnixMS     int64  `json:"updatedAtUnixMs"`
 }
 
-type WorkspaceAgentSession struct {
+// ProviderActivitySessionProjection is the legacy provider-event projection
+// used inside the runtime/activity bridge. It is not the durable protocol-v2
+// Session entity; its lifecycle fields must not escape this boundary.
+type ProviderActivitySessionProjection struct {
 	ID                 uint64                            `json:"id"`
 	AgentSessionID     string                            `json:"agentSessionId"`
 	AgentTargetID      string                            `json:"agentTargetId,omitempty"`
@@ -543,7 +645,7 @@ type WorkspaceAgentSession struct {
 	SyncState          *WorkspaceAgentSyncState          `json:"syncState,omitempty"`
 }
 
-func (s WorkspaceAgentSession) MarshalJSON() ([]byte, error) {
+func (s ProviderActivitySessionProjection) MarshalJSON() ([]byte, error) {
 	type output struct {
 		ID                 uint64                            `json:"id"`
 		AgentSessionID     string                            `json:"agentSessionId"`
@@ -658,7 +760,7 @@ func (p *WorkspaceAgentPresence) UnmarshalJSON(data []byte) error {
 	return nil
 }
 
-func (s *WorkspaceAgentSession) UnmarshalJSON(data []byte) error {
+func (s *ProviderActivitySessionProjection) UnmarshalJSON(data []byte) error {
 	var raw struct {
 		ID                     flexibleUint64           `json:"id"`
 		AgentSessionID         string                   `json:"agentSessionId"`
@@ -700,7 +802,7 @@ func (s *WorkspaceAgentSession) UnmarshalJSON(data []byte) error {
 	if err := json.Unmarshal(data, &raw); err != nil {
 		return err
 	}
-	*s = WorkspaceAgentSession{
+	*s = ProviderActivitySessionProjection{
 		ID: uint64(raw.ID),
 		AgentSessionID: firstNonEmptyString(
 			raw.AgentSessionID,
@@ -735,51 +837,6 @@ func (s *WorkspaceAgentSession) UnmarshalJSON(data []byte) error {
 		Status:          raw.Status,
 		Title:           raw.Title,
 		SyncState:       cloneSyncState(raw.SyncState),
-	}
-	return nil
-}
-
-func (i *WorkspaceAgentTimelineItem) UnmarshalJSON(data []byte) error {
-	var raw struct {
-		ID               flexibleUint64 `json:"id"`
-		RoomID           string         `json:"roomId"`
-		AgentSessionID   string         `json:"agentSessionId"`
-		TurnID           string         `json:"turnId"`
-		EventSource      string         `json:"eventSource"`
-		EventID          string         `json:"eventId"`
-		ActorType        string         `json:"actorType"`
-		ActorID          string         `json:"actorId"`
-		ItemType         string         `json:"itemType"`
-		Role             string         `json:"role"`
-		CallType         string         `json:"callType"`
-		CallID           string         `json:"callId"`
-		Name             string         `json:"name"`
-		Status           string         `json:"status"`
-		Payload          map[string]any `json:"payload,omitempty"`
-		OccurredAtUnixMS flexibleInt64  `json:"occurredAtUnixMs"`
-		CreatedAtUnixMS  flexibleInt64  `json:"createdAtUnixMs"`
-	}
-	if err := json.Unmarshal(data, &raw); err != nil {
-		return err
-	}
-	*i = WorkspaceAgentTimelineItem{
-		ID:               uint64(raw.ID),
-		RoomID:           raw.RoomID,
-		AgentSessionID:   raw.AgentSessionID,
-		TurnID:           raw.TurnID,
-		EventSource:      raw.EventSource,
-		EventID:          raw.EventID,
-		ActorType:        raw.ActorType,
-		ActorID:          raw.ActorID,
-		ItemType:         raw.ItemType,
-		Role:             raw.Role,
-		CallType:         raw.CallType,
-		CallID:           raw.CallID,
-		Name:             raw.Name,
-		Status:           raw.Status,
-		Payload:          raw.Payload,
-		OccurredAtUnixMS: int64(raw.OccurredAtUnixMS),
-		CreatedAtUnixMS:  int64(raw.CreatedAtUnixMS),
 	}
 	return nil
 }

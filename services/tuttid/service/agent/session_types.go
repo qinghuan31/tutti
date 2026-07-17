@@ -5,49 +5,89 @@ import (
 	"sync"
 	"time"
 
-	agentsessionstore "github.com/tutti-os/tutti/packages/agent/daemon/activity"
+	"golang.org/x/sync/singleflight"
+
 	runtimeprep "github.com/tutti-os/tutti/packages/agent/runtimeprep"
 	agentactivitybiz "github.com/tutti-os/tutti/services/tuttid/biz/agentactivity"
 	agenttargetbiz "github.com/tutti-os/tutti/services/tuttid/biz/agenttarget"
 	userprojectbiz "github.com/tutti-os/tutti/services/tuttid/biz/userproject"
+	claudecodeservice "github.com/tutti-os/tutti/services/tuttid/service/claudecode"
 	reporterservice "github.com/tutti-os/tutti/services/tuttid/service/reporter"
 )
 
 type Service struct {
-	Runtime                       RuntimeController
-	AnalyticsReporter             reporterservice.Reporter
-	AvailabilityChecker           ProviderAvailabilityChecker
-	ModelCatalog                  AgentModelCatalog
-	ModelCapabilities             ModelCapabilitiesResolver
-	AgentTargetStore              AgentTargetStore
-	SessionReader                 SessionReader
-	UserProjectReader             UserProjectReader
-	MessageReader                 MessageReader
-	ExternalImportStore           agentactivitybiz.Repository
-	SessionDirectoryAllocator     SessionDirectoryAllocator
-	PromptAttachmentStore         PromptAttachmentStore
-	RuntimePreparer               runtimeprep.Preparer
-	CapabilityLister              ComposerCapabilityLister
-	ProviderAvailabilityCacheTTL  time.Duration
-	CapabilityCatalogCacheTTL     time.Duration
-	LiveModelCacheTTL             time.Duration
-	LiveModelDiscoveryDeleteDelay time.Duration
-	skillOptionsCache             *composerSkillOptionsCache
-	providerAvailabilityCache     *providerAvailabilityCache
-	capabilityCatalogCache        *composerCapabilityCatalogCache
-	liveModelCache                *composerLiveModelCache
-	claudeStartupLock             *claudeStartupSerializer
-	liveModelDiscoveryMu          sync.Mutex
-	liveModelDiscoveryAttempted   map[string]struct{}
-	liveModelInvalidatedAtUnixMS  map[string]int64
+	Runtime                        RuntimeController
+	AnalyticsReporter              reporterservice.Reporter
+	AvailabilityChecker            ProviderAvailabilityChecker
+	ModelCatalog                   AgentModelCatalog
+	ModelCapabilities              ModelCapabilitiesResolver
+	AgentTargetStore               AgentTargetStore
+	SessionInitializer             SessionInitializer
+	SessionReader                  SessionReader
+	UserProjectReader              UserProjectReader
+	MessageReader                  MessageReader
+	ExternalImportStore            agentactivitybiz.Repository
+	TurnStore                      TurnStore
+	RuntimeOperationStore          RuntimeOperationStore
+	GoalStateStore                 GoalStateStore
+	GoalAuditPublisher             GoalAuditPublisher
+	GoalReconcileInboxStore        GoalReconcileInboxStore
+	SubmitClaimStore               SubmitClaimStore
+	RuntimeOperationEventPublisher RuntimeOperationEventPublisher
+	RuntimeOperationClock          func() time.Time
+	RuntimeOperationOwner          string
+	GoalOperationOwner             string
+	GoalOperationClock             func() time.Time
+	GoalOperationAttemptTimeout    time.Duration
+	GoalOperationRecoveryBudget    time.Duration
+	GoalOperationMaxAttempts       int
+	GoalOperationDispatchDeadline  time.Duration
+	SessionDirectoryAllocator      SessionDirectoryAllocator
+	PromptAttachmentStore          PromptAttachmentStore
+	RuntimePreparer                runtimeprep.Preparer
+	ComputerUseAvailable           func() bool
+	CapabilityLister               ComposerCapabilityLister
+	ExtensionComposerProfiles      ExtensionComposerProfileResolver
+	ProviderAvailabilityCacheTTL   time.Duration
+	CapabilityCatalogCacheTTL      time.Duration
+	LiveModelCacheTTL              time.Duration
+	LiveModelDiscoveryDeleteDelay  time.Duration
+	skillOptionsCache              *composerSkillOptionsCache
+	providerAvailabilityCache      *providerAvailabilityCache
+	capabilityCatalogCache         *composerCapabilityCatalogCache
+	liveModelCache                 *composerLiveModelCache
+	claudeStartupLock              *claudecodeservice.StartupGate
+	liveModelDiscoveryMu           sync.Mutex
+	liveModelDiscoveryAttempted    map[string]struct{}
+	liveModelInvalidatedAtUnixMS   map[string]int64
+	liveModelDiscoverySessions     map[string]liveModelDiscoverySessionRef
+	liveModelDiscoveryGroup        singleflight.Group
+	sessionSettingsMu              sync.Mutex
+	sessionSettingsLocks           map[string]*serviceSessionSettingsLock
+	goalActorsMu                   sync.Mutex
+	goalActors                     map[string]*goalActorEntry
 	// liveModelPersistedScanMissAtUnixMS memoizes, per live-model cache key,
 	// when the persisted-session fallback scan last found nothing, so the
 	// full session scan is not repeated on every composer-options fetch.
 	liveModelPersistedScanMissAtUnixMS map[string]int64
 }
 
-type StaleTurnResumeReconciler interface {
-	ReconcileStaleTurnOnResume(context.Context, PersistedSession) error
+type GoalAuditPublisher interface {
+	PublishGoalControlAudit(context.Context, string, string, agentactivitybiz.Message)
+}
+
+type GoalReconcileInboxStore interface {
+	ListClaimableGoalReconcileInbox(context.Context, int64, int) ([]agentactivitybiz.GoalReconcileInboxItem, error)
+	ClaimGoalReconcileInbox(context.Context, agentactivitybiz.ClaimGoalReconcileInboxInput) (agentactivitybiz.GoalReconcileInboxItem, bool, error)
+	CompleteGoalReconcileInbox(context.Context, string, string, int64) (bool, error)
+	ReleaseGoalReconcileInbox(context.Context, agentactivitybiz.ReleaseGoalReconcileInboxInput) (bool, error)
+	RequeueLeasedGoalReconcileInboxOnStartup(context.Context, int64) (int64, error)
+}
+
+type SubmitClaimStore interface {
+	PrepareSubmitClaim(context.Context, agentactivitybiz.SubmitClaimPrepare) (agentactivitybiz.SubmitClaim, bool, error)
+	AcceptSubmitClaim(context.Context, string, string, string, string, int64) (agentactivitybiz.SubmitClaim, bool, error)
+	DeleteSubmitClaim(context.Context, string, string, string) (bool, error)
 }
 
 type RuntimeController interface {
@@ -56,13 +96,14 @@ type RuntimeController interface {
 	CanResume(RuntimeResumeInput) bool
 	Close(context.Context, RuntimeCloseInput) error
 	Exec(context.Context, RuntimeExecInput) (RuntimeExecResult, error)
-	Resume(context.Context, RuntimeResumeInput) (RuntimeSession, error)
-	Session(workspaceID string, agentSessionID string) (RuntimeSession, bool)
-	SetTitle(context.Context, RuntimeSetTitleInput) (RuntimeSession, error)
-	SetVisible(context.Context, RuntimeSetVisibleInput) (RuntimeSession, error)
-	Sessions(workspaceID string) []RuntimeSession
-	Start(context.Context, RuntimeStartInput) (RuntimeSession, error)
-	SubmitInteractive(context.Context, RuntimeSubmitInteractiveInput) error
+	Resume(context.Context, RuntimeResumeInput) (ProviderRuntimeSession, error)
+	Session(workspaceID string, agentSessionID string) (ProviderRuntimeSession, bool)
+	SetTitle(context.Context, RuntimeSetTitleInput) (ProviderRuntimeSession, error)
+	SetVisible(context.Context, RuntimeSetVisibleInput) (ProviderRuntimeSession, error)
+	Sessions(workspaceID string) []ProviderRuntimeSession
+	Start(context.Context, RuntimeStartInput) (ProviderRuntimeSession, error)
+	SubmitInteractive(context.Context, RuntimeSubmitInteractiveInput) (RuntimeSubmitInteractiveResult, error)
+	InteractiveDisposition(workspaceID string, rootAgentSessionID string, agentSessionID string, turnID string, requestID string) RuntimeInteractiveDisposition
 	Subscribe(workspaceID string, agentSessionID string) (<-chan RuntimeStreamEvent, func(), bool)
 	UpdateSettings(context.Context, RuntimeUpdateSettingsInput) error
 	ValidatePromptContent(context.Context, RuntimeExecInput) error
@@ -80,46 +121,63 @@ type ComposerCapabilityLister interface {
 	ListComposerCapabilityOptions(context.Context, string, string, []ComposerSkillOption) ([]ComposerCapabilityOption, []string)
 }
 
-type Session struct {
-	ID                 string
-	UserID             string
-	AgentTargetID      string
-	Provider           string
-	ProviderSessionID  string
-	Cwd                string
-	Status             string
-	TurnLifecycle      *TurnLifecycle
-	SubmitAvailability *SubmitAvailability
-	Visible            bool
-	Resumable          bool
-	Settings           *ComposerSettings
-	PermissionConfig   PermissionConfig
-	RuntimeContext     map[string]any
-	Title              *string
-	PinnedAtUnixMS     int64
-	CreatedAt          time.Time
-	UpdatedAt          *time.Time
-	EndedAt            *time.Time
-	LastError          *string
+type ExtensionComposerProfileResolver interface {
+	ResolveExtensionComposerProfile(context.Context, string) (ExtensionComposerProfile, error)
 }
 
-type CancelReason string
+type ExtensionComposerProfile struct {
+	Skills *ExtensionComposerSkillProfile
+}
 
-const (
-	CancelReasonActiveTurnCanceled  CancelReason = "active_turn_canceled"
-	CancelReasonNoActiveTurn        CancelReason = "no_active_turn"
-	CancelReasonStaleTurnReconciled CancelReason = "stale_turn_reconciled"
-)
+type ExtensionComposerSkillProfile struct {
+	Invocation    string
+	TriggerPrefix string
+	Roots         []ExtensionComposerSkillRoot
+}
 
-type CancelSessionResult struct {
-	Session  Session
-	Canceled bool
-	Reason   CancelReason
+type ExtensionComposerSkillRoot struct {
+	Scope string
+	Path  string
+}
+
+type Session struct {
+	ID                   string
+	Kind                 string
+	RootAgentSessionID   string
+	RootTurnID           string
+	ParentAgentSessionID string
+	ParentTurnID         string
+	ParentToolCallID     string
+	UserID               string
+	AgentTargetID        string
+	Provider             string
+	ProviderSessionID    string
+	Cwd                  string
+	RailSectionKey       string
+	Visible              bool
+	Resumable            bool
+	Settings             *ComposerSettings
+	PermissionConfig     PermissionConfig
+	Title                *string
+	PinnedAtUnixMS       int64
+	CreatedAt            time.Time
+	UpdatedAt            *time.Time
+	EndedAt              *time.Time
+	Metadata             agentactivitybiz.SessionMetadata
+	// Protocol v2 turn state (agent-gui refactor plan): the session keeps an
+	// activeTurnId reference; phase/outcome/error live on the turn entity.
+	ActiveTurnID           string
+	ActiveTurn             *agentactivitybiz.Turn
+	LatestTurn             *agentactivitybiz.Turn
+	LatestTurnInteractions []agentactivitybiz.Interaction
+	PendingInteractions    []agentactivitybiz.Interaction
 }
 
 type ListSessionsInput struct {
-	SearchQuery string
-	Limit       int
+	AgentTargetID string
+	Cursor        string
+	SearchQuery   string
+	Limit         int
 }
 
 type SessionListPage struct {
@@ -140,27 +198,25 @@ type ListSessionSectionPageInput struct {
 	AgentTargetID string
 }
 
-type CountSessionSectionInput struct {
+type ListSessionSectionDeletionCandidatesInput struct {
 	SectionKey    string
 	AgentTargetID string
+	ExcludePinned bool
 }
 
-type SessionSectionCount struct {
+type SessionSectionDeletionCandidates struct {
 	WorkspaceID   string
 	SectionKey    string
 	AgentTargetID string
-	Count         int
+	ExcludePinned bool
+	SessionIDs    []string
 }
 
-type DeleteSessionSectionInput struct {
-	SectionKey    string
-	AgentTargetID string
+type DeleteSessionsBatchInput struct {
+	SessionIDs []string
 }
 
-type DeleteSessionSectionResult struct {
-	WorkspaceID       string
-	SectionKey        string
-	AgentTargetID     string
+type DeleteSessionsBatchResult struct {
 	RemovedMessages   int
 	RemovedSessions   int
 	RemovedSessionIDs []string
@@ -181,6 +237,7 @@ type SessionSectionsPage struct {
 type SessionPage struct {
 	Sessions   []Session
 	HasMore    bool
+	TotalCount int
 	NextCursor string
 }
 
@@ -190,31 +247,37 @@ type SessionSection struct {
 	UserProject *userprojectbiz.Project
 	Sessions    []Session
 	HasMore     bool
+	TotalCount  int
 	NextCursor  string
 }
 
 type PersistedSession struct {
-	ID                string
-	WorkspaceID       string
-	Origin            string
-	UserID            string
-	AgentTargetID     string
-	Provider          string
-	ProviderSessionID string
-	Cwd               string
-	Settings          ComposerSettings
-	RuntimeContext    map[string]any
-	Status            string
-	CurrentPhase      string
-	Visible           bool
-	Title             string
-	LastError         string
-	PinnedAtUnixMS    int64
-	LastEventUnixMS   int64
-	StartedAtUnixMS   int64
-	EndedAtUnixMS     int64
-	CreatedAtUnixMS   int64
-	UpdatedAtUnixMS   int64
+	ID                     string
+	WorkspaceID            string
+	Kind                   string
+	RootAgentSessionID     string
+	RootTurnID             string
+	ParentAgentSessionID   string
+	ParentTurnID           string
+	ParentToolCallID       string
+	Origin                 string
+	UserID                 string
+	AgentTargetID          string
+	Provider               string
+	ProviderSessionID      string
+	Cwd                    string
+	RailSectionKey         string
+	Settings               ComposerSettings
+	Metadata               agentactivitybiz.SessionMetadata
+	InternalRuntimeContext map[string]any
+	Title                  string
+	PinnedAtUnixMS         int64
+	LastEventUnixMS        int64
+	StartedAtUnixMS        int64
+	EndedAtUnixMS          int64
+	CreatedAtUnixMS        int64
+	UpdatedAtUnixMS        int64
+	ActiveTurnID           string
 }
 
 type SessionMessage struct {
@@ -225,6 +288,7 @@ type SessionMessage struct {
 	Role              string
 	Kind              string
 	Status            string
+	Semantics         *agentactivitybiz.MessageSemantics
 	Payload           map[string]any
 	OccurredAtUnixMS  int64
 	StartedAtUnixMS   int64
@@ -237,25 +301,40 @@ type SessionMessage struct {
 type SessionReader interface {
 	GetSession(workspaceID string, agentSessionID string) (PersistedSession, bool)
 	ListSessions(workspaceID string) ([]PersistedSession, bool)
+	SessionDeleted(ctx context.Context, workspaceID string, agentSessionID string) (bool, error)
 }
 
-type SessionStateReporter interface {
-	ReportSessionState(
-		context.Context,
-		agentsessionstore.ReportSessionStateInput,
-	) (agentsessionstore.ReportSessionStateReply, error)
+// SessionInitializer synchronously persists the canonical session shell that
+// every successful Create response must expose. In particular, it assigns the
+// immutable railSectionKey before the response leaves the daemon.
+type SessionInitializer interface {
+	InitializeRuntimeSession(context.Context, ProviderRuntimeSession) (PersistedSession, error)
+}
+
+type ChildSessionReader interface {
+	ListChildSessions(context.Context, string, string) ([]PersistedSession, error)
+}
+
+type SessionDetail struct {
+	Session       Session
+	ChildSessions []Session
+	Turns         []agentactivitybiz.Turn
+}
+
+type SessionSectionsReader interface {
+	ListSessionSections(context.Context, agentactivitybiz.ListSessionSectionsInput) (agentactivitybiz.SessionSectionsPage, bool, error)
 }
 
 type SessionSectionReader interface {
-	ListSessionSection(context.Context, agentactivitybiz.ListSessionSectionInput) (agentactivitybiz.SessionSectionPage, bool)
+	ListSessionSection(context.Context, agentactivitybiz.ListSessionSectionInput) (agentactivitybiz.SessionSectionPage, bool, error)
 }
 
-type SessionSectionCounter interface {
-	CountSessionSection(context.Context, agentactivitybiz.CountSessionSectionInput) (agentactivitybiz.SessionSectionCount, bool)
+type SessionSectionDeletionCandidateReader interface {
+	ListSessionSectionDeletionCandidates(context.Context, agentactivitybiz.ListSessionSectionDeletionCandidatesInput) (agentactivitybiz.SessionSectionDeletionCandidates, bool)
 }
 
-type SessionSectionDeleter interface {
-	DeleteSessionSection(context.Context, agentactivitybiz.DeleteSessionSectionInput) (agentactivitybiz.DeleteSessionSectionResult, bool)
+type SessionBatchDeleter interface {
+	DeleteSessionsBatch(context.Context, agentactivitybiz.DeleteSessionsBatchInput) (agentactivitybiz.DeleteSessionsBatchResult, error)
 }
 
 type UserProjectReader interface {
@@ -280,80 +359,82 @@ type SessionPinUpdater interface {
 	UpdateSessionPinned(context.Context, string, string, bool) (PersistedSession, bool, error)
 }
 
+type SessionSettingsUpdater interface {
+	UpdateSessionSettings(context.Context, string, string, ComposerSettings) (PersistedSession, bool, error)
+}
+
 type SessionTitleUpdater interface {
 	UpdateSessionTitle(context.Context, string, string, string) (PersistedSession, bool, error)
 }
 
-type RuntimeSession struct {
-	ID                 string
-	WorkspaceID        string
-	UserID             string
-	AgentTargetID      string
-	Provider           string
-	ProviderSessionID  string
-	Cwd                string
-	Env                []string
-	Settings           *ComposerSettings
-	RuntimeContext     map[string]any
-	Status             string
-	TurnLifecycle      *TurnLifecycle
-	SubmitAvailability *SubmitAvailability
-	PendingInteractive *RuntimeInteractivePrompt
-	Visible            bool
-	Title              string
-	LastError          string
-	PinnedAtUnixMS     int64
-	CreatedAtUnixMS    int64
-	UpdatedAtUnixMS    int64
-}
-
-type RuntimeInteractivePrompt struct {
-	Kind      string
-	RequestID string
-	ToolName  string
-	Status    string
-	Input     map[string]any
-	Output    map[string]any
-	Error     map[string]any
-	Metadata  map[string]any
+// ProviderRuntimeSession is an adapter/controller-private snapshot. Its
+// status, lifecycle and runtime context are provider observations only; they
+// must never be exposed as, or used to overwrite, the durable Session/Turn/
+// Interaction entities.
+type ProviderRuntimeSession struct {
+	ID                      string
+	WorkspaceID             string
+	UserID                  string
+	AgentTargetID           string
+	Provider                string
+	ProviderSessionID       string
+	Cwd                     string
+	Env                     []string
+	Settings                *ComposerSettings
+	RuntimeContext          map[string]any
+	Status                  string
+	TurnLifecycle           *TurnLifecycle
+	SubmitAvailability      *SubmitAvailability
+	Visible                 bool
+	Title                   string
+	InitialTitleEstablished bool
+	LastError               string
+	PinnedAtUnixMS          int64
+	CreatedAtUnixMS         int64
+	UpdatedAtUnixMS         int64
 }
 
 type RuntimeStartInput struct {
+	WorkspaceID             string
+	AgentSessionID          string
+	AgentTargetID           string
+	Provider                string
+	Cwd                     string
+	Env                     []string
+	Title                   string
+	InitialTitleEstablished bool
+	PermissionModeID        string
+	Model                   string
+	PlanMode                bool
+	BrowserUse              *bool
+	ComputerUse             *bool
+	ProviderTargetRef       map[string]any
+	RuntimeContext          map[string]any
+	ReasoningEffort         string
+	Speed                   string
+	ConversationDetailMode  string
+	Visible                 *bool
+	Provisional             bool
+}
+
+type RuntimeResumeInput struct {
 	WorkspaceID            string
 	AgentSessionID         string
 	AgentTargetID          string
 	Provider               string
+	ProviderSessionID      string
 	Cwd                    string
 	Env                    []string
 	Title                  string
-	PermissionModeID       string
-	Model                  string
-	PlanMode               bool
-	BrowserUse             *bool
-	ComputerUse            *bool
-	ProviderTargetRef      map[string]any
-	RuntimeContext         map[string]any
-	ReasoningEffort        string
-	Speed                  string
-	ConversationDetailMode string
+	Status                 string
+	Settings               ComposerSettings
+	CreatedAtUnixMS        int64
+	UpdatedAtUnixMS        int64
 	Visible                *bool
-}
-
-type RuntimeResumeInput struct {
-	WorkspaceID       string
-	AgentSessionID    string
-	AgentTargetID     string
-	Provider          string
-	ProviderSessionID string
-	Cwd               string
-	Env               []string
-	Title             string
-	Status            string
-	Settings          ComposerSettings
-	CreatedAtUnixMS   int64
-	UpdatedAtUnixMS   int64
-	Visible           *bool
-	RuntimeContext    map[string]any
+	RuntimeContext         map[string]any
+	ProviderTargetRef      map[string]any
+	Metadata               agentactivitybiz.SessionMetadata
+	InternalRuntimeContext map[string]any
 	// RecreateIfMissing lets the runtime start a fresh provider session in place
 	// when the existing one can't be restored locally (imported conversations),
 	// instead of surfacing a non-recoverable restore error.
@@ -361,12 +442,14 @@ type RuntimeResumeInput struct {
 }
 
 type RuntimeExecInput struct {
-	WorkspaceID    string
-	AgentSessionID string
-	Content        []PromptContentBlock
-	DisplayPrompt  string
-	Metadata       map[string]any
-	Guidance       bool
+	WorkspaceID      string
+	AgentSessionID   string
+	Content          []PromptContentBlock
+	DisplayPrompt    string
+	InitialTitle     string
+	InitialTitleBase string
+	Metadata         map[string]any
+	Guidance         bool
 }
 
 type RuntimeExecResult struct {
@@ -398,14 +481,22 @@ type TurnLifecycle struct {
 }
 
 type RuntimeCancelInput struct {
-	WorkspaceID    string
+	WorkspaceID        string
+	RootAgentSessionID string
+	Targets            []RuntimeCancelTarget
+	Reason             string
+}
+
+type RuntimeCancelTarget struct {
 	AgentSessionID string
-	Reason         string
+	TurnID         string
 }
 
 type RuntimeCancelResult struct {
-	AgentSessionID string
-	Canceled       bool
+	AgentSessionID   string
+	Canceled         bool
+	TargetAbsent     bool
+	ConfirmedTargets []RuntimeCancelTarget
 }
 
 type RuntimeGoalControlInput struct {
@@ -413,11 +504,39 @@ type RuntimeGoalControlInput struct {
 	AgentSessionID string
 	Action         string
 	Objective      string
+	OperationID    string
+	GoalRevision   int64
+	RepairEpoch    int64
+	// SubmissionMetadata is present only when a typed /goal command entered
+	// through the composer. It preserves the client submit identity for the
+	// turnless transcript audit message; direct goal controls and recovery
+	// operations leave it empty.
+	SubmissionMetadata map[string]any
 }
 
 type RuntimeGoalControlResult struct {
 	AgentSessionID string
 	Goal           map[string]any
+	Evidence       map[string]any
+	ProviderPhase  string
+}
+
+type RuntimeGoalReconcileResult struct {
+	AgentSessionID string
+	Goal           map[string]any
+	Evidence       map[string]any
+}
+
+type RuntimeGoalRecoveryPolicy struct {
+	QuerySupported        bool
+	ReplaySetAfterRestart bool
+}
+type RuntimeGoalRecoveryPolicyResolver interface {
+	GoalRecoveryPolicy(context.Context, RuntimeGoalControlInput) (RuntimeGoalRecoveryPolicy, error)
+}
+
+type RuntimeGoalReconciler interface {
+	ReconcileGoal(context.Context, RuntimeGoalControlInput) (RuntimeGoalReconcileResult, error)
 }
 
 type RuntimeCloseInput struct {
@@ -426,13 +545,30 @@ type RuntimeCloseInput struct {
 }
 
 type RuntimeSubmitInteractiveInput struct {
-	WorkspaceID    string
-	AgentSessionID string
-	RequestID      string
-	Action         string
-	OptionID       string
-	Payload        map[string]any
+	WorkspaceID        string
+	RootAgentSessionID string
+	AgentSessionID     string
+	TurnID             string
+	RequestID          string
+	Action             string
+	OptionID           string
+	Payload            map[string]any
 }
+
+type RuntimeSubmitInteractiveResult struct {
+	Disposition RuntimeInteractiveDisposition
+}
+
+type RuntimeInteractiveDisposition string
+
+const (
+	RuntimeInteractiveDispositionPending     RuntimeInteractiveDisposition = "pending"
+	RuntimeInteractiveDispositionResolving   RuntimeInteractiveDisposition = "resolving"
+	RuntimeInteractiveDispositionAnswered    RuntimeInteractiveDisposition = "answered"
+	RuntimeInteractiveDispositionSuperseded  RuntimeInteractiveDisposition = "superseded"
+	RuntimeInteractiveDispositionInterrupted RuntimeInteractiveDisposition = "interrupted"
+	RuntimeInteractiveDispositionUnknown     RuntimeInteractiveDisposition = "unknown"
+)
 
 type RuntimeUpdateSettingsInput struct {
 	WorkspaceID    string
@@ -510,9 +646,12 @@ type SendInput struct {
 
 type SendInputResult struct {
 	Session            Session
+	Kind               string
 	TurnID             string
+	Turn               *agentactivitybiz.Turn
 	TurnLifecycle      TurnLifecycle
 	SubmitAvailability SubmitAvailability
+	GoalControl        *GoalControlSessionResult
 }
 
 type PromptContentBlock struct {
@@ -533,9 +672,16 @@ type PromptAttachment struct {
 }
 
 type SubmitInteractiveInput struct {
+	TurnID   string
 	Action   *string
 	OptionID *string
 	Payload  map[string]any
+}
+
+type SubmitPlanDecisionInput struct {
+	PromptKind     string
+	Action         string
+	IdempotencyKey string
 }
 
 type StreamInput struct {

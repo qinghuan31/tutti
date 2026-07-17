@@ -68,9 +68,7 @@ test("createAppUpdateService can simulate a dev prerelease update", async () => 
 
 test("createElectronAppUpdateDriver keeps downgrade checks disabled after setting channel", () => {
   const updater = createFakeElectronUpdater();
-  const driver = createElectronAppUpdateDriver(updater as never, {
-    shouldSuppressNoPublishedVersionsError: () => false
-  });
+  const driver = createElectronAppUpdateDriver(updater as never);
 
   driver.configure({
     allowPrerelease: true,
@@ -82,55 +80,120 @@ test("createElectronAppUpdateDriver keeps downgrade checks disabled after settin
 
   assert.equal(updater.channel, "rc");
   assert.equal(updater.allowDowngrade, false);
+  driver.setFeedUrl("https://updates.example.test/v1.2.3-rc.0");
+  assert.deepEqual(updater.feedUrls, [
+    "https://updates.example.test/v1.2.3-rc.0"
+  ]);
 });
 
-test("createAppUpdateService recognizes prefixed GitHub rc release tags", async () => {
+test("createAppUpdateService configures the static RC feed before checking", async () => {
   const env = withAppUpdateEnv({
     TUTTI_APP_UPDATE_CURRENT_VERSION: "0.0.1-rc.16",
     TUTTI_APP_UPDATE_DEV: "1"
   });
+  const calls: string[] = [];
   const driver = createFakeDriver({
     checkForUpdates: async () => {
-      driver.emitError(new Error("No published versions on GitHub"));
-      throw new Error("No published versions on GitHub");
+      calls.push("check");
+    },
+    setFeedUrl(url) {
+      calls.push(`feed:${url}`);
     }
   });
-  const emittedStatuses: string[] = [];
   let service: ReturnType<typeof createAppUpdateService> | null = null;
 
   try {
     service = createAppUpdateService(driver, {
-      prefixedReleaseResolver: async () => ({
-        htmlUrl:
-          "https://github.com/tutti-os/tutti/releases/tag/tutti-desktop-v0.0.1-rc.17",
-        name: "tutti-desktop-v0.0.1-rc.17",
-        publishedAt: "2026-06-15T00:00:00.000Z",
-        tagName: "tutti-desktop-v0.0.1-rc.17",
-        version: "0.0.1-rc.17"
-      }),
+      releaseFeedResolver: async ({ channel }) => {
+        calls.push(`resolve:${channel}`);
+        return {
+          feedUrl: "https://updates.example.test/v0.0.1-rc.17",
+          releasedAt: "2026-06-15T00:00:00.000Z",
+          tag: "v0.0.1-rc.17",
+          updaterChannel: "rc",
+          version: "0.0.1-rc.17"
+        };
+      },
       supportsUpdates: true
-    });
-    service.onStateChanged((state) => {
-      emittedStatuses.push(state.status);
     });
     await service.configure({
       channel: "rc",
       policy: "prompt"
     });
-    const state = await service.checkForUpdates();
+    await service.checkForUpdates();
 
-    assert.equal(state.currentVersion, "0.0.1-rc.16");
-    assert.equal(state.latestVersion, "0.0.1-rc.17");
-    assert.equal(state.releaseName, "tutti-desktop-v0.0.1-rc.17");
-    assert.equal(
-      state.releaseNotesUrl,
-      "https://github.com/tutti-os/tutti/releases/tag/tutti-desktop-v0.0.1-rc.17"
-    );
-    assert.equal(state.status, "available");
-    assert.ok(!emittedStatuses.includes("error"));
+    assert.deepEqual(calls, [
+      "resolve:rc",
+      "feed:https://updates.example.test/v0.0.1-rc.17",
+      "check"
+    ]);
   } finally {
     service?.dispose();
     env.restore();
+  }
+});
+
+test("createAppUpdateService reports static feed resolution errors", async () => {
+  const driver = createFakeDriver();
+  const service = createAppUpdateService(driver, {
+    releaseFeedResolver: async () => {
+      throw new Error("Desktop update pointer channel mismatch");
+    },
+    supportsUpdates: true
+  });
+
+  try {
+    await service.configure({ channel: "rc", policy: "prompt" });
+    await assert.rejects(
+      service.checkForUpdates(),
+      /Desktop update pointer channel mismatch/
+    );
+
+    assert.equal(service.getState().status, "error");
+    assert.deepEqual(driver.feedUrls, []);
+  } finally {
+    service.dispose();
+  }
+});
+
+test("createAppUpdateService shares static feed resolution across concurrent checks", async () => {
+  const driver = createFakeDriver();
+  const deferredFeed = createDeferred<{
+    feedUrl: string;
+    releasedAt: string;
+    tag: string;
+    updaterChannel: "latest" | "rc";
+    version: string;
+  }>();
+  let resolveCalls = 0;
+  const service = createAppUpdateService(driver, {
+    releaseFeedResolver: () => {
+      resolveCalls += 1;
+      return deferredFeed.promise;
+    },
+    supportsUpdates: true
+  });
+
+  try {
+    await service.configure({ channel: "rc", policy: "prompt" });
+    const firstCheck = service.checkForUpdates();
+    const secondCheck = service.checkForUpdates();
+    assert.equal(resolveCalls, 1);
+
+    deferredFeed.resolve({
+      feedUrl: "https://updates.example.test/v0.0.1-rc.17",
+      releasedAt: "2026-06-15T00:00:00.000Z",
+      tag: "v0.0.1-rc.17",
+      updaterChannel: "rc",
+      version: "0.0.1-rc.17"
+    });
+    await Promise.all([firstCheck, secondCheck]);
+
+    assert.deepEqual(driver.feedUrls, [
+      "https://updates.example.test/v0.0.1-rc.17"
+    ]);
+  } finally {
+    service.dispose();
   }
 });
 
@@ -249,7 +312,7 @@ test("createAppUpdateService refreshes update availability before downloading", 
   }
 });
 
-test("createElectronUpdaterLogger defers no published versions errors during prefixed fallback", () => {
+test("createElectronUpdaterLogger records updater errors", () => {
   const calls: Array<{ level: string; message: string }> = [];
   const logger = createElectronUpdaterLogger({
     logger: {
@@ -257,17 +320,15 @@ test("createElectronUpdaterLogger defers no published versions errors during pre
       error: (message) => calls.push({ level: "error", message }),
       info: (message) => calls.push({ level: "info", message }),
       warn: (message) => calls.push({ level: "warn", message })
-    },
-    shouldSuppressNoPublishedVersionsError: () => true
+    }
   });
 
-  logger.error(new Error("No published versions on GitHub"));
+  logger.error(new Error("Generic updater request failed"));
 
   assert.deepEqual(calls, [
     {
-      level: "info",
-      message:
-        "electron updater error deferred for prefixed GitHub release fallback"
+      level: "error",
+      message: "electron updater error"
     }
   ]);
 });
@@ -573,9 +634,11 @@ function createFakeDriver(
 ): Parameters<typeof createAppUpdateService>[0] & {
   configureCalls: DriverConfigureCall[];
   emitError(error: Error): void;
+  feedUrls: string[];
 } {
   const configureCalls: DriverConfigureCall[] = [];
   const errorListeners = new Set<(error: Error) => void>();
+  const feedUrls: string[] = [];
   return {
     configureCalls,
     emitError(error) {
@@ -583,6 +646,7 @@ function createFakeDriver(
         listener(error);
       }
     },
+    feedUrls,
     checkForUpdates: async () => {},
     configure(options) {
       configureCalls.push(options);
@@ -598,20 +662,45 @@ function createFakeDriver(
     onUpdateDownloaded: () => noop,
     onUpdateNotAvailable: () => noop,
     quitAndInstall() {},
+    setFeedUrl(url) {
+      feedUrls.push(url);
+    },
     ...overrides
   };
 }
 
 function noop() {}
 
+function createDeferred<T>(): {
+  promise: Promise<T>;
+  resolve(value: T): void;
+} {
+  let resolve: ((value: T) => void) | null = null;
+  const promise = new Promise<T>((resolvePromise) => {
+    resolve = resolvePromise;
+  });
+
+  return {
+    promise,
+    resolve(value) {
+      if (!resolve) {
+        throw new Error("Deferred promise was not initialized");
+      }
+      resolve(value);
+    }
+  };
+}
+
 function createFakeElectronUpdater() {
   let channel: string | null = null;
+  const feedUrls: string[] = [];
   return {
     allowDowngrade: false,
     allowPrerelease: false,
     autoDownload: true,
     autoInstallOnAppQuit: true,
     forceDevUpdateConfig: false,
+    feedUrls,
     logger: null,
     get channel() {
       return channel;
@@ -624,6 +713,9 @@ function createFakeElectronUpdater() {
     downloadUpdate: async () => [],
     on() {},
     quitAndInstall() {},
-    removeListener() {}
+    removeListener() {},
+    setFeedURL(options: { url: string }) {
+      feedUrls.push(options.url);
+    }
   };
 }

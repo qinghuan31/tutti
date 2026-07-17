@@ -80,12 +80,12 @@ func TestAppServerUserInputAnswers(t *testing.T) {
 	cases := []struct {
 		name      string
 		params    map[string]any
-		selection pendingACPResponse
+		selection pendingInteractiveResponse
 		want      map[string]any
 	}{
 		{
 			name: "canonical single-select from answersByQuestionId",
-			selection: pendingACPResponse{
+			selection: pendingInteractiveResponse{
 				payload: map[string]any{
 					"answers":             []any{"Health check"},
 					"answersByQuestionId": map[string]any{"plan-kind": "Health check"},
@@ -97,7 +97,7 @@ func TestAppServerUserInputAnswers(t *testing.T) {
 		},
 		{
 			name: "multi-select values preserved",
-			selection: pendingACPResponse{
+			selection: pendingInteractiveResponse{
 				payload: map[string]any{
 					"answersByQuestionId": map[string]any{"areas": []any{"A", "B"}},
 				},
@@ -108,7 +108,7 @@ func TestAppServerUserInputAnswers(t *testing.T) {
 		},
 		{
 			name: "legacy answers-as-map still accepted",
-			selection: pendingACPResponse{
+			selection: pendingInteractiveResponse{
 				payload: map[string]any{
 					"answers": map[string]any{"q1": "postgres"},
 				},
@@ -120,7 +120,7 @@ func TestAppServerUserInputAnswers(t *testing.T) {
 		{
 			name:   "falls back to optionId keyed by the request's questions",
 			params: map[string]any{"questions": []any{map[string]any{"id": "q1"}}},
-			selection: pendingACPResponse{
+			selection: pendingInteractiveResponse{
 				optionID: "Renderer A",
 				payload:  map[string]any{},
 			},
@@ -205,8 +205,12 @@ func TestCodexAppServerAdapterRoutesLinkedChildThreadEvents(t *testing.T) {
 			},
 		}),
 	}, normalizer, nil).Events
-	if len(parentEvents) != 1 || parentEvents[0].OwnerThreadID != "" {
-		t.Fatalf("parent collab events = %#v, want one top-level event", parentEvents)
+	if len(parentEvents) != 2 || parentEvents[0].Type != activityshared.EventSessionStarted || parentEvents[0].SessionKind != "child" {
+		t.Fatalf("parent collab events = %#v, want atomic child creation followed by parent tool event", parentEvents)
+	}
+	child, ok := adapter.appServerChildThread(session.AgentSessionID, "child-thread-1")
+	if !ok {
+		t.Fatal("child thread was not registered")
 	}
 
 	childLifecycleEvents := reducer.ReduceNotification(nil, session, "parent-turn-1", acpMessage{
@@ -217,15 +221,15 @@ func TestCodexAppServerAdapterRoutesLinkedChildThreadEvents(t *testing.T) {
 		}),
 	}, normalizer, nil).Events
 	if len(childLifecycleEvents) != 1 {
-		t.Fatalf("child lifecycle events = %#v, want one compact status marker", childLifecycleEvents)
+		t.Fatalf("child lifecycle events = %#v, want one child turn terminal event", childLifecycleEvents)
 	}
 	lifecycle := childLifecycleEvents[0]
-	if lifecycle.OwnerThreadID != "child-thread-1" ||
-		lifecycle.OwnerCallID != "spawn-child-1" ||
-		lifecycle.Payload.TurnID != "child-turn-1" ||
-		lifecycle.Payload.Metadata["messageKind"] != "subAgentLifecycle" ||
-		lifecycle.Payload.Metadata["subAgentLifecycleStatus"] != "completed" {
-		t.Fatalf("child lifecycle marker = %#v", lifecycle)
+	if lifecycle.Type != activityshared.EventTurnCompleted ||
+		lifecycle.AgentSessionID != child.agentSessionID ||
+		lifecycle.ProviderSessionID != "child-thread-1" ||
+		lifecycle.ParentToolCallID != "spawn-child-1" ||
+		lifecycle.Payload.TurnID != child.turnID {
+		t.Fatalf("child turn terminal = %#v", lifecycle)
 	}
 
 	childEvents := reducer.ReduceNotification(nil, session, "parent-turn-1", acpMessage{
@@ -241,17 +245,11 @@ func TestCodexAppServerAdapterRoutesLinkedChildThreadEvents(t *testing.T) {
 		t.Fatalf("child events = %#v, want one event", childEvents)
 	}
 	event := childEvents[0]
-	if event.OwnerThreadID != "child-thread-1" {
-		t.Fatalf("OwnerThreadID = %q, want child-thread-1", event.OwnerThreadID)
+	if event.AgentSessionID != child.agentSessionID || event.ProviderSessionID != "child-thread-1" {
+		t.Fatalf("event session = %q/%q, want child session", event.AgentSessionID, event.ProviderSessionID)
 	}
-	if event.OwnerCallID != "spawn-child-1" {
-		t.Fatalf("OwnerCallID = %q, want spawn-child-1 (the spawn card id, ADR 0007)", event.OwnerCallID)
-	}
-	if event.AgentSessionID != session.AgentSessionID || event.ProviderSessionID != session.ProviderSessionID {
-		t.Fatalf("event session = %q/%q, want parent session", event.AgentSessionID, event.ProviderSessionID)
-	}
-	if event.Payload.TurnID != "child-turn-1" {
-		t.Fatalf("TurnID = %q, want child-turn-1", event.Payload.TurnID)
+	if event.Payload.TurnID != child.turnID || event.ParentToolCallID != "spawn-child-1" {
+		t.Fatalf("child event relation = %#v", event)
 	}
 	if event.Payload.Role != activityshared.MessageRoleAssistant || event.Payload.Content != "child output" {
 		t.Fatalf("child payload = %#v", event.Payload)
@@ -263,10 +261,255 @@ func TestCodexAppServerAdapterRoutesLinkedChildThreadEvents(t *testing.T) {
 	}
 }
 
-// Only the spawn card owns the children it declares (ADR 0007): a wait/close
-// control card arriving first registers the thread for routing but must not
-// claim parentItemID — first-wins would otherwise bind the lane to the
-// control card for good.
+func TestCodexAppServerAdapterRoutesChildFileChangeApprovalWithChildInput(t *testing.T) {
+	t.Parallel()
+
+	conn := newAppServerCaptureConn()
+	client := newCodexAppServerClient(conn)
+	defer func() { _ = client.Close() }()
+
+	adapter := NewCodexAppServerAdapter(nil)
+	session := Session{
+		AgentSessionID:    "root-session-1",
+		Provider:          ProviderCodex,
+		ProviderSessionID: "root-thread-1",
+		CWD:               "/workspace",
+	}
+	adapter.storeSession(session.AgentSessionID, &codexAppServerSession{
+		threadID:        session.ProviderSessionID,
+		pendingRequests: make(map[string]*pendingInteractiveRequest),
+	})
+	_, _ = adapter.rememberAppServerChildThreads(
+		session,
+		session.ProviderSessionID,
+		session.AgentSessionID,
+		"root-turn-1",
+		session.AgentSessionID,
+		"root-turn-1",
+		map[string]any{
+			"type":              "collabAgentToolCall",
+			"id":                "spawn-child-1",
+			"tool":              "spawnAgent",
+			"receiverThreadIds": []any{"child-thread-1"},
+		},
+	)
+	child, ok := adapter.appServerChildThread(session.AgentSessionID, "child-thread-1")
+	if !ok {
+		t.Fatal("child thread was not registered")
+	}
+	childSession := appServerChildSession(session, "child-thread-1", child)
+	update, ok := appServerItemToolCallUpdate(map[string]any{
+		"id":     "child-file-change-1",
+		"type":   "fileChange",
+		"status": "inProgress",
+		"changes": []any{
+			map[string]any{"path": "/workspace/permission-probe.txt", "kind": map[string]any{"type": "add"}},
+		},
+	}, false)
+	if !ok {
+		t.Fatal("child file change did not produce a tool-call update")
+	}
+	if events, _ := child.normalizer.ToolCallEvents(childSession, child.turnID, update); len(events) == 0 {
+		t.Fatal("child file change did not populate its turn normalizer")
+	}
+
+	var emitted []activityshared.Event
+	var emittedMu sync.Mutex
+	emit := func(events []activityshared.Event) {
+		emittedMu.Lock()
+		emitted = append(emitted, events...)
+		emittedMu.Unlock()
+	}
+	message := acpMessage{
+		ID:     json.RawMessage(`"child-approval-1"`),
+		Method: appServerMethodFileChangeApproval,
+		Params: mustJSONRawMessage(t, map[string]any{
+			"threadId": "child-thread-1",
+			"turnId":   "provider-child-turn-1",
+			"itemId":   "child-file-change-1",
+		}),
+	}
+	if _, err := adapter.appServerServerRequest(context.Background(), client, session, "root-turn-1", message, newACPTurnNormalizer(), emit); err != nil {
+		t.Fatalf("appServerServerRequest: %v", err)
+	}
+
+	if pending := adapter.getPendingRequest(session.AgentSessionID, "root-turn-1", "child-approval-1"); pending != nil {
+		t.Fatalf("approval was registered on root: %#v", pending)
+	}
+	pending := adapter.getPendingRequest(child.agentSessionID, child.turnID, "child-approval-1")
+	if pending == nil {
+		t.Fatal("approval was not registered on canonical child")
+	}
+	changes, ok := pending.input["changes"].([]any)
+	if !ok || len(changes) != 1 || asString(payloadObject(changes[0])["path"]) != "/workspace/permission-probe.txt" {
+		t.Fatalf("child approval input = %#v, want known child file changes", pending.input)
+	}
+	emittedMu.Lock()
+	requested := append([]activityshared.Event(nil), emitted...)
+	emittedMu.Unlock()
+	for _, event := range requested {
+		if event.AgentSessionID != child.agentSessionID ||
+			event.ProviderSessionID != "child-thread-1" ||
+			event.Payload.TurnID != child.turnID ||
+			event.SessionKind != "child" ||
+			event.RootAgentSessionID != session.AgentSessionID ||
+			event.RootTurnID != "root-turn-1" ||
+			event.ParentToolCallID != "spawn-child-1" {
+			t.Fatalf("requested event was not child-scoped: %#v", event)
+		}
+	}
+
+	if _, err := adapter.SubmitInteractive(context.Background(), session, SubmitInteractiveInput{
+		AgentSessionID: child.agentSessionID,
+		TurnID:         child.turnID,
+		RequestID:      "child-approval-1",
+		OptionID:       "approve",
+	}); err != nil {
+		t.Fatalf("SubmitInteractive: %v", err)
+	}
+	waitForCondition(t, func() bool {
+		emittedMu.Lock()
+		defer emittedMu.Unlock()
+		return len(eventsOfType(emitted, activityshared.EventCallCompleted)) == 1
+	})
+
+	emittedMu.Lock()
+	resolved := append([]activityshared.Event(nil), emitted...)
+	emittedMu.Unlock()
+	for _, event := range resolved {
+		if event.AgentSessionID != child.agentSessionID || event.Payload.TurnID != child.turnID || event.SessionKind != "child" {
+			t.Fatalf("resolved event was not child-scoped: %#v", event)
+		}
+	}
+	responses := conn.responses(t)
+	var result map[string]any
+	if len(responses) == 1 {
+		_ = json.Unmarshal(responses[0].Result, &result)
+	}
+	if len(responses) != 1 || asString(result["decision"]) != "accept" {
+		t.Fatalf("approval response = %#v, want accept", responses)
+	}
+}
+
+func TestCodexAppServerAdapterResolvesChildApprovalOutOfBand(t *testing.T) {
+	t.Parallel()
+
+	adapter := NewCodexAppServerAdapter(nil)
+	session := Session{
+		AgentSessionID:    "root-session-1",
+		Provider:          ProviderCodex,
+		ProviderSessionID: "root-thread-1",
+		CWD:               "/workspace",
+	}
+	adapter.storeSession(session.AgentSessionID, &codexAppServerSession{
+		threadID:        session.ProviderSessionID,
+		pendingRequests: make(map[string]*pendingInteractiveRequest),
+	})
+	_, _ = adapter.rememberAppServerChildThreads(
+		session,
+		session.ProviderSessionID,
+		session.AgentSessionID,
+		"root-turn-1",
+		session.AgentSessionID,
+		"root-turn-1",
+		map[string]any{
+			"type":              "collabAgentToolCall",
+			"id":                "spawn-child-1",
+			"tool":              "spawnAgent",
+			"receiverThreadIds": []any{"child-thread-1"},
+		},
+	)
+	child, ok := adapter.appServerChildThread(session.AgentSessionID, "child-thread-1")
+	if !ok {
+		t.Fatal("child thread was not registered")
+	}
+	childSession := appServerChildSession(session, "child-thread-1", child)
+	if _, _, err := adapter.appServerApprovalRequested(
+		childSession,
+		child.turnID,
+		json.RawMessage(`"child-approval-1"`),
+		appServerMethodCommandApproval,
+		map[string]any{"itemId": "child-command-1"},
+		child.normalizer,
+	); err != nil {
+		t.Fatalf("appServerApprovalRequested: %v", err)
+	}
+
+	reduction := newCodexAppServerReducer(adapter).ReduceNotification(
+		nil,
+		session,
+		"root-turn-1",
+		acpMessage{
+			Method: appServerNotifyServerRequestResolved,
+			Params: mustJSONRawMessage(t, map[string]any{
+				"threadId":  "child-thread-1",
+				"requestId": "child-approval-1",
+			}),
+		},
+		newACPTurnNormalizer(),
+		nil,
+	)
+	if len(reduction.Events) != 0 {
+		t.Fatalf("serverRequest/resolved events = %#v, want no direct events", reduction.Events)
+	}
+	if disposition := adapter.InteractiveDispositionForTarget(
+		session,
+		child.agentSessionID,
+		child.turnID,
+		"child-approval-1",
+	); disposition != InteractiveDispositionSuperseded {
+		t.Fatalf("child approval disposition = %q, want superseded", disposition)
+	}
+}
+
+func TestCodexAppServerAdapterRejectsApprovalForUnknownChildThread(t *testing.T) {
+	t.Parallel()
+
+	conn := newAppServerCaptureConn()
+	client := newCodexAppServerClient(conn)
+	defer func() { _ = client.Close() }()
+	adapter := NewCodexAppServerAdapter(nil)
+	session := Session{
+		AgentSessionID:    "root-session-1",
+		Provider:          ProviderCodex,
+		ProviderSessionID: "root-thread-1",
+	}
+	adapter.storeSession(session.AgentSessionID, &codexAppServerSession{
+		threadID:        session.ProviderSessionID,
+		pendingRequests: make(map[string]*pendingInteractiveRequest),
+	})
+	var emitted []activityshared.Event
+	_, err := adapter.appServerServerRequest(
+		context.Background(),
+		client,
+		session,
+		"root-turn-1",
+		acpMessage{
+			ID:     json.RawMessage(`"foreign-approval-1"`),
+			Method: appServerMethodCommandApproval,
+			Params: mustJSONRawMessage(t, map[string]any{
+				"threadId": "foreign-thread-1",
+				"turnId":   "foreign-turn-1",
+				"itemId":   "foreign-command-1",
+			}),
+		},
+		newACPTurnNormalizer(),
+		func(events []activityshared.Event) { emitted = append(emitted, events...) },
+	)
+	if err == nil {
+		t.Fatal("unknown child approval was accepted")
+	}
+	if len(emitted) != 0 || adapter.getPendingRequest(session.AgentSessionID, "root-turn-1", "foreign-approval-1") != nil {
+		t.Fatalf("unknown child approval mutated root: events=%#v", emitted)
+	}
+	responses := conn.responses(t)
+	if len(responses) != 1 || responses[0].Error == nil || responses[0].Error.Code != -32000 {
+		t.Fatalf("unknown child response = %#v, want one -32000 error", responses)
+	}
+}
+
+// Only the spawn card creates the immutable child relationship. Wait/close
+// cards may reference provider threads but cannot create a child session.
 func TestCodexAppServerControlCardNeverClaimsChildOwnership(t *testing.T) {
 	t.Parallel()
 
@@ -279,18 +522,18 @@ func TestCodexAppServerControlCardNeverClaimsChildOwnership(t *testing.T) {
 	}
 	adapter.storeSession(session.AgentSessionID, &codexAppServerSession{threadID: session.ProviderSessionID})
 
-	adapter.rememberAppServerChildThreads(session.AgentSessionID, session.ProviderSessionID, map[string]any{
+	_, _ = adapter.rememberAppServerChildThreads(session, session.ProviderSessionID, session.AgentSessionID, "parent-turn-1", session.AgentSessionID, "parent-turn-1", map[string]any{
 		"type":              "collabAgentToolCall",
 		"id":                "wait-call-1",
 		"tool":              "wait",
 		"receiverThreadIds": []any{"child-thread-1"},
 	})
 	child, ok := adapter.appServerChildThread(session.AgentSessionID, "child-thread-1")
-	if !ok || child.parentItemID != "" {
-		t.Fatalf("child after control card = %#v, want registered without ownership", child)
+	if ok {
+		t.Fatalf("child after control card = %#v, want no child without a delegation edge", child)
 	}
 
-	adapter.rememberAppServerChildThreads(session.AgentSessionID, session.ProviderSessionID, map[string]any{
+	_, _ = adapter.rememberAppServerChildThreads(session, session.ProviderSessionID, session.AgentSessionID, "parent-turn-1", session.AgentSessionID, "parent-turn-1", map[string]any{
 		"type":              "collabAgentToolCall",
 		"id":                "spawn-call-1",
 		"tool":              "spawnAgent",
@@ -378,17 +621,17 @@ func TestCodexAppServerChildRegistrationReportsEarlyDrops(t *testing.T) {
 
 	// Two child events arrive before anything registered the child: both drop.
 	for range 2 {
-		route := adapter.appServerNotificationRoute(session, appServerNotifyAgentMessageDelta, map[string]any{
+		route := adapter.appServerNotificationRoute(session, "parent-turn-1", appServerNotifyAgentMessageDelta, map[string]any{
 			"threadId": "child-early-1",
 			"turnId":   "child-turn-1",
 			"delta":    "early output",
 		})
-		if !route.drop || route.ownerThreadID != "" {
+		if !route.drop || len(route.events) != 0 {
 			t.Fatalf("unknown thread event should drop: %#v", route)
 		}
 	}
 
-	added := adapter.rememberAppServerChildThreads(session.AgentSessionID, session.ProviderSessionID, map[string]any{
+	added, _ := adapter.rememberAppServerChildThreads(session, session.ProviderSessionID, session.AgentSessionID, "parent-turn-1", session.AgentSessionID, "parent-turn-1", map[string]any{
 		"type":              "collabAgentToolCall",
 		"id":                "spawn-1",
 		"receiverThreadIds": []any{"child-early-1", "child-clean-2"},
@@ -446,14 +689,11 @@ func TestCodexAppServerChildThreadNameUpdateEmitsNameMarker(t *testing.T) {
 		t.Fatalf("child name events = %#v, want one name marker", nameEvents)
 	}
 	marker := nameEvents[0]
-	if marker.OwnerThreadID != "child-thread-1" ||
-		marker.Payload.Metadata["messageKind"] != "subAgentName" ||
-		marker.Payload.Metadata["subAgentName"] != "Repo smell analyst" {
-		t.Fatalf("child name marker = %#v", marker)
-	}
-	// The activity store rejects turnless message updates.
-	if marker.Payload.TurnID == "" {
-		t.Fatalf("child name marker has no turn id")
+	if marker.Type != activityshared.EventSessionUpdated ||
+		marker.ProviderSessionID != "child-thread-1" ||
+		marker.Payload.Title != "Repo smell analyst" ||
+		marker.SessionKind != "child" {
+		t.Fatalf("child title event = %#v", marker)
 	}
 
 	// The PARENT thread's own name updates keep today's behavior (no marker).
@@ -465,8 +705,8 @@ func TestCodexAppServerChildThreadNameUpdateEmitsNameMarker(t *testing.T) {
 		}),
 	}, normalizer, nil).Events
 	for _, event := range parentNameEvents {
-		if event.Payload.Metadata["messageKind"] == "subAgentName" {
-			t.Fatalf("parent thread name produced a sub-agent marker: %#v", event)
+		if event.AgentSessionID != session.AgentSessionID {
+			t.Fatalf("parent thread name updated another session: %#v", event)
 		}
 	}
 }
@@ -523,11 +763,10 @@ func TestCodexAppServerChildThreadErrorDoesNotFailParentTurn(t *testing.T) {
 		}),
 	}, normalizer, nil).Events
 	if len(events) != 1 ||
-		events[0].OwnerThreadID != "child-thread-1" ||
-		events[0].Payload.Metadata["messageKind"] != "subAgentLifecycle" ||
-		events[0].Payload.Metadata["subAgentLifecycleStatus"] != "failed" ||
-		events[0].Payload.Metadata["detail"] != "child thread exploded" {
-		t.Fatalf("child error events = %#v, want one child failed marker", events)
+		events[0].Type != activityshared.EventTurnFailed ||
+		events[0].ProviderSessionID != "child-thread-1" ||
+		activityshared.BestEffortErrorMessage(events[0].Payload) != "child thread exploded" {
+		t.Fatalf("child error events = %#v, want one child failed turn", events)
 	}
 	if activeTurn.phase != codexAppServerTurnPhaseRunning {
 		t.Fatalf("parent turn phase = %q, want still running", activeTurn.phase)
@@ -635,7 +874,7 @@ func TestCodexAppServerAdapterApplyTokenUsagePrefersInputTokens(t *testing.T) {
 	state := adapter.SessionState(session)
 	usage, _ := state.RuntimeContext["usage"].(map[string]any)
 	contextWindow, _ := usage["contextWindow"].(map[string]any)
-	if used, _ := acpInt64Value(contextWindow["usedTokens"]); used != 1000 {
+	if used, _ := int64Value(contextWindow["usedTokens"]); used != 1000 {
 		t.Fatalf("usedTokens = %v, want last.inputTokens (1000): context fill should exclude response/reasoning tokens", used)
 	}
 }
@@ -658,7 +897,7 @@ func TestCodexAppServerAdapterApplyTokenUsageFallsBackToLastTotalTokens(t *testi
 	state := adapter.SessionState(session)
 	usage, _ := state.RuntimeContext["usage"].(map[string]any)
 	contextWindow, _ := usage["contextWindow"].(map[string]any)
-	if used, _ := acpInt64Value(contextWindow["usedTokens"]); used != 1200 {
+	if used, _ := int64Value(contextWindow["usedTokens"]); used != 1200 {
 		t.Fatalf("usedTokens = %v, want last.totalTokens (1200), not cumulative total (4800)", used)
 	}
 }
@@ -695,7 +934,7 @@ func TestCodexAppServerAdapterApplyTokenUsageCompactFrameUsesLastTotalTokens(t *
 	state := adapter.SessionState(session)
 	usage, _ := state.RuntimeContext["usage"].(map[string]any)
 	contextWindow, _ := usage["contextWindow"].(map[string]any)
-	if used, _ := acpInt64Value(contextWindow["usedTokens"]); used != 5763 {
+	if used, _ := int64Value(contextWindow["usedTokens"]); used != 5763 {
 		t.Fatalf("usedTokens = %v, want post-compact last.totalTokens (5763); a literal 0 inputTokens must not be shown as the context fill", used)
 	}
 }
@@ -725,8 +964,8 @@ func TestCodexAppServerAdapterApplyTokenUsageNoCumulativeFalsePositive(t *testin
 	state := adapter.SessionState(session)
 	usage, _ := state.RuntimeContext["usage"].(map[string]any)
 	contextWindow, _ := usage["contextWindow"].(map[string]any)
-	used, _ := acpInt64Value(contextWindow["usedTokens"])
-	total, _ := acpInt64Value(contextWindow["totalTokens"])
+	used, _ := int64Value(contextWindow["usedTokens"])
+	total, _ := int64Value(contextWindow["totalTokens"])
 	if used > total {
 		t.Fatalf("usedTokens (%d) > totalTokens (%d): cumulative sum is leaking into context-window display", used, total)
 	}

@@ -7,7 +7,112 @@ import {
   mapAgentTargetPresentationsToAgents
 } from "./desktopAgentsService.ts";
 
-test("desktop agents service maps agent targets into renderer presentations and AgentGUI agents", () => {
+test("desktop agents service publishes explicit idle, loading, and ready lifecycle snapshots", async () => {
+  const request = createDeferred<{ targets: AgentTarget[] }>();
+  const service = new DesktopAgentsService({
+    now: () => 1780272000123,
+    tuttidClient: {
+      listAgentTargets: () => request.promise
+    }
+  });
+  const snapshots: string[] = [];
+  service.subscribe(() => {
+    snapshots.push(service.getSnapshot().status);
+  });
+
+  assert.equal(service.getSnapshot().status, "idle");
+  const loadPromise = service.load();
+  assert.equal(service.getSnapshot().status, "loading");
+
+  request.resolve({
+    targets: [
+      createAgentTarget({
+        id: "local:codex",
+        heroImageUrl: "data:image/jpeg;base64,hero",
+        name: "Codex",
+        provider: "codex",
+        sortOrder: 10
+      })
+    ]
+  });
+  const snapshot = await loadPromise;
+
+  assert.equal(snapshot.status, "ready");
+  assert.equal(snapshot.error, null);
+  assert.equal(snapshot.capturedAtUnixMs, 1780272000123);
+  assert.deepEqual(snapshots, ["loading", "ready"]);
+});
+
+test("desktop agents service publishes failures, retains cached data, and owns retry scheduling", async () => {
+  const retryCallbacks: Array<() => void> = [];
+  let shouldFail = false;
+  const target = createAgentTarget({
+    id: "local:codex",
+    name: "Codex",
+    provider: "codex",
+    sortOrder: 10
+  });
+  const service = new DesktopAgentsService({
+    retryDelayMs: 25,
+    setTimeout(callback) {
+      retryCallbacks.push(callback);
+      return 1 as unknown as ReturnType<typeof setTimeout>;
+    },
+    tuttidClient: {
+      async listAgentTargets() {
+        if (shouldFail) {
+          throw new Error("directory unavailable");
+        }
+        return { targets: [target] };
+      }
+    }
+  });
+
+  const readySnapshot = await service.load();
+  shouldFail = true;
+  await assert.rejects(service.refresh(), /directory unavailable/);
+
+  const errorSnapshot = service.getSnapshot();
+  assert.equal(errorSnapshot.status, "error");
+  assert.equal(errorSnapshot.error, "directory unavailable");
+  assert.deepEqual(errorSnapshot.agents, readySnapshot.agents);
+  assert.equal(retryCallbacks.length, 1);
+
+  shouldFail = false;
+  retryCallbacks[0]?.();
+  await waitFor(() => service.getSnapshot().status === "ready");
+  assert.equal(service.getSnapshot().error, null);
+});
+
+test("desktop agents service hydrates a detached-window bootstrap snapshot before refresh", () => {
+  const service = new DesktopAgentsService({
+    tuttidClient: {
+      async listAgentTargets() {
+        return { targets: [] };
+      }
+    }
+  });
+  const target = createAgentTarget({
+    id: "local:codex",
+    name: "Codex",
+    provider: "codex",
+    sortOrder: 10
+  });
+  const agentTargets = mapAgentTargetsToPresentations([target]);
+
+  service.hydrate({
+    agents: mapAgentTargetPresentationsToAgents(agentTargets),
+    agentTargets,
+    capturedAtUnixMs: 1780272000000,
+    error: null,
+    status: "ready"
+  });
+
+  assert.equal(service.getSnapshot().status, "ready");
+  assert.equal(service.getSnapshot().agents[0]?.agentTargetId, "local:codex");
+});
+
+test("desktop agents service maps enabled daemon targets into the AgentGUI agents directory", () => {
   const presentations = mapAgentTargetsToPresentations(
     [
       createAgentTarget({
@@ -19,13 +124,16 @@ test("desktop agents service maps agent targets into renderer presentations and 
       }),
       createAgentTarget({
         id: "local:codex",
+        heroImageUrl: "data:image/jpeg;base64,hero",
+        iconKey: "codex-descriptor",
         name: "Codex",
         provider: "codex",
         sortOrder: 10
       })
     ],
     {
-      resolveAgentIconUrl: (provider) => `tutti-asset://agent/${provider}.png`
+      resolveAgentTargetIconUrl: ({ iconKey, provider }) =>
+        `tutti-asset://agent/${iconKey ?? provider}.png`
     }
   );
 
@@ -33,20 +141,23 @@ test("desktop agents service maps agent targets into renderer presentations and 
     presentations.map((target) => ({
       agentTargetId: target.agentTargetId,
       iconUrl: target.iconUrl,
+      heroImageUrl: target.heroImageUrl,
       launchRefType: target.launchRefType,
       provider: target.provider
     })),
     [
       {
         agentTargetId: "local:codex",
-        iconUrl: "tutti-asset://agent/codex.png",
-        launchRefType: "local_cli",
+        iconUrl: "tutti-asset://agent/codex-descriptor.png",
+        heroImageUrl: "data:image/jpeg;base64,hero",
+        launchRefType: "builtin_local",
         provider: "codex"
       },
       {
         agentTargetId: "local:claude-code",
         iconUrl: "tutti-asset://agent/claude-code.png",
-        launchRefType: "local_cli",
+        heroImageUrl: null,
+        launchRefType: "builtin_local",
         provider: "claude-code"
       }
     ]
@@ -56,111 +167,19 @@ test("desktop agents service maps agent targets into renderer presentations and 
     {
       agentTargetId: "local:codex",
       availability: { status: "ready" },
-      iconUrl: "tutti-asset://agent/codex.png",
+      iconUrl: "tutti-asset://agent/codex-descriptor.png",
+      heroImageUrl: "data:image/jpeg;base64,hero",
       name: "Codex",
       provider: "codex"
     }
   ]);
-});
-
-test("desktop agents service resolves target iconKey before provider artwork", () => {
-  const [presentation] = mapAgentTargetsToPresentations(
-    [
-      {
-        ...createAgentTarget({
-          id: "shared:alice",
-          name: "Alice's Codex",
-          provider: "codex",
-          sortOrder: 10
-        }),
-        iconKey: "alice-custom"
-      }
-    ],
-    { resolveAgentIconUrl: (key) => `tutti-asset://agent/${key}.png` }
-  );
-
-  assert.equal(presentation?.iconUrl, "tutti-asset://agent/alice-custom.png");
-});
-
-test("desktop agents service projects provider gates to targets and AgentGUI agents", async () => {
-  const service = new DesktopAgentsService({
-    isAgentTargetProviderGated: (provider) => provider === "codex",
-    tuttidClient: {
-      listAgentTargets: async () => ({
-        targets: [
-          createAgentTarget({
-            id: "local:codex",
-            name: "Codex",
-            provider: "codex",
-            sortOrder: 10
-          })
-        ]
-      })
-    }
-  });
-
-  const snapshot = await service.load();
-
-  assert.equal(snapshot.agentTargets[0]?.enabled, false);
-  assert.deepEqual(snapshot.agents, [
-    {
-      agentTargetId: "local:codex",
-      availability: { status: "coming_soon" },
-      iconUrl: "",
-      name: "Codex",
-      provider: "codex"
-    }
-  ]);
-});
-
-test("desktop agents service discards results from stale requests", async () => {
-  const requests: Array<(targets: AgentTarget[]) => void> = [];
-  const service = new DesktopAgentsService({
-    tuttidClient: {
-      listAgentTargets: () =>
-        new Promise((resolve) => {
-          requests.push((targets) => resolve({ targets }));
-        })
-    }
-  });
-  const emittedProviders: string[][] = [];
-  service.subscribe(() => {
-    emittedProviders.push(
-      service.getSnapshot().agentTargets.map((target) => target.provider)
-    );
-  });
-
-  const staleLoad = service.load();
-  const latestRefresh = service.refresh();
-  requests[1]?.([
-    createAgentTarget({
-      id: "local:codex",
-      name: "Codex",
-      provider: "codex",
-      sortOrder: 10
-    })
-  ]);
-  await latestRefresh;
-  requests[0]?.([
-    createAgentTarget({
-      id: "local:claude-code",
-      name: "Claude Code",
-      provider: "claude-code",
-      sortOrder: 20
-    })
-  ]);
-  await staleLoad;
-
-  assert.deepEqual(emittedProviders, [["codex"]]);
-  assert.deepEqual(
-    service.getSnapshot().agentTargets.map((target) => target.provider),
-    ["codex"]
-  );
 });
 
 function createAgentTarget(input: {
   enabled?: boolean;
   id: string;
+  iconKey?: string | null;
+  heroImageUrl?: string | null;
   name: string;
   provider: "claude-code" | "codex";
   sortOrder: number;
@@ -168,11 +187,12 @@ function createAgentTarget(input: {
   return {
     createdAtUnixMs: 1780272000000,
     enabled: input.enabled ?? true,
-    iconKey: null,
+    iconKey: input.iconKey ?? null,
+    heroImageUrl: input.heroImageUrl ?? null,
     id: input.id,
     launchRef: {
       provider: input.provider,
-      type: "local_cli"
+      type: "builtin_local"
     },
     name: input.name,
     provider: input.provider,
@@ -180,4 +200,25 @@ function createAgentTarget(input: {
     source: "system",
     updatedAtUnixMs: 1780272000000
   };
+}
+
+function createDeferred<T>(): {
+  promise: Promise<T>;
+  resolve(value: T): void;
+} {
+  let resolvePromise!: (value: T) => void;
+  const promise = new Promise<T>((resolve) => {
+    resolvePromise = resolve;
+  });
+  return { promise, resolve: resolvePromise };
+}
+
+async function waitFor(predicate: () => boolean): Promise<void> {
+  for (let attempt = 0; attempt < 20; attempt += 1) {
+    if (predicate()) {
+      return;
+    }
+    await new Promise((resolve) => setTimeout(resolve, 0));
+  }
+  assert.fail("condition was not reached");
 }

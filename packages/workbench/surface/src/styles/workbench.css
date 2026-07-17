@@ -192,6 +192,10 @@
     box-shadow 0.16s ease;
 }
 
+.workbench-window:has([data-workbench-custom-header-layout="browser-tabs"]) {
+  --workbench-header-height: 76px;
+}
+
 .workbench-window[data-display-mode="floating"] {
   background: var(--background-panel);
 }
@@ -223,6 +227,12 @@
   overflow: hidden;
   cursor: default;
   user-select: auto;
+}
+
+.workbench-window__header--custom:has(
+  [data-workbench-custom-header-overflow="visible"]
+) {
+  overflow: visible;
 }
 
 .workbench-window__header--custom:has(
@@ -455,7 +465,7 @@
 
 .workbench-dock-frame {
   --workbench-left-dock-bottom-inset: 24px;
-  --workbench-left-dock-left-inset: 4px;
+  --workbench-left-dock-left-inset: 0px;
   --workbench-left-dock-top-inset: 54px;
   position: absolute;
   right: 0;
@@ -719,7 +729,10 @@
   --desktop-dock-gap: 16px;
   --desktop-dock-items-padding: 6.3px;
   --desktop-dock-left-items-padding-block: 8px;
-  --desktop-dock-left-indicator-gutter: 8px;
+  --desktop-dock-left-axis-offset: 24px;
+  --desktop-dock-left-items-padding-inline-end: calc(
+    var(--desktop-dock-left-axis-offset) * 2
+  );
   --desktop-dock-items-padding-block-end: 8px;
   --desktop-dock-icon-center-block-end: calc(
     var(--desktop-dock-items-padding-block-end) +
@@ -780,7 +793,7 @@
   --desktop-dock-scroll-button-gap: 32px;
   --desktop-dock-scroll-button-z-index: 120;
   --desktop-dock-scroll-fade-size: 48px;
-  --desktop-dock-tooltip-gap: 32px;
+  --desktop-dock-tooltip-gap: 12px;
   --desktop-dock-hover-panel-gap: 12px;
   position: relative;
   z-index: 1;
@@ -920,14 +933,16 @@
   );
 }
 
+/* Keep the left Dock on one icon axis; there is no leading state-indicator
+   gutter in this placement. */
 .desktop-dock[data-dock-placement="left"] .desktop-dock__items {
   width: var(--desktop-dock-left-viewport-size);
   height: 100%;
-  align-items: flex-start;
+  align-items: center;
   flex-direction: column;
-  padding: var(--desktop-dock-left-items-padding-block) 0
-    var(--desktop-dock-left-items-padding-block)
-    var(--desktop-dock-left-indicator-gutter);
+  padding: var(--desktop-dock-left-items-padding-block)
+    var(--desktop-dock-left-items-padding-inline-end)
+    var(--desktop-dock-left-items-padding-block) 0;
 }
 
 .desktop-dock[data-dock-placement="left"][data-scroll-overflow="true"]
@@ -1058,10 +1073,7 @@
 }
 
 .desktop-dock[data-dock-placement="left"] .desktop-dock__scroll-button {
-  left: calc(
-    var(--desktop-dock-left-indicator-gutter) +
-      var(--desktop-dock-icon-half-size)
-  );
+  left: calc(50% - var(--desktop-dock-left-axis-offset));
   transform: translateX(-50%) scale(0.94);
 }
 
@@ -1144,7 +1156,7 @@
 
 .desktop-dock[data-dock-placement="left"] .desktop-dock__slot {
   align-items: center;
-  justify-content: flex-start;
+  justify-content: center;
 }
 
 .desktop-dock__slot[data-presence="entering"],
@@ -1325,8 +1337,8 @@
 .desktop-dock[data-dock-placement="left"] .desktop-dock__separator {
   width: var(--desktop-dock-separator-length);
   height: 1px;
-  align-self: flex-start;
-  margin: 4px 0 4px var(--desktop-dock-separator-center-offset);
+  align-self: center;
+  margin: 4px 0;
 }
 
 .desktop-dock__slot[data-node-state="open"]::before,
@@ -1436,8 +1448,10 @@
   will-change: transform;
 }
 
+/* Grow magnified icons in place; growing from the left edge would push the
+   icon's hit area over windows sitting flush against the dock. */
 .desktop-dock[data-dock-placement="left"] .desktop-dock__icon-shell {
-  transform-origin: left center;
+  transform-origin: center;
 }
 
 .desktop-dock__slot[data-entry-state="disabled"] .desktop-dock__icon-shell,
@@ -1636,7 +1650,7 @@
 }
 
 .desktop-dock[data-dock-placement="left"] .desktop-dock__minimized-preview {
-  transform-origin: left center;
+  transform-origin: center;
 }
 
 .desktop-dock__minimized-preview-image {
@@ -1970,7 +1984,10 @@
 }
 
 .desktop-dock-popup-root[data-dock-placement="bottom"] {
-  transform: translate(-50%, -100%);
+  transform: translate(
+    -50%,
+    calc(-100% + var(--desktop-dock-popup-clamp-offset, 0px))
+  );
 }
 
 .desktop-dock-popup-root[data-popup-variant="minimized-stack"] {
@@ -1979,7 +1996,10 @@
 }
 
 .desktop-dock-popup-root[data-dock-placement="left"] {
-  transform: translate(0, -50%);
+  transform: translate(
+    0,
+    calc(-50% + var(--desktop-dock-popup-clamp-offset, 0px))
+  );
 }
 
 .desktop-dock-popup-root[data-dock-placement="left"][data-popup-variant="minimized-stack"] {

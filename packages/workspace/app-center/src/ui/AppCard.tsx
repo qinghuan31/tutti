@@ -1,5 +1,5 @@
 import type { KeyboardEvent, ReactElement } from "react";
-import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { memo, useCallback, useMemo, useRef, useState } from "react";
 import {
   Button,
   ChatIcon,
@@ -38,6 +38,7 @@ import type {
 } from "../contracts/host.ts";
 import { isCommunityRecommendedApp } from "../core/appCenterAppOrdering.ts";
 import type { AppCenterI18nRuntime } from "../i18n/appCenterI18n.ts";
+import { isTextOverflowing } from "./appCardTextOverflow.ts";
 
 export interface AppCenterFactoryProviderOption {
   readonly agentTargetId: string;
@@ -245,7 +246,7 @@ export const AppCard = memo(function AppCard({
     <article
       aria-disabled={canOpenFromCard ? undefined : true}
       className={cn(
-        "group flex h-full min-h-[168px] min-w-0 flex-col rounded-[12px] border border-[color:var(--line-2)] bg-[var(--background-fronted)] p-[12px] text-left text-[var(--text-primary)] transition-transform duration-200 ease-out will-change-transform hover:-translate-y-0.5 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[color-mix(in_srgb,var(--border-focus)_70%,transparent)] motion-reduce:transition-none motion-reduce:hover:translate-y-0",
+        "group flex h-full min-h-[168px] min-w-0 flex-col rounded-[12px] border border-[color:var(--line-2)] bg-[var(--background-fronted)] p-[12px] text-left text-[var(--text-primary)] transition-transform duration-200 ease-out hover:-translate-y-0.5 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[color-mix(in_srgb,var(--border-focus)_70%,transparent)] motion-reduce:transition-none motion-reduce:hover:translate-y-0",
         canOpenFromCard ? "cursor-pointer" : "cursor-default",
         className
       )}
@@ -382,60 +383,22 @@ function AppCardTextTooltip({
     null
   );
   const [overflowing, setOverflowing] = useState(false);
-
-  useEffect(() => {
+  const measureOverflow = useCallback((): void => {
     const element = textRef.current;
     if (!element || !normalizedContent) {
       setOverflowing(false);
       return;
     }
-
-    let frame = 0;
-    const measure = (): void => {
-      frame = 0;
-      setOverflowing(
-        element.scrollWidth - element.clientWidth > 1 ||
-          element.scrollHeight - element.clientHeight > 1
-      );
-    };
-    const queueMeasure = (): void => {
-      if (frame !== 0) {
-        window.cancelAnimationFrame(frame);
-      }
-      frame = window.requestAnimationFrame(measure);
-    };
-
-    queueMeasure();
-    window.addEventListener("resize", queueMeasure);
-
-    if (typeof ResizeObserver === "undefined") {
-      return () => {
-        window.removeEventListener("resize", queueMeasure);
-        if (frame !== 0) {
-          window.cancelAnimationFrame(frame);
-        }
-      };
-    }
-
-    const observer = new ResizeObserver(queueMeasure);
-    observer.observe(element);
-
-    return () => {
-      observer.disconnect();
-      window.removeEventListener("resize", queueMeasure);
-      if (frame !== 0) {
-        window.cancelAnimationFrame(frame);
-      }
-    };
+    setOverflowing(isTextOverflowing(element));
   }, [normalizedContent]);
 
   const textElement =
     as === "h3" ? (
-      <h3 ref={textRef} className={className}>
+      <h3 ref={textRef} className={className} onPointerEnter={measureOverflow}>
         {children}
       </h3>
     ) : (
-      <p ref={textRef} className={className}>
+      <p ref={textRef} className={className} onPointerEnter={measureOverflow}>
         {children}
       </p>
     );
@@ -1014,6 +977,7 @@ function AppIcon({
       <img
         alt=""
         className="size-11 flex-none rounded-[10px] object-contain object-center select-none"
+        decoding="async"
         draggable={false}
         src={app.icon.src}
       />

@@ -122,6 +122,54 @@ test("preview mode transitions follow selection changes", async () => {
   session.dispose();
 });
 
+test("html files are previewed as source text", async () => {
+  const content = "<!doctype html><h1>Hello</h1>";
+  const entry: WorkspaceFileEntry = {
+    hasChildren: false,
+    kind: "file",
+    mtimeMs: null,
+    name: "login.html",
+    path: "/Users/demo/project/login.html",
+    sizeBytes: content.length
+  };
+  const session = createWorkspaceFileManagerService().createSession({
+    i18n: createTestI18nRuntime(),
+    host: {
+      async listDirectory(input) {
+        return {
+          directoryPath: input.path,
+          entries: [entry],
+          root: "/Users/demo/project",
+          workspaceID: input.workspaceID
+        };
+      },
+      async readPreviewFile() {
+        return new TextEncoder().encode(content);
+      }
+    },
+    workspaceID: "workspace-html-source"
+  });
+
+  await session.initialize();
+  session.select(entry.path);
+  await flushMicrotasks();
+  await flushMicrotasks();
+
+  assert.deepEqual(session.store.previewState, {
+    content,
+    entry: {
+      fileKind: "text",
+      mtimeMs: null,
+      name: "login.html",
+      path: "/Users/demo/project/login.html",
+      sizeBytes: content.length
+    },
+    status: "text"
+  });
+
+  session.dispose();
+});
+
 test("preview state is stable across repeated selection and same i18n runtime", async () => {
   let previewReads = 0;
   const entry: WorkspaceFileEntry = {

@@ -2,10 +2,10 @@ package agentcontext
 
 import (
 	"context"
+	"fmt"
 	"strings"
 
 	"github.com/tutti-os/tutti/services/tuttid/biz/agentgui"
-	agentproviderbiz "github.com/tutti-os/tutti/services/tuttid/biz/agentprovider"
 	agenttargetbiz "github.com/tutti-os/tutti/services/tuttid/biz/agenttarget"
 	preferencesbiz "github.com/tutti-os/tutti/services/tuttid/biz/preferences"
 	agentservice "github.com/tutti-os/tutti/services/tuttid/service/agent"
@@ -14,14 +14,8 @@ import (
 
 const appID = "agent-context"
 
-const (
-	codexAgentAppID      = "agent-codex"
-	claudeCodeAgentAppID = "agent-claude-code"
-	tuttiAgentAppID      = "agent-tutti-agent"
-)
-
 type AgentSessions interface {
-	Cancel(context.Context, string, string) (agentservice.CancelSessionResult, error)
+	CancelTurn(context.Context, string, string, string) (agentservice.CancelTurnResult, error)
 	Create(context.Context, string, agentservice.CreateSessionInput) (agentservice.Session, error)
 	Get(context.Context, string, string) (agentservice.Session, error)
 	GetComposerOptions(context.Context, agentservice.ComposerOptionsInput) (agentservice.ComposerOptions, error)
@@ -55,6 +49,18 @@ type Provider struct {
 	agentTargets    AgentTargetLister
 }
 
+func NewProviderWithAgentTargets(
+	workspaces cliservice.WorkspaceCatalog,
+	sessions AgentSessions,
+	launchPublisher AgentGUILaunchPublisher,
+	agentTargets AgentTargetLister,
+	preferences ...DesktopPreferencesReader,
+) Provider {
+	provider := NewProviderWithLaunchPublisher(workspaces, sessions, launchPublisher, preferences...)
+	provider.agentTargets = agentTargets
+	return provider
+}
+
 func NewProviderWithLaunchPublisher(
 	workspaces cliservice.WorkspaceCatalog,
 	sessions AgentSessions,
@@ -73,63 +79,19 @@ func NewProviderWithLaunchPublisher(
 	}
 }
 
-func NewProviderWithAgentTargets(
-	workspaces cliservice.WorkspaceCatalog,
-	sessions AgentSessions,
-	launchPublisher AgentGUILaunchPublisher,
-	agentTargets AgentTargetLister,
-	preferences ...DesktopPreferencesReader,
-) Provider {
-	provider := NewProviderWithLaunchPublisher(workspaces, sessions, launchPublisher, preferences...)
-	provider.agentTargets = agentTargets
-	return provider
-}
-
 func (Provider) AppID() string {
 	return appID
 }
 
 func (p Provider) Commands() []cliservice.Command {
-	commands := make([]cliservice.Command, 0, 18)
-	if p.agentTargets != nil {
-		commands = append(commands,
-			p.newProvidersCommand(),
-			p.newComposerOptionsCommand(),
-			p.newSkillBundleCommand(),
-			p.newStartCommand(),
-		)
-	}
-	commands = append(commands,
-		p.newProviderStartCommand(providerStartCommandSpec{
-			AppID:         codexAgentAppID,
-			AppName:       "Codex",
-			CommandID:     appID + ".codex.start",
-			Description:   "Start a Codex agent session in the current workspace. Use --show to request AgentGUI activation.",
-			Path:          []string{"codex", "start"},
-			Provider:      agentproviderbiz.Codex,
-			AgentTargetID: agenttargetbiz.IDLocalCodex,
-			Summary:       "Start a Codex agent session",
-		}),
-		p.newProviderStartCommand(providerStartCommandSpec{
-			AppID:         claudeCodeAgentAppID,
-			AppName:       "Claude Code",
-			CommandID:     appID + ".claude.start",
-			Description:   "Start a Claude Code agent session in the current workspace. Use --show to request AgentGUI activation.",
-			Path:          []string{"claude", "start"},
-			Provider:      agentproviderbiz.ClaudeCode,
-			AgentTargetID: agenttargetbiz.IDLocalClaudeCode,
-			Summary:       "Start a Claude Code agent session",
-		}),
-		p.newProviderStartCommand(providerStartCommandSpec{
-			AppID:         tuttiAgentAppID,
-			AppName:       "Tutti Agent",
-			CommandID:     appID + ".tutti-agent.start",
-			Description:   "Start a Tutti Agent session in the current workspace. Use --show to request AgentGUI activation.",
-			Path:          []string{"tutti-agent", "start"},
-			Provider:      agentproviderbiz.TuttiAgent,
-			AgentTargetID: agenttargetbiz.IDLocalTuttiAgent,
-			Summary:       "Start a Tutti Agent session",
-		}),
+	return []cliservice.Command{
+		p.newAgentsCommand(),
+		p.newLegacyProvidersCommand(),
+		p.newComposerOptionsCommand(),
+		p.newSkillBundleCommand(),
+		p.newLegacyCodexStartCommand(),
+		p.newLegacyClaudeStartCommand(),
+		p.newStartCommand(),
 		p.newGetCommand(),
 		p.newOpenCommand(),
 		p.newSendCommand(),
@@ -139,80 +101,7 @@ func (p Provider) Commands() []cliservice.Command {
 		p.newSessionSummaryCommand(),
 		p.newTurnResourcesCommand(),
 		p.newActivePeersCommand(),
-	)
-	return commands
-}
-
-func (p Provider) FilterCapabilities(ctx context.Context, _ cliservice.InvokeContext, capabilities []cliservice.Capability) []cliservice.Capability {
-	if len(capabilities) == 0 || !hasProviderAgentAppCapability(capabilities) {
-		return capabilities
 	}
-	availableProviders := p.availableProviders(ctx)
-	result := make([]cliservice.Capability, 0, len(capabilities))
-	for _, capability := range capabilities {
-		provider, ok := providerAgentAppCapabilityProvider(capability)
-		if !ok || availableProviders[provider] {
-			result = append(result, capability)
-		}
-	}
-	return result
-}
-
-func hasProviderAgentAppCapability(capabilities []cliservice.Capability) bool {
-	for _, capability := range capabilities {
-		if _, ok := providerAgentAppCapabilityProvider(capability); ok {
-			return true
-		}
-	}
-	return false
-}
-
-func providerAgentAppCapabilityProvider(capability cliservice.Capability) (string, bool) {
-	if capability.Source.Kind != cliservice.CapabilitySourceApp {
-		return "", false
-	}
-	switch strings.TrimSpace(capability.Source.AppID) {
-	case codexAgentAppID:
-		return agentproviderbiz.Codex, true
-	case claudeCodeAgentAppID:
-		return agentproviderbiz.ClaudeCode, true
-	case tuttiAgentAppID:
-		return agentproviderbiz.TuttiAgent, true
-	default:
-		return "", false
-	}
-}
-
-func (p Provider) availableProviders(ctx context.Context) map[string]bool {
-	available := map[string]bool{}
-	if p.sessions == nil {
-		return available
-	}
-	var enabled map[string]bool
-	if p.agentTargets != nil {
-		targets, err := p.enabledAgentTargets(ctx)
-		if err != nil {
-			return available
-		}
-		enabled = make(map[string]bool, len(targets))
-		for _, target := range targets {
-			enabled[target.Provider] = true
-		}
-	}
-	items, err := p.sessions.ListProviderAvailability(ctx, agentservice.ProviderAvailabilityInput{})
-	if err != nil {
-		return available
-	}
-	for _, item := range items {
-		if item.Status != agentservice.ProviderAvailabilityAvailable {
-			continue
-		}
-		provider := agentproviderbiz.Normalize(item.Provider)
-		if provider != "" && (enabled == nil || enabled[provider]) {
-			available[provider] = true
-		}
-	}
-	return available
 }
 
 func (p Provider) requireSessions() error {
@@ -230,25 +119,22 @@ func (p Provider) enabledAgentTargets(ctx context.Context) ([]agenttargetbiz.Tar
 	if err != nil {
 		return nil, err
 	}
-	return agenttargetbiz.EnabledTargetsByProvider(targets), nil
+	return agenttargetbiz.EnabledTargets(targets), nil
 }
 
-func (p Provider) resolveEnabledAgentTarget(ctx context.Context, provider string) (agenttargetbiz.Target, error) {
-	canonicalProvider := agentproviderbiz.Normalize(provider)
-	if canonicalProvider == "" {
-		return agenttargetbiz.Target{}, agentservice.ErrInvalidArgument
+func (p Provider) resolveEnabledAgentTarget(ctx context.Context, agentID string) (agenttargetbiz.Target, error) {
+	agentID = strings.TrimSpace(agentID)
+	if agentID == "" {
+		return agenttargetbiz.Target{}, fmt.Errorf("%w: agent id is required; run agent list --json", cliservice.ErrInvalidInput)
 	}
 	targets, err := p.enabledAgentTargets(ctx)
 	if err != nil {
 		return agenttargetbiz.Target{}, err
 	}
-	target, ok := agenttargetbiz.EnabledTargetForProvider(targets, canonicalProvider)
-	if !ok {
-		return agenttargetbiz.Target{}, &agentservice.ProviderUnavailableError{
-			Provider:   canonicalProvider,
-			ReasonCode: "agent_provider_not_enabled",
-			Message:    "agent provider is not enabled",
+	for _, target := range targets {
+		if target.ID == agentID {
+			return target, nil
 		}
 	}
-	return target, nil
+	return agenttargetbiz.Target{}, fmt.Errorf("%w: enabled agent %q was not found; run agent list --json", cliservice.ErrInvalidInput, agentID)
 }

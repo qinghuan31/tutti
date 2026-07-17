@@ -94,7 +94,7 @@ export function resolveWorkspaceDockIconSet(_input: {
     document: defaultDocumentIconUrl,
     files: defaultFilesIconUrl,
     issue: defaultIssueIconUrl,
-    launchpadTiles: [agents.nexight, agents.hermes, agents.openclaw],
+    launchpadTiles: [agents.nexight!, agents.hermes!, agents.openclaw!],
     terminal: defaultTerminalIconUrl
   };
 }

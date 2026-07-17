@@ -367,12 +367,11 @@ test("WorkspaceSettingsService tolerates provider configs with null models", asy
   assert.deepEqual(notifications.items, []);
 });
 
-test("WorkspaceSettingsService echoes saved managed provider API keys", async () => {
+test("WorkspaceSettingsService keeps saved managed provider API keys redacted", async () => {
   const service = new WorkspaceSettingsService({
     client: createWorkspaceSettingsClient({
       listManagedModelProviders: async () => [
         {
-          apiKey: "agnes-secret",
           baseUrl: "https://apihub.agnes-ai.com/v1",
           enabled: true,
           hasApiKey: true,
@@ -389,7 +388,8 @@ test("WorkspaceSettingsService echoes saved managed provider API keys", async ()
   const agnesProvider = service.store.managedModels.providers.find(
     (provider) => provider.provider === "agnes"
   );
-  assert.equal(agnesProvider?.apiKey, "agnes-secret");
+  assert.equal(agnesProvider?.apiKey, "");
+  assert.equal(agnesProvider?.hasApiKey, true);
 });
 
 test("WorkspaceSettingsService fills detected managed provider models", async () => {
@@ -397,7 +397,6 @@ test("WorkspaceSettingsService fills detected managed provider models", async ()
     client: createWorkspaceSettingsClient({
       listManagedModelProviders: async () => [
         {
-          apiKey: "agnes-secret",
           baseUrl: "https://apihub.agnes-ai.com/v1",
           enabled: true,
           hasApiKey: true,
@@ -935,6 +934,41 @@ test("WorkspaceSettingsService writes changed preferences", async () => {
   assert.deepEqual(writes, ["zh-CN", "left", "claude-code", "general", "dark"]);
 });
 
+test("WorkspaceSettingsService changes workspace UI mode without replacing other flags", async () => {
+  const writes: Array<Record<string, boolean>> = [];
+  const replacements: Array<{ mode: string; workspaceId: string }> = [];
+  const service = new WorkspaceSettingsService(
+    {
+      client: createWorkspaceSettingsClient({}),
+      replaceWorkspaceWindow: async (input) => {
+        replacements.push(input);
+      }
+    },
+    createDesktopPreferencesService({
+      onSetFeatureFlags: async (flags) => {
+        writes.push(flags);
+        return flags;
+      },
+      state: createPreferencesState({
+        featureFlags: { "lab.enabled": true }
+      })
+    })
+  );
+
+  service.openPanel({ id: "workspace-1" });
+  await service.changeWorkspaceUiMode("agent");
+
+  assert.deepEqual(writes, [
+    {
+      "lab.enabled": true,
+      "workspace.standaloneAgentMode": true
+    }
+  ]);
+  assert.deepEqual(replacements, [
+    { mode: "agent", workspaceId: "workspace-1" }
+  ]);
+});
+
 test("WorkspaceSettingsService refreshes App Center after changing catalog channel", async () => {
   const refreshedWorkspaceIDs: string[] = [];
   const service = new WorkspaceSettingsService(
@@ -1277,7 +1311,7 @@ function createTuttiAgentTarget(enabled: boolean): AgentTarget {
     enabled,
     iconKey: "tutti-agent",
     id: "local:tutti-agent",
-    launchRef: { provider: "tutti-agent", type: "local_cli" },
+    launchRef: { provider: "tutti-agent", type: "builtin_local" },
     name: "Tutti Agent",
     provider: "tutti-agent",
     sortOrder: 30,
@@ -1344,8 +1378,6 @@ function createDesktopPreferencesService(input: {
     setMinimizeAnimation:
       input.onSetMinimizeAnimation ?? (async (animation) => animation),
     setShowAppDeveloperSources: async (show) => show,
-    setEnableCursorAgent: async (enable) => enable,
-    setEnableOpenCodeAgent: async (enable) => enable,
     setSleepPreventionMode:
       input.onSetSleepPreventionMode ?? (async (enabled) => enabled),
     setWorkbenchShortcuts:
@@ -1378,8 +1410,6 @@ function createPreferencesState(
     changingFeatureFlags: null,
     changingLocale: null,
     changingMinimizeAnimation: null,
-    changingEnableCursorAgent: null,
-    changingEnableOpenCodeAgent: null,
     changingShowAppDeveloperSources: null,
     changingSleepPreventionMode: null,
     changingThemeSource: null,
@@ -1392,8 +1422,6 @@ function createPreferencesState(
     featureFlags: {},
     fileDefaultOpenersByExtension: { html: "defaultBrowser" },
     locale: "en",
-    enableCursorAgent: false,
-    enableOpenCodeAgent: false,
     minimizeAnimation: "scale",
     showAppDeveloperSources: false,
     sleepPreventionMode: "never",

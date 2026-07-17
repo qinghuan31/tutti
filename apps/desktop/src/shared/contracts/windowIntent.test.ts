@@ -14,6 +14,7 @@ test("encodeDesktopWindowIntent includes locale and theme bootstrap parameters",
     {
       dockPlacement: "left",
       locale: "zh-CN",
+      reportPredefinePageview: true,
       themeAppearance: "dark",
       themeSource: "dark"
     }
@@ -24,8 +25,21 @@ test("encodeDesktopWindowIntent includes locale and theme bootstrap parameters",
   assert.equal(params.get("workspaceId"), "workspace-1");
   assert.equal(params.get("lang"), "zh-CN");
   assert.equal(params.get("dockPlacement"), "left");
+  assert.equal(params.get("reportPredefinePageview"), "1");
   assert.equal(params.get("themeSource"), "dark");
   assert.equal(params.get("theme"), "dark");
+});
+
+test("encodeDesktopWindowIntent disables predefine pageview for secondary windows", () => {
+  const search = encodeDesktopWindowIntent(
+    createAgentWindowIntent({
+      provider: "codex",
+      workspaceID: "workspace-1"
+    }),
+    { reportPredefinePageview: false }
+  );
+
+  assert.equal(new URLSearchParams(search).get("reportPredefinePageview"), "0");
 });
 
 test("applyDesktopWindowIntent preserves theme bootstrap parameters in development URLs", () => {
@@ -70,6 +84,34 @@ test("encodeDesktopWindowIntent includes agent window route parameters", () => {
   });
 });
 
+test("encodeDesktopWindowIntent carries an Agent draft into a standalone window", () => {
+  const search = encodeDesktopWindowIntent(
+    createAgentWindowIntent({
+      agentTargetID: "target-1",
+      autoSubmit: true,
+      draftPrompt: " Fix the app ",
+      provider: "codex",
+      userProjectPath: " /workspace/app ",
+      workspaceID: "workspace-1"
+    })
+  );
+
+  const params = new URLSearchParams(search);
+  assert.equal(params.get("draftPrompt"), "Fix the app");
+  assert.equal(params.get("autoSubmit"), "1");
+  assert.equal(params.get("userProjectPath"), "/workspace/app");
+  assert.deepEqual(resolveDesktopWindowIntent(search), {
+    agentSessionID: null,
+    agentTargetID: "target-1",
+    autoSubmit: true,
+    draftPrompt: "Fix the app",
+    kind: "agent",
+    provider: "codex",
+    userProjectPath: "/workspace/app",
+    workspaceID: "workspace-1"
+  });
+});
+
 test("encodeDesktopWindowIntent carries agent provider target bootstrap", () => {
   const search = encodeDesktopWindowIntent(
     createAgentWindowIntent({
@@ -83,7 +125,7 @@ test("encodeDesktopWindowIntent carries agent provider target bootstrap", () => 
         pendingActions: [],
         statuses: []
       },
-      agents: [
+      agentDirectorySnapshot: createAgentDirectorySnapshot([
         {
           agentTargetId: "target-1",
           availability: { status: "ready" },
@@ -91,13 +133,13 @@ test("encodeDesktopWindowIntent carries agent provider target bootstrap", () => 
           name: "Codex",
           provider: "codex"
         }
-      ],
+      ]),
       workspaceID: "workspace-1"
     })
   );
 
   const params = new URLSearchParams(search);
-  assert.ok(params.get("agents"));
+  assert.ok(params.get("agentDirectorySnapshot"));
   assert.ok(params.get("agentProviderStatusSnapshot"));
   assert.deepEqual(resolveDesktopWindowIntent(search), {
     agentSessionID: "session-1",
@@ -112,7 +154,7 @@ test("encodeDesktopWindowIntent carries agent provider target bootstrap", () => 
       pendingActions: [],
       statuses: []
     },
-    agents: [
+    agentDirectorySnapshot: createAgentDirectorySnapshot([
       {
         agentTargetId: "target-1",
         availability: { status: "ready" },
@@ -120,7 +162,7 @@ test("encodeDesktopWindowIntent carries agent provider target bootstrap", () => 
         name: "Codex",
         provider: "codex"
       }
-    ],
+    ]),
     workspaceID: "workspace-1"
   });
 });
@@ -128,22 +170,34 @@ test("encodeDesktopWindowIntent carries agent provider target bootstrap", () => 
 test("encodeDesktopWindowIntent preserves an explicitly loaded empty agent directory", () => {
   const search = encodeDesktopWindowIntent(
     createAgentWindowIntent({
-      agents: [],
+      agentDirectorySnapshot: createAgentDirectorySnapshot([]),
       provider: "codex",
       workspaceID: "workspace-1"
     })
   );
 
-  assert.equal(new URLSearchParams(search).get("agents"), "[]");
+  assert.ok(new URLSearchParams(search).get("agentDirectorySnapshot"));
   assert.deepEqual(resolveDesktopWindowIntent(search), {
     agentSessionID: null,
     agentTargetID: null,
-    agents: [],
+    agentDirectorySnapshot: createAgentDirectorySnapshot([]),
     kind: "agent",
     provider: "codex",
     workspaceID: "workspace-1"
   });
 });
+
+function createAgentDirectorySnapshot(
+  agents: readonly import("@tutti-os/agent-gui").AgentGUIAgent[]
+) {
+  return {
+    agents,
+    agentTargets: [],
+    capturedAtUnixMs: 1780272000000,
+    error: null,
+    status: "ready" as const
+  };
+}
 
 test("readInitialDockPlacementFromLocation resolves dock placement from search params", async () => {
   const { readInitialDockPlacementFromLocation } =

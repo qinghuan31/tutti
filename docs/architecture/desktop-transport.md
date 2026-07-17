@@ -60,6 +60,21 @@ Current default strategy:
 - `main` reads that listener info and exposes the resolved backend config to renderer windows
 - renderer and `main` both use a desktop-issued bearer token for daemon requests
 
+Renderer constructs one canonical `@tutti-os/client-tuttid-ts` client and keeps
+that object stable. Its custom restart-aware fetch resolves backend config
+immediately before every HTTP request, replaces only the request origin, and
+overrides `Authorization` with the current per-run bearer token. Request path,
+query, method, body, other headers, and cancellation signal remain intact.
+Body-bearing requests materialize the canonical client's already-serialized
+body before rebuilding the request. Passing the original `Request` as
+`RequestInit` would preserve a streaming upload that Chromium only sends over
+HTTP/2 or QUIC, while the managed loopback daemon serves HTTP/1.1.
+
+Do not copy the `TuttidClient` method table into desktop wrappers, use `Proxy`,
+or maintain a second compatibility client. Daemon restart handling belongs in
+the request transport so new canonical client methods are available to desktop
+without manual forwarding changes.
+
 This keeps the daemon under desktop supervision while giving renderer and CLI
 clients a stable local backend contract.
 
@@ -136,9 +151,14 @@ with restrictive permissions and contains the daemon loopback address plus the
 current per-run bearer token. CLI clients should read it directly and send the
 token in the HTTP `Authorization` header.
 
-The packaged desktop app may repair the user-level CLI shim during startup. The
-shim path derives from the same state root and must not mutate shell profiles or
-write to global locations such as `/usr/local/bin`.
+The packaged desktop app repairs the canonical user-level CLI shim during
+startup. The canonical shim path derives from the same state root. To expose the
+command to external shells on macOS and Linux, desktop may also install or
+repair a Tutti-owned forwarding shim in `~/.local/bin` or `~/bin`, but only
+when that directory is already present in the user's login-shell `PATH` and
+writable. It must not overwrite a non-Tutti command, mutate shell profiles, or
+write to global locations such as `/usr/local/bin`. PATH exposure is a
+best-effort background startup task and must not delay desktop window creation.
 
 Local development scripts install a separate `tutti-dev` command so developer
 shells can target the development daemon without shadowing a packaged `tutti`

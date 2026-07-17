@@ -16,19 +16,25 @@ automation are updated together.
 The current fixed release group is:
 
 ```text
-@tutti-os/agent-activity-core
-@tutti-os/agent-gui
-@tutti-os/browser-node
-@tutti-os/workspace-file-reference
-@tutti-os/workspace-file-preview
+@tutti-os/event-stream-core
 @tutti-os/workspace-file-manager
+@tutti-os/workspace-file-reference
 @tutti-os/workspace-issue-manager
 @tutti-os/workspace-user-project
 @tutti-os/workspace-app-center
+@tutti-os/workspace-external-core
 @tutti-os/workspace-terminal
+@tutti-os/agent-activity-core
+@tutti-os/agent-gui
+@tutti-os/claude-sdk-sidecar
+@tutti-os/browser-node
+@tutti-os/workspace-file-preview
 @tutti-os/workbench-snapshot
+@tutti-os/workbench-host
+@tutti-os/workbench-launchpad
 @tutti-os/workbench-surface
 @tutti-os/app-release-tools
+@tutti-os/auth-bridge
 @tutti-os/ui-i18n-runtime
 @tutti-os/ui-notifications
 @tutti-os/ui-rich-text
@@ -146,6 +152,7 @@ pnpm add @tutti-os/workspace-file-manager@beta
 pnpm add @tutti-os/workspace-issue-manager@beta
 pnpm add @tutti-os/workspace-app-center@beta
 pnpm add @tutti-os/workspace-terminal@beta
+pnpm add @tutti-os/workbench-host@beta
 pnpm add @tutti-os/workbench-surface@beta
 pnpm add @tutti-os/workbench-snapshot@beta
 pnpm add @tutti-os/ui-i18n-runtime@beta
@@ -274,6 +281,8 @@ The stable package entrypoints are:
 @tutti-os/workspace-terminal/workbench
 @tutti-os/workbench-snapshot
 @tutti-os/workbench-snapshot/schema.json
+@tutti-os/workbench-host
+@tutti-os/workbench-host/conformance
 @tutti-os/workbench-surface
 @tutti-os/workbench-surface/i18n
 @tutti-os/workbench-surface/styles.css

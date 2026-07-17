@@ -20,8 +20,6 @@
     "minimizeAnimation",
     "sleepPreventionMode",
     "showAppDeveloperSources",
-    "enableCursorAgent",
-    "enableOpenCodeAgent",
     "themeSource",
     "updateChannel",
     "updatePolicy"
@@ -127,12 +125,6 @@
       "enum": ["never", "whileAgentRunning", "always"]
     },
     "showAppDeveloperSources": {
-      "type": "boolean"
-    },
-    "enableCursorAgent": {
-      "type": "boolean"
-    },
-    "enableOpenCodeAgent": {
       "type": "boolean"
     },
     "themeSource": {

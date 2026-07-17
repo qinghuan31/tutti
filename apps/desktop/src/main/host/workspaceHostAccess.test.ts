@@ -162,7 +162,7 @@ function createTransportClient(
     async deleteWorkspaceAgentSession() {
       throw new Error("not used");
     },
-    async deleteWorkspaceAgentSessionSection() {
+    async deleteWorkspaceAgentSessionsBatch() {
       throw new Error("not used");
     },
     async updateWorkspaceAgentSessionTitle() {
@@ -312,7 +312,7 @@ function createTransportClient(
     async listWorkspaceAgentSessionSectionPage() {
       throw new Error("not used");
     },
-    async countWorkspaceAgentSessionSection() {
+    async listWorkspaceAgentSessionSectionDeletionCandidates() {
       throw new Error("not used");
     },
     async listWorkspaceAgentPinnedSessionPage() {
@@ -348,16 +348,22 @@ function createTransportClient(
     async resizeWorkspaceTerminal() {
       throw new Error("not used");
     },
-    async cancelWorkspaceAgentSession() {
-      throw new Error("not used");
-    },
-    async cancelWorkspaceAgentSessionWithResult() {
+    async cancelWorkspaceAgentTurn() {
       throw new Error("not used");
     },
     async goalControlWorkspaceAgentSession() {
       throw new Error("not used");
     },
+    async getWorkspaceAgentSessionGoal() {
+      throw new Error("not used");
+    },
+    async reconcileWorkspaceAgentSessionGoal() {
+      throw new Error("not used");
+    },
     async sendWorkspaceAgentSessionInput() {
+      throw new Error("not used");
+    },
+    async submitWorkspaceAgentPlanDecision() {
       throw new Error("not used");
     },
     async readWorkspaceAgentSessionAttachment() {

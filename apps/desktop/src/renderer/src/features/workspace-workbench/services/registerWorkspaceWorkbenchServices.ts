@@ -1,4 +1,5 @@
 import { SyncDescriptor, type ServiceRegistry } from "@tutti-os/infra/di";
+import { WorkbenchHostCoordinator } from "@tutti-os/workbench-host";
 import type {
   TuttidClient,
   TuttidEventStreamClient
@@ -20,17 +21,15 @@ import type { IReporterService } from "../../analytics/services/reporterService.
 import { createDesktopWorkspaceSettingsClient } from "./internal/adapters/desktopWorkspaceSettingsClient";
 import { AccountService } from "./internal/accountService";
 import { WorkspaceWorkbenchHostService } from "./internal/workspaceWorkbenchHostService";
-import { WorkbenchHostCoordinator } from "./internal/workbenchHostCoordinator.ts";
 import { WorkspaceSettingsService } from "./internal/workspaceSettingsService";
 import { IAccountService } from "./accountService.interface";
 import { IWorkbenchHostCoordinator } from "./workbenchHostCoordinator.interface.ts";
 import { IWorkspaceWorkbenchHostService } from "./workspaceWorkbenchHostService.interface";
+import type { DesktopWorkspaceWorkbenchRepository } from "./internal/adapters/desktopWorkspaceWorkbenchRepository.ts";
 import { IWorkspaceSettingsService } from "./workspaceSettingsService.interface";
 
 export interface WorkspaceWorkbenchServiceRegistrationInput {
   browserApi?: DesktopBrowserApi;
-  isAgentProviderHidden?: (provider: string) => boolean;
-  subscribeAgentProviderVisibility?: (listener: () => void) => () => void;
   computerUseApi: DesktopComputerUseApi;
   developerApi: DesktopDeveloperApi;
   dockPreviewCacheApi: DesktopDockPreviewCacheApi;
@@ -40,7 +39,10 @@ export interface WorkspaceWorkbenchServiceRegistrationInput {
   hostWindowApi: DesktopHostWindowApi;
   hostWorkspaceApi: Pick<
     DesktopHostWorkspaceApi,
-    "broadcastAgentStatus" | "onOpenFeatureRequest" | "onOpenFileRequest"
+    | "broadcastAgentStatus"
+    | "onOpenFeatureRequest"
+    | "onOpenFileRequest"
+    | "replaceWorkspaceWindow"
   >;
   tuttidClient: TuttidClient;
   platformApi: Pick<
@@ -49,6 +51,7 @@ export interface WorkspaceWorkbenchServiceRegistrationInput {
   >;
   reporterService?: Pick<IReporterService, "trackEvents">;
   runtimeApi: DesktopRuntimeApi;
+  snapshotRepository: DesktopWorkspaceWorkbenchRepository;
   wallpaperApi: DesktopWallpaperApi;
   onAgentTargetsChanged?: () => void | Promise<void>;
 }
@@ -75,9 +78,6 @@ export function registerWorkspaceWorkbenchServices(
     new SyncDescriptor(WorkspaceWorkbenchHostService, [
       {
         browserApi: input.browserApi,
-        isAgentProviderHidden: input.isAgentProviderHidden,
-        subscribeAgentProviderVisibility:
-          input.subscribeAgentProviderVisibility,
         computerUseApi: input.computerUseApi,
         dockPreviewCacheApi: input.dockPreviewCacheApi,
         eventStreamClient: input.eventStreamClient,
@@ -89,6 +89,7 @@ export function registerWorkspaceWorkbenchServices(
         platformApi: input.platformApi,
         reporterService: input.reporterService,
         runtimeApi: input.runtimeApi,
+        snapshotRepository: input.snapshotRepository,
         wallpaperApi: input.wallpaperApi
       }
     ])
@@ -103,7 +104,8 @@ export function registerWorkspaceWorkbenchServices(
           runtimeApi: input.runtimeApi,
           tuttidClient: input.tuttidClient
         }),
-        onAgentTargetsChanged: input.onAgentTargetsChanged
+        onAgentTargetsChanged: input.onAgentTargetsChanged,
+        replaceWorkspaceWindow: input.hostWorkspaceApi.replaceWorkspaceWindow
       }
     ])
   );

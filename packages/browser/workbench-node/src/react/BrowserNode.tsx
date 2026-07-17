@@ -1,30 +1,43 @@
 import {
-  ArrowLeftIcon,
-  ArrowRightIcon,
-  Badge,
   Button,
-  Input,
   LaunchIcon,
-  LoadingIcon,
-  RefreshIcon,
   WarningLinedIcon,
   ViewportMenuSurface,
   cn,
   menuItemClassName
 } from "@tutti-os/ui-system";
-import type { WorkbenchDisplayMode } from "@tutti-os/workbench-surface";
-import { useEffect, useRef, useState } from "react";
-import type { HTMLAttributes, JSX, ReactNode } from "react";
+import {
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  useSyncExternalStore
+} from "react";
+import type { JSX, ReactNode } from "react";
 import type { BrowserNodeFeature } from "../core/feature.ts";
-import type { BrowserNodeControllerState } from "../core/nodeController.ts";
 import type {
   BrowserNodeNavigationPolicy,
   BrowserNodeRuntimeError,
   BrowserNodeSessionMode
 } from "../core/types.ts";
+import type { BrowserNodeWebviewTag } from "./webviewTag.ts";
+import {
+  BrowserNodeChrome,
+  BrowserNodeHeader,
+  useBrowserNodeTabsState
+} from "./BrowserNodeChrome.tsx";
+import { BrowserNodeWebviewContext } from "./browserNodeWebviewContext.ts";
+import {
+  openBrowserNodeExternal,
+  resolveBrowserNodeOpenExternalUrl
+} from "./browserNodeOperations.ts";
 import { useBrowserNodeController } from "./useBrowserNodeController.ts";
 import { useBrowserNodeWebview } from "./useBrowserNodeWebview.ts";
 import { shouldHideBrowserNodeWebview } from "./webviewVisibility.ts";
+import {
+  isBrowserNodeHostOverlayOpen,
+  subscribeBrowserNodeHostOverlay
+} from "./browserNodeHostOverlayStore.ts";
 
 // Electron needs the serialized string attribute for dynamically created webviews.
 const browserNodeAllowPopupsAttribute = "true" as unknown as boolean;
@@ -62,6 +75,7 @@ export interface BrowserNodeProps {
   feature: BrowserNodeFeature;
   hidden?: boolean;
   navigationPolicy?: BrowserNodeNavigationPolicy | null;
+  navigationActions?: ReactNode;
   nodeId: string;
   onFocusRequest?: () => void;
   onNavigated?: (url: string) => void;
@@ -70,6 +84,7 @@ export interface BrowserNodeProps {
   sessionPartition?: string | null;
   showHeader?: boolean;
   syncDefaultUrl?: boolean;
+  tabs?: boolean;
 }
 
 export function BrowserNode({
@@ -77,6 +92,7 @@ export function BrowserNode({
   feature,
   hidden = false,
   navigationPolicy = null,
+  navigationActions,
   nodeId,
   onFocusRequest,
   onNavigated,
@@ -84,9 +100,157 @@ export function BrowserNode({
   sessionMode = "shared",
   sessionPartition = null,
   showHeader = true,
-  syncDefaultUrl = false
+  syncDefaultUrl = false,
+  tabs = false
 }: BrowserNodeProps): JSX.Element {
-  const { controller, state } = useBrowserNodeController({
+  if (tabs) {
+    return (
+      <TabbedBrowserNode
+        defaultUrl={defaultUrl}
+        feature={feature}
+        hidden={hidden}
+        navigationPolicy={navigationPolicy}
+        navigationActions={navigationActions}
+        nodeId={nodeId}
+        onFocusRequest={onFocusRequest}
+        onNavigated={onNavigated}
+        profileId={profileId}
+        sessionMode={sessionMode}
+        sessionPartition={sessionPartition}
+        showHeader={showHeader}
+        syncDefaultUrl={syncDefaultUrl}
+      />
+    );
+  }
+
+  return (
+    <BrowserNodeContent
+      defaultUrl={defaultUrl}
+      feature={feature}
+      hidden={hidden}
+      navigationPolicy={navigationPolicy}
+      navigationActions={navigationActions}
+      nodeId={nodeId}
+      onFocusRequest={onFocusRequest}
+      onNavigated={onNavigated}
+      profileId={profileId}
+      sessionMode={sessionMode}
+      sessionPartition={sessionPartition}
+      showHeader={showHeader}
+      syncDefaultUrl={syncDefaultUrl}
+    />
+  );
+}
+
+function TabbedBrowserNode({
+  defaultUrl,
+  feature,
+  hidden,
+  navigationPolicy,
+  navigationActions,
+  nodeId,
+  onFocusRequest,
+  onNavigated,
+  profileId,
+  sessionMode,
+  sessionPartition,
+  showHeader,
+  syncDefaultUrl
+}: Omit<BrowserNodeProps, "tabs">): JSX.Element {
+  const tabsState = useBrowserNodeTabsState(feature, nodeId, defaultUrl);
+  const activeTabIdRef = useRef(tabsState.activeTabId);
+  const webviewsRef = useRef(new Map<string, BrowserNodeWebviewTag>());
+  const [activeWebview, setActiveWebview] =
+    useState<BrowserNodeWebviewTag | null>(null);
+  activeTabIdRef.current = tabsState.activeTabId;
+
+  const handleTabWebviewChange = useCallback(
+    (tabId: string, webview: BrowserNodeWebviewTag | null): void => {
+      if (webview) {
+        webviewsRef.current.set(tabId, webview);
+      } else {
+        webviewsRef.current.delete(tabId);
+      }
+      if (activeTabIdRef.current === tabId) {
+        setActiveWebview(webview);
+      }
+    },
+    []
+  );
+
+  useEffect(() => {
+    setActiveWebview(webviewsRef.current.get(tabsState.activeTabId) ?? null);
+  }, [tabsState.activeTabId]);
+
+  return (
+    <BrowserNodeWebviewContext.Provider value={activeWebview}>
+      <div className="flex h-full min-h-0 flex-col overflow-hidden bg-[var(--background-panel)]">
+        {showHeader ? (
+          <BrowserNodeChrome
+            defaultUrl={defaultUrl}
+            feature={feature}
+            navigationActions={navigationActions}
+            onFocusRequest={onFocusRequest}
+            surfaceNodeId={nodeId}
+          />
+        ) : null}
+        <div className="relative min-h-0 flex-1 overflow-hidden">
+          {tabsState.tabs.map((tab) => {
+            const active = tab.id === tabsState.activeTabId;
+            return (
+              <div
+                className={cn(
+                  "absolute inset-0",
+                  active ? "visible" : "invisible pointer-events-none"
+                )}
+                data-browser-node-tab-content-active={active ? "true" : "false"}
+                key={tab.id}
+              >
+                <BrowserNodeContent
+                  defaultUrl={tab.defaultUrl}
+                  feature={feature}
+                  hidden={hidden || !active}
+                  navigationPolicy={navigationPolicy}
+                  nodeId={tab.nodeId}
+                  onFocusRequest={onFocusRequest}
+                  onNavigated={active ? onNavigated : undefined}
+                  onWebviewChange={(webview) =>
+                    handleTabWebviewChange(tab.id, webview)
+                  }
+                  profileId={profileId}
+                  sessionMode={sessionMode}
+                  sessionPartition={sessionPartition}
+                  showHeader={false}
+                  syncDefaultUrl={syncDefaultUrl}
+                />
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    </BrowserNodeWebviewContext.Provider>
+  );
+}
+
+function BrowserNodeContent({
+  defaultUrl,
+  feature,
+  hidden = false,
+  navigationPolicy = null,
+  navigationActions,
+  nodeId,
+  onFocusRequest,
+  onNavigated,
+  onWebviewChange,
+  profileId = null,
+  sessionMode = "shared",
+  sessionPartition = null,
+  showHeader = false,
+  syncDefaultUrl = false
+}: Omit<BrowserNodeProps, "tabs"> & {
+  onWebviewChange?: (webview: BrowserNodeWebviewTag | null) => void;
+}): JSX.Element {
+  const { state } = useBrowserNodeController({
     defaultUrl,
     feature,
     navigationPolicy,
@@ -98,6 +262,7 @@ export function BrowserNode({
   });
   const runtime = state.runtime;
   const isHostMinimizing = useHostWindowMinimizing();
+  const isHostOverlayOpen = useBrowserNodeHostOverlayOpen(nodeId);
   const lastNavigatedUrlRef = useRef<string | null>(
     state.runtime.url?.trim() || null
   );
@@ -129,6 +294,17 @@ export function BrowserNode({
     sessionMode,
     sessionPartition
   });
+  const [webview, setWebview] = useState<BrowserNodeWebviewTag | null>(null);
+  const onWebviewChangeRef = useRef(onWebviewChange);
+  onWebviewChangeRef.current = onWebviewChange;
+  const handleWebviewRef = useCallback(
+    (element: BrowserNodeWebviewTag | null): void => {
+      setWebviewRef(element);
+      setWebview(element);
+      onWebviewChangeRef.current?.(element);
+    },
+    [setWebviewRef]
+  );
 
   useEffect(() => {
     const navigatedUrl = state.runtime.url?.trim() ?? "";
@@ -153,392 +329,122 @@ export function BrowserNode({
   ]);
 
   return (
-    <div className="flex h-full min-h-0 flex-col overflow-hidden bg-[var(--background-panel)]">
-      {showHeader ? (
-        <BrowserNodeHeader
-          canGoBack={runtime.canGoBack}
-          canGoForward={runtime.canGoForward}
-          draftUrl={state.draftUrl}
-          feature={feature}
-          isCold={runtime.lifecycle === "cold"}
-          isLoading={runtime.isLoading}
-          onDraftUrlChange={(nextUrl) => controller.setDraftUrl(nextUrl)}
-          onFocusRequest={onFocusRequest}
-          onSubmitUrl={() => {
-            void controller.submitDraftUrl().catch(() => undefined);
-          }}
-          onOpenExternal={
-            openExternalUrl
-              ? () => {
-                  void openBrowserNodeExternal(feature, openExternalUrl);
-                }
-              : undefined
-          }
-          onGoBack={() => {
-            void controller.goBack().catch(() => undefined);
-          }}
-          onGoForward={() => {
-            void controller.goForward().catch(() => undefined);
-          }}
-          onReload={() => {
-            void controller.reload().catch(() => undefined);
-          }}
-        />
-      ) : null}
-      <div className="relative min-h-0 flex-1 overflow-hidden bg-[var(--background-panel)]">
-        {shouldRenderWebview ? (
-          <webview
-            allowpopups={browserNodeAllowPopupsAttribute}
-            key={webviewKey}
-            ref={setWebviewRef}
-            className={cn(
-              "absolute inset-0 h-full w-full border-0 bg-[var(--background-panel)]",
-              isShowingLoadError ? "hidden pointer-events-none" : "visible",
-              shouldHideBrowserNodeWebview({ hidden, isHostMinimizing }) &&
-                "invisible"
-            )}
-            data-browser-node-webview="true"
-            partition={webviewPartition}
-            src={webviewSrc}
+    <BrowserNodeWebviewContext.Provider value={webview}>
+      <div className="flex h-full min-h-0 flex-col overflow-hidden bg-[var(--background-panel)]">
+        {showHeader ? (
+          <BrowserNodeHeader
+            defaultUrl={defaultUrl}
+            feature={feature}
+            navigationActions={navigationActions}
+            nodeId={nodeId}
+            onFocusRequest={onFocusRequest}
           />
         ) : null}
-        {errorMessage ? (
-          <div className="absolute inset-0 z-10 flex items-center justify-center bg-[var(--background-panel)] px-8 py-10 text-center">
-            <div
-              className="flex w-full max-w-[440px] flex-col items-center"
-              role="status"
-              aria-live="polite"
-            >
-              <div className="flex size-11 items-center justify-center rounded-full border border-[color-mix(in_srgb,var(--state-danger)_22%,transparent)] bg-[color-mix(in_srgb,var(--state-danger)_8%,transparent)] text-[var(--state-danger)]">
-                <WarningLinedIcon className="size-5" />
-              </div>
-              <div className="mt-4 text-lg font-semibold text-[var(--text-primary)]">
-                {feature.i18n.t("loadFailed")}
-              </div>
-              <div className="mt-1 max-w-[360px] text-[13px] leading-5 text-[var(--text-secondary)]">
-                {errorMessage}
-              </div>
-              {errorStatus ? (
-                <div className="mt-4 rounded-full border border-border bg-[var(--transparency-block)] px-2.5 py-1 text-[11px] font-medium text-[var(--text-secondary)]">
-                  {errorStatus}
+        <div className="relative min-h-0 flex-1 overflow-hidden bg-[var(--background-panel)]">
+          {shouldRenderWebview ? (
+            <webview
+              allowpopups={browserNodeAllowPopupsAttribute}
+              key={webviewKey}
+              ref={handleWebviewRef}
+              className={cn(
+                "absolute inset-0 h-full w-full border-0 bg-[var(--background-panel)]",
+                isShowingLoadError ? "hidden pointer-events-none" : "visible",
+                shouldHideBrowserNodeWebview({
+                  hidden,
+                  isHostMinimizing,
+                  isHostOverlayOpen:
+                    isHostOverlayOpen || devToolsContextMenu !== null
+                }) && "invisible"
+              )}
+              data-browser-node-webview="true"
+              partition={webviewPartition}
+              src={webviewSrc}
+            />
+          ) : null}
+          {errorMessage ? (
+            <div className="absolute inset-0 z-10 flex items-center justify-center bg-[var(--background-panel)] px-8 py-10 text-center">
+              <div
+                className="flex w-full max-w-[440px] flex-col items-center"
+                role="status"
+                aria-live="polite"
+              >
+                <div className="flex size-11 items-center justify-center rounded-full border border-[color-mix(in_srgb,var(--state-danger)_22%,transparent)] bg-[color-mix(in_srgb,var(--state-danger)_8%,transparent)] text-[var(--state-danger)]">
+                  <WarningLinedIcon className="size-5" />
                 </div>
-              ) : null}
-              {openExternalUrl ? (
-                <div className="mt-5 flex flex-wrap items-center justify-center gap-2">
-                  <Button
-                    size="sm"
-                    type="button"
-                    variant="outline"
-                    onClick={() => {
-                      void openBrowserNodeExternal(feature, openExternalUrl);
-                    }}
-                  >
-                    <LaunchIcon className="size-3.5" />
-                    {feature.i18n.t("actions.openExternal")}
-                  </Button>
+                <div className="mt-4 text-lg font-semibold text-[var(--text-primary)]">
+                  {feature.i18n.t("loadFailed")}
                 </div>
-              ) : null}
+                <div className="mt-1 max-w-[360px] text-[13px] leading-5 text-[var(--text-secondary)]">
+                  {errorMessage}
+                </div>
+                {errorStatus ? (
+                  <div className="mt-4 rounded-full border border-border bg-[var(--transparency-block)] px-2.5 py-1 text-[11px] font-medium text-[var(--text-secondary)]">
+                    {errorStatus}
+                  </div>
+                ) : null}
+                {openExternalUrl ? (
+                  <div className="mt-5 flex flex-wrap items-center justify-center gap-2">
+                    <Button
+                      size="sm"
+                      type="button"
+                      variant="outline"
+                      onClick={() => {
+                        void openBrowserNodeExternal(feature, openExternalUrl);
+                      }}
+                    >
+                      <LaunchIcon className="size-3.5" />
+                      {feature.i18n.t("actions.openExternal")}
+                    </Button>
+                  </div>
+                ) : null}
+              </div>
             </div>
-          </div>
-        ) : null}
-        {devToolsContextMenu ? (
-          <ViewportMenuSurface
-            open
-            className="w-44"
-            dismissOnEscape
-            dismissOnPointerDownOutside
-            onDismiss={dismissDevToolsContextMenu}
-            placement={{
-              type: "point",
-              point: devToolsContextMenu,
-              alignX: "start",
-              alignY: "start",
-              estimatedSize: {
-                width: 176,
-                height: 40
-              }
-            }}
-          >
-            <button
-              className={cn(menuItemClassName, "w-full")}
-              type="button"
-              onClick={() => {
-                void openDevToolsFromContextMenu().catch(() => undefined);
+          ) : null}
+          {devToolsContextMenu ? (
+            <ViewportMenuSurface
+              open
+              className="w-44"
+              dismissOnEscape
+              dismissOnPointerDownOutside
+              onDismiss={dismissDevToolsContextMenu}
+              placement={{
+                type: "point",
+                point: devToolsContextMenu,
+                alignX: "start",
+                alignY: "start",
+                estimatedSize: {
+                  width: 176,
+                  height: 40
+                }
               }}
             >
-              {feature.i18n.t("actions.openDevTools")}
-            </button>
-          </ViewportMenuSurface>
-        ) : null}
+              <button
+                className={cn(menuItemClassName, "w-full")}
+                type="button"
+                onClick={() => {
+                  void openDevToolsFromContextMenu().catch(() => undefined);
+                }}
+              >
+                {feature.i18n.t("actions.openDevTools")}
+              </button>
+            </ViewportMenuSurface>
+          ) : null}
+        </div>
       </div>
-    </div>
+    </BrowserNodeWebviewContext.Provider>
   );
 }
 
-export interface BrowserNodeWorkbenchHeaderProps {
-  className?: string;
-  defaultActions?: ReactNode;
-  defaultUrl: string;
-  displayMode?: WorkbenchDisplayMode;
-  dragHandleProps?: HTMLAttributes<HTMLElement>;
-  feature: BrowserNodeFeature;
-  nodeId: string;
-  onCloseRequest?: () => void;
-  onFocusRequest?: () => void;
-}
-
-export function BrowserNodeWorkbenchHeader({
-  className,
-  defaultActions,
-  defaultUrl,
-  displayMode,
-  dragHandleProps,
-  feature,
-  nodeId,
-  onCloseRequest,
-  onFocusRequest
-}: BrowserNodeWorkbenchHeaderProps): JSX.Element {
-  const { controller, state } = useBrowserNodeController({
-    defaultUrl,
-    feature,
-    nodeId
-  });
-  const runtime = state.runtime;
-  const openExternalUrl = resolveBrowserNodeOpenExternalUrl(feature, state);
-
-  return (
-    <BrowserNodeHeader
-      canGoBack={runtime.canGoBack}
-      canGoForward={runtime.canGoForward}
-      className={className}
-      defaultActions={defaultActions}
-      displayMode={displayMode}
-      draftUrl={state.draftUrl}
-      dragHandleProps={dragHandleProps}
-      feature={feature}
-      isCold={runtime.lifecycle === "cold"}
-      isLoading={runtime.isLoading}
-      onCloseRequest={onCloseRequest}
-      onDraftUrlChange={(nextUrl) => controller.setDraftUrl(nextUrl)}
-      onFocusRequest={onFocusRequest}
-      onSubmitUrl={() => {
-        void controller.submitDraftUrl().catch(() => undefined);
-      }}
-      onOpenExternal={
-        openExternalUrl
-          ? () => {
-              void openBrowserNodeExternal(feature, openExternalUrl);
-            }
-          : undefined
-      }
-      onGoBack={() => {
-        void controller.goBack().catch(() => undefined);
-      }}
-      onGoForward={() => {
-        void controller.goForward().catch(() => undefined);
-      }}
-      onReload={() => {
-        void controller.reload().catch(() => undefined);
-      }}
-      withBorder={false}
-    />
+function useBrowserNodeHostOverlayOpen(nodeId: string): boolean {
+  const subscribe = useCallback(
+    (listener: () => void) => subscribeBrowserNodeHostOverlay(nodeId, listener),
+    [nodeId]
   );
-}
-
-export function BrowserNodeHeader({
-  canGoBack,
-  canGoForward,
-  className,
-  defaultActions,
-  displayMode,
-  draftUrl,
-  dragHandleProps,
-  feature,
-  isCold = false,
-  isLoading,
-  onCloseRequest,
-  onDraftUrlChange,
-  onFocusRequest,
-  onGoBack,
-  onGoForward,
-  onOpenExternal,
-  onReload,
-  onSubmitUrl,
-  withBorder = true
-}: {
-  canGoBack: boolean;
-  canGoForward: boolean;
-  className?: string;
-  defaultActions?: ReactNode;
-  displayMode?: WorkbenchDisplayMode;
-  draftUrl: string;
-  dragHandleProps?: HTMLAttributes<HTMLElement>;
-  feature: BrowserNodeFeature;
-  isCold?: boolean;
-  isLoading: boolean;
-  onCloseRequest?: () => void;
-  onDraftUrlChange: (nextUrl: string) => void;
-  onFocusRequest?: () => void;
-  onGoBack: () => void;
-  onGoForward: () => void;
-  onOpenExternal?: () => void;
-  onReload: () => void;
-  onSubmitUrl: () => void;
-  withBorder?: boolean;
-}): JSX.Element {
-  const [reloadAnimationKey, setReloadAnimationKey] = useState(0);
-
-  const handleReload = (): void => {
-    setReloadAnimationKey((currentKey) => currentKey + 1);
-    onReload();
-  };
-
-  return (
-    <div
-      className={cn(
-        "flex h-[var(--workbench-header-height,38px)] min-h-[var(--workbench-header-height,38px)] items-center gap-2 bg-[var(--background-panel)] px-2 pl-3",
-        withBorder ? "border-b border-border" : null,
-        className
-      )}
-      data-browser-node-header="true"
-      data-browser-node-header-display-mode={displayMode}
-      onDoubleClick={(event) => {
-        if (
-          event.target instanceof Element &&
-          event.target.closest(".nodrag")
-        ) {
-          return;
-        }
-        event.stopPropagation();
-        dragHandleProps?.onDoubleClick?.(event);
-      }}
-    >
-      {defaultActions ? (
-        <span
-          className="nodrag flex shrink-0 items-center"
-          onClickCapture={(event) => {
-            if (
-              !onCloseRequest ||
-              !(event.target instanceof Element) ||
-              !event.target.closest('[data-workbench-action="close"]')
-            ) {
-              return;
-            }
-            onCloseRequest();
-          }}
-        >
-          {defaultActions}
-        </span>
-      ) : null}
-      <div className="inline-flex items-center gap-1">
-        <BrowserNodeHeaderButton
-          disabled={!canGoBack}
-          label={feature.i18n.t("actions.back")}
-          onClick={onGoBack}
-        >
-          <ArrowLeftIcon className="size-[15px]" />
-        </BrowserNodeHeaderButton>
-        <BrowserNodeHeaderButton
-          disabled={!canGoForward}
-          label={feature.i18n.t("actions.forward")}
-          onClick={onGoForward}
-        >
-          <ArrowRightIcon className="size-[15px]" />
-        </BrowserNodeHeaderButton>
-        <BrowserNodeHeaderButton
-          label={feature.i18n.t("actions.reload")}
-          onClick={handleReload}
-        >
-          <RefreshIcon
-            key={reloadAnimationKey}
-            className={cn(
-              "size-[15px]",
-              reloadAnimationKey > 0 &&
-                "motion-safe:animate-[spin_520ms_cubic-bezier(0.4,0,0.2,1)_1_reverse]"
-            )}
-          />
-        </BrowserNodeHeaderButton>
-      </div>
-      <div
-        {...dragHandleProps}
-        className="h-full w-1.5 shrink-0 cursor-grab active:cursor-grabbing"
-        data-browser-node-drag-gutter="true"
-        data-node-drag-handle="true"
-        aria-hidden="true"
-      />
-      <form
-        className="nodrag relative min-w-0 flex-1"
-        onSubmit={(event) => {
-          event.preventDefault();
-          event.stopPropagation();
-          onSubmitUrl();
-        }}
-      >
-        <Input
-          aria-label={feature.i18n.t("addressLabel")}
-          className="pr-8 focus-visible:border-input focus-visible:ring-0 focus-visible:ring-offset-0"
-          placeholder={feature.i18n.t("addressPlaceholder")}
-          size="sm"
-          value={draftUrl}
-          onChange={(event) => onDraftUrlChange(event.target.value)}
-          onFocus={onFocusRequest}
-        />
-        {isLoading ? (
-          <LoadingIcon className="pointer-events-none absolute right-2 top-1/2 z-[1] size-4 -translate-y-1/2 animate-spin text-[var(--text-tertiary)]" />
-        ) : null}
-      </form>
-      {onOpenExternal ? (
-        <BrowserNodeHeaderButton
-          label={feature.i18n.t("actions.openExternal")}
-          onClick={onOpenExternal}
-        >
-          <LaunchIcon className="size-[15px]" />
-        </BrowserNodeHeaderButton>
-      ) : null}
-      {isCold ? (
-        <Badge
-          className="nodrag h-[26px] min-w-7 shrink-0 rounded-md text-[10px] font-semibold lowercase tracking-[0.08em]"
-          aria-label={feature.i18n.t("coldStatus")}
-        >
-          {feature.i18n.t("coldStatus")}
-        </Badge>
-      ) : null}
-    </div>
+  const getSnapshot = useCallback(
+    () => isBrowserNodeHostOverlayOpen(nodeId),
+    [nodeId]
   );
-}
-
-function resolveBrowserNodeOpenExternalUrl(
-  feature: BrowserNodeFeature,
-  state: BrowserNodeControllerState
-): string | null {
-  if (!feature.hostApi.openExternal) {
-    return null;
-  }
-
-  const sourceUrl = state.runtime.url?.trim() || state.displayUrl.trim();
-  if (sourceUrl.length === 0 || sourceUrl === "about:blank") {
-    return null;
-  }
-
-  return feature.resolveOpenExternalUrl(sourceUrl).url;
-}
-
-async function openBrowserNodeExternal(
-  feature: BrowserNodeFeature,
-  url: string
-): Promise<void> {
-  try {
-    await feature.hostApi.openExternal?.({ url });
-  } catch (error) {
-    feature.reportDiagnostic?.({
-      details: {
-        error: error instanceof Error ? error.message : String(error),
-        url
-      },
-      event: "open-external-failed",
-      level: "warn"
-    });
-  }
+  return useSyncExternalStore(subscribe, getSnapshot, () => false);
 }
 
 function formatBrowserNodeErrorMessage(
@@ -582,31 +488,4 @@ function formatBrowserNodeErrorStatus(
   }
 
   return null;
-}
-
-function BrowserNodeHeaderButton({
-  children,
-  disabled,
-  label,
-  onClick
-}: {
-  children: ReactNode;
-  disabled?: boolean;
-  label: string;
-  onClick: () => void;
-}) {
-  return (
-    <Button
-      aria-label={label}
-      className="rounded-md"
-      disabled={disabled}
-      size="icon-sm"
-      title={label}
-      type="button"
-      variant="chrome"
-      onClick={onClick}
-    >
-      {children}
-    </Button>
-  );
 }

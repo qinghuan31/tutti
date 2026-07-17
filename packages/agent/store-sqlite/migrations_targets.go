@@ -45,6 +45,28 @@ CREATE INDEX IF NOT EXISTS idx_agent_targets_display
 	return s.seedSystemAgentTargets(ctx, now)
 }
 
+func (s *Store) applyAgentTargetsV2(ctx context.Context) error {
+	applied, err := s.hasMigration(ctx, schemaMigrationAgentTargetsV2)
+	if err != nil || applied {
+		return err
+	}
+	if _, err := s.db.ExecContext(ctx, `ALTER TABLE agent_targets ADD COLUMN icon_url TEXT`); err != nil {
+		return fmt.Errorf("add agent target icon URL: %w", err)
+	}
+	return s.recordMigration(ctx, schemaMigrationAgentTargetsV2)
+}
+
+func (s *Store) applyAgentTargetsV3(ctx context.Context) error {
+	applied, err := s.hasMigration(ctx, schemaMigrationAgentTargetsV3)
+	if err != nil || applied {
+		return err
+	}
+	if _, err := s.db.ExecContext(ctx, `ALTER TABLE agent_targets ADD COLUMN hero_image_url TEXT`); err != nil {
+		return fmt.Errorf("add agent target hero image URL: %w", err)
+	}
+	return s.recordMigration(ctx, schemaMigrationAgentTargetsV3)
+}
+
 func (s *Store) seedSystemAgentTargets(ctx context.Context, now int64) error {
 	legacyIDs := make([]string, 0, len(s.opts.LegacySystemTargetIDRenames))
 	for legacyID := range s.opts.LegacySystemTargetIDRenames {
@@ -76,6 +98,47 @@ INSERT OR IGNORE INTO agent_targets (
 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 `, target.ID, target.Provider, target.LaunchRefJSON, target.Name, target.IconKey, target.Enabled, target.Source, target.SortOrder, target.CreatedAtUnixMS, target.UpdatedAtUnixMS); err != nil {
 			return fmt.Errorf("seed system agent target %q: %w", target.ID, err)
+		}
+		if target.Source != systemTargetSource {
+			continue
+		}
+		if _, err := s.db.ExecContext(ctx, `
+UPDATE agent_targets
+SET provider = ?,
+    launch_ref_json = ?,
+    name = ?,
+    icon_key = ?,
+    enabled = ?,
+    sort_order = ?,
+    updated_at_ms = ?
+WHERE id = ?
+  AND source = ?
+  AND (
+    provider != ? OR
+    launch_ref_json != ? OR
+    name != ? OR
+    COALESCE(icon_key, '') != ? OR
+    enabled != ? OR
+    sort_order != ?
+  )
+`,
+			target.Provider,
+			target.LaunchRefJSON,
+			target.Name,
+			target.IconKey,
+			target.Enabled,
+			target.SortOrder,
+			now,
+			target.ID,
+			systemTargetSource,
+			target.Provider,
+			target.LaunchRefJSON,
+			target.Name,
+			target.IconKey,
+			target.Enabled,
+			target.SortOrder,
+		); err != nil {
+			return fmt.Errorf("refresh system agent target %q: %w", target.ID, err)
 		}
 	}
 	return nil

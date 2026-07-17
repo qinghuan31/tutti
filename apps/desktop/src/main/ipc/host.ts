@@ -22,7 +22,10 @@ export interface HostIpcDependencies {
   workspaceFileIconCache?: WorkspaceFileIconCacheStore;
   workspaceLaunch: Pick<
     WorkspaceLaunch,
-    "openStartupWindow" | "showAgentWindow" | "showWorkspace"
+    | "openStartupWindow"
+    | "replaceWorkspaceWindow"
+    | "showAgentWindow"
+    | "showWorkspace"
   >;
 }
 

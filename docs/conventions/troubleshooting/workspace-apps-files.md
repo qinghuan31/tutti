@@ -172,6 +172,72 @@ TestAppRunnerStartsCatalogNodeStaticPackagesOnWindows` from
   [workspaceAppCenterLaunchRequest.ts](../../../apps/desktop/src/renderer/src/features/workspace-app-center/services/internal/workspaceAppCenterLaunchRequest.ts)
   [dockEntries.ts](../../../packages/workbench/surface/src/host/dockEntries.ts)
 
+### Agent inline app opening leaks into the OS App Center
+
+- Symptom:
+  Opening an app from the OS App Center replaces the catalog inline instead of
+  creating or focusing the app-specific Workbench Node and Dock entry. The same
+  inline behavior is expected in the standalone Agent Apps sidebar.
+- Quick checks:
+  Confirm `WorkspaceAppCenterPane` calls the shell-aware App Center service
+  command. Then confirm the renderer window registered exactly one workspace
+  App surface presenter: Workbench for the OS shell or standalone Agent for the
+  Agent shell.
+- Root cause:
+  App placement is Shell presentation policy. Calling an inline helper directly
+  from the shared App Center pane bypasses the OS presenter and writes the Agent
+  `openAppId` selection into state consumed by both shells.
+- Fix:
+  Keep runtime preparation in `WorkspaceAppCenterService`, route presentation
+  through the feature-owned workspace App surface host, and implement separate
+  Workbench and standalone Agent presenters. Bind Workbench presenter
+  registration only to the actual host and workspace lifecycle, never App
+  Center snapshots. Presenter replacement and disposal must roll back their
+  pending attempts and use identity-checked cleanup so stale Shell cleanup
+  cannot unregister a newer presenter.
+- Validation:
+  Run the App surface host, Workbench presenter, standalone Agent presenter, App
+  Center service, and App Center pane tests. Verify OS presentation calls
+  `host.launchNode` while Agent presentation selects the inline app before
+  runtime preparation and rolls it back on failure. Cover an App Center revision
+  update during OS preparation and presenter disposal during Agent preparation.
+- References:
+  [workspaceAppSurfaceHost.interface.ts](../../../apps/desktop/src/renderer/src/features/workspace-app-center/services/workspaceAppSurfaceHost.interface.ts)
+  [workbenchWorkspaceAppSurfacePresenter.ts](../../../apps/desktop/src/renderer/src/features/workspace-workbench/services/workbenchWorkspaceAppSurfacePresenter.ts)
+  [standaloneAgentWorkspaceAppSurfacePresenter.ts](../../../apps/desktop/src/renderer/src/features/workspace-workbench/services/standaloneAgentWorkspaceAppSurfacePresenter.ts)
+
+### Agent file preview behavior leaks into the OS shell
+
+- Symptom:
+  Opening a previewable file in the OS shell uses the system default app instead
+  of creating or focusing a Workbench preview Node, or unsupported-preview
+  notifications remain suppressed after leaving the standalone Agent shell.
+- Quick checks:
+  Confirm the renderer window registered one file preview presenter for the
+  workspace: Workbench in the OS shell or standalone Agent in the Agent shell.
+  Search shared File Manager code for callback setters or direct Workbench and
+  system-host presentation calls.
+- Root cause:
+  File activation is feature behavior, but preview placement and unsupported
+  fallback notification policy are Shell behavior. Storing either as mutable
+  File Manager mode state lets one Shell overwrite behavior used by another;
+  asymmetric effect cleanup can leave the policy behind after unmount.
+- Fix:
+  Keep activation and fallback orchestration in File Manager, route preview
+  placement through the feature-owned workspace file preview surface host, and
+  register separate Workbench and standalone Agent presenters. Store fallback
+  notification policy on the presenter registration and use identity-checked
+  disposal so removing an old registration cannot affect a replacement.
+- Validation:
+  Run the file preview surface host and both presenter tests. Verify the OS
+  presenter calls `host.launchNode`, the Agent presenter calls the desktop file
+  host, absent presenters preserve system fallback, workspace registrations stay
+  isolated, and disposing the Agent presenter restores fallback notifications.
+- References:
+  [workspaceFilePreviewSurfaceHost.interface.ts](../../../apps/desktop/src/renderer/src/features/workspace-file-manager/services/workspaceFilePreviewSurfaceHost.interface.ts)
+  [workbenchWorkspaceFilePreviewPresenter.ts](../../../apps/desktop/src/renderer/src/features/workspace-workbench/services/workbenchWorkspaceFilePreviewPresenter.ts)
+  [standaloneAgentWorkspaceFilePreviewPresenter.ts](../../../apps/desktop/src/renderer/src/features/workspace-workbench/services/standaloneAgentWorkspaceFilePreviewPresenter.ts)
+
 ### Load unpacked project roots with source manifests
 
 - Symptom:

@@ -105,6 +105,98 @@ test("reference source picker caches open-with applications by file type", async
   }
 });
 
+test("reference source picker shows html source as text", async () => {
+  const dom = new JSDOM('<!doctype html><div id="root"></div>');
+  const previousWindow = globalThis.window;
+  const previousDocument = globalThis.document;
+  const previousHTMLElement = globalThis.HTMLElement;
+  const previousActEnvironment = (
+    globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }
+  ).IS_REACT_ACT_ENVIRONMENT;
+  globalThis.window = dom.window;
+  globalThis.document = dom.window.document;
+  globalThis.HTMLElement = dom.window.HTMLElement;
+  (
+    globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }
+  ).IS_REACT_ACT_ENVIRONMENT = true;
+
+  let root: Root | null = null;
+  try {
+    const container = dom.window.document.getElementById("root");
+    assert.ok(container);
+
+    const content = "<!doctype html><h1>Hello</h1>";
+    const baseAggregator = createOpenWithAggregator(async () => []);
+    const aggregator: ReferenceSourceAggregator = {
+      ...baseAggregator,
+      getLoadedSource: () => ({
+        capabilities: {
+          paginated: false,
+          previewable: true,
+          searchable: true
+        },
+        isAvailable: async () => true,
+        listChildren: async () => ({ entries: [], nextCursor: null }),
+        metadata: {
+          id: "workspace-file",
+          label: "Workspace",
+          order: 0
+        },
+        resolveSelection(node) {
+          return { kind: node.kind, path: node.ref.nodeId };
+        }
+      }),
+      readPreview: async () => ({
+        bytes: new TextEncoder().encode(content),
+        contentType: "text/html",
+        kind: "text"
+      })
+    };
+    let latestView: PickerView | null = null;
+
+    function Harness() {
+      latestView = useReferenceSourcePickerView({
+        aggregator,
+        onClose() {},
+        onConfirm() {},
+        open: true,
+        workspaceId: "workspace-reference-html-source",
+        workspaceRootGroupLabel: "Workspace"
+      });
+      return null;
+    }
+
+    root = createRoot(container);
+    await act(async () => {
+      root?.render(createElement(Harness));
+    });
+    const htmlNode = file("/workspace/login.html", "login.html");
+    await act(async () => {
+      requireLatestView(latestView).setFocusedNode(htmlNode);
+      await Promise.resolve();
+    });
+
+    const previewState = requireLatestView(latestView).previewState;
+    assert.equal(previewState.status, "text");
+    assert.equal(
+      previewState.status === "text" ? previewState.content : null,
+      content
+    );
+  } finally {
+    if (root) {
+      await act(async () => {
+        root?.unmount();
+      });
+    }
+    globalThis.window = previousWindow;
+    globalThis.document = previousDocument;
+    globalThis.HTMLElement = previousHTMLElement;
+    (
+      globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }
+    ).IS_REACT_ACT_ENVIRONMENT = previousActEnvironment;
+  }
+});
+
 function createOpenWithAggregator(
   listOpenWithApplications: ReferenceSourceAggregator["listOpenWithApplications"]
 ): ReferenceSourceAggregator {

@@ -19,7 +19,7 @@
   --radius-xl: calc(var(--radius) + 0.25rem);
 
   --background: oklch(0.986 0.004 84);
-  --background-1: oklch(0.986 0.004 84);
+  --background-1: rgb(244 245 247);
   --background-panel: rgb(248 250 252);
   --background-fronted: rgb(255 255 255 / 1);
   --background-soft: oklch(0.968 0.006 84);
@@ -214,8 +214,8 @@ button {
   position: relative;
   z-index: 2;
   flex-shrink: 0;
-  width: 48px;
-  height: 48px;
+  width: 40px;
+  height: 40px;
   object-fit: contain;
 }
 .nav-title {
@@ -294,7 +294,7 @@ button {
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 10px;
+  gap: 4px;
   margin-bottom: 8px;
   text-align: center;
 }
@@ -322,6 +322,10 @@ button {
   margin: 0 auto 22px;
   text-align: center;
 }
+.agent-intro,
+.agent-intro b {
+  color: var(--text-secondary);
+}
 .pane-desc {
   max-width: 720px;
   margin: 0 auto 14px;
@@ -332,6 +336,9 @@ button {
 .note b {
   color: var(--ink);
   font-weight: 500;
+}
+.sec-intro.agent-intro b {
+  color: var(--text-secondary);
 }
 
 /* 二级分段切换：segment bar */
@@ -438,6 +445,46 @@ button {
 .segment-btn.on b {
   color: inherit;
   font-weight: 550;
+}
+
+/* Agent list: these identities are informational, not a switcher. */
+.agent-provider-list {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+  width: 100%;
+  margin: 0 auto 24px;
+}
+.agent-provider {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: 54px;
+  padding: 8px 12px;
+  border: 0;
+  border-radius: var(--radius-lg);
+  background: transparent;
+  color: var(--ink);
+}
+.agent-provider-icon {
+  display: grid;
+  flex: 0 0 auto;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  border-radius: 8px;
+  background: var(--white-stationary);
+}
+.agent-provider-icon img {
+  width: 20px;
+  height: 20px;
+}
+.agent-provider b {
+  font-size: 13px;
+  font-weight: 500;
+  white-space: nowrap;
 }
 
 /* 内层标签：underlined bar */
@@ -887,22 +934,26 @@ button {
     padding-left: 10px;
     padding-right: 10px;
   }
+  .agent-provider-list {
+    flex-wrap: wrap;
+  }
+  .agent-provider {
+    padding-right: 8px;
+    padding-left: 8px;
+  }
 }
 
 @media (max-width: 640px) {
   .nav {
-    justify-content: flex-start;
-    overflow-x: auto;
-    overscroll-behavior-x: contain;
-    scrollbar-width: none;
-  }
-  .nav::-webkit-scrollbar {
-    display: none;
+    flex-wrap: wrap;
+    justify-content: center;
+    row-gap: 7px;
+    overflow-x: visible;
   }
   .nav-btn {
     flex-direction: row;
-    flex: 0 0 auto;
-    min-width: max-content;
+    flex: 1 1 120px;
+    min-width: 120px;
     max-width: none;
   }
   .nav-ico {
@@ -922,7 +973,7 @@ button {
   :root:not([data-theme="light"]) {
     color-scheme: dark;
     --background: oklch(0.192 0.008 255);
-    --background-1: oklch(0.192 0.008 255);
+    --background-1: rgb(24 24 24);
     --background-panel: rgb(42 42 43);
     --background-fronted: rgb(51 51 51 / 1);
     --background-soft: oklch(0.224 0.01 255);

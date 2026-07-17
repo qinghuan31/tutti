@@ -1,7 +1,7 @@
 import type {
   AgentGUIAgent,
   AgentGUIAgentAvailabilityStatus,
-  AgentGUIProviderTarget
+  AgentGUIAgentTarget
 } from "./types.ts";
 
 export function normalizeAgentGUIAgents(
@@ -13,6 +13,7 @@ export function normalizeAgentGUIAgents(
     const agentTargetId = agent.agentTargetId.trim();
     const name = agent.name.trim();
     const iconUrl = agent.iconUrl.trim();
+    const heroImageUrl = agent.heroImageUrl?.trim() ?? "";
     if (
       !agentTargetId ||
       !name ||
@@ -29,6 +30,7 @@ export function normalizeAgentGUIAgents(
       agentTargetId,
       name,
       iconUrl,
+      ...(heroImageUrl ? { heroImageUrl } : {}),
       ...(agent.description?.trim()
         ? { description: agent.description.trim() }
         : {}),
@@ -83,7 +85,7 @@ export function resolveAgentGUISelectedDirectoryAgent(input: {
 /** Package-internal bridge while the carried node is migrated to agent names. */
 export function projectAgentGUIAgentsToInternalTargets(
   agents: readonly AgentGUIAgent[]
-): AgentGUIProviderTarget[] {
+): AgentGUIAgentTarget[] {
   return agents.map((agent) => ({
     targetId: agent.agentTargetId,
     agentTargetId: agent.agentTargetId,
@@ -94,8 +96,10 @@ export function projectAgentGUIAgentsToInternalTargets(
       agentTargetId: agent.agentTargetId
     },
     label: agent.name,
+    availability: agent.availability,
     ...(agent.description ? { description: agent.description } : {}),
     iconUrl: agent.iconUrl,
+    ...(agent.heroImageUrl ? { heroImageUrl: agent.heroImageUrl } : {}),
     ...(agent.owner?.avatarUrl
       ? {
           badge: {

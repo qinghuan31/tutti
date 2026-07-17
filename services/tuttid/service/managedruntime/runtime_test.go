@@ -176,6 +176,53 @@ func TestDefaultResolverUsesEmbeddedPythonForWindowsPythonStaticProfile(t *testi
 	}
 }
 
+func TestDefaultResolverUsesEmbeddedWindowsBaselineWithoutInventingNPM(t *testing.T) {
+	if runtime.GOOS != "windows" {
+		t.Skip("Windows embedded baseline fallback test")
+	}
+
+	root := t.TempDir()
+	resourcesDir := filepath.Join(root, "resources")
+	tuttidPath := filepath.Join(resourcesDir, "bin", "tuttid.exe")
+	pythonPath := filepath.Join(resourcesDir, "python", "python.exe")
+	desktopPath := filepath.Join(root, "Tutti.exe")
+	for _, path := range []string{tuttidPath, pythonPath, desktopPath} {
+		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+			t.Fatalf("MkdirAll(%s) error = %v", path, err)
+		}
+		if err := os.WriteFile(path, []byte("stub"), 0o644); err != nil {
+			t.Fatalf("WriteFile(%s) error = %v", path, err)
+		}
+	}
+
+	resolver := DefaultResolver{
+		Environ: func() []string {
+			return []string{tuttiAppRuntimeCatalogEnv + "=", "Path=C:\\Windows"}
+		},
+		Executable: func() (string, error) { return tuttidPath, nil },
+	}
+	resolved, err := resolver.Resolve(context.Background())
+	if err != nil {
+		t.Fatalf("Resolve() error = %v", err)
+	}
+	if resolved.Python != pythonPath || resolved.Node != desktopPath {
+		t.Fatalf("Resolve() = %#v, want embedded Python and desktop Node", resolved)
+	}
+	if resolved.NPM != "" || EnvValue(resolved.EnvOverrides, "TUTTI_APP_NPM") != "" {
+		t.Fatalf("embedded baseline advertised unavailable npm: %#v", resolved)
+	}
+	if EnvValue(resolved.EnvOverrides, "ELECTRON_RUN_AS_NODE") != "1" {
+		t.Fatalf("ELECTRON_RUN_AS_NODE = %q, want 1", EnvValue(resolved.EnvOverrides, "ELECTRON_RUN_AS_NODE"))
+	}
+	pathValue := EnvValue(resolved.EnvOverrides, "PATH")
+	if !strings.Contains(pathValue, filepath.Dir(desktopPath)) || !strings.Contains(pathValue, `C:\Windows`) {
+		t.Fatalf("PATH = %q, want desktop directory and original Windows path", pathValue)
+	}
+	if err := resolver.PreloadProfile(context.Background(), appRuntimeBaselineProfile); err != nil {
+		t.Fatalf("PreloadProfile(baseline) error = %v", err)
+	}
+}
+
 func TestDefaultResolverDownloadsRuntimeFromCatalog(t *testing.T) {
 	cacheRoot := t.TempDir()
 	pythonArtifactPath := createManagedRuntimeComponentArchiveForTest(t, "python")

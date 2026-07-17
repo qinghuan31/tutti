@@ -1,19 +1,22 @@
 package agentruntime
 
 import (
+	"strings"
 	"sync/atomic"
 	"time"
+
+	"github.com/tutti-os/tutti/packages/agent/daemon/providerregistry"
 )
 
 const (
-	ProviderClaudeCode = "claude-code"
-	ProviderCodex      = "codex"
-	ProviderTuttiAgent = "tutti-agent"
-	ProviderCursor     = "cursor"
-	ProviderNexight    = "nexight"
-	ProviderHermes     = "hermes"
-	ProviderOpenClaw   = "openclaw"
-	ProviderOpenCode   = "opencode"
+	ProviderClaudeCode = providerregistry.ClaudeCodeProviderID
+	ProviderCodex      = providerregistry.CodexProviderID
+	ProviderTuttiAgent = providerregistry.TuttiAgentProviderID
+	ProviderCursor     = providerregistry.CursorProviderID
+	ProviderNexight    = providerregistry.NexightProviderID
+	ProviderHermes     = providerregistry.HermesProviderID
+	ProviderOpenClaw   = providerregistry.OpenClawProviderID
+	ProviderOpenCode   = providerregistry.OpenCodeProviderID
 
 	SessionStatusReady     = "ready"
 	SessionStatusWorking   = "working"
@@ -31,6 +34,7 @@ const (
 	EventSessionCompleted = "session.completed"
 	EventSessionFailed    = "session.failed"
 	EventSessionCanceled  = "session.canceled"
+	EventSessionAudit     = "session.audit"
 	EventTurnStarted      = "turn.started"
 	EventTurnUpdated      = "turn.updated"
 	EventTurnCompleted    = "turn.completed"
@@ -52,22 +56,24 @@ const (
 	StreamEventStatePatch        = "state_patch"
 	StreamEventAvailableCommands = "available_commands_update"
 	StreamEventConfigOptions     = "config_options_update"
+	StreamEventSessionAudit      = "session_audit"
 )
 
 type StartInput struct {
-	RoomID               string
-	AgentSessionID       string
-	AgentTargetID        string
-	Provider             string
-	CWD                  string
-	Env                  []string
-	Title                string
-	Visible              *bool
-	RuntimeContext       map[string]any
-	ProviderTargetRef    map[string]any
-	OpenclawGatewayReady bool
-	PermissionModeID     string
-	Settings             *SessionSettings
+	RoomID                  string
+	AgentSessionID          string
+	AgentTargetID           string
+	Provider                string
+	CWD                     string
+	Env                     []string
+	Title                   string
+	InitialTitleEstablished bool
+	Visible                 *bool
+	RuntimeContext          map[string]any
+	ProviderTargetRef       map[string]any
+	PermissionModeID        string
+	Settings                *SessionSettings
+	Provisional             bool
 }
 
 type ResumeInput struct {
@@ -82,6 +88,7 @@ type ResumeInput struct {
 	Status            string
 	Visible           *bool
 	RuntimeContext    map[string]any
+	ProviderTargetRef map[string]any
 	PermissionModeID  string
 	Settings          *SessionSettings
 	CreatedAtUnixMS   int64
@@ -98,34 +105,73 @@ type CloseInput struct {
 }
 
 type ExecInput struct {
-	RoomID         string
-	AgentSessionID string
-	Content        []PromptContentBlock
-	DisplayPrompt  string
-	Metadata       map[string]any
-	Guidance       bool
+	RoomID           string
+	AgentSessionID   string
+	Content          []PromptContentBlock
+	DisplayPrompt    string
+	InitialTitle     string
+	InitialTitleBase string
+	Metadata         map[string]any
+	Guidance         bool
 }
 
 type CancelInput struct {
-	RoomID         string
+	RoomID             string
+	RootAgentSessionID string
+	Targets            []CancelTarget
+	Reason             string
+}
+
+// CancelTarget identifies one canonical root or child turn. The root session
+// selects the live provider runtime; targets select the durable entities that
+// the provider operation must stop.
+type CancelTarget struct {
 	AgentSessionID string
-	Reason         string
+	TurnID         string
 }
 
 type PermissionOptionInput struct {
 	RoomID         string
 	AgentSessionID string
+	TurnID         string
 	RequestID      string
 	OptionID       string
 }
 
 type SubmitInteractiveInput struct {
-	RoomID         string
-	AgentSessionID string
-	RequestID      string
-	Action         string
-	OptionID       string
-	Payload        map[string]any
+	RoomID             string
+	RootAgentSessionID string
+	AgentSessionID     string
+	TurnID             string
+	RequestID          string
+	Action             string
+	OptionID           string
+	Payload            map[string]any
+}
+
+type InteractiveDisposition string
+
+const (
+	InteractiveDispositionPending     InteractiveDisposition = "pending"
+	InteractiveDispositionResolving   InteractiveDisposition = "resolving"
+	InteractiveDispositionAnswered    InteractiveDisposition = "answered"
+	InteractiveDispositionSuperseded  InteractiveDisposition = "superseded"
+	InteractiveDispositionInterrupted InteractiveDisposition = "interrupted"
+	InteractiveDispositionUnknown     InteractiveDisposition = "unknown"
+)
+
+type interactiveRequestKey struct {
+	agentSessionID string
+	turnID         string
+	requestID      string
+}
+
+func newInteractiveRequestKey(agentSessionID string, turnID string, requestID string) interactiveRequestKey {
+	return interactiveRequestKey{
+		agentSessionID: strings.TrimSpace(agentSessionID),
+		turnID:         strings.TrimSpace(turnID),
+		requestID:      strings.TrimSpace(requestID),
+	}
 }
 
 type UpdateSettingsInput struct {
@@ -167,26 +213,25 @@ type PromptContentBlock struct {
 }
 
 type Session struct {
-	RoomID               string              `json:"roomId"`
-	AgentSessionID       string              `json:"agentSessionId"`
-	AgentTargetID        string              `json:"agentTargetId,omitempty"`
-	Provider             string              `json:"provider"`
-	ProviderSessionID    string              `json:"providerSessionId"`
-	CWD                  string              `json:"cwd,omitempty"`
-	Env                  []string            `json:"-"`
-	Status               string              `json:"status"`
-	TurnLifecycle        *TurnLifecycle      `json:"turnLifecycle,omitempty"`
-	SubmitAvailability   *SubmitAvailability `json:"submitAvailability,omitempty"`
-	Title                string              `json:"title,omitempty"`
-	LastError            string              `json:"lastError,omitempty"`
-	Visible              bool                `json:"visible"`
-	RuntimeContext       map[string]any      `json:"runtimeContext,omitempty"`
-	ProviderTargetRef    map[string]any      `json:"-"`
-	OpenclawGatewayReady bool                `json:"-"`
-	PermissionModeID     string              `json:"permissionModeId,omitempty"`
-	Settings             *SessionSettings    `json:"settings,omitempty"`
-	CreatedAtUnixMS      int64               `json:"createdAtUnixMs"`
-	UpdatedAtUnixMS      int64               `json:"updatedAtUnixMs"`
+	RoomID             string              `json:"roomId"`
+	AgentSessionID     string              `json:"agentSessionId"`
+	AgentTargetID      string              `json:"agentTargetId,omitempty"`
+	Provider           string              `json:"provider"`
+	ProviderSessionID  string              `json:"providerSessionId"`
+	CWD                string              `json:"cwd,omitempty"`
+	Env                []string            `json:"-"`
+	Status             string              `json:"status"`
+	TurnLifecycle      *TurnLifecycle      `json:"turnLifecycle,omitempty"`
+	SubmitAvailability *SubmitAvailability `json:"submitAvailability,omitempty"`
+	Title              string              `json:"title,omitempty"`
+	LastError          string              `json:"lastError,omitempty"`
+	Visible            bool                `json:"visible"`
+	RuntimeContext     map[string]any      `json:"runtimeContext,omitempty"`
+	ProviderTargetRef  map[string]any      `json:"-"`
+	PermissionModeID   string              `json:"permissionModeId,omitempty"`
+	Settings           *SessionSettings    `json:"settings,omitempty"`
+	CreatedAtUnixMS    int64               `json:"createdAtUnixMs"`
+	UpdatedAtUnixMS    int64               `json:"updatedAtUnixMs"`
 	// LifecycleAuthority is set once an adapter-origin TurnLifecycle snapshot
 	// was applied (ADR 0008). Authority sessions copy lifecycle from
 	// snapshots and derive Status purely; legacy sessions keep the historic
@@ -195,6 +240,9 @@ type Session struct {
 	// LifecycleSeq is the sequence of the last applied lifecycle snapshot;
 	// lower-seq snapshots arriving over a slower channel are dropped.
 	LifecycleSeq uint64 `json:"-"`
+	// InitialTitleEstablished prevents a first-submit title candidate from
+	// overwriting a title established concurrently in this runtime.
+	InitialTitleEstablished bool `json:"-"`
 }
 
 type SessionInteractivePrompt struct {
@@ -265,15 +313,8 @@ type StreamEvent struct {
 	Data      any    `json:"data"`
 }
 
-type SessionError struct {
-	Code         string `json:"code"`
-	Message      string `json:"message"`
-	DebugMessage string `json:"debugMessage,omitempty"`
-}
-
 type StartResult struct {
-	Session Session       `json:"session"`
-	Error   *SessionError `json:"error,omitempty"`
+	Session Session `json:"session"`
 }
 
 type CloseResult struct {
@@ -310,16 +351,19 @@ type TurnLifecycle struct {
 }
 
 type CancelResult struct {
-	AgentSessionID string `json:"agentSessionId"`
-	Canceled       bool   `json:"canceled"`
+	AgentSessionID   string         `json:"agentSessionId"`
+	Canceled         bool           `json:"canceled"`
+	TargetAbsent     bool           `json:"targetAbsent,omitempty"`
+	ConfirmedTargets []CancelTarget `json:"confirmedTargets,omitempty"`
 }
 
 type SubmitInteractiveResult struct {
-	AgentSessionID string  `json:"agentSessionId"`
-	RequestID      string  `json:"requestId"`
-	Accepted       bool    `json:"accepted"`
-	OptionID       string  `json:"optionId,omitempty"`
-	Events         []Event `json:"events"`
+	AgentSessionID string                 `json:"agentSessionId"`
+	RequestID      string                 `json:"requestId"`
+	Accepted       bool                   `json:"accepted"`
+	OptionID       string                 `json:"optionId,omitempty"`
+	Disposition    InteractiveDisposition `json:"-"`
+	Events         []Event                `json:"events"`
 }
 
 type UpdateSettingsResult struct {

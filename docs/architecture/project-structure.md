@@ -256,6 +256,8 @@ desktop and TSH.
 
 Current packages:
 
+- `packages/workbench/host`: product-neutral workbench host contracts and host
+  lifecycle coordination shared by desktop and other workbench hosts.
 - `packages/workbench/snapshot`: canonical TypeScript workbench snapshot types,
   migrations, normalization, validation, and JSON Schema. The daemon OpenAPI
   `WorkbenchSnapshot*` component schemas are synchronized from this package.

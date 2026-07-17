@@ -179,7 +179,9 @@ export function resolveWorkspaceFilePathCandidate({
     };
   }
 
-  const root = normalizeWorkspaceFilePath(workspaceRoot?.trim() ?? "");
+  const selectedRoot = normalizeWorkspaceFilePath(workspaceRoot?.trim() ?? "");
+  const sessionRoot = normalizeWorkspaceFilePath(basePath?.trim() ?? "");
+  const root = selectedRoot || sessionRoot;
   if (!root) {
     return null;
   }
@@ -356,6 +358,18 @@ export function resolveWorkspaceMentionLinkAction({
       ...(messageId ? { messageId } : {}),
       ...(summaryTaskId ? { summaryTaskId } : {}),
       ...(conversationId ? { conversationId } : {}),
+      source
+    };
+  }
+
+  if (
+    mention.providerId === "workspace-reference" &&
+    mention.scope?.source?.trim() === "app"
+  ) {
+    return {
+      type: "open-workspace-app",
+      workspaceId,
+      appId: targetId,
       source
     };
   }

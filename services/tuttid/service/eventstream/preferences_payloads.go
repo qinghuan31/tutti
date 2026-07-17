@@ -12,8 +12,6 @@ type desktopPreferencesMutationPayload struct {
 		DefaultAgentProvider                        string                                                    `json:"defaultAgentProvider"`
 		DockIconStyle                               string                                                    `json:"dockIconStyle"`
 		DockPlacement                               string                                                    `json:"dockPlacement"`
-		EnableCursorAgent                           bool                                                      `json:"enableCursorAgent"`
-		EnableOpenCodeAgent                         bool                                                      `json:"enableOpenCodeAgent"`
 		FileDefaultOpenersByExtension               desktopFileDefaultOpenersByExtensionPayload               `json:"fileDefaultOpenersByExtension"`
 		FeatureFlags                                map[string]bool                                           `json:"featureFlags"`
 		WorkbenchShortcuts                          desktopWorkbenchShortcutsPayload                          `json:"workbenchShortcuts"`
@@ -44,8 +42,6 @@ type desktopPreferencesSettingsPayload struct {
 	DefaultAgentProvider                        string                                                    `json:"defaultAgentProvider"`
 	DockIconStyle                               string                                                    `json:"dockIconStyle"`
 	DockPlacement                               string                                                    `json:"dockPlacement"`
-	EnableCursorAgent                           bool                                                      `json:"enableCursorAgent"`
-	EnableOpenCodeAgent                         bool                                                      `json:"enableOpenCodeAgent"`
 	FileDefaultOpenersByExtension               desktopFileDefaultOpenersByExtensionPayload               `json:"fileDefaultOpenersByExtension"`
 	FeatureFlags                                map[string]bool                                           `json:"featureFlags"`
 	WorkbenchShortcuts                          desktopWorkbenchShortcutsPayload                          `json:"workbenchShortcuts"`

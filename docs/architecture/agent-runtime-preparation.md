@@ -19,6 +19,16 @@ Dynamic host skills use `SkillSource`; per-session skills use `ExtraSkills`.
 The canonical template and shared skill bodies remain in runtimeprep so hosts
 do not fork the actual prompt content.
 
+Cursor preparation materializes one session-scoped skill plugin outside the
+workspace and supplies it to `cursor-agent acp` through `--plugin-dir`. Cursor
+Agent `2026.07.01-41b2de7` does not merge plugin-provided hooks into its ACP hook
+executor: only user, project, and team hook sources are loaded. Runtimeprep
+therefore must not advertise or materialize plugin hooks for ACP. A focused
+background-Task guard implementation remains dormant with unit coverage so it
+can be enabled if Cursor adds that capability; it is not a current runtime
+guarantee. Never write an equivalent hook into user or project Cursor config to
+work around the provider limitation.
+
 Product-owned responsibilities remain outside the module:
 
 - process or VM transport;

@@ -33,6 +33,8 @@ import type {
   DesktopHostOpenAgentWindowInput,
   DesktopHostWindowCloseRequestPayload,
   DesktopHostWindowCloseRequestResolutionPayload,
+  DesktopHostWindowResizeContentWidthInput,
+  DesktopHostWindowResizeContentWidthResult,
   DesktopRendererDiagnosticPayload,
   DesktopTerminalDiagnosticPayload,
   DesktopTerminalStreamUrlRequest,
@@ -96,6 +98,10 @@ export interface DesktopHostWorkspaceApi {
     workspaceId: string;
     version?: string | null;
   }): Promise<void>;
+  replaceWorkspaceWindow(input: {
+    mode: "agent" | "os";
+    workspaceId: string;
+  }): Promise<void>;
   showWorkspace(workspaceID: string): Promise<void>;
 }
 
@@ -122,6 +128,9 @@ export interface DesktopHostWindowApi {
   resolveCloseRequest(
     payload: DesktopHostWindowCloseRequestResolutionPayload
   ): void;
+  resizeContentWidth(
+    input: DesktopHostWindowResizeContentWidthInput
+  ): Promise<DesktopHostWindowResizeContentWidthResult>;
   toggleMaximize(): Promise<void>;
 }
 
@@ -211,17 +220,27 @@ export type DesktopBrowserApi = Pick<
   BrowserNodeHostApi,
   | "activate"
   | "capturePreview"
+  | "chooseDownloadDirectory"
+  | "clearBrowsingData"
   | "close"
+  | "findInPage"
+  | "importCookies"
   | "goBack"
   | "goForward"
   | "navigate"
   | "onEvent"
   | "openDevTools"
   | "openExternal"
+  | "performDownloadAction"
   | "prepareSession"
+  | "printPage"
   | "registerGuest"
   | "reload"
+  | "saveScreenshot"
+  | "setDeviceEmulation"
+  | "setZoomFactor"
   | "showDevToolsContextMenu"
+  | "stopFindInPage"
   | "unregisterGuest"
 >;
 

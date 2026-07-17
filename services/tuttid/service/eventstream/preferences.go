@@ -41,8 +41,6 @@ func (p DesktopPreferencesPublisher) PublishDesktopPreferencesUpdated(ctx contex
 			DefaultAgentProvider:        preferences.DefaultAgentProvider,
 			DockIconStyle:               preferences.DockIconStyle,
 			DockPlacement:               preferences.DockPlacement,
-			EnableCursorAgent:           preferences.EnableCursorAgent,
-			EnableOpenCodeAgent:         preferences.EnableOpenCodeAgent,
 			FileDefaultOpenersByExtension: fileDefaultOpenersByExtensionPayloadFromBiz(
 				preferences.FileDefaultOpenersByExtension,
 			),
@@ -92,8 +90,6 @@ func NewPreferencesDesktopUpdateRequestedHandler(mutator PreferencesMutator) Int
 			DefaultAgentProvider:                        decoded.DefaultAgentProvider,
 			DockIconStyle:                               decoded.DockIconStyle,
 			DockPlacement:                               decoded.DockPlacement,
-			EnableCursorAgent:                           decoded.EnableCursorAgent,
-			EnableOpenCodeAgent:                         decoded.EnableOpenCodeAgent,
 			FileDefaultOpenersByExtension:               decoded.FileDefaultOpenersByExtension,
 			FeatureFlags:                                decoded.FeatureFlags,
 			WorkbenchShortcuts:                          decoded.WorkbenchShortcuts,
@@ -124,8 +120,6 @@ type decodedDesktopPreferencesMutationPayload struct {
 	DefaultAgentProvider                        string
 	DockIconStyle                               string
 	DockPlacement                               string
-	EnableCursorAgent                           bool
-	EnableOpenCodeAgent                         bool
 	FileDefaultOpenersByExtension               map[string]string
 	FeatureFlags                                map[string]bool
 	WorkbenchShortcuts                          preferencesbiz.DesktopWorkbenchShortcuts
@@ -169,8 +163,6 @@ func decodeDesktopPreferencesMutationPayload(payload []byte) (decodedDesktopPref
 		DefaultAgentProvider:        decoded.Preferences.DefaultAgentProvider,
 		DockIconStyle:               decoded.Preferences.DockIconStyle,
 		DockPlacement:               decoded.Preferences.DockPlacement,
-		EnableCursorAgent:           decoded.Preferences.EnableCursorAgent,
-		EnableOpenCodeAgent:         decoded.Preferences.EnableOpenCodeAgent,
 		FileDefaultOpenersByExtension: fileDefaultOpenersByExtensionFromPayload(
 			decoded.Preferences.FileDefaultOpenersByExtension,
 		),

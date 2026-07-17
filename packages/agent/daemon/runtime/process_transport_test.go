@@ -6,11 +6,10 @@ import (
 	"os/exec"
 	"path/filepath"
 	"reflect"
+	"runtime"
 	"testing"
 	"time"
 )
-
-const localProcessTestTimeout = 10 * time.Second
 
 func TestLocalProcessTransportOutlivesStartContext(t *testing.T) {
 	catPath, err := exec.LookPath("cat")
@@ -52,12 +51,15 @@ func TestLocalProcessTransportOutlivesStartContext(t *testing.T) {
 		}
 	case err := <-errs:
 		t.Fatalf("recv after start context cancel: %v", err)
-	case <-time.After(localProcessTestTimeout):
+	case <-time.After(2 * time.Second):
 		t.Fatal("timed out waiting for process stdout")
 	}
 }
 
 func TestLocalProcessTransportFindsKnownNodeGlobalBin(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("Unix NVM layout is covered only on Unix platforms")
+	}
 	home := t.TempDir()
 	binDir := filepath.Join(home, ".nvm", "versions", "node", "v24.12.0", "bin")
 	if err := os.MkdirAll(binDir, 0o755); err != nil {
@@ -108,7 +110,7 @@ func TestLocalProcessTransportCloseKillsProcessAfterGracefulShutdownFails(t *tes
 		if err != nil {
 			t.Fatalf("Close: %v", err)
 		}
-	case <-time.After(localProcessTestTimeout):
+	case <-time.After(4 * time.Second):
 		t.Fatal("Close did not force-kill process after graceful shutdown failed")
 	}
 	if elapsed := time.Since(startedAt); elapsed < 900*time.Millisecond {
@@ -119,8 +121,9 @@ func TestLocalProcessTransportCloseKillsProcessAfterGracefulShutdownFails(t *tes
 func TestProcessStartEnvDiagnosticsSummarizesFinalPath(t *testing.T) {
 	tuttiBin := filepath.Join(string(os.PathSeparator), "Users", "Sun", ".tutti", "bin")
 	managedBin := filepath.Join(string(os.PathSeparator), "managed", "node", "bin")
+	systemBin := filepath.FromSlash("/usr/bin")
 	env := []string{
-		"PATH=" + managedBin + string(os.PathListSeparator) + tuttiBin + string(os.PathListSeparator) + "/usr/bin",
+		"PATH=" + managedBin + string(os.PathListSeparator) + tuttiBin + string(os.PathListSeparator) + systemBin,
 		"TUTTI_APP_NODE=" + filepath.Join(managedBin, "node"),
 		"TUTTI_AGENT_SESSION_ID=agent-session-1",
 	}
@@ -128,8 +131,8 @@ func TestProcessStartEnvDiagnosticsSummarizesFinalPath(t *testing.T) {
 		Provider:       ProviderClaudeCode,
 		AgentSessionID: "agent-session-1",
 		Env: []string{
-			"PATH=" + tuttiBin + string(os.PathListSeparator) + "/usr/bin",
-			"PATH=" + managedBin + string(os.PathListSeparator) + "/usr/bin",
+			"PATH=" + tuttiBin + string(os.PathListSeparator) + systemBin,
+			"PATH=" + managedBin + string(os.PathListSeparator) + systemBin,
 		},
 	}, env)
 
@@ -145,7 +148,7 @@ func TestProcessStartEnvDiagnosticsSummarizesFinalPath(t *testing.T) {
 	if got := diag["agent_session_env_present"]; got != true {
 		t.Fatalf("agent_session_env_present = %v, want true", got)
 	}
-	wantHead := []string{managedBin, tuttiBin, "/usr/bin"}
+	wantHead := []string{managedBin, tuttiBin, systemBin}
 	if got := diag["path_head"]; !reflect.DeepEqual(got, wantHead) {
 		t.Fatalf("path_head = %#v, want %#v", got, wantHead)
 	}
@@ -153,7 +156,7 @@ func TestProcessStartEnvDiagnosticsSummarizesFinalPath(t *testing.T) {
 
 func receiveRuntimeStdoutFrame(t *testing.T, conn ProcessConnection) ProcessFrame {
 	t.Helper()
-	deadline := time.After(localProcessTestTimeout)
+	deadline := time.After(5 * time.Second)
 	for {
 		done := make(chan ProcessFrame, 1)
 		errs := make(chan error, 1)

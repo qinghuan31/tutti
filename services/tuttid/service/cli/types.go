@@ -63,6 +63,7 @@ type Capability struct {
 }
 
 type InvokeContext struct {
+	AppID                          string
 	Source                         string
 	WorkspaceID                    string
 	ParentCommandID                string

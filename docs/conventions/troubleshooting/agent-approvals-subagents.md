@@ -1,364 +1,409 @@
-# Troubleshooting: Agent Approvals And Sub-Agents
+# Agent Approvals And Child Sessions
 
-[Agent runtime index](./agent-runtime.md) · [All troubleshooting](./README.md)
+Approval gates, plan exits, provider-native child-session attribution, root
+settlement, cancellation, and Message Center.
 
-Approval gates, plan exits, parent/child event attribution, background agents, and Message Center.
+The canonical child-agent architecture is
+[`2026-07-15-provider-native-subagents.md`](../../specs/2026-07-15-provider-native-subagents.md).
+Do not diagnose current recordings through retired timeline ownership fields or
+session-level child summaries.
 
 ### External PR review approvals do not refresh gate status
 
-- Symptom:
-  An external contributor's PR has an internal approval, but GitHub still shows
-  a red `external-pr-review-gate / external-pr-review-gate` check, often next
-  to a green `external-pr-review-gate` commit status.
-- Quick checks:
-  Inspect the failing run event with `gh run view <run-id> --json event`. If
-  the event is `pull_request_review`, check the log for missing
-  `TUTTI_RD_MEMBERS` or `Resource not accessible by integration` when creating
-  a commit status.
-- Root cause:
-  `pull_request_review` workflows for external PRs can run with reduced token,
-  variable, and secret access. They are not a reliable place to write the
-  branch-protection status. A direct review-event gate can also create a second
-  check run with the same job name as the trusted `pull_request_target` gate.
-- Fix:
-  Keep the status-writing gate on trusted `pull_request_target` or
-  `workflow_run` execution. If approvals must refresh the gate automatically,
-  use a low-privilege `pull_request_review` signal workflow and a trusted
-  `workflow_run` refresh workflow that resolves the PR and calls the reusable
-  gate.
-- Validation:
-  Confirm the old caller workflow no longer directly invokes the gate from
-  `pull_request_review`. After an internal approval, expect a signal run and a
-  refresh run; the refresh run should update the `external-pr-review-gate`
-  commit status to match the latest approved, requested-changes, or dismissed
-  review state.
+- Symptom: an external review is approved, but the gate remains waiting.
+- Check: compare the external review event identity with the persisted
+  interaction request and its latest version.
+- Cause: the refresh path updated display data without resolving the canonical
+  interaction.
+- Fix: normalize the provider event to the same request identity and commit the
+  interaction transition before publishing the activity update.
+- Validate: replay the same event twice and confirm one terminal interaction and
+  one stable UI state.
+
+### Approval card lacks command or file-change detail
+
+- Symptom: a Cursor or Codex approval card shows only a generic title and
+  options, without the command or changed-file paths.
+- Check: correlate the approval request with the earlier same-turn tool item.
+  Cursor may omit `rawInput` from `session/request_permission`; Codex may send
+  `changes` on `item/started` but only the matching `itemId` on
+  `item/fileChange/requestApproval`.
+- Cause: a later empty or partial tool update replaced the earlier input, or
+  the approval path consulted the root normalizer instead of the exact child
+  turn normalizer.
+- Fix: merge partial tool updates into the per-turn snapshot, expose the saved
+  input through `KnownToolCallInput`, and pass the exact root or child turn
+  normalizer into approval projection. AgentGUI renders structured `changes`
+  or `fileChanges`, `grantRoot`, and a standalone `reason`; approval reasons and
+  correlated file-change directories render directly below the title without
+  duplicate Summary or Path cards, and the title states that the authorization
+  is for editing files. Runtime adapters normalize the provider tool kind into
+  interaction metadata `approvalPurpose=edit-files`; GUI prompt projection uses
+  that semantic purpose and must not infer authorization intent from rendered
+  file details. A lone `grantRoot` outside a file-change approval remains a
+  labeled path detail. These remain approval previews, not evidence that a file
+  change executed.
+- Validate: cover Cursor known-input fallback and Codex root and child
+  file-change approvals. When absolute paths share a directory, render that
+  directory once and show relative file paths beneath it. Confirm the reason
+  and correlated directory appear once below the title.
 - References:
-  [.github/workflows/external-pr-review-gate.yml](../../../.github/workflows/external-pr-review-gate.yml)
-  [.github/workflows/external-pr-review-gate-review-signal.yml](../../../.github/workflows/external-pr-review-gate-review-signal.yml)
-  [.github/workflows/external-pr-review-gate-review-refresh.yml](../../../.github/workflows/external-pr-review-gate-review-refresh.yml)
+  [acp_turn_normalizer.go](../../../packages/agent/daemon/runtime/acp_turn_normalizer.go)
+  [codex_appserver_event_interactive.go](../../../packages/agent/daemon/runtime/codex_appserver_event_interactive.go)
+  [interactive_projection.go](../../../packages/agent/daemon/runtime/interactive_projection.go)
 
-### Agent approval controls submit stale permission requests after restart
+### Approval controls submit a stale request after restart
 
-- Symptom:
-  After refreshing or restarting the app around a pending agent approval, the
-  conversation may show the turn as ready or complete while an approval/cancel
-  control still submits an old request id. Logs can include
-  `permission request "...id..." is no longer live` or
-  `agent session cancel skipped because no active turn exists`.
-- Quick checks:
-  Compare the durable agent session status with the runtime session status.
-  If the persisted session is `working` or `waiting` but the resumed runtime is
-  already idle/ready, verify the service reconciles the stale persisted turn
-  before forwarding approve/cancel to the runtime. In the renderer, inspect the
-  notification region as well as the in-conversation approval card; a stale
-  toast can outlive the message-center waiting item.
-- Root cause:
-  Runtime permission requests are process-local. After a restart, durable
-  activity can still contain an open turn whose provider-side request is no
-  longer live. The backend must mark that restored turn idle/failed instead of
-  forwarding stale approval or cancel actions. Renderer notifications also need
-  to dismiss when the waiting item disappears from the activity snapshot.
+- Symptom: approve/reject returns that the request is no longer live, while the
+  UI still shows it pending.
+- Check: compare the durable interaction tuple
+  `(agentSessionId, turnId, requestId)` with the live adapter registry and
+  `workspace_agent_runtime_operations`.
+- Cause: startup settlement or a provider terminal resolved the live request,
+  but its durable interaction did not transition atomically.
+- Fix: prepare the runtime operation before provider submission; complete the
+  interaction, operation, and outbox event in one transaction. Startup recovery
+  must process leased operations before settling stale turns.
+- Validate: inject a database failure after provider success and confirm retry
+  reaches one terminal operation without submitting the provider response twice.
+
+### Claude SDK ExitPlanMode is reported as interrupted after plan completion
+
+- Symptom: the plan is visible, but the approval row becomes interrupted or
+  the follow-up implementation never starts.
+- Check: distinguish provider-native `ExitPlanMode` interaction from Tutti's
+  synthetic plan-implementation decision.
+- Cause: the two paths were treated as one request or a terminal event was
+  attributed to the wrong turn.
+- Fix: provider-native exit-plan stays on the exact interaction tuple. Synthetic
+  implementation uses its durable plan-decision operation and stable
+  `clientSubmitId` reconciliation.
+- Validate: cover both paths independently, including replay after daemon
+  restart.
+
+### Codex child output appears as the root reply
+
+- Symptom: the root answer contains child-only output, or child tools render as
+  top-level root rows.
+- Check: correlate app-server `threadId` with the root
+  `provider_session_id` and the child session's provider thread handle.
+- Cause: notifications sharing one connection were normalized against the root
+  session instead of their registered child thread.
+- Fix: unknown foreign threads never mutate the root. A registered child thread
+  emits events owned by its child session/turn and carries immutable root and
+  parent relations. AgentGUI keeps child rows out of the root transcript and
+  attaches them under `parentToolCallId`.
+- Validate: inject root, known-child, and unknown-thread notifications in one
+  run; assert three distinct routing outcomes.
+
+### Claude SDK child events overwrite or complete the root turn
+
+- Symptom: a child result replaces the root answer, the root completes while a
+  child is still running, or nested tools appear at root level.
+- Check: inspect `parent_tool_use_id`, child session/turn ids, and the retained
+  root provider terminal record. For Claude SDK continuation ordering, filter
+  `tuttid.log` by
+  `event=agent_session.claude_sdk.lifecycle_event` and the root agent session
+  id, then compare the per-session `sequence` values. An
+  `sdk_lifecycle_observed` entry records the bounded raw SDK message type and
+  subtype before the sidecar projection; the following `task_completed`,
+  `turn_started`, and terminal entries record the normalized order. These
+  diagnostics intentionally exclude prompt, content, summary, and error text.
+  The former failure signature has the final child `task_completed` and SDK
+  `task_notification` followed by canonical root settlement/composer unlock,
+  then a later root assistant observation and synthetic `turn_started`.
+- Cause: a nested SDK message was treated as root-owned, or SDK
+  `turn_completed` was projected directly as canonical root completion.
 - Fix:
-  Reconcile stale persisted agent turns on session get/resume and before
-  approve/cancel/interactive submit. Mark open tool-call messages in the latest
-  turn failed, then report the session idle. Track active renderer approval
-  toast ids and dismiss them when their waiting keys are no longer present.
-- Validation:
-  Add service tests for stale approve and cancel paths, then run
-  `pnpm lint:go`, `cd services/tuttid && go test ./... && go build ./...`.
-  For desktop UI, run `make dev-web`, trigger a command approval, approve from
-  the conversation card, and confirm the waiting count and notification region
-  both clear.
-- References:
-  [service.go](../../../services/tuttid/service/agent/service.go)
-  [activity_projection.go](../../../services/tuttid/service/agent/activity_projection.go)
-  [WorkspaceChrome.tsx](../../../apps/desktop/src/renderer/src/features/workspace-workbench/ui/WorkspaceChrome.tsx)
+  - Create the child session and submitted child turn from the earliest parent
+    `Task` tool-use event.
+  - Bind `taskId` and `agentId` only as aliases of that recorded child.
+  - Keep child messages, tools, interactions, and terminals on the exact child
+    session/turn.
+  - Normalize SDK root terminal as a root-provider fact. `services/tuttid`
+    settles the root only after every nested child turn is terminal.
+  - Treat later SDK continuation ids as provider turns attached to the same
+    canonical root turn.
+  - At the final async-child notification boundary, reserve the synthetic root
+    provider turn before emitting the child terminal. The expected normalized
+    order is `turn_started` and then `task_completed`; the later root assistant
+    confirms that reserved provider turn instead of opening another one.
+  - If root output does not begin within 30 seconds, complete the reservation
+    with `stop_reason=background_agent_continuation_timeout`, interrupt the
+    pending SDK continuation, and drop its later output. Cancellation disarms
+    the same timeout and preserves the durable canceled outcome.
 
-### Claude SDK ExitPlanMode fails as interrupted after plan is ready
+  Do not infer native SDK order from persisted message timestamps. Use the
+  per-session lifecycle sequence to verify that the adapter-established
+  provider start precedes the final normalized child terminal and that root
+  output either confirms that provider turn or reaches the bounded timeout.
 
-- Symptom:
-  Claude Code SDK writes a plan, then `ExitPlanMode` appears failed with
-  `request interrupted by application restart`. The composer or dock can briefly
-  show a spinner, then clear without user approval.
-- Quick checks:
-  Compare runtime and durable session state. A live SDK interactive turn can
-  report `Status=created` while `TurnLifecycle.ActiveTurnID` is non-empty and
-  `TurnLifecycle.Phase=waiting_approval`. That is live, not stale. A bare
-  runtime `Status=waiting` without `pendingInteractive`, a live background
-  agent, or a non-empty active turn lifecycle is stale and should not block
-  reconciliation.
-- Root cause:
-  Stale resume reconciliation is only for restored persisted turns whose
-  provider callback no longer exists. If service read/ensure paths look only at
-  runtime `Status`, they can misclassify a live SDK synthetic interactive turn
-  as idle and mark the pending `ExitPlanMode` tool failed.
+- Validate: test both event orders—root terminal before the last child and last
+  child before root terminal—plus continuation start, timeout, cancellation,
+  and guidance during the reserved window. Confirm that composer availability
+  follows only the durable canonical root.
+
+### Claude child card shows a generic Agent title and no task detail
+
+- Symptom: the child lifecycle is correct, but AgentGUI renders a generic
+  `Agent` name and only a last-activity label such as `Bash` or `Read`; the
+  delegation description or prompt is missing.
+- Check: compare the earliest `tool_started` payload with the later matching
+  `tool_completed` payload, then inspect the persisted child title and the
+  parent turn's tool-call row. A healthy completion keeps the full input and
+  does not end as `turn_completed_without_call_result`.
+- Cause: Claude may emit a generic start before the full delegation input. If
+  the adapter resolves the later completion through the spawned child's own
+  alias, it moves that completion from the parent turn into the child turn.
+  The parent normalizer then falsely closes the still-open call as missing a
+  result, while the child session keeps its early generic title.
+- Fix: keep every lifecycle event for the delegation tool call on its launching
+  parent turn; use only an explicit nested `parent_tool_use_id` to select a
+  parent child turn. Merge a later real description into the existing child
+  session and publish a normal child title update. The compact card may still
+  show only the latest child activity, but its name and task strip come from
+  canonical child/parent data rather than that activity label.
+- Validate: start with a generic Agent event, finish the same call with a full
+  description and prompt, then settle the root provider turn. Assert one
+  completed parent call with full input, one updated child title, no synthetic
+  missing-result failure, and a child lane containing the expected name/task.
+
+### Claude Goal completes while a child is still running
+
+- Symptom: Goal shows complete and the SDK root call has returned, but the root
+  composer remains busy and the conversation still shows waiting.
+- Check: inspect the three independent facts: Claude Goal metadata, the retained
+  root provider terminal, and canonical child turns under the root turn.
+- Expected: `goal=complete`, canonical root `turn=waiting`, and child
+  `turn=running` is valid. The SDK must not be held open, and Goal completion
+  must not clear the root active-turn reference, unlock the composer, or permit
+  a new canonical turn.
+- Fix: keep Goal as provider-native session metadata, normalize Claude
+  `turn_completed` as `root_provider_turn_completed`, and let
+  `services/tuttid` apply the retained provider outcome when the last child
+  becomes terminal. Do not wait for Claude to send a second terminal event.
+- Validate: cover the valid three-state combination, assert the root composer
+  remains blocked, then settle only the child and assert the root completes
+  without another Claude terminal.
+
+### Child approval is stuck or persisted on the root
+
+- Symptom: a child approval remains visible or submission reports that the
+  request is no longer live. Another form renders and submits correctly, but
+  the durable interaction and approval call row belong to the root session and
+  turn instead of the child. In a transport-correlation variant, the
+  interaction is on the correct child and `interactive_response` remains
+  prepared after approval. Its error says the sidecar disposition is unknown.
+  In a projection variant, the interaction and operation are already answered,
+  but the project-list attention icon remains until the turn settles and the
+  runtime log reports `workspace agent session kind is immutable`.
+- Check: confirm the UI action carries the exact child
+  `(agentSessionId, turnId, requestId)` tuple. Then verify the child's root
+  relation points to the live root provider session. For Claude SDK, also
+  inspect the permission callback and sidecar `approval_requested` payload:
+  a child callback must carry SDK `agentID` through as provider `agentId`.
+  Compare the canonical child turn stored on the interaction with the provider
+  `turnId` from that callback and with the `turnId` sent in both
+  `submit_interactive` and `interactive_disposition`. If durable state is
+  already answered, inspect the resolved event report: its agent session id,
+  session kind, root/parent fields, and turn id must consistently describe the
+  child. For Codex, correlate the app-server server request's `threadId` and
+  `itemId` with the persisted command tool call. If the command is child-owned
+  while the Approval row is root-owned, the server-request path bypassed the
+  registered child-thread route.
+- Cause: the prompt was aggregated into the root conversation and later
+  submitted using the root tuple, or the controller tried to find a separate
+  live runtime for the child. Claude-specific root attribution can also happen
+  when the sidecar drops the callback `agentID`; the callback still carries the
+  current provider/root turn id, which identifies transport lifecycle but not
+  the canonical owner of the interaction. Conversely, once ownership is
+  correctly scoped to the child, reusing that canonical child turn id as the
+  sidecar correlation id makes the sidecar look in the wrong pending-request
+  bucket. A separate projection bug occurs when a child-scoping helper writes
+  only relation fields but leaves the root agent session id on an acknowledgment
+  event; persistence correctly rejects that mixed identity. Codex has the same
+  ownership hazard when notifications route by `threadId` but JSON-RPC server
+  requests are normalized directly against the active root turn. Its
+  `serverRequest/resolved` notification can also strand child pending state if
+  child-notification filtering drops it before the shared registry is reached.
+- Fix: `services/tuttid` resolves the durable child relation and supplies both
+  root and target identity. The controller locates the shared runtime by root
+  session and passes the child target to the adapter. The Claude sidecar
+  preserves `agentID`, and the adapter resolves it through the recorded child
+  aliases before persisting the interaction. The adapter retains the original
+  provider turn id separately and uses it only for sidecar submission and
+  disposition queries. Do not register a second mutable child-state authority
+  in the controller, infer ownership from the provider turn id alone, or replace
+  provider correlation with the canonical child turn. Child event scoping must
+  replace the event agent/provider session identity and relation fields as one
+  operation, even though the event is delivered through the shared root runtime.
+  The Codex adapter applies the registered child-thread lookup to both
+  notifications and server requests, stores pending state under the canonical
+  child tuple, and resolves provider out-of-band notifications through that
+  child target. An unknown non-root request is rejected rather than persisted
+  on the root.
+- Validate: keep a focused test where only the root runtime is registered, yet
+  the adapter receives the exact child target and the durable child interaction
+  becomes answered/superseded. For Claude, cover a child permission callback
+  whose `turnId` is the root provider turn and whose `agentId` identifies the
+  child; both requested and resolved events must use the child session/turn,
+  while initial submit and lost-ack disposition query both retain the provider
+  `turnId`. Also cover the acknowledgment path and assert its projected state
+  patch and message update are child-owned, so the pending indicator clears
+  before the root turn settles. For Codex, request an approval on a registered
+  child `threadId`, submit it through the child tuple, and assert both requested
+  and resolved events remain child-owned. Separately send
+  `serverRequest/resolved` on that thread and assert the child request becomes
+  superseded without a root interaction.
+
+### Root remains active after all child turns settle
+
+- Symptom: child lanes are terminal but the root composer remains busy.
+- Check:
+  - root provider terminal row and pending outcome;
+  - every child session whose `rootTurnId` equals the active root turn;
+  - each child's canonical active/latest turn;
+  - root session `active_turn_id`.
+
+- Cause: a child terminal did not trigger root-gate evaluation, or a later
+  provider continuation opened without publishing its root-provider lifecycle.
+  If provider logs contain `turn/completed` and the controller emits an event,
+  but the root turn's persisted root-provider columns are empty, check that the
+  runtime reportable-event filter includes both root-provider lifecycle event
+  types; stream publication alone does not update durable state.
+- Fix: child terminal, exact child-cancel completion, and root-provider terminal
+  transitions all run the same durable root settlement check. The final
+  transition atomically clears the root active-turn pointer, emits the root turn
+  update, and reconciles the controller's root runtime view. Root-provider
+  lifecycle events must reach `services/tuttid` through the state-report path.
+- Validate: cover concurrent and nested children, failed children, and a later
+  root continuation. Child failure may remain visible without forcing root
+  failure.
+
+### Provider terminal report replays a settled root as running
+
+- Symptom: the UI and durable root appear settled, but logs immediately report
+  `workspace agent activity turn transition was rejected`. Older summaries may
+  misleadingly show `turn=-` on the rejected state patch.
+- Check: inspect the same patch's explicit `Turn`, runtime `TurnLifecycle`, and
+  `RootProviderTurn` fields. A provider lifecycle patch may legitimately have
+  no explicit canonical `Turn`; it must not inherit a running/waiting lifecycle
+  that `services/tuttid` then converts into a turn transition.
+- Cause: persistence-report enrichment copied the controller's runtime
+  lifecycle snapshot onto every state patch, while the service treated a bare
+  `TurnLifecycle` as a fallback canonical turn fact. A late provider terminal
+  could therefore attempt `settled -> running`; SQLite correctly rejected the
+  invalid regression and rolled back the report.
+- Fix: persisted event reports receive stable session metadata only. Keep full
+  runtime lifecycle enrichment on the live stream, and require an explicit
+  structured `Turn` patch for every canonical turn mutation. Do not relax the
+  SQLite transition guard. Log summaries should include both
+  `turnLifecycle` and `rootProviderTurn` so the two facts are distinguishable.
+- Validate: settle a root, then report a matching provider terminal while the
+  controller snapshot still says waiting/running. Assert the provider terminal
+  persists, no canonical turn transition is derived, the root stays settled,
+  and no transition-rejected error is emitted.
+
+### Root cancellation does not stop or settle child turns
+
+- Symptom: root stop returns, but one or more child lanes keep running or
+  reappear after late provider events. A second form looks correct in the UI,
+  but provider logs show a later unowned root `turn/started` or another child
+  spawn after the canonical root was canceled. A third form looks correct in
+  the UI while `publish runtime operation outbox` retries every second with
+  `data.turn.error requires failed or interrupted outcome`. In Claude Code, the
+  UI and final rows may both be correctly canceled while a late
+  `tool_failed(user_interrupt)` report logs
+  `workspace agent activity turn transition was rejected`.
+- Check: inspect the cancel operation payload. It must contain
+  `rootAgentSessionId` plus every active canonical target
+  `(agentSessionId, turnId)` for that root turn. Also compare the timestamps of
+  cancel preparation, late spawn registration, provider `turn/started`, and
+  `turn/interrupt`; query for child sessions created after cancel preparation
+  and for a settled canonical root whose `root_provider_turn_phase` remains
+  `running`. If `confirmed_target_count` includes only a child, inspect the
+  provider rollout: a root that continues with another `spawn_agent`, message,
+  or `wait_agent` after the canonical cancel did not receive its native
+  interrupt even though the UI correctly rendered the durable root as stopped.
+- Cause: the adapter discovered children privately, the controller looked up a
+  child as an independent live session, only the root turn committed, or the
+  controller canceled its local Exec context before invoking the adapter. The
+  last case can unregister the live root provider-turn handle, so child
+  interruption succeeds while the root native turn receives no interrupt and
+  continues its multi-agent queue behind an already-canceled canonical turn.
 - Fix:
-  Gate stale reconciliation with full runtime turn state: status, active turn
-  id, and phase. Treat `submitted`, `working`, `running`, `streaming`,
-  `waiting`, `waiting_approval`, `waiting_input`, and `awaiting_approval` with a
-  non-empty active turn id as live. Also treat a runtime pending interactive
-  prompt with a non-empty request id as live: a call message can reach durable
-  storage before the corresponding turn-lifecycle patch, and stale
-  reconciliation must not fail that just-created prompt during the race window.
-  Do not treat runtime `Status=waiting` alone as live. When a pending
-  interactive request fails or is canceled, emit the failed call and an
-  interrupted turn completion so the controller and durable session leave
-  `waiting_approval`.
-  Only reconcile when no live runtime turn or pending interactive prompt is
-  present, or when resuming from durable state after process loss.
-- Validation:
-  Add agent service tests for `Status=created` plus
-  `TurnLifecycle.Phase=waiting_approval` and a synthetic active turn id. `Get`
-  and `ensureRuntimeSessionResult` must not call stale reconciliation. Also add
-  coverage for `Status=waiting` with no pending interactive/live turn, which
-  must reconcile stale durable state.
+  - `services/tuttid` enumerates the durable tree before provider invocation.
+  - Preparing the root cancel operation closes durable child creation for that
+    root turn, so a child revealed after the target snapshot cannot race into
+    SQLite before cancel completion.
+  - The controller finds the live adapter through the root session.
+  - The controller invokes the bounded provider cancel before canceling its
+    local Exec context. Provider termination uses the still-live native root
+    handle; local context cancellation runs afterwards as cleanup even when the
+    provider call fails.
+  - The adapter maps only supplied targets to provider-native handles.
+  - Codex interrupts the root provider turn before waiting for known child
+    interrupts, preventing a slow child RPC from leaving the root free to
+    launch the next serial child.
+  - The provider adapter keeps an execution-local cancellation boundary: late
+    unowned root turns and newly revealed native child threads are interrupted,
+    and the latter never receive canonical child identities.
+  - Claude records the daemon-supplied exact root/child turn targets at that
+    boundary before issuing its root-query cancel. A later SDK
+    `task_completed(status=stopped)` or `tool_failed(user_interrupt)` for one of
+    those child turns is dropped in the adapter instead of being projected as a
+    contradictory child failure. Do not match the rejection error text or
+    weaken the durable turn state machine.
+  - The controller returns the exact provider-acknowledged target subset and
+    never settles durable turns itself.
+  - Target turn transitions, pending interaction supersession, operation
+    completion, and outbox data commit together.
+  - Canonical canceled turns clear transport-only errors such as
+    `context canceled`; outbound turn projection omits errors unless the
+    outcome is `failed` or `interrupted`, so an old dirty row cannot block the
+    reliable notification queue.
+  - Confirmed cancellations settle `canceled`; targets without terminal
+    confirmation settle `interrupted` after the bounded timeout. Late events
+    never resurrect the root.
+  - A matching late root provider terminal may close the provider lifecycle
+    projection on an already settled canonical root, but cannot change its
+    canonical canceled outcome or publish another settlement.
 
-### Codex app-server subagent output appears as the parent reply
+- Validate: include nested children, a child that finishes during cancellation,
+  a provider handle that cannot confirm cancellation, restart recovery, and a
+  late child terminal. Also cover a spawn racing after the durable cancel
+  operation is prepared and a server-initiated root turn after cancellation.
+  For the serial-spawn regression, cancel after the first child appears and
+  assert that provider requests include interrupts for both the live root turn
+  and that child, the root is provider-confirmed, and any already-in-flight
+  second child is interrupted without receiving a canonical session. For
+  Claude, also assert that ordinary root-provider-first/child-terminal-later
+  ordering still settles the child, while a late cancel-caused child terminal
+  emits no second activity transition and produces no rejected-report log.
 
-- Symptom:
-  A parent Codex AgentGUI turn that spawned subagents ends with a subagent-only
-  answer such as `{"n":7}`, or a failed Agent/subagent tool detail shows the
-  prompt again under Output even though the tool never returned a result.
-- Quick checks:
-  Compare `workspace_agent_sessions.provider_session_id` with app-server
-  notification `threadId` values in `tuttid.log`/run traces. Inspect
-  `workspace_agent_messages.payload` for the suspect tool call: if it has
-  `input.prompt`/`input.task` but no `output` or `error`, the GUI must not
-  synthesize an Output section from the summary or prompt.
-- Root cause:
-  Codex app-server streams parent and child-thread notifications over the same
-  connection. Transcript, tool, and `turn/completed` notifications must be
-  scoped to the active provider thread before they update the parent turn. On
-  the renderer side, task-like tools use the summary/title for compact labels,
-  but missing result payloads are not tool output.
-- Fix:
-  Drop notifications that carry a non-empty `threadId` different from the
-  session `provider_session_id`, with debug logging that records expected
-  thread, event thread, turn, item id/type/status, and method. Keep notifications
-  without `threadId` compatible. For Agent/task cards, render Output only from
-  actual `output`/`error` payload text, not from the prompt or summary.
-- Validation:
-  Add a Codex app-server test that injects foreign-thread `agentMessage` and
-  `turn/completed` notifications during a parent turn, plus AgentGUI projection
-  tests for failed Agent calls with prompt-only payloads. Run the focused Go and
-  GUI specs for those paths.
+### Deleted root leaves orphan child sessions
 
-### Claude SDK subagent events overwrite or complete the parent turn
+- Symptom: a deleted conversation disappears from the rail, but its child
+  sessions, turns, or interactions remain in SQLite or later projections.
+- Cause: deletion targeted only the selected session row instead of expanding
+  its immutable parent tree.
+- Fix: resolve the selected session and every nested child in the deletion
+  transaction; tombstone the full tree and remove its turns, interactions, and
+  submit claims together.
+- Validate: cover both single-session and batch deletion with a nested child
+  tree, and assert every descendant is tombstoned.
 
-- Symptom:
-  A Claude Code SDK parent turn that launched `Task` subagents loses the parent
-  answer, finishes early when a child returns `result`, or shows child tool calls
-  as unrelated top-level activity instead of under the parent task.
-- Quick checks:
-  Inspect raw sidecar SDK messages for `parent_tool_use_id`. If that value is
-  non-empty, the event belongs to a nested subagent and must not update parent
-  assistant text, thinking text, usage, resume cursor, or terminal result state.
-  The projected tool metadata should preserve `parentToolUseId` so AgentGUI can
-  fold nested calls under the parent tool.
-- Root cause:
-  Claude Code SDK streams parent and subagent messages through the same query
-  loop. Without filtering on `parent_tool_use_id`, nested assistant/result
-  messages look like normal parent-turn messages. A parent turn may also settle
-  while `runtimeContext.backgroundAgents.count` is still positive; service-layer
-  stale resume reconciliation must treat that as live runtime state, otherwise
-  it can mark late child tools or approvals as failed with the
-  application-restart interruption message while the sidecar reader is still
-  draining background events. After the child finishes, the parent may continue
-  in a synthetic SDK turn; if that turn emits messages/tools without a
-  `turn_started` lifecycle event, AgentGUI can show completed thinking/tool
-  rows while the parent is still working and the composer spinner stays idle.
-  If a previously failed tool message later completes, durable payload merge
-  must clear stale `error` payload data so the UI does not display both the old
-  failure and final success.
-- Fix:
-  Treat non-empty `parent_tool_use_id` as a nested scope marker. Keep child tool
-  lifecycle events, but attach `metadata.parentToolUseId`; ignore nested
-  assistant text/thinking/usage/result for parent-turn state. For `Task` parents,
-  also keep child terminal payloads in task `metadata.steps` when available.
-  When the Agent tool reports an async launch, parse `agentId` and `output_file`
-  into structured metadata and mark the delegated task status as running. The Go
-  SDK adapter must own a persistent single-reader dispatcher for each live
-  sidecar session: `Exec` waits on a per-turn waiter, but the reader keeps
-  draining after terminal turn events and publishes late background/subagent
-  events through the session event sink. Do not make `task_notification` settle
-  the parent turn; treat it as task progress/completion metadata only. If a late
-  `task_notification` has no task or agent id but there is exactly one running
-  delegated task, resolve it to that task so the background agent count can
-  clear. Also emit delegated-task completion from the SDK `TaskCompleted` hook;
-  some SDK runs finish the child JSONL without a usable `task_notification`, and
-  the hook must still clear the runtime background-agent count. When the SDK
-  emits `TaskCreated` with only `task_id`, do not bind it to a running
-  delegated task by count. Use `parentToolUseId` as the canonical key and treat
-  `agentId`/`taskId` as aliases resolved back to an existing Agent tool call;
-  otherwise concurrent subagents can cross-bind ids and keep
-  `backgroundAgents.count` stale. The same rule applies to `task_started`,
-  `task_progress`, `task_notification`, and `TaskCompleted`: Claude Code often
-  puts the agent id into `task_id`, so resolve each alias against both the
-  task-id and agent-id maps, and never bind an alias that fails to resolve to
-  "the only running" task while any registered delegated task already has a
-  known alias. During concurrent launches, a child `task_started` can race
-  ahead of its own Agent launch result; binding that unknown alias to the
-  single already-registered task attributes one agent's completion to another,
-  drops the second agent's runtime entry, and clears the composer wait count
-  early. The daemon-side `backgroundAgents` map must also treat a sidecar
-  update that carries an explicit `parentToolUseId` as canonical: it may merge
-  through `agentId`/`taskId` aliases only into an entry whose recorded parent
-  tool call is empty or identical, and it must not overwrite an entry's
-  recorded `agentId`/`taskId` with a different value. Child assistant messages
-  tagged with `parent_tool_use_id` stream through the parent query while the
-  child is still running (often seconds after launch), so they are never a
-  completion signal; settle a delegated task only from the child `result`
-  message, the `task_notification` system message, or the `TaskCompleted`
-  hook. Otherwise the first child message marks the task completed, the next
-  `task_progress` flips it back to running, and the running background-agent
-  count oscillates (for example 2 -> 3 -> 2) without any new launch. A
-  `task_progress` that arrives after the task has settled must not resurrect
-  it; only an explicit `task_started` may restart a task. When the SDK
-  resumes parent work after a background agent, the sidecar must emit
-  `turn_started` for the synthetic continuation and the Go adapter must map it
-  to `EventTurnStarted`; keep the background-agent wait banner separate from
-  this turn lifecycle. Top-level assistant text and thinking must be keyed by
-  SDK message/content-block segments rather than by turn id. Treat the live
-  `content_block.index` as a stream locator only, not as durable message
-  identity. Consolidated assistant messages are fallback/tail compensation only,
-  because their content array indexes can differ from live `stream_event` block
-  indexes when thinking or tools are present. Projection code that merges
-  repeated tool-message updates should remove stale `error` data when the
-  canonical status becomes completed.
-- Validation:
-  Add sidecar normalizer coverage for `parentToolUseId`/task steps and adapter
-  coverage that terminal-after events still reach DB/UI through the session
-  event sink. SDK task lifecycle events should also update
-  `runtimeContext.backgroundAgents` from running to completed so composer wait
-  copy clears when the background agent finishes. Add service coverage that
-  runtime `backgroundAgents.count > 0` suppresses stale resume reconciliation
-  even when there is no active parent turn. Add sidecar/adapter coverage for
-  synthetic continuation `turn_started`, plus projection coverage that a
-  completed tool update drops an earlier failed `error` payload. For alias
-  binding, keep sidecar coverage that an unknown `task_id` racing ahead of its
-  own launch does not bind to another running task, and Go adapter coverage
-  that an alias conflict with a different recorded parent tool call keeps two
-  background-agent entries separate. For completion semantics, keep sidecar
-  coverage that a mid-run child assistant message does not complete the
-  delegated task (only the child `result` does) and that a trailing
-  `task_progress` after settlement does not resurrect the task.
+### Interactive response or exact-turn cancel succeeds but durable state stays pending
 
-### Claude SDK subagent approval stuck in Message Center
-
-- Symptom:
-  A concurrent Claude Code SDK parent turn launches several `Task` subagents, the
-  parent turn settles to idle, and Message Center still shows a
-  `waiting_approval` tool call for a nested subagent Bash command. Clicking
-  approve/reject fails with `interactive request ... is no longer live`, Agent
-  GUI may never show the approval card, and `runtimeContext.backgroundAgents`
-  can stay positive even though some subagents already returned text in the raw
-  JSONL.
-- Quick checks:
-  Compare runtime `pendingInteractive` with durable `waiting_approval` rows.
-  Inspect tuttid logs for `message_update ... is missing turnId` on
-  `approval_resolved`. In sidecar logs, check whether the approval resolved
-  after the parent turn cleared `activeTurnId`. In the raw Claude session JSONL,
-  look for nested assistant messages with `parent_tool_use_id` and
-  `stop_reason=end_turn` but no child `result` event.
-- Root cause:
-  Subagent tool approvals can outlive the parent turn lifecycle. The sidecar may
-  emit `approval_resolved` after the active turn id is cleared, so the Go
-  adapter persists the completion without `turnId`. Service stale reconciliation
-  previously treated live background agents as proof that every open approval
-  was still live, leaving ghost durable approvals. Text-only subagent completions
-  that finish with a nested `end_turn` assistant message never emitted
-  `task_completed`, so background-agent counts stayed stale and submit paths
-  kept blocking. For nested launches (a subagent launching its own async
-  agents), the grandchild `Task` tool_use blocks only appear inside
-  child-stream assistant messages that the sidecar previously dropped, so the
-  grandchild task state was never registered: its approvals resolved no turn
-  id (the daemon rejects turnless `message_update`s, silently dropping the
-  approval card and deadlocking the grandchild), and a child `end_turn`
-  assistant could settle the child task while grandchildren were still
-  running.
-- Fix:
-  Store the originating turn id on pending interactive requests in the sidecar and
-  Go adapter, and reuse it when emitting `approval_resolved` if the event omits
-  `turnId`. Reconcile ghost open approvals whenever runtime has no live
-  `pendingInteractive`, even if background agents are still running. When
-  `SubmitInteractive` returns a stale no-longer-live error, reconcile the
-  persisted approval instead of surfacing the raw failure. Treat nested assistant
-  messages with non-empty `parent_tool_use_id` and `stop_reason=end_turn` as
-  delegated-task completion when no child `result` arrives, but only once no
-  delegated child task launched by that subagent is still running. In the
-  Claude SDK sidecar, also parse fold-in `queued_command` attachments and
-  user-string `<task-notification>` payloads (not only
-  `system/task_notification`), binding completion by
-  `tool-use-id`/`tool_use_id` so concurrent async agents settle independently.
-  For nested launches: register tool_use blocks from child-stream assistant
-  messages, treat the `Async agent launched successfully` result text as the
-  authoritative subagent-launch signal even when the tool name is unknown,
-  inherit the delegated-task turn id along the parent tool-use chain, and do
-  not settle a nested `end_turn` assistant while it still has a child tool_use
-  whose tool_result has not been processed. Use the sidecar's pending
-  `toolByID` entry for that pre-result window, then rely on the delegated task
-  created from the launch result while the grandchild is running. Let
-  interactive requests fall back to any delegated task's turn id (settled ones
-  included) and open a synthetic turn as last resort rather than emit a turnless
-  event.
-- Validation:
-  Add adapter coverage that stored pending turn ids survive missing
-  `approval_resolved.turnId`. Add service coverage for ghost approval reconcile
-  with live background agents and stale submit reconciliation. Add sidecar
-  coverage that nested `end_turn` assistant text completes the delegated task,
-  fold-in `queued_command` notifications complete running agents, and dequeued
-  user-string task notifications complete by parent tool use id. For nested
-  launches, keep sidecar coverage that a grandchild launch registers with the
-  inherited turn id (with and without an observed tool_use block), that a
-  nested approval after the parent task completed still carries a turn id, and
-  that a child `end_turn` assistant defers completion both while a grandchild
-  tool_result is still pending and while the resulting grandchild task is
-  running.
-
-### Claude SDK parent waits forever for background agents that already finished
-
-- Symptom:
-  A Claude Code SDK parent session launches several async subagents, replies to
-  some results ("received result N, waiting for the rest..."), then goes idle
-  and never acknowledges the remaining results or produces the final summary.
-  `runtimeContext.backgroundAgents` shows every task completed, so the composer
-  wait copy has already cleared while the transcript still says it is waiting.
-- Quick checks:
-  Open the raw Claude session JSONL under
-  `~/.claude/projects/<project>/<provider-session-id>.jsonl` and correlate
-  three record kinds. `queue-operation enqueue` entries carry each
-  `<task-notification>`; a matching later `dequeue` means the notification ran
-  as its own follow-up (synthetic) turn, while `remove` plus a
-  `queued_command` attachment with `commandMode: "task-notification"` means it
-  was folded into the still-active turn instead. Also check for `api_error`
-  records (provider 429/limits) that stretch the active turn and widen the
-  fold-in window.
-- Root cause:
-  This is upstream Claude Code queue behavior, not a tutti event loss. Task
-  notifications that arrive while a turn is still streaming are removed from
-  the pending prompt queue and injected into the active turn as
-  `queued_command` attachments. The attachment contains the full notification
-  including `<status>`, `<summary>`, and `<result>`, is appended to the model
-  `messages`, and stays in the conversation history for later turns, but
-  Claude Code will never schedule a dedicated follow-up turn for it. The
-  information is therefore in the model context the whole time; weaker or
-  custom models can ignore the attachments, keep an incorrect "still waiting"
-  count across every later turn, and stall the workflow. Notifications that
-  arrive after the turn settles are dequeued normally and produce synthetic
-  turns.
-- Fix:
-  There is no daemon/sidecar data fix because tutti-side projections already
-  record the completed tasks; the gap is only in the model's own accounting.
-  Reproduce with a stronger model before treating this as a tutti regression.
-  If product-level mitigation is required, design it as an explicit nudge
-  prompt that restates the sidecar-known completed task list in text, because
-  the model already failed to read the same facts from context attachments.
-  Keep the composer wait copy semantics driven by
-  `runtimeContext.backgroundAgents`; do not try to infer "results not yet
-  acknowledged" from transcript text.
-- Validation:
-  Compare the raw JSONL queue operations against the persisted
-  `workspace_agent_messages` rows for the session: every removed notification
-  should still have its Agent tool row marked completed from the
-  `task_notification` system message, which confirms the daemon saw the
-  completion even though the parent model never acknowledged it.
+- Symptom: the provider consumed the response/cancel, while HTTP reports a
+  persistence error or durable state remains active.
+- Check: inspect `workspace_agent_runtime_operations` status, lease,
+  `next_attempt_at_unix_ms`, payload targets, and its unpublished outbox rows.
+- Cause: provider side effects and SQLite cannot share a transaction; durable
+  intent was absent or completion was split across writes.
+- Fix: prepare a deterministic operation, lease it, invoke the provider, then
+  commit the domain transitions, completed operation, and outbox rows
+  atomically. Recovery requeues old leases before stale-turn settlement.
+- Validate: use a fake clock and failure injection around every boundary. An
+  idempotent replay must reach exactly one terminal operation and must not
+  revert a terminal interaction or turn.

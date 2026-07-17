@@ -1,12 +1,5 @@
-export type AgentGuiWorkbenchProvider =
-  | "claude-code"
-  | "codex"
-  | "tutti-agent"
-  | "cursor"
-  | "nexight"
-  | "hermes"
-  | "openclaw"
-  | "opencode";
+/** Open runtime metadata; agentTargetId remains the launch identity. */
+export type AgentGuiWorkbenchProvider = string;
 
 export const agentGuiWorkbenchOpenSessionActivationType =
   "agent-gui:open-session";
@@ -48,8 +41,6 @@ export interface AgentGuiWorkbenchNodeState {
   conversationRailCollapsed?: boolean | null;
   conversationRailWidthPx?: number | null;
   lastActiveAgentSessionId: string | null;
-  /** @deprecated Conversation titles are derived from the active session id. */
-  lastActiveConversationTitle?: string | null;
   provider: AgentGuiWorkbenchProvider;
 }
 
@@ -58,7 +49,6 @@ export interface AgentGuiWorkbenchState {
   conversationRailCollapsed?: boolean | null;
   conversationRailWidthPx?: number | null;
   lastActiveAgentSessionId: string | null;
-  lastActiveConversationTitle?: string | null;
 }
 
 export interface AgentGuiWorkbenchWorkspaceState {

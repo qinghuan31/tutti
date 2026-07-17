@@ -27,6 +27,7 @@ import {
   buildDesktopWorkspaceFileLocationSections
 } from "../desktopWorkspaceFileLocations.ts";
 import { createDesktopWorkspaceFileManagerAdapter } from "./desktopWorkspaceFileManagerAdapter.ts";
+import { WorkspaceFilePreviewSurfaceHost } from "./workspaceFilePreviewSurfaceHost.ts";
 
 test("workspace file manager service reuses one long-lived session per workspace", () => {
   const service = new WorkspaceFileManagerService(createDependenciesStub());
@@ -42,6 +43,18 @@ test("workspace file manager service reuses one long-lived session per workspace
 
   assert.equal(first, second);
   assert.notEqual(first, third);
+});
+
+test("workspace file manager service dispose releases user project subscription", () => {
+  const userProjects = createWorkspaceUserProjectServiceStub();
+  const dependencies = createDependenciesStub();
+  dependencies.workspaceUserProjectService = userProjects.service;
+  const service = new WorkspaceFileManagerService(dependencies);
+
+  assert.equal(userProjects.listenerCount, 1);
+  service.dispose();
+  service.dispose();
+  assert.equal(userProjects.listenerCount, 0);
 });
 
 test("workspace file manager service does not refresh unchanged locations during repeated session lookup", async () => {
@@ -470,6 +483,105 @@ test("workspace file manager service reports opened after successful file activa
   ]);
 });
 
+test("workspace file manager service can suppress the local app preview fallback notification", async () => {
+  applyLocale("en");
+  const dependencies = createDependenciesStub();
+  dependencies.hostFilesApi.openFile = async () => {};
+  const notifications = createNotificationRecorder();
+  const filePreviewSurfaceHost = new WorkspaceFilePreviewSurfaceHost();
+  filePreviewSurfaceHost.registerPresenter("workspace-1", {
+    present: () => false,
+    unsupportedFallbackNotification: "suppress"
+  });
+  const service = new WorkspaceFileManagerService(
+    dependencies,
+    notifications.service,
+    filePreviewSurfaceHost
+  );
+  const copy = createWorkspaceFileManagerI18nRuntime(
+    createI18nRuntime({
+      dictionaries: [workspaceFileManagerI18nResources.en]
+    })
+  );
+  const session = service.getSession("workspace-1", copy);
+
+  await session.activateFile({
+    entry: {
+      hasChildren: false,
+      kind: "file",
+      mtimeMs: null,
+      name: "notes.txt",
+      path: "/Users/demo/project/notes.txt",
+      sizeBytes: 5
+    },
+    target: null
+  });
+
+  assert.deepEqual(notifications.items, []);
+});
+
+test("workspace file manager service keeps the starting presenter fallback policy across replacement", async () => {
+  applyLocale("en");
+  const openedFiles: Array<{ path: string; workspaceId: string }> = [];
+  const dependencies = createDependenciesStub();
+  dependencies.hostFilesApi.openFile = async (workspaceId, path) => {
+    openedFiles.push({ path, workspaceId });
+  };
+  const notifications = createNotificationRecorder();
+  const filePreviewSurfaceHost = new WorkspaceFilePreviewSurfaceHost();
+  let finishPresentation: ((presented: boolean) => void) | undefined;
+  filePreviewSurfaceHost.registerPresenter("workspace-1", {
+    present: () =>
+      new Promise<boolean>((resolve) => {
+        finishPresentation = resolve;
+      }),
+    unsupportedFallbackNotification: "suppress"
+  });
+  const service = new WorkspaceFileManagerService(
+    dependencies,
+    notifications.service,
+    filePreviewSurfaceHost
+  );
+  const copy = createWorkspaceFileManagerI18nRuntime(
+    createI18nRuntime({
+      dictionaries: [workspaceFileManagerI18nResources.en]
+    })
+  );
+  const session = service.getSession("workspace-1", copy);
+
+  const activation = session.activateFile({
+    entry: {
+      hasChildren: false,
+      kind: "file",
+      mtimeMs: null,
+      name: "notes.txt",
+      path: "/Users/demo/project/notes.txt",
+      sizeBytes: 5
+    },
+    target: {
+      fileKind: "text",
+      mtimeMs: null,
+      name: "notes.txt",
+      path: "/Users/demo/project/notes.txt",
+      sizeBytes: 5
+    }
+  });
+  filePreviewSurfaceHost.registerPresenter("workspace-1", {
+    present: () => true,
+    unsupportedFallbackNotification: "show"
+  });
+  finishPresentation?.(false);
+  await activation;
+
+  assert.deepEqual(notifications.items, []);
+  assert.deepEqual(openedFiles, [
+    {
+      path: "/Users/demo/project/notes.txt",
+      workspaceId: "workspace-1"
+    }
+  ]);
+});
+
 test("workspace file manager service does not report opened after failed file activation", async () => {
   const reporterCalls: ReporterEventInput[][] = [];
   const dependencies = createDependenciesStub();
@@ -666,6 +778,7 @@ function createWorkspaceUserProjectServiceStub(
 ): {
   emit(): void;
   readonly ensureLoadedCalls: number;
+  readonly listenerCount: number;
   resetEnsureLoadedCalls(): void;
   service: NonNullable<
     WorkspaceFileManagerServiceDependencies["workspaceUserProjectService"]
@@ -732,6 +845,9 @@ function createWorkspaceUserProjectServiceStub(
     },
     get ensureLoadedCalls() {
       return ensureLoadedCalls;
+    },
+    get listenerCount() {
+      return listeners.size;
     },
     resetEnsureLoadedCalls() {
       ensureLoadedCalls = 0;
@@ -823,7 +939,7 @@ function createDependenciesStub(): {
       createWorkspaceTerminal: fail,
       deleteWorkspace: fail,
       deleteWorkspaceAgentSession: fail,
-      deleteWorkspaceAgentSessionSection: fail,
+      deleteWorkspaceAgentSessionsBatch: fail,
       updateWorkspaceAgentSessionTitle: fail,
       clearWorkspaceAgentSessions: fail,
       deleteWorkspaceApp: fail,
@@ -869,7 +985,7 @@ function createDependenciesStub(): {
       listWorkspaceAgentSessions: fail,
       listWorkspaceAgentSessionSections: fail,
       listWorkspaceAgentSessionSectionPage: fail,
-      countWorkspaceAgentSessionSection: fail,
+      listWorkspaceAgentSessionSectionDeletionCandidates: fail,
       listWorkspaceAgentPinnedSessionPage: fail,
       listWorkspaceApps: fail,
       listWorkspaceAppReferences: fail,
@@ -899,10 +1015,12 @@ function createDependenciesStub(): {
       prepareWorkspaceAppFactoryJobModification: fail,
       publishWorkspaceAppFactoryJob: fail,
       rollbackWorkspaceApp: fail,
-      cancelWorkspaceAgentSession: fail,
-      cancelWorkspaceAgentSessionWithResult: fail,
+      cancelWorkspaceAgentTurn: fail,
       goalControlWorkspaceAgentSession: fail,
+      getWorkspaceAgentSessionGoal: fail,
+      reconcileWorkspaceAgentSessionGoal: fail,
       sendWorkspaceAgentSessionInput: fail,
+      submitWorkspaceAgentPlanDecision: fail,
       readWorkspaceAgentSessionAttachment: fail,
       listWorkspaceAgentSessionGitBranches: fail,
       listWorkspaceGitBranches: fail,

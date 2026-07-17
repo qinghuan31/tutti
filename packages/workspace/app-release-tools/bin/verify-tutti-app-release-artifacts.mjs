@@ -70,6 +70,18 @@ export async function verifyTuttiAppReleaseArtifacts(options) {
         );
       }
     }
+    for (const [appId, entries] of Object.entries(
+      catalog.compatibility?.capabilityApps ?? {}
+    )) {
+      for (const entry of entries) {
+        addCatalogAppCheck(
+          checks,
+          releasesByKey,
+          entry.app,
+          `catalog capability compatibility app ${appId}`
+        );
+      }
+    }
   }
 
   if (verifyArtifacts) {

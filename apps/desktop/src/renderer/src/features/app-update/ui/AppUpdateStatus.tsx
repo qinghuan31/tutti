@@ -1,21 +1,39 @@
 import { useEffect, useState } from "react";
-import { Button, LoadingIcon } from "@tutti-os/ui-system";
+import {
+  Button,
+  DownloadIcon,
+  LoadingIcon,
+  RefreshIcon
+} from "@tutti-os/ui-system";
 import { useTranslation } from "@renderer/i18n";
 import { cn } from "@renderer/lib/format";
 import { useAppUpdateService } from "./useAppUpdateService";
+import { resolveStandaloneAppUpdateStatusPresentation } from "./appUpdateStatusPresentation";
 
 const updateIconUrl = new URL("../assets/update.png", import.meta.url).href;
 const tuttiIconUrl = new URL("../assets/tutti.png", import.meta.url).href;
 
 export function AppUpdateStatus({
-  density = "default"
+  density = "default",
+  presentation = "workspace"
 }: {
   density?: "compact" | "default";
+  presentation?: "standalone" | "workspace";
 }) {
   const { t } = useTranslation();
   const { service, state } = useAppUpdateService();
 
   const view = state.view;
+
+  if (presentation === "standalone") {
+    return (
+      <StandaloneAppUpdateStatus
+        isActing={state.isActing}
+        runPrimaryAction={() => service.runPrimaryAction()}
+        view={view}
+      />
+    );
+  }
 
   if (!view.visible || !view.titleKey) {
     return null;
@@ -67,6 +85,62 @@ export function AppUpdateStatus({
         </Button>
       ) : null}
     </div>
+  );
+}
+
+function StandaloneAppUpdateStatus({
+  isActing,
+  runPrimaryAction,
+  view
+}: {
+  isActing: boolean;
+  runPrimaryAction(): Promise<void>;
+  view: ReturnType<typeof useAppUpdateService>["state"]["view"];
+}) {
+  const { t } = useTranslation();
+  const presentation = resolveStandaloneAppUpdateStatusPresentation(view);
+
+  if (!presentation) {
+    return null;
+  }
+
+  const title = t(presentation.titleKey, presentation.titleParams);
+  if (presentation.kind === "status") {
+    return (
+      <span
+        aria-label={title}
+        className="inline-flex h-7 items-center gap-1.5 text-[13px] font-medium text-[var(--text-secondary)] [-webkit-app-region:no-drag]"
+        role="status"
+      >
+        <LoadingIcon aria-hidden className="size-3.5 animate-spin" />
+        <span>{title}</span>
+      </span>
+    );
+  }
+
+  const actionLabel = t(presentation.actionKey);
+  return (
+    <Button
+      aria-label={`${title}: ${actionLabel}`}
+      className="h-7 gap-1 rounded-[6px] px-2 text-[13px] font-semibold [-webkit-app-region:no-drag]"
+      disabled={isActing}
+      size="xs"
+      title={title}
+      type="button"
+      variant="secondary"
+      onClick={() => {
+        void runPrimaryAction();
+      }}
+    >
+      {isActing ? (
+        <LoadingIcon aria-hidden className="size-3 animate-spin" />
+      ) : presentation.actionKey === "updates.downloadAction" ? (
+        <DownloadIcon aria-hidden className="size-3.5" />
+      ) : (
+        <RefreshIcon aria-hidden className="size-3.5" />
+      )}
+      <span>{actionLabel}</span>
+    </Button>
   );
 }
 

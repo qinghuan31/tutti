@@ -63,6 +63,8 @@ export type IssueManagerNodeProps = UseIssueManagerNodeViewInput & {
   openRequest?: IssueManagerNodeOpenRequest | null;
   openSource?: IssueManagerOpenSource;
   renderLatestRunStatus?: IssueManagerLatestRunStatusRenderer;
+  disableSidebarAutoCollapse?: boolean;
+  topicSelectorPlacement?: "sidebar";
 };
 
 export function IssueManagerNode({
@@ -77,6 +79,8 @@ export function IssueManagerNode({
   resolveRichTextTriggerProviders,
   service,
   state,
+  disableSidebarAutoCollapse,
+  topicSelectorPlacement,
   workspaceId
 }: IssueManagerNodeProps): JSX.Element {
   const { controller, referencePicker, selectedIssue, selectedTask, shell } =
@@ -183,6 +187,8 @@ export function IssueManagerNode({
         renderLatestRunStatus={renderLatestRunStatus}
         selectedIssue={selectedIssue}
         selectedTask={selectedTask}
+        disableSidebarAutoCollapse={disableSidebarAutoCollapse}
+        topicSelectorPlacement={topicSelectorPlacement}
       />
 
       {feature.referenceSourceAggregator ? (

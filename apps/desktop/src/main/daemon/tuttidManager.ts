@@ -20,7 +20,7 @@ import {
   type DesktopDaemonEndpoint
 } from "../transport/paths.ts";
 import { applyUserShellProxyToSession } from "../net/sessionProxy.ts";
-import { resolveUserShellEnv } from "./userShellEnv.ts";
+import { resolveCachedUserShellEnv } from "./userShellEnv.ts";
 import {
   createDaemonRestartController,
   type DaemonRestartController
@@ -380,7 +380,7 @@ async function resolveManagedDaemonUserShellEnv(): Promise<
 > {
   const logger = getDesktopLogger();
   try {
-    const env = await resolveUserShellEnv();
+    const env = await resolveCachedUserShellEnv();
     const keys = Object.keys(env);
     if (keys.length > 0) {
       logger.info("resolved user shell env for managed tuttid", {

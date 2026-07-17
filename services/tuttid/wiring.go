@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"time"
 
+	"github.com/google/uuid"
 	agentdaemon "github.com/tutti-os/tutti/packages/agent/daemon"
 	runtimeprep "github.com/tutti-os/tutti/packages/agent/runtimeprep"
 	workspaceissues "github.com/tutti-os/tutti/packages/workspace/issues"
@@ -18,6 +19,7 @@ import (
 	tuttiserver "github.com/tutti-os/tutti/services/tuttid/server"
 	accountservice "github.com/tutti-os/tutti/services/tuttid/service/account"
 	agentservice "github.com/tutti-os/tutti/services/tuttid/service/agent"
+	agentextensionservice "github.com/tutti-os/tutti/services/tuttid/service/agentextension"
 	agentstatusservice "github.com/tutti-os/tutti/services/tuttid/service/agentstatus"
 	agenttargetservice "github.com/tutti-os/tutti/services/tuttid/service/agenttarget"
 	browsersvc "github.com/tutti-os/tutti/services/tuttid/service/browser"
@@ -28,6 +30,7 @@ import (
 	computercli "github.com/tutti-os/tutti/services/tuttid/service/cli/providers/computer"
 	diagnosticscli "github.com/tutti-os/tutti/services/tuttid/service/cli/providers/diagnostics"
 	issuemanagercli "github.com/tutti-os/tutti/services/tuttid/service/cli/providers/issuemanager"
+	managedmodelscli "github.com/tutti-os/tutti/services/tuttid/service/cli/providers/managedmodels"
 	referencescli "github.com/tutti-os/tutti/services/tuttid/service/cli/providers/references"
 	workbenchappscli "github.com/tutti-os/tutti/services/tuttid/service/cli/providers/workbenchapps"
 	computersvc "github.com/tutti-os/tutti/services/tuttid/service/computer"
@@ -231,6 +234,16 @@ func buildDaemonAPI(ctx context.Context, store workspacedata.CatalogStore, analy
 	agentTargets := agenttargetservice.Service{
 		Store: agentTargetStore,
 	}
+	agentExtensionManager := &agentextensionservice.Manager{
+		Sources:  tuttitypes.ResolveAgentExtensionSources(),
+		StateDir: tuttitypes.DefaultStateDir(),
+		Store:    agentTargetStore,
+	}
+	agentTargets.AvailabilityResolver = agentExtensionManager
+	for _, reconcileErr := range agentExtensionManager.Reconcile(ctx) {
+		payload, _ := json.Marshal(map[string]string{"error": reconcileErr.Error()})
+		slog.Warn("agent_extension.reconcile_failed", "payload", string(payload))
+	}
 	managedCredentials := &managedcredentialsservice.Service{
 		Store: managedCredentialsStore,
 	}
@@ -252,14 +265,23 @@ func buildDaemonAPI(ctx context.Context, store workspacedata.CatalogStore, analy
 		AnalyticsReporter: analyticsReporter,
 		ManagedRuntime:    managedRuntimeResolver,
 		RunOutcomes:       runOutcomes,
+		StatusCache:       agentstatusservice.NewProviderStatusCache(),
 	}
 	accountService := accountservice.NewService("")
+	agentProcessTransport := agentdaemon.NewLocalProcessTransport()
+	agentHostMetadata := agentdaemon.HostMetadata{
+		ClientInfo:       agentdaemon.ClientInfo{Name: "tutti-desktop", Title: "Tutti", Version: "0.1.0"},
+		WorkspaceEnvName: "TUTTI_WORKSPACE_ID", OpenClawSessionKeyPrefix: "agent:main:tsh-",
+	}
 	agentRuntime, err := agentdaemon.NewRuntime(agentdaemon.Config{
 		Reporter: agentRunOutcomeReporter{
 			inner: agentActivityProjection,
 			store: runOutcomes,
 		},
-		ProcessTransport: agentdaemon.NewLocalProcessTransport(),
+		ProcessTransport: agentProcessTransport,
+		AdapterResolver: agentextensionservice.RuntimeResolver{
+			Manager: agentExtensionManager, Transport: agentProcessTransport, Host: agentHostMetadata,
+		},
 		ProviderCommandResolver: func(ctx context.Context, provider string) (agentdaemon.ProviderCommand, error) {
 			resolved, err := agentStatusService.ResolveProviderCommand(ctx, provider)
 			if err != nil {
@@ -270,15 +292,7 @@ func buildDaemonAPI(ctx context.Context, store workspacedata.CatalogStore, analy
 				Env:     resolved.Env,
 			}, nil
 		},
-		HostMetadata: agentdaemon.HostMetadata{
-			ClientInfo: agentdaemon.ClientInfo{
-				Name:    "tutti-desktop",
-				Title:   "Tutti",
-				Version: "0.1.0",
-			},
-			WorkspaceEnvName:         "TUTTI_WORKSPACE_ID",
-			OpenClawSessionKeyPrefix: "agent:main:tsh-",
-		},
+		HostMetadata: agentHostMetadata,
 	})
 	if err != nil {
 		return tuttiapi.DaemonAPI{}, nil, nil, nil, fmt.Errorf("create agent runtime: %w", err)
@@ -291,9 +305,9 @@ func buildDaemonAPI(ctx context.Context, store workspacedata.CatalogStore, analy
 	userProjectService := userprojectservice.Service{
 		Store: userProjectStore,
 	}
-	agentSessionService := agentservice.NewService(
-		newAgentRuntimeAdapter(agentRuntime.Controller()),
-	)
+	agentRuntimeController := newAgentRuntimeAdapter(agentRuntime.Controller())
+	agentSessionService := agentservice.NewService(agentRuntimeController)
+	agentActivityProjection.SetRootTurnObserver(agentRuntimeController)
 	agentSessionService.AnalyticsReporter = analyticsReporter
 	agentModelCapabilities := agentservice.NewModelCapabilitiesService()
 	agentModelCatalog := agentservice.NewAgentModelCatalog()
@@ -301,10 +315,36 @@ func buildDaemonAPI(ctx context.Context, store workspacedata.CatalogStore, analy
 	agentSessionService.ModelCatalog = agentModelCatalog
 	agentSessionService.ModelCapabilities = agentModelCapabilities
 	agentSessionService.AgentTargetStore = agentTargetStore
+	agentSessionService.ExtensionComposerProfiles = agentExtensionComposerProfileResolver{
+		manager: agentExtensionManager,
+	}
+	agentSessionService.SessionInitializer = agentActivityProjection
 	agentSessionService.SessionReader = agentActivityProjection
 	agentSessionService.UserProjectReader = userProjectService
 	agentSessionService.MessageReader = agentActivityProjection
 	agentSessionService.ExternalImportStore = agentActivityRepo
+	agentSessionService.TurnStore = agentActivityRepo
+	agentSessionService.RuntimeOperationStore = agentActivityRepo
+	agentSessionService.GoalStateStore = agentActivityRepo
+	agentSessionService.GoalAuditPublisher = agentActivityProjection
+	agentSessionService.SubmitClaimStore = agentActivityRepo
+	agentSessionService.RuntimeOperationEventPublisher = agentActivityProjection
+	agentSessionService.RuntimeOperationOwner = uuid.NewString()
+	agentSessionService.GoalOperationOwner = uuid.NewString()
+	goalReconcileInbox, ok := agentActivityRepo.(interface {
+		agentservice.GoalReconcileInboxStore
+		agentservice.GoalReconcileInboxWriter
+	})
+	if !ok {
+		return tuttiapi.DaemonAPI{}, nil, nil, nil, fmt.Errorf("agent goal reconcile inbox store is unavailable")
+	}
+	agentSessionService.GoalReconcileInboxStore = goalReconcileInbox
+	agentActivityProjection.SetGoalReconcileInboxWriter(goalReconcileInbox)
+	goalProvenanceLedger, ok := agentActivityRepo.(agentservice.GoalProvenanceLedgerStore)
+	if !ok {
+		return tuttiapi.DaemonAPI{}, nil, nil, nil, fmt.Errorf("agent goal provenance ledger store is unavailable")
+	}
+	agentActivityProjection.SetGoalProvenanceLedger(goalProvenanceLedger)
 	agentSessionService.SessionDirectoryAllocator = agentservice.LocalSessionDirectoryAllocator{
 		StateDir: tuttitypes.DefaultStateDir(),
 	}
@@ -313,9 +353,27 @@ func buildDaemonAPI(ctx context.Context, store workspacedata.CatalogStore, analy
 		SourceRootDir: filepath.Join(tuttitypes.DefaultStateDir(), "agent-prompt-assets"),
 	}
 	agentSessionService.RuntimePreparer = agentRuntimePreparer
+	agentSessionService.ComputerUseAvailable = agentRuntimePreparer.ComputerUseAvailable
 	agentSessionService.AvailabilityChecker = agentservice.AgentStatusProviderAvailabilityChecker{
 		Service: &agentStatusService,
 	}
+	// Recover durable runtime intents before generic stale-turn settlement so
+	// an acknowledged cancel keeps its canceled outcome across restart.
+	if err := agentSessionService.RecoverRuntimeOperations(ctx); err != nil {
+		return tuttiapi.DaemonAPI{}, nil, nil, nil, fmt.Errorf("recover agent runtime operations: %w", err)
+	}
+	if err := agentSessionService.RecoverGoalOperations(ctx); err != nil {
+		return tuttiapi.DaemonAPI{}, nil, nil, nil, fmt.Errorf("recover agent goal operations: %w", err)
+	}
+	if err := agentSessionService.RecoverGoalReconcileInbox(ctx); err != nil {
+		return tuttiapi.DaemonAPI{}, nil, nil, nil, fmt.Errorf("recover agent goal reconcile inbox: %w", err)
+	}
+	if err := agentActivityProjection.SettleStaleTurnsOnStartup(ctx); err != nil {
+		return tuttiapi.DaemonAPI{}, nil, nil, nil, fmt.Errorf("settle stale agent turns on startup: %w", err)
+	}
+	go agentSessionService.RunRuntimeOperationWorker(ctx)
+	go agentSessionService.RunGoalOperationWorker(ctx)
+	go agentSessionService.RunGoalReconcileInboxWorker(ctx)
 
 	workspaceService := workspaceservice.CatalogService{
 		Store:            store,
@@ -340,6 +398,7 @@ func buildDaemonAPI(ctx context.Context, store workspacedata.CatalogStore, analy
 		Runner:                &workspaceservice.AppRunner{RuntimeResolver: managedRuntimeResolver},
 		StateDir:              tuttitypes.DefaultStateDir(),
 		HostTuttiVersion:      tuttitypes.ResolveAppVersion(),
+		HostTuttiCapabilities: tuttitypes.ResolveAppCapabilities(),
 		Publisher:             eventstreamservice.WorkspaceAppPublisher{Service: events},
 	}
 	go func() {
@@ -350,6 +409,25 @@ func buildDaemonAPI(ctx context.Context, store workspacedata.CatalogStore, analy
 			return
 		}
 		slog.Info("managed runtime profile preload completed", "event", "tutti.managed_runtime.profile_preload_completed", "profile", managedruntime.NodeStaticProfile, "durationMs", time.Since(startedAt).Milliseconds())
+	}()
+	go func() {
+		// The packaged sidecar bundle no longer carries the native claude
+		// binary; provision it up front so the first Claude session does not
+		// pay the download. Sessions started before this completes fall back
+		// to a PATH-installed claude (see runtimeprep.ClaudeCodePreparer).
+		// The deadline bounds a stalled CDN/npm connection (the shared HTTP
+		// client deliberately has no timeout) while leaving room for a large
+		// fallback download through a slow proxy.
+		preloadCtx, cancel := context.WithTimeout(context.Background(), 30*time.Minute)
+		defer cancel()
+		startedAt := time.Now()
+		slog.Info("claude code binary preload started", "event", "tutti.claude_code_binary.preload_started")
+		status, err := agentStatusService.EnsureClaudeCodeBinary(preloadCtx)
+		if err != nil {
+			slog.Warn("claude code binary preload failed", "event", "tutti.claude_code_binary.preload_failed", "durationMs", time.Since(startedAt).Milliseconds(), "error", err)
+			return
+		}
+		slog.Info("claude code binary preload completed", "event", "tutti.claude_code_binary.preload_completed", "source", status.Source, "version", status.Version, "path", status.Path, "durationMs", time.Since(startedAt).Milliseconds())
 	}()
 	appCLIRegistry := appclicli.NewRegistry(workspaceService, appCenterService)
 	appCenterService.AppCLIRegistry = appCLIRegistry
@@ -385,6 +463,7 @@ func buildDaemonAPI(ctx context.Context, store workspacedata.CatalogStore, analy
 	}
 	cliProviders := []cliservice.Provider{
 		diagnosticscli.NewProvider(),
+		managedmodelscli.NewProvider(managedCredentials),
 		issuemanagercli.NewProvider(workspaceService, issueService, appCenterService),
 		referencescli.NewProvider(workspaceService, appCenterService, issueService),
 		workbenchappscli.NewProvider(

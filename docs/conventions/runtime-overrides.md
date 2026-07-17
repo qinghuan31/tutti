@@ -13,17 +13,17 @@ Use the owner documents linked below for detailed behavior. This file exists to 
 
 ## Local State And Runtime Paths
 
-| Variable                    | Owner document                                                                                             | Purpose                                                                               |
-| --------------------------- | ---------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------- |
-| `TUTTI_ENV`                 | [Local State Storage](./local-state-storage.md)                                                            | Selects production or development default state roots.                                |
-| `TUTTI_STATE_DIR`           | [Local State Storage](./local-state-storage.md)                                                            | Overrides the shared local state root.                                                |
-| `TUTTI_LOG_DIR`             | [Local State Storage](./local-state-storage.md), [Logging](./logging.md)                                   | Overrides the shared log directory under the state model.                             |
-| `TUTTID_DB_PATH`            | [Local State Storage](./local-state-storage.md)                                                            | Overrides the daemon SQLite database path for narrow operational needs.               |
-| `TUTTID_RUN_DIR`            | [Local State Storage](./local-state-storage.md)                                                            | Overrides the daemon runtime directory for files such as listener info and pid files. |
-| `TUTTID_PID_PATH`           | [Local State Storage](./local-state-storage.md)                                                            | Overrides the daemon pid file path.                                                   |
-| `TUTTID_LISTENER_INFO_PATH` | [Local State Storage](./local-state-storage.md), [Desktop Transport](../architecture/desktop-transport.md) | Overrides the listener-info file path used by managed desktop-to-daemon transport.    |
-| `CODEX_HOME`                | [Local State Storage](./local-state-storage.md)                                                            | Injected per Codex agent run by tuttid; points at the run-scoped `codex-home`.        |
-| `TUTTI_AGENT_HOME`          | [Local State Storage](./local-state-storage.md)                                                            | Injected per Tutti Agent run by tuttid; points at the run-scoped `tutti-agent-home`.  |
+| Variable                    | Owner document                                                                                             | Purpose                                                                              |
+| --------------------------- | ---------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------ |
+| `TUTTI_ENV`                 | [Local State Storage](./local-state-storage.md)                                                            | Selects production or development default state roots.                               |
+| `TUTTI_STATE_DIR`           | [Local State Storage](./local-state-storage.md)                                                            | Overrides the shared local state root.                                               |
+| `TUTTI_LOG_DIR`             | [Local State Storage](./local-state-storage.md), [Logging](./logging.md)                                   | Overrides the shared log directory under the state model.                            |
+| `TUTTID_DB_PATH`            | [Local State Storage](./local-state-storage.md)                                                            | Overrides the daemon SQLite database path for narrow operational needs.              |
+| `TUTTID_RUN_DIR`            | [Local State Storage](./local-state-storage.md)                                                            | Overrides listener-info and pid paths, but not the state-root ownership lock.        |
+| `TUTTID_PID_PATH`           | [Local State Storage](./local-state-storage.md)                                                            | Overrides the daemon pid file, but not the state-root ownership lock.                |
+| `TUTTID_LISTENER_INFO_PATH` | [Local State Storage](./local-state-storage.md), [Desktop Transport](../architecture/desktop-transport.md) | Overrides the listener-info file path used by managed desktop-to-daemon transport.   |
+| `CODEX_HOME`                | [Local State Storage](./local-state-storage.md)                                                            | Injected per Codex agent run by tuttid; points at the run-scoped `codex-home`.       |
+| `TUTTI_AGENT_HOME`          | [Local State Storage](./local-state-storage.md)                                                            | Injected per Tutti Agent run by tuttid; points at the run-scoped `tutti-agent-home`. |
 
 ## Workspace App Catalog
 
@@ -50,6 +50,12 @@ Use the owner documents linked below for detailed behavior. This file exists to 
 | `TUTTID_ACCESS_TOKEN`       | [Desktop Transport](../architecture/desktop-transport.md)                                                  | Supplies the desktop-issued bearer token required by tuttid. |
 | `TUTTID_ADDR`               | [Desktop Transport](../architecture/desktop-transport.md)                                                  | Overrides the TCP listener or client address.                |
 | `TUTTID_LISTENER_INFO_PATH` | [Desktop Transport](../architecture/desktop-transport.md), [Local State Storage](./local-state-storage.md) | Overrides the daemon listener-info file path.                |
+
+## Desktop Packaging
+
+| Variable                 | Owner document                          | Purpose                                                                                               |
+| ------------------------ | --------------------------------------- | ----------------------------------------------------------------------------------------------------- |
+| `TUTTI_DESKTOP_MAC_ARCH` | [Desktop Release](./desktop-release.md) | Selects the macOS package architecture: `x64`, `arm64`, or `universal`; unset keeps the script default. |
 
 ## Account Remote Services
 
@@ -92,6 +98,14 @@ Use the owner documents linked below for detailed behavior. This file exists to 
 
 ## Agent Runtime Diagnostics
 
+Agent Extension source feature gates use
+`TUTTI_AGENT_EXTENSION_<KEY>_ENABLED`. The configured Gemini source therefore
+uses `TUTTI_AGENT_EXTENSION_GEMINI_ENABLED`, and the configured CodeBuddy
+source uses `TUTTI_AGENT_EXTENSION_CODEBUDDY_ENABLED`. Boolean values accepted by Go's
+`strconv.ParseBool` override the generated default; invalid values leave the
+generated default unchanged. A disabled source never downloads or registers
+its Agent Target.
+
 | Variable                               | Owner document                                                                        | Purpose                                                                                          |
 | -------------------------------------- | ------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------ |
 | `TUTTI_AGENT_CONTEXT_CONFIG`           | [Local State Storage](./local-state-storage.md)                                       | Overrides the migrated agent context config path for tests and diagnostics.                      |
@@ -99,18 +113,29 @@ Use the owner documents linked below for detailed behavior. This file exists to 
 | `TUTTI_AGENT_SESSION_ID`               | This document                                                                         | Identifies the caller agent session for CLI invoke context and agent runtime logs.               |
 | `TUTTI_AGENT_ROUTING`                  | This document                                                                         | Marks provider subprocesses launched through the migrated agent routing path.                    |
 | `TUTTI_ACP_TOOL_DEBUG`                 | This document                                                                         | Enables verbose migrated ACP tool-call normalization diagnostics.                                |
-| `TUTTI_CLAUDE_CODE_RUNTIME`            | This document                                                                         | Selects the Claude Code runtime adapter. Default is `sdk`; `acp` selects the legacy ACP adapter. |
-| `TUTTI_CLAUDE_SDK_SIDECAR_COMMAND`     | This document                                                                         | Overrides the command used by tuttid to launch the experimental Claude SDK sidecar.              |
+| `TUTTI_CLAUDE_SDK_SIDECAR_COMMAND`     | This document                                                                         | Overrides the command used by tuttid to launch the Claude SDK sidecar.                           |
 | `TUTTI_CLAUDE_SDK_SIDECAR_ENTRY_PATH`  | This document                                                                         | Internal packaged-desktop handoff pointing tuttid at the vendored Claude SDK sidecar entry.      |
 | `TUTTI_CLAUDE_SDK_SIDECAR_TEST_DRIVER` | This document                                                                         | Enables the deterministic Claude SDK sidecar test driver instead of the real SDK query loop.     |
+| `TUTTI_CLAUDE_AUTH_REFRESH_DEBUG`      | This document                                                                         | Explicitly enables sanitized Claude credential-refresh diagnostics; disabled by default.         |
+| `CLAUDE_CONFIG_DIR`                    | This document                                                                         | Selects Claude's native user configuration and credential directory; unset uses Claude defaults. |
+| `CLAUDE_CODE_EXECUTABLE`               | This document                                                                         | Selects the Claude executable passed to the Claude Agent SDK.                                    |
+| `ANTHROPIC_API_KEY`                    | This document                                                                         | Supplies Anthropic API-key authentication to Claude without modifying user config files.         |
+| `ANTHROPIC_AUTH_TOKEN`                 | This document                                                                         | Supplies Anthropic bearer-token authentication to Claude.                                        |
+| `ANTHROPIC_BASE_URL`                   | This document                                                                         | Selects a Claude-compatible Anthropic endpoint.                                                  |
+| `ANTHROPIC_API_BASE_URL`               | This document                                                                         | Preserves the alternate Anthropic endpoint variable supported by Claude tooling.                 |
+| `ANTHROPIC_MODEL`                      | This document                                                                         | Preserves Claude's native default-model override.                                                |
+| `ANTHROPIC_DEFAULT_OPUS_MODEL`         | This document                                                                         | Preserves Claude's native Opus alias override.                                                   |
+| `ANTHROPIC_DEFAULT_SONNET_MODEL`       | This document                                                                         | Preserves Claude's native Sonnet alias override.                                                 |
+| `ANTHROPIC_DEFAULT_HAIKU_MODEL`        | This document                                                                         | Preserves Claude's native Haiku alias override.                                                  |
 | `TUTTI_MOCK_AGENT_UNBOUND`             | This document                                                                         | Forces Codex unbound and Claude Code auth-required for onboarding diagnostics.                   |
 | `TUTTI_WORKSPACE_ID`                   | This document                                                                         | Supplies a workspace id to migrated agent context readers when no input id is provided.          |
 | `TUTTI_AGENT_NPM_REGISTRY`             | [Tutti Agent Readiness Bootstrap](../architecture/tutti-agent-readiness-bootstrap.md) | Pins managed agent npm installation to one registry with no fallback.                            |
 
-Claude Code provider availability follows `TUTTI_CLAUDE_CODE_RUNTIME`: the
-default `sdk` runtime checks the `claude` CLI plus the Claude SDK sidecar entry
-and Node runtime, while `acp` keeps using the legacy `claude-acp` package from
-the ACP External Agent Registry.
+Claude Code always uses the SDK sidecar runtime. Provider availability checks
+the `claude` CLI plus the Claude SDK sidecar entry and Node runtime.
+Claude-native credential and endpoint values pass through unchanged. Logs may
+record only their presence, storage source, expiry metadata, and non-reversible
+fingerprints; they must never record values, account names, or personal paths.
 
 OpenCode provider availability checks the `opencode` CLI directly and launches
 sessions through the official `opencode acp` command. Do not add model,
@@ -120,12 +145,20 @@ be passed through OpenCode config; Tutti injects `OPENCODE_CONFIG_CONTENT` with
 custom-provider environment allowlist for OpenCode includes `OPENCODE_CONFIG`,
 `OPENCODE_CONFIG_DIR`, `OPENCODE_CONFIG_CONTENT`, and `OPENCODE_PERMISSION`
 so operator-supplied OpenCode config stays explicit and provider-owned.
-OpenCode composer model options come from `opencode models` and are cached by
-the daemon model catalog. The provider auth/config watcher invalidates that
-cache when OpenCode's auth marker (`~/.local/share/opencode/auth.json`) or
-configured OpenCode config files change, so local model-list updates refresh
-through the same `agent.model.catalog.invalidated` event path used by Codex and
-Claude Code. OpenCode composer skill options are discovered with slash triggers
+OpenCode composer model options and model-specific reasoning variants come from
+`opencode models --verbose`. Run that command from the composer workspace cwd
+because OpenCode resolves project configuration relative to the current
+directory. OpenCode model lists are not stored in the daemon model-catalog
+cache; each composer-options request observes the current CLI catalog. An empty
+`variants` object is authoritative: AgentGUI must not expose or submit an ACP
+`effort` value for that model. Do not restore a provider-wide static effort list,
+because OpenCode models use different variant vocabularies (for example `max`
+rather than `xhigh`) and some reasoning-capable models expose no selectable
+variant at all. The provider auth/config watcher still publishes the
+`agent.model.catalog.invalidated` event when OpenCode's auth marker
+(`~/.local/share/opencode/auth.json`) or configured OpenCode config files change
+so an open composer refreshes immediately; it does not invalidate an OpenCode
+model-list cache. OpenCode composer skill options are discovered with slash triggers
 from native `.opencode/skills/*/SKILL.md`, Claude-compatible `.claude/skills`,
 agent-compatible `.agents/skills`, global `~/.config/opencode/skills`,
 `~/.claude/skills`, `~/.agents/skills`, and the `OPENCODE_CONFIG_DIR` skills

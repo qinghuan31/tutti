@@ -188,6 +188,36 @@ func TestAppBootstrapCommandUsesNodeForWindowsNodeStaticPackage(t *testing.T) {
 	}
 }
 
+func TestAppBootstrapCommandUsesWindowsCompanionForShellBootstrap(t *testing.T) {
+	if runtime.GOOS != "windows" {
+		t.Skip("Windows companion bootstrap test")
+	}
+
+	packageDir := t.TempDir()
+	bootstrapPath := filepath.Join(packageDir, "bootstrap.sh")
+	companionPath := filepath.Join(packageDir, "bootstrap.cmd")
+	if err := os.WriteFile(bootstrapPath, []byte("#!/bin/sh\n"), 0o644); err != nil {
+		t.Fatalf("WriteFile(bootstrap.sh) error = %v", err)
+	}
+	if err := os.WriteFile(companionPath, []byte("@echo off\r\n"), 0o644); err != nil {
+		t.Fatalf("WriteFile(bootstrap.cmd) error = %v", err)
+	}
+	command, err := appBootstrapCommand(
+		AppStartInput{PackageDir: packageDir, RuntimeProfile: workspaceAppStandaloneRuntimeProfile},
+		ResolvedAppRuntime{},
+		bootstrapPath,
+	)
+	if err != nil {
+		t.Fatalf("appBootstrapCommand() error = %v", err)
+	}
+	if command.Path != companionPath {
+		t.Fatalf("Path = %q", command.Path)
+	}
+	if len(command.Args) != 1 || command.Args[0] != companionPath {
+		t.Fatalf("command = %#v, want companion %q", command.Args, companionPath)
+	}
+}
+
 func TestAppBootstrapCommandSupervisesAICanvasProcessesOnWindows(t *testing.T) {
 	if runtime.GOOS != "windows" {
 		t.Skip("Windows AI Canvas bootstrap test")
@@ -366,6 +396,61 @@ func TestAppRunnerStartsAICanvasStylePackageOnWindows(t *testing.T) {
 	}
 }
 
+func TestAppRunnerStartsWindowsCompanionBootstrap(t *testing.T) {
+	if runtime.GOOS != "windows" {
+		t.Skip("Windows companion runner integration test")
+	}
+	nodePath, err := exec.LookPath("node")
+	if err != nil {
+		t.Skip("node is required for companion runner integration test")
+	}
+
+	root := t.TempDir()
+	packageDir := filepath.Join(root, "package with spaces")
+	if err := os.MkdirAll(packageDir, 0o755); err != nil {
+		t.Fatalf("MkdirAll(package) error = %v", err)
+	}
+	files := map[string]string{
+		"bootstrap.sh": "#!/bin/sh\n",
+		"bootstrap.cmd": `@echo off
+"%TUTTI_APP_NODE%" "%TUTTI_APP_PACKAGE_DIR%\server.js"
+`,
+		"server.js": `const http = require("node:http"); const port = Number(process.env.TUTTI_APP_PORT); http.createServer((request, response) => { response.writeHead(request.url === "/healthz" ? 204 : 404); response.end(); }).listen(port, "127.0.0.1");`,
+	}
+	for name, content := range files {
+		if err := os.WriteFile(filepath.Join(packageDir, name), []byte(content), 0o644); err != nil {
+			t.Fatalf("WriteFile(%s) error = %v", name, err)
+		}
+	}
+
+	runner := &AppRunner{
+		HealthcheckTimeout: 10 * time.Second,
+		RuntimeResolver: staticAppRuntimeResolver{runtime: ResolvedAppRuntime{
+			Node:         nodePath,
+			EnvOverrides: []string{"TUTTI_APP_NODE=" + nodePath},
+		}},
+	}
+	if _, err := runner.Start(context.Background(), AppStartInput{
+		WorkspaceID:     "ws-companion",
+		WorkspaceName:   "Companion",
+		WorkspaceRoot:   root,
+		AppID:           "companion-test",
+		PackageDir:      packageDir,
+		Bootstrap:       "bootstrap.sh",
+		HealthcheckPath: "/healthz",
+		RuntimeProfile:  workspaceAppNodeRuntimePreloadProfile,
+		RuntimeDir:      filepath.Join(root, "runtime"),
+		DataDir:         filepath.Join(root, "data"),
+		LogDir:          filepath.Join(root, "logs"),
+	}); err != nil {
+		t.Fatalf("Start() error = %v", err)
+	}
+	waitForRunnerStatus(t, runner, "ws-companion", "companion-test", workspacebiz.AppRuntimeStatusRunning)
+	if _, err := runner.Stop(context.Background(), "ws-companion", "companion-test"); err != nil {
+		t.Fatalf("Stop() error = %v", err)
+	}
+}
+
 func TestAppRunnerStartsCatalogNodeStaticPackagesOnWindows(t *testing.T) {
 	if runtime.GOOS != "windows" {
 		t.Skip("Windows catalog node-static runner test")
@@ -378,18 +463,51 @@ func TestAppRunnerStartsCatalogNodeStaticPackagesOnWindows(t *testing.T) {
 
 	tests := []struct {
 		appID        string
+		entrypoint   string
+		requiredEnv  []string
 		serverURLEnv string
 		versionEnv   string
 	}{
 		{
+			appID:        "ai-doc",
+			entrypoint:   filepath.Join("server", "server.js"),
+			requiredEnv:  []string{"AI_DOC_WEB_DIST", "AI_DOC_HOME", "AI_DOC_RUNTIME_ROOT", "AI_DOC_LOG_ROOT", "AI_DOC_WORKSPACE_ROOT", "AI_DOC_TEMPLATE_ROOT", "AI_DOC_TUTTI_CLI"},
+			serverURLEnv: "AI_DOC_SERVER_URL",
+			versionEnv:   "AI_DOC_APP_VERSION",
+		},
+		{
 			appID:        "ai-slide",
+			entrypoint:   filepath.Join("server", "server.js"),
+			requiredEnv:  []string{"AI_SLIDE_WEB_DIST", "AI_SLIDE_HOME", "AI_SLIDE_RUNTIME_ROOT", "AI_SLIDE_LOG_ROOT", "AI_SLIDE_WORKSPACE_ROOT", "AI_SLIDE_TEMPLATE_ROOT", "AI_SLIDE_TEMPLATE_ASSET_ROOT"},
 			serverURLEnv: "AI_SLIDE_SERVER_URL",
 			versionEnv:   "AI_SLIDE_APP_VERSION",
 		},
 		{
 			appID:        "group-chat",
+			entrypoint:   filepath.Join("server", "server.js"),
+			requiredEnv:  []string{"GROUP_CHAT_WEB_DIST", "GROUP_CHAT_HOME", "GROUP_CHAT_WORKSPACE_ROOT"},
 			serverURLEnv: "GROUP_CHAT_SERVER_URL",
 			versionEnv:   "GROUP_CHAT_APP_VERSION",
+		},
+		{
+			appID:       "daily-tech-radar",
+			entrypoint:  "server.mjs",
+			requiredEnv: []string{"HOST", "PORT", "TUTTI_APP_NODE", "TUTTI_APP_PACKAGE_DIR", "TUTTI_APP_DATA_DIR"},
+		},
+		{
+			appID:       "omni-catcher",
+			entrypoint:  filepath.Join("server", "server.js"),
+			requiredEnv: []string{"TUTTI_APP_NODE", "TUTTI_APP_RUNTIME_DIR", "TUTTI_APP_LOG_DIR", "TUTTI_APP_DATA_DIR"},
+		},
+		{
+			appID:       "tutti-onboarding",
+			entrypoint:  "server.mjs",
+			requiredEnv: []string{"HOST", "PORT", "TUTTI_APP_PACKAGE_DIR", "TUTTI_APP_DATA_DIR"},
+		},
+		{
+			appID:       "vibe-design",
+			entrypoint:  filepath.Join("server", "dist", "main.js"),
+			requiredEnv: []string{"VIBE_TUTTI_CLI", "VIBE_WORKSPACE_ROOT", "TUTTI_APP_NODE", "TUTTI_APP_BASE_URL"},
 		},
 	}
 
@@ -397,31 +515,39 @@ func TestAppRunnerStartsCatalogNodeStaticPackagesOnWindows(t *testing.T) {
 		t.Run(test.appID, func(t *testing.T) {
 			root := t.TempDir()
 			packageDir := filepath.Join(root, "packages", test.appID, "0.1.25")
-			serverDir := filepath.Join(packageDir, "server")
-			if err := os.MkdirAll(serverDir, 0o755); err != nil {
+			entrypoint := filepath.Join(packageDir, test.entrypoint)
+			if err := os.MkdirAll(filepath.Dir(entrypoint), 0o755); err != nil {
 				t.Fatalf("MkdirAll(server) error = %v", err)
 			}
 			if err := os.WriteFile(filepath.Join(packageDir, "bootstrap.sh"), []byte("#!/bin/sh\n"), 0o644); err != nil {
 				t.Fatalf("WriteFile(bootstrap.sh) error = %v", err)
 			}
+			requiredEnv, err := json.Marshal(test.requiredEnv)
+			if err != nil {
+				t.Fatalf("Marshal(requiredEnv) error = %v", err)
+			}
 			serverSource := strings.NewReplacer(
+				"__REQUIRED_ENV__", string(requiredEnv),
 				"__VERSION_ENV__", test.versionEnv,
 				"__SERVER_URL_ENV__", test.serverURLEnv,
-			).Replace(`const http = require("node:http");
-const { execFile } = require("node:child_process");
+			).Replace(`(async () => {
+const http = await import("node:http");
+const { execFile } = await import("node:child_process");
 const port = Number(process.env.PORT);
-if (!process.env.__VERSION_ENV__) process.exit(2);
-if (process.env.__SERVER_URL_ENV__ !== "http://127.0.0.1:" + port) process.exit(3);
+for (const key of __REQUIRED_ENV__) if (!process.env[key]) process.exit(2);
+if ("__VERSION_ENV__" && !process.env["__VERSION_ENV__"]) process.exit(3);
+if ("__SERVER_URL_ENV__" && process.env["__SERVER_URL_ENV__"] !== "http://127.0.0.1:" + port) process.exit(4);
 execFile(process.env.TUTTI_CLI, ["--version"], (error) => {
-  if (error) process.exit(4);
+  if (error) process.exit(5);
   http.createServer((request, response) => {
     response.writeHead(request.url === "/api/health" ? 200 : 404);
     response.end();
   }).listen(port, "127.0.0.1");
 });
+})();
 `)
-			if err := os.WriteFile(filepath.Join(serverDir, "server.js"), []byte(serverSource), 0o644); err != nil {
-				t.Fatalf("WriteFile(server.js) error = %v", err)
+			if err := os.WriteFile(entrypoint, []byte(serverSource), 0o644); err != nil {
+				t.Fatalf("WriteFile(%s) error = %v", test.entrypoint, err)
 			}
 
 			runner := &AppRunner{

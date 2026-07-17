@@ -18,13 +18,18 @@ import {
   reportWorkspaceAppOpenedFromDockEntry,
   resolveWorkspaceAppCenterLaunchRequest,
   workspaceAppDockEntryId,
+  workspaceAppInlineBrowserNodeId,
   workspaceAppWebviewInstanceId,
   workspaceAppWebviewTypeID
 } from "./workspaceAppCenterLaunchRequest.ts";
 
-test("workspace app node ids resolve app ids from dock and webview node formats", () => {
+test("workspace app node ids resolve app ids from dock, inline, and webview node formats", () => {
   assert.equal(
     readWorkspaceAppIdFromNodeId(workspaceAppDockEntryId("group-chat")),
+    "group-chat"
+  );
+  assert.equal(
+    readWorkspaceAppIdFromNodeId(workspaceAppInlineBrowserNodeId("group-chat")),
     "group-chat"
   );
   assert.equal(

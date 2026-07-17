@@ -17,6 +17,7 @@ import type {
   DesktopDockIconStyle,
   DesktopDockPlacement,
   DesktopFeatureFlags,
+  DesktopWorkspaceUiMode,
   DesktopMinimizeAnimation,
   DesktopSleepPreventionMode,
   DesktopUpdateChannel,
@@ -100,6 +101,7 @@ export interface IWorkspaceSettingsService {
   changeDockIconStyle(style: DesktopDockIconStyle): Promise<void>;
   changeDockPlacement(placement: DesktopDockPlacement): Promise<void>;
   changeFeatureFlags(flags: DesktopFeatureFlags): Promise<void>;
+  changeWorkspaceUiMode(mode: DesktopWorkspaceUiMode): Promise<void>;
   changeWorkbenchShortcuts(shortcuts: DesktopWorkbenchShortcuts): Promise<void>;
   changeMinimizeAnimation(animation: DesktopMinimizeAnimation): Promise<void>;
   changeWorkbenchWindowSnapping(
@@ -108,8 +110,6 @@ export interface IWorkspaceSettingsService {
   changeLocale(nextLocale: DesktopLocale): Promise<void>;
   changeSleepPreventionMode(mode: DesktopSleepPreventionMode): Promise<void>;
   changeShowAppDeveloperSources(show: boolean): Promise<void>;
-  changeEnableCursorAgent(enable: boolean): Promise<void>;
-  changeEnableOpenCodeAgent(enable: boolean): Promise<void>;
   changeThemeSource(nextThemeSource: DesktopThemeSource): Promise<void>;
   changeUpdateChannel(channel: DesktopUpdateChannel): Promise<void>;
   changeUpdatePolicy(policy: DesktopUpdatePolicy): Promise<void>;

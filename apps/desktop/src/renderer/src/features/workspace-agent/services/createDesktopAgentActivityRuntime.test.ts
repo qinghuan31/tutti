@@ -3,6 +3,20 @@ import test from "node:test";
 import { createDesktopAgentActivityRuntime } from "./createDesktopAgentActivityRuntime.ts";
 import type { IWorkspaceAgentActivityService } from "./workspaceAgentActivityService.interface.ts";
 
+test("desktop agent activity runtime scopes section query caches by workspace", () => {
+  const runtime = createDesktopAgentActivityRuntime(
+    createWorkspaceAgentActivityService()
+  );
+
+  const first = runtime.getSessionSectionsQueryCache?.("workspace-1");
+  const same = runtime.getSessionSectionsQueryCache?.(" workspace-1 ");
+  const other = runtime.getSessionSectionsQueryCache?.("workspace-2");
+
+  assert.ok(first);
+  assert.equal(first, same);
+  assert.notEqual(first, other);
+});
+
 test("desktop agent activity runtime forwards package diagnostics to renderer diagnostics", () => {
   const rendererDiagnostics: unknown[] = [];
   const runtime = createDesktopAgentActivityRuntime(
@@ -47,6 +61,46 @@ test("desktop agent activity runtime hides prompt uploads without archive suppor
   assert.equal(runtime.promptContentUploadSupport?.file, false);
   assert.equal(runtime.promptContentUploadSupport?.image, false);
   assert.equal(runtime.uploadPromptContent, undefined);
+  assert.equal(runtime.stagePastedText, undefined);
+});
+
+test("desktop agent activity runtime stages pasted text as a local prompt asset", async () => {
+  const archiveInputs: unknown[] = [];
+  const runtime = createDesktopAgentActivityRuntime(
+    createWorkspaceAgentActivityService(),
+    {
+      hostFilesApi: {
+        async archiveAgentPromptFile(input) {
+          archiveInputs.push(input);
+          return {
+            name: input.displayName ?? "attachment",
+            path: "/Users/local/Library/Application Support/Tutti/agent-prompt-assets/ws/pasted.txt",
+            sizeBytes: 12
+          };
+        }
+      }
+    }
+  );
+
+  const result = await runtime.stagePastedText?.({
+    workspaceId: "workspace-1",
+    text: "hello 世界",
+    name: "pasted-text.txt"
+  });
+
+  assert.deepEqual(archiveInputs, [
+    {
+      workspaceID: "workspace-1",
+      dataBase64: "aGVsbG8g5LiW55WM",
+      displayName: "pasted-text.txt",
+      mimeType: "text/plain"
+    }
+  ]);
+  assert.deepEqual(result, {
+    name: "pasted-text.txt",
+    path: "/Users/local/Library/Application Support/Tutti/agent-prompt-assets/ws/pasted.txt",
+    sizeBytes: 12
+  });
 });
 
 test("desktop agent activity runtime archives prompt file uploads", async () => {
@@ -302,10 +356,10 @@ test("desktop agent activity runtime delegates canonical session synchronization
 function createWorkspaceAgentActivityService(): IWorkspaceAgentActivityService {
   return {
     _serviceBrand: undefined,
-    activateSession: async () => {
+    getSessionEngine() {
       throw new Error("not implemented");
     },
-    cancelSession: async () => {
+    activateSession: async () => {
       throw new Error("not implemented");
     },
     goalControl: async () => {
@@ -329,9 +383,6 @@ function createWorkspaceAgentActivityService(): IWorkspaceAgentActivityService {
     updateSessionSettings: async () => {
       throw new Error("not implemented");
     },
-    getSessionControlState: async () => {
-      throw new Error("not implemented");
-    },
     getSnapshot: () => {
       throw new Error("not implemented");
     },
@@ -347,7 +398,7 @@ function createWorkspaceAgentActivityService(): IWorkspaceAgentActivityService {
       workspaceId: "workspace-1"
     }),
     listSessionSections: async () => ({
-      pinned: { hasMore: false, sessions: [] },
+      pinned: { hasMore: false, sessions: [], totalCount: 0 },
       sections: [],
       workspaceId: "workspace-1"
     }),
@@ -355,23 +406,24 @@ function createWorkspaceAgentActivityService(): IWorkspaceAgentActivityService {
       kind: "conversations",
       sectionKey: input.sectionKey,
       sessions: [],
-      hasMore: false
+      hasMore: false,
+      totalCount: 0
     }),
-    countSessionSection: async (input) => ({
-      count: 0,
+    listSessionSectionDeletionCandidates: async (input) => ({
+      excludePinned: input.excludePinned ?? false,
       sectionKey: input.sectionKey,
+      sessionIds: [],
       workspaceId: input.workspaceId
     }),
-    deleteSessionSection: async (input) => ({
+    deleteSessionsBatch: async () => ({
       removedMessages: 0,
       removedSessionIds: [],
-      removedSessions: 0,
-      sectionKey: input.sectionKey,
-      workspaceId: input.workspaceId
+      removedSessions: 0
     }),
     listPinnedSessionsPage: async () => ({
       hasMore: false,
-      sessions: []
+      sessions: [],
+      totalCount: 0
     }),
     scanExternalSessionImports: async () => {
       throw new Error("not implemented");
@@ -379,6 +431,7 @@ function createWorkspaceAgentActivityService(): IWorkspaceAgentActivityService {
     importExternalSessions: async () => {
       throw new Error("not implemented");
     },
+    selectExternalSessionImportArchive: async () => null,
     load: async () => {
       throw new Error("not implemented");
     },

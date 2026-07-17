@@ -17,6 +17,24 @@ func ReportActivityAsSessionUpdates(
 	if reporter == nil {
 		return reply, nil
 	}
+	if len(input.GoalReconcileRequests) > 0 {
+		goalReporter, ok := reporter.(GoalReconcileRequestReporter)
+		if !ok {
+			return reply, fmt.Errorf("agent activity reporter does not support goal reconcile requests")
+		}
+		for _, request := range input.GoalReconcileRequests {
+			requestReply, err := goalReporter.ReportGoalReconcileRequired(ctx, ReportGoalReconcileRequiredInput{
+				WorkspaceID: input.WorkspaceID,
+				Request:     request,
+			})
+			if err != nil {
+				return reply, err
+			}
+			if requestReply.Accepted {
+				reply.AcceptedGoalReconcileRequestCount++
+			}
+		}
+	}
 	for _, stateInput := range SessionStateInputsFromActivity(input) {
 		stateReply, err := reporter.ReportSessionState(ctx, stateInput)
 		if err != nil {
@@ -26,6 +44,14 @@ func ReportActivityAsSessionUpdates(
 			reply.AcceptedStatePatchCount++
 		}
 		reply.RequestBodyBytes += stateReply.RequestBodyBytes
+	}
+	for _, auditInput := range SessionAuditInputsFromActivity(input) {
+		auditReply, err := reporter.ReportSessionMessages(ctx, auditInput)
+		if err != nil {
+			return reply, err
+		}
+		reply.AcceptedSessionAuditCount += auditReply.AcceptedCount
+		reply.RequestBodyBytes += auditReply.RequestBodyBytes
 	}
 	messageInputs, err := SessionMessageInputsFromActivity(input)
 	if err != nil {
@@ -40,6 +66,45 @@ func ReportActivityAsSessionUpdates(
 		reply.RequestBodyBytes += messagesReply.RequestBodyBytes
 	}
 	return reply, nil
+}
+
+func SessionAuditInputsFromActivity(input ReportActivityInput) []ReportSessionMessagesInput {
+	if len(input.SessionAudits) == 0 {
+		return nil
+	}
+	source := input.Source
+	source.SessionOrigin = canonicalSessionOriginValue(source.SessionOrigin)
+	indexBySession := make(map[string]int)
+	out := make([]ReportSessionMessagesInput, 0)
+	for _, audit := range input.SessionAudits {
+		agentSessionID := strings.TrimSpace(firstNonEmptyString(source.AgentID, source.ProviderSessionID))
+		auditID := strings.TrimSpace(audit.AuditID)
+		if agentSessionID == "" || auditID == "" {
+			continue
+		}
+		index, ok := indexBySession[agentSessionID]
+		if !ok {
+			index = len(out)
+			indexBySession[agentSessionID] = index
+			out = append(out, ReportSessionMessagesInput{
+				WorkspaceID: input.WorkspaceID, AgentSessionID: agentSessionID,
+				SessionOrigin: source.SessionOrigin, Connector: cloneConnector(input.Connector), Source: source,
+			})
+		}
+		payload := clonePayloadMap(audit.Payload)
+		if payload == nil {
+			payload = map[string]any{}
+		}
+		if strings.TrimSpace(audit.Content) != "" {
+			payload["content"] = audit.Content
+			payload["text"] = audit.Content
+		}
+		out[index].Updates = append(out[index].Updates, WorkspaceAgentSessionMessageUpdate{
+			MessageID: auditID, Role: strings.TrimSpace(audit.Role), Kind: "session_audit",
+			Status: "completed", Payload: payload, OccurredAtUnixMS: audit.OccurredAtUnixMS,
+		})
+	}
+	return out
 }
 
 func SessionStateInputsFromActivity(input ReportActivityInput) []ReportSessionStateInput {
@@ -92,7 +157,12 @@ func SessionMessageInputsFromActivity(input ReportActivityInput) ([]ReportSessio
 		if strings.TrimSpace(converted.MessageID) == "" {
 			continue
 		}
-		if strings.TrimSpace(converted.TurnID) == "" {
+		turnID := strings.TrimSpace(converted.TurnID)
+		kind := strings.TrimSpace(converted.Kind)
+		if kind == "session_audit" {
+			return nil, fmt.Errorf("agent activity session_audit %q must use SessionAudits", converted.MessageID)
+		}
+		if turnID == "" && kind != "session_audit" {
 			return nil, fmt.Errorf("agent activity message_update %q is missing turnId", converted.MessageID)
 		}
 		index, ok := indexBySession[agentSessionID]
@@ -183,38 +253,58 @@ func sessionStateUpdateFromPatch(patch WorkspaceAgentStatePatch) WorkspaceAgentS
 		currentPhase = deriveCurrentPhaseFromEntityPatches(patch.Entities)
 	}
 	out := WorkspaceAgentSessionStateUpdate{
-		AgentTargetID:      strings.TrimSpace(patch.AgentTargetID),
-		DeviceID:           strings.TrimSpace(patch.DeviceID),
-		Provider:           strings.TrimSpace(patch.Provider),
-		ProviderSessionID:  strings.TrimSpace(patch.ProviderSessionID),
-		Model:              strings.TrimSpace(patch.Model),
-		Settings:           clonePayloadMap(patch.Settings),
-		RuntimeContext:     clonePayloadMap(patch.RuntimeContext),
-		TurnLifecycle:      cloneTurnLifecycle(patch.TurnLifecycle),
-		SubmitAvailability: cloneSubmitAvailability(patch.SubmitAvailability),
-		PendingInteractive: cloneInteractivePrompt(patch.PendingInteractive),
-		CWD:                strings.TrimSpace(patch.CWD),
-		Title:              strings.TrimSpace(patch.Title),
-		LifecycleStatus:    strings.TrimSpace(patch.LifecycleStatus),
-		CurrentPhase:       currentPhase,
-		LastError:          strings.TrimSpace(patch.LastError),
-		OccurredAtUnixMS:   patch.OccurredAtUnixMS,
+		Kind:                  strings.TrimSpace(patch.Kind),
+		RootAgentSessionID:    strings.TrimSpace(patch.RootAgentSessionID),
+		RootTurnID:            strings.TrimSpace(patch.RootTurnID),
+		ParentAgentSessionID:  strings.TrimSpace(patch.ParentAgentSessionID),
+		ParentTurnID:          strings.TrimSpace(patch.ParentTurnID),
+		ParentToolCallID:      strings.TrimSpace(patch.ParentToolCallID),
+		AgentTargetID:         strings.TrimSpace(patch.AgentTargetID),
+		DeviceID:              strings.TrimSpace(patch.DeviceID),
+		Provider:              strings.TrimSpace(patch.Provider),
+		ProviderSessionID:     strings.TrimSpace(patch.ProviderSessionID),
+		Model:                 strings.TrimSpace(patch.Model),
+		Settings:              clonePayloadMap(patch.Settings),
+		RuntimeContext:        clonePayloadMap(patch.RuntimeContext),
+		TurnLifecycle:         cloneTurnLifecycle(patch.TurnLifecycle),
+		SubmitAvailability:    cloneSubmitAvailability(patch.SubmitAvailability),
+		InteractionTransition: cloneInteractionTransition(patch.InteractionTransition),
+		CWD:                   strings.TrimSpace(patch.CWD),
+		Title:                 strings.TrimSpace(patch.Title),
+		LifecycleStatus:       strings.TrimSpace(patch.LifecycleStatus),
+		CurrentPhase:          currentPhase,
+		LastError:             strings.TrimSpace(patch.LastError),
+		OccurredAtUnixMS:      patch.OccurredAtUnixMS,
+		RootProviderTurn:      cloneRootProviderTurnTransition(patch.RootProviderTurn),
 	}
 	if patch.Turn != nil {
 		out.Turn = &WorkspaceAgentTurnStateUpdate{
-			TurnID:             strings.TrimSpace(patch.Turn.TurnID),
-			ActiveTurnID:       cloneStringPointer(patch.Turn.ActiveTurnID),
-			Phase:              strings.TrimSpace(patch.Turn.Phase),
-			Outcome:            strings.TrimSpace(patch.Turn.Outcome),
-			Settling:           patch.Turn.Settling,
-			CompletedCommand:   cloneCompletedCommand(patch.Turn.CompletedCommand),
-			SubmitAvailability: cloneSubmitAvailability(patch.Turn.SubmitAvailability),
-			FileChanges:        clonePayloadMap(patch.Turn.FileChanges),
-			StartedAtUnixMS:    patch.Turn.StartedAtUnixMS,
-			CompletedAtUnixMS:  patch.Turn.CompletedAtUnixMS,
+			TurnID:                strings.TrimSpace(patch.Turn.TurnID),
+			Origin:                strings.TrimSpace(patch.Turn.Origin),
+			SourceGoalOperationID: strings.TrimSpace(patch.Turn.SourceGoalOperationID),
+			SourceGoalRevision:    patch.Turn.SourceGoalRevision,
+			SourceGoalRepairEpoch: patch.Turn.SourceGoalRepairEpoch,
+			ActiveTurnID:          cloneStringPointer(patch.Turn.ActiveTurnID),
+			Phase:                 strings.TrimSpace(patch.Turn.Phase),
+			Outcome:               strings.TrimSpace(patch.Turn.Outcome),
+			Settling:              patch.Turn.Settling,
+			CompletedCommand:      cloneCompletedCommand(patch.Turn.CompletedCommand),
+			SubmitAvailability:    cloneSubmitAvailability(patch.Turn.SubmitAvailability),
+			FileChanges:           clonePayloadMap(patch.Turn.FileChanges),
+			StartedAtUnixMS:       patch.Turn.StartedAtUnixMS,
+			CompletedAtUnixMS:     patch.Turn.CompletedAtUnixMS,
 		}
 	}
 	return out
+}
+
+func cloneRootProviderTurnTransition(value *WorkspaceAgentRootProviderTurnTransition) *WorkspaceAgentRootProviderTurnTransition {
+	if value == nil {
+		return nil
+	}
+	cloned := *value
+	cloned.CompletedCommand = cloneCompletedCommand(value.CompletedCommand)
+	return &cloned
 }
 
 func cloneMessageSemantics(value *WorkspaceAgentMessageSemantics) *WorkspaceAgentMessageSemantics {
@@ -266,18 +356,17 @@ func cloneTurnLifecycle(value *WorkspaceAgentTurnLifecycle) *WorkspaceAgentTurnL
 	}
 }
 
-func cloneInteractivePrompt(value *WorkspaceAgentInteractivePrompt) *WorkspaceAgentInteractivePrompt {
+func cloneInteractionTransition(value *WorkspaceAgentInteractionTransition) *WorkspaceAgentInteractionTransition {
 	if value == nil {
 		return nil
 	}
-	return &WorkspaceAgentInteractivePrompt{
-		Kind:      strings.TrimSpace(value.Kind),
+	return &WorkspaceAgentInteractionTransition{
 		RequestID: strings.TrimSpace(value.RequestID),
-		ToolName:  strings.TrimSpace(value.ToolName),
+		TurnID:    strings.TrimSpace(value.TurnID),
+		Kind:      strings.TrimSpace(value.Kind),
 		Status:    strings.TrimSpace(value.Status),
+		ToolName:  strings.TrimSpace(value.ToolName),
 		Input:     clonePayloadMap(value.Input),
-		Output:    clonePayloadMap(value.Output),
-		Error:     clonePayloadMap(value.Error),
 		Metadata:  clonePayloadMap(value.Metadata),
 	}
 }
@@ -307,6 +396,22 @@ func stringValueFromPayloadMap(payload map[string]any, key string) string {
 		return ""
 	}
 	return text
+}
+
+func int64ValueFromPayloadMap(payload map[string]any, key string) int64 {
+	if len(payload) == 0 {
+		return 0
+	}
+	switch value := payload[key].(type) {
+	case int:
+		return int64(value)
+	case int64:
+		return value
+	case float64:
+		return int64(value)
+	default:
+		return 0
+	}
 }
 
 func cloneConnector(connector *ConnectorInfo) *ConnectorInfo {

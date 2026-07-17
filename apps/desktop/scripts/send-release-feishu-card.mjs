@@ -46,22 +46,31 @@ function resolveDisplayValue(value, fallback = "unknown") {
   return value || fallback;
 }
 
-function resolveReleaseKind(tag) {
+function resolveReleaseKind(tag, publicationStatus = "published") {
   if (/-rc\.(0|[1-9]\d*)$/i.test(tag)) {
-    return "Release candidate prerelease";
+    return publicationStatus === "draft"
+      ? "Draft release candidate prerelease"
+      : "Release candidate prerelease";
   }
   if (/-beta\.(0|[1-9]\d*)$/i.test(tag)) {
-    return "Beta prerelease";
+    return publicationStatus === "draft"
+      ? "Draft beta prerelease"
+      : "Beta prerelease";
   }
-  return "Stable latest release";
+  return publicationStatus === "draft"
+    ? "Draft stable candidate"
+    : "Stable latest release";
 }
 
-function resolveIntroText(tag) {
+function resolveIntroText(tag, publicationStatus = "published") {
+  if (publicationStatus === "draft") {
+    return `**${tag}** 已构建并上传版本固定下载目录，GitHub Release 仍为 Draft，尚未更新公开下载通道。`;
+  }
   if (/-rc\.(0|[1-9]\d*)$/i.test(tag)) {
-    return `**${tag}** 已构建并发布为 GitHub RC Pre-release，可从下方入口下载安装包。`;
+    return `**${tag}** 已构建并同步到 RC 预览通道，可从下方入口下载安装包。`;
   }
   if (/-beta\.(0|[1-9]\d*)$/i.test(tag)) {
-    return `**${tag}** 已构建并发布为 GitHub Beta Pre-release，可从下方入口下载安装包。`;
+    return `**${tag}** 已构建并同步到 Beta 预览通道，可从下方入口下载安装包。`;
   }
   return `**${tag}** 已构建并发布为 GitHub Release，可从下方入口下载安装包。`;
 }
@@ -117,13 +126,42 @@ async function loadRelease(repository, tag, githubToken) {
       headers
     }
   );
-  if (!response.ok) {
+  if (response.ok) {
+    return response.json();
+  }
+  if (response.status !== 404) {
     throw new Error(
       `Unable to load release ${tag}: GitHub API returned ${response.status}`
     );
   }
 
-  return response.json();
+  // GitHub's release-by-tag endpoint does not return draft releases. The
+  // authenticated releases listing does, so fall back to it for draft-only,
+  // release-candidate, and beta notification paths.
+  for (let page = 1; ; page += 1) {
+    const releasesResponse = await fetch(
+      `https://api.github.com/repos/${repository}/releases?per_page=100&page=${page}`,
+      {
+        headers
+      }
+    );
+    if (!releasesResponse.ok) {
+      throw new Error(
+        `Unable to load release ${tag}: GitHub API returned ${releasesResponse.status}`
+      );
+    }
+
+    const releases = await releasesResponse.json();
+    const release = releases.find((candidate) => candidate.tag_name === tag);
+    if (release) {
+      return release;
+    }
+    if (releases.length < 100) {
+      break;
+    }
+  }
+
+  throw new Error(`Unable to load release ${tag}: release was not found`);
 }
 
 function findPreferredAssetName(assetNames, pattern) {
@@ -242,6 +280,7 @@ function buildCardPayload({
   actor,
   branch,
   macUrl,
+  publicationStatus = "published",
   releaseUrl,
   runUrl,
   summary,
@@ -271,7 +310,7 @@ function buildCardPayload({
         {
           tag: "div",
           text: {
-            content: resolveIntroText(tag),
+            content: resolveIntroText(tag, publicationStatus),
             tag: "lark_md"
           }
         },
@@ -286,7 +325,7 @@ function buildCardPayload({
             {
               is_short: true,
               text: {
-                content: `**构建类型**\n${resolveReleaseKind(tag)}`,
+                content: `**构建类型**\n${resolveReleaseKind(tag, publicationStatus)}`,
                 tag: "lark_md"
               }
             },
@@ -321,8 +360,14 @@ function buildCardPayload({
         { actions, tag: "action" }
       ],
       header: {
-        template: "blue",
-        title: { content: "Tutti 发布完成", tag: "plain_text" }
+        template: publicationStatus === "draft" ? "orange" : "blue",
+        title: {
+          content:
+            publicationStatus === "draft"
+              ? "Tutti Draft 构建完成"
+              : "Tutti 发布完成",
+          tag: "plain_text"
+        }
       }
     },
     msg_type: "interactive"
@@ -359,6 +404,15 @@ async function main() {
   const target = readOption(args, "target", "RELEASE_TARGET");
   const branch = readOption(args, "branch", "RELEASE_BRANCH");
   const actor = readOption(args, "actor", "RELEASE_ACTOR");
+  const publicationStatus = readOption(
+    args,
+    "publication-status",
+    "RELEASE_PUBLICATION_STATUS",
+    "published"
+  );
+  if (publicationStatus !== "draft" && publicationStatus !== "published") {
+    throw new Error("RELEASE_PUBLICATION_STATUS must be draft or published");
+  }
   const releaseUrl = readOption(
     args,
     "release-url",
@@ -389,8 +443,16 @@ async function main() {
       "TUTTI_DESKTOP_RELEASE_ASSETS_S3_PREFIX"
     )
   });
-  const release = await loadRelease(repository, tag, resolveGithubToken());
   const mirroredAssetNames = await listAssetNames(releaseAssetDirectory);
+  const mirroredMacUrl = resolveMirroredAssetUrl(
+    mirroredAssetNames,
+    /\.dmg$/i,
+    releaseAssetBaseUrl,
+    tag
+  );
+  const release = mirroredMacUrl
+    ? null
+    : await loadRelease(repository, tag, resolveGithubToken());
   const summary = await loadReleaseSummary(
     readOption(args, "summary", "RELEASE_SUMMARY_PATH")
   );
@@ -398,12 +460,8 @@ async function main() {
     actor,
     branch,
     macUrl:
-      resolveMirroredAssetUrl(
-        mirroredAssetNames,
-        /\.dmg$/i,
-        releaseAssetBaseUrl,
-        tag
-      ) || findAssetUrl(release, /\.dmg$/i, releaseAssetBaseUrl),
+      mirroredMacUrl || findAssetUrl(release, /\.dmg$/i, releaseAssetBaseUrl),
+    publicationStatus,
     releaseUrl,
     runUrl,
     summary,
@@ -434,6 +492,7 @@ export {
   buildCardPayload,
   buildSummaryElements,
   findPreferredAssetName,
+  loadRelease,
   loadReleaseSummary,
   listAssetNames,
   resolveMirroredAssetUrl,

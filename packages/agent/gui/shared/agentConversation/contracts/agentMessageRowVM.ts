@@ -1,11 +1,14 @@
+import type { AgentActivityMessageSemantics } from "@tutti-os/agent-activity-core";
 import type { ToolCallStatusKind } from "../../workspaceAgentToolCallDisplay";
-import type { WorkspaceAgentActivityTimelineItem } from "../../workspaceAgentActivityTypes";
+import type { WorkspaceAgentActivityTimelineItem } from "../../workspaceAgentTimelineTypes";
+import type { AgentTranscriptPresentationKind } from "./agentTranscriptPresentation";
 
 export interface AgentMessageContentVM {
   kind: "message-content";
   id: string;
   turnId: string;
   body: string;
+  presentationKind: AgentTranscriptPresentationKind;
   copyText?: string | null;
   statusKind?: ToolCallStatusKind | null;
   contentKind?: "text" | "image-grid" | "plan";
@@ -22,6 +25,8 @@ export interface AgentMessageContentVM {
     noticeKind: string | null;
     severity: string | null;
     source?: string | null;
+    command?: AgentActivityMessageSemantics["noticeCommand"] | null;
+    commandStatus?: AgentActivityMessageSemantics["noticeCommandStatus"] | null;
     title: string | null;
     detail: string | null;
     retryable: boolean | null;

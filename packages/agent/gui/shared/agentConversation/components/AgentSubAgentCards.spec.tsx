@@ -146,7 +146,8 @@ function subAgent(
   overrides: Partial<AgentTaskSubAgentVM> = {}
 ): AgentTaskSubAgentVM {
   return {
-    ownerThreadId: "child-thread-1",
+    childSessionId: "child-session-1",
+    parentToolCallId: "spawn-1",
     status: "running",
     name: "Repo smell analyst",
     task: "inspect the repository",
@@ -160,6 +161,7 @@ function subAgent(
     startedAtUnixMs: 1_000,
     latestActivityAtUnixMs: 1_000,
     terminalAtUnixMs: null,
+    childSessions: [],
     ...overrides
   };
 }

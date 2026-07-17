@@ -149,7 +149,7 @@ func TuttiDesktopHostPack() CapabilityPack {
 				Key:      "host-app-context",
 				Order:    1000,
 				Delivery: PolicyDeliveryProviderRuntime,
-				Body:     hostAppContextPolicy(),
+				Body:     hostAppContextPolicy(input),
 			},
 		}}, nil
 	}}

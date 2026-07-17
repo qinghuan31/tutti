@@ -220,6 +220,18 @@ Dock visibility and launchability should be modeled separately.
 default navigation set but should appear when a matching node is already open
 or restored from snapshot.
 
+### Open-State Indicator
+
+An entry with a matching open or minimized node renders the shared Dock state
+indicator; a closed entry does not. This is a Workbench interaction invariant,
+not an application-specific presentation choice. Dock placement may reposition
+the indicator but must not suppress it: the bottom Dock places it below the
+icon, while the left Dock places it to the left and vertically centers it.
+
+The indicator state follows canonical `dockEntryId` affinity. Hosts should
+migrate stale durable affinity values rather than loosen exact matching or add
+application-specific CSS exceptions.
+
 ### Launch Behavior
 
 - `enabled`: dock may create a new node when click behavior resolves to launch
@@ -283,6 +295,11 @@ The shared package should recognize normalized presentation states:
 The shared package may provide default visuals through explicit asset subpaths
 and may provide tooltip treatment for these states, but it should not own the
 underlying workflow state machine.
+
+Dock placement may adapt those visuals without changing node state semantics.
+The bottom Dock renders the existing open/minimized status dot below the icon.
+The left Dock keeps one centered icon axis without reserving a horizontal
+gutter, and renders the same indicator to the left of the icon.
 
 ### Badge
 

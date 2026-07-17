@@ -120,11 +120,10 @@ func createSessionInputFromPersisted(session PersistedSession) CreateSessionInpu
 		input.ComputerUse = &value
 	}
 	if reasoningEffort := strings.TrimSpace(settings.ReasoningEffort); reasoningEffort != "" {
-		normalizedReasoningEffort := normalizeReasoningEffortForProvider(
-			strings.TrimSpace(session.Provider),
-			reasoningEffort,
-		)
-		input.ReasoningEffort = &normalizedReasoningEffort
+		if !composerProviderUsesModelReasoningCatalog(session.Provider) {
+			reasoningEffort = normalizeReasoningEffortForProvider(session.Provider, reasoningEffort)
+		}
+		input.ReasoningEffort = &reasoningEffort
 	}
 	if speed := strings.TrimSpace(settings.Speed); speed != "" {
 		normalizedSpeed := normalizeSpeedForProvider(
@@ -134,7 +133,8 @@ func createSessionInputFromPersisted(session PersistedSession) CreateSessionInpu
 		input.Speed = &normalizedSpeed
 	}
 	input.ConversationDetailMode = preferencesbiz.NormalizeDesktopAgentConversationDetailMode(settings.ConversationDetailMode)
-	if sourcePath, ok := session.RuntimeContext["externalSourcePath"].(string); ok {
+	if sourcePath, ok := session.InternalRuntimeContext["externalSourcePath"].(string); ok &&
+		externalImportResumeSupported(session.InternalRuntimeContext) {
 		input.ExternalRolloutSourcePath = strings.TrimSpace(sourcePath)
 	}
 	return input

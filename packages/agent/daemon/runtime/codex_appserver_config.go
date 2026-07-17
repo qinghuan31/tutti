@@ -40,6 +40,21 @@ func codexACPReasoningEffortValue(value string) string {
 	}
 }
 
+// codexAppServerReasoningEffortValue preserves the catalog value expected by
+// the Codex app-server. Current catalogs deliberately model reasoning effort
+// as an open string, so unknown future values must pass through instead of
+// being dropped by the legacy ACP allowlist above. Known values are still
+// canonicalized for compatibility with older persisted settings.
+func codexAppServerReasoningEffortValue(value string) string {
+	trimmed := strings.TrimSpace(value)
+	switch strings.ToLower(trimmed) {
+	case "minimal", "low", "medium", "high", "xhigh", "max", "ultra":
+		return strings.ToLower(trimmed)
+	default:
+		return trimmed
+	}
+}
+
 // codexServiceTierValue maps the orthogonal speed tier onto the codex
 // app-server `service_tier` config value. The "fast" tier is sent verbatim;
 // the codex app-server maps the legacy `fast` config onto the request value

@@ -15,7 +15,10 @@ import {
 } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { spawnCommand } from "../../../../../tools/scripts/command-helpers.mjs";
+import {
+  isWindows,
+  spawnCommand
+} from "../../../../../tools/scripts/command-helpers.mjs";
 
 const scriptPath = fileURLToPath(import.meta.url);
 const appDir = path.resolve(path.dirname(scriptPath), "..");
@@ -36,7 +39,8 @@ const requiredPackageFiles = [
   "tutti.app.json",
   "tutti-guide.md",
   "AGENTS.md",
-  "bootstrap.sh"
+  "bootstrap.sh",
+  "bootstrap.cmd"
 ];
 const cliSegmentPattern = /^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$/;
 const defaultCliHandlerTimeoutMs = 30000;
@@ -95,10 +99,17 @@ async function packageBuiltin({ checkOnly = false } = {}) {
     await mkdir(generatedDir, { recursive: true });
     const tempZipPath = path.join(
       generatedDir,
-      `.${path.basename(zipPath)}.${process.pid}.${randomUUID()}.tmp`
+      `.${path.basename(zipPath)}.${process.pid}.${randomUUID()}.zip`
     );
     try {
-      await run("zip", ["-qry", tempZipPath, "."], { cwd: packageRoot });
+      if (isWindows()) {
+        const archiveEntries = (await readdir(packageRoot)).sort();
+        await run("tar", ["-a", "-c", "-f", tempZipPath, ...archiveEntries], {
+          cwd: packageRoot
+        });
+      } else {
+        await run("zip", ["-qry", tempZipPath, "."], { cwd: packageRoot });
+      }
       await rename(tempZipPath, zipPath);
     } finally {
       await rm(tempZipPath, { force: true });
@@ -244,6 +255,10 @@ async function writePackageFiles(manifest) {
   );
   await chmod(path.join(packageRoot, "bootstrap.sh"), 0o755);
   await cp(
+    path.join(packageSourceDir, "bootstrap.cmd"),
+    path.join(packageRoot, "bootstrap.cmd")
+  );
+  await cp(
     path.join(packageSourceDir, "tutti-guide.md"),
     path.join(packageRoot, "tutti-guide.md")
   );
@@ -312,7 +327,12 @@ async function copyCliManifest(manifest) {
 async function buildStandaloneServers() {
   const sourcePath = path.join(packageSourceDir, "server.go");
   await access(sourcePath);
-  for (const target of ["darwin-arm64", "darwin-amd64"]) {
+  for (const target of [
+    "darwin-arm64",
+    "darwin-amd64",
+    "windows-amd64",
+    "windows-arm64"
+  ]) {
     const [goos, goarch] = target.split("-");
     const targetDir = path.join(packageRoot, "bin", target);
     await mkdir(targetDir, { recursive: true });
@@ -324,7 +344,10 @@ async function buildStandaloneServers() {
         "-ldflags",
         "-s -w",
         "-o",
-        path.join(targetDir, "tutti-onboarding-server"),
+        path.join(
+          targetDir,
+          `tutti-onboarding-server${goos === "windows" ? ".exe" : ""}`
+        ),
         sourcePath
       ],
       {
@@ -374,7 +397,7 @@ async function validatePackageRoot(root) {
     throw new Error("AGENTS.md must be non-empty.");
   }
   const bootstrapStat = await stat(path.join(root, "bootstrap.sh"));
-  if ((bootstrapStat.mode & 0o111) === 0) {
+  if (!isWindows() && (bootstrapStat.mode & 0o111) === 0) {
     throw new Error("bootstrap.sh must be executable.");
   }
   await assertNoSymlinks(root);

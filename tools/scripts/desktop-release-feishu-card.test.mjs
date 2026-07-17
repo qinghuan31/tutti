@@ -4,11 +4,46 @@ import assert from "node:assert/strict";
 import {
   buildCardPayload,
   buildSummaryElements,
+  loadRelease,
   resolveMirroredAssetUrl,
   resolveReleaseAssetBaseUrl,
   resolveIntroText,
   resolveReleaseKind
 } from "../../apps/desktop/scripts/send-release-feishu-card.mjs";
+
+test("release Feishu card loads draft releases from the authenticated listing", async (t) => {
+  const originalFetch = globalThis.fetch;
+  t.after(() => {
+    globalThis.fetch = originalFetch;
+  });
+
+  const requests = [];
+  globalThis.fetch = async (url, options) => {
+    requests.push({ url, options });
+    if (url.includes("/releases/tags/")) {
+      return new Response(null, { status: 404 });
+    }
+    return Response.json([
+      {
+        assets: [{ name: "Tutti-0.1.0-rc.4-mac-universal.dmg" }],
+        draft: true,
+        tag_name: "v0.1.0-rc.4"
+      }
+    ]);
+  };
+
+  const release = await loadRelease(
+    "tutti-os/tutti",
+    "v0.1.0-rc.4",
+    "test-token"
+  );
+
+  assert.equal(release.draft, true);
+  assert.equal(release.tag_name, "v0.1.0-rc.4");
+  assert.equal(requests.length, 2);
+  assert.match(requests[1].url, /\/releases\?per_page=100&page=1$/);
+  assert.equal(requests[1].options.headers.authorization, "Bearer test-token");
+});
 
 function extractFieldMap(payload) {
   const fieldEntries = payload.card.elements
@@ -31,12 +66,39 @@ test("release Feishu card marks rc tags as prereleases", () => {
     resolveReleaseKind("v1.12.19-rc.0"),
     "Release candidate prerelease"
   );
-  assert.match(resolveIntroText("v1.12.19-rc.0"), /GitHub RC Pre-release/);
+  assert.match(resolveIntroText("v1.12.19-rc.0"), /RC 预览通道/);
 });
 
 test("release Feishu card marks beta tags as prereleases", () => {
   assert.equal(resolveReleaseKind("v1.12.19-beta.0"), "Beta prerelease");
-  assert.match(resolveIntroText("v1.12.19-beta.0"), /GitHub Beta Pre-release/);
+  assert.match(resolveIntroText("v1.12.19-beta.0"), /Beta 预览通道/);
+});
+
+test("release Feishu card clearly marks draft builds without claiming public publication", () => {
+  assert.equal(
+    resolveReleaseKind("v1.12.20", "draft"),
+    "Draft stable candidate"
+  );
+  assert.match(resolveIntroText("v1.12.20", "draft"), /仍为 Draft/);
+  assert.match(resolveIntroText("v1.12.20", "draft"), /尚未更新公开下载通道/);
+
+  const payload = buildCardPayload({
+    actor: "jomeswang",
+    branch: "release/0704",
+    macUrl: "https://example.com/tutti.dmg",
+    publicationStatus: "draft",
+    releaseUrl: "https://github.com/tutti-os/tutti/releases/tag/v1.12.20",
+    runUrl: "https://github.com/tutti-os/tutti/actions/runs/1",
+    tag: "v1.12.20",
+    target: "4039186abcdef0"
+  });
+
+  assert.equal(payload.card.header.title.content, "Tutti Draft 构建完成");
+  assert.equal(payload.card.header.template, "orange");
+  assert.equal(
+    extractFieldMap(payload).get("构建类型"),
+    "Draft stable candidate"
+  );
 });
 
 test("release Feishu card includes tsh-aligned release context fields", () => {

@@ -1,3 +1,4 @@
+import { screen } from "electron";
 import {
   desktopIpcChannels,
   type DesktopHostOpenAgentWindowInput,
@@ -11,6 +12,11 @@ import type { WorkspaceLaunch } from "../host/workspaceLaunch";
 import { getDesktopLogger } from "../logging";
 import { registerDesktopIpcHandler } from "./handle";
 import { resolveOwnerWindowFromEvent } from "./ownerWindow";
+import { getWorkspaceWindowKind } from "../windows/workspaceWindow";
+import {
+  resolveStandaloneAgentWindowContentWidth,
+  shouldAnimateStandaloneAgentWindowResize
+} from "../windows/standaloneAgentWindowBounds";
 
 const maxCapturePreviewDimensionPx = 512;
 const capturePreviewTimeoutMs = 2_000;
@@ -143,13 +149,19 @@ export function registerHostWindowIpc(deps: HostWindowIpcDependencies): void {
     async (event, input) => {
       const ownerWindow = resolveOwnerWindowFromEvent(event);
       await deps.workspaceLaunch.showAgentWindow(
-        normalizeAgentWindowInput(input)
+        normalizeAgentWindowInput(
+          input,
+          ownerWindow?.getBounds() ?? null,
+          ownerWindow ? getWorkspaceWindowKind(ownerWindow) : null
+        )
       );
       if (!ownerWindow || ownerWindow.isDestroyed()) {
         return;
       }
 
-      ownerWindow.minimize();
+      if (input.minimizeSourceWindow !== false) {
+        ownerWindow.minimize();
+      }
     }
   );
 
@@ -166,6 +178,38 @@ export function registerHostWindowIpc(deps: HostWindowIpcDependencies): void {
   );
 
   registerDesktopIpcHandler(
+    desktopIpcChannels.host.window.resizeContentWidth,
+    (event, input) => {
+      const ownerWindow = resolveOwnerWindowFromEvent(event);
+      if (!ownerWindow || ownerWindow.isDestroyed()) {
+        return { width: 0 };
+      }
+
+      const currentBounds = ownerWindow.getContentBounds();
+      if (ownerWindow.isFullScreen() || ownerWindow.isMaximized()) {
+        return { width: currentBounds.width };
+      }
+
+      const workArea = screen.getDisplayMatching(
+        ownerWindow.getBounds()
+      ).workArea;
+      const nextBounds = resolveStandaloneAgentWindowContentWidth({
+        currentBounds,
+        requestedWidth: input.width,
+        workArea
+      });
+      ownerWindow.setContentBounds(
+        nextBounds,
+        shouldAnimateStandaloneAgentWindowResize(
+          process.platform,
+          input.animate === true
+        )
+      );
+      return { width: ownerWindow.getContentBounds().width };
+    }
+  );
+
+  registerDesktopIpcHandler(
     desktopIpcChannels.host.window.toggleMaximize,
     (event) => {
       const ownerWindow = resolveOwnerWindowFromEvent(event);
@@ -178,17 +222,27 @@ export function registerHostWindowIpc(deps: HostWindowIpcDependencies): void {
   );
 }
 
-function normalizeAgentWindowInput(input: DesktopHostOpenAgentWindowInput) {
+function normalizeAgentWindowInput(
+  input: DesktopHostOpenAgentWindowInput,
+  openerBounds: Electron.Rectangle | null,
+  openerWindowKind: "agent" | "workspace" | null
+) {
   const workspaceID = input.workspaceId.trim();
   if (!workspaceID) {
     throw new Error("workspaceId is required to open an agent window");
   }
   return {
+    agentDirectorySnapshot: input.agentDirectorySnapshot ?? null,
     agentSessionID: input.agentSessionId?.trim() || null,
     agentTargetID: input.agentTargetId?.trim() || null,
+    autoSubmit: input.autoSubmit === true,
+    draftPrompt: input.draftPrompt?.trim() || null,
+    openerBounds,
+    openerWindowKind,
+    offsetFromSourceWindow: input.offsetFromSourceWindow === true,
     providerStatusSnapshot: input.providerStatusSnapshot ?? null,
-    agents: input.agents,
     provider: input.provider?.trim() || null,
+    userProjectPath: input.userProjectPath?.trim() || null,
     workspaceID
   };
 }

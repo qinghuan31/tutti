@@ -10,6 +10,7 @@ import type {
   WorkspaceAgentProvider
 } from "@tutti-os/client-tuttid-ts";
 import type { NotificationService } from "@tutti-os/ui-notifications";
+import type { DesktopRendererDiagnosticPayload } from "@shared/contracts/ipc";
 import type { ReporterEventInput } from "../../../analytics/services/reporterService.interface.ts";
 import { DesktopAgentProviderStatusService } from "./desktopAgentProviderStatusService.ts";
 
@@ -92,10 +93,12 @@ test("runAction executes terminal commands and refreshes the provider status", a
 
 test("refresh sends includeNetwork only when the caller opts in", async () => {
   const includeNetworkRequests: Array<boolean | undefined> = [];
+  const forceRefreshRequests: Array<boolean | undefined> = [];
   const service = new DesktopAgentProviderStatusService({
     tuttidClient: createTuttidClient({
-      onStatusRequest: (_providers, includeNetwork) => {
+      onStatusRequest: (_providers, includeNetwork, refresh) => {
         includeNetworkRequests.push(includeNetwork);
+        forceRefreshRequests.push(refresh);
       },
       snapshots: [
         createStatusResponse([
@@ -116,6 +119,7 @@ test("refresh sends includeNetwork only when the caller opts in", async () => {
   await service.refresh(["codex"], { includeNetwork: true });
 
   assert.deepEqual(includeNetworkRequests, [undefined, true]);
+  assert.deepEqual(forceRefreshRequests, [true, true]);
 });
 
 test("a local-only refresh keeps the network the wizard fetched", async () => {
@@ -471,7 +475,6 @@ test("runAction short-polls login status after sign-in and coalesces repeated lo
       snapshots: [
         createStatusResponse([authRequiredStatus]),
         createStatusResponse([authRequiredStatus]),
-        createStatusResponse([authRequiredStatus]),
         createStatusResponse([
           createProviderStatus({
             actions: [],
@@ -490,7 +493,8 @@ test("runAction short-polls login status after sign-in and coalesces repeated lo
   await service.refresh();
   await service.runAction("codex", "login");
   await service.runAction("codex", "login");
-  await waitFor(() => statusCalls.length >= 3);
+  await waitFor(() => statusCalls.length >= 2);
+  await waitFor(() => !service.getSnapshot().isLoading);
 
   assert.equal(pollScheduler.pendingTimerCount(), 1);
   assert.equal(commands.length, 2);
@@ -502,7 +506,7 @@ test("runAction short-polls login status after sign-in and coalesces repeated lo
 
   assert.equal(service.getStatus("codex")?.availability.status, "ready");
   assert.equal(pollScheduler.pendingTimerCount(), 0);
-  assert.deepEqual(statusCalls, [undefined, ["codex"], ["codex"], ["codex"]]);
+  assert.deepEqual(statusCalls, [undefined, ["codex"], ["codex"]]);
 });
 
 test("runAction stops login status polling after the default three minute window", async () => {
@@ -540,10 +544,13 @@ test("runAction stops login status polling after the default three minute window
   await service.refresh();
   await service.runAction("codex", "login");
   await waitFor(() => statusCalls.length >= 2);
+  await waitFor(() => !service.getSnapshot().isLoading);
 
   pollScheduler.advance(179_999);
   pollScheduler.runNext();
-  await waitFor(() => statusCalls.length >= 3);
+  await waitFor(
+    () => statusCalls.length >= 3 && pollScheduler.pendingTimerCount() === 1
+  );
 
   assert.equal(pollScheduler.pendingTimerCount(), 1);
 
@@ -874,7 +881,7 @@ test("runAction reports install failures and clears pending state", async () => 
   ]);
 });
 
-test("runAction summarizes Claude regional availability install failures", async () => {
+test("runAction maps descriptor-classified regional install failures", async () => {
   const notifications = createNotificationRecorder();
   const service = new DesktopAgentProviderStatusService(
     {
@@ -886,7 +893,7 @@ test("runAction summarizes Claude regional availability install failures", async
             message:
               '<!DOCTYPE html><html><head><title>App unavailable in region | Claude</title><meta content="Unfortunately, Claude isn&#x27;t available here." name="description"></head></html>',
             provider: "claude-code",
-            reasonCode: "install_command_failed",
+            reasonCode: "install_unavailable_in_region",
             status: "failed"
           }
         ],
@@ -1037,7 +1044,7 @@ test("runAction refreshes when the action is a refresh action", async () => {
   assert.deepEqual(statusCalls, [undefined, ["codex"]]);
 });
 
-test("refresh verifies Cursor unknown status with the runtime probe", async () => {
+test("refresh uses the descriptor runtime-probe fallback for unknown status", async () => {
   const probeCalls: WorkspaceAgentProvider[] = [];
   const service = new DesktopAgentProviderStatusService({
     tuttidClient: createTuttidClient({
@@ -1080,7 +1087,7 @@ test("refresh verifies Cursor unknown status with the runtime probe", async () =
   assert.deepEqual(probeCalls, ["cursor"]);
 });
 
-test("refresh does not runtime-probe non-Cursor unknown statuses", async () => {
+test("refresh skips unknown statuses without a descriptor runtime-probe fallback", async () => {
   const probeCalls: WorkspaceAgentProvider[] = [];
   const service = new DesktopAgentProviderStatusService({
     tuttidClient: createTuttidClient({
@@ -1181,6 +1188,118 @@ test("ensureLoaded reuses loaded provider statuses and only loads missing provid
   await service.ensureLoaded({ providers: ["claude-code"] });
 
   assert.deepEqual(statusCalls, [["codex"], ["claude-code"]]);
+});
+
+test("provider status requests log duration, scope, and cache hits", async () => {
+  const diagnostics: DesktopRendererDiagnosticPayload[] = [];
+  let now = 100;
+  const service = new DesktopAgentProviderStatusService({
+    diagnosticNow: () => now,
+    runtimeApi: {
+      async logRendererDiagnostic(payload) {
+        diagnostics.push(payload);
+      }
+    },
+    tuttidClient: {
+      async getAgentProviderStatuses() {
+        now = 145;
+        return createStatusResponse([
+          createProviderStatus({
+            actions: [],
+            availability: "ready",
+            provider: "codex"
+          })
+        ]);
+      }
+    } as Partial<TuttidClient> as TuttidClient,
+    terminalCommandRunner: {
+      async runTerminalCommand() {}
+    }
+  });
+
+  await service.ensureLoaded({ providers: ["codex"] });
+  await service.ensureLoaded({ providers: ["codex"] });
+
+  assert.deepEqual(
+    diagnostics.map(({ details, event }) => ({ details, event })),
+    [
+      {
+        details: {
+          includeNetwork: false,
+          providerCount: 1,
+          providers: ["codex"],
+          requestId: 1,
+          requestScope: "providers"
+        },
+        event: "agent_provider_status.request.started"
+      },
+      {
+        details: {
+          appliedProviderCount: 1,
+          durationMs: 45,
+          includeNetwork: false,
+          providerCount: 1,
+          providers: ["codex"],
+          requestId: 1,
+          requestScope: "providers",
+          responseProviderCount: 1,
+          staleProviderCount: 0
+        },
+        event: "agent_provider_status.request.resolved"
+      },
+      {
+        details: {
+          cachedProviderCount: 1,
+          includeNetwork: false,
+          providerCount: 1,
+          providers: ["codex"],
+          requestScope: "providers"
+        },
+        event: "agent_provider_status.request.cache_hit"
+      }
+    ]
+  );
+});
+
+test("failed provider status requests log duration without the error message", async () => {
+  const diagnostics: DesktopRendererDiagnosticPayload[] = [];
+  let now = 200;
+  const service = new DesktopAgentProviderStatusService({
+    diagnosticNow: () => now,
+    runtimeApi: {
+      async logRendererDiagnostic(payload) {
+        diagnostics.push(payload);
+      }
+    },
+    tuttidClient: {
+      async getAgentProviderStatuses() {
+        now = 260;
+        throw new TypeError("sensitive local detail");
+      }
+    } as Partial<TuttidClient> as TuttidClient,
+    terminalCommandRunner: {
+      async runTerminalCommand() {}
+    }
+  });
+
+  await service.refresh(["codex"]);
+
+  const failure = diagnostics.find(
+    ({ event }) => event === "agent_provider_status.request.failed"
+  );
+  assert.deepEqual(failure?.details, {
+    durationMs: 60,
+    errorType: "TypeError",
+    includeNetwork: false,
+    providerCount: 1,
+    providers: ["codex"],
+    requestId: 1,
+    requestScope: "providers"
+  });
+  assert.equal(
+    JSON.stringify(failure).includes("sensitive local detail"),
+    false
+  );
 });
 
 test("hydrate seeds the snapshot for an instance that has not captured its own data yet", () => {
@@ -1300,7 +1419,7 @@ test("a later provider-scoped response merges into a hydrated snapshot instead o
   assert.equal(service.getStatus("codex")?.availability.status, "ready");
 });
 
-test("ensureLoaded waits for unrelated in-flight loads before loading missing providers", async () => {
+test("ensureLoaded starts missing providers without waiting for unrelated in-flight loads", async () => {
   const calls: Array<readonly WorkspaceAgentProvider[] | undefined> = [];
   const firstStatusRequest = createDeferred<AgentProviderStatusListResponse>();
   const secondStatusRequest = createDeferred<AgentProviderStatusListResponse>();
@@ -1321,19 +1440,6 @@ test("ensureLoaded waits for unrelated in-flight loads before loading missing pr
   const codexLoad = service.refresh(["codex"]);
   const claudeEnsure = service.ensureLoaded({ providers: ["claude-code"] });
 
-  assert.deepEqual(calls, [["codex"]]);
-
-  firstStatusRequest.resolve(
-    createStatusResponse([
-      createProviderStatus({
-        actions: [],
-        availability: "ready",
-        provider: "codex"
-      })
-    ])
-  );
-  await codexLoad;
-
   assert.deepEqual(calls, [["codex"], ["claude-code"]]);
 
   secondStatusRequest.resolve(
@@ -1347,8 +1453,78 @@ test("ensureLoaded waits for unrelated in-flight loads before loading missing pr
   );
   await claudeEnsure;
 
+  assert.equal(service.getStatus("claude-code")?.availability.status, "ready");
+  assert.equal(service.getStatus("codex"), null);
+
+  firstStatusRequest.resolve(
+    createStatusResponse([
+      createProviderStatus({
+        actions: [],
+        availability: "ready",
+        provider: "codex"
+      })
+    ])
+  );
+  await codexLoad;
+
   assert.equal(service.getStatus("codex")?.availability.status, "ready");
   assert.equal(service.getStatus("claude-code")?.availability.status, "ready");
+});
+
+test("a targeted ensure resolves before an older full scan and keeps its newer status", async () => {
+  const calls: Array<readonly WorkspaceAgentProvider[] | undefined> = [];
+  const fullStatusRequest = createDeferred<AgentProviderStatusListResponse>();
+  const codexStatusRequest = createDeferred<AgentProviderStatusListResponse>();
+  const service = new DesktopAgentProviderStatusService({
+    tuttidClient: {
+      async getAgentProviderStatuses(request) {
+        calls.push(request?.providers);
+        return calls.length === 1
+          ? fullStatusRequest.promise
+          : codexStatusRequest.promise;
+      }
+    } as Partial<TuttidClient> as TuttidClient,
+    terminalCommandRunner: {
+      async runTerminalCommand() {}
+    }
+  });
+
+  const fullLoad = service.ensureLoaded({ providers: ["codex", "cursor"] });
+  const codexLoad = service.ensureLoaded({ providers: ["codex"] });
+
+  assert.deepEqual(calls, [["codex", "cursor"], ["codex"]]);
+
+  codexStatusRequest.resolve(
+    createStatusResponse([
+      createProviderStatus({
+        actions: [],
+        availability: "ready",
+        provider: "codex"
+      })
+    ])
+  );
+  await codexLoad;
+
+  assert.equal(service.getStatus("codex")?.availability.status, "ready");
+
+  fullStatusRequest.resolve(
+    createStatusResponse([
+      createProviderStatus({
+        actions: [{ id: "login", kind: "terminal_command" }],
+        availability: "auth_required",
+        provider: "codex"
+      }),
+      createProviderStatus({
+        actions: [],
+        availability: "ready",
+        provider: "cursor"
+      })
+    ])
+  );
+  await fullLoad;
+
+  assert.equal(service.getStatus("codex")?.availability.status, "ready");
+  assert.equal(service.getStatus("cursor")?.availability.status, "ready");
 });
 
 test("refresh waits for an in-flight load and then requests a fresh status", async () => {
@@ -1699,7 +1875,8 @@ function createTuttidClient(input: {
   ) => void;
   onStatusRequest?: (
     providers: readonly WorkspaceAgentProvider[] | undefined,
-    includeNetwork?: boolean
+    includeNetwork?: boolean,
+    refresh?: boolean
   ) => void;
   probes?: AgentProviderProbeResponse[];
   snapshots: AgentProviderStatusListResponse[];
@@ -1709,7 +1886,11 @@ function createTuttidClient(input: {
   let probeIndex = 0;
   return {
     async getAgentProviderStatuses(request) {
-      input.onStatusRequest?.(request?.providers, request?.includeNetwork);
+      input.onStatusRequest?.(
+        request?.providers,
+        request?.includeNetwork,
+        request?.refresh
+      );
       const snapshot = input.snapshots[index] ?? input.snapshots.at(-1);
       index += 1;
       if (!snapshot) {

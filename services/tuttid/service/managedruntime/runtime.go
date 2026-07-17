@@ -93,6 +93,9 @@ var managedAppRuntimeDownloadLocks sync.Map
 func (r DefaultResolver) Resolve(ctx context.Context) (ResolvedRuntime, error) {
 	root := r.runtimeRoot()
 	if err := r.ensureRuntime(ctx, root); err != nil {
+		if fallback, ok := r.windowsEmbeddedRuntime(appRuntimeBaselineProfile); ok {
+			return fallback, nil
+		}
 		return ResolvedRuntime{}, err
 	}
 	return r.resolvedRuntimeForComponents(root, []string{"python", "node"})
@@ -146,6 +149,28 @@ func (r DefaultResolver) windowsEmbeddedRuntime(profile string) (ResolvedRuntime
 	profile = strings.TrimSpace(profile)
 	env := r.environ()
 	switch profile {
+	case appRuntimeBaselineProfile:
+		nodeRuntime, nodeOK := r.windowsEmbeddedRuntime(appRuntimeNodeStaticProfile)
+		pythonRuntime, pythonOK := r.windowsEmbeddedRuntime(appRuntimePythonStaticProfile)
+		if !nodeOK || !pythonOK {
+			return ResolvedRuntime{}, false
+		}
+		return ResolvedRuntime{
+			Root:    resourcesDir,
+			Python:  pythonRuntime.Python,
+			Node:    nodeRuntime.Node,
+			BinDirs: mergeAppPathDirs(append(nodeRuntime.BinDirs, pythonRuntime.BinDirs...)),
+			EnvOverrides: []string{
+				tuttiAppRuntimeRootEnv + "=" + resourcesDir,
+				"TUTTI_APP_PYTHON=" + pythonRuntime.Python,
+				"TUTTI_APP_NODE=" + nodeRuntime.Node,
+				"ELECTRON_RUN_AS_NODE=1",
+				"PATH=" + strings.Join(
+					append([]string{filepath.Dir(nodeRuntime.Node)}, filepath.SplitList(envValue(env, pathEnvKey(env)))...),
+					string(os.PathListSeparator),
+				),
+			},
+		}, true
 	case appRuntimeNodeStaticProfile:
 		desktopExecutable := filepath.Join(filepath.Dir(resourcesDir), "Tutti.exe")
 		if !isExecutableFile(desktopExecutable) {

@@ -1,16 +1,15 @@
-import { normalizeAgentTitleText } from "./utils/agentTitleText";
-import { isWorkspaceAgentUntitledTask } from "./workspaceAgentLatestActivitySummary";
+import type { AgentActivitySession } from "@tutti-os/agent-activity-core";
+import { isWorkspaceAgentUntitledConversation } from "./workspaceAgentLatestActivitySummary";
 import { workspaceAgentProviderLabel } from "./workspaceAgentProviderLabel";
 import { isWorkspaceAgentSyntheticControlMessage } from "./workspaceAgentSyntheticMessages";
-import type { WorkspaceAgentActivitySession } from "./workspaceAgentActivityTypes";
 
 export function resolveDisplayableWorkspaceAgentSessionTitle(
-  session: Pick<WorkspaceAgentActivitySession, "title" | "provider">
+  session: Pick<AgentActivitySession, "title" | "provider">
 ): string {
-  const title = normalizeAgentTitleText(session.title);
+  const title = session.title.trim();
   if (
     !title ||
-    isWorkspaceAgentUntitledTask(title) ||
+    isWorkspaceAgentUntitledConversation(title) ||
     isWorkspaceAgentSyntheticControlMessage(title)
   ) {
     return "";

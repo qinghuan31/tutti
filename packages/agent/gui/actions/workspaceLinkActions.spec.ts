@@ -248,6 +248,23 @@ describe("resolveWorkspaceFileLinkAction", () => {
     });
   });
 
+  it("uses the agent session cwd when a no-project conversation has no workspace root", () => {
+    expect(
+      resolveWorkspaceFileLinkAction({
+        path: "/Users/test/Documents/tutti/session-1/index.html",
+        workspaceRoot: null,
+        basePath: "/Users/test/Documents/tutti/session-1",
+        source: "agent-markdown"
+      })
+    ).toEqual({
+      type: "open-workspace-file",
+      path: "/Users/test/Documents/tutti/session-1/index.html",
+      directoryPath: "/Users/test/Documents/tutti/session-1",
+      workspaceRoot: "/Users/test/Documents/tutti/session-1",
+      source: "agent-markdown"
+    });
+  });
+
   it("preserves home-relative paths for the desktop launch layer", () => {
     expect(
       resolveWorkspaceFileLinkAction({
@@ -389,6 +406,29 @@ describe("resolveWorkspaceMentionLinkAction", () => {
       conversationId: "conv-1",
       source: "agent-markdown"
     });
+  });
+
+  it("opens the owning app for an app artifact reference", () => {
+    expect(
+      resolveWorkspaceMentionLinkAction({
+        href: "mention://workspace-reference/ai-canvas?groupId=outputs&source=app&workspaceId=workspace-1",
+        source: "agent-markdown"
+      })
+    ).toEqual({
+      type: "open-workspace-app",
+      workspaceId: "workspace-1",
+      appId: "ai-canvas",
+      source: "agent-markdown"
+    });
+  });
+
+  it("keeps task artifact references out of workspace app routing", () => {
+    expect(
+      resolveWorkspaceMentionLinkAction({
+        href: "mention://workspace-reference/topic-1?groupId=issue-1&source=task&workspaceId=workspace-1",
+        source: "agent-markdown"
+      })
+    ).toBeNull();
   });
 
   it("rejects legacy query-only workspace mention context", () => {

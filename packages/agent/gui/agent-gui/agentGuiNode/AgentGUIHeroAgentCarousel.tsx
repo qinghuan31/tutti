@@ -1,24 +1,16 @@
 import {
-  memo,
-  useCallback,
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
+  Component,
+  createRef,
   type KeyboardEvent as ReactKeyboardEvent,
   type MouseEvent as ReactMouseEvent,
   type PointerEvent as ReactPointerEvent
 } from "react";
-import type { AgentGUIProvider, AgentGUIProviderTarget } from "../../types";
-import { normalizeManagedAgentProvider } from "../../shared/managedAgentProviders";
+import type { AgentGUIProvider } from "../../types";
+import type { AgentGUIAgentAvatarPresentation } from "./model/agentGuiAgentAvatarPresentation";
 import { AgentGuiHeroCarouselScene } from "./agentGuiHeroCarouselScene";
+import { AgentGUIVinylPlayer } from "./AgentGUIVinylPlayer";
 import styles from "./AgentGUINode.styles";
-
-export interface AgentGUIHeroCarouselIcon {
-  agentTargetId?: string;
-  iconUrl: string;
-  provider: string;
-}
+import { AgentGuiHeroCarouselImageLoad } from "./agentGuiHeroCarouselImageLoad";
 
 export interface AgentGUIHeroCarouselSelectInput {
   provider: AgentGUIProvider;
@@ -27,35 +19,42 @@ export interface AgentGUIHeroCarouselSelectInput {
 
 interface AgentGUIHeroAgentCarouselProps {
   activeAgentTargetId?: string | null;
-  icons: readonly AgentGUIHeroCarouselIcon[];
-  providerTargets?: readonly AgentGUIProviderTarget[];
+  items: readonly AgentGUIAgentAvatarPresentation[];
   onProviderSelect?: (input: AgentGUIHeroCarouselSelectInput) => void;
   providerSelectLabel?: string;
 }
 
-export function agentGUILaunchpadProviderTarget(
-  providerTargets: readonly AgentGUIProviderTarget[],
-  provider: string
-): AgentGUIProviderTarget | null {
-  const normalized = normalizeManagedAgentProvider(provider);
-  const matches = providerTargets.filter(
-    (target) => normalizeManagedAgentProvider(target.provider) === normalized
-  );
-  // Prefer a ready target, but fall back to a disabled placeholder so
-  // unavailable agents stay selectable from the ring — selecting one surfaces
-  // its coming-soon / readiness gate while the carousel keeps spinning.
-  return (
-    matches.find((target) => target.disabled !== true) ?? matches[0] ?? null
-  );
+interface AgentGUIHeroAgentCarouselState {
+  centerIndex: number;
+  badgeImages: readonly (HTMLImageElement | null)[];
+  coverImages: readonly (HTMLImageElement | null)[];
+  iconKey: string;
+  images: readonly (HTMLImageElement | null)[];
+  imagesReady: boolean;
 }
 
 const CAROUSEL_WHEEL_STEP_THRESHOLD = 42;
 const CAROUSEL_WHEEL_STEP_COOLDOWN_MS = 110;
 const CAROUSEL_DRAG_STEP_PX = 52;
 
-interface AgentGUIHeroCarouselImagePreloadState {
-  images: readonly (HTMLImageElement | null)[];
-  ready: boolean;
+function activeAgentIndex(props: AgentGUIHeroAgentCarouselProps): number {
+  if (!props.activeAgentTargetId) {
+    return -1;
+  }
+  return props.items.findIndex(
+    (item) => item.agentTargetId === props.activeAgentTargetId
+  );
+}
+
+function carouselIconKey(
+  items: readonly AgentGUIAgentAvatarPresentation[]
+): string {
+  return items
+    .map(
+      (item) =>
+        `${item.agentTargetId}:${item.provider}:${item.iconUrl}:${item.badge?.iconUrl ?? ""}`
+    )
+    .join("|");
 }
 
 function emptyPreloadedCarouselImages(
@@ -64,409 +63,454 @@ function emptyPreloadedCarouselImages(
   return Array.from({ length }).map((): HTMLImageElement | null => null);
 }
 
-function useAgentGUIHeroCarouselImages(
-  icons: readonly AgentGUIHeroCarouselIcon[],
-  iconKey: string
-): AgentGUIHeroCarouselImagePreloadState {
-  const [preloadState, setPreloadState] =
-    useState<AgentGUIHeroCarouselImagePreloadState>({
-      images: [],
-      ready: icons.length === 0
-    });
+// Three.js, ResizeObserver, image decoding, and a non-passive wheel listener
+// form one imperative resource lifetime. A class component keeps that lifetime
+// explicit instead of rebuilding it from several coordinating React effects.
+export class AgentGUIHeroAgentCarousel extends Component<
+  AgentGUIHeroAgentCarouselProps,
+  AgentGUIHeroAgentCarouselState
+> {
+  private readonly stageRef = createRef<HTMLDivElement>();
+  private readonly canvasRef = createRef<HTMLCanvasElement>();
+  private scene: AgentGuiHeroCarouselScene | null = null;
+  private resizeObserver: ResizeObserver | null = null;
+  private imagePreloadGeneration = 0;
+  private imageLoad: AgentGuiHeroCarouselImageLoad | null = null;
+  private wheelListenerAttached = false;
+  private wheelAccumulated = 0;
+  private wheelLastStepAt = 0;
+  private dragState: { pointerId: number; anchorX: number } | null = null;
+  private suppressClick = false;
+  private pointerActivatedIndex: number | null = null;
 
-  useEffect(() => {
-    if (icons.length === 0) {
-      setPreloadState({ images: [], ready: true });
+  state: AgentGUIHeroAgentCarouselState = {
+    badgeImages: [],
+    centerIndex: Math.max(activeAgentIndex(this.props), 0),
+    coverImages: [],
+    iconKey: carouselIconKey(this.props.items),
+    images: [],
+    imagesReady: this.props.items.length === 0
+  };
+
+  componentDidMount(): void {
+    this.preloadImages();
+    this.syncWheelListener();
+  }
+
+  componentDidUpdate(previousProps: AgentGUIHeroAgentCarouselProps): void {
+    const iconKey = carouselIconKey(this.props.items);
+    if (iconKey !== this.state.iconKey) {
+      this.disposeScene();
+      this.setState(
+        {
+          centerIndex: Math.max(activeAgentIndex(this.props), 0),
+          badgeImages: [],
+          coverImages: [],
+          iconKey,
+          images: [],
+          imagesReady: this.props.items.length === 0
+        },
+        () => this.preloadImages()
+      );
+      return;
+    }
+
+    if (
+      previousProps.activeAgentTargetId !== this.props.activeAgentTargetId ||
+      previousProps.items !== this.props.items
+    ) {
+      const activeIndex = activeAgentIndex(this.props);
+      if (activeIndex >= 0 && activeIndex !== this.state.centerIndex) {
+        this.setState({ centerIndex: activeIndex });
+        this.scene?.moveTo(activeIndex);
+      }
+    }
+    this.syncWheelListener();
+  }
+
+  componentWillUnmount(): void {
+    this.imagePreloadGeneration += 1;
+    this.removeWheelListener();
+    this.disposeScene();
+    this.imageLoad?.cancel();
+    this.imageLoad = null;
+  }
+
+  private interactive(): boolean {
+    return this.props.onProviderSelect != null && this.props.items.length > 0;
+  }
+
+  private preloadImages(): void {
+    this.imageLoad?.cancel();
+    this.imageLoad = null;
+    const generation = ++this.imagePreloadGeneration;
+    const items = this.props.items;
+    if (items.length === 0) {
+      this.setState({
+        badgeImages: [],
+        coverImages: [],
+        images: [],
+        imagesReady: true
+      });
       return;
     }
     if (typeof Image !== "function") {
-      setPreloadState({
-        images: emptyPreloadedCarouselImages(icons.length),
-        ready: true
-      });
+      this.setState(
+        {
+          coverImages: emptyPreloadedCarouselImages(items.length),
+          badgeImages: emptyPreloadedCarouselImages(items.length),
+          images: emptyPreloadedCarouselImages(items.length),
+          imagesReady: true
+        },
+        () => this.mountScene()
+      );
       return;
     }
 
-    let cancelled = false;
-    setPreloadState({
-      images: emptyPreloadedCarouselImages(icons.length),
-      ready: false
+    this.setState({
+      badgeImages: emptyPreloadedCarouselImages(items.length),
+      coverImages: emptyPreloadedCarouselImages(items.length),
+      images: emptyPreloadedCarouselImages(items.length),
+      imagesReady: false
     });
-
-    void Promise.all(
-      icons.map(
-        (icon) =>
-          new Promise<HTMLImageElement | null>((resolve) => {
-            const image = new Image();
-            const resolveDecoded = (): void => {
-              const decode = image.decode?.();
-              if (decode) {
-                void decode
-                  .then(() => resolve(image))
-                  .catch(() => resolve(image));
-                return;
-              }
-              resolve(image);
-            };
-            image.decoding = "async";
-            image.loading = "eager";
-            image.setAttribute("fetchpriority", "high");
-            image.onload = () => {
-              resolveDecoded();
-            };
-            image.onerror = () => resolve(null);
-            image.src = icon.iconUrl;
-            if (image.complete) {
-              if (image.naturalWidth > 0) {
-                resolveDecoded();
-              } else {
-                resolve(null);
-              }
-            }
-          })
-      )
-    ).then((images) => {
-      if (!cancelled) {
-        setPreloadState({ images, ready: true });
-      }
-    });
-
-    return () => {
-      cancelled = true;
-    };
-  }, [iconKey]);
-
-  return preloadState;
-}
-
-// Empty-hero agent switcher for the "All" tab: a ring of same-sized agent
-// tiles rendered with three.js (see agentGuiHeroCarouselScene) so tiles
-// farther around the ring genuinely shrink and fade with perspective.
-// Wheel, drag, and arrow keys spin the ring; the centered agent commits once
-// the spin settles; clicking a tile (canvas raycast or the visually-hidden
-// accessible buttons) selects it immediately.
-export const AgentGUIHeroAgentCarousel = memo(
-  function AgentGUIHeroAgentCarousel({
-    activeAgentTargetId,
-    icons,
-    providerTargets,
-    onProviderSelect,
-    providerSelectLabel
-  }: AgentGUIHeroAgentCarouselProps): React.JSX.Element {
-    const activeIconIndex = useMemo(
-      () =>
-        !activeAgentTargetId
-          ? -1
-          : icons.findIndex(
-              (icon) => icon.agentTargetId === activeAgentTargetId
-            ),
-      [activeAgentTargetId, icons]
-    );
-    const [centerIndex, setCenterIndex] = useState(
-      activeIconIndex >= 0 ? activeIconIndex : 0
-    );
-    const centerIndexRef = useRef(centerIndex);
-    centerIndexRef.current = centerIndex;
-    const activeIconIndexRef = useRef(activeIconIndex);
-    activeIconIndexRef.current = activeIconIndex;
-    const interactive =
-      onProviderSelect != null && (providerTargets?.length ?? 0) > 0;
-
-    const targetForIndex = useCallback(
-      (index: number): AgentGUIProviderTarget | null => {
-        const icon = icons[index];
-        if (!icon || !interactive) {
-          return null;
-        }
-        if (!icon.agentTargetId) {
-          return null;
-        }
-        return (
-          providerTargets?.find(
-            (target) =>
-              (target.agentTargetId ?? target.targetId) === icon.agentTargetId
-          ) ?? null
-        );
-      },
-      [icons, interactive, providerTargets]
-    );
-
-    const selectIndex = useCallback(
-      (index: number) => {
-        const target = targetForIndex(index);
-        if (!target || !onProviderSelect) {
-          return;
-        }
-        onProviderSelect({
-          provider: target.provider,
-          agentTargetId: target.targetId
-        });
-      },
-      [onProviderSelect, targetForIndex]
-    );
-    const selectIndexRef = useRef(selectIndex);
-    selectIndexRef.current = selectIndex;
-
-    const stageRef = useRef<HTMLDivElement | null>(null);
-    const canvasRef = useRef<HTMLCanvasElement | null>(null);
-    const sceneRef = useRef<AgentGuiHeroCarouselScene | null>(null);
-    const iconKey = icons
-      .map((icon) => `${icon.agentTargetId ?? icon.provider}:${icon.iconUrl}`)
-      .join("|");
-    const carouselImages = useAgentGUIHeroCarouselImages(icons, iconKey);
-
-    useEffect(() => {
-      const canvas = canvasRef.current;
-      const stage = stageRef.current;
-      if (!canvas || !stage || !carouselImages.ready) {
+    const imageLoad = new AgentGuiHeroCarouselImageLoad(items);
+    this.imageLoad = imageLoad;
+    void imageLoad.result.then((preloaded) => {
+      if (
+        generation !== this.imagePreloadGeneration ||
+        carouselIconKey(this.props.items) !== this.state.iconKey
+      ) {
         return;
       }
-      const scene = AgentGuiHeroCarouselScene.create({
-        canvas,
-        iconUrls: icons.map((icon) => icon.iconUrl),
-        loadedImages: carouselImages.images,
-        onSettle: (index) => {
-          centerIndexRef.current = index;
-          setCenterIndex(index);
-          // The ring can settle on the already-active agent (external syncs,
-          // re-centering); only user-driven landings commit a switch.
-          if (index !== activeIconIndexRef.current) {
-            selectIndexRef.current(index);
-          }
-        }
-      });
-      sceneRef.current = scene;
-      if (!scene) {
-        return;
-      }
-      scene.moveTo(centerIndexRef.current, false);
-      const resize = (): void => {
-        const rect = stage.getBoundingClientRect();
-        scene.setSize(rect.width, rect.height);
-      };
-      resize();
-      const observer =
-        typeof ResizeObserver === "function"
-          ? new ResizeObserver(resize)
-          : null;
-      observer?.observe(stage);
-      return () => {
-        observer?.disconnect();
-        scene.dispose();
-        sceneRef.current = null;
-      };
-      // The scene is rebuilt only when the icon set itself changes.
-      // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [carouselImages.images, carouselImages.ready, iconKey]);
-
-    // Follow external agent switches (left rail, hero title dropdown).
-    useEffect(() => {
-      if (activeIconIndex >= 0 && activeIconIndex !== centerIndexRef.current) {
-        centerIndexRef.current = activeIconIndex;
-        setCenterIndex(activeIconIndex);
-        sceneRef.current?.moveTo(activeIconIndex);
-      }
-    }, [activeIconIndex]);
-
-    const stepBy = useCallback(
-      (direction: 1 | -1) => {
-        const scene = sceneRef.current;
-        if (!scene || icons.length <= 1) {
-          return;
-        }
-        const next = scene.stepBy(direction);
-        centerIndexRef.current = next;
-        setCenterIndex(next);
-      },
-      [icons.length]
-    );
-    const stepByRef = useRef(stepBy);
-    stepByRef.current = stepBy;
-
-    // Wheel needs a non-passive listener to consume horizontal trackpad pans
-    // (and vertical wheel ticks) instead of scrolling any ancestor.
-    useEffect(() => {
-      const stage = stageRef.current;
-      if (!stage || !interactive) {
-        return;
-      }
-      let accumulated = 0;
-      let lastStepAt = 0;
-      const handleWheel = (event: WheelEvent): void => {
-        const delta =
-          Math.abs(event.deltaX) >= Math.abs(event.deltaY)
-            ? event.deltaX
-            : event.deltaY;
-        if (delta === 0) {
-          return;
-        }
-        event.preventDefault();
-        if (Math.sign(delta) !== Math.sign(accumulated)) {
-          accumulated = 0;
-        }
-        accumulated += delta;
-        const now = performance.now();
-        if (
-          Math.abs(accumulated) < CAROUSEL_WHEEL_STEP_THRESHOLD ||
-          now - lastStepAt < CAROUSEL_WHEEL_STEP_COOLDOWN_MS
-        ) {
-          return;
-        }
-        stepByRef.current(accumulated > 0 ? 1 : -1);
-        accumulated = 0;
-        lastStepAt = now;
-      };
-      stage.addEventListener("wheel", handleWheel, { passive: false });
-      return () => stage.removeEventListener("wheel", handleWheel);
-    }, [interactive]);
-
-    const dragStateRef = useRef<{ pointerId: number; anchorX: number } | null>(
-      null
-    );
-    const suppressClickRef = useRef(false);
-    const handlePointerDown = (
-      event: ReactPointerEvent<HTMLDivElement>
-    ): void => {
-      if (!interactive || event.button !== 0) {
-        return;
-      }
-      dragStateRef.current = {
-        pointerId: event.pointerId,
-        anchorX: event.clientX
-      };
-      suppressClickRef.current = false;
-    };
-    const handlePointerMove = (
-      event: ReactPointerEvent<HTMLDivElement>
-    ): void => {
-      const drag = dragStateRef.current;
-      if (!drag || drag.pointerId !== event.pointerId) {
-        return;
-      }
-      const deltaX = event.clientX - drag.anchorX;
-      if (Math.abs(deltaX) < CAROUSEL_DRAG_STEP_PX) {
-        return;
-      }
-      drag.anchorX = event.clientX;
-      suppressClickRef.current = true;
-      // Dragging left pulls the next agent (to the right) into the center.
-      stepBy(deltaX < 0 ? 1 : -1);
-    };
-    const handlePointerEnd = (
-      event: ReactPointerEvent<HTMLDivElement>
-    ): void => {
-      if (dragStateRef.current?.pointerId === event.pointerId) {
-        dragStateRef.current = null;
-      }
-    };
-    const handleClickCapture = (event: ReactMouseEvent): void => {
-      if (!suppressClickRef.current) {
-        return;
-      }
-      suppressClickRef.current = false;
-      event.preventDefault();
-      event.stopPropagation();
-    };
-
-    const handleKeyDown = (event: ReactKeyboardEvent<HTMLDivElement>): void => {
-      if (event.key !== "ArrowLeft" && event.key !== "ArrowRight") {
-        return;
-      }
-      event.preventDefault();
-      stepBy(event.key === "ArrowRight" ? 1 : -1);
-    };
-
-    const handleItemClick = (index: number): void => {
-      centerIndexRef.current = index;
-      setCenterIndex(index);
-      sceneRef.current?.moveTo(index);
-      selectIndex(index);
-    };
-
-    const pickAt = (
-      event:
-        | ReactMouseEvent<HTMLCanvasElement>
-        | ReactPointerEvent<HTMLCanvasElement>
-    ): number | null => {
-      const scene = sceneRef.current;
-      const canvas = canvasRef.current;
-      if (!scene || !canvas || !interactive) {
-        return null;
-      }
-      const rect = canvas.getBoundingClientRect();
-      return scene.pick(
-        event.clientX - rect.left,
-        event.clientY - rect.top,
-        rect.width,
-        rect.height
+      this.setState(
+        {
+          badgeImages: preloaded.badges,
+          coverImages: preloaded.covers,
+          images: preloaded.icons,
+          imagesReady: true
+        },
+        () => this.mountScene()
       );
-    };
+    });
+  }
 
-    const handleCanvasClick = (
-      event: ReactMouseEvent<HTMLCanvasElement>
-    ): void => {
-      const index = pickAt(event);
-      if (index !== null) {
-        handleItemClick(index);
-      }
+  private mountScene(): void {
+    const canvas = this.canvasRef.current;
+    const stage = this.stageRef.current;
+    if (
+      this.scene ||
+      !canvas ||
+      !stage ||
+      !this.state.imagesReady ||
+      this.props.items.length === 0
+    ) {
+      return;
+    }
+    const scene = AgentGuiHeroCarouselScene.create({
+      canvas,
+      items: this.props.items,
+      loadedCoverImages: this.state.coverImages,
+      loadedBadgeImages: this.state.badgeImages,
+      loadedImages: this.state.images,
+      onSettle: this.handleSceneSettle
+    });
+    this.scene = scene;
+    if (!scene) {
+      return;
+    }
+    scene.moveTo(this.state.centerIndex, false);
+    const resize = (): void => {
+      // Use layout dimensions rather than the transformed bounding rect. The
+      // carousel layer is scaled, so getBoundingClientRect() can return
+      // fractional dimensions that no longer match the canvas CSS box after
+      // WebGL floors its drawing buffer size.
+      scene.setSize(stage.clientWidth, stage.clientHeight);
     };
+    resize();
+    this.resizeObserver =
+      typeof ResizeObserver === "function" ? new ResizeObserver(resize) : null;
+    this.resizeObserver?.observe(stage);
+  }
 
-    const handleCanvasHover = (
-      event: ReactPointerEvent<HTMLCanvasElement>
-    ): void => {
-      const canvas = canvasRef.current;
-      if (!canvas) {
-        return;
-      }
-      canvas.style.cursor = pickAt(event) !== null ? "pointer" : "";
-    };
+  private disposeScene(): void {
+    this.resizeObserver?.disconnect();
+    this.resizeObserver = null;
+    this.scene?.dispose();
+    this.scene = null;
+  }
 
+  private syncWheelListener(): void {
+    const stage = this.stageRef.current;
+    const shouldAttach = Boolean(stage && this.interactive());
+    if (shouldAttach && !this.wheelListenerAttached) {
+      stage!.addEventListener("wheel", this.handleWheel, { passive: false });
+      this.wheelListenerAttached = true;
+      return;
+    }
+    if (!shouldAttach) {
+      this.removeWheelListener();
+    }
+  }
+
+  private removeWheelListener(): void {
+    if (!this.wheelListenerAttached) {
+      return;
+    }
+    this.stageRef.current?.removeEventListener("wheel", this.handleWheel);
+    this.wheelListenerAttached = false;
+    this.wheelAccumulated = 0;
+    this.wheelLastStepAt = 0;
+  }
+
+  private readonly handleSceneSettle = (index: number): void => {
+    this.setState({ centerIndex: index });
+    if (index !== activeAgentIndex(this.props)) {
+      this.selectIndex(index);
+    }
+  };
+
+  private selectIndex(index: number): void {
+    const item = this.props.items[index];
+    if (!item || !this.props.onProviderSelect) {
+      return;
+    }
+    this.props.onProviderSelect({
+      provider: item.provider,
+      agentTargetId: item.targetId
+    });
+  }
+
+  private stepBy(direction: 1 | -1): void {
+    if (!this.scene || this.props.items.length <= 1) {
+      return;
+    }
+    const centerIndex = this.scene.stepBy(direction);
+    this.setState({ centerIndex });
+  }
+
+  private readonly handleWheel = (event: WheelEvent): void => {
+    const delta =
+      Math.abs(event.deltaX) >= Math.abs(event.deltaY)
+        ? event.deltaX
+        : event.deltaY;
+    if (delta === 0) {
+      return;
+    }
+    event.preventDefault();
+    if (Math.sign(delta) !== Math.sign(this.wheelAccumulated)) {
+      this.wheelAccumulated = 0;
+    }
+    this.wheelAccumulated += delta;
+    const now = performance.now();
+    if (
+      Math.abs(this.wheelAccumulated) < CAROUSEL_WHEEL_STEP_THRESHOLD ||
+      now - this.wheelLastStepAt < CAROUSEL_WHEEL_STEP_COOLDOWN_MS
+    ) {
+      return;
+    }
+    this.stepBy(this.wheelAccumulated > 0 ? 1 : -1);
+    this.wheelAccumulated = 0;
+    this.wheelLastStepAt = now;
+  };
+
+  private readonly handlePointerDown = (
+    event: ReactPointerEvent<HTMLDivElement>
+  ): void => {
+    if (!this.interactive() || event.button !== 0) {
+      return;
+    }
+    this.dragState = { pointerId: event.pointerId, anchorX: event.clientX };
+    this.suppressClick = false;
+  };
+
+  private readonly handlePointerMove = (
+    event: ReactPointerEvent<HTMLDivElement>
+  ): void => {
+    if (!this.dragState || this.dragState.pointerId !== event.pointerId) {
+      return;
+    }
+    const deltaX = event.clientX - this.dragState.anchorX;
+    if (Math.abs(deltaX) < CAROUSEL_DRAG_STEP_PX) {
+      return;
+    }
+    this.dragState.anchorX = event.clientX;
+    this.suppressClick = true;
+    this.pointerActivatedIndex = null;
+    this.stepBy(deltaX < 0 ? 1 : -1);
+  };
+
+  private readonly handlePointerEnd = (
+    event: ReactPointerEvent<HTMLDivElement>
+  ): void => {
+    if (this.dragState?.pointerId === event.pointerId) {
+      this.dragState = null;
+    }
+  };
+
+  private readonly handleClickCapture = (event: ReactMouseEvent): void => {
+    if (!this.suppressClick) {
+      return;
+    }
+    this.suppressClick = false;
+    this.pointerActivatedIndex = null;
+    event.preventDefault();
+    event.stopPropagation();
+  };
+
+  private readonly handleKeyDown = (
+    event: ReactKeyboardEvent<HTMLDivElement>
+  ): void => {
+    if (event.key !== "ArrowLeft" && event.key !== "ArrowRight") {
+      return;
+    }
+    event.preventDefault();
+    this.stepBy(event.key === "ArrowRight" ? 1 : -1);
+  };
+
+  private handleItemClick(index: number): void {
+    this.setState({ centerIndex: index });
+    this.scene?.moveTo(index);
+    this.selectIndex(index);
+  }
+
+  private pickAt(
+    event:
+      | ReactMouseEvent<HTMLCanvasElement>
+      | ReactPointerEvent<HTMLCanvasElement>
+  ): number | null {
+    const canvas = this.canvasRef.current;
+    if (!this.scene || !canvas || !this.interactive()) {
+      return null;
+    }
+    const rect = canvas.getBoundingClientRect();
+    return this.scene.pick(
+      event.clientX - rect.left,
+      event.clientY - rect.top,
+      rect.width,
+      rect.height
+    );
+  }
+
+  private activateOnPointerDown(index: number, event: ReactPointerEvent): void {
+    if (event.button !== 0) {
+      return;
+    }
+    this.pointerActivatedIndex = index;
+    this.handleItemClick(index);
+  }
+
+  private activateOnClick(index: number): void {
+    if (this.pointerActivatedIndex === index) {
+      this.pointerActivatedIndex = null;
+      return;
+    }
+    this.pointerActivatedIndex = null;
+    this.handleItemClick(index);
+  }
+
+  private readonly handleCanvasPointerDown = (
+    event: ReactPointerEvent<HTMLCanvasElement>
+  ): void => {
+    const index = this.pickAt(event);
+    if (index !== null) {
+      this.activateOnPointerDown(index, event);
+    }
+  };
+
+  private readonly handleCanvasClick = (
+    event: ReactMouseEvent<HTMLCanvasElement>
+  ): void => {
+    const index = this.pickAt(event);
+    if (index !== null) {
+      this.activateOnClick(index);
+    }
+  };
+
+  private readonly handleCanvasHover = (
+    event: ReactPointerEvent<HTMLCanvasElement>
+  ): void => {
+    const canvas = this.canvasRef.current;
+    if (!this.scene || !canvas) {
+      return;
+    }
+    const rect = canvas.getBoundingClientRect();
+    const hoveredIndex = this.scene.hover(
+      event.clientX - rect.left,
+      event.clientY - rect.top,
+      rect.width,
+      rect.height
+    );
+    canvas.style.cursor = hoveredIndex !== null ? "pointer" : "";
+  };
+
+  private readonly handleCanvasLeave = (): void => {
+    this.scene?.clearHover();
+    if (this.canvasRef.current) {
+      this.canvasRef.current.style.cursor = "";
+    }
+  };
+
+  render(): React.JSX.Element {
+    const interactive = this.interactive();
     return (
       <div
-        ref={stageRef}
+        ref={this.stageRef}
         aria-hidden={interactive ? undefined : "true"}
-        aria-label={interactive ? providerSelectLabel : undefined}
+        aria-label={interactive ? this.props.providerSelectLabel : undefined}
         role={interactive ? "group" : undefined}
         className={styles.emptyHeroCarousel}
-        data-icons-ready={carouselImages.ready}
-        onKeyDown={interactive ? handleKeyDown : undefined}
-        onPointerDown={interactive ? handlePointerDown : undefined}
-        onPointerMove={interactive ? handlePointerMove : undefined}
-        onPointerUp={interactive ? handlePointerEnd : undefined}
-        onPointerCancel={interactive ? handlePointerEnd : undefined}
-        onClickCapture={interactive ? handleClickCapture : undefined}
+        data-icons-ready={this.state.imagesReady}
+        onKeyDown={interactive ? this.handleKeyDown : undefined}
+        onPointerDown={interactive ? this.handlePointerDown : undefined}
+        onPointerMove={interactive ? this.handlePointerMove : undefined}
+        onPointerUp={interactive ? this.handlePointerEnd : undefined}
+        onPointerCancel={interactive ? this.handlePointerEnd : undefined}
+        onClickCapture={interactive ? this.handleClickCapture : undefined}
       >
+        <AgentGUIVinylPlayer
+          selectedAgent={
+            this.props.items[this.state.centerIndex] ??
+            this.props.items[0] ??
+            null
+          }
+          isPlaying
+        />
         <canvas
-          ref={canvasRef}
+          ref={this.canvasRef}
           aria-hidden="true"
           className={styles.emptyHeroCarouselCanvas}
-          onClick={interactive ? handleCanvasClick : undefined}
-          onPointerMove={interactive ? handleCanvasHover : undefined}
+          onClick={interactive ? this.handleCanvasClick : undefined}
+          onPointerDown={interactive ? this.handleCanvasPointerDown : undefined}
+          onPointerMove={interactive ? this.handleCanvasHover : undefined}
+          onPointerLeave={interactive ? this.handleCanvasLeave : undefined}
         />
-        {icons.map((icon, index) => {
-          // Visually-hidden switchers keep the ring reachable by keyboard,
-          // screen readers, and DOM-level tests; visuals live on the canvas.
-          const isCenter = index === centerIndex;
-          const target = targetForIndex(index);
-          const key = `${icon.agentTargetId ?? icon.provider}:${icon.iconUrl}`;
-          if (target && onProviderSelect) {
-            const label = providerSelectLabel
-              ? `${providerSelectLabel}: ${target.label}`
-              : target.label;
+        {this.props.items.map((item, index) => {
+          const isCenter = index === this.state.centerIndex;
+          const key = `${item.agentTargetId}:${item.iconUrl}`;
+          if (this.props.onProviderSelect) {
+            const itemLabel = item.badge?.label
+              ? `${item.label}, ${item.badge.label}`
+              : item.label;
+            const label = this.props.providerSelectLabel
+              ? `${this.props.providerSelectLabel}: ${itemLabel}`
+              : itemLabel;
             return (
               <button
                 key={key}
                 type="button"
                 className={styles.emptyHeroCarouselItem}
-                data-agent-target-id={icon.agentTargetId}
-                data-provider={icon.provider}
+                data-agent-target-id={item.agentTargetId}
+                data-provider={item.provider}
                 data-provider-active={isCenter}
                 aria-label={label}
                 aria-pressed={isCenter}
-                title={target.label}
-                onClick={() => handleItemClick(index)}
+                title={item.label}
+                onPointerDown={(event) =>
+                  this.activateOnPointerDown(index, event)
+                }
+                onClick={() => this.activateOnClick(index)}
               >
-                {target.label}
+                {item.label}
               </button>
             );
           }
@@ -474,7 +518,7 @@ export const AgentGUIHeroAgentCarousel = memo(
             <span
               key={key}
               className={styles.emptyHeroCarouselItem}
-              data-provider={icon.provider}
+              data-provider={item.provider}
               data-provider-active={isCenter}
             />
           );
@@ -482,4 +526,4 @@ export const AgentGUIHeroAgentCarousel = memo(
       </div>
     );
   }
-);
+}

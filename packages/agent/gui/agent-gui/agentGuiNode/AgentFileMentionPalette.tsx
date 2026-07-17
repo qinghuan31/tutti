@@ -42,6 +42,7 @@ import {
 } from "./AgentMentionSearchController";
 import { agentGeneratedMentionItemKey } from "./agentMentionAgentGeneratedFilesPresentation";
 import type { AgentContextMentionItem } from "./agentRichText/agentFileMentionExtension";
+import type { ReactNode } from "react";
 
 export interface AgentMentionPaletteEntry {
   key: string;
@@ -73,6 +74,8 @@ export interface AgentFileMentionPaletteProps {
    * 仅 workspace-issue / workspace-app 行渲染该入口。
    */
   onOpenReferences?: (item: AgentContextMentionItem) => void;
+  /** Controlled provenance filter supplied by the AgentGUI orchestration layer. */
+  provenanceFilterControl?: ReactNode;
 }
 
 const AGENT_MENTION_PALETTE_THEME: MentionPaletteTheme = {
@@ -193,7 +196,8 @@ export function AgentFileMentionPalette({
   onExpandGroup,
   onNavigateHierarchy,
   onNavigateIntoItem,
-  onOpenReferences
+  onOpenReferences,
+  provenanceFilterControl
 }: AgentFileMentionPaletteProps): React.JSX.Element {
   "use memo";
   const openReferencesLabel = translate(
@@ -294,6 +298,11 @@ export function AgentFileMentionPalette({
         )
       }}
       maxHeightPx={maxHeightPx}
+      headerActions={
+        filter === "session" || filter === "file" || filter === "issue"
+          ? provenanceFilterControl
+          : undefined
+      }
       scrollHighlightedIntoViewCentered={shouldCenterHighlightedItem}
       theme={AGENT_MENTION_PALETTE_THEME}
       callbacks={{
@@ -336,19 +345,27 @@ function decorateMentionGroup(
     filter,
     groupCount: groups.length,
     groupId,
+    groupLabel: group.label,
     query
   });
+  const groupLabel = group.label ?? agentMentionGroupLabel(groupId);
   return {
     ...group,
-    label: showLabel ? agentMentionGroupLabel(groupId) : undefined,
+    label: showLabel ? groupLabel : undefined,
     emptyLabel: suppressChrome
       ? undefined
-      : agentMentionEmptyGroupLabel(groupId, query),
+      : (group.emptyLabel ?? agentMentionEmptyGroupLabel(groupId, query)),
     expandLabel: group.hasMore
       ? translate("agentHost.agentGui.contextPickerExpandMore", {
           count: mentionGroupExpandCount(group, filter)
         })
       : undefined,
+    expandLoadingLabel: translate(
+      "agentHost.agentGui.contextPickerLoadMoreLoading"
+    ),
+    expandErrorLabel: translate(
+      "agentHost.agentGui.contextPickerLoadMoreRetry"
+    ),
     sectionClassName: followsMySessions ? "mt-2" : undefined,
     hideTopDivider: suppressChrome
   };
@@ -393,6 +410,7 @@ function shouldRenderMentionGroupLabel(input: {
   filter: AgentMentionFilterId;
   groupCount: number;
   groupId: AgentMentionGroupId;
+  groupLabel?: string;
   query: string;
 }): boolean {
   if (shouldSuppressFileSearchGroupChrome(input.filter, input.query)) {
@@ -401,8 +419,11 @@ function shouldRenderMentionGroupLabel(input: {
   if (input.groupCount !== 1) {
     return true;
   }
+  if (input.groupId.startsWith("agent:")) {
+    return true;
+  }
   return (
-    agentMentionGroupLabel(input.groupId) !==
+    (input.groupLabel ?? agentMentionGroupLabel(input.groupId)) !==
     agentMentionFilterLabel(input.filter)
   );
 }
@@ -454,9 +475,11 @@ function agentMentionItemToRowItem(
       summary: item.title,
       userAvatarUrl: isMySession ? null : (item.initiatorAvatarUrl ?? null),
       userAvatarPlaceholderUrl,
-      agentIconUrl: managedAgentRoundedIconUrl(
-        mentionSessionAgentProvider(item) ?? item.agentName
-      ),
+      agentIconUrl:
+        item.agentIconUrl?.trim() ||
+        managedAgentRoundedIconUrl(
+          mentionSessionAgentProvider(item) ?? item.agentName
+        ),
       showUserAvatar: !isMySession,
       statusTag: agentSessionStatusTag(item.status)
     };
@@ -466,7 +489,7 @@ function agentMentionItemToRowItem(
     return {
       kind: "app",
       name: item.name,
-      description: item.description ?? null,
+      description: mentionDescriptionWithoutTerminalPeriod(item.description),
       iconUrl: item.iconUrl ?? null
     };
   }
@@ -475,7 +498,7 @@ function agentMentionItemToRowItem(
     return {
       kind: "app",
       name: item.name,
-      description: item.description ?? null,
+      description: mentionDescriptionWithoutTerminalPeriod(item.description),
       iconUrl: item.iconUrl ?? managedAgentRoundedIconUrl(item.agentProviderId),
       statusTag: agentTargetAvailableStatusTag()
     };
@@ -514,6 +537,15 @@ function agentMentionItemToRowItem(
     creatorName: item.creatorName ?? null,
     statusTag: agentIssueStatusTag(item.status)
   };
+}
+
+function mentionDescriptionWithoutTerminalPeriod(
+  description: string | null | undefined
+): string | null {
+  const normalizedDescription = description?.trimEnd();
+  return normalizedDescription
+    ? normalizedDescription.replace(/[。.]+$/u, "")
+    : null;
 }
 
 /**

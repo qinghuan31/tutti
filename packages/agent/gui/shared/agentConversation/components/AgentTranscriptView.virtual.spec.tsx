@@ -1,10 +1,12 @@
-import { render, screen, waitFor } from "@testing-library/react";
-import { describe, expect, it, vi } from "vitest";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+import { normalizeAgentActivitySession } from "@tutti-os/agent-activity-core";
 import type { AgentConversationVM } from "../contracts/agentConversationVM";
 import type { AgentTranscriptRowVM } from "../contracts/agentTranscriptRowVM";
 
 const virtualizerMockState = vi.hoisted(() => ({
-  virtualIndexes: [100, 101, 102, 103, 104]
+  virtualIndexes: [100, 101, 102, 103, 104],
+  scrollToIndex: vi.fn()
 }));
 
 vi.mock("../../../i18n/index", () => ({
@@ -24,7 +26,8 @@ vi.mock("@tanstack/react-virtual", () => ({
         start: index * 100,
         size: 100
       })),
-    measureElement: vi.fn()
+    measureElement: vi.fn(),
+    scrollToIndex: virtualizerMockState.scrollToIndex
   }))
 }));
 
@@ -32,6 +35,10 @@ import { useVirtualizer } from "@tanstack/react-virtual";
 import { AgentTranscriptView } from "./AgentTranscriptView";
 
 describe("AgentTranscriptView virtual rendering", () => {
+  beforeEach(() => {
+    virtualizerMockState.scrollToIndex.mockClear();
+  });
+
   it("does not virtualize normal short conversations", () => {
     virtualizerMockState.virtualIndexes = [0];
 
@@ -80,7 +87,11 @@ describe("AgentTranscriptView virtual rendering", () => {
     );
 
     expect(useVirtualizer).toHaveBeenCalledWith(
-      expect.objectContaining({ count: 40 })
+      expect.objectContaining({
+        anchorTo: "end",
+        count: 40,
+        scrollEndThreshold: 24
+      })
     );
     await waitFor(() => {
       expect(screen.getByText("turn 10 user row")).toBeTruthy();
@@ -113,7 +124,7 @@ describe("AgentTranscriptView virtual rendering", () => {
     expect(useVirtualizer).toHaveBeenCalled();
   });
 
-  it("enables virtualization for one complex turn", () => {
+  it("keeps one complex turn in normal flow because virtualization cannot elide it", () => {
     virtualizerMockState.virtualIndexes = [0];
 
     render(
@@ -150,7 +161,7 @@ describe("AgentTranscriptView virtual rendering", () => {
 
     expect(
       document.querySelector("[data-agent-transcript-virtualized='true']")
-    ).toBeTruthy();
+    ).toBeNull();
     expect(
       document.querySelector("[data-agent-transcript-row='row-0']")
     ).toBeTruthy();
@@ -184,6 +195,111 @@ describe("AgentTranscriptView virtual rendering", () => {
     expect(screen.queryByText("virtual transcript row 0")).toBeNull();
     expect(screen.queryByText("virtual transcript row 199")).toBeNull();
   });
+
+  it("uses the timeline viewport when locating an unmounted virtualized message", async () => {
+    virtualizerMockState.virtualIndexes = [10];
+
+    render(
+      <div
+        data-testid="agent-gui-timeline"
+        style={{ height: "480px", overflow: "auto" }}
+      >
+        <div data-slot="scroll-area-content">
+          <AgentTranscriptView
+            conversation={conversationWithMultiRowTurns(40)}
+            labels={{
+              thinkingLabel: "Thought process",
+              toolCallsLabel: (count) => `Tool calls (${count})`,
+              processing: "Planning next moves",
+              turnSummary: "Changed files",
+              userMessageLocator: "User messages"
+            }}
+          />
+        </div>
+      </div>
+    );
+
+    await waitFor(() => {
+      const virtualizerOptions = vi
+        .mocked(useVirtualizer)
+        .mock.calls.at(-1)?.[0];
+      expect(virtualizerOptions?.getScrollElement()).toBe(
+        screen.getByTestId("agent-gui-timeline")
+      );
+    });
+
+    fireEvent.click(
+      screen
+        .getByTestId("agent-message-locator")
+        .querySelectorAll(".agent-gui-message-locator__tick")[0]!
+    );
+
+    expect(virtualizerMockState.scrollToIndex).toHaveBeenCalledWith(0, {
+      align: "center"
+    });
+  });
+
+  it("keeps the timeline viewport bound across long-short-long switches", async () => {
+    virtualizerMockState.virtualIndexes = [10];
+    const labels = {
+      thinkingLabel: "Thought process",
+      toolCallsLabel: (count: number) => `Tool calls (${count})`,
+      processing: "Planning next moves",
+      turnSummary: "Changed files"
+    };
+    const { rerender } = render(
+      <div
+        data-testid="agent-gui-timeline"
+        style={{ height: "480px", overflow: "auto" }}
+      >
+        <AgentTranscriptView
+          conversation={conversationWithMultiRowTurns(40)}
+          labels={labels}
+        />
+      </div>
+    );
+    const timeline = screen.getByTestId("agent-gui-timeline");
+
+    await waitFor(() => {
+      expect(
+        vi.mocked(useVirtualizer).mock.calls.at(-1)?.[0].getScrollElement()
+      ).toBe(timeline);
+    });
+
+    rerender(
+      <div
+        data-testid="agent-gui-timeline"
+        style={{ height: "480px", overflow: "auto" }}
+      >
+        <AgentTranscriptView
+          conversation={conversationWithRows(2)}
+          labels={labels}
+        />
+      </div>
+    );
+
+    await waitFor(() => {
+      expect(
+        vi.mocked(useVirtualizer).mock.calls.at(-1)?.[0].getScrollElement()
+      ).toBe(timeline);
+    });
+
+    rerender(
+      <div
+        data-testid="agent-gui-timeline"
+        style={{ height: "480px", overflow: "auto" }}
+      >
+        <AgentTranscriptView
+          conversation={conversationWithMultiRowTurns(40)}
+          labels={labels}
+        />
+      </div>
+    );
+
+    expect(
+      vi.mocked(useVirtualizer).mock.calls.at(-1)?.[0].getScrollElement()
+    ).toBe(timeline);
+  });
 });
 
 function conversationWithRows(
@@ -215,31 +331,31 @@ function conversationWithRows(
         sessionId: "session-1",
         agentName: "Codex",
         agentProvider: "codex",
-        status: "working",
         title: "Codex",
         latestActivitySummary: "Working",
+        status: "working",
         sortTimeUnixMs: 10,
         changedFiles: [],
         userId: "user-1",
         userName: "Taylor",
         userAvatarUrl: ""
       },
-      session: {
-        id: 1,
+      session: normalizeAgentActivitySession({
+        ...{
+          activeTurnId: null,
+          latestTurnInteractions: [],
+          pendingInteractions: []
+        },
+        workspaceId: "workspace-1",
         agentSessionId: "session-1",
-        presenceId: 1,
         userId: "user-1",
         provider: "codex",
         providerSessionId: "provider-session-1",
-        sessionOrigin: "WORKSPACE_AGENT_SESSION_ORIGIN_RUNTIME",
         cwd: "/workspace/demo",
-        lifecycleStatus: "active",
-        turnPhase: "working",
-        effectiveStatus: "working",
         title: "Codex",
         createdAtUnixMs: 1,
         updatedAtUnixMs: 10
-      },
+      }),
       cwd: "/workspace/demo",
       workspaceRoot: "/workspace/demo",
       turns: rows.map((row) => ({
@@ -254,9 +370,7 @@ function conversationWithRows(
       })),
       showProcessingIndicator: false
     },
-    rows,
-    pendingApproval: null,
-    pendingInteractivePrompt: null
+    rows
   };
 }
 
@@ -316,6 +430,7 @@ function messageRow(
         id: `${overrides.messagePrefix ?? "message"}-${index}`,
         turnId: `turn-${index}`,
         body: overrides.body ?? `virtual transcript row ${index}`,
+        presentationKind: "content",
         occurredAtUnixMs: index
       }
     ],

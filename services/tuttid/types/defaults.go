@@ -8,10 +8,11 @@ import (
 )
 
 type generatedDefaultsSpec struct {
-	State     generatedStateDefaults
-	Transport generatedTransportDefaults
-	Logging   generatedLoggingDefaults
-	Analytics generatedAnalyticsDefaults
+	State           generatedStateDefaults
+	Transport       generatedTransportDefaults
+	Logging         generatedLoggingDefaults
+	Analytics       generatedAnalyticsDefaults
+	AgentExtensions generatedAgentExtensionDefaults
 }
 
 type generatedStateDefaults struct {
@@ -45,6 +46,26 @@ type generatedAnalyticsDefaults struct {
 	Channel       string
 	ChannelDomain string
 	AppVersion    string
+}
+
+type generatedAgentExtensionDefaults struct {
+	Sources []generatedAgentExtensionSourceDefaults
+}
+
+type generatedAgentExtensionSourceDefaults struct {
+	Key              string
+	ReleaseIndexURL  string
+	SigningKeyID     string
+	SigningPublicKey string
+	Enabled          bool
+}
+
+type AgentExtensionSource struct {
+	Key              string
+	ReleaseIndexURL  string
+	SigningKeyID     string
+	SigningPublicKey string
+	Enabled          bool
 }
 
 type ResolvedDefaults struct {
@@ -140,6 +161,27 @@ func ResolveAnalyticsConfig() AnalyticsConfig {
 
 func ResolveAppVersion() string {
 	return resolveStringOverride("TUTTI_APP_VERSION", generatedDefaults.Analytics.AppVersion)
+}
+
+func ResolveAgentExtensionSources() []AgentExtensionSource {
+	result := make([]AgentExtensionSource, 0, len(generatedDefaults.AgentExtensions.Sources))
+	for _, source := range generatedDefaults.AgentExtensions.Sources {
+		enabled := source.Enabled
+		envName := "TUTTI_AGENT_EXTENSION_" + strings.ToUpper(strings.ReplaceAll(source.Key, "-", "_")) + "_ENABLED"
+		if value := strings.TrimSpace(os.Getenv(envName)); value != "" {
+			if parsed, err := strconv.ParseBool(value); err == nil {
+				enabled = parsed
+			}
+		}
+		result = append(result, AgentExtensionSource{
+			Key:              source.Key,
+			ReleaseIndexURL:  source.ReleaseIndexURL,
+			SigningKeyID:     source.SigningKeyID,
+			SigningPublicKey: source.SigningPublicKey,
+			Enabled:          enabled,
+		})
+	}
+	return result
 }
 
 func resolveTuttiEnv() string {

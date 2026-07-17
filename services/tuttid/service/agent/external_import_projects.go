@@ -20,7 +20,15 @@ func (*Service) ExternalImportValidProjectPaths(ctx context.Context, input Exter
 	if len(selections) == 0 {
 		return nil, nil
 	}
-	data := scanExternalAgentSessions(ctx, providersFromExternalImportSelections(selections), -1)
+	data, err := scanExternalAgentSessions(
+		ctx,
+		providersFromExternalImportSelections(selections),
+		-1,
+		input.ArchivePath,
+	)
+	if err != nil {
+		return nil, err
+	}
 	valid := map[string]int64{}
 	for _, session := range data.sessions {
 		if ctx.Err() != nil {

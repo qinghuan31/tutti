@@ -215,6 +215,13 @@
   padding: 8px;
 }
 
+.workspace-terminal__xterm .xterm-viewport {
+  background-color: var(
+    --workspace-terminal-background,
+    var(--tutti-surface, #111)
+  );
+}
+
 .workspace-terminal__surface-error {
   position: absolute;
   right: 8px;

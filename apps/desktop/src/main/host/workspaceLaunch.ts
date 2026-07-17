@@ -1,5 +1,5 @@
 import type { TuttidClient } from "@tutti-os/client-tuttid-ts";
-import type { AgentGUIAgent } from "@tutti-os/agent-gui";
+import type { DesktopAgentDirectorySnapshot } from "../../shared/contracts/agentDirectory.ts";
 import type { DesktopAgentProviderStatusSnapshot } from "../../shared/contracts/ipc.ts";
 
 export interface WorkspaceLaunchOwnerWindow {
@@ -9,16 +9,29 @@ export interface WorkspaceLaunchOwnerWindow {
 
 export interface WorkspaceLaunchAdapters {
   showAgentWindow(input: WorkspaceLaunchAgentWindowInput): Promise<void>;
-  showWorkspaceWindow(workspaceID: string): Promise<void>;
+  showWorkspaceWindow(
+    workspaceID: string,
+    options?: WorkspaceLaunchWorkspaceWindowOptions
+  ): Promise<WorkspaceLaunchOwnerWindow | null | void>;
   warnStartupWindowResolutionFailure(error: unknown): void;
 }
 
+export interface WorkspaceLaunchWorkspaceWindowOptions {
+  windowKind?: "agent" | "workspace";
+}
+
 export interface WorkspaceLaunchAgentWindowInput {
+  agentDirectorySnapshot?: DesktopAgentDirectorySnapshot | null;
   agentSessionID?: string | null;
   agentTargetID?: string | null;
+  autoSubmit?: boolean;
+  draftPrompt?: string | null;
+  openerBounds?: Electron.Rectangle | null;
+  openerWindowKind?: "agent" | "workspace" | null;
+  offsetFromSourceWindow?: boolean;
   providerStatusSnapshot?: DesktopAgentProviderStatusSnapshot | null;
-  agents?: readonly AgentGUIAgent[];
   provider?: string | null;
+  userProjectPath?: string | null;
   workspaceID: string;
 }
 
@@ -28,6 +41,11 @@ export interface WorkspaceLaunch {
   showWorkspace(
     ownerWindow: WorkspaceLaunchOwnerWindow | null,
     workspaceID: string
+  ): Promise<void>;
+  replaceWorkspaceWindow(
+    ownerWindow: WorkspaceLaunchOwnerWindow | null,
+    workspaceID: string,
+    windowKind: "agent" | "workspace"
   ): Promise<void>;
 }
 
@@ -53,7 +71,8 @@ export function createWorkspaceLaunch(
     showAgentWindow(input) {
       return deps.adapters.showAgentWindow(input);
     },
-    showWorkspace
+    showWorkspace,
+    replaceWorkspaceWindow
   };
 
   async function resolveStartupWorkspaceID(): Promise<string> {
@@ -68,7 +87,28 @@ export function createWorkspaceLaunch(
     ownerWindow: WorkspaceLaunchOwnerWindow | null,
     workspaceID: string
   ): Promise<void> {
-    await deps.adapters.showWorkspaceWindow(workspaceID);
+    const workspaceWindow =
+      await deps.adapters.showWorkspaceWindow(workspaceID);
+    if (workspaceWindow === ownerWindow) {
+      return;
+    }
+    forceCloseWindow(ownerWindow);
+  }
+
+  async function replaceWorkspaceWindow(
+    ownerWindow: WorkspaceLaunchOwnerWindow | null,
+    workspaceID: string,
+    windowKind: "agent" | "workspace"
+  ): Promise<void> {
+    const workspaceWindow = await deps.adapters.showWorkspaceWindow(
+      workspaceID,
+      {
+        windowKind
+      }
+    );
+    if (workspaceWindow === ownerWindow) {
+      return;
+    }
     forceCloseWindow(ownerWindow);
   }
 }

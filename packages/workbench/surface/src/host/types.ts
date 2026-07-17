@@ -27,6 +27,7 @@ import type {
 import type {
   WorkbenchDockPlacement,
   WorkbenchMinimizeAnimation,
+  WorkbenchSurfacePresentation,
   WorkbenchWindowSurfaceLayer,
   WorkbenchWindowHeaderDragHandleProps
 } from "../react/types.ts";
@@ -370,7 +371,13 @@ export interface WorkbenchHostNodeBodyContext<
   host: WorkbenchHostHandle;
   instanceId: string;
   instanceKey?: string | null;
+  /** True while the host is interactively moving this node. */
+  isDragging: boolean;
   isFocused: boolean;
+  /** True while the host is interactively resizing this node. */
+  isResizing: boolean;
+  /** Current host presentation mode; null for the normal window layout. */
+  presentationMode?: WorkbenchSurfacePresentation["mode"] | null;
   node: WorkbenchNode<WorkbenchHostNodeData>;
   previewViewport?: WorkbenchSize;
   setNodeRuntimeState(state: unknown): void;

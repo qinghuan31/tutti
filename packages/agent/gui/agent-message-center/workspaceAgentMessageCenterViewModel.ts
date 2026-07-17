@@ -153,14 +153,21 @@ export function buildMessageCenterStatusOptions(
 export function buildMessageCenterProviderOptions(
   items: readonly WorkspaceAgentMessageCenterItem[]
 ): MessageCenterProviderOption[] {
-  const counts = new Map<string, number>();
+  const counts = new Map<string, { count: number; label: string }>();
   for (const item of items) {
-    counts.set(item.provider, (counts.get(item.provider) ?? 0) + 1);
+    const current = counts.get(item.provider);
+    counts.set(item.provider, {
+      count: (current?.count ?? 0) + 1,
+      label:
+        current?.label ||
+        item.agentName?.trim() ||
+        workspaceAgentProviderLabel(item.provider)
+    });
   }
   return [...counts.entries()]
-    .map(([value, count]) => ({
-      count,
-      label: workspaceAgentProviderLabel(value),
+    .map(([value, option]) => ({
+      count: option.count,
+      label: option.label,
       value
     }))
     .sort((left, right) => left.label.localeCompare(right.label));
@@ -309,7 +316,7 @@ function messageCenterAgentUserGroupLabel(
   if (item.identity) {
     return `${item.identity.userName} & ${item.identity.agentName}`;
   }
-  return workspaceAgentProviderLabel(item.provider);
+  return item.agentName?.trim() || workspaceAgentProviderLabel(item.provider);
 }
 
 const RECENTLY_COMPLETED_WINDOW_MS = 10 * 60 * 1000;

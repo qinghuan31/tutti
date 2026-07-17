@@ -82,11 +82,12 @@ func TestControllerCodexStreamNeverIdlesMidTurn(t *testing.T) {
 	}
 	defer unsubscribe()
 
-	if _, err := controller.Exec(context.Background(), ExecInput{
+	execResult, err := controller.Exec(context.Background(), ExecInput{
 		RoomID:         "room-1",
 		AgentSessionID: agentSessionID,
 		Content:        textPrompt("long task"),
-	}); err != nil {
+	})
+	if err != nil {
 		t.Fatalf("Exec: %v", err)
 	}
 	waitForCondition(t, func() bool {
@@ -108,13 +109,21 @@ func TestControllerCodexStreamNeverIdlesMidTurn(t *testing.T) {
 	})
 	transport.conn.completePendingTurn()
 	waitForCondition(t, func() bool {
+		return adapter.sessionActiveTurnID(agentSessionID) == ""
+	})
+	controller.ReconcileRootTurnSettlement(RootTurnSettlement{
+		RoomID: "room-1", AgentSessionID: agentSessionID,
+		TurnID: execResult.TurnID, Outcome: "completed",
+	})
+	waitForCondition(t, func() bool {
 		session, ok := controller.get("room-1", agentSessionID)
 		return ok && session.Status != SessionStatusWorking
 	})
 
 	sawSettled := false
-	drained := false
-	for !drained {
+	settledDeadline := time.NewTimer(5 * time.Second)
+	defer settledDeadline.Stop()
+	for !sawSettled {
 		select {
 		case event := <-stream:
 			patch, ok := event.Data.(agentsessionstore.WorkspaceAgentStatePatch)
@@ -135,12 +144,78 @@ func TestControllerCodexStreamNeverIdlesMidTurn(t *testing.T) {
 			if patch.SubmitAvailability != nil && patch.SubmitAvailability.State == "available" {
 				t.Fatalf("state patch published available submit mid-turn (phase %q)", phase)
 			}
-		default:
-			drained = true
+		case <-settledDeadline.C:
+			t.Fatal("stream never published a settled lifecycle patch")
 		}
 	}
-	if !sawSettled {
-		t.Fatal("stream never published a settled lifecycle patch")
+}
+
+func TestControllerStandardACPWaitsForDaemonRootSettlement(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name       string
+		agentTitle string
+		provider   string
+		build      func(ProcessTransport) *standardACPAdapter
+	}{
+		{name: "cursor", agentTitle: "Cursor Agent", provider: ProviderCursor, build: func(transport ProcessTransport) *standardACPAdapter {
+			return newCursorAdapterWithHostMetadata(transport, LegacyHostMetadata(), nil)
+		}},
+		{name: "opencode", agentTitle: "OpenCode", provider: ProviderOpenCode, build: newOpenCodeTestAdapter},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			transport := newStandardACPTransport(tt.agentTitle, tt.name+"-root-settlement")
+			adapter := tt.build(transport)
+			controller := NewController([]Adapter{adapter}, nil)
+			started, err := controller.Start(context.Background(), StartInput{
+				RoomID: "room-1", Provider: tt.provider, CWD: "/workspace", Title: tt.agentTitle,
+			})
+			if err != nil {
+				t.Fatalf("Start: %v", err)
+			}
+			agentSessionID := started.Session.AgentSessionID
+			stream, unsubscribe, ok := controller.Subscribe("room-1", agentSessionID)
+			if !ok {
+				t.Fatal("Subscribe returned ok=false")
+			}
+			defer unsubscribe()
+
+			execResult, err := controller.Exec(context.Background(), ExecInput{
+				RoomID: "room-1", AgentSessionID: agentSessionID, Content: textPrompt("inspect the workspace"),
+			})
+			if err != nil {
+				t.Fatalf("Exec: %v", err)
+			}
+
+			deadline := time.NewTimer(5 * time.Second)
+			defer deadline.Stop()
+			providerCompleted := false
+			for !providerCompleted {
+				select {
+				case event := <-stream:
+					patch, ok := event.Data.(agentsessionstore.WorkspaceAgentStatePatch)
+					providerCompleted = event.EventType == StreamEventStatePatch && ok &&
+						patch.RootProviderTurn != nil &&
+						patch.RootProviderTurn.Phase == agentsessionstore.RootProviderTurnPhaseCompleted
+				case <-deadline.C:
+					t.Fatal("stream never published root provider completion")
+				}
+			}
+			if !controller.HasActiveTurn("room-1", agentSessionID) {
+				t.Fatal("controller cleared canonical root before daemon settlement")
+			}
+
+			controller.ReconcileRootTurnSettlement(RootTurnSettlement{
+				RoomID: "room-1", AgentSessionID: agentSessionID, TurnID: execResult.TurnID, Outcome: "completed",
+			})
+			if controller.HasActiveTurn("room-1", agentSessionID) {
+				t.Fatal("controller retained canonical root after daemon settlement")
+			}
+		})
 	}
 }
 
@@ -177,6 +252,81 @@ func TestApplyLifecycleSnapshotToPatchProviderAgnostic(t *testing.T) {
 	}
 }
 
+func TestGoalRootProviderStartProjectsAtomicCanonicalTurn(t *testing.T) {
+	t.Parallel()
+
+	session := Session{
+		RoomID: "room-1", AgentSessionID: "agent-1", Provider: ProviderClaudeCode,
+		ProviderSessionID: "claude-1",
+	}
+	event := claudeSDKRootProviderTurnStartedEvent(session, "goal-turn-1", "provider-turn-1", map[string]any{
+		"turnOrigin":            "goal_arm",
+		"sourceGoalOperationId": "goal-op-1",
+		"sourceGoalRevision":    int64(4),
+		"sourceGoalRepairEpoch": int64(2),
+	})
+	patch, ok := statePatchFromSessionEvent(agentsessionstore.EventSource{Provider: ProviderClaudeCode}, event, session.AgentSessionID, 100)
+	if !ok || patch.Turn == nil || patch.RootProviderTurn == nil {
+		t.Fatalf("goal provider start patch = %#v, want atomic turn and provider transition", patch)
+	}
+	if patch.Turn.TurnID != "goal-turn-1" || patch.Turn.Phase != "running" || patch.Turn.Origin != "goal_arm" ||
+		patch.Turn.SourceGoalOperationID != "goal-op-1" || patch.Turn.SourceGoalRevision != 4 || patch.Turn.SourceGoalRepairEpoch != 2 {
+		t.Fatalf("goal turn patch = %#v", patch.Turn)
+	}
+	if patch.RootProviderTurn.RootTurnID != "goal-turn-1" || patch.RootProviderTurn.ProviderTurnID != "provider-turn-1" {
+		t.Fatalf("root provider patch = %#v", patch.RootProviderTurn)
+	}
+}
+
+func TestOrdinaryRootProviderStartCannotCreateCanonicalTurn(t *testing.T) {
+	t.Parallel()
+
+	session := Session{RoomID: "room-1", AgentSessionID: "agent-1", Provider: ProviderClaudeCode}
+	event := claudeSDKRootProviderTurnStartedEvent(session, "missing-turn", "provider-turn-1", map[string]any{"adapter": "claude"})
+	event = stampAdapterTurnLifecycleEvents([]activityshared.Event{event}, func() uint64 { return 1 })[0]
+	patch, ok := statePatchFromSessionEvent(agentsessionstore.EventSource{Provider: ProviderClaudeCode}, event, session.AgentSessionID, 100)
+	if !ok || patch.RootProviderTurn == nil {
+		t.Fatalf("ordinary root provider patch = %#v", patch)
+	}
+	if patch.Turn != nil {
+		t.Fatalf("ordinary root provider start fabricated canonical turn: %#v", patch.Turn)
+	}
+}
+
+func TestRootProviderStartWaitsForDurableCanonicalSettlement(t *testing.T) {
+	t.Parallel()
+
+	session := Session{RoomID: "room-1", AgentSessionID: "agent-1", Provider: ProviderClaudeCode}
+	started := claudeSDKRootProviderTurnStartedEvent(session, "goal-turn-1", "provider-turn-1", map[string]any{
+		"turnOrigin":            "goal_arm",
+		"sourceGoalOperationId": "goal-op-1",
+		"sourceGoalRevision":    int64(1),
+	})
+	started = stampAdapterTurnLifecycleEvents([]activityshared.Event{started}, func() uint64 { return 1 })[0]
+	session = applyTurnLifecycleSnapshots(session, []activityshared.Event{started})
+	if !sessionHasLiveTurnLifecycle(session) || runtimeTurnLifecycleActiveTurnID(session.TurnLifecycle) != "goal-turn-1" {
+		t.Fatalf("runtime lifecycle after provider start = %#v", session.TurnLifecycle)
+	}
+
+	completed := claudeSDKRootProviderTurnCompletedEvent(session, "goal-turn-1", "provider-turn-1", activityshared.TurnOutcomeCompleted, nil)
+	completed = stampAdapterTurnLifecycleEvents([]activityshared.Event{completed}, func() uint64 { return 2 })[0]
+	session = applyTurnLifecycleSnapshots(session, []activityshared.Event{completed})
+	if !sessionHasLiveTurnLifecycle(session) || runtimeTurnLifecycleActiveTurnID(session.TurnLifecycle) != "goal-turn-1" {
+		t.Fatalf("runtime lifecycle after provider completion = %#v", session.TurnLifecycle)
+	}
+
+	controller := NewController(nil, nil)
+	controller.store(session)
+	controller.ReconcileRootTurnSettlement(RootTurnSettlement{
+		RoomID: session.RoomID, AgentSessionID: session.AgentSessionID,
+		TurnID: "goal-turn-1", Outcome: "completed",
+	})
+	reconciled, ok := controller.get(session.RoomID, session.AgentSessionID)
+	if !ok || sessionHasLiveTurnLifecycle(reconciled) || reconciled.SubmitAvailability == nil || reconciled.SubmitAvailability.State != "available" {
+		t.Fatalf("runtime lifecycle after durable settlement = %#v", reconciled)
+	}
+}
+
 // A rejected/errored approval must not strand the lifecycle in
 // waiting_approval: the error path appends a back-to-running snapshot.
 func TestCodexAppServerAdapterApprovalErrorPathResumesLifecycle(t *testing.T) {
@@ -199,7 +349,7 @@ func TestCodexAppServerAdapterApprovalErrorPathResumesLifecycle(t *testing.T) {
 		}, nil)
 	}()
 	waitForCondition(t, func() bool {
-		return adapter.getPendingRequest(session.AgentSessionID, "approval-1") != nil
+		return adapter.getPendingRequest(session.AgentSessionID, "turn-local-1", "approval-1") != nil
 	})
 
 	adapter.rejectPendingRequests(session.AgentSessionID, errPermissionRequestCanceled)

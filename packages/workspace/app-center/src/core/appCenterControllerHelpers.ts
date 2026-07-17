@@ -122,8 +122,10 @@ export function normalizeWorkspaceAppCenterViewState(
     value?.activeAppTab === "community" || value?.activeAppTab === "my"
       ? value.activeAppTab
       : "recommended";
+  const openAppId = value?.openAppId?.trim() || null;
   return {
-    activeAppTab
+    activeAppTab,
+    openAppId
   };
 }
 
@@ -131,7 +133,10 @@ export function areWorkspaceAppCenterViewStatesEqual(
   left: WorkspaceAppCenterViewState,
   right: WorkspaceAppCenterViewState
 ): boolean {
-  return left.activeAppTab === right.activeAppTab;
+  return (
+    left.activeAppTab === right.activeAppTab &&
+    (left.openAppId?.trim() || null) === (right.openAppId?.trim() || null)
+  );
 }
 
 function areWorkspaceAppCenterLocalizationsEqual(

@@ -501,6 +501,7 @@ describe("AgentTurnSummaryRow", () => {
       async (): Promise<AgentHostApplyWorkspaceGitPatchResult> => ({
         appliedPaths: [],
         conflictedPaths: [],
+        errorCode: "invalid-patch",
         skippedPaths: [],
         status: "error"
       })
@@ -554,7 +555,7 @@ describe("AgentTurnSummaryRow", () => {
 
     await waitFor(() => {
       expect(hostToastError).toHaveBeenCalledWith(
-        "agentHost.agentGui.turnSummaryUndoFailed"
+        "agentHost.agentGui.turnSummaryInvalidPatch"
       );
     });
     expect(toast.error).not.toHaveBeenCalled();
@@ -1115,6 +1116,54 @@ describe("AgentTurnSummaryRow", () => {
         type: "open-workspace-file"
       })
     );
+  });
+
+  it("opens relative file changes from the session cwd without a workspace root", () => {
+    const onLinkAction = vi.fn();
+    render(
+      <AgentTurnSummaryRow
+        row={{
+          kind: "turn-summary",
+          id: "turn-summary:no-project",
+          turnId: "turn-no-project",
+          fileCount: 1,
+          modifiedCount: 0,
+          createdCount: 1,
+          occurredAtUnixMs: 26,
+          files: [
+            {
+              label: "readme.md",
+              path: "readme.md",
+              fileName: "readme.md",
+              directory: null,
+              changeType: "created",
+              toolName: "Write",
+              messageId: "call:no-project",
+              content: "# LiYing",
+              occurredAtUnixMs: 26
+            }
+          ]
+        }}
+        workspaceRoot={null}
+        basePath="/Users/demo/Documents/tutti/session-1"
+        label="Changed files"
+        onLinkAction={onLinkAction}
+      />
+    );
+
+    fireEvent.click(
+      screen.getByRole("button", {
+        name: /agentHost\.workspaceAgentSessionDetailOpenFile:readme\.md/i
+      })
+    );
+
+    expect(onLinkAction).toHaveBeenCalledWith({
+      type: "open-workspace-file",
+      path: "/Users/demo/Documents/tutti/session-1/readme.md",
+      directoryPath: "/Users/demo/Documents/tutti/session-1",
+      workspaceRoot: "/Users/demo/Documents/tutti/session-1",
+      source: "agent-file-change"
+    });
   });
 
   it("renders created edit-file content without falling back to monaco loading", async () => {

@@ -150,8 +150,11 @@ directory.
 
 ## Preparation And Validation
 
-When present, `prepare.sh` must be an executable file. It runs with Factory
-runtime/data/log/toolchain environment directories and a bounded timeout.
+When present, `prepare.sh` must be an executable file. Windows packages must
+also provide a sibling `prepare.cmd`; the daemon executes that companion instead
+of attempting to launch the POSIX script. The preparation command runs with
+Factory runtime/data/log/toolchain environment directories and a bounded
+timeout.
 
 Validation then verifies:
 

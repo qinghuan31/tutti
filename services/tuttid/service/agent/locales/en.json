@@ -35,7 +35,7 @@
     "cursor": {
       "read-only": {
         "label": "Read-only",
-        "description": "Cursor plans and reads only. Proposes changes without making them."
+        "description": "Cursor explores and reads with search tools, without making changes."
       },
       "agent": {
         "label": "Ask for approval",
@@ -44,6 +44,20 @@
       "full-access": {
         "label": "Full access",
         "description": "Runs commands without asking, unless explicitly denied by your Cursor permission rules."
+      }
+    },
+    "opencode": {
+      "read-only": {
+        "description": "Reads and searches the local project, but denies edits, commands, network access, and other approval-gated actions.",
+        "label": "Read-only"
+      },
+      "ask": {
+        "description": "Reads and searches directly, then asks before edits, commands, network access, and other gated actions.",
+        "label": "Ask"
+      },
+      "full-access": {
+        "description": "Automatically allows gated actions without changing OpenCode's separate Plan mode restrictions.",
+        "label": "Full access"
       }
     },
     "hermes": {
@@ -113,6 +127,10 @@
     "minimal": {
       "description": "Uses the least reasoning for the fastest responses",
       "label": "Minimal"
+    },
+    "none": {
+      "description": "Disables additional reasoning for the fastest responses",
+      "label": "Off"
     },
     "ultra": {
       "description": "Maximum reasoning with automatic task delegation",

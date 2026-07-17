@@ -8,6 +8,7 @@ import {
 } from "../../workspaceBrowserLaunchCoordinator.ts";
 import { createWorkspaceAppBrowserFeature } from "./workspaceAppBrowserFeature.ts";
 import { createWorkspaceBrowserService } from "../workspaceBrowserService.ts";
+import { workspaceAppCenterNodeID } from "../../../../workspace-app-center/services/workspaceAppCenterLaunchIds.ts";
 
 test("workspace app browser feature keeps browser events connected", async () => {
   const requests: WorkspaceBrowserLaunchRequest[] = [];
@@ -65,6 +66,42 @@ test("workspace app browser feature keeps browser events connected", async () =>
       diagnosticMessage: "ERR_CONNECTION_REFUSED",
       params: undefined
     }
+  );
+});
+
+test("workspace app browser feature accepts inline app-center node events", () => {
+  let emitBrowserEvent = (_event: BrowserNodeEvent): void => undefined;
+  const browserApi = createBrowserApi({
+    onEvent(listener) {
+      emitBrowserEvent = listener;
+      return () => {
+        emitBrowserEvent = () => undefined;
+      };
+    }
+  });
+  const feature = createWorkspaceAppBrowserFeature({
+    browserApi,
+    browserService: createWorkspaceBrowserService({ browserApi }),
+    runtimeApi: createRuntimeApi(),
+    workspaceId: "workspace-inline-app-center"
+  });
+
+  emitBrowserEvent({
+    canGoBack: false,
+    canGoForward: false,
+    isAttachedToWindow: true,
+    isLoading: false,
+    isOccluded: false,
+    lifecycle: "active",
+    nodeId: workspaceAppCenterNodeID,
+    title: "AI Slides",
+    type: "state",
+    url: "http://127.0.0.1:4173/"
+  });
+
+  assert.equal(
+    feature.runtimeStore.getNodeState(workspaceAppCenterNodeID).url,
+    "http://127.0.0.1:4173/"
   );
 });
 

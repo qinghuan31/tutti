@@ -191,6 +191,8 @@ export type WorkspaceAppCenterAppTab = "community" | "my" | "recommended";
 
 export interface WorkspaceAppCenterViewState {
   activeAppTab: WorkspaceAppCenterAppTab;
+  /** The app currently shown inside the app-center node, if any. */
+  openAppId?: string | null;
 }
 
 export type WorkspaceAppCenterReadableStoreState =

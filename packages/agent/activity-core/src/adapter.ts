@@ -1,6 +1,4 @@
 import type {
-  AgentActivityCancelSessionInput,
-  AgentActivityCancelSessionResult,
   AgentActivityGoalControlInput,
   AgentActivityGoalControlResult,
   AgentActivityCreateSessionInput,
@@ -14,9 +12,9 @@ import type {
   AgentActivitySendInput,
   AgentActivitySendInputResult,
   AgentActivitySession,
-  AgentActivitySessionEventEnvelope,
   AgentActivitySessionList,
-  AgentActivitySubmitInteractiveInput
+  AgentActivitySubmitInteractiveInput,
+  AgentActivitySubmitInteractiveResult
 } from "./types.ts";
 
 export interface AgentActivityAdapter {
@@ -39,30 +37,18 @@ export interface AgentActivityAdapter {
     input: AgentActivityLoadComposerOptionsInput
   ): Promise<AgentActivityComposerOptions>;
 
-  subscribeSessionEvents?(input: {
-    workspaceId: string;
-    agentSessionId: string;
-    afterVersion?: number;
-    signal: AbortSignal;
-    onEvent(event: AgentActivitySessionEventEnvelope): void;
-    onError?(error: unknown): void;
-  }): Promise<() => void>;
-
   createSession(
     input: AgentActivityCreateSessionInput
   ): Promise<AgentActivitySession>;
   sendInput(
     input: AgentActivitySendInput
   ): Promise<AgentActivitySendInputResult>;
-  cancelSession(
-    input: AgentActivityCancelSessionInput
-  ): Promise<AgentActivityCancelSessionResult>;
   goalControl(
     input: AgentActivityGoalControlInput
   ): Promise<AgentActivityGoalControlResult>;
   submitInteractive(
     input: AgentActivitySubmitInteractiveInput
-  ): Promise<unknown>;
+  ): Promise<AgentActivitySubmitInteractiveResult>;
   deleteSession(
     input: AgentActivityDeleteSessionInput
   ): Promise<AgentActivityDeleteSessionResult>;

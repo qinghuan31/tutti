@@ -1,60 +1,63 @@
 package agent
 
 import (
-	"path/filepath"
+	"context"
 	"slices"
 	"testing"
 )
 
 func TestComposerProviderCapabilitiesDefaults(t *testing.T) {
 	t.Parallel()
-	claude := composerProviderCapabilities("claude-code")
-	for _, want := range []string{"imageInput", "skills", "compact", "tokenUsage", "rateLimits", "planMode", "interrupt"} {
+	claude := composerProviderCapabilities("claude-code", true)
+	for _, want := range []string{"imageInput", "skills", "compact", "tokenUsage", "rateLimits", "planMode", "interrupt", "activeTurnGuidance"} {
 		if !slices.Contains(claude, want) {
 			t.Fatalf("claude defaults = %v, missing %q", claude, want)
 		}
 	}
-	codex := composerProviderCapabilities("codex")
+	codex := composerProviderCapabilities("codex", true)
 	if !slices.Contains(codex, "planMode") {
 		t.Fatalf("codex defaults must include planMode (re-negotiated at session start): %v", codex)
 	}
 	if !slices.Contains(codex, "compact") || !slices.Contains(codex, "skills") {
 		t.Fatalf("codex defaults = %v", codex)
 	}
-	tuttiAgent := composerProviderCapabilities("tutti-agent")
+	if !slices.Contains(codex, "activeTurnGuidance") {
+		t.Fatalf("codex defaults = %v, missing native active-turn guidance", codex)
+	}
+	tuttiAgent := composerProviderCapabilities("tutti-agent", true)
 	if !slices.Contains(tuttiAgent, "planMode") || !slices.Contains(tuttiAgent, "compact") || !slices.Contains(tuttiAgent, "skills") {
 		t.Fatalf("tutti-agent defaults = %v", tuttiAgent)
 	}
 	// Browser use is delivered as a default MCP server to every provider, so it
 	// is advertised by default alongside the per-provider capabilities.
-	for _, provider := range []string{"claude-code", "codex", "tutti-agent", "openclaw"} {
-		if got := composerProviderCapabilities(provider); !slices.Contains(got, "browserUse") {
+	for _, provider := range []string{"claude-code", "codex", "cursor", "opencode", "tutti-agent", "openclaw"} {
+		if got := composerProviderCapabilities(provider, true); !slices.Contains(got, "browserUse") {
 			t.Fatalf("%s defaults = %v, missing browserUse", provider, got)
 		}
 	}
-	if got := composerProviderCapabilities("openclaw"); !slices.Contains(got, "interrupt") {
+	if got := composerProviderCapabilities("openclaw", true); !slices.Contains(got, "interrupt") {
 		t.Fatalf("openclaw defaults = %v, missing interrupt", got)
 	}
-	if got := composerProviderCapabilities("opencode"); !slices.Contains(got, "imageInput") || !slices.Contains(got, "interrupt") {
+	if got := composerProviderCapabilities("opencode", true); !slices.Contains(got, "imageInput") || !slices.Contains(got, "interrupt") {
 		t.Fatalf("opencode defaults = %v, missing imageInput or interrupt", got)
 	}
-	if got := composerProviderCapabilities("opencode"); !slices.Contains(got, "planMode") {
+	if got := composerProviderCapabilities("opencode", true); !slices.Contains(got, "planMode") {
 		t.Fatalf("opencode defaults = %v, missing planMode", got)
 	}
-	if got := composerProviderCapabilities("cursor"); !slices.Contains(got, "imageInput") || !slices.Contains(got, "interrupt") {
-		t.Fatalf("cursor defaults = %v, missing imageInput or interrupt", got)
+	if got := composerProviderCapabilities("opencode", true); slices.Contains(got, "activeTurnGuidance") {
+		t.Fatalf("opencode defaults = %v, must use cancel-then-send", got)
 	}
-	if got := composerProviderCapabilities("unknown"); got != nil {
+	if got := composerProviderCapabilities("cursor", true); !slices.Contains(got, "imageInput") || !slices.Contains(got, "interrupt") || !slices.Contains(got, "planMode") {
+		t.Fatalf("cursor defaults = %v, missing imageInput, interrupt, or planMode", got)
+	}
+	if got := composerProviderCapabilities("unknown", true); got != nil {
 		t.Fatalf("unknown provider defaults = %v, want nil", got)
 	}
 }
 
 func TestComposerProviderCapabilitiesOmitUnavailableComputerUse(t *testing.T) {
-	t.Setenv("TUTTI_COMPUTER_USE", "")
-	t.Setenv("TUTTI_COMPUTER_MCP_COMMAND", filepath.Join(t.TempDir(), "missing-cua-driver"))
-
 	for _, provider := range []string{"claude-code", "codex", "tutti-agent", "openclaw"} {
-		if got := composerProviderCapabilities(provider); slices.Contains(got, "computerUse") {
+		if got := composerProviderCapabilities(provider, false); slices.Contains(got, "computerUse") {
 			t.Fatalf("%s defaults = %v, want no computerUse when cua-driver is unavailable", provider, got)
 		}
 	}
@@ -134,14 +137,48 @@ func TestNormalizeComposerSettingsClampsByProviderSupport(t *testing.T) {
 		Model:           "openai/gpt-5.3-codex-spark",
 		ReasoningEffort: "none",
 	})
-	if opencode.Model != "openai/gpt-5.3-codex-spark" || opencode.ReasoningEffort != "high" {
+	if opencode.Model != "openai/gpt-5.3-codex-spark" || opencode.ReasoningEffort != "none" {
 		t.Fatalf("opencode settings normalized unexpectedly: %+v", opencode)
 	}
 	claude := normalizeComposerSettingsForProvider("claude-code", ComposerSettings{
 		Model: "opus",
 	})
-	if claude.Model != "default" {
-		t.Fatalf("claude legacy opus model = %q, want default", claude.Model)
+	if claude.Model != "opus" {
+		t.Fatalf("claude model = %q, want opus", claude.Model)
+	}
+}
+
+func TestResolveCreateSessionModelPreservesClaudeAliases(t *testing.T) {
+	t.Parallel()
+	service := &Service{}
+	for _, want := range []string{"opus", "opusplan"} {
+		got := service.resolveCreateSessionModel(context.Background(), "claude-code", nil, "", stringPointer(want))
+		if got == nil {
+			t.Fatalf("resolveCreateSessionModel(%q) = nil, want %q", want, want)
+		}
+		if *got != want {
+			t.Fatalf("resolveCreateSessionModel(%q) = %q, want %q", want, *got, want)
+		}
+	}
+}
+
+func TestResolveCreateSessionModelPropagatesWorkspaceCwd(t *testing.T) {
+	t.Parallel()
+	inputs := []AgentModelCatalogInput{}
+	service := &Service{ModelCatalog: fakeModelCatalog{
+		inputs: &inputs,
+		result: AgentModelCatalogResult{Models: []AgentModelOption{{
+			ID:        "openai/gpt-5.4",
+			IsDefault: true,
+		}}},
+	}}
+
+	got := service.resolveCreateSessionModel(context.Background(), "opencode", nil, "/workspace/project", nil)
+	if got == nil || *got != "openai/gpt-5.4" {
+		t.Fatalf("resolveCreateSessionModel() = %v, want openai/gpt-5.4", got)
+	}
+	if len(inputs) != 1 || inputs[0] != (AgentModelCatalogInput{Provider: "opencode", Cwd: "/workspace/project"}) {
+		t.Fatalf("model catalog inputs = %+v, want workspace-scoped OpenCode lookup", inputs)
 	}
 }
 
@@ -174,6 +211,34 @@ func TestComposerPermissionConfigForCursor(t *testing.T) {
 	}
 }
 
+func TestComposerPermissionConfigForOpenCodeIsIndependentFromPlanMode(t *testing.T) {
+	t.Parallel()
+	config := composerPermissionConfig("opencode", "", "en")
+	if !config.Configurable {
+		t.Fatal("opencode permission config must be configurable")
+	}
+	if config.DefaultValue != "ask" {
+		t.Fatalf("opencode default permission mode = %q, want ask", config.DefaultValue)
+	}
+	ids := make([]string, 0, len(config.Modes))
+	for _, mode := range config.Modes {
+		ids = append(ids, mode.ID)
+	}
+	if !slices.Equal(ids, []string{"read-only", "ask", "full-access"}) {
+		t.Fatalf("opencode permission mode ids = %v, want [read-only ask full-access]", ids)
+	}
+	if got := normalizePermissionModeIDForProvider("opencode", "plan"); got != "ask" {
+		t.Fatalf("OpenCode workflow mode leaked into permission mode: %q", got)
+	}
+	settings := normalizeComposerSettingsForProvider("opencode", ComposerSettings{
+		PermissionModeID: "full-access",
+		PlanMode:         true,
+	})
+	if settings.PermissionModeID != "full-access" || !settings.PlanMode {
+		t.Fatalf("OpenCode permission/plan settings are not independent: %#v", settings)
+	}
+}
+
 func TestComposerConfigConfigurableTruthTable(t *testing.T) {
 	t.Parallel()
 	// Pins the backend configurable flags so the GUI can derive support from
@@ -188,6 +253,7 @@ func TestComposerConfigConfigurableTruthTable(t *testing.T) {
 		{"codex", true, true, true},
 		{"tutti-agent", true, true, true},
 		{"cursor", true, false, true},
+		{"opencode", true, false, true},
 		{"hermes", false, false, false},
 		{"nexight", false, false, true},
 		{"openclaw", false, false, false},
@@ -208,43 +274,56 @@ func TestComposerConfigConfigurableTruthTable(t *testing.T) {
 	}
 }
 
-func TestNormalizeRuntimeContextPreservesCatalogModelReasoningOptions(t *testing.T) {
+func TestComposerModelReasoningOptionsRuntimeContextPreservesCatalogOptions(t *testing.T) {
 	t.Parallel()
 	for _, provider := range []string{"codex", "tutti-agent"} {
 		t.Run(provider, func(t *testing.T) {
-			runtimeContext := map[string]any{
-				"configOptions": []any{
-					map[string]any{
-						"id":           "reasoning_effort",
-						"currentValue": "ultra",
-						"options": []any{
-							map[string]any{"name": "High", "value": "high"},
-							map[string]any{"name": "Ultra", "value": "ultra"},
+			runtimeContext := composerModelReasoningOptionsRuntimeContext(
+				provider,
+				"en",
+				map[string]composerModelReasoningProfile{
+					"model-1": {
+						DefaultReasoningEffort: "ultra",
+						ReasoningEfforts: []AgentModelReasoningEffortOption{
+							{Value: "high"},
+							{Value: "ultra"},
 						},
 					},
 				},
-			}
-
-			normalized := normalizeRuntimeContextForProvider(
-				provider,
-				ComposerSettings{ReasoningEffort: "ultra"},
-				runtimeContext,
 			)
-			configOptions, ok := normalized["configOptions"].([]any)
-			if !ok || len(configOptions) != 1 {
-				t.Fatalf("configOptions = %#v", normalized["configOptions"])
+			modelOptions, ok := runtimeContext["model-1"].(map[string]any)
+			if !ok || modelOptions["defaultValue"] != "ultra" {
+				t.Fatalf("model options = %#v", runtimeContext["model-1"])
 			}
-			reasoningOption, ok := configOptions[0].(map[string]any)
-			if !ok {
-				t.Fatalf("reasoning option = %#v", configOptions[0])
-			}
-			options, ok := reasoningOption["options"].([]any)
+			options, ok := modelOptions["options"].([]map[string]string)
 			if !ok || len(options) != 2 {
-				t.Fatalf("reasoning options = %#v", reasoningOption["options"])
+				t.Fatalf("reasoning options = %#v", modelOptions["options"])
 			}
-			ultra, ok := options[1].(map[string]any)
-			if !ok || ultra["value"] != "ultra" {
+			if options[1]["value"] != "ultra" {
 				t.Fatalf("reasoning options = %#v, want runtime-advertised ultra preserved", options)
+			}
+		})
+	}
+}
+
+func TestNormalizeObservedComposerSettingsUsesProviderReasoningPolicy(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct {
+		provider string
+		selected string
+		want     string
+	}{
+		{provider: "codex", selected: "none", want: "none"},
+		{provider: "tutti-agent", selected: "minimal", want: "minimal"},
+		{provider: "opencode", selected: "none", want: "none"},
+	} {
+		t.Run(tc.provider, func(t *testing.T) {
+			got := normalizeComposerSettingsPointerForProvider(
+				tc.provider,
+				&ComposerSettings{ReasoningEffort: tc.selected},
+			)
+			if got == nil || got.ReasoningEffort != tc.want {
+				t.Fatalf("normalized settings = %#v, want reasoning %q", got, tc.want)
 			}
 		})
 	}
@@ -258,5 +337,17 @@ func TestResolveAdvertisedReasoningEffortPreservesAuthoritativeMinimalDefault(t 
 	options := composerAdvertisedReasoningOptionValues("codex", "minimal", "en", advertised)
 	if len(options) != 1 || options[0].Value != "minimal" {
 		t.Fatalf("composer advertised options = %#v, want only minimal", options)
+	}
+}
+
+func TestComposerAdvertisedReasoningOptionValuesLocalizesNone(t *testing.T) {
+	advertised := []AgentModelReasoningEffortOption{{Value: "none"}}
+	english := composerAdvertisedReasoningOptionValues("opencode", "none", "en", advertised)
+	if len(english) != 1 || english[0].Label != "Off" || english[0].Description == "" {
+		t.Fatalf("English none option = %#v", english)
+	}
+	chinese := composerAdvertisedReasoningOptionValues("opencode", "none", "zh-CN", advertised)
+	if len(chinese) != 1 || chinese[0].Label != "关闭" || chinese[0].Description == "" {
+		t.Fatalf("Chinese none option = %#v", chinese)
 	}
 }

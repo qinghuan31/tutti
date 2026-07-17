@@ -296,6 +296,12 @@ func appBootstrapCommand(
 	appRuntime ResolvedAppRuntime,
 	bootstrapPath string,
 ) (*exec.Cmd, error) {
+	if runtime.GOOS == "windows" && strings.EqualFold(filepath.Ext(bootstrapPath), ".sh") {
+		companionPath := strings.TrimSuffix(bootstrapPath, filepath.Ext(bootstrapPath)) + ".cmd"
+		if info, err := os.Stat(companionPath); err == nil && !info.IsDir() {
+			return exec.Command(companionPath), nil
+		}
+	}
 	if runtime.GOOS == "windows" &&
 		strings.TrimSpace(input.RuntimeProfile) == "node-static" &&
 		strings.EqualFold(filepath.Ext(bootstrapPath), ".sh") {
@@ -356,6 +362,18 @@ func windowsAppBootstrapEnvOverrides(input AppStartInput, port int) []string {
 			"AIMC_WEB_ORIGIN="+baseURL,
 			"AIMC_SERVER_BASE_URL="+baseURL,
 		)
+	case "ai-doc":
+		return append(common,
+			"AI_DOC_APP_VERSION="+version,
+			"AI_DOC_WEB_DIST="+filepath.Join(input.PackageDir, "dist"),
+			"AI_DOC_HOME="+input.DataDir,
+			"AI_DOC_RUNTIME_ROOT="+input.RuntimeDir,
+			"AI_DOC_LOG_ROOT="+input.LogDir,
+			"AI_DOC_WORKSPACE_ROOT="+input.WorkspaceRoot,
+			"AI_DOC_TEMPLATE_ROOT="+filepath.Join(input.DataDir, "templates", "tutti"),
+			"AI_DOC_TUTTI_CLI="+tuttiCLICommandPath(),
+			"AI_DOC_SERVER_URL="+baseURL,
+		)
 	case "ai-slide":
 		return append(common,
 			"AI_SLIDE_APP_VERSION="+version,
@@ -375,6 +393,11 @@ func windowsAppBootstrapEnvOverrides(input AppStartInput, port int) []string {
 			"GROUP_CHAT_HOME="+input.DataDir,
 			"GROUP_CHAT_WORKSPACE_ROOT="+input.WorkspaceRoot,
 			"GROUP_CHAT_SERVER_URL="+baseURL,
+		)
+	case "vibe-design":
+		return append(common,
+			"VIBE_TUTTI_CLI="+tuttiCLICommandPath(),
+			"VIBE_WORKSPACE_ROOT="+input.WorkspaceRoot,
 		)
 	default:
 		return common

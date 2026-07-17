@@ -33,7 +33,7 @@ function* goFiles(directory) {
 const violations = [];
 for (const root of scanRoots) {
   for (const path of goFiles(join(workspaceRoot, root))) {
-    const relativePath = relative(workspaceRoot, path);
+    const relativePath = relative(workspaceRoot, path).replaceAll("\\", "/");
     if (
       exemptPathFragments.some((fragment) => relativePath.includes(fragment))
     ) {

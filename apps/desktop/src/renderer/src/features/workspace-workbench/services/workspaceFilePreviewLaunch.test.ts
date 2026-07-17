@@ -4,6 +4,7 @@ import type { WorkspaceFileActivationTarget } from "@tutti-os/workspace-file-man
 import {
   createWorkspaceFilePreviewInstanceID,
   createWorkspaceFilePreviewLaunchRequest,
+  isWorkspaceFilePreviewActivationTarget,
   workspaceTextFileNodeTypeID
 } from "./workspaceFilePreviewLaunch.ts";
 
@@ -41,4 +42,17 @@ test("workspace file preview launch requests preserve the original file target",
 
   assert.equal(request.typeId, workspaceTextFileNodeTypeID);
   assert.equal(request.payload, target);
+});
+
+test("workspace file preview activation accepts video targets", () => {
+  assert.equal(
+    isWorkspaceFilePreviewActivationTarget({
+      fileKind: "video",
+      mtimeMs: null,
+      name: "demo.mp4",
+      path: "/workspace/demo.mp4",
+      sizeBytes: null
+    }),
+    true
+  );
 });

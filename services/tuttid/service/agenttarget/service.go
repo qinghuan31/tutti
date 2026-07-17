@@ -13,7 +13,12 @@ import (
 var ErrSystemTargetImmutable = errors.New("system agent target is immutable")
 
 type Service struct {
-	Store workspacedata.AgentTargetStore
+	Store                workspacedata.AgentTargetStore
+	AvailabilityResolver AvailabilityResolver
+}
+
+type AvailabilityResolver interface {
+	ResolveAgentTargetAvailability(context.Context, agenttargetbiz.Target) (status string, reason string)
 }
 
 type PutInput struct {
@@ -33,7 +38,17 @@ func (s Service) List(ctx context.Context) ([]agenttargetbiz.Target, error) {
 	if s.Store == nil {
 		return nil, errors.New("agent target store is not configured")
 	}
-	return s.Store.ListAgentTargets(ctx)
+	targets, err := s.Store.ListAgentTargets(ctx)
+	if err != nil || s.AvailabilityResolver == nil {
+		return targets, err
+	}
+	for index := range targets {
+		launchRef, launchRefErr := agenttargetbiz.RuntimeProviderTargetRef(targets[index])
+		if launchRefErr == nil && launchRef["kind"] == agenttargetbiz.LaunchRefTypeAgentExtension {
+			targets[index].AvailabilityStatus, targets[index].AvailabilityReason = s.AvailabilityResolver.ResolveAgentTargetAvailability(ctx, targets[index])
+		}
+	}
+	return targets, nil
 }
 
 func (s Service) Put(ctx context.Context, input PutInput) (agenttargetbiz.Target, error) {

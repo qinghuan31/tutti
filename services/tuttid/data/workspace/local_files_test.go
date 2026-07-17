@@ -790,11 +790,11 @@ func TestLocalFilesAdapterSearchKeepsShallowMatchesBeforeDeepCandidateCap(t *tes
 	}
 }
 
-func TestLocalFilesAdapterSearchTypeFilterExcludesDirectoriesButKeepsMatchingFiles(t *testing.T) {
+func TestLocalFilesAdapterSearchTypeFilterKeepsFilenameAndParentPathMatches(t *testing.T) {
 	t.Parallel()
 
 	rootDir := t.TempDir()
-	// 一个目录名含 "22" 的文档文件:开启「document」筛选后仍只按文件名匹配关键词。
+	// 一个目录名含 "22" 的文档文件:普通名称查询仍可以低优先级命中相对路径段。
 	docInFolder := filepath.Join(rootDir, "reports22", "q3.csv")
 	if err := os.MkdirAll(filepath.Dir(docInFolder), 0o755); err != nil {
 		t.Fatal(err)
@@ -830,8 +830,8 @@ func TestLocalFilesAdapterSearchTypeFilterExcludesDirectoriesButKeepsMatchingFil
 			t.Fatalf("entry = %#v, directories must be excluded when a type filter is active", entry)
 		}
 	}
-	// 交集:文件名关键词 "22" ∩ 类型 document。
-	wantPaths := []string{"/workspace/data22.csv"}
+	// 交集:(文件名或相对路径关键词 "22") ∩ 类型 document。
+	wantPaths := []string{"/workspace/data22.csv", "/workspace/reports22/q3.csv"}
 	for _, want := range wantPaths {
 		if !gotPaths[want] {
 			t.Fatalf("entries = %#v, want to include %s", result.Entries, want)
@@ -910,6 +910,61 @@ func TestLocalFilesAdapterSearchWithoutWithinSpansWholeRoot(t *testing.T) {
 	}
 	if len(result.Entries) != 2 {
 		t.Fatalf("entries = %#v, want both matches across the whole root", result.Entries)
+	}
+}
+
+func TestLocalFilesAdapterSearchNormalizesPhysicalAbsolutePathQuery(t *testing.T) {
+	t.Parallel()
+
+	rootDir := t.TempDir()
+	target := filepath.Join(rootDir, "src", "user")
+	if err := os.MkdirAll(target, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Join(rootDir, "archive", "src", "user"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	adapter := LocalFilesAdapter{}
+	result, err := adapter.Search(context.Background(), localFilesRoot(rootDir), workspacefiles.SearchInput{
+		Query: target,
+		Limit: 20,
+	})
+	if err != nil {
+		t.Fatalf("Search() error = %v", err)
+	}
+	if len(result.Entries) == 0 || result.Entries[0].Path != "/workspace/src/user" {
+		t.Fatalf("entries = %#v, want physical absolute-path target first", result.Entries)
+	}
+}
+
+func TestLocalFilesAdapterSearchNormalizesPhysicalAbsolutePathWithRelativeRoot(t *testing.T) {
+	t.Parallel()
+
+	rootDir := t.TempDir()
+	target := filepath.Join(rootDir, "src", "user")
+	if err := os.MkdirAll(target, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	workingDirectory, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	relativeRoot, err := filepath.Rel(workingDirectory, rootDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	root := localFilesRoot(relativeRoot)
+
+	result, err := (LocalFilesAdapter{}).Search(context.Background(), root, workspacefiles.SearchInput{
+		Query: target,
+		Limit: 20,
+	})
+	if err != nil {
+		t.Fatalf("Search() error = %v", err)
+	}
+	if len(result.Entries) == 0 || result.Entries[0].Path != "/workspace/src/user" {
+		t.Fatalf("entries = %#v, want physical absolute-path target first", result.Entries)
 	}
 }
 
@@ -1009,7 +1064,7 @@ func TestLocalFilesAdapterSearchSkipsHiddenFilesForNormalQueries(t *testing.T) {
 	}
 }
 
-func TestLocalFilesAdapterSearchIncludesHiddenFilesWhenQueryExplicitlyTargetsThem(t *testing.T) {
+func TestLocalFilesAdapterSearchSkipsHiddenFilesWhenQueryExplicitlyTargetsThemWithoutOptIn(t *testing.T) {
 	t.Parallel()
 
 	rootDir := t.TempDir()
@@ -1018,11 +1073,11 @@ func TestLocalFilesAdapterSearchIncludesHiddenFilesWhenQueryExplicitlyTargetsThe
 		t.Fatal(err)
 	}
 
-	visibleEnvPath := filepath.Join(rootDir, "docs", "env.md")
+	visibleEnvPath := filepath.Join(rootDir, "docs", "runtime.env")
 	if err := os.MkdirAll(filepath.Dir(visibleEnvPath), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(visibleEnvPath, []byte("env docs"), 0o644); err != nil {
+	if err := os.WriteFile(visibleEnvPath, []byte("VISIBLE=1\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 
@@ -1035,11 +1090,13 @@ func TestLocalFilesAdapterSearchIncludesHiddenFilesWhenQueryExplicitlyTargetsThe
 	if err != nil {
 		t.Fatalf("Search() error = %v", err)
 	}
-	if len(result.Entries) == 0 {
-		t.Fatal("expected explicit hidden file match")
+	for _, entry := range result.Entries {
+		if entry.Path == "/workspace/.env" {
+			t.Fatalf("unexpected hidden file result %#v", entry)
+		}
 	}
-	if result.Entries[0].Path != "/workspace/.env" {
-		t.Fatalf("first result = %#v, want /workspace/.env", result.Entries[0])
+	if len(result.Entries) != 1 || result.Entries[0].Path != "/workspace/docs/runtime.env" {
+		t.Fatalf("entries = %#v, want visible runtime.env only", result.Entries)
 	}
 }
 

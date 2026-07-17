@@ -4,10 +4,8 @@ import type {
 } from "../contracts/agentMessageRowVM";
 import type { AgentToolCallVM } from "../contracts/agentToolCallVM";
 import type { AgentTranscriptRowVM } from "../contracts/agentTranscriptRowVM";
-import type {
-  AgentComputedToolGroupVM,
-  AgentTurnSequenceItemVM
-} from "./agentToolGroupingProjection";
+import type { AgentComputedToolGroupVM } from "./agentToolGroupingProjection";
+import type { AgentTurnSequenceItemVM } from "./agentTurnSequenceProjection";
 import {
   projectAgentSingleToolRow,
   projectAgentToolGroupRowFromGroup
@@ -24,6 +22,10 @@ import { chunkBy } from "./chunkBy";
 export type AgentRenderUnit =
   | { tag: "tool-group"; group: AgentComputedToolGroupVM }
   | { tag: "tool"; call: AgentToolCallVM }
+  | {
+      tag: "user-message";
+      row: Extract<AgentTranscriptRowVM, { kind: "message" }>;
+    }
   | { tag: "thinking"; thinking: AgentThinkingContentVM }
   | { tag: "message"; message: AgentMessageContentVM };
 
@@ -32,8 +34,10 @@ export type AgentRenderUnitTag = AgentRenderUnit["tag"];
 /** Pure classifier for a raw turn sequence item. */
 export function tagOf(
   item: AgentTurnSequenceItemVM
-): "message" | "thinking" | "tool" {
+): "user-message" | "message" | "thinking" | "tool" {
   switch (item.kind) {
+    case "user-message":
+      return "user-message";
     case "assistant-message":
       return "message";
     case "thinking":
@@ -84,6 +88,9 @@ export function toRenderUnits(
       continue;
     }
     switch (item.kind) {
+      case "user-message":
+        units.push({ tag: "user-message", row: item.row });
+        break;
       case "assistant-message":
         units.push({ tag: "message", message: item.message });
         break;
@@ -105,17 +112,25 @@ export function toRenderUnits(
  */
 export function renderRun(
   run: readonly AgentRenderUnit[],
-  turnId: string
+  turnId: string,
+  agentSessionId?: string
 ): AgentTranscriptRowVM {
   const last = run.at(-1);
   if (!last) {
     throw new Error("renderRun received an empty run");
   }
   if (last.tag === "tool-group") {
-    return projectAgentToolGroupRowFromGroup(turnId, last.group);
+    return projectAgentToolGroupRowFromGroup(
+      turnId,
+      last.group,
+      agentSessionId
+    );
   }
   if (last.tag === "tool") {
     return projectAgentSingleToolRow(last.call, turnId);
+  }
+  if (last.tag === "user-message") {
+    return last.row;
   }
   const thinking = run
     .filter(
@@ -151,10 +166,11 @@ export function projectTurnRows(
   sequence: readonly AgentTurnSequenceItemVM[],
   groups: ReadonlyMap<number, AgentComputedToolGroupVM>,
   skippedIndices: ReadonlySet<number>,
-  turnId: string
+  turnId: string,
+  agentSessionId?: string
 ): AgentTranscriptRowVM[] {
   const units = toRenderUnits(sequence, groups, skippedIndices);
   return chunkBy(units, thinkingAbsorbedByMessage).map((run) =>
-    renderRun(run, turnId)
+    renderRun(run, turnId, agentSessionId)
   );
 }

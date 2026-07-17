@@ -126,6 +126,39 @@ describe("projectAgentToolCall", () => {
     });
     expect(askUser.askUserQuestion?.questions[0]?.question).toBe("Pick one");
 
+    const answeredAskUser = projectAgentToolCall({
+      ...baseCall(),
+      toolName: "AskUserQuestion",
+      callType: "interactive",
+      status: "completed",
+      payload: {
+        input: {
+          requestId: "prompt-2",
+          questions: [
+            {
+              header: "Test scope",
+              question: "Which modules should we test?",
+              options: [{ label: "Code editing", description: "Edit code" }]
+            }
+          ]
+        },
+        output: {
+          action: "submit",
+          payload: {
+            answers: ["Code editing"],
+            answersByQuestionId: {
+              "question-1": ["Code editing"]
+            }
+          },
+          requestId: "prompt-2",
+          text: "Your questions have been answered."
+        }
+      }
+    });
+    expect(answeredAskUser.askUserQuestion?.questions[0]?.answer).toEqual([
+      "Code editing"
+    ]);
+
     const task = projectAgentToolCall({
       ...baseCall(),
       toolName: "Task",
@@ -151,6 +184,41 @@ describe("projectAgentToolCall", () => {
     });
     expect(task.task?.delegateSessionId).toBe("child-1");
     expect(task.task?.steps).toHaveLength(1);
+  });
+
+  it("normalizes persisted standard ACP envelopes for specialized tool renderers", () => {
+    const projected = projectAgentToolCall({
+      ...baseCall(),
+      toolName: "Edit",
+      callType: "tool",
+      payload: {
+        input: {
+          kind: "edit",
+          title: "apply_patch",
+          rawInput: { patchText: "*** Begin Patch" }
+        },
+        output: {
+          rawOutput: {
+            metadata: {
+              diff: "Index: /workspace/index.html\n--- /workspace/index.html\n+++ /workspace/index.html",
+              files: [
+                {
+                  filePath: "/workspace/index.html",
+                  patch: "Index: /workspace/index.html"
+                }
+              ]
+            }
+          }
+        }
+      }
+    });
+
+    expect(projected.rendererKind).toBe("edit");
+    expect(projected.input?.patchText).toBe("*** Begin Patch");
+    expect(projected.output?.diff).toContain("/workspace/index.html");
+    expect(projected.output?.files).toEqual([
+      expect.objectContaining({ filePath: "/workspace/index.html" })
+    ]);
   });
 
   it("prefers canonical payload input/output over tool_state when both exist", () => {

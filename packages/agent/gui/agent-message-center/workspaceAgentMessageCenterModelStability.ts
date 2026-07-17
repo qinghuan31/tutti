@@ -64,6 +64,9 @@ function messageCenterItemsEqual(
   return (
     left.id === right.id &&
     left.agentSessionId === right.agentSessionId &&
+    left.agentTargetId === right.agentTargetId &&
+    left.agentName === right.agentName &&
+    left.agentAvatarUrl === right.agentAvatarUrl &&
     left.provider === right.provider &&
     left.userId === right.userId &&
     left.title === right.title &&
@@ -72,6 +75,10 @@ function messageCenterItemsEqual(
     left.status === right.status &&
     left.lastAgentMessageSummary === right.lastAgentMessageSummary &&
     left.lastAgentMessageAtUnixMs === right.lastAgentMessageAtUnixMs &&
+    messageCenterInteractionTargetEqual(
+      left.pendingInteractionTarget,
+      right.pendingInteractionTarget
+    ) &&
     left.needsAttentionKind === right.needsAttentionKind &&
     left.needsAttentionSummary === right.needsAttentionSummary &&
     left.sortTimeUnixMs === right.sortTimeUnixMs &&
@@ -82,6 +89,20 @@ function messageCenterItemsEqual(
       left.latestTurnOutcome ?? null,
       right.latestTurnOutcome ?? null
     )
+  );
+}
+
+function messageCenterInteractionTargetEqual(
+  left: WorkspaceAgentMessageCenterItem["pendingInteractionTarget"],
+  right: WorkspaceAgentMessageCenterItem["pendingInteractionTarget"]
+): boolean {
+  return (
+    left === right ||
+    (left !== null &&
+      right !== null &&
+      left.agentSessionId === right.agentSessionId &&
+      left.turnId === right.turnId &&
+      left.requestId === right.requestId)
   );
 }
 

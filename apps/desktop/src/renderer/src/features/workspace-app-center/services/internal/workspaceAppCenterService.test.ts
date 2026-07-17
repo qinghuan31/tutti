@@ -14,6 +14,8 @@ import {
   WorkspaceAppCenterService,
   type WorkspaceAppCenterServiceDependencies
 } from "./workspaceAppCenterService.ts";
+import { WorkspaceAppSurfaceHost } from "./workspaceAppSurfaceHost.ts";
+import type { WorkspaceAppSurfacePresenter } from "../workspaceAppSurfaceHost.interface.ts";
 import type {
   DesktopWorkspaceAppCenterLocalFileGateway,
   WorkspaceAppLike
@@ -74,11 +76,14 @@ test("WorkspaceAppCenterService tracks app install and forwards app open status"
     hostFilesApi: createHostFilesApi(),
     hostWorkspaceApi: createHostWorkspaceApi(),
     reporterNow: () => 1749124800000,
-    reporterService: createReporterService(reporterCalls)
-  });
-  service.setWorkspaceAppLauncher(async (input) => {
-    launchCalls.push(input);
-    return true;
+    reporterService: createReporterService(reporterCalls),
+    surfaceHost: createSurfaceHost({
+      presentPrepared(input) {
+        const { attempt: _attempt, ...launch } = input;
+        launchCalls.push(launch);
+        return true;
+      }
+    })
   });
 
   await service.refresh("workspace-1");
@@ -109,11 +114,13 @@ test("WorkspaceAppCenterService tracks app install and forwards app open status"
 
 test("WorkspaceAppCenterService delegates workspace app view open checks", () => {
   const checkedInputs: Array<{ appId: string; workspaceId: string }> = [];
+  const surfaceHost = new WorkspaceAppSurfaceHost();
   const service = new WorkspaceAppCenterService({
     eventStreamClient: createEventStreamClient(),
     gateway: createGateway(),
     hostFilesApi: createHostFilesApi(),
-    hostWorkspaceApi: createHostWorkspaceApi()
+    hostWorkspaceApi: createHostWorkspaceApi(),
+    surfaceHost
   });
 
   assert.equal(
@@ -124,9 +131,15 @@ test("WorkspaceAppCenterService delegates workspace app view open checks", () =>
     false
   );
 
-  service.setWorkspaceAppViewOpenChecker((input) => {
-    checkedInputs.push(input);
-    return input.appId === "app-1" && input.workspaceId === "workspace-1";
+  surfaceHost.registerPresenter({
+    beginOpen() {},
+    close() {},
+    isOpen(input) {
+      checkedInputs.push(input);
+      return input.appId === "app-1" && input.workspaceId === "workspace-1";
+    },
+    presentPrepared: () => false,
+    rollbackOpen() {}
   });
 
   assert.equal(
@@ -153,6 +166,34 @@ test("WorkspaceAppCenterService delegates workspace app view open checks", () =>
       workspaceId: "workspace-1"
     }
   ]);
+});
+
+test("WorkspaceAppCenterService rolls back shell presentation when launch preparation fails", async () => {
+  const calls: string[] = [];
+  const surfaceHost = createSurfaceHost({
+    beginOpen({ appId }) {
+      calls.push(`begin:${appId}`);
+    },
+    rollbackOpen({ appId }) {
+      calls.push(`rollback:${appId}`);
+    }
+  });
+  const service = new WorkspaceAppCenterService({
+    eventStreamClient: createEventStreamClient(),
+    gateway: createGateway({
+      listWorkspaceApps: async () => createSnapshot({ apps: [] })
+    }),
+    hostFilesApi: createHostFilesApi(),
+    hostWorkspaceApi: createHostWorkspaceApi(),
+    surfaceHost
+  });
+
+  await service.refresh("workspace-1");
+  assert.equal(
+    await service.openApp({ appId: "missing", workspaceId: "workspace-1" }),
+    false
+  );
+  assert.deepEqual(calls, ["begin:missing", "rollback:missing"]);
 });
 
 test("WorkspaceAppCenterService refreshes failed runtime state after launch is rejected", async () => {
@@ -685,11 +726,14 @@ test("WorkspaceAppCenterService forwards running status when reopening a running
     hostFilesApi: createHostFilesApi(),
     hostWorkspaceApi: createHostWorkspaceApi(),
     reporterNow: () => 1749124800000,
-    reporterService: createReporterService(reporterCalls)
-  });
-  service.setWorkspaceAppLauncher(async (input) => {
-    launchCalls.push(input);
-    return true;
+    reporterService: createReporterService(reporterCalls),
+    surfaceHost: createSurfaceHost({
+      presentPrepared(input) {
+        const { attempt: _attempt, ...launch } = input;
+        launchCalls.push(launch);
+        return true;
+      }
+    })
   });
 
   await service.refresh("workspace-1");
@@ -1400,6 +1444,13 @@ test("WorkspaceAppCenterService normalizes provider configuration", async () => 
           },
           runtimeContext: {},
           skills: [],
+          behavior: {
+            collapseModelOptionsToLatest: false,
+            modelOptionsAuthoritative: false,
+            refreshModelOptionsAfterSettings: false,
+            prewarmDraftSession: false,
+            planModeExclusiveWithPermissionMode: false
+          },
           capabilityCatalog: []
         };
       }
@@ -1465,6 +1516,13 @@ test("WorkspaceAppCenterService makes effective permission default visible", asy
           },
           runtimeContext: {},
           skills: [],
+          behavior: {
+            collapseModelOptionsToLatest: false,
+            modelOptionsAuthoritative: false,
+            refreshModelOptionsAfterSettings: false,
+            prewarmDraftSession: false,
+            planModeExclusiveWithPermissionMode: false
+          },
           capabilityCatalog: []
         };
       }
@@ -1545,6 +1603,13 @@ test("WorkspaceAppCenterService passes workspace id and prefers live composer mo
             ]
           },
           skills: [],
+          behavior: {
+            collapseModelOptionsToLatest: false,
+            modelOptionsAuthoritative: false,
+            refreshModelOptionsAfterSettings: false,
+            prewarmDraftSession: false,
+            planModeExclusiveWithPermissionMode: false
+          },
           capabilityCatalog: []
         };
       }
@@ -1825,6 +1890,21 @@ function createReporterService(calls: ReporterEventInput[][] = []) {
   };
 }
 
+function createSurfaceHost(
+  overrides: Partial<WorkspaceAppSurfacePresenter>
+): WorkspaceAppSurfaceHost {
+  const host = new WorkspaceAppSurfaceHost();
+  host.registerPresenter({
+    beginOpen() {},
+    close() {},
+    isOpen: () => false,
+    presentPrepared: () => false,
+    rollbackOpen() {},
+    ...overrides
+  });
+  return host;
+}
+
 async function waitFor(predicate: () => boolean): Promise<void> {
   const deadline = Date.now() + 1_000;
   while (Date.now() < deadline) {
@@ -1864,6 +1944,13 @@ function createTuttidClient(
         },
         runtimeContext: {},
         skills: [],
+        behavior: {
+          collapseModelOptionsToLatest: false,
+          modelOptionsAuthoritative: false,
+          refreshModelOptionsAfterSettings: false,
+          prewarmDraftSession: false,
+          planModeExclusiveWithPermissionMode: false
+        },
         capabilityCatalog: []
       };
     },

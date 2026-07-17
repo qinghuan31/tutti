@@ -118,11 +118,7 @@ jobs:
             echo "release_assets_base_url is required unless catalog_only is true." >&2
             exit 1
           fi
-          if [ -z "${MIN_TUTTI_VERSION}" ]; then
-            echo "min_tutti_version is required unless catalog_only is true." >&2
-            exit 1
-          fi
-          if [[ ! "${MIN_TUTTI_VERSION}" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z-]+(\.[0-9A-Za-z-]+)*)?(\+[0-9A-Za-z-]+(\.[0-9A-Za-z-]+)*)?$ ]]; then
+          if [ -n "${MIN_TUTTI_VERSION}" ] && [[ ! "${MIN_TUTTI_VERSION}" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z-]+(\.[0-9A-Za-z-]+)*)?(\+[0-9A-Za-z-]+(\.[0-9A-Za-z-]+)*)?$ ]]; then
             echo "min_tutti_version must be valid SemVer." >&2
             exit 1
           fi

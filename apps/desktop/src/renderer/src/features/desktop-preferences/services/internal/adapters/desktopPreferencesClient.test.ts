@@ -259,8 +259,6 @@ function createPreferences(
     minimizeAnimation: "scale",
     sleepPreventionMode: "never",
     showAppDeveloperSources: false,
-    enableCursorAgent: false,
-    enableOpenCodeAgent: false,
     themeSource: "dark",
     updateChannel: "stable",
     updatePolicy: "prompt",

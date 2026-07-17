@@ -7,8 +7,14 @@ export const enMessages = {
     "This agent no longer exists or has been removed. Its conversation history stays available to read.",
   agentResumeSessionNotLocal:
     "This session cannot be resumed on this device. Start a new session and @this session to keep going.",
+  agentImportedSessionResumeUnavailable:
+    "This conversation was imported successfully. Start a new session and @this conversation to keep going.",
+  agentSessionReconnecting: "Reconnecting to the live agent session…",
   agentSettingsRequireNewSession:
     "This model can only be used in a new session to preserve context.",
+  agentSessionTitleTooLong:
+    "Session title must be {{maxCharacters}} characters or fewer.",
+  agentSessionTitleTooLongWithoutLimit: "Session title is too long.",
   agentPermissionModeAppliesNextTurn:
     "Permission mode will apply starting with your next message.",
   agentThisSessionMentionLabel: "this session",

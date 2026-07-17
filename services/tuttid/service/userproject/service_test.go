@@ -141,7 +141,7 @@ func TestServiceDeleteRejectsInvalidPath(t *testing.T) {
 	}
 }
 
-func TestServiceListPrunesUnavailableProjects(t *testing.T) {
+func TestServiceListReturnsRegisteredProjectsWithoutFilesystemPruning(t *testing.T) {
 	ctx := context.Background()
 	root := t.TempDir()
 	validDir := filepath.Join(root, "valid")
@@ -167,11 +167,11 @@ func TestServiceListPrunesUnavailableProjects(t *testing.T) {
 		t.Fatalf("List() error = %v", err)
 	}
 
-	if len(projects) != 1 || projects[0].ID != "valid" {
-		t.Fatalf("List() projects = %#v, want only valid project", projects)
+	if len(projects) != 3 || projects[0].ID != "valid" || projects[1].ID != "missing" || projects[2].ID != "file" {
+		t.Fatalf("List() projects = %#v, want every registered project", projects)
 	}
-	if strings.Join(store.deletedIDs, ",") != "missing,file" {
-		t.Fatalf("deleted IDs = %#v, want missing,file", store.deletedIDs)
+	if len(store.deletedIDs) != 0 {
+		t.Fatalf("deleted IDs = %#v, want none", store.deletedIDs)
 	}
 }
 

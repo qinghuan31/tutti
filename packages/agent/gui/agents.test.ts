@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   normalizeAgentGUIAgents,
+  projectAgentGUIAgentsToInternalTargets,
   resolveAgentGUISelectedDirectoryAgent
 } from "./agents";
 import type { AgentGUIAgent } from "./types";
@@ -38,6 +39,7 @@ describe("normalizeAgentGUIAgents", () => {
       createAgent(" alice ", {
         name: " Alice ",
         iconUrl: " app://agents/alice.png ",
+        heroImageUrl: " app://agents/alice-hero.jpg ",
         description: " Shared agent ",
         owner: { name: " Owner ", avatarUrl: " app://owner.png " },
         availability: { status: "unavailable", reason: " Offline " }
@@ -53,12 +55,31 @@ describe("normalizeAgentGUIAgents", () => {
         agentTargetId: "alice",
         name: "Alice",
         iconUrl: "app://agents/alice.png",
+        heroImageUrl: "app://agents/alice-hero.jpg",
         description: "Shared agent",
         owner: { name: "Owner", avatarUrl: "app://owner.png" },
         availability: { status: "unavailable", reason: "Offline" },
         provider: "codex"
       }
     ]);
+  });
+});
+
+describe("projectAgentGUIAgentsToInternalTargets", () => {
+  it("preserves availability separately from disabled interaction state", () => {
+    const [target] = projectAgentGUIAgentsToInternalTargets([
+      createAgent("agent-a", {
+        availability: { status: "unavailable", reason: "Offline" }
+      })
+    ]);
+
+    expect(target).toMatchObject({
+      agentTargetId: "agent-a",
+      availability: { status: "unavailable", reason: "Offline" },
+      disabled: true,
+      unavailableReason: "Offline"
+    });
+    expect(target?.availability?.status).not.toBe("coming_soon");
   });
 });
 

@@ -1,10 +1,4 @@
 export {
-  buildAgentActivitySnapshotProjection,
-  agentHostSnapshotFromAgentActivitySnapshot,
-  projectCoreSessionStatus,
-  type AgentActivitySnapshotProjection
-} from "./shared/agentActivitySnapshotProjection";
-export {
   getAgentCustomMentionKind,
   registerAgentCustomMentionKind,
   resetAgentCustomMentionKindsForTests,
@@ -16,19 +10,56 @@ export {
 export {
   AGENT_PASTED_TEXT_BLOCK_KIND,
   AGENT_PASTED_TEXT_MENTION_KIND
-} from "./agent-gui/agentGuiNode/model/agentGuiNodeTypes";
+} from "./shared/pastedTextKinds";
 export { AgentGUI } from "./AgentGUI";
-export type { AgentGUIProps } from "./AgentGUI";
+export type {
+  AgentGUIProps,
+  AgentGUIReferenceProvenanceFilterCatalog
+} from "./AgentGUI";
+export type { AgentGUIComposerAppendRequest } from "./agent-gui/agentGuiNode/controller/useAgentGUIComposerAppendRequest";
+export type { AgentComposerDraftFile } from "./agent-gui/agentGuiNode/model/agentGuiNodeTypes";
 export type { AgentGUIAccountMenuState } from "./agent-gui/agentGuiNode/accountMenuState";
-export { normalizeAgentGUIAgents } from "./agents";
+export type {
+  AgentGUIComposerContentType,
+  AgentGUIComposerFocusMethod,
+  AgentGUIEngagementContext,
+  AgentGUIEngagementEvent,
+  AgentGUIEngagementEventSink
+} from "./agent-gui/agentGuiNode/engagement/agentGUIEngagement.types";
+export {
+  agentGUIAgentIsReady,
+  normalizeAgentGUIAgents,
+  resolveAgentGUISelectedDirectoryAgent
+} from "./agents";
+export {
+  agentGUIDefaultTargetProviders,
+  createLocalAgentGUIAgentTarget,
+  createLocalAgentGUIAgentTargets,
+  createSharedAgentGUIAgentTarget,
+  localAgentGUIAgentTargetId,
+  normalizeAgentGUIAgentTargets,
+  resolveAgentGUIAgentTarget
+} from "./agentTargets";
 export type {
   AgentGUIAgent,
+  AgentGUIAgentDirectoryPort,
+  AgentGUIAgentDirectorySnapshot,
+  AgentGUIAgentDirectoryStatus,
   AgentGUIAgentAvailability,
   AgentGUIAgentAvailabilityAction,
   AgentGUIAgentAvailabilityStatus,
   AgentGUIAgentOwner,
+  AgentGUIHomeSuggestionId,
   AgentGUIAllAgentsPresentation,
-  AgentGUIProvider
+  AgentGUIProvider,
+  AgentGUIProviderRailAllPresentation,
+  AgentGUIProviderRailMode,
+  AgentGUIProviderReadinessGate,
+  AgentGUIProviderReadinessGateAction,
+  AgentGUIProviderReadinessGateStatus,
+  AgentGUIAgentTarget,
+  AgentGUIAgentTargetBadge,
+  AgentGUIAgentTargetRef
 } from "./types";
 export {
   AgentGuiI18nProvider,
@@ -38,16 +69,16 @@ export {
 export type { AgentGuiI18nLocale } from "./i18n/index";
 export { agentGuiDockIconUrl, agentGuiDockIconUrls } from "./dockIcons";
 export {
+  AGENT_GUI_DETAIL_MIN_WIDTH_PX,
+  AGENT_GUI_EXPANDED_TARGET_WIDTH_PX,
+  AGENT_GUI_STANDALONE_AUTO_COLLAPSE_WIDTH_PX,
   resolveAgentGUIExpandedWindowFrame,
   shouldAutoCollapseAgentGUIConversationRail
 } from "./agent-gui/agentGuiNode/model/agentGuiRailLayout";
-export type { AgentSlashCommandFallbackMode } from "./agent-gui/agentGuiNode/model/agentSlashCommandProviderPolicy";
 export type {
-  AgentGUIAgentReadinessStateContext,
-  AgentGUIAgentReadinessStateRenderer,
   AgentGUIAgentsEmptyRenderer,
-  AgentGUIAgentUnavailableStateContext,
-  AgentGUIAgentUnavailableStateRenderer,
+  AgentGUIProviderUnavailableStateContext,
+  AgentGUIProviderUnavailableStateRenderer,
   AgentGUISidebarFooterContext,
   AgentGUISidebarFooterRenderer
 } from "./agent-gui/agentGuiNode/AgentGUINodeView";
@@ -59,11 +90,15 @@ export {
 export { preloadAgentMentionBrowse } from "./agent-gui/agentGuiNode/AgentMentionSearchController";
 export { AgentActivityHostProvider } from "./agentActivityHost";
 export type { AgentActivityHostProviderProps } from "./agentActivityHost";
+export { useEngineSelector } from "./shared/engine/useEngineSelector";
+export type { EngineStateStore } from "./shared/engine/useEngineSelector";
+export {
+  dispatchAgentPlanPromptAction,
+  selectAgentPlanPromptTurn
+} from "./shared/agentConversation/agentPlanPromptDispatch";
+export type { AgentPlanPromptAction } from "./shared/agentConversation/agentPlanPromptDispatch";
 export {
   AgentActivityRuntimeProvider,
-  agentActivityRuntimeCapabilityEnabled,
-  getAgentActivityRuntime,
-  getOptionalAgentActivityRuntime,
   resetAgentActivityRuntimeForTests,
   setAgentActivityRuntimeForTests,
   useAgentActivitySnapshot,
@@ -72,35 +107,19 @@ export {
 } from "./agentActivityRuntime";
 export type {
   AgentActivityRuntime,
-  AgentActivityRuntimeCapabilities,
-  AgentActivityRuntimeCapabilityKey,
   AgentActivityRuntimeListSessionMessagesInput,
   AgentActivityRuntimeProviderProps,
   AgentActivityRuntimePromptContentBlock,
-  AgentActivityRuntimeRetainSessionEventsInput,
+  AgentActivityRuntimeDeleteSessionsBatchInput,
+  AgentActivityRuntimeDeleteSessionsBatchResult,
+  AgentActivityRuntimeSessionSectionDeletionCandidates,
+  AgentActivityRuntimeSessionSectionScopeInput,
   AgentActivityRuntimeSetSessionPinnedInput,
   AgentActivityRuntimeUploadPromptContentInput,
   AgentActivityRuntimeUploadPromptContentResult,
   AgentActivityRuntimeUpdateSessionSettingsInput,
-  AgentActivityRuntimeWarmupOpenclawGatewayInput
+  AgentActivityRuntimeUpdateSessionSettingsResult
 } from "./agentActivityRuntime";
-export {
-  AgentQueuedPromptRuntimeProvider,
-  createAgentQueuedPromptRuntime,
-  resetAgentQueuedPromptRuntimeForTests,
-  setAgentQueuedPromptRuntimeForTests,
-  useAgentQueuedPromptRuntime,
-  useAgentQueuedPromptSessionSnapshot
-} from "./agentQueuedPromptRuntime";
-export type {
-  AgentQueuedPromptClaim,
-  AgentQueuedPromptClaimResult,
-  AgentQueuedPromptQueueSnapshot,
-  AgentQueuedPromptRetryBlock,
-  AgentQueuedPromptRuntime,
-  AgentQueuedPromptRuntimeProviderProps,
-  AgentQueuedPromptSnapshot
-} from "./agentQueuedPromptRuntime";
 export type {
   AgentHostApi,
   AgentHostApplyWorkspaceGitPatchInput,
@@ -126,7 +145,6 @@ export {
 } from "@tutti-os/agent-activity-core";
 export type {
   AgentActivityAdapter,
-  AgentActivityController,
   AgentActivityMessage,
   AgentActivityNeedsAttentionItem,
   AgentActivitySnapshot

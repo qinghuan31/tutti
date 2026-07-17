@@ -122,6 +122,7 @@ function createHostServices(): DesktopHostServices {
     },
     workspaceLaunch: {
       async openStartupWindow() {},
+      async replaceWorkspaceWindow() {},
       async showAgentWindow() {},
       async showWorkspace() {}
     }
@@ -155,8 +156,9 @@ function createUpdateService(): AppUpdateService {
   };
 }
 
-test("createDesktopAppServices starts tuttid before creating host services", async () => {
+test("createDesktopAppServices does not wait for the CLI shim before creating host services", async () => {
   const events: string[] = [];
+  let finishCliShim: (() => void) | undefined;
   const daemonRuntime: DesktopDaemonRuntime = {
     daemonEndpoint: {
       accessToken: "token",
@@ -205,10 +207,14 @@ test("createDesktopAppServices starts tuttid before creating host services", asy
     },
     ensureCliShim() {
       events.push("cli-shim:ensure");
-      return {
-        installed: false,
-        shimPath: "/tmp/tutti/bin/tutti"
-      };
+      return new Promise((resolve) => {
+        finishCliShim = () =>
+          resolve({
+            installed: false,
+            pathShimPath: "/tmp/bin/tutti",
+            shimPath: "/tmp/tutti/bin/tutti"
+          });
+      });
     }
   });
 
@@ -221,6 +227,9 @@ test("createDesktopAppServices starts tuttid before creating host services", asy
   ]);
   assert.equal(services.tuttid, daemonRuntime.tuttid);
   assert.equal(services.tuttidClient, daemonRuntime.tuttidClient);
+  assert.ok(finishCliShim);
+  finishCliShim();
+  await new Promise((resolve) => setImmediate(resolve));
 });
 
 test("createDesktopAppServices rejects when managed tuttid fails to start", async () => {
@@ -272,6 +281,7 @@ test("createDesktopAppServices rejects when managed tuttid fails to start", asyn
           events.push("cli-shim:ensure");
           return {
             installed: false,
+            pathShimPath: null,
             shimPath: "/tmp/tutti/bin/tutti"
           };
         }

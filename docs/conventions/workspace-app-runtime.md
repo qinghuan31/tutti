@@ -123,16 +123,20 @@ component. If runtime requirements need to become more selective later, add a
 capability list such as runtime component requirements rather than restoring a
 single-kind manifest field.
 
-## Windows Node-Static Compatibility
+## Windows Bootstrap Compatibility
 
-When the published runtime catalog has no Windows entry, packaged Windows
-desktop builds can run `node-static` apps with the bundled `Tutti.exe` Electron
-runtime in Node mode. This path is intentionally limited to packages that
-declare `runtime.profile: "node-static"`, use the standard `bootstrap.sh`
-launcher, and provide a supported Node entrypoint: `server.mjs`,
-`server/server.js`, or `server/dist/main.js`. AI Media Canvas uses its worker
-and server pair under `server/`. The runner invokes these entrypoints directly
-and sets `ELECTRON_RUN_AS_NODE=1`.
+For a manifest that names `bootstrap.sh`, the Windows runner first looks for a
+sibling `bootstrap.cmd`. When present, the companion is the platform contract
+and is executed directly, including for `standalone` packages. The embedded
+onboarding package follows this model and carries native
+`windows-amd64`/`windows-arm64` servers.
+
+When no companion exists, the runner supports the catalog's established
+package shapes. A package with `server.py` uses the `python-static` profile; a
+package with `server.mjs`, `server/server.js`, or `server/dist/main.js` uses
+`node-static`. AI Media Canvas uses its worker and server pair under `server/`.
+Packaged desktop builds may satisfy `node-static` with the bundled `Tutti.exe`
+Electron runtime in Node mode when a published Windows runtime is unavailable.
 
 Direct invocation bypasses shell-side `export` statements in `bootstrap.sh`.
 The Windows runner must therefore preserve the generic `HOST`, `PORT`, and
@@ -141,10 +145,12 @@ packages. Tests must start each supported catalog shape on an allocated port
 and pass its declared health check; checking only the generated command is not
 sufficient.
 
-This compatibility path does not support the default Python-and-Node baseline,
-arbitrary custom shell bootstraps, or standalone executables. It must not replace a
-published `windows-amd64` runtime catalog entry; Windows runtime artifacts
-remain the required long-term release path.
+The direct-entrypoint path does not interpret arbitrary shell logic. New app
+packages with nonstandard bootstrap behavior must publish `bootstrap.cmd` or a
+supported platform-specific executable. A published `windows-amd64` runtime
+catalog entry remains preferred over the bundled Node fallback. On stop, the
+runner terminates and waits for the full Windows process tree so batch and
+worker children cannot survive app or desktop shutdown.
 
 ## Runtime Overrides
 
@@ -179,3 +185,7 @@ cd services/tuttid && go test ./service/workspace ./service/eventstream
 pnpm --filter @tutti-os/workspace-app-center test
 pnpm --filter @tutti-os/desktop typecheck
 ```
+
+For embedded onboarding or Windows companion changes, also run
+`pnpm generate:builtin-apps`, the built-in catalog tests, and the Windows
+companion/catalog runner integration tests in `apps_runner_test.go`.

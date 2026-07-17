@@ -1,75 +1,39 @@
-import { useEffect, useMemo } from "react";
-import { InstantiationContext } from "@tutti-os/infra/di";
-import { AnalyticsDebugFloatingEntryGate } from "@renderer/features/analytics-debug";
-import { AppUpdateStatus } from "@renderer/features/app-update";
-import { WorkspaceWorkbench } from "@renderer/features/workspace-workbench";
-import { useTranslation } from "../../../i18n";
-import { Toast } from "../../../lib/toast";
-import { createWorkspaceWindowContainer } from "./createWorkspaceWindowContainer";
-import { createDeferredWorkspaceContainerDispose } from "./deferredWorkspaceContainerDispose";
+import { lazy, Suspense } from "react";
+import { StandaloneAgentStartupShell } from "@renderer/features/workspace-workbench/ui/StandaloneAgentStartupShell.tsx";
+import type { WorkspaceWindowContainerResult } from "./createWorkspaceWindowContainer.ts";
 
-export function WorkspaceWindow() {
-  const {
-    container,
-    agentProviderStatusService,
-    desktopApi,
-    environmentMode,
-    hostWindowApi,
-    reporterService,
-    richTextAtService,
-    startupWorkspaceID,
-    tuttidClient,
-    workspaceAgentActivityService,
-    workspaceAppCenterService,
-    workspaceAppExternalApi,
-    workspaceUserProjectService
-  } = useMemo(() => createWorkspaceWindowContainer(), []);
-  const containerDispose = useMemo(
-    () => createDeferredWorkspaceContainerDispose(() => container.dispose()),
-    [container]
-  );
-  const initialSearch = window.location.search;
-  const searchParams = new URLSearchParams(initialSearch);
-  const routeView = searchParams.get("view") || "workspace";
-  const requestedWorkspaceID = searchParams.get("workspaceId");
-  const workspaceID = requestedWorkspaceID || startupWorkspaceID;
-  const { t } = useTranslation();
+const LazyDefaultWorkspaceWindow = lazy(() =>
+  import("./DefaultWorkspaceWindow.tsx").then((module) => ({
+    default: module.DefaultWorkspaceWindow
+  }))
+);
+const LazyStandaloneAgentWorkspaceWindow = lazy(() =>
+  import("./StandaloneAgentWorkspaceWindow.tsx").then((module) => ({
+    default: module.StandaloneAgentWorkspaceWindow
+  }))
+);
 
-  useEffect(() => {
-    containerDispose.cancel();
-    return () => {
-      containerDispose.schedule();
-    };
-  }, [containerDispose]);
-
-  useEffect(() => {
-    return hostWindowApi.onQuitShortcutToast(() => {
-      Toast.tips(t("desktop.quitShortcut.confirmToastTitle"));
-    });
-  }, [hostWindowApi, t]);
+export function WorkspaceWindow({
+  containerInput
+}: {
+  containerInput: WorkspaceWindowContainerResult;
+}) {
+  const routeView =
+    new URLSearchParams(window.location.search).get("view") || "workspace";
+  const routeFallback =
+    routeView === "agent" ? (
+      <StandaloneAgentStartupShell />
+    ) : (
+      <main className="h-screen min-h-0 bg-background" />
+    );
 
   return (
-    <InstantiationContext instantiationService={container}>
-      <WorkspaceWorkbench
-        agentWindowInput={{
-          agentProviderStatusService,
-          desktopApi,
-          hostWindowApi,
-          reporterService,
-          richTextAtService,
-          tuttidClient,
-          workspaceAgentActivityService,
-          workspaceAppCenterService,
-          workspaceUserProjectService
-        }}
-        enableWindowCloseGuard={environmentMode === "desktop"}
-        headerSlot={<AppUpdateStatus />}
-        hostWindowApi={hostWindowApi}
-        routeView={routeView}
-        workspaceAppExternalApi={workspaceAppExternalApi}
-        workspaceID={workspaceID}
-      />
-      <AnalyticsDebugFloatingEntryGate />
-    </InstantiationContext>
+    <Suspense fallback={routeFallback}>
+      {routeView === "agent" ? (
+        <LazyStandaloneAgentWorkspaceWindow containerInput={containerInput} />
+      ) : (
+        <LazyDefaultWorkspaceWindow containerInput={containerInput} />
+      )}
+    </Suspense>
   );
 }

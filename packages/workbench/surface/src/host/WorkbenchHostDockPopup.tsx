@@ -45,6 +45,7 @@ import {
   resolveMinimizedStackTrackTranslateXPx,
   resolveMinimizedStackViewportHeightPx
 } from "./minimizedStackScroll.ts";
+import { resolveDockPopupVerticalClampOffsetPx } from "./dockPopupViewportClamp.ts";
 import type {
   WorkbenchDockPreviewCache,
   WorkbenchDockPreviewCacheKey,
@@ -130,6 +131,7 @@ interface WorkbenchHostDockPopupCardStyle extends CSSProperties {
 
 interface WorkbenchHostDockPopupRootStyle extends CSSProperties {
   "--desktop-dock-minimized-stack-width"?: string;
+  "--desktop-dock-popup-clamp-offset"?: string;
   "--desktop-dock-popup-columns": string;
   "--desktop-dock-popup-width": string;
 }
@@ -230,7 +232,6 @@ export function WorkbenchHostDockPopup({
   onRunDockRetentionAction,
   onSelectNode,
   onShowAllWindows,
-  openLabel,
   onQuit,
   placement = "bottom",
   quitLabel,
@@ -268,7 +269,6 @@ export function WorkbenchHostDockPopup({
   onRunDockRetentionAction?: () => void;
   onSelectNode: (nodeId: string) => void;
   onShowAllWindows?: () => void;
-  openLabel?: string;
   onQuit?: () => void;
   placement?: WorkbenchDockPlacement;
   quitLabel?: string;
@@ -292,6 +292,7 @@ export function WorkbenchHostDockPopup({
   const [pointer, setPointer] = useState<{ x: number; y: number } | null>(null);
   const [minimizedStackScrollOffset, setMinimizedStackScrollOffset] =
     useState(0);
+  const [verticalClampOffsetPx, setVerticalClampOffsetPx] = useState(0);
   const [capturedPreviewByMemoryKey, setCapturedPreviewByMemoryKey] = useState<
     Record<string, WorkbenchHostDockPopupCapturedPreview | undefined>
   >({});
@@ -370,7 +371,10 @@ export function WorkbenchHostDockPopup({
         : anchorRect.top - dockPopupPlacementGapPx,
     ...(isLeftMinimizedStack
       ? { zIndex: dockPopupMinimizedStackPopupZIndex }
-      : {})
+      : {}),
+    ...(isMinimizedStack
+      ? {}
+      : { "--desktop-dock-popup-clamp-offset": `${verticalClampOffsetPx}px` })
   };
   const minimizedStackMaxScrollOffset = Math.max(
     0,
@@ -429,6 +433,55 @@ export function WorkbenchHostDockPopup({
       viewportWidth: window.innerWidth
     });
   }, [debugDiagnostics, popupDiagnosticKey]);
+
+  useLayoutEffect(() => {
+    if (isMinimizedStack || typeof window === "undefined") {
+      return;
+    }
+    const rootElement = popupRootRef.current;
+    const panelElement = rootElement?.querySelector<HTMLElement>(
+      "[data-desktop-dock-popup-panel]"
+    );
+    if (!panelElement) {
+      return;
+    }
+
+    const measureAndClamp = () => {
+      const panelHeightPx = panelElement.offsetHeight;
+      const naturalTopPx =
+        placement === "left"
+          ? popupCenterY - panelHeightPx / 2
+          : anchorRect.top - dockPopupPlacementGapPx - panelHeightPx;
+      const naturalBottomPx =
+        placement === "left"
+          ? popupCenterY + panelHeightPx / 2
+          : anchorRect.top - dockPopupPlacementGapPx;
+      const offsetPx = resolveDockPopupVerticalClampOffsetPx({
+        naturalBottomPx,
+        naturalTopPx,
+        viewportHeightPx: window.innerHeight
+      });
+      setVerticalClampOffsetPx((current) =>
+        current === offsetPx ? current : offsetPx
+      );
+    };
+
+    measureAndClamp();
+
+    const resizeObserver = new ResizeObserver(measureAndClamp);
+    resizeObserver.observe(panelElement);
+    window.addEventListener("resize", measureAndClamp);
+    return () => {
+      resizeObserver.disconnect();
+      window.removeEventListener("resize", measureAndClamp);
+    };
+  }, [
+    anchorRect.top,
+    isMinimizedStack,
+    placement,
+    popupCenterY,
+    popupDiagnosticKey
+  ]);
 
   const registerCard = useCallback((nodeId: string) => {
     const existing = cardRefCallbacksRef.current.get(nodeId);
@@ -816,7 +869,6 @@ export function WorkbenchHostDockPopup({
             onRunDockRetentionAction={onRunDockRetentionAction}
             onSelectNode={onSelectNode}
             onShowAllWindows={onShowAllWindows}
-            openLabel={openLabel}
             quitLabel={quitLabel}
             showAllWindowsLabel={showAllWindowsLabel}
             showOpen={showOpen === true}
@@ -963,7 +1015,6 @@ function WorkbenchHostDockContextMenu({
   onRunDockRetentionAction,
   onSelectNode,
   onShowAllWindows,
-  openLabel,
   quitLabel,
   showAllWindowsLabel,
   showOpen
@@ -983,7 +1034,6 @@ function WorkbenchHostDockContextMenu({
   onRunDockRetentionAction?: () => void;
   onSelectNode: (nodeId: string) => void;
   onShowAllWindows?: () => void;
-  openLabel?: string;
   quitLabel?: string;
   showAllWindowsLabel?: string;
   showOpen: boolean;
@@ -1044,7 +1094,7 @@ function WorkbenchHostDockContextMenu({
         <WorkbenchHostDockContextMenuItem
           disabled={!showOpen}
           icon={<FileCreateIcon aria-hidden="true" className="size-4" />}
-          label={openLabel}
+          label={newWindowLabel}
           onSelect={onCreateNew}
         />
       ) : null}
